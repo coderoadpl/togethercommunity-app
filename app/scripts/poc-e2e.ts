@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -22,6 +22,7 @@ import {
   membersExportOutputSchema,
   myProductsOutputSchema,
   orderFulfilmentContracts,
+  shipxContracts,
   ordersExportOutputSchema,
   ordersListOutputSchema,
   ordersReconciliationOutputSchema,
@@ -748,6 +749,52 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   assert(
     shippedList.orders.map((order) => order.id).join(',') === shippedOrderId,
     `the shipped order should be listed as shipped: ${JSON.stringify(shippedList.orders)}`,
+  );
+  const shipxPurchase = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx@together.dev', '--product', shippedProduct.id,
+      '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
+    ], buyerHome),
+    'InPost purchase',
+    simulatePurchaseOutputSchema,
+  );
+  const shipxOrderId = shipxPurchase.orderId;
+  assert(shipxOrderId !== null, 'InPost purchase should return its order id');
+  const unconfigured = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'show', shipxOrderId], alfaHome), 'InPost readiness before setup', shipxContracts.shipxShipment.output);
+  assert(!unconfigured.available && unconfigured.reason === 'credentials_missing' && unconfigured.service === 'inpost_locker_standard', `InPost should wait for credentials: ${JSON.stringify(unconfigured)}`);
+  expectError(
+    await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome),
+    'InPost shipment without credentials',
+    EXIT_CODE_BY_ERROR_CODE.integration_not_configured,
+    'integration_not_configured',
+  );
+  const shipxSettings = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'tenant', 'shipx-set', '--environment', 'sandbox', '--organization-id', '1234', '--token', 'smoke-shipx-token',
+      '--sender', JSON.stringify({ name: 'Smoke Sender', email: 'sender@together.dev', phone: '500600700', street: 'Example Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' }),
+    ], alfaHome),
+    'InPost settings',
+    shipxContracts.shipxConfigure.output,
+  );
+  assert(shipxSettings.configured && !JSON.stringify(shipxSettings).includes('smoke-shipx-token'), `InPost settings should be configured and masked: ${JSON.stringify(shipxSettings)}`);
+  const shipxCreated = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome), 'InPost shipment', shipxContracts.shipxCreate.output);
+  assert(
+    shipxCreated.order.fulfilmentStatus === 'shipped' && shipxCreated.order.shipment?.carrier === 'inpost'
+      && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.shipment.trackingNumber === shipxCreated.shipment.trackingNumber,
+    `InPost shipment should ship the order with its tracking number: ${JSON.stringify(shipxCreated)}`,
+  );
+  const labelPath = join(alfaHome, 'inpost-label.pdf');
+  expectOk(
+    await cli(['--tenant', 'alfa', 'order', 'shipx', 'label', shipxOrderId, '--out', labelPath], alfaHome),
+    'InPost label',
+    z.object({ filename: z.string().startsWith('inpost-'), contentType: z.literal('application/pdf'), bytes: z.number().int().positive() }),
+  );
+  assert(readFileSync(labelPath).subarray(0, 5).toString('latin1') === '%PDF-', 'InPost label should be a PDF');
+  expectError(
+    await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome),
+    'second InPost shipment',
+    EXIT_CODE_BY_ERROR_CODE.fulfilment_conflict,
+    'fulfilment_conflict',
   );
   steps += 1;
 

@@ -205,6 +205,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/integrations/stripe/test-mode/remove') return 'tenant:secret:write';
   if (path === '/api/integrations/stripe/probe') return 'tenant:secret:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
+  if (path === '/api/integrations/shipx') return 'tenant:secret:read';
+  if (path === '/api/integrations/shipx/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
   if (path.startsWith('/api/integrations/telemetry')) return method === 'GET' ? 'tenant:secret:read' : 'tenant:settings:write';
@@ -224,6 +226,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
+  if (path === '/api/orders/:orderId/shipx' || path === '/api/orders/:orderId/shipx/label') return method === 'GET' ? 'order:read' : 'order:write';
+  if (path === '/api/orders/:orderId/shipx/discard') return 'order:write';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/consumer-sales-summary') return 'order:export';
@@ -311,6 +315,7 @@ const beforeForRoute = (
     return tenantActors;
   }
   if (path === '/api/integrations/telemetry' && method === 'GET') return staff;
+  if (path === '/api/integrations/shipx' && method === 'GET') return staff;
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path.startsWith('/api/tenant/team')) return owner;
   if (path === '/api/tenant/routing') return staff;
@@ -572,6 +577,7 @@ const beforeForUseCase = (
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts' || file === 'probe-stripe-permissions.ts') return owner;
+  if (file === 'shipx.ts' && name === 'configureShipx') return owner;
   if (file === 'stripe-test-session.ts') return staff;
   if (capability === 'integration:test') return owner;
   if (file === 'community.ts' && name === 'purgePost') return staff;

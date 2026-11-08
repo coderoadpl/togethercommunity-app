@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
@@ -23,6 +27,12 @@ interface Hoisted {
   issueOrderLine: ReturnType<typeof vi.fn>;
   shipOrder: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
+  shipxShipment: ReturnType<typeof vi.fn>;
+  shipxCreate: ReturnType<typeof vi.fn>;
+  shipxDiscard: ReturnType<typeof vi.fn>;
+  shipxLabel: ReturnType<typeof vi.fn>;
+  shipxSettings: ReturnType<typeof vi.fn>;
+  shipxConfigure: ReturnType<typeof vi.fn>;
   provisionOperatorTenant: ReturnType<typeof vi.fn>;
   getOperatorTenantReadiness: ReturnType<typeof vi.fn>;
   activitySummary: ReturnType<typeof vi.fn>;
@@ -92,6 +102,12 @@ const h = vi.hoisted(
     issueOrderLine: vi.fn(),
     shipOrder: vi.fn(),
     ordersPackingList: vi.fn(),
+    shipxShipment: vi.fn(),
+    shipxCreate: vi.fn(),
+    shipxDiscard: vi.fn(),
+    shipxLabel: vi.fn(),
+    shipxSettings: vi.fn(),
+    shipxConfigure: vi.fn(),
     provisionOperatorTenant: vi.fn(),
     getOperatorTenantReadiness: vi.fn(),
     activitySummary: vi.fn(),
@@ -209,6 +225,12 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     issueOrderLine: h.issueOrderLine,
     shipOrder: h.shipOrder,
     ordersPackingList: h.ordersPackingList,
+    shipxShipment: h.shipxShipment,
+    shipxCreate: h.shipxCreate,
+    shipxDiscard: h.shipxDiscard,
+    shipxLabel: h.shipxLabel,
+    shipxSettings: h.shipxSettings,
+    shipxConfigure: h.shipxConfigure,
     provisionOperatorTenant: h.provisionOperatorTenant,
     getOperatorTenantReadiness: h.getOperatorTenantReadiness,
     activitySummary: h.activitySummary,
@@ -310,6 +332,12 @@ beforeEach(() => {
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
+  h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
+  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
+  h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
+  h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
+  h.shipxSettings.mockReset().mockResolvedValue(ok({ environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false }));
+  h.shipxConfigure.mockReset().mockResolvedValue(ok({ environment: 'production', sender: null, organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: false }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -1788,6 +1816,62 @@ describe('fulfilment CLI', () => {
   it('rejects invalid product safety information before calling the server', async () => {
     await run('--json', 'product', 'create', '--title', 'Printed stand', '--price-cents', '4900', '--compliance', '{"manufacturerName":"Only a name"}');
     expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('InPost ShipX CLI', () => {
+  it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost 520000011395200025754311)');
+    h.shipxCreate.mockResolvedValue(err(appError('shipx_unavailable', 'InPost ShipX is unavailable')));
+    await run('--json', 'orders', 'shipx', 'create', 'order-number');
+    expect(process.exitCode).toBe(28);
+    process.exitCode = 0;
+    h.shipxCreate.mockResolvedValue(err(appError('shipx_rejected', 'InPost rejected the shipment data')));
+    await run('--json', 'orders', 'shipx', 'create', 'order-number');
+    expect(process.exitCode).toBe(29);
+  });
+
+  it('discards an unconfirmed attempt and maps a running operation to the fulfilment conflict exit code', async () => {
+    await run('order', 'shipx', 'discard', 'order-number');
+    expect(h.shipxDiscard).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(logSpy).toHaveBeenCalledWith('discarded the unconfirmed InPost attempt of order-number');
+    h.shipxDiscard.mockResolvedValue(err(appError('fulfilment_conflict', 'Another request is working on the InPost shipment')));
+    await run('--json', 'order', 'shipx', 'discard', 'order-number');
+    expect(process.exitCode).toBe(27);
+  });
+
+  it('writes the PDF label to the requested file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shipx-label-'));
+    const out = join(directory, 'label.pdf');
+    await run('--json', 'order', 'shipx', 'label', 'order-number', '--out', out);
+    expect(h.shipxLabel).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(await readFile(out, 'utf8')).toBe('%PDF-1.4');
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it('shows the order readiness and configures the integration with a parsed sender', async () => {
+    await run('orders', 'shipx', 'show', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('available: true'));
+    const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
+    await run('--json', 'tenant', 'shipx-set', '--environment', 'production', '--organization-id', '1234', '--token', 'token-5678', '--sender', JSON.stringify(sender));
+    expect(h.shipxConfigure).toHaveBeenCalledExactlyOnceWith({
+      environment: 'production', organizationId: '1234', token: 'token-5678', sender: { ...sender, company: null },
+    });
+    await run('--json', 'tenant', 'shipx-set', '--sender', '{"name":"Only a name"}');
+    expect(h.shipxConfigure).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('passes the parcel template to product create and update', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed stand', '--type', 'physical', '--delivery-method', 'shipping', '--price-cents', '4900', '--parcel-template', 'large');
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ parcelTemplate: 'large' }));
+    await run('--json', 'product', 'update', 'product-1', '--parcel-template', 'small');
+    expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', parcelTemplate: 'small' });
+    await run('--json', 'product', 'update', 'product-1', '--parcel-template', 'huge');
+    expect(h.updateProduct).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(2);
   });
 });

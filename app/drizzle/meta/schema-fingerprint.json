@@ -1,6 +1,6 @@
 {
-  "hash": "749d811328cb95dd457eb8481c0481294c9483cd32b071f51b108edf9f4b337b",
-  "shortId": "749d811328cb",
+  "hash": "e7c088a71dbe22e38094cbcc75dec8ef5e7dee85461d6ae92da11daec40bfec9",
+  "shortId": "e7c088a71dbe",
   "schema": {
     "constraints": [
       {
@@ -94,6 +94,11 @@
         "table": "marketing_contacts"
       },
       {
+        "definition": "CHECK ((environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
+        "name": "order_shipments_environment_check",
+        "table": "order_shipments"
+      },
+      {
         "definition": "CHECK ((interval_count > 0))",
         "name": "product_prices_interval_count_positive",
         "table": "product_prices"
@@ -139,6 +144,11 @@
         "table": "product_stock"
       },
       {
+        "definition": "CHECK ((parcel_template = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])))",
+        "name": "products_parcel_template_check",
+        "table": "products"
+      },
+      {
         "definition": "CHECK ((pending_bytes >= 0))",
         "name": "telemetry_pending_bytes_nonnegative",
         "table": "telemetry_accounting"
@@ -147,6 +157,16 @@
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((provider = 'inpost_shipx'::text))",
+        "name": "order_shipment_events_provider_check",
+        "table": "order_shipment_events"
+      },
+      {
+        "definition": "CHECK ((provider = 'inpost_shipx'::text))",
+        "name": "order_shipments_provider_check",
+        "table": "order_shipments"
       },
       {
         "definition": "CHECK ((quantity > 0))",
@@ -179,6 +199,11 @@
         "table": "surveys"
       },
       {
+        "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
+        "name": "tenants_shipx_environment_check",
+        "table": "tenants"
+      },
+      {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
         "name": "marketing_signup_forms_status_check",
         "table": "marketing_signup_forms"
@@ -207,6 +232,11 @@
         "definition": "CHECK ((type = 'shipped'::text))",
         "name": "order_fulfilment_events_type_check",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "CHECK ((type = ANY (ARRAY['attempt_claimed'::text, 'attempt_marked'::text, 'shipment_adopted'::text, 'shipment_created'::text, 'offer_bought'::text, 'payment_failed'::text, 'attempt_released'::text, 'attempt_discarded'::text, 'lease_taken_over'::text, 'label_fetched'::text, 'status_refreshed'::text, 'operation_finished'::text])))",
+        "name": "order_shipment_events_type_check",
+        "table": "order_shipment_events"
       },
       {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
@@ -802,6 +832,16 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_issue_events_tenant_id_fkey",
         "table": "order_issue_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_shipment_events_tenant_id_fkey",
+        "table": "order_shipment_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_shipments_tenant_id_fkey",
+        "table": "order_shipments"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1492,6 +1532,16 @@
         "definition": "PRIMARY KEY (id)",
         "name": "order_fulfilment_events_pkey",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_shipment_events_pkey",
+        "table": "order_shipment_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_shipments_pkey",
+        "table": "order_shipments"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2363,6 +2413,11 @@
         "table": "notifications"
       },
       {
+        "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
+        "name": "order_shipment_events_tenant_order_created_idx",
+        "table": "order_shipment_events"
+      },
+      {
         "definition": "CREATE INDEX orders_tenant_coupon_created_idx ON orders USING btree (tenant_id, coupon_id, created_at DESC NULLS LAST)",
         "name": "orders_tenant_coupon_created_idx",
         "table": "orders"
@@ -2823,6 +2878,11 @@
         "table": "order_fulfilment_events"
       },
       {
+        "definition": "CREATE UNIQUE INDEX order_shipments_tenant_order_uidx ON order_shipments USING btree (tenant_id, order_id)",
+        "name": "order_shipments_tenant_order_uidx",
+        "table": "order_shipments"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX orders_tenant_provider_checkout_uidx ON orders USING btree (tenant_id, provider, ((provider_object_ids ->> 'checkoutSession'::text))) WHERE (provider_object_ids ? 'checkoutSession'::text)",
         "name": "orders_tenant_provider_checkout_uidx",
         "table": "orders"
@@ -3052,6 +3112,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "member_events_sequence_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "order_shipment_events_sequence_seq",
         "start": "1"
       },
       {
@@ -3343,6 +3412,14 @@
             "generated": "",
             "identity": "",
             "name": "visibility",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'medium'::text",
+            "generated": "",
+            "identity": "",
+            "name": "parcel_template",
             "notNull": true,
             "type": "text"
           },
@@ -4259,6 +4336,14 @@
             "type": "text"
           },
           {
+            "default": "'sandbox'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'self_hosted'::text",
             "generated": "",
             "identity": "",
@@ -4553,6 +4638,14 @@
             "name": "privacy_url",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sender",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -6515,6 +6608,99 @@
           }
         ],
         "name": "stock_reservations"
+      },
+      {
+        "columns": [
+          {
+            "default": "(gen_random_uuid())::text",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "nextval('order_shipment_events_sequence_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "details",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_token",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_shipment_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_shipment_events"
       },
       {
         "columns": [
@@ -10851,6 +11037,139 @@
           }
         ],
         "name": "email_layouts"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bought_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "create_attempted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "label_fetched_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_started_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_token",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "organization_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_shipment_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tracking_number",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "order_shipments"
       },
       {
         "columns": [

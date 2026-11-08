@@ -26,6 +26,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 
 import {
+  DEFAULT_PARCEL_TEMPLATE,
   priceMajorSchema,
   productVisibilitySchema,
   productVatRateSchema,
@@ -38,6 +39,7 @@ import {
 } from '#core/domain/index.js';
 
 import { DeliveryMethodField } from './DeliveryMethodField.js';
+import { ParcelTemplateField } from './ParcelTemplateField.js';
 import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft } from './ProductComplianceFields.js';
 
 import { actions } from '../../../api.js';
@@ -60,6 +62,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [vatRate, setVatRate] = useState(product.vatRate);
   const [vatExemptionBasis, setVatExemptionBasis] = useState(product.vatExemptionBasis ?? '');
   const [deliveryMethod, setDeliveryMethod] = useState(product.deliveryMethod);
+  const [parcelTemplate, setParcelTemplate] = useState(product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE);
   const [compliance, setCompliance] = useState(complianceDraftFrom(product.compliance));
   const [complianceInvalid, setComplianceInvalid] = useState(false);
   const [variant, setVariant] = useState({ group: product.variantGroup ?? '', label: product.variantLabel ?? '' });
@@ -86,6 +89,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       ...(product.type === 'physical' ? {
         deliveryMethod,
+        parcelTemplate,
         compliance: parsedCompliance.value,
         variantGroup: variant.group.trim() === '' ? null : variant.group.trim(),
         variantLabel: variant.label.trim() === '' ? null : variant.label.trim(),
@@ -155,6 +159,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       </TextField>
       {vatRate === 'exempt' ? <TextField label={t.salesLinks.exemptionBasis} value={vatExemptionBasis} required onChange={(event) => { resetFeedback(); setVatExemptionBasis(event.target.value); }} /> : null}
       {product.type === 'physical' ? <DeliveryMethodField value={deliveryMethod} onChange={(value) => { resetFeedback(); setDeliveryMethod(value); }} /> : null}
+      {product.type === 'physical' && deliveryMethod === 'shipping' ? <ParcelTemplateField value={parcelTemplate} onChange={(value) => { resetFeedback(); setParcelTemplate(value); }} /> : null}
       <HtmlEditor
         id="product-description"
         value={description}

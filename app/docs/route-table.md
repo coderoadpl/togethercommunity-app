@@ -207,6 +207,12 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
+| `GET /api/integrations/shipx` | authenticated | read | shipx settings |
+| `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |
+| `GET /api/orders/:orderId/shipx` | authenticated | read | shipx shipment |
+| `POST /api/orders/:orderId/shipx` | authenticated | mutating | shipx create |
+| `POST /api/orders/:orderId/shipx/discard` | authenticated | mutating | shipx discard |
+| `GET /api/orders/:orderId/shipx/label` | authenticated | read | shipx label |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

@@ -710,7 +710,7 @@ describe('ProductsPanel', () => {
     expect(await screen.findByText(en.productVariants.heading)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(en.productVariants.group), 'printed-stand');
     await userEvent.type(screen.getByLabelText(en.productVariants.label), 'Black');
-    await userEvent.click(screen.getByRole('button', { name: new RegExp(en.productSafety.heading.replace(/[()]/gu, '\\$&'), 'u') }));
+    await userEvent.click(within(screen.getByTestId('product-compliance')).getByRole('button'));
     await userEvent.type(await screen.findByLabelText(en.productSafety.manufacturerName), 'Example Workshop');
     await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
     expect(await screen.findByRole('alert')).toHaveTextContent(en.productSafety.incomplete);

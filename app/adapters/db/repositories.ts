@@ -33,6 +33,7 @@ import {
   normalizeEmail,
   tenantSchema,
   checkoutAppearanceSchema,
+  shippingRatesSchema,
   notificationSchema,
   orderSchema,
   orderListItemSchema,
@@ -182,6 +183,7 @@ import {
   dmReports,
   memberBlocks,
   emailEvents,
+  emailOutbox,
   erasedMemberImports,
   entityVersions,
   invoices,
@@ -416,6 +418,7 @@ export const createProductRepository = (
           description: product.description,
           coverUrl: product.coverUrl,
           visibility: product.visibility,
+          deliveryMethod: product.deliveryMethod,
           priceCents: product.priceCents,
           vatRate: product.vatRate ?? null,
           vatExemptionBasis: product.vatExemptionBasis ?? null,
@@ -442,6 +445,7 @@ export const createProductRepository = (
         description: product.description,
         coverUrl: product.coverUrl,
         visibility: product.visibility,
+        deliveryMethod: product.deliveryMethod,
         vatRate: product.vatRate ?? null,
         vatExemptionBasis: product.vatExemptionBasis ?? null,
       })
@@ -2786,6 +2790,26 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       await tx.update(orders).set({ attribution: null }).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
       ));
+      const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
+      await tx.update(orders).set({
+        shipping: sql`case
+          when jsonb_typeof(${orders.shipping}->'address') = 'object'
+            then jsonb_set(${orders.shipping}, '{address}', (${orders.shipping}->'address') || ${erasedAddress})
+          when jsonb_typeof(${orders.shipping}->'address') <> 'null'
+            then jsonb_set(${orders.shipping}, '{address}', ${erasedAddress})
+          else ${orders.shipping}
+        end || jsonb_build_object('phone', null)`,
+      }).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), isNotNull(orders.shipping),
+        sql`jsonb_typeof(${orders.shipping}) = 'object'`,
+      ));
+      await tx.update(emailOutbox).set({
+        payload: sql`jsonb_set(${emailOutbox.payload}, '{purchase,delivery,address}', (${emailOutbox.payload}#>'{purchase,delivery,address}') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null))`,
+      }).where(and(
+        eq(emailOutbox.tenantId, tenantId),
+        sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
+        sql`jsonb_typeof(${emailOutbox.payload}#>'{purchase,delivery,address}') = 'object'`,
+      ));
       await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 
@@ -3187,6 +3211,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           vatExemptionBasis: products.vatExemptionBasis,
           currency: products.currency,
           visibility: products.visibility,
+          deliveryMethod: products.deliveryMethod,
           published: products.published,
           accessItems: products.accessItems,
           legacyId: products.legacyId,
@@ -3282,6 +3307,7 @@ export const createOrderRepository = (
       ? isNull(orders.attribution)
       : sql`${orders.attribution}->>'utmSource' = ${query.source}`);
     if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
+    if (query.fulfilmentStatus !== undefined) conditions.push(eq(orders.fulfilmentStatus, query.fulfilmentStatus));
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
       const search = or(
@@ -3300,6 +3326,8 @@ export const createOrderRepository = (
         status: 'paid', paidAt: order.paidAt, providerObjectIds: order.providerObjectIds,
         billing: order.billing ?? null,
         attribution: order.attribution ?? null,
+        shipping: order.shipping ?? null,
+        fulfilmentStatus: order.fulfilmentStatus ?? null,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
         eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
       if (row === undefined) return null;
@@ -3335,6 +3363,8 @@ export const createOrderRepository = (
           paidAt: order.paidAt ?? null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
+          shipping: order.shipping ?? null,
+          fulfilmentStatus: order.fulfilmentStatus ?? null,
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),
           createdAt: order.createdAt,
         })
@@ -3561,7 +3591,7 @@ export const createOrderRepository = (
               CASE WHEN jsonb_array_length(${orders.lines}) > 0 THEN ${orders.lines}
                 ELSE jsonb_build_array(jsonb_build_object('productId', ${orders.productId}, 'name', ${products.title}, 'productType', ${products.type})) END
             ) WITH ORDINALITY AS entries(line, position)
-            WHERE line->>'productType' <> 'physical'
+            WHERE line->>'productType' NOT IN ('physical', 'shipping')
               AND NOT EXISTS (SELECT 1 FROM product_grants g
                 WHERE g.tenant_id = ${orders.tenantId} AND g.member_id = ${orders.memberId}
                   AND g.product_id = line->>'productId' AND g.mode = ${orders.mode})
@@ -4369,6 +4399,8 @@ export const createTenantRepository = (
         analyticsConsentCookieValue: tenants.analyticsConsentCookieValue,
         analyticsLoadWithoutConsent: tenants.analyticsLoadWithoutConsent,
         checkoutAppearance: tenants.checkoutAppearance,
+        shippingRates: tenants.shippingRates,
+        inpostGeowidgetToken: tenants.inpostGeowidgetToken,
         accentColor: tenants.accentColor,
         accentLight: tenants.accentLight,
         faviconUrl: tenants.faviconUrl,
@@ -4415,6 +4447,8 @@ export const createTenantRepository = (
           analyticsConsentCookieValue: row.analyticsConsentCookieValue,
           analyticsLoadWithoutConsent: row.analyticsLoadWithoutConsent,
           checkoutAppearance: row.checkoutAppearance === null ? null : checkoutAppearanceSchema.parse(row.checkoutAppearance),
+          shippingRates: shippingRatesSchema.parse(row.shippingRates),
+          inpostGeowidgetToken: row.inpostGeowidgetToken,
           accentColor: row.accentColor,
           accentLight: row.accentLight,
           faviconUrl: row.faviconUrl,
@@ -4477,6 +4511,8 @@ export const createTenantRepository = (
         analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
         analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
         checkoutAppearance: settings.checkoutAppearance,
+        shippingRates: settings.shippingRates,
+        inpostGeowidgetToken: settings.inpostGeowidgetToken,
         accentColor: settings.accentColor,
         accentLight: settings.accentLight,
         faviconUrl: settings.faviconUrl,
@@ -4519,6 +4555,8 @@ export const createTenantRepository = (
       analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
       analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
       checkoutAppearance: settings.checkoutAppearance,
+      shippingRates: settings.shippingRates,
+      inpostGeowidgetToken: settings.inpostGeowidgetToken,
       accentColor: settings.accentColor,
       accentLight: settings.accentLight,
       faviconUrl: settings.faviconUrl,

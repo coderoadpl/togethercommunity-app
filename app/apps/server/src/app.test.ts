@@ -161,6 +161,7 @@ const product = (input: {
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: input.published,
   accessItems: [],
   legacyId: null,
@@ -3807,6 +3808,50 @@ describe('server edge security baseline', () => {
     }
   });
 
+  it('allows the parcel locker map sources only on checkout form documents', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    for (const shellPath of ['/', '/login', '/register', '/my', '/my/products', '/panel', '/panel/settings', '/panel/orders']) {
+      h.app.get(shellPath, (c) => c.html('<main>Application shell</main>'));
+    }
+    const htmlDocument = async (path: string) => {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get('content-type'), path).toMatch(/^text\/html/u);
+      return parseCsp(response);
+    };
+    for (const path of ['/checkout/product-1', '/checkout/product-1?status=cancelled', '/offer/bundle?checkout=together', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together&status=cancelled']) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives), 'https://geowidget.inpost.pl']));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'", 'https://geowidget.inpost.pl']));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", path.startsWith('/offer/') ? 'https://*.sentry.io' : 'https:']));
+    }
+    for (const path of [
+      '/checkout/product-1?status=success', '/checkout/product-1?status=success&session_id=cs_live_one',
+      '/checkout/product-1?checkout=together&status=success', '/offer/bundle?status=success', '/offer/bundle?checkout=together&status=success',
+    ]) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set([
+        "'self'", scriptNonce(directives), 'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net',
+      ]));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", 'https:']));
+    }
+    for (const path of [
+      '/', '/login', '/login?status=cancelled', '/register', '/my', '/my?checkout=together', '/my/products', '/my/products?status=cancelled',
+      '/panel', '/panel/settings', '/panel/orders?status=cancelled', '/panel/orders?checkout=together', '/offer/bundle',
+    ]) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
+    }
+    const legal = await h.app.request('/legal/terms', { headers: { host: 'acme.localhost' } });
+    expect(legal.headers.get('content-security-policy')).not.toContain('geowidget.inpost.pl');
+  });
+
   it('keeps baseline CSP outside checkout success documents', async () => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
@@ -3823,7 +3868,10 @@ describe('server edge security baseline', () => {
     ]) {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       const directives = parseCsp(response);
-      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      expect(directives.get('script-src')).toEqual(new Set([
+        "'self'", scriptNonce(directives),
+        ...(path.startsWith('/checkout/') || path.includes('checkout=together') || path.includes('status=cancelled') ? ['https://geowidget.inpost.pl'] : []),
+      ]));
       const serverDocument = path.startsWith('/offer/') || path.startsWith('/legal/') || path.startsWith('/api/');
       expect(directives.get('connect-src')).toEqual(new Set([
         "'self'", serverDocument ? 'https://*.sentry.io' : 'https:',
@@ -6151,6 +6199,23 @@ describe('public payment-config route', () => {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
       analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
+      shippingRates: [], inpostGeowidgetToken: null,
+    } });
+  });
+
+  it('exposes only active shipping rates with public fields and the parcel locker map token', async () => {
+    const base = deps();
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token', shippingRates: [
+        { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 2 } },
+        { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: false },
+      ] };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(await response.json()).toMatchObject({ ok: true, data: {
+      inpostGeowidgetToken: 'public-map-token',
+      shippingRates: [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 2 } }],
     } });
   });
 
@@ -10415,6 +10480,23 @@ describe('direct public sales-link checkout', () => {
       const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
       expect(await page.text()).toBe('<main>Existing checkout</main>');
     }
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps offers with a shipped product on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.type = 'physical';
+    item.deliveryMethod = 'shipping';
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const page = await h.app.request('/offer/bundle?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).toBe('<main>Existing checkout</main>');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
     expect(h.create).not.toHaveBeenCalled();
   });
 

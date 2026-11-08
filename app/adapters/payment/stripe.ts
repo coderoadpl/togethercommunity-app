@@ -5,12 +5,15 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
+  collectedShippingFromStripe,
   orderBillingDataSchema,
   nipSchema,
   err,
   ok,
   refundCoverage,
+  SHIPPING_ALLOWED_COUNTRIES,
   stripeCancelErrorSchema,
+  stripeCheckoutShippingSchema,
   stripeAdoptionObjectSchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
@@ -22,6 +25,7 @@ import {
   stripeKeyModeConflicts,
   type AppError,
   type CheckoutBranding,
+  type CollectedShipping,
   type Result,
   type StripePermissionCheck,
 } from '#core/domain/index.js';
@@ -64,6 +68,50 @@ export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readon
 
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
+
+const STRIPE_SHIPPING_COUNTRIES = SHIPPING_ALLOWED_COUNTRIES satisfies readonly Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[];
+
+const stripeShippingCountry = (country: string) =>
+  STRIPE_SHIPPING_COUNTRIES.find((allowed) => allowed === country) ?? null;
+
+const checkoutShippingParams = (
+  shipping: CreateCheckoutSessionRequest['shipping'],
+): Stripe.Checkout.SessionCreateParams => {
+  if (shipping === undefined) return {};
+  const estimate = shipping.option.deliveryEstimateDays;
+  return {
+    shipping_address_collection: {
+      allowed_countries: shipping.allowedCountries.flatMap((country) => {
+        const allowed = stripeShippingCountry(country);
+        return allowed === null ? [] : [allowed];
+      }),
+    },
+    phone_number_collection: { enabled: shipping.phone },
+    shipping_options: [{
+      shipping_rate_data: {
+        type: 'fixed_amount',
+        fixed_amount: { amount: shipping.option.amountCents, currency: shipping.option.currency.toLowerCase() },
+        display_name: shipping.option.label,
+        tax_behavior: 'inclusive',
+        ...(estimate === undefined ? {} : {
+          delivery_estimate: {
+            minimum: { unit: 'business_day', value: estimate.min },
+            maximum: { unit: 'business_day', value: estimate.max },
+          },
+        }),
+      },
+    }],
+  };
+};
+
+const checkoutShipping = (session: unknown): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
+  const parsed = stripeCheckoutShippingSchema.safeParse(session);
+  if (!parsed.success) return { shipping: null, shippingCostCents: null };
+  return {
+    shipping: collectedShippingFromStripe(parsed.data, parsed.data.customer_details?.phone ?? null),
+    shippingCostCents: parsed.data.shipping_cost?.amount_total ?? null,
+  };
+};
 
 const checkoutBrandingParams = (branding: CheckoutBranding | undefined): Stripe.Checkout.SessionCreateParams => {
   if (branding === undefined || Object.keys(branding).length === 0) return {};
@@ -154,6 +202,7 @@ export const stripeCheckoutSessionParams = (
   }
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
+    ...checkoutShippingParams(input.shipping),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     ...(input.recurringInterval === undefined ? {
       payment_intent_data: { metadata: { tenantId: input.tenantId, ...attribution } },
@@ -238,6 +287,7 @@ const toCheckoutSessionEvent = (
     invoiceId: idOrNull(session.invoice),
     amountTotalCents: session.amount_total,
     discountTotalCents: session.total_details?.amount_discount ?? null,
+    ...checkoutShipping(session),
     metadata: {
       attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,

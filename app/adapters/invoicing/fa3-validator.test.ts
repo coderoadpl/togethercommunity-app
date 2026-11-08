@@ -88,3 +88,15 @@ it('accepts mixed taxed and exempt FA(3) positions against the official XSD', as
   });
   expect(await createFa3XsdValidator().validate(mixed)).toEqual({ ok: true, value: undefined });
 });
+
+it('accepts a product with a shipping position against the official XSD', async () => {
+  const shipped = renderFa3Invoice({ invoiceNumber: 'FV/2026/000004', issueDate: '2026-11-05', saleDate: '2026-11-05', generatedAt: '2026-11-05T10:00:00Z',
+    seller: { nip: '5555555555', name: 'Seller', addressLine: '1 Simple St' }, buyer: null, productName: 'Printed accessory', grossAmountCents: 6399, discountCents: 0, vat: { kind: 'rate', percent: 5 },
+    positions: [
+      { name: 'Printed accessory', grossCents: 4900, netCents: 4667, vatCents: 233, vat: { kind: 'rate', percent: 5 } },
+      { name: 'Parcel locker', grossCents: 1499, netCents: 1219, vatCents: 280, vat: { kind: 'rate', percent: 23 } },
+    ],
+  });
+  expect(shipped).toContain('Parcel locker');
+  expect(await createFa3XsdValidator().validate(shipped)).toEqual({ ok: true, value: undefined });
+});

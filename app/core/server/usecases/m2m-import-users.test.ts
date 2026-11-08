@@ -112,6 +112,7 @@ const product: Product = {
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: false,
   accessItems: [],
   checkoutConsentDefinitionIds: [],

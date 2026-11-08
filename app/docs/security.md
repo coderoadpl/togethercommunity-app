@@ -139,17 +139,40 @@ use `connect-src 'self' https:`, including `/offer/` success returns whose other
 server responses allow only same-origin and Sentry connections. The existing
 `img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
 are added. Entry, cancellation, handoff
-and other documents retain the baseline script policy.
+and other documents retain the baseline script policy, except that checkout form
+documents allow the InPost parcel locker map origin as described below.
 
 The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
 `status=success` and allow
 `script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
-These entries follow the baseline offer headers and catch-all so their policies
-take precedence only on success returns. Offer fallback and cancellation pages,
-other checkout requests and all other header entries retain the baseline policy.
-No other directive changes: `connect-src 'self' https:` and
-`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+The content security policy entries are mutually exclusive, so the result does
+not depend on which matching entry takes precedence: the catch-all excludes
+`/checkout/` as well as the server-rendered prefixes, and every checkout form
+entry below lists `status=success` under `missing`. All other header entries
+retain the baseline policy, except the checkout form entries below.
+
+Checkout form documents — `/checkout/<productRef>` without `status=success`,
+`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+`https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
+parcel locker map used by shipped products (owner decision 2026-11-05), in both
+the server middleware and the static hosting headers. `connect-src` is not part
+of that change: each document keeps its base value, `'self' https:` on
+`/checkout/*` documents and in the static hosting headers, and
+`'self' https://*.sentry.io` on `/offer/*` server responses. On a
+server-rendered `/offer/*` form document the map may therefore fail to reach
+InPost's API; the buyer then enters the locker code in the typed input, which
+the delivery step always shows. The page injects the map script and stylesheet only
+when the workspace has a Geowidget token, the buyer has chosen a parcel locker
+option, the checkout runs in live mode and the viewer holds no staff session
+(owner or admin) for the workspace (owner decision 2026-11-05), so the map code
+never runs next to a staff session or a Stripe test-mode purchase. Success,
+sign-in, member and Studio documents never list that origin. Once the map
+script has been injected, leaving the form document by any in-app navigation
+becomes a full document navigation, as on the analytics success document, so the
+map code never runs in sign-in or signed-in views. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
+No other directive changes: `connect-src` and `img-src 'self' data: https:`
+keep their base values. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
 Their script allowance does not load either library: the client still requires a
 configured ID, a live success return and the consent rule before loading.
@@ -199,13 +222,14 @@ additionally lists the two vendor script sources named there, Google's tag
 library and Meta's pixel library, and `connect-src` is `'self' https:` as on
 other web-app documents, in both the static hosting headers and the server
 middleware. Other `/offer/*` server responses retain `'self'
-https://*.sentry.io`. The
+https://*.sentry.io`, including the checkout form documents. The
 policy is static per document; the libraries are loaded
 only when the workspace has configured analytics and its consent rule passes,
 and leaving that document after a vendor library loads uses a full document
 navigation. The accepted session exposure is platform-wide, because the base-domain
 session cookie is valid on every workspace subdomain. Every other document
-keeps the same-origin script policy.
+keeps the same-origin script policy, except the checkout form documents, which
+also list the InPost parcel locker map origin as described above.
 
 ## Accepted dependency advisories
 

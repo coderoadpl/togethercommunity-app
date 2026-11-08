@@ -37,6 +37,8 @@ import {
   type ProductVisibility,
 } from '#core/domain/index.js';
 
+import { DeliveryMethodField } from './DeliveryMethodField.js';
+
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
@@ -55,6 +57,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
   const [vatRate, setVatRate] = useState(product.vatRate);
   const [vatExemptionBasis, setVatExemptionBasis] = useState(product.vatExemptionBasis ?? '');
+  const [deliveryMethod, setDeliveryMethod] = useState(product.deliveryMethod);
   const save = useMutation({
     ...actions.updateProduct,
     onSuccess: async () => {
@@ -73,6 +76,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       visibility,
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
+      ...(product.type === 'physical' ? { deliveryMethod } : {}),
       description,
       coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
     });
@@ -137,6 +141,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         <MenuItem value="exempt">{t.salesLinks.exempt}</MenuItem>
       </TextField>
       {vatRate === 'exempt' ? <TextField label={t.salesLinks.exemptionBasis} value={vatExemptionBasis} required onChange={(event) => { resetFeedback(); setVatExemptionBasis(event.target.value); }} /> : null}
+      {product.type === 'physical' ? <DeliveryMethodField value={deliveryMethod} onChange={(value) => { resetFeedback(); setDeliveryMethod(value); }} /> : null}
       <HtmlEditor
         id="product-description"
         value={description}

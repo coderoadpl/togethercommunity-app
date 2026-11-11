@@ -1,7 +1,7 @@
 import {
   buildMetaCapiPayload, err, forbidden, metaCapiBlockReason, metaCapiCopy, metaCapiDecisionSchema,
   metaCapiRetryAt, metaCapiWithdrawSchema, ok, tenantNotFound, validation,
-  type AppError, type MetaCapiConfig, type MetaCapiDecisionInput, type MetaCapiEvent, type MetaCapiState, type Result,
+  DEFAULT_LANGUAGE, type Language, type AppError, type MetaCapiConfig, type MetaCapiDecisionInput, type MetaCapiEvent, type MetaCapiState, type Result,
 } from '#core/domain/index.js';
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
@@ -15,24 +15,24 @@ export interface MetaCapiDeps {
   hash: ContentHash;
 }
 
-export const getMetaCapiConfig = async (tenantId: string, sessionId: string, deps: MetaCapiDeps): Promise<MetaCapiConfig | undefined> => {
+export const getMetaCapiConfig = async (tenantId: string, sessionId: string, deps: MetaCapiDeps, locale: Language = DEFAULT_LANGUAGE): Promise<MetaCapiConfig | undefined> => {
   const current = await deps.repository.findOrder(tenantId, { sessionId });
   const settings = await deps.tenants.findSettings(tenantId);
   if (!current || !settings) return undefined;
-  const copy = metaCapiCopy(settings);
+  const copy = metaCapiCopy(settings, locale);
   const enabled = settings.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId && !!copy.privacyUrl
     && current.order.mode === 'live' && current.order.provider === 'stripe' && current.order.providerObjectIds.testPurchase !== '1'
     && !sessionId.startsWith('cs_test_');
-  return { ...current.consent, ...copy, enabled, textVersion: deps.hash.sha256(JSON.stringify(copy)) };
+  return { ...current.consent, ...copy, enabled, locale, textVersion: deps.hash.sha256(JSON.stringify(copy)) };
 };
 
 const recordDecision = async (
   tenantId: string, access: MetaCapiOrderAccess, decision: 'granted' | 'denied' | 'withdrawn',
-  request: { textVersion?: string; ip: string | null; userAgent: string | null; fbp: string | null }, deps: MetaCapiDeps,
+  request: { locale?: Language; textVersion?: string; ip: string | null; userAgent: string | null; fbp: string | null }, deps: MetaCapiDeps,
 ): Promise<Result<MetaCapiState, AppError>> => deps.repository.decide(tenantId, access, async (current) => {
   const settings = await deps.tenants.findSettings(tenantId);
   if (!settings) return err(tenantNotFound());
-  const copy = metaCapiCopy(settings);
+  const copy = metaCapiCopy(settings, request.locale);
   const textSnapshot = JSON.stringify(copy);
   const textVersion = deps.hash.sha256(textSnapshot);
   if (decision !== 'withdrawn' && current.consent.consent === 'undecided' && current.consent.withdrawnAt === null) {
@@ -51,7 +51,7 @@ export const recordPublicMetaCapiConsent = async (
   if (!parsed.success) return err(validation('Invalid Meta conversion consent'));
   const value = parsed.data;
   const access = value.sessionId !== undefined ? { sessionId: value.sessionId } : { orderToken: value.orderToken ?? '' };
-  return recordDecision(tenantId, access, value.decision, { ...request, fbp: value.fbp ?? null,
+  return recordDecision(tenantId, access, value.decision, { ...request, locale: value.locale, fbp: value.fbp ?? null,
     ...(value.textVersion === undefined ? {} : { textVersion: value.textVersion }) }, deps);
 };
 

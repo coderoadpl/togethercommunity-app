@@ -1,6 +1,6 @@
 import { FormControl, FormControlLabel, FormHelperText, FormLabel, OutlinedInput, Stack, Switch, Typography } from '@mui/material';
 import { metaCapiCopy } from '#core/domain/index.js';
-import { useTranslations } from '../../../i18n/index.js';
+import { useLanguage, useTranslations } from '../../../i18n/index.js';
 
 export type MetaCapiDraft = {
   analyticsMetaCapiEnabled: boolean;
@@ -17,7 +17,8 @@ export const MetaCapiSettingsFields = ({ value, disabled, onChange }: {
   onChange: (value: MetaCapiDraft) => void;
 }) => {
   const t = useTranslations();
-  const defaults = metaCapiCopy({});
+  const { language } = useLanguage();
+  const defaults = metaCapiCopy({}, language);
   const fields = [
     { key: 'analyticsMetaCapiTestEventCode', label: t.metaCapi.testCode, maxLength: 100, placeholder: '' },
     { key: 'analyticsMetaCapiConsentHeading', label: t.metaCapi.copyHeading, maxLength: 200, placeholder: defaults.heading },

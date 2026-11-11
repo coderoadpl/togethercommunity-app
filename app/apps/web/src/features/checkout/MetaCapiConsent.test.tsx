@@ -45,7 +45,7 @@ it.each(['granted', 'denied'] as const)('closes immediately for %s and sends the
   renderConsent();
   fireEvent.click(screen.getByRole('button', { name: choice === 'granted' ? metaCapiConfig.acceptLabel : metaCapiConfig.declineLabel }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  await waitFor(() => expect(requestBody).toHaveBeenCalledWith({ sessionId, decision: choice, textVersion: metaCapiConfig.textVersion, fbp: 'fb.1.123456.987' }));
+  await waitFor(() => expect(requestBody).toHaveBeenCalledWith({ sessionId, decision: choice, locale: metaCapiConfig.locale, textVersion: metaCapiConfig.textVersion, fbp: 'fb.1.123456.987' }));
   await act(async () => { finish(HttpResponse.json({ ok: true, data: { consent: choice, withdrawnAt: null } })); });
   if (choice === 'granted') expect(await screen.findByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
 });

@@ -112,7 +112,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const [statusDeadline] = useState(() => Date.now() + 180_000);
   const [statusTimedOut, setStatusTimedOut] = useState(false);
   const paymentStatus = useQuery({
-    ...actions.publicCheckoutSessionStatus(sessionId ?? ''),
+    ...actions.publicCheckoutSessionStatus(sessionId ?? '', language),
     enabled: (query) => checkoutStatus === 'success' && hasSessionId &&
       !statusTimedOut && query.state.data?.status !== 'paid',
     refetchInterval: (query) => query.state.data?.status === 'paid' ||

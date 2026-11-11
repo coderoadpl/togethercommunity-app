@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_LANGUAGE, languageSchema } from './language.js';
 import { productLines, type Order } from './commerce.js';
 export { metaCapiCopy } from './meta-capi-settings.js';
 
@@ -10,6 +11,7 @@ export const metaCapiStateSchema = z.object({
 export type MetaCapiState = z.infer<typeof metaCapiStateSchema>;
 export const metaCapiConfigSchema = metaCapiStateSchema.extend({
   enabled: z.boolean(),
+  locale: languageSchema.default(DEFAULT_LANGUAGE),
   textVersion: z.string(),
   heading: z.string(),
   body: z.string(),
@@ -22,6 +24,7 @@ export const metaCapiDecisionSchema = z.object({
   sessionId: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/).optional(),
   orderToken: z.string().regex(/^[A-Za-z0-9_-]{22,200}$/).optional(),
   decision: z.enum(['granted', 'denied', 'withdrawn']),
+  locale: languageSchema.default(DEFAULT_LANGUAGE),
   textVersion: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   fbp: z.unknown().transform((value) => {
     const parsed = z.string().max(200).regex(/^fb\.1\.\d+\.\d+$/).safeParse(value);

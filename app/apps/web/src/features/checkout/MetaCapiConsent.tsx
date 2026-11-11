@@ -36,7 +36,7 @@ export const MetaCapiConsent = ({ config, sessionId }: { config: MetaCapiConfig;
         onDecision={(choice) => {
           dismiss();
           const fbp = browserIdentifier();
-          decision.mutate({ sessionId, decision: choice, textVersion: config.textVersion, ...(fbp === undefined ? {} : { fbp }) });
+          decision.mutate({ sessionId, decision: choice, locale: config.locale, textVersion: config.textVersion, ...(fbp === undefined ? {} : { fbp }) });
         }}
       />
       {decision.isError ? <Alert severity="error">{t.metaCapi.decisionError}</Alert> : null}

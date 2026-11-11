@@ -57,6 +57,33 @@ const harness = () => {
 };
 
 describe('Meta CAPI use cases', () => {
+  it.each(['en', 'pl'] as const)('records the exact displayed %s copy and rejects another locale or stale override', async (locale) => {
+    const h = harness();
+    const copies = new Map<string, string>();
+    h.deps.hash.sha256 = (text) => {
+      const known = copies.get(text);
+      if (known) return known;
+      const hash = (copies.size + 1).toString(16).padStart(64, '0');
+      copies.set(text, hash);
+      return hash;
+    };
+    const config = await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps, locale);
+    if (!config) throw new Error('Missing consent config');
+    const input = { sessionId: 'cs_live_purchase', decision: 'granted' as const, locale, textVersion: config.textVersion };
+    const request = { ip: null, userAgent: null };
+    expect(await recordPublicMetaCapiConsent('workspace', { ...input, locale: locale === 'en' ? 'pl' : 'en' }, request, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.job.consent.consent).toBe('undecided');
+    h.settings.analyticsMetaCapiConsentHeading = 'Updated heading';
+    expect(await recordPublicMetaCapiConsent('workspace', input, request, h.deps)).toMatchObject({ ok: false });
+    const updated = await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps, locale);
+    if (!updated) throw new Error('Missing updated consent config');
+    expect(updated.heading).toBe('Updated heading');
+    expect(await recordPublicMetaCapiConsent('workspace', { ...input, textVersion: updated.textVersion }, request, h.deps)).toMatchObject({ ok: true });
+    expect(JSON.parse(h.job.capture.textSnapshot)).toEqual({ heading: updated.heading, body: updated.body,
+      acceptLabel: updated.acceptLabel, declineLabel: updated.declineLabel, privacyUrl: updated.privacyUrl });
+    expect(h.job.capture.textVersion).toBe(updated.textVersion);
+  });
   it('rejects QR grants and denials before repository access', async () => {
     const h = harness();
     const decide = vi.spyOn(h.deps.repository, 'decide');

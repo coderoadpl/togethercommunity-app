@@ -1,4 +1,4 @@
-import { checkoutSessionStatusInputSchema, err, ok, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics } from '#core/domain/index.js';
+import { checkoutSessionStatusInputSchema, err, ok, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics, type Language } from '#core/domain/index.js';
 
 import type { PaymentRefundRepository, TenantRepository, ProductRepository } from '../ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
@@ -15,6 +15,7 @@ export const getCheckoutSessionStatus = async (
     salesLinks?: Pick<SalesLinkRepository, 'findById'>;
     metaCapi?: MetaCapiDeps;
   },
+  locale?: Language,
 ): Promise<Result<{ status: 'pending' | 'paid'; analytics?: CheckoutPurchaseAnalytics; metaCapi?: MetaCapiConfig }, AppError>> => {
   const parsed = checkoutSessionStatusInputSchema.safeParse({ session_id: sessionId });
   if (!parsed.success) return err(validation('Invalid checkout session id'));
@@ -27,7 +28,7 @@ export const getCheckoutSessionStatus = async (
     ['paid', 'partially_refunded', 'refunded'].includes(order.status);
   if (!paid || order === null) return ok({ status: 'pending' });
   const settings = await deps.tenants.findSettings(tenantId);
-  const metaCapi = deps.metaCapi ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi) : undefined;
+  const metaCapi = deps.metaCapi ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi, locale) : undefined;
   const capi = metaCapi === undefined ? {} : { metaCapi };
   if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid', ...capi });
   const lines = productLines(order.lines ?? []);

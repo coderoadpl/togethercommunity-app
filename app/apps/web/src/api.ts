@@ -1,3 +1,4 @@
+import type { Language } from '#core/domain/index.js';
 import { metaCapiActions } from '#core/client/index.js';
 import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
@@ -375,7 +376,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   publicSpaceEvents: (input: EventsBySpaceInput) => publicSpaceEventsQuery(apiClient, input),
   publicSpaceEvent: (input: PublicSpaceEventInput) => publicSpaceEventQuery(apiClient, input),
   publicPaymentConfig: publicPaymentConfigQuery(apiClient),
-  publicCheckoutSessionStatus: (sessionId: string) => publicCheckoutSessionStatusQuery(apiClient, sessionId),
+  publicCheckoutSessionStatus: (sessionId: string, locale?: Language) => publicCheckoutSessionStatusQuery(apiClient, sessionId, locale),
   stripeTestSession: stripeTestSessionMutation(apiClient),
   removeStripeTestMode: removeStripeTestModeMutation(apiClient),
   createCheckoutSession: createCheckoutSessionMutation(apiClient),

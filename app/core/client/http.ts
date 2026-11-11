@@ -1,3 +1,4 @@
+import type { Language } from '#core/domain/index.js';
 import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
@@ -995,11 +996,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal) =>
+  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal, locale?: Language) =>
     request(
       options,
       API_ROUTES.publicCheckoutSessionStatus.method,
-      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}`,
+      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}${locale === undefined ? '' : `&locale=${locale}`}`,
       publicCheckoutSessionStatusOutputSchema,
       undefined,
       signal,

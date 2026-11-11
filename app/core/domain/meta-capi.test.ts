@@ -1,3 +1,6 @@
+import { metaCapiDefaultCopy as englishCopy } from './meta-capi-copy.en.js';
+import { metaCapiDefaultCopy as polishCopy } from './meta-capi-copy.pl.js';
+import { metaCapiCopy } from './meta-capi-settings.js';
 import { describe, expect, it } from 'vitest';
 import { orderSchema } from './commerce.js';
 import { buildMetaCapiPayload, metaCapiBlockReason, metaCapiDecisionSchema, metaCapiRetryAt } from './meta-capi.js';
@@ -10,6 +13,16 @@ const order = orderSchema.parse({ id: 'purchase', tenantId: 'workspace', memberI
 const granted = { consent: 'granted', withdrawnAt: null } as const;
 
 describe('Meta conversion domain rules', () => {
+  it('resolves English and Polish defaults while keeping tenant overrides first', () => {
+    expect(metaCapiCopy({})).toEqual({ ...englishCopy, privacyUrl: null });
+    expect(metaCapiCopy({}, 'en')).toEqual({ ...englishCopy, privacyUrl: null });
+    expect(metaCapiCopy({}, 'pl')).toEqual({ ...polishCopy, privacyUrl: null });
+    for (const locale of ['en', 'pl'] as const) {
+      expect(metaCapiCopy({ analyticsMetaCapiConsentHeading: 'Custom heading', analyticsMetaCapiConsentBody: 'Custom body',
+        analyticsMetaCapiConsentAcceptLabel: 'Accept', analyticsMetaCapiConsentDeclineLabel: 'Decline', privacyUrl: 'https://example.org/privacy' }, locale))
+        .toEqual({ heading: 'Custom heading', body: 'Custom body', acceptLabel: 'Accept', declineLabel: 'Decline', privacyUrl: 'https://example.org/privacy' });
+    }
+  });
   it('allows only explicit, unwithdrawn grants for real paid purchases', () => {
     expect(metaCapiBlockReason(order, granted, true, paidAt)).toBeNull();
     for (const consent of ['undecided', 'denied'] as const) expect(metaCapiBlockReason(order, { consent, withdrawnAt: null }, true, paidAt)).toBe('blocked');

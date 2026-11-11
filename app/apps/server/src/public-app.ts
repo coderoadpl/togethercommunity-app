@@ -637,7 +637,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
     const parsed = publicCheckoutSessionStatusInputSchema.safeParse(c.req.query());
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout session id')));
-    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps));
+    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps, parsed.data.locale));
   });
 
   app.get(API_PATHS.publicPaymentConfig, async (c) => {

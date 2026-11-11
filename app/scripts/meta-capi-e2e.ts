@@ -14,7 +14,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 import { metaCapiConfig } from '../apps/web/src/test/meta-capi-fixtures.js';
 import { bootServer, ephemeralPort, killServer, rootDir, run } from './server-harness.js';
 
-const database = await createTestDatabase('together_meta_capi_e2e', 'postgres://together:together@localhost:48912/together');
+const database = await createTestDatabase('together_meta_capi_e2e', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
 let server: ChildProcess | undefined;
 let browser: Browser | undefined;
 try {

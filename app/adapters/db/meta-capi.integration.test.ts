@@ -10,7 +10,7 @@ const now = '2026-11-01T10:00:00.000Z';
 const capture = { at: now, ip: '192.0.2.1', userAgent: 'Browser', fbp: 'fb.1.1793527200000.123', textVersion: 'a'.repeat(64), textSnapshot: '{"body":"Consent"}' };
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 beforeAll(async () => {
-  database = await createTestDatabase('together_meta_capi', 'postgres://together:together@localhost:48912/together');
+  database = await createTestDatabase('together_meta_capi', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
   await database.db.insert(tenants).values(['workspace', 'other'].map((id) => ({ id, slug: id, name: id, createdAt: now })));
   await database.db.insert(user).values({ id: 'buyer', email: 'buyer@example.org', name: 'Buyer' });
   await database.db.insert(members).values({ id: 'buyer', tenantId: 'workspace', userId: 'buyer', email: 'buyer@example.org', createdAt: now });

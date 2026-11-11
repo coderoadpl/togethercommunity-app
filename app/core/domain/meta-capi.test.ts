@@ -55,6 +55,22 @@ describe('Meta conversion domain rules', () => {
     expect(payload.user_data).toEqual({ em: ['a'.repeat(64)] });
     expect(JSON.stringify(payload)).not.toContain('buyer@example.org');
   });
+  it('excludes shipping from products while retaining the full purchase value', () => {
+    const withShipping = orderSchema.parse({ ...order, amountCents: 10900, lines: [
+      { productId: 'book', productType: 'digital_download', name: 'Book', grossCents: 9900, netCents: 9900, vatCents: 0, vatRate: 'exempt', vatExemptionBasis: null, issuedCount: 0 },
+      { productId: 'shipping', productType: 'shipping', name: 'Delivery', grossCents: 1000, netCents: 1000, vatCents: 0, vatRate: 'exempt', vatExemptionBasis: null, issuedCount: 0 },
+    ] });
+    const payload = buildMetaCapiPayload({ order: withShipping, email: 'buyer@example.org', sourceUrl: 'https://example.org',
+      ip: null, userAgent: null, fbp: null, sha256: (value) => value });
+    expect(payload.custom_data).toMatchObject({ value: 109, content_ids: ['book'], num_items: 1,
+      contents: [{ id: 'book', quantity: 1, item_price: 99 }] });
+  });
+  it('allows QR credentials only to withdraw even with a current text version', () => {
+    for (const decision of ['granted', 'denied']) {
+      expect(metaCapiDecisionSchema.safeParse({ orderToken: 'q'.repeat(64), decision, textVersion: 'a'.repeat(64) }).success).toBe(false);
+    }
+    expect(metaCapiDecisionSchema.safeParse({ orderToken: 'q'.repeat(64), decision: 'withdrawn' }).success).toBe(true);
+  });
   it('requires exactly one opaque credential and a text version for grants', () => {
     expect(metaCapiDecisionSchema.safeParse({ sessionId: 'cs_live_purchase', decision: 'granted' }).success).toBe(false);
     expect(metaCapiDecisionSchema.safeParse({ decision: 'denied' }).success).toBe(false);

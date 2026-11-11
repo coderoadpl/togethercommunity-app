@@ -56,6 +56,16 @@ describe('Meta consent routes', () => {
     expect(h.decide).toHaveBeenCalledWith('workspace', { sessionId: 'cs_live_purchase' }, expect.any(Function));
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
+  it('rejects a valid QR credential with the current text version for new decisions', async () => {
+    const h = harness();
+    for (const decision of ['granted', 'denied']) {
+      const response = await h.app.request('/api/public/meta-capi/consent', { method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ orderToken: 'q'.repeat(64), decision, textVersion: version }) });
+      expect(response.status).toBe(400);
+    }
+    expect(h.decide).not.toHaveBeenCalled();
+  });
   it('rejects cross-origin and form submissions before consent is stored', async () => {
     const h = harness();
     expect((await h.app.request('/api/public/meta-capi/consent', request(body, { origin: 'https://foreign.example.org' }))).status).toBe(403);

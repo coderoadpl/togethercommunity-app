@@ -57,6 +57,17 @@ const harness = () => {
 };
 
 describe('Meta CAPI use cases', () => {
+  it('rejects QR grants and denials before repository access', async () => {
+    const h = harness();
+    const decide = vi.spyOn(h.deps.repository, 'decide');
+    for (const decision of ['granted', 'denied'] as const) {
+      expect(await recordPublicMetaCapiConsent('workspace', { orderToken: 'q'.repeat(64), decision, textVersion: version },
+        { ip: null, userAgent: null }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect(decide).not.toHaveBeenCalled();
+    expect(await recordPublicMetaCapiConsent('workspace', { orderToken: 'q'.repeat(64), decision: 'withdrawn' },
+      { ip: null, userAgent: null }, h.deps)).toMatchObject({ ok: true, value: { withdrawnAt: now } });
+  });
   it('does not enqueue undecided or denied orders, and keeps the first answer', async () => {
     const h = harness();
     await dispatchMetaCapi(h.deps);

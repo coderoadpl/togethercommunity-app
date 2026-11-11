@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Order } from './commerce.js';
+import { productLines, type Order } from './commerce.js';
 export { metaCapiCopy } from './meta-capi-settings.js';
 
 const metaCapiConsentSchema = z.enum(['undecided', 'granted', 'denied']);
@@ -27,7 +27,9 @@ export const metaCapiDecisionSchema = z.object({
     const parsed = z.string().max(200).regex(/^fb\.1\.\d+\.\d+$/).safeParse(value);
     return parsed.success ? parsed.data : null;
   }).optional(),
-}).refine((input) => (input.sessionId === undefined) !== (input.orderToken === undefined), 'Provide one order credential').refine((input) => input.decision !== 'granted' || input.textVersion !== undefined, {
+}).refine((input) => input.orderToken === undefined || input.decision === 'withdrawn', {
+  message: 'Only checkout sessions may record a new decision', path: ['orderToken'],
+}).refine((input) => (input.sessionId === undefined) !== (input.orderToken === undefined), 'Provide one order credential').refine((input) => input.decision === 'withdrawn' || input.textVersion !== undefined, {
   message: 'The consent text version is required', path: ['textVersion'],
 });
 export type MetaCapiDecisionInput = z.input<typeof metaCapiDecisionSchema>;
@@ -62,7 +64,7 @@ export const buildMetaCapiPayload = (input: {
   sha256: (value: string) => string;
 }): MetaCapiPayload => {
   const { order, sha256 } = input;
-  const lines = order.lines?.length ? order.lines : [{ productId: order.productId, grossCents: order.amountCents }];
+  const lines = order.lines?.length ? productLines(order.lines) : [{ productId: order.productId, grossCents: order.amountCents }];
   const country = order.providerObjectIds.customerCountry;
   return {
     event_name: 'Purchase', action_source: 'website', event_time: Math.floor(Date.parse(order.paidAt ?? '') / 1000),

@@ -86,7 +86,10 @@ test sessions, an unconfigured pixel, or a missing privacy URL.
 
 `POST /api/public/meta-capi/consent` accepts exactly one order credential:
 `sessionId` (the existing opaque Stripe checkout return credential) or
-`orderToken` (the existing order-link token). Its JSON body contains `decision`
+`orderToken` (the existing order verification/QR token, which permits only
+`withdrawn`; it cannot grant or deny). New decisions require `sessionId`.
+The contract and use-case both reject QR-token grants before repository access.
+Its JSON body contains `decision`
 (`granted`, `denied` or `withdrawn`), `textVersion` for a new decision, and
 optional `fbp`. An invalid browser identifier is discarded, never used as
 consent. Both decisions require the current text version, so stale pages must

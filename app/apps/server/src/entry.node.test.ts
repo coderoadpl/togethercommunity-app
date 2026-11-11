@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as GracefulShutdown from './graceful-shutdown.js';
+import type { ShutdownPlan } from './graceful-shutdown.js';
+
 interface EntryEnv {
   NODE_ENV: string;
+  INTERNAL_PORT?: number;
   PORT: number;
   WEB_DIST_DIR: string;
   EMAIL_DISPATCH_INTERVAL_MS: number;
@@ -19,6 +23,13 @@ const harness = vi.hoisted(() => {
   };
   const app = { fetch: vi.fn(), get: vi.fn(), use: vi.fn() };
   const deps = {
+    auth: { flushAuthEmails: vi.fn(async () => undefined) },
+    close: vi.fn(async () => undefined),
+    tenantDomains: { marker: 'tenant-domains' },
+    tenants: { marker: 'tenants' },
+    appBaseUrl: 'http://localhost:47100',
+    baseDomain: 'localhost',
+    singleTenantMode: true,
     dispatchEmails: vi.fn(),
     dispatchAutoInvoices: vi.fn(),
     releaseExpiredStockReservations: vi.fn(),
@@ -38,9 +49,14 @@ const harness = vi.hoisted(() => {
       void optionsArg;
       return deps;
     }),
-    dispatchKsefInBackground: vi.fn(),
+    dispatchKsef: vi.fn(async () => undefined),
     loadEnv: vi.fn(() => env),
-    serve: vi.fn(),
+    serve: vi.fn((options: { port: number }) => ({ port: options.port })),
+    shutdownGracefully: vi.fn((plan: ShutdownPlan) => {
+      void plan;
+      return new Promise<void>(() => undefined);
+    }),
+    buildCaddyDomainCheckApp: vi.fn(() => ({ fetch: vi.fn() })),
     serveStatic: vi.fn((options: { root?: string; path?: string }) => options),
     startServerObservability: vi.fn(),
   };
@@ -49,10 +65,15 @@ const harness = vi.hoisted(() => {
 vi.mock('@hono/node-server', () => ({ serve: harness.serve }));
 vi.mock('@hono/node-server/serve-static', () => ({ serveStatic: harness.serveStatic }));
 vi.mock('./app.js', () => ({ buildApp: harness.buildApp }));
+vi.mock('./caddy-domain-check.js', () => ({ buildCaddyDomainCheckApp: harness.buildCaddyDomainCheckApp }));
+vi.mock('./graceful-shutdown.js', async (importOriginal) => ({
+  ...await importOriginal<typeof GracefulShutdown>(),
+  shutdownGracefully: harness.shutdownGracefully,
+}));
 vi.mock('./composition.js', () => ({ createDeps: harness.createDeps }));
 vi.mock('./env.js', () => ({ loadEnv: harness.loadEnv }));
 vi.mock('./ksef-dispatch.js', () => ({
-  dispatchKsefInBackground: harness.dispatchKsefInBackground,
+  dispatchKsef: harness.dispatchKsef,
 }));
 vi.mock('./observability.js', () => ({
   startServerObservability: harness.startServerObservability,
@@ -67,6 +88,8 @@ beforeEach(() => {
   harness.env.PORT = 47100;
   harness.env.WEB_DIST_DIR = '/web-dist';
   delete harness.env.TOGETHER_VISUAL_CLOCK;
+  delete harness.env.INTERNAL_PORT;
+  vi.spyOn(process, 'once').mockImplementation(() => process);
 });
 
 afterEach(() => {
@@ -159,7 +182,7 @@ describe('entry.node composition', () => {
     expect(harness.deps.releaseExpiredStockReservations).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
-    expect(harness.dispatchKsefInBackground).toHaveBeenCalledWith(
+    expect(harness.dispatchKsef).toHaveBeenCalledWith(
       harness.deps.ksef,
       harness.deps.logger,
       'node ticker',
@@ -168,5 +191,29 @@ describe('entry.node composition', () => {
     expect(stderr).toHaveBeenCalledWith(
       '[email-outbox] ticker dispatch failed: outbox unavailable\n',
     );
+  });
+
+  it('drains both listeners and releases auth mail and database connections on SIGTERM', async () => {
+    harness.env.INTERNAL_PORT = 47101;
+    const signalHandlers = new Map<string, (signal: NodeJS.Signals) => void>();
+    vi.spyOn(process, 'once').mockImplementation((event, listener) => {
+      if (typeof event === 'string') signalHandlers.set(event, listener);
+      return process;
+    });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await importEntry();
+
+    expect([...signalHandlers.keys()]).toEqual(['SIGTERM', 'SIGINT']);
+    signalHandlers.get('SIGTERM')?.('SIGTERM');
+
+    expect(harness.shutdownGracefully).toHaveBeenCalledOnce();
+    const plan = harness.shutdownGracefully.mock.calls[0]?.[0];
+    expect(plan?.servers).toEqual([{ port: 47100 }, { port: 47101 }]);
+    expect(plan?.drainTimeoutMs).toBe(20_000);
+    expect(plan?.release.map((step) => step.name)).toEqual(['auth e-mail flush', 'database connections']);
+    for (const step of plan?.release ?? []) await step.run();
+    expect(harness.deps.auth.flushAuthEmails).toHaveBeenCalledOnce();
+    expect(harness.deps.close).toHaveBeenCalledOnce();
   });
 });

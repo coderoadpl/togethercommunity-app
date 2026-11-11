@@ -46,7 +46,7 @@ import { createMarketingDirectoryJobs } from '#adapters/db/marketing-contact-imp
 import type { MarketingContactDeps, MarketingDirectoryJobs } from '#core/server/index.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import { createDb, type Db } from '#adapters/db/client.js';
+import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
@@ -875,7 +875,7 @@ export const selectDeploymentIdentity = (
 export const createDeps = (
   env: Env,
   options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
-): AppDeps => {
+): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL, selectDatabasePoolOptions(env));
   const tenantDomains = createTenantDomainRepository(db);
@@ -1628,5 +1628,9 @@ export const createDeps = (
       dispatchScheduledMarketing,
     },
   };
-  return deps;
+  const close = async (): Promise<void> => {
+    if ('close' in realtimeBus) await realtimeBus.close();
+    if (options.db === undefined) await closeDb(db);
+  };
+  return Object.assign(deps, { close });
 };

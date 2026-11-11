@@ -1,13 +1,16 @@
 import {
   err,
   forbidden,
+  memberFulfilmentView,
   ok,
   type AppError,
   type GrantedProduct,
   type GrantWindowStatus,
+  type MemberFulfilment,
   type MemberGrant,
   type MemberSubscription,
   type MemberSubscriptionSummary,
+  type OrderListItem,
   type ProductDownloadAsset,
   type Result,
 } from '#core/domain/index.js';
@@ -36,6 +39,8 @@ export interface MyProductsDeps {
 
 export type MyProduct = GrantedProduct & {
   purchasable: boolean;
+  shippedTo?: string | null;
+  fulfilment?: MemberFulfilment | null;
   subscription: MemberSubscriptionSummary | null;
   downloads: Array<ProductDownloadAsset & { previousVersions: ProductDownloadAsset[] }>;
 };
@@ -139,20 +144,24 @@ export const listMyProducts = async (
   }
   if (deps.orders !== undefined && deps.products !== undefined) {
     const orders = await deps.orders.listForMember(tenantId, memberId);
-    const purchasedAt = new Map<string, string>();
+    const newestOrder = new Map<string, OrderListItem>();
     for (const order of orders) {
       if (order.mode !== 'live' || (order.status !== 'paid' && order.status !== 'partially_refunded')) continue;
       for (const line of order.lines ?? []) {
-        if (line.productType === 'physical') purchasedAt.set(line.productId, order.createdAt);
+        if (line.productType !== 'physical') continue;
+        const current = newestOrder.get(line.productId);
+        if (current === undefined || order.createdAt > current.createdAt) newestOrder.set(line.productId, order);
       }
     }
-    const physicalProducts = await deps.products.findByIds(tenantId, [...purchasedAt.keys()]);
+    const physicalProducts = await deps.products.findByIds(tenantId, [...newestOrder.keys()]);
     for (const product of physicalProducts) {
-      const startsAt = purchasedAt.get(product.id);
-      if (product.type !== 'physical' || startsAt === undefined || seen.has(product.id)) continue;
+      const order = newestOrder.get(product.id);
+      if (product.type !== 'physical' || order === undefined || seen.has(product.id)) continue;
       result.push({
-        ...product, purchasable: false, grantStatus: 'active', grantStartsAt: startsAt,
+        ...product, purchasable: false, grantStatus: 'active', grantStartsAt: order.createdAt,
         grantExpiresAt: null, subscription: null, downloads: [],
+        shippedTo: order.shipping == null ? null : order.shipping.pickupPoint?.code ?? order.shipping.address.city,
+        fulfilment: memberFulfilmentView(order),
       });
     }
   }

@@ -8,6 +8,10 @@ import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 import { user } from './auth-schema.js';
 
 import type {
+  OrderShipment,
+  ProductCompliance,
+  OrderShipping,
+  ShippingRate,
   MarketingListRule,
   MarketingAudienceSnapshot,
   MarketingImportCounts,
@@ -73,6 +77,8 @@ export const tenants = pgTable(
     analyticsConsentCookieValue: text('analytics_consent_cookie_value'),
     analyticsLoadWithoutConsent: boolean('analytics_load_without_consent').notNull().default(false),
     checkoutAppearance: jsonb('checkout_appearance').$type<CheckoutAppearance>(),
+    shippingRates: jsonb('shipping_rates').$type<ShippingRate[]>().notNull().default([]),
+    inpostGeowidgetToken: text('inpost_geowidget_token'),
     signInNotice: jsonb('sign_in_notice').$type<{ enabled: boolean; text: string }>().notNull().default({ enabled: false, text: '' }),
     accentColor: text('accent_color'),
     accentLight: text('accent_light'),
@@ -368,6 +374,10 @@ export const products = pgTable(
     published: boolean('published').notNull().default(false),
     everPublished: boolean('ever_published').default(false),
     visibility: text('visibility', { enum: ['listed', 'unlisted'] }).notNull().default('listed'),
+    deliveryMethod: text('delivery_method', { enum: ['pickup', 'shipping'] }).notNull().default('pickup'),
+    compliance: jsonb('compliance').$type<ProductCompliance>(),
+    variantGroup: text('variant_group'),
+    variantLabel: text('variant_label'),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
     checkoutConsentDefinitionIds: jsonb('checkout_consent_definition_ids').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
@@ -377,7 +387,9 @@ export const products = pgTable(
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
     index('products_tenantId_idx').on(table.tenantId),
+    index('products_tenant_variant_group_idx').on(table.tenantId, table.variantGroup),
     check('products_visibility_check', sql`${table.visibility} in ('listed', 'unlisted')`),
+    check('products_delivery_method_check', sql`${table.deliveryMethod} in ('pickup', 'shipping')`),
     uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -542,6 +554,9 @@ export const orders = pgTable(
     metaCapiConsentTextVersion: text('meta_capi_consent_text_version'),
     metaCapiConsentSource: text('meta_capi_consent_source'),
     metaCapiConsentWithdrawnAt: text('meta_capi_consent_withdrawn_at'),
+    shipping: jsonb('shipping').$type<OrderShipping>(),
+    fulfilmentStatus: text('fulfilment_status', { enum: ['to_pack', 'shipped'] }),
+    shipment: jsonb('shipment').$type<OrderShipment>(),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
     createdAt: text('created_at').notNull(),
@@ -564,6 +579,8 @@ export const orders = pgTable(
     index('orders_tenant_member_idx').on(table.tenantId, table.memberId),
     index('orders_tenant_product_idx').on(table.tenantId, table.productId),
     index('orders_tenant_coupon_created_idx').on(table.tenantId, table.couponId, table.createdAt.desc()),
+    index('orders_tenant_fulfilment_created_idx').on(table.tenantId, table.fulfilmentStatus, table.createdAt.desc())
+      .where(sql`${table.fulfilmentStatus} is not null`),
     uniqueIndex('orders_tenant_provider_checkout_uidx')
       .on(table.tenantId, table.provider, sql`(${table.providerObjectIds}->>'checkoutSession')`)
       .where(sql`${table.providerObjectIds} ? 'checkoutSession'`),

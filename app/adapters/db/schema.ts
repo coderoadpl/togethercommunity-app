@@ -6,3 +6,5 @@ export * from './sales-link-schema.js';
 export * from './checkout-snapshot-schema.js';
 export * from './order-issue-schema.js';
 export * from './meta-capi-schema.js';
+export * from './stock-schema.js';
+export * from './order-fulfilment-schema.js';

@@ -21,6 +21,8 @@ interface Hoisted {
   exportConsumerSales: ReturnType<typeof vi.fn>;
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
+  shipOrder: ReturnType<typeof vi.fn>;
+  ordersPackingList: ReturnType<typeof vi.fn>;
   provisionOperatorTenant: ReturnType<typeof vi.fn>;
   getOperatorTenantReadiness: ReturnType<typeof vi.fn>;
   activitySummary: ReturnType<typeof vi.fn>;
@@ -41,6 +43,11 @@ interface Hoisted {
   restoreCourse: ReturnType<typeof vi.fn>;
   restoreContentVersion: ReturnType<typeof vi.fn>;
   deleteProductDraft: ReturnType<typeof vi.fn>;
+  listProducts: ReturnType<typeof vi.fn>;
+  getProductStock: ReturnType<typeof vi.fn>;
+  enableProductStock: ReturnType<typeof vi.fn>;
+  adjustProductStock: ReturnType<typeof vi.fn>;
+  setProductStockThreshold: ReturnType<typeof vi.fn>;
   listCourses: ReturnType<typeof vi.fn>;
   listModules: ReturnType<typeof vi.fn>;
   listLessons: ReturnType<typeof vi.fn>;
@@ -83,6 +90,8 @@ const h = vi.hoisted(
     exportConsumerSales: vi.fn(),
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
+    shipOrder: vi.fn(),
+    ordersPackingList: vi.fn(),
     provisionOperatorTenant: vi.fn(),
     getOperatorTenantReadiness: vi.fn(),
     activitySummary: vi.fn(),
@@ -110,6 +119,11 @@ const h = vi.hoisted(
     restoreCourse: vi.fn(),
     restoreContentVersion: vi.fn(),
     deleteProductDraft: vi.fn(),
+    listProducts: vi.fn(),
+    getProductStock: vi.fn(),
+    enableProductStock: vi.fn(),
+    adjustProductStock: vi.fn(),
+    setProductStockThreshold: vi.fn(),
     listCourses: vi.fn(),
     listModules: vi.fn(),
     listLessons: vi.fn(),
@@ -193,6 +207,8 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     exportConsumerSales: h.exportConsumerSales,
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
+    shipOrder: h.shipOrder,
+    ordersPackingList: h.ordersPackingList,
     provisionOperatorTenant: h.provisionOperatorTenant,
     getOperatorTenantReadiness: h.getOperatorTenantReadiness,
     activitySummary: h.activitySummary,
@@ -210,6 +226,11 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     restoreCourse: h.restoreCourse,
     restoreContentVersion: h.restoreContentVersion,
     deleteProductDraft: h.deleteProductDraft,
+    listProducts: h.listProducts,
+    getProductStock: h.getProductStock,
+    enableProductStock: h.enableProductStock,
+    adjustProductStock: h.adjustProductStock,
+    setProductStockThreshold: h.setProductStockThreshold,
     listCourses: h.listCourses,
     listModules: h.listModules,
     listLessons: h.listLessons,
@@ -287,6 +308,8 @@ beforeEach(() => {
   h.exportConsumerSales.mockReset().mockResolvedValue(ok({ filename: 'consumer-sales.csv', mimeType: 'text/csv', content: 'rate,gross_cents\n5,105' }));
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
+  h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
+  h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -1484,6 +1507,71 @@ describe('catalog cleanup commands', () => {
   });
 });
 
+describe('product stock CLI', () => {
+  const stock = { productId: 'poster', onHand: 3, reserved: 1, available: 2, lowStockThreshold: 2, lowStockNotifiedAt: null, low: true, soldOut: false, updatedAt: '2026-11-05T10:00:00.000Z' };
+
+  beforeEach(() => {
+    h.getProductStock.mockReset().mockResolvedValue(ok({ stock }));
+    h.enableProductStock.mockReset().mockResolvedValue(ok({ stock }));
+    h.adjustProductStock.mockReset().mockResolvedValue(ok({ stock }));
+    h.setProductStockThreshold.mockReset().mockResolvedValue(ok({ stock }));
+    h.listProducts.mockReset().mockResolvedValue(ok({
+      products: [
+        { id: 'poster', title: 'Poster', priceCents: 4900, currency: 'PLN', published: true },
+        { id: 'course', title: 'Course', priceCents: 9900, currency: 'PLN', published: true },
+      ],
+      stock: [stock],
+    }));
+  });
+
+  it('shows stock in the JSON envelope', async () => {
+    await run('--json', 'product', 'stock', 'show', 'poster');
+    expect(h.getProductStock).toHaveBeenCalledExactlyOnceWith('poster');
+    expect(soleJson()).toEqual({ ok: true, data: { stock } });
+  });
+
+  it('enables tracking with an optional threshold', async () => {
+    await run('--json', 'product', 'stock', 'enable', 'poster', '--on-hand', '3', '--threshold', '2');
+    await run('--json', 'product', 'stock', 'enable', 'poster', '--on-hand', '0');
+    expect(h.enableProductStock.mock.calls).toEqual([
+      [{ productId: 'poster', onHand: 3, lowStockThreshold: 2 }],
+      [{ productId: 'poster', onHand: 0, lowStockThreshold: null }],
+    ]);
+  });
+
+  it('adjusts by a signed delta with a reason and rejects a zero delta before calling the API', async () => {
+    await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '-1', '--reason', 'damaged');
+    expect(h.adjustProductStock).toHaveBeenCalledExactlyOnceWith({ productId: 'poster', delta: -1, reason: 'damaged' });
+    logSpy.mockClear();
+    await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '0', '--reason', 'count');
+    expect(h.adjustProductStock).toHaveBeenCalledTimes(1);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sets or clears the low-stock threshold', async () => {
+    await run('--json', 'product', 'stock', 'threshold', 'poster', '--value', '4');
+    await run('--json', 'product', 'stock', 'threshold', 'poster', '--value', 'none');
+    expect(h.setProductStockThreshold.mock.calls).toEqual([
+      [{ productId: 'poster', lowStockThreshold: 4 }],
+      [{ productId: 'poster', lowStockThreshold: null }],
+    ]);
+  });
+
+  it('maps a sold-out refusal to its own exit code', async () => {
+    h.adjustProductStock.mockResolvedValue(err(appError('sold_out', '"Poster" is sold out')));
+    await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '1', '--reason', 'count');
+    expect(process.exitCode).toBe(26);
+  });
+
+  it('shows stock next to tracked products in the product list', async () => {
+    await run('product', 'list');
+    const output = String(logSpy.mock.calls[0]?.[0]);
+    expect(output).toContain('- Poster  4900 PLN  [published]  {2 available · 3 on hand · 1 reserved · low}  (poster)');
+    expect(output).toContain('- Course  9900 PLN  [published]  (course)');
+  });
+});
+
 describe('team CLI', () => {
   beforeEach(() => {
     h.listTenantTeam.mockReset().mockResolvedValue(ok({
@@ -1606,4 +1694,100 @@ it('distinguishes the campaign source none from missing attribution in CLI lists
   expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ source: 'none', sourceMatch: 'exact' });
   await run('--json', 'orders', 'export', '--format', 'json', '--source', 'none', '--source-exact');
   expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'json', source: 'none', sourceMatch: 'exact' });
+});
+
+describe('shipping CLI', () => {
+  it('creates and updates a shipped product with --delivery-method', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed accessory', '--type', 'physical', '--price-cents', '4900', '--delivery-method', 'shipping');
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ type: 'physical', deliveryMethod: 'shipping' }));
+    await run('--json', 'product', 'update', 'product-1', '--delivery-method', 'pickup');
+    expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', deliveryMethod: 'pickup' });
+  });
+
+  it('rejects an unknown delivery method before calling the server', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed accessory', '--price-cents', '4900', '--delivery-method', 'drone');
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('filters and exports orders that still need shipping', async () => {
+    h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
+    h.exportOrders.mockReset().mockResolvedValue(ok({ filename: 'orders.csv', mimeType: 'text/csv', content: '' }));
+    await run('--json', 'orders', 'list', '--fulfilment', 'to_pack');
+    expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ fulfilmentStatus: 'to_pack' });
+    await run('--json', 'orders', 'export', '--format', 'csv', '--fulfilment', 'to_pack');
+    expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'csv', fulfilmentStatus: 'to_pack' });
+  });
+
+  it('sets shipping rates from inline JSON and the parcel locker map token', async () => {
+    const rates = [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true }];
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { shippingRates: [{ ...rates[0], vatRatePercent: 23 }], inpostGeowidgetToken: 'public-token' } }));
+    await run('tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates), '--inpost-geowidget-token', 'public-token');
+    expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ shippingRates: [{ ...rates[0], vatRatePercent: 23 }], inpostGeowidgetToken: 'public-token' });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('shipping rates: locker Parcel locker 1499 (active)'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('InPost parcel locker map token: (set)'));
+  });
+
+  it('rejects more than five shipping rates before calling the server', async () => {
+    const rates = Array.from({ length: 6 }, (_, index) => ({ id: `rate-${index}`, label: 'Rate', amountCents: 100, carrier: 'other', pickupPoint: 'none', active: true }));
+    await run('--json', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates));
+    expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('fulfilment CLI', () => {
+  it('ships an order with the carrier and tracking number', async () => {
+    await run('orders', 'ship', 'order-number', '--carrier', 'inpost', '--tracking', 'ABCD1234');
+    expect(h.shipOrder).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', carrier: 'inpost', trackingNumber: 'ABCD1234' });
+    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost ABCD1234)');
+  });
+
+  it('rejects an unknown carrier before calling the server and maps a second shipment to its exit code', async () => {
+    await run('--json', 'orders', 'ship', 'order-number', '--carrier', 'dhl', '--tracking', 'ABCD1234');
+    expect(h.shipOrder).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+    h.shipOrder.mockResolvedValue(err(appError('fulfilment_conflict', 'Order has already been shipped')));
+    await run('--json', 'orders', 'ship', 'order-number', '--carrier', 'other', '--tracking', 'RR123456789PL');
+    expect(process.exitCode).toBe(27);
+  });
+
+  it('lists shipped orders and writes the packing list to a file', async () => {
+    await run('--json', 'orders', 'list', '--fulfilment', 'shipped');
+    expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ fulfilmentStatus: 'shipped' });
+    await run('orders', 'packing-list', '--format', 'csv');
+    expect(h.ordersPackingList).toHaveBeenCalledExactlyOnceWith({ format: 'csv', mode: 'live' });
+    expect(logSpy).toHaveBeenCalledWith('order_number,paid_at');
+    await run('--json', 'orders', 'packing-list', '--format', 'json');
+    expect(h.ordersPackingList).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends the requested payment mode with the packing list and rejects an unknown one', async () => {
+    await run('--json', 'orders', 'packing-list', '--format', 'csv', '--mode', 'test', '--fulfilment', 'shipped');
+    expect(h.ordersPackingList).toHaveBeenCalledExactlyOnceWith({ format: 'csv', mode: 'test', fulfilmentStatus: 'shipped' });
+    await run('--json', 'orders', 'packing-list', '--format', 'csv', '--mode', 'live');
+    expect(h.ordersPackingList).toHaveBeenLastCalledWith({ format: 'csv', mode: 'live' });
+    await run('--json', 'orders', 'packing-list', '--format', 'csv', '--mode', 'staging');
+    expect(h.ordersPackingList).toHaveBeenCalledTimes(2);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('passes product safety information and variant fields to product create and update', async () => {
+    const compliance = { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1', manufacturerEmail: 'safety@example.com', modelIdentifier: 'STAND-1' };
+    await run('--json', 'product', 'create', '--title', 'Printed stand', '--type', 'physical', '--price-cents', '4900',
+      '--compliance', JSON.stringify(compliance), '--variant-group', 'printed-stand', '--variant-label', 'Black · ASA');
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'printed-stand', variantLabel: 'Black · ASA',
+    }));
+    await run('--json', 'product', 'update', 'product-1', '--compliance', 'null', '--clear-variant');
+    expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', compliance: null, variantGroup: null, variantLabel: null });
+  });
+
+  it('rejects invalid product safety information before calling the server', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed stand', '--price-cents', '4900', '--compliance', '{"manufacturerName":"Only a name"}');
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
 });

@@ -50,6 +50,19 @@ follow the same member-erasure selection as live orders.
 - clears campaign attribution (UTM fields, `fbclid`, `gclid`) from the member's
   orders and from checkout snapshots bound to those orders' checkout sessions;
   copies in Stripe Checkout Session and PaymentIntent metadata are not erased;
+- replaces the delivery name and street lines (`line1`, `line2`) in the
+  member's `orders.shipping` with `deletedMemberDisplay()` and clears the phone
+  number; the delivery option, amounts, parcel locker, postal code, city and
+  country stay with the order, like the billing fields, and the copy collected
+  by Stripe on the Checkout Session is not erased; a stored address that is not
+  an object is replaced by the erased name and street lines, and a missing or
+  null address is left as it is;
+- applies the same replacement to the delivery address in the purchase
+  confirmation payload (`payload.purchase.delivery.address`) of every
+  tenant-scoped `email_outbox` row addressed to the member's e-mail; that
+  payload carries no phone number, and a parcel locker delivery stores no
+  postal address there; the shipment e-mail payload
+  (`payload.shipment.delivery.address`) receives the same replacement;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state

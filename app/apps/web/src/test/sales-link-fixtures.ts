@@ -4,7 +4,7 @@ export const sampleBundleLines = [
   { productId: 'product-2', name: 'Digital reference', grossCents: 2160, netCents: 2000, vatRate: 8 as const, vatCents: 160, vatExemptionBasis: null },
   { productId: 'product-3', name: 'Practice course', grossCents: 12300, netCents: 10000, vatRate: 23 as const, vatCents: 2300, vatExemptionBasis: null },
 ];
-export const sampleBundleProducts = sampleBundleLines.map((line, index) => ({ id: line.productId, tenantId: 't1', type: index === 0 ? 'physical' as const : index === 1 ? 'digital_download' as const : 'course' as const, slug: `product-${index + 1}`, title: line.name, description: '', coverUrl: null, priceCents: line.grossCents, currency: 'PLN' as const, visibility: 'listed' as const, published: true, accessItems: [], legacyId: null, vatRate: line.vatRate, vatExemptionBasis: null, createdAt: '2026-10-08T10:00:00.000Z' }));
+export const sampleBundleProducts = sampleBundleLines.map((line, index) => ({ id: line.productId, tenantId: 't1', type: index === 0 ? 'physical' as const : index === 1 ? 'digital_download' as const : 'course' as const, slug: `product-${index + 1}`, title: line.name, description: '', coverUrl: null, priceCents: line.grossCents, currency: 'PLN' as const, visibility: 'listed' as const, deliveryMethod: 'pickup' as const, published: true, accessItems: [], legacyId: null, vatRate: line.vatRate, vatExemptionBasis: null, createdAt: '2026-10-08T10:00:00.000Z' }));
 
 export const sampleBundleOrder = {
   id: 'order-2026-001', tenantId: 't1', memberId: 'member-1', productId: 'product-1', priceId: null,

@@ -1056,7 +1056,28 @@
       "idx": 150,
       "version": "7",
       "when": 1790964000022,
-      "tag": "0150_meta_capi",
+      "tag": "0150_product_shipping",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1790964000031,
+      "tag": "0151_product_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1790964000041,
+      "tag": "0152_order_fulfilment_compliance",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1790964000042,
+      "tag": "0153_meta_capi",
       "breakpoints": true
     }
   ]

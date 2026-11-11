@@ -36,6 +36,24 @@ export interface TransactionalEmailMessages {
     subject: (orderNumber: string, tenantName: string) => string;
     verification: string;
     qrAlt: string;
+    delivery: string;
+    pickupPoint: string;
+  };
+  orderShipped: {
+    items: string;
+    carrier: string;
+    trackingNumber: string;
+    trackLabel: string;
+    carriers: Record<'inpost' | 'other', string>;
+    render: (input: BrandedInput & {
+      tenantName: string;
+      tenantNameHtml: string;
+      orderNumber: string;
+      orderNumberHtml: string;
+      items: RenderedTextParts;
+      delivery: RenderedTextParts;
+      tracking: RenderedTextParts;
+    }) => TransactionalEmailMessageContent;
   };
   welcomeSignIn: {
     actionLabels: Record<WelcomeSignInProductType, string>;
@@ -214,6 +232,19 @@ export interface TransactionalEmailMessages {
       windowEndHtml: string;
       dashboardUrl: string;
       dashboardUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
+  stockLowEmail: {
+    noThreshold: string;
+    render: (input: {
+      tenantName: string;
+      productTitle: string;
+      productTitleHtml: string;
+      available: string;
+      threshold: string;
+      oversold: boolean;
+      studioUrl: string;
+      studioUrlHtml: string;
     }) => TransactionalEmailMessageContent;
   };
 }

@@ -109,3 +109,34 @@ describe('import asset URL fields', () => {
     }).success).toBe(true);
   });
 });
+
+describe('product import records', () => {
+  const record = {
+    importKey: 'stand-black',
+    type: 'physical',
+    slug: 'stand-black',
+    title: 'Printed stand',
+    description: '',
+    coverUrl: null,
+    priceCents: 4900,
+    currency: 'PLN',
+    accessItems: [],
+  };
+  const compliance = {
+    manufacturerName: 'Example Workshop',
+    manufacturerAddress: 'Example Street 1, Warsaw',
+    manufacturerEmail: 'safety@example.com',
+    modelIdentifier: 'STAND-1',
+  };
+
+  it('accepts product safety information and variant fields', () => {
+    expect(importProductRecordSchema.parse({ ...record, compliance, variantGroup: 'stand', variantLabel: 'Black' }))
+      .toMatchObject({ compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'stand', variantLabel: 'Black' });
+    expect(importProductRecordSchema.safeParse(record).success).toBe(true);
+  });
+
+  it('rejects incomplete product safety information and malformed variant groups', () => {
+    expect(importProductRecordSchema.safeParse({ ...record, compliance: { manufacturerName: 'Example Workshop' } }).success).toBe(false);
+    expect(importProductRecordSchema.safeParse({ ...record, variantGroup: 'Stand Black' }).success).toBe(false);
+  });
+});

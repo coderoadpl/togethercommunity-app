@@ -21,6 +21,20 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     subject: (orderNumber, tenantName) => `Purchase confirmation ${orderNumber} — ${tenantName}`,
     verification: 'Order verification code for the seller',
     qrAlt: 'Order QR code',
+    delivery: 'Delivery',
+    pickupPoint: 'Parcel locker',
+  },
+  orderShipped: {
+    items: 'Shipped items',
+    carrier: 'Carrier',
+    trackingNumber: 'Tracking number',
+    trackLabel: 'Track the parcel',
+    carriers: { inpost: 'InPost', other: 'Other carrier' },
+    render: ({ header, tenantName, tenantNameHtml, orderNumber, orderNumberHtml, items, delivery, tracking, socialLinks }) => ({
+      subject: `Your order ${orderNumber} has been shipped — ${tenantName}`,
+      html: `${header}<p>Hello!</p><p>Your order ${orderNumberHtml} from ${tenantNameHtml} has been shipped.</p>${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
+      text: `Hello!\n\nYour order ${orderNumber} from ${tenantName} has been shipped.${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
+    }),
   },
   welcomeSignIn: {
     actionLabels: {
@@ -144,6 +158,14 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       subject: `[${tenantName}] E-mail reputation: ${status}`,
       html: `<p>E-mail reputation for ${tenantNameHtml}: <strong>${status}</strong>.</p><p>Hard bounce rate: ${hardBounceRate}<br>Complaint rate: ${complaintRate}<br>Window: ${windowStartHtml} – ${windowEndHtml}</p><p><a href="${dashboardUrlHtml}">Review reputation</a></p>`,
       text: `E-mail reputation for ${tenantName}: ${status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
+    }),
+  },
+  stockLowEmail: {
+    noThreshold: 'not set',
+    render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({
+      subject: oversold ? `[${tenantName}] Oversold: ${productTitle}` : `[${tenantName}] Low stock: ${productTitle}`,
+      html: `<p>${oversold ? `${productTitleHtml} was sold after its stock ran out.` : `${productTitleHtml} is running low.`}</p><p>Available: ${available}<br>Low-stock threshold: ${threshold}</p>${oversold ? '<p>A paid order arrived when no piece was left. Check the order and adjust the stock.</p>' : ''}<p><a href="${studioUrlHtml}">Open the product</a></p>`,
+      text: `${oversold ? `${productTitle} was sold after its stock ran out.` : `${productTitle} is running low.`}\nAvailable: ${available}\nLow-stock threshold: ${threshold}\n${oversold ? 'A paid order arrived when no piece was left. Check the order and adjust the stock.\n' : ''}${studioUrl}`,
     }),
   },
 };

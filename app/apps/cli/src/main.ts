@@ -1,4 +1,4 @@
-import { stripeProbePermissionsInputSchema } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -64,6 +64,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerTeamCommands } from './team-commands.js';
+import { formatProductStock, registerStockCommands } from './stock-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
@@ -174,6 +175,8 @@ const tenantSettingsOptionsSchema = z.object({
   clearBillingPortalUrl: z.boolean().optional(),
   videoAutoplayDefault: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   memberVideoAutoplayOverride: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  shippingRates: z.string().optional(),
+  inpostGeowidgetToken: z.string().optional(),
 });
 const storageConfigurationOptionsSchema = z.object({
   provider: storageProviderKindSchema,
@@ -188,6 +191,7 @@ const productCreateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  deliveryMethod: deliveryMethodSchema.optional(),
   type: z.enum(['course', 'digital_download', 'membership', 'physical']).optional(),
   slug: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200),
@@ -197,17 +201,45 @@ const productCreateOptionsSchema = z.object({
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
   accessItems: z.string().optional(),
+  compliance: z.string().optional(),
+  variantGroup: variantGroupSchema.optional(),
+  variantLabel: variantLabelSchema.optional(),
 });
 const productUpdateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  deliveryMethod: deliveryMethodSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
   clearCover: z.boolean().default(false),
+  compliance: z.string().optional(),
+  variantGroup: variantGroupSchema.optional(),
+  variantLabel: variantLabelSchema.optional(),
+  clearVariant: z.boolean().default(false),
 });
-const simulatePurchaseOptionsSchema = z.object({
+const ordersShipOptionsSchema = z.object({
+  carrier: shippingCarrierSchema,
+  tracking: z.string().min(1),
+});
+const ordersPackingListOptionsSchema = z.object({
+  format: z.literal('csv'),
+  fulfilment: fulfilmentStatusSchema.optional(),
+  mode: stripeModeSchema.default('live'),
+  out: z.string().min(1).optional(),
+});
+const productComplianceOption = async (raw: string | undefined): Promise<Result<z.output<typeof productComplianceSchema> | null | undefined, AppError>> => {
+  if (raw === undefined) return ok(undefined);
+  const payload = await readJsonPayload(raw, undefined);
+  if (!payload.ok) return payload;
+  return parsedInput(productComplianceSchema.nullable(), payload.value, 'Invalid product safety information');
+};
+const shippingSelectionOptionsSchema = z.object({
+  shippingRate: z.string().min(1).optional(),
+  pickupPoint: z.string().min(1).optional(),
+});
+const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
   salesLink: z.string().min(1).optional(),
   email: z.string().email(),
   product: z.string().min(1),
@@ -228,6 +260,7 @@ const ordersListOptionsSchema = z.object({
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
   coupon: z.string().min(1).optional(),
+  fulfilment: fulfilmentStatusSchema.optional(),
   search: z.string().min(1).optional(),
   page: z
     .string()
@@ -248,6 +281,7 @@ const ordersExportOptionsSchema = z.object({
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
   coupon: z.string().min(1).optional(),
+  fulfilment: fulfilmentStatusSchema.optional(),
   search: z.string().min(1).optional(),
   out: z.string().min(1).optional(),
 });
@@ -285,7 +319,7 @@ const couponExportOptionsSchema = z.object({
   partner: z.string().trim().min(1).optional(),
   out: z.string().min(1).optional(),
 });
-const checkoutSessionOptionsSchema = z.object({
+const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   salesLink: z.string().min(1).optional(),
   product: z.string().min(1),
   email: z.string().email().optional(),
@@ -886,20 +920,40 @@ checkout
   .requiredOption('--product <id>')
   .option('--email <email>')
   .option('--language <language>', 'checkout language (pl or en)')
+  .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
+  .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
+      const shipping = shippingSelection(options);
+      if (!shipping.ok) {
+        emit(shipping, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createCheckoutSession({
           productId: options.product,
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
           ...(options.email === undefined ? {} : { email: options.email }),
           ...(options.language === undefined ? {} : { language: options.language }),
+          ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,
         (data) => data.url,
       );
     }),
   );
+
+const shippingSelection = (
+  options: z.output<typeof shippingSelectionOptionsSchema>,
+): Result<CheckoutShippingInput | null, AppError> => {
+  if (options.shippingRate === undefined) {
+    return options.pickupPoint === undefined ? ok(null) : err(validation('Pass --shipping-rate <id> together with --pickup-point <code>'));
+  }
+  return ok({
+    rateId: options.shippingRate,
+    ...(options.pickupPoint === undefined ? {} : { pickupPoint: { provider: 'inpost' as const, code: options.pickupPoint } }),
+  });
+};
 
 const tenant = program.command('tenant').description('Tenant staff access');
 
@@ -957,6 +1011,11 @@ metaCapi.command('events').description('List the latest 100 conversion outcomes 
       `${event.transactionId} ${event.status} ${event.sentAt ?? event.recordedAt} ${event.error ?? ''}`).join('\n'));
   }),
 );
+const shippingSettingsLines = (settings: TenantSettings): string[] => [
+  `shipping rates: ${(settings.shippingRates ?? []).length === 0 ? '(none)' : (settings.shippingRates ?? [])
+    .map((rate) => `${rate.id} ${rate.label} ${rate.amountCents} (${rate.active ? 'active' : 'inactive'})`).join('; ')}`,
+  `InPost parcel locker map token: ${settings.inpostGeowidgetToken == null ? '(not set)' : '(set)'}`,
+];
 
 tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
@@ -975,6 +1034,7 @@ tenant.command('settings').description('Show tenant settings').action(
         `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
         `Meta CAPI enabled: ${String(data.settings.analyticsMetaCapiEnabled ?? false)}`,
         `Meta CAPI test event code: ${data.settings.analyticsMetaCapiTestEventCode ?? '(not set)'}`,
+        ...shippingSettingsLines(data.settings),
       ].join('\n'),
     );
   }),
@@ -1003,8 +1063,24 @@ tenant
   .option('--clear-billing-portal-url', 'remove the billing portal URL')
   .option('--video-autoplay-default <value>', "'true' or 'false' — default lesson video autoplay")
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
+  .option('--shipping-rates <json>', 'inline JSON array of up to five shipping rates, e.g. [{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]')
+  .option('--inpost-geowidget-token <token>', 'public InPost parcel locker map token; empty string clears')
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
+      let shippingRates: ShippingRate[] | undefined;
+      if (options.shippingRates !== undefined) {
+        const payload = await readJsonPayload(options.shippingRates, undefined);
+        if (!payload.ok) {
+          emit(payload, ctx.json, () => '');
+          return;
+        }
+        const parsed = parsedInput(shippingRatesSchema, payload.value, 'Invalid shipping rates');
+        if (!parsed.ok) {
+          emit(parsed, ctx.json, () => '');
+          return;
+        }
+        shippingRates = parsed.value;
+      }
       const accentColor = options.clearAccentColor === true ? null : options.accentColor;
       const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
@@ -1027,7 +1103,9 @@ tenant
         options.analyticsMetaPixelId === undefined &&
         options.analyticsConsentCookieName === undefined &&
         options.analyticsConsentCookieValue === undefined &&
-        options.analyticsLoadWithoutConsent === undefined
+        options.analyticsLoadWithoutConsent === undefined &&
+        shippingRates === undefined &&
+        options.inpostGeowidgetToken === undefined
       ) {
         emit(
           err(validation('Pass at least one tenant setting option')),
@@ -1053,6 +1131,8 @@ tenant
         ...(options.memberVideoAutoplayOverride === undefined
           ? {}
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
+        ...(shippingRates === undefined ? {} : { shippingRates }),
+        ...(options.inpostGeowidgetToken === undefined ? {} : { inpostGeowidgetToken: options.inpostGeowidgetToken }),
       }), ctx.json, (data) =>
         [
           `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
@@ -1068,6 +1148,7 @@ tenant
           `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
           `Meta CAPI enabled: ${String(data.settings.analyticsMetaCapiEnabled ?? false)}`,
           `Meta CAPI test event code: ${data.settings.analyticsMetaCapiTestEventCode ?? '(not set)'}`,
+          ...shippingSettingsLines(data.settings),
         ].join('\n'),
       );
     }),
@@ -1266,14 +1347,16 @@ product.command('list').description('List products').action(
       data.products.length === 0
         ? 'no products'
         : data.products
-            .map(
-              (p) =>
-                `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]  (${p.id.slice(0, 8)})`,
-            )
+            .map((p) => {
+              const stock = data.stock.find((entry) => entry.productId === p.id);
+              return `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]${stock === undefined ? '' : `  {${formatProductStock(stock)}}`}  (${p.id.slice(0, 8)})`;
+            })
             .join('\n'),
     );
   }),
 );
+
+registerStockCommands(product, cliCtx);
 
 product
   .command('copies')
@@ -1294,6 +1377,7 @@ product
   .command('create')
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--delivery-method <method>', 'pickup or shipping (shipping requires --type physical)')
   .requiredOption('--title <title>')
   .option('--type <type>', 'course, digital_download, membership or physical')
   .option('--slug <slug>', 'tenant-unique product slug')
@@ -1305,6 +1389,9 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+  .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
+  .option('--variant-label <label>', 'label of this product in its variant group, e.g. "Black · ASA"')
   .action(
     withInput(z.tuple([productCreateOptionsSchema]), async (ctx, [options]) => {
       if (options.price !== undefined && options.priceCents !== undefined) {
@@ -1334,9 +1421,18 @@ product
         }
         accessItems = parsed.value;
       }
+      const compliance = await productComplianceOption(options.compliance);
+      if (!compliance.ok) {
+        emit(compliance, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createProduct({
+          ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
+          ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
           ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
           title: options.title,
@@ -1392,23 +1488,42 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover or visibility')
+  .description('Update product title, description, cover, visibility, delivery method, safety information or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
   .option('--vat-rate <rate>', '5, 8, 23 or exempt')
   .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
   .option('--title <title>')
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it')
+  .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
+  .option('--variant-label <label>', 'label of this product in its variant group')
+  .option('--clear-variant', 'remove the variant group and label')
   .action(
     withInput(z.tuple([z.string().min(1), productUpdateOptionsSchema]), async (ctx, [id, options]) => {
       if (options.coverUrl !== undefined && options.clearCover) {
         emit(err(validation('Provide only one of --cover-url and --clear-cover')), ctx.json, () => '');
         return;
       }
+      if (options.clearVariant && (options.variantGroup !== undefined || options.variantLabel !== undefined)) {
+        emit(err(validation('Provide only one of --clear-variant and --variant-group/--variant-label')), ctx.json, () => '');
+        return;
+      }
+      const compliance = await productComplianceOption(options.compliance);
+      if (!compliance.ok) {
+        emit(compliance, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.updateProduct({
+          ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...(options.clearVariant ? { variantGroup: null, variantLabel: null } : {}),
+          ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
+          ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           id,
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
           ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
@@ -1565,6 +1680,38 @@ ordersCommand.command('issue <orderId> <productId>').description('Record collect
     emit(await ctx.api.issueOrderLine({ orderId, productId }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
   }),
 );
+ordersCommand
+  .command('ship <orderId>')
+  .description('Mark a paid order to pack as shipped and e-mail the buyer the tracking number')
+  .requiredOption('--carrier <carrier>', 'inpost or other')
+  .requiredOption('--tracking <number>', 'parcel tracking number, 4-64 characters')
+  .action(
+    withInput(z.tuple([z.string().min(1), ordersShipOptionsSchema]), async (ctx, [orderId, options]) => {
+      emit(
+        await ctx.api.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
+        ctx.json,
+        (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`,
+      );
+    }),
+  );
+ordersCommand
+  .command('packing-list')
+  .description('Export the orders to pack as a CSV packing list')
+  .requiredOption('--format <format>', 'csv')
+  .option('--fulfilment <status>', 'to_pack (default) or shipped')
+  .option('--mode <mode>', 'live (default) or test')
+  .option('--out <file>', 'write the packing list to a file instead of stdout')
+  .action(
+    withInput(z.tuple([ordersPackingListOptionsSchema]), async (ctx, [options]) => {
+      const result = await ctx.api.ordersPackingList({
+        format: options.format,
+        mode: options.mode,
+        ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
+      });
+      if (result.ok && options.out !== undefined) await writeFile(options.out, result.value.content);
+      emit(result, ctx.json, (file) => options.out === undefined ? file.content : `wrote ${file.filename} to ${options.out}`);
+    }),
+  );
 
 
 ordersCommand
@@ -1574,6 +1721,7 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
+  .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
@@ -1587,6 +1735,7 @@ ordersCommand
           ...(options.product === undefined ? {} : { productId: options.product }),
           ...(options.kind === undefined ? {} : { kind: options.kind }),
           ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+          ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
           ...(options.source === undefined ? {} : { source: options.source }),
           ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
           ...(options.search === undefined ? {} : { search: options.search }),
@@ -1616,6 +1765,7 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
+  .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
@@ -1628,6 +1778,7 @@ ordersCommand
         ...(options.product === undefined ? {} : { productId: options.product }),
         ...(options.kind === undefined ? {} : { kind: options.kind }),
         ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+        ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
         ...(options.source === undefined ? {} : { source: options.source }),
         ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
         ...(options.search === undefined ? {} : { search: options.search }),
@@ -3090,10 +3241,17 @@ program
   .requiredOption('--email <email>')
   .requiredOption('--product <id>')
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
+  .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
+  .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
         emit(err(validation('Select a tenant with --tenant to simulate a purchase')), ctx.json, () => '');
+        return;
+      }
+      const shipping = shippingSelection(options);
+      if (!shipping.ok) {
+        emit(shipping, ctx.json, () => '');
         return;
       }
       emit(
@@ -3102,6 +3260,7 @@ program
           email: options.email,
           productId: options.product,
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
+          ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,
         (data) => {

@@ -338,6 +338,28 @@ describe('m2m content import', () => {
     });
   });
 
+  it('imports product safety information and variant fields with a physical product', async () => {
+    const h = harness();
+    const compliance = {
+      manufacturerName: 'Example Workshop',
+      manufacturerAddress: 'Example Street 1, Warsaw',
+      manufacturerEmail: 'safety@example.com',
+      modelIdentifier: 'STAND-1',
+      instructionsUrl: 'https://example.com/manual.pdf',
+    };
+    const result = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        importKey: 'stand-black', type: 'physical', slug: 'stand-black', title: 'Printed stand', description: '',
+        coverUrl: null, priceCents: 4900, currency: 'PLN', accessItems: [], compliance, variantGroup: 'stand', variantLabel: 'Black',
+      }],
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.products.get('stand-black')).toMatchObject({
+      compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'stand', variantLabel: 'Black', published: false,
+    });
+  });
+
   it('rejects import updates of content reachable from a published product', async () => {
     const h = harness();
     await seedImportedProduct(h);

@@ -2,7 +2,7 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -10,6 +10,7 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { OrderShipment } from './OrderShipment.js';
 
 export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
@@ -30,6 +31,13 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
+  const shipOrder = useMutation({
+    ...actions.shipOrder,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
   const refreshInvoice = useMutation({
     ...actions.refreshInvoice,
     onSuccess: async () => {
@@ -104,10 +112,44 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+            {order.fulfilmentStatus == null ? null : (
+              <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
+                label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
+            )}
           </Stack>
         </Stack>
       </SectionCard>
       {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
+      {order.shipping == null ? null : (
+        <SectionCard title={t.shipping.orderDeliveryHeading} data-testid="order-delivery">
+          <Stack useFlexGap spacing="0.75rem">
+            {[
+              [t.shipping.orderRate, order.shipping.label],
+              [t.shipping.orderPrice, formatPrice(order.shipping.amountCents, order.currency, language)],
+              ...(order.shipping.pickupPoint === null ? [] : [[t.shipping.orderPickupPoint, [order.shipping.pickupPoint.code, order.shipping.pickupPoint.name, order.shipping.pickupPoint.address].filter((value) => value !== null && value !== '').join(', ')]]),
+              [t.shipping.orderAddress, [
+                order.shipping.address.name,
+                [order.shipping.address.line1, order.shipping.address.line2].filter((value) => value !== null && value !== '').join(', '),
+                `${order.shipping.address.postalCode} ${order.shipping.address.city}`.trim(),
+                order.shipping.address.country,
+              ].filter((value) => value !== '').join(', ')],
+              [t.shipping.orderPhone, order.shipping.phone ?? '—'],
+            ].map(([label, value]) => (
+              <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ justifyContent: 'space-between' }}>
+                <Typography color="text.secondary">{label}</Typography>
+                <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
+              </Stack>
+            ))}
+            <OrderShipment
+              order={order}
+              canShip={canShip}
+              pending={shipOrder.isPending}
+              error={shipOrder.isError ? localizePanelError(shipOrder.error, t) : null}
+              onShip={(input) => shipOrder.mutate({ orderId: order.id, ...input })}
+            />
+          </Stack>
+        </SectionCard>
+      )}
       {attributionRows.length === 0 ? null : (
         <SectionCard title={t.sales.source}>
           <Stack useFlexGap spacing="0.75rem">

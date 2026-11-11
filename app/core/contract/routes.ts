@@ -3,7 +3,9 @@ import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
 import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
-import { COUPON_CODE_MAX_LENGTH, productVatRateSchema } from '#core/domain/index.js';
+import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
+import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
+import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
@@ -181,6 +183,12 @@ import {
   productSlugSchema,
   productSchema,
   productTypeSchema,
+  deliveryMethodSchema,
+  memberFulfilmentSchema,
+  publicProductComplianceSchema,
+  publicProductVariantSchema,
+  checkoutShippingInputSchema,
+  publicShippingRateSchema,
   progressViewSchema,
   searchPostsInputSchema,
   sendSupportMessageInputSchema,
@@ -381,6 +389,7 @@ export const tenantListOutputSchema = z.object({
 
 export const productsListOutputSchema = z.object({
   products: z.array(productSchema),
+  stock: z.array(productStockSchema).default([]),
 });
 
 const publicOfferPriceSchema = z.object({
@@ -422,6 +431,9 @@ export const publicOfferOutputSchema = z.object({
     z.object({
       id: z.string(),
       type: productTypeSchema,
+      deliveryMethod: deliveryMethodSchema.default('pickup'),
+      compliance: publicProductComplianceSchema.nullable().default(null),
+      variants: z.array(publicProductVariantSchema).default([]),
       slug: productSlugSchema,
       title: z.string(),
       description: z.string(),
@@ -431,6 +443,7 @@ export const publicOfferOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
+      stock: publicProductStockSchema.default({ tracked: false, soldOut: false, low: false }),
       marketingConsents: z.array(z.object({
         definitionId: z.string().min(1),
         label: z.string().min(1),
@@ -439,6 +452,8 @@ export const publicOfferOutputSchema = z.object({
       })).default([]),
     }),
   ),
+  shippingRates: z.array(publicShippingRateSchema).default([]),
+  inpostGeowidgetToken: z.string().nullable().default(null),
 });
 
 export const publicNavigationOutputSchema = z.object({
@@ -465,6 +480,9 @@ export const publicPaymentConfigOutputSchema = z.object({
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
+  shippingRates: z.array(publicShippingRateSchema).default([]),
+  inpostGeowidgetToken: z.string().nullable().default(null),
+  inpostGeowidgetWithheld: z.boolean().default(false),
 });
 
 export const checkoutSessionRequestSchema = checkoutSessionInputSchema;
@@ -519,6 +537,8 @@ export const myProductsOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       purchasable: z.boolean(),
+      shippedTo: z.string().nullable().optional(),
+      fulfilment: memberFulfilmentSchema.nullable().optional(),
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
@@ -683,6 +703,7 @@ export const simulatePurchaseInputSchema = z.object({
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
   couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
+  shipping: checkoutShippingInputSchema.optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -716,6 +737,22 @@ export type ProductPriceDeactivateInput = z.input<typeof productPriceDeactivateI
 
 export const productPriceDeactivateOutputSchema = z.object({
   price: productPriceSchema,
+});
+
+export const productStockOutputSchema = z.object({
+  stock: productStockSchema.nullable(),
+});
+
+export const productStockEnableInputSchema = enableStockTrackingInputSchema;
+export const productStockAdjustInputSchema = adjustStockInputSchema;
+export const productStockThresholdInputSchema = stockThresholdInputSchema;
+
+export type ProductStockEnableInput = z.input<typeof productStockEnableInputSchema>;
+export type ProductStockAdjustInput = z.input<typeof productStockAdjustInputSchema>;
+export type ProductStockThresholdInput = z.input<typeof productStockThresholdInputSchema>;
+
+export const productStockWriteOutputSchema = z.object({
+  stock: productStockSchema,
 });
 
 export type OrdersListQueryInput = z.input<typeof listOrdersQuerySchema>;
@@ -1877,6 +1914,7 @@ export const API_ROUTES = {
   ...SURVEY_ROUTES,
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
+  ...ORDER_FULFILMENT_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -1932,6 +1970,10 @@ export const API_ROUTES = {
   productPricesCreate: { method: 'POST', path: '/api/products/prices' },
   productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
+  productStock: { method: 'GET', path: '/api/products/:productId/stock' },
+  productStockEnable: { method: 'POST', path: '/api/products/stock/enable' },
+  productStockAdjust: { method: 'POST', path: '/api/products/stock/adjust' },
+  productStockThreshold: { method: 'POST', path: '/api/products/stock/threshold' },
   orders: { method: 'GET', path: '/api/orders' },
   ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
@@ -2196,6 +2238,8 @@ export const API_PATHS = {
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,
+  shipOrder: API_ROUTES.shipOrder.path,
+  ordersPackingList: API_ROUTES.ordersPackingList.path,
   getSalesLink: API_ROUTES.getSalesLink.path,
   createSalesLink: API_ROUTES.createSalesLink.path,
   updateSalesLink: API_ROUTES.updateSalesLink.path,
@@ -2326,6 +2370,10 @@ export const API_PATHS = {
   productPricesCreate: API_ROUTES.productPricesCreate.path,
   productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
   productPrices: API_ROUTES.productPrices.path,
+  productStock: API_ROUTES.productStock.path,
+  productStockEnable: API_ROUTES.productStockEnable.path,
+  productStockAdjust: API_ROUTES.productStockAdjust.path,
+  productStockThreshold: API_ROUTES.productStockThreshold.path,
   orders: API_ROUTES.orders.path,
   ordersReconciliation: API_ROUTES.ordersReconciliation.path,
   order: API_ROUTES.order.path,

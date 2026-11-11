@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
+import { publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
 import { registerPublicMetaCapiRoutes } from './meta-capi-routes.js';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
@@ -47,6 +47,7 @@ import {
   normalizeEmail,
   notFound,
   ok,
+  publicStockVersion,
   resolveEmailLanguage,
   tenantNotFound,
   unauthorized,
@@ -64,6 +65,7 @@ import {
   submitSurvey,
   listLessonEditions,
   authLinkBaseUrl,
+  cleanUpFailedCheckout,
   fulfillStripeWebhook,
   validateStripeInvoiceTenant,
   getPaymentConfig,
@@ -382,7 +384,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const listedLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : (await deps.salesLinkManagement.salesLinks.list(tenant.value.tenant.id))
       .filter((link) => link.listed && salesLinkAvailable(link, deps.clock.nowIso()));
     const linkVersion = listedLinks.length === 0 ? '' : `-${createHash('sha256').update(JSON.stringify(listedLinks.map((link) => [link.id, link.revision]).sort())).digest('hex')}`;
-    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}${linkVersion}"`;
+    const stockLevels = await deps.stock.listByTenant(tenant.value.tenant.id);
+    const stockVersion = stockLevels.length === 0 ? '' : `-${createHash('sha256').update(publicStockVersion(stockLevels)).digest('hex')}`;
+    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}${linkVersion}${stockVersion}"`;
     if (c.req.header('if-none-match') === etag) {
       return respondNotModified(publicHeaders(etag));
     }
@@ -395,6 +399,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       tenants: deps.tenants,
       definitions: deps.marketing?.definitions,
       documents: deps.marketing?.documents,
+      stock: deps.stock,
     }, productRef);
     if (!result.ok) return respondPublic(result, etag);
     const salesLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : await listPublicSalesLinks(tenant.value.tenant.id, deps.salesLinkManagement, listedLinks);
@@ -644,6 +649,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
     const settings = await deps.tenants.findSettings(tenant.value.tenant.id);
+    const geowidgetToken = settings?.inpostGeowidgetToken ?? null;
+    const geowidgetWithheld = geowidgetToken !== null && (canTest || c.get('impersonation') !== undefined);
     const domain = tenant.value.domain;
     const baseDomain = deps.baseDomain.toLowerCase();
     const analytics = (settings?.analyticsTagId || settings?.analyticsMetaPixelId) ? {
@@ -659,7 +666,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return respondPublic(
       config.ok
         ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
-          testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
+          testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments,
+          shippingRates: publicShippingRates(settings?.shippingRates),
+          inpostGeowidgetToken: geowidgetWithheld ? null : geowidgetToken, inpostGeowidgetWithheld: geowidgetWithheld })
         : config,
     );
   });
@@ -673,7 +682,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid coupon payload', parsed.error.flatten())));
     }
-    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
+    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps, { shipping: 'ignore' });
     if (!selection.ok) return respondPublic(selection);
     if (
       deps.coupons === undefined ||
@@ -801,13 +810,28 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
           },
         },
       };
-      const fulfilled = await fulfillStripeWebhook(
-        tenant.value.tenant,
-        event,
-        { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
-        'simulated',
+      const tenantId = tenant.value.tenant.id;
+      const { checkoutSnapshotId } = session.value;
+      const releaseHold = () => cleanUpFailedCheckout(
+        checkoutSnapshotId === undefined ? [] : [() => deps.stock.release(tenantId, { checkoutSnapshotId, reason: 'checkout_failed', now: deps.clock.nowIso() })],
+        deps.logger,
       );
-      if (!fulfilled.ok) return respondPublic(fulfilled);
+      let fulfilled: Awaited<ReturnType<typeof fulfillStripeWebhook>>;
+      try {
+        fulfilled = await fulfillStripeWebhook(
+          tenant.value.tenant,
+          event,
+          { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+          'simulated',
+        );
+      } catch (cause) {
+        await releaseHold();
+        throw cause;
+      }
+      if (!fulfilled.ok) {
+        await releaseHold();
+        return respondPublic(fulfilled);
+      }
     }
     c.res = respondPublic(session);
     if (session.ok && testMode) deleteCookie(c, 'together_stripe_test', { path: '/' });

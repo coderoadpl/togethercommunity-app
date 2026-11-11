@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { expectedPurchaseConfirmationPl, expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
+import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -18,7 +18,9 @@ import {
   resetPassword,
   spaceEvent,
   spacePost,
+  stockLowEmail,
   subscriptionEnded,
+  orderShipped,
   subscriptionPaymentFailed,
   supportMessage,
   threadReply,
@@ -521,6 +523,7 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', productTitle: 'Course', accessEndsAt: '1998-08-17T10:00:00.000Z',
       offerUrl: 'https://acme.test/offer',
     })],
+    ['order-shipped', (language) => orderShipped(language, orderShippedFixturePl)],
     ['support-message', (language) => supportMessage(language, {
       tenantName: 'Acme Courses', memberEmail: 'alex@acme.test', memberDisplay: 'Alex',
       subject: 'Question', body: 'Body',
@@ -534,6 +537,10 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', status: 'warn', hardBounceRate: 0.02, complaintRate: null,
       windowStart: '1998-08-01T10:00:00.000Z', windowEnd: '1998-08-17T10:00:00.000Z',
       dashboardUrl: 'https://acme.test/reputation',
+    })],
+    ['stock-low', (language) => stockLowEmail(language, {
+      tenantName: 'Acme Courses', productTitle: 'Printed poster', available: 1, threshold: 2,
+      oversold: false, studioUrl: 'https://acme.test/panel/products/p1',
     })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
@@ -576,6 +583,75 @@ describe('transactional message catalogue', () => {
 
   it.each(catalogue)('falls back to the default locale for %s when the language is unsupported', (_kind, render) => {
     expect(render('de')).toEqual(render('en'));
+  });
+});
+
+describe('orderShipped', () => {
+  const addressDelivery = {
+    tenantName: 'Acme Courses',
+    shipment: {
+      orderNumber: 'order-42',
+      items: ['Printed <stand>'],
+      delivery: { method: 'Courier', pickupPoint: null, address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' } },
+      carrier: 'other' as const,
+      trackingNumber: 'RR123456789PL',
+      trackingUrl: null,
+    },
+  };
+
+  it('matches the Polish golden message for a parcel locker shipment', () => {
+    expect(orderShipped('pl', orderShippedFixturePl)).toEqual(expectedTransactionalEmailPl.orderShipped);
+  });
+
+  it('renders the postal address, escapes item names and omits the link for other carriers', () => {
+    const message = orderShipped('en', addressDelivery);
+    expect(message.subject).toBe('Your order order-42 has been shipped — Acme Courses');
+    expect(message.html).toContain('<li>Printed &lt;stand&gt;</li>');
+    expect(message.html).toContain('<p><strong>Delivery</strong>: Courier<br>Jane Buyer<br>Garden Street 5<br>00-950 Warsaw<br>PL</p>');
+    expect(message.html).toContain('<p><strong>Carrier</strong>: Other carrier<br>Tracking number: RR123456789PL</p>');
+    expect(message.html).not.toContain('<a ');
+    expect(message.text).toContain('Carrier: Other carrier\nTracking number: RR123456789PL');
+  });
+
+  it('adds the workspace branding and social links', () => {
+    const message = orderShipped('en', {
+      ...addressDelivery,
+      branding: { logoUrl: 'https://acme.test/logo.png', accentColor: '#112233', socialLinks: [{ label: 'Instagram', url: 'https://instagram.com/acme' }] },
+    });
+    expect(message.html).toContain('src="https://acme.test/logo.png"');
+    expect(message.text).toContain('Instagram: https://instagram.com/acme');
+  });
+});
+
+describe('stock low email', () => {
+  const input = {
+    tenantName: 'Acme',
+    productTitle: 'Printed <poster>',
+    available: 1,
+    threshold: 2,
+    oversold: false,
+    studioUrl: 'https://acme.example.com/panel/products/product-1',
+  };
+
+  it('renders the low-stock alert in Polish', () => {
+    expect(stockLowEmail('pl', input)).toEqual(expectedTransactionalEmailPl.stockLowEmail);
+  });
+
+  it('renders the oversold alert in Polish without a threshold', () => {
+    expect(stockLowEmail('pl', { ...input, available: 0, threshold: null, oversold: true })).toEqual(expectedTransactionalEmailPl.stockOversoldEmail);
+  });
+
+  it('renders the available count, threshold, oversold note and Studio link in English', () => {
+    const low = stockLowEmail('en', input);
+    expect(low.subject).toBe('[Acme] Low stock: Printed <poster>');
+    expect(low.html).toContain('Printed &lt;poster&gt; is running low.');
+    expect(low.text).toContain('Available: 1\nLow-stock threshold: 2');
+    expect(low.html).toContain('href="https://acme.example.com/panel/products/product-1"');
+    expect(low.text).not.toContain('no piece was left');
+    const oversold = stockLowEmail('en', { ...input, available: 0, threshold: null, oversold: true });
+    expect(oversold.subject).toBe('[Acme] Oversold: Printed <poster>');
+    expect(oversold.text).toContain('Low-stock threshold: not set');
+    expect(oversold.html).toContain('no piece was left');
   });
 });
 
@@ -718,6 +794,33 @@ describe('purchase confirmation amounts', () => {
     expect(message.html).not.toContain(`<a href="${details.verificationUrl}">`);
     expect(message.text.split('\n')).toContain(labels.verification);
     expect(message.text).not.toContain(details.verificationUrl);
+  });
+
+  it.each([
+    ['pl', expectedPurchaseDeliveryPl, purchaseDeliveryFixturesPl],
+    ['en', {
+      lockerHtml: '<p><strong>Delivery</strong>: Parcel locker<br>Parcel locker: WAW01M<br>Locker &lt;WAW01M&gt;<br>Main Street 1, Warsaw</p>',
+      lockerText: '\n\nDelivery: Parcel locker\nParcel locker: WAW01M\nLocker <WAW01M>\nMain Street 1, Warsaw',
+      addressHtml: '<p><strong>Delivery</strong>: Courier<br>Jane Buyer<br>Garden Street 5<br>00-950 Warsaw<br>PL</p>',
+      addressText: '\n\nDelivery: Courier\nJane Buyer\nGarden Street 5\n00-950 Warsaw\nPL',
+    }, {
+      locker: { method: 'Parcel locker', pickupPoint: { code: 'WAW01M', name: 'Locker <WAW01M>', address: 'Main Street 1, Warsaw' }, address: null },
+      address: { method: 'Courier', pickupPoint: null, address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' } },
+    }],
+  ] as const)('adds the delivery paragraph after the purchased items in %s', (language, expected, deliveries) => {
+    const labels = (language === 'pl' ? transactionalEmailMessagesPl : transactionalEmailMessagesEn).purchase;
+    for (const [kind, delivery] of [['locker', deliveries.locker], ['address', deliveries.address]] as const) {
+      const message = welcomeSignIn(language, {
+        tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in',
+        purchase: purchaseEmailDetailsSchema.parse({ ...purchase, delivery }),
+      });
+      const html = kind === 'locker' ? expected.lockerHtml : expected.addressHtml;
+      const text = kind === 'locker' ? expected.lockerText : expected.addressText;
+      expect(message.html).toContain(`</table>${html}<p>${labels.notInvoice}</p>`);
+      expect(message.text).toContain(`${text}\n\n${labels.notInvoice}`);
+    }
+    const without = welcomeSignIn(language, { tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: purchaseEmailDetailsSchema.parse(purchase) });
+    expect(without.html).not.toContain(labels.delivery);
   });
 
   it.each(['en', 'pl'])('retains name lists for legacy and mixed lines in %s', (language) => {

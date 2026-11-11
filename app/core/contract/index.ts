@@ -24,6 +24,7 @@ export * from './operator-tenant.js';
 export * from './surveys.js';
 export * from './sales-links.js';
 export * from './order-verification.js';
+export * from './order-fulfilment.js';
 
 export * from './consumer-sales.js';
 

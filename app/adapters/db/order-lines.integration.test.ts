@@ -105,7 +105,7 @@ describe('order and checkout snapshots', () => {
     const snapshot = checkoutSnapshotSchema.parse({ id: `checkout-${mode ?? 'legacy'}`, tenantId: 'workspace', salesLinkId: 'sales-link', lines: [physicalLine, digitalLine], currency: 'PLN', createdAt: now,
       ...(mode === undefined ? {} : { mode, providerSessionId, attribution: { utmSource: 'meta', fbclid: 'X', capturedAt: now } }),
     });
-    const storedSnapshot = { attribution: null, ...snapshot, mode: mode ?? null, providerSessionId };
+    const storedSnapshot = { attribution: null, shipping: null, ...snapshot, mode: mode ?? null, providerSessionId };
     await repository.create('workspace', snapshot);
     expect(await repository.findById('workspace', snapshot.id)).toEqual(storedSnapshot);
     expect(await repository.findById('other', snapshot.id)).toBeNull();

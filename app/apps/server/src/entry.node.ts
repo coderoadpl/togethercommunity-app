@@ -48,6 +48,9 @@ if (env.NODE_ENV !== 'test' && deps.devSinkPurge !== undefined) {
 
 if (env.NODE_ENV !== 'test') {
   setInterval(() => {
+    void deps.releaseExpiredStockReservations().catch((error: unknown) => {
+      process.stderr.write(`[stock] expired reservation sweep failed: ${safeErrorMessage(error)}\n`);
+    });
     void deps.dispatchEmails('cron').then((result) => {
       if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${safeLogMessage(result.error.message)}\n`);
     });

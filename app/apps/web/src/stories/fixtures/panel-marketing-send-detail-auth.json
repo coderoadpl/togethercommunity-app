@@ -74,6 +74,7 @@
           "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
+          "inpostGeowidgetToken": null,
           "invoiceExemptionBasis": null,
           "invoiceExemptionBasisKind": null,
           "invoiceSellerAddress": null,
@@ -90,6 +91,7 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "shippingRates": [],
           "signInNotice": {
             "enabled": false,
             "text": ""
@@ -190,11 +192,14 @@
       "ok": true,
       "value": {
         "contentVersion": 1,
+        "inpostGeowidgetToken": null,
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "",
             "id": "product-studio-course-101",
             "marketingConsents": [],
@@ -209,14 +214,22 @@
               }
             ],
             "slug": "course-together-101",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Together 101 Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
@@ -231,14 +244,22 @@
               }
             ],
             "slug": "js-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
@@ -253,14 +274,22 @@
               }
             ],
             "slug": "react-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "React in Practice - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
@@ -275,14 +304,22 @@
               }
             ],
             "slug": "js-dom-module",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "DOM Module Pack",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
@@ -297,14 +334,22 @@
               }
             ],
             "slug": "free-preview",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Free preview",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
@@ -326,14 +371,22 @@
               }
             ],
             "slug": "club",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
@@ -348,13 +401,20 @@
               }
             ],
             "slug": "download-workbook",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }
         ],
         "salesLinks": [],
+        "shippingRates": [],
         "tenant": {
           "branding": {
             "accentColor": null,

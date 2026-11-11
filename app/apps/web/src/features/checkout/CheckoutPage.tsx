@@ -1,6 +1,8 @@
 import { MetaCapiConsent } from './MetaCapiConsent.js';
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
+import { DeliveryStep } from './DeliveryStep.js';
+import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
 import { useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -23,7 +25,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -44,7 +46,7 @@ import {
   EmberCtaButton,
   FinePrint,
 } from '../../theme.js';
-import { createCheckoutState, reduceCheckoutState } from './index.web.js';
+import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
 
 type OfferPrice = {
   id: string;
@@ -87,6 +89,14 @@ const couponError = (
       return localizeError(error, t);
   }
 };
+
+const checkoutSessionError = (
+  error: unknown,
+  t: ReturnType<typeof useTranslations>,
+): string =>
+  error instanceof ApiError && error.appError.message === FREE_ORDER_DELIVERY_UNAVAILABLE
+    ? t.shipping.freeOrderUnavailable
+    : localizeError(error, t);
 
 export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string; salesLinkSlug?: string }) => {
   const t = useTranslations();
@@ -159,7 +169,24 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   ) : bundle === undefined ? undefined : { id: bundle.lines[0]?.productId ?? '', title: bundle.salesLink.heading, description: '', coverUrl: null, vatRate: null, vatExemptionBasis: null, priceCents: bundle.totalCents, currency: bundle.currency, prices: emptyPrices, marketingConsents: bundle.marketingConsents };
   }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
+  const offerProduct = salesLinkSlug === undefined ? singleOffer.data?.products.find((candidate) => candidate.id === productId) : undefined;
+  const soldOut = salesLinkSlug === undefined
+    ? singleOffer.data?.products.find((candidate) => candidate.id === productRef || candidate.slug === productRef)?.stock.soldOut === true
+    : bundle?.soldOut === true;
+  const safetyEntries = salesLinkSlug === undefined
+    ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, type: offerProduct.type, compliance: offerProduct.compliance }]
+    : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, type: line.type, compliance: line.compliance }]);
+  const titledSafety = (bundle?.lines.length ?? 0) > 1;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
+  const shippingRequired = salesLinkSlug === undefined
+    ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
+    : bundle?.lines.some((line) => line.deliveryMethod === 'shipping') === true;
+  const shippingRates = paymentConfig.data?.shippingRates ?? [];
+  const delivery = selectDelivery(checkoutState, { required: shippingRequired, rates: shippingRates });
+  const deliveryCents = delivery.status === 'ready'
+    ? shippingRates.find((rate) => rate.id === delivery.shipping.rateId)?.amountCents ?? 0
+    : 0;
+  const shipping = delivery.status === 'ready' ? { shipping: delivery.shipping } : {};
 
   const simulatePurchase = useMutation({
     ...actions.simulatePurchase,
@@ -216,7 +243,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (couponResolving) return;
+    if (couponResolving || delivery.status === 'incomplete') return;
     const priceId = selectedPrice?.id;
     if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
@@ -228,6 +255,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
         ...consent,
         ...billing,
+        ...shipping,
         ...(priceId === undefined ? {} : { priceId }),
         ...(appliedCoupon === undefined ? {} : { couponCode }),
       });
@@ -241,6 +269,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
       ...billing,
+      ...shipping,
       ...(priceId === undefined ? {} : { priceId }),
       ...(appliedCoupon === undefined ? {} : { couponCode }),
     });
@@ -379,7 +408,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const selectedAmountCents = selectedPrice?.amountCents ?? product.priceCents;
   const selectedCurrency = selectedPrice?.currency ?? product.currency;
-  const payableCents = appliedCoupon?.breakdown.finalCents ?? selectedAmountCents;
+  const payableCents = (appliedCoupon?.breakdown.finalCents ?? selectedAmountCents) + deliveryCents;
   const formattedPayable = formatPrice(payableCents, selectedCurrency, language);
 
   if (purchaseComplete) {
@@ -420,6 +449,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     >
         <Stack useFlexGap spacing="1rem">
           {bundle === undefined ? <CardTitle variant="h1">{product.title}</CardTitle> : null}
+          {offerProduct === undefined ? null : <ProductVariantChips productId={offerProduct.id} variants={offerProduct.variants} />}
           {bundle === undefined && product.prices.length <= 1 ? (
             <CheckoutPrice component="p">
               <DataValue>
@@ -438,6 +468,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             fallbackTestId="checkout-product-cover-fallback"
           />
           {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
+          {safetyEntries.map((entry) => (
+            <ProductSafetyInfo key={entry.productId} compliance={entry.compliance} expanded={entry.type === 'physical'} productTitle={titledSafety ? entry.title : undefined} />
+          ))}
           {product.prices.length > 1 ? (
             <FormControl>
               <FormLabel id="checkout-price-choice">{t.checkout.priceChoiceLabel}</FormLabel>
@@ -656,12 +689,29 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               </Stack>
             </FormControl>
           ) : null}
+          {shippingRequired ? (
+            <DeliveryStep
+              rates={shippingRates}
+              state={checkoutState}
+              dispatch={dispatchCheckout}
+              currency={selectedCurrency}
+              language={language}
+              geowidget={paymentConfig.data.inpostGeowidgetWithheld ? { status: 'withheld_for_staff' } : geowidgetAccess({
+                token: paymentConfig.data.inpostGeowidgetToken,
+                staffSession: paymentConfig.data.canTest,
+                testMode: testEnabled,
+              })}
+              disabled={simulatePurchase.isPending || checkoutSession.isPending}
+            />
+          ) : null}
           <EmberCtaButton
             type="submit"
             variant="contained"
             fullWidth
             data-testid="checkout-pay-cta"
             disabled={
+              soldOut ||
+              delivery.status === 'incomplete' ||
               simulatePurchase.isPending ||
               testSession.isPending || checkoutSession.isPending ||
               couponResolving ||
@@ -671,7 +721,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
-            {bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
+            {soldOut ? t.checkout.soldOut : bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
                 : t.checkout.freeIdle({ price: formattedPayable })
@@ -697,7 +747,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               <Button
                 type="button"
                 variant="outlined"
-                disabled={simulatePurchase.isPending || checkoutSession.isPending}
+                disabled={soldOut || delivery.status === 'incomplete' || simulatePurchase.isPending || checkoutSession.isPending}
                 onClick={() => simulatePurchase.mutate({
                   email,
                   productId,
@@ -706,6 +756,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                   ...consent,
                   ...billing,
+                  ...shipping,
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                   ...(appliedCoupon === undefined ? {} : { couponCode }),
                 })}
@@ -728,7 +779,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           {checkoutSession.isError ? (
             <Alert severity="error">
-              {localizeError(checkoutSession.error, t)}
+              {checkoutSessionError(checkoutSession.error, t)}
             </Alert>
           ) : null}
           {simulatePurchase.isError ? (

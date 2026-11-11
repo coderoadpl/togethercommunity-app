@@ -1,6 +1,6 @@
 {
-  "hash": "6f989dc04926fc40465c699dba12e1e3c81e8b376d6cdc4442c90bf4230c372f",
-  "shortId": "6f989dc04926",
+  "hash": "e9a1066c3f4e388d179cee6665ac694b56749c51b7c6d99a0172f5f301f9654f",
+  "shortId": "e9a1066c3f4e",
   "schema": {
     "constraints": [
       {
@@ -89,6 +89,11 @@
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((delivery_method = ANY (ARRAY['pickup'::text, 'shipping'::text])))",
+        "name": "products_delivery_method_check",
+        "table": "products"
+      },
+      {
         "definition": "CHECK ((email = lower(btrim(email))))",
         "name": "marketing_contacts_normalized_email_check",
         "table": "marketing_contacts"
@@ -107,6 +112,11 @@
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
+      },
+      {
+        "definition": "CHECK ((low_stock_threshold >= 0))",
+        "name": "product_stock_low_stock_threshold_check",
+        "table": "product_stock"
       },
       {
         "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
@@ -134,6 +144,11 @@
         "table": "product_grants"
       },
       {
+        "definition": "CHECK ((on_hand >= 0))",
+        "name": "product_stock_on_hand_check",
+        "table": "product_stock"
+      },
+      {
         "definition": "CHECK ((pending_bytes >= 0))",
         "name": "telemetry_pending_bytes_nonnegative",
         "table": "telemetry_accounting"
@@ -142,6 +157,16 @@
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((quantity > 0))",
+        "name": "stock_reservations_quantity_check",
+        "table": "stock_reservations"
+      },
+      {
+        "definition": "CHECK ((reserved >= 0))",
+        "name": "product_stock_reserved_check",
+        "table": "product_stock"
       },
       {
         "definition": "CHECK ((revision > 0))",
@@ -169,6 +194,11 @@
         "table": "marketing_signup_forms"
       },
       {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'committed'::text, 'released'::text])))",
+        "name": "stock_reservations_status_check",
+        "table": "stock_reservations"
+      },
+      {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
         "name": "tenants_status_check",
         "table": "tenants"
@@ -189,6 +219,11 @@
         "table": "meta_capi_events"
       },
       {
+        "definition": "CHECK ((type = 'shipped'::text))",
+        "name": "order_fulfilment_events_type_check",
+        "table": "order_fulfilment_events"
+      },
+      {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
         "name": "sales_link_events_type_check",
         "table": "sales_link_events"
@@ -202,6 +237,11 @@
         "definition": "CHECK ((type = ANY (ARRAY['nps'::text, 'stars'::text])))",
         "name": "surveys_type_check",
         "table": "surveys"
+      },
+      {
+        "definition": "CHECK ((type = ANY (ARRAY['tracking_enabled'::text, 'adjusted'::text, 'reserved'::text, 'released'::text, 'committed'::text, 'committed_late'::text, 'oversold'::text, 'returned'::text])))",
+        "name": "stock_events_type_check",
+        "table": "stock_events"
       },
       {
         "definition": "CHECK ((version_number > 0))",
@@ -795,6 +835,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_fulfilment_events_tenant_id_fkey",
+        "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_issue_events_tenant_id_fkey",
         "table": "order_issue_events"
       },
@@ -850,6 +895,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "product_stock_tenant_id_fkey",
+        "table": "product_stock"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "products_tenant_id_tenants_id_fk",
         "table": "products"
       },
@@ -897,6 +947,16 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "spaces_tenant_id_tenants_id_fk",
         "table": "spaces"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "stock_events_tenant_id_fkey",
+        "table": "stock_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "stock_reservations_tenant_id_fkey",
+        "table": "stock_reservations"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1177,6 +1237,21 @@
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "product_prices_tenant_product_fk",
         "table": "product_prices"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
+        "name": "product_stock_tenant_product_fk",
+        "table": "product_stock"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
+        "name": "stock_events_tenant_product_fk",
+        "table": "stock_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
+        "name": "stock_reservations_tenant_product_fk",
+        "table": "stock_reservations"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, snapshot_id) REFERENCES marketing_campaign_audience_snapshots(tenant_id, id) ON DELETE CASCADE",
@@ -1475,6 +1550,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "order_fulfilment_events_pkey",
+        "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "orders_pkey",
         "table": "orders"
       },
@@ -1552,6 +1632,16 @@
         "definition": "PRIMARY KEY (id)",
         "name": "spaces_pkey",
         "table": "spaces"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "stock_events_pkey",
+        "table": "stock_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "stock_reservations_pkey",
+        "table": "stock_reservations"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1782,6 +1872,11 @@
         "definition": "PRIMARY KEY (tenant_id, order_id, product_id, issued_count)",
         "name": "order_issue_events_pkey",
         "table": "order_issue_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, product_id)",
+        "name": "product_stock_tenant_id_product_id_pk",
+        "table": "product_stock"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, sales_link_id, revision)",
@@ -2363,6 +2458,11 @@
         "table": "orders"
       },
       {
+        "definition": "CREATE INDEX orders_tenant_fulfilment_created_idx ON orders USING btree (tenant_id, fulfilment_status, created_at DESC NULLS LAST) WHERE (fulfilment_status IS NOT NULL)",
+        "name": "orders_tenant_fulfilment_created_idx",
+        "table": "orders"
+      },
+      {
         "definition": "CREATE INDEX orders_tenant_member_idx ON orders USING btree (tenant_id, member_id)",
         "name": "orders_tenant_member_idx",
         "table": "orders"
@@ -2438,6 +2538,11 @@
         "table": "product_prices"
       },
       {
+        "definition": "CREATE INDEX products_tenant_variant_group_idx ON products USING btree (tenant_id, variant_group)",
+        "name": "products_tenant_variant_group_idx",
+        "table": "products"
+      },
+      {
         "definition": "CREATE INDEX rate_limit_buckets_expiry_idx ON rate_limit_buckets USING btree (expires_at)",
         "name": "rate_limit_buckets_expiry_idx",
         "table": "rate_limit_buckets"
@@ -2481,6 +2586,26 @@
         "definition": "CREATE INDEX space_subscriptions_tenant_space_idx ON space_subscriptions USING btree (tenant_id, space_id)",
         "name": "space_subscriptions_tenant_space_idx",
         "table": "space_subscriptions"
+      },
+      {
+        "definition": "CREATE INDEX stock_events_tenant_product_idx ON stock_events USING btree (tenant_id, product_id, occurred_at)",
+        "name": "stock_events_tenant_product_idx",
+        "table": "stock_events"
+      },
+      {
+        "definition": "CREATE INDEX stock_events_tenant_product_order_commit_idx ON stock_events USING btree (tenant_id, product_id, ((reference ->> 'orderId'::text))) WHERE (type = ANY (ARRAY['committed'::text, 'committed_late'::text]))",
+        "name": "stock_events_tenant_product_order_commit_idx",
+        "table": "stock_events"
+      },
+      {
+        "definition": "CREATE INDEX stock_reservations_status_expires_idx ON stock_reservations USING btree (expires_at) WHERE (status = 'active'::text)",
+        "name": "stock_reservations_status_expires_idx",
+        "table": "stock_reservations"
+      },
+      {
+        "definition": "CREATE INDEX stock_reservations_tenant_status_expires_idx ON stock_reservations USING btree (tenant_id, status, expires_at)",
+        "name": "stock_reservations_tenant_status_expires_idx",
+        "table": "stock_reservations"
       },
       {
         "definition": "CREATE INDEX survey_responses_page_idx ON survey_responses USING btree (tenant_id, survey_id, updated_at, id)",
@@ -2778,6 +2903,11 @@
         "table": "notifications"
       },
       {
+        "definition": "CREATE UNIQUE INDEX order_fulfilment_events_tenant_order_type_uidx ON order_fulfilment_events USING btree (tenant_id, order_id, type)",
+        "name": "order_fulfilment_events_tenant_order_type_uidx",
+        "table": "order_fulfilment_events"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX orders_tenant_provider_checkout_uidx ON orders USING btree (tenant_id, provider, ((provider_object_ids ->> 'checkoutSession'::text))) WHERE (provider_object_ids ? 'checkoutSession'::text)",
         "name": "orders_tenant_provider_checkout_uidx",
         "table": "orders"
@@ -2876,6 +3006,11 @@
         "definition": "CREATE UNIQUE INDEX spaces_tenant_slug_uidx ON spaces USING btree (tenant_id, slug)",
         "name": "spaces_tenant_slug_uidx",
         "table": "spaces"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX stock_reservations_tenant_snapshot_product_uidx ON stock_reservations USING btree (tenant_id, checkout_snapshot_id, product_id)",
+        "name": "stock_reservations_tenant_snapshot_product_uidx",
+        "table": "stock_reservations"
       },
       {
         "definition": "CREATE UNIQUE INDEX suppressions_tenant_email_hmac_active_uidx ON suppressions USING btree (tenant_id, email_hmac) WHERE (lifted_at IS NULL)",
@@ -3297,6 +3432,14 @@
             "type": "text"
           },
           {
+            "default": "'pickup'::text",
+            "generated": "",
+            "identity": "",
+            "name": "delivery_method",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -3311,6 +3454,14 @@
             "name": "published",
             "notNull": true,
             "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "compliance",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -3390,6 +3541,22 @@
             "identity": "",
             "name": "title",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "variant_group",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "variant_label",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -3728,6 +3895,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "fulfilment_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -3819,6 +3994,22 @@
             "name": "sales_link_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipment",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipping",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -4140,6 +4331,14 @@
             "default": "'[]'::jsonb",
             "generated": "",
             "identity": "",
+            "name": "shipping_rates",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
             "name": "social_links",
             "notNull": true,
             "type": "jsonb"
@@ -4406,6 +4605,14 @@
             "identity": "",
             "name": "id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "inpost_geowidget_token",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -6339,6 +6546,152 @@
       {
         "columns": [
           {
+            "default": "'{}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "reference",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "(gen_random_uuid())::text",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "quantity",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "stock_events"
+      },
+      {
+        "columns": [
+          {
+            "default": "(gen_random_uuid())::text",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "quantity",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_snapshot_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "stock_reservations"
+      },
+      {
+        "columns": [
+          {
             "default": "0",
             "generated": "",
             "identity": "",
@@ -7292,6 +7645,75 @@
           }
         ],
         "name": "tenant_transactional_email_pools"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "reserved",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "low_stock_notified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "low_stock_threshold",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "on_hand",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sold_out_notified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "product_stock"
       },
       {
         "columns": [
@@ -9171,6 +9593,67 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payload",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_fulfilment_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "allocated_at",
             "notNull": true,
             "type": "text"
@@ -10057,6 +10540,14 @@
             "name": "sales_link_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipping",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,

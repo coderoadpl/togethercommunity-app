@@ -65,6 +65,8 @@ interface StoredSettings {
   videoAutoplayDefault?: boolean;
   memberVideoAutoplayOverride?: boolean;
   defaultLanguage?: 'pl' | 'en';
+  shippingRates?: Array<{ id: string; label: string; amountCents: number; vatRatePercent: 5 | 8 | 23; carrier: 'inpost' | 'other'; pickupPoint: 'none' | 'inpost_locker'; active: boolean; deliveryEstimateDays?: { min: number; max: number } }>;
+  inpostGeowidgetToken?: string | null;
 }
 
 interface StubSpace {
@@ -331,7 +333,7 @@ afterEach(() => {
 });
 
 describe('SettingsPanel information architecture', () => {
-  it('groups settings into six localized tabs', async () => {
+  it('groups settings into seven localized tabs', async () => {
     renderPanel();
 
     const tabs = await screen.findAllByRole('tab');
@@ -340,6 +342,7 @@ describe('SettingsPanel information architecture', () => {
       en.settingsNavigation.legal,
       en.settingsNavigation.brand,
       en.analyticsSettings.heading,
+      en.shipping.settingsHeading,
       en.settingsNavigation.security,
       en.settingsNavigation.diagnostics,
     ]);
@@ -1695,5 +1698,53 @@ describe('SettingsPanel analytics', () => {
     expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentCookieName })).toHaveAccessibleDescription(pl.analyticsSettings.consentCookieNameHint);
     expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentCookieValue })).toHaveAccessibleDescription(pl.analyticsSettings.consentCookieValueHint);
     expect(screen.getByRole('switch', { name: pl.analyticsSettings.loadWithoutConsent })).toHaveAccessibleDescription(pl.analyticsSettings.loadWithoutConsentHint);
+  });
+});
+
+describe('SettingsPanel shipping', () => {
+  const locker = { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const, pickupPoint: 'inpost_locker' as const, active: true };
+
+  it('adds, edits and deactivates delivery options and saves the map token', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, shippingRates: [locker], inpostGeowidgetToken: null });
+    await openSettingsSection(en.shipping.settingsHeading);
+    const label = await screen.findByRole('textbox', { name: `${en.shipping.rateLabel} 1` });
+    await waitFor(() => expect(label).toHaveValue('Parcel locker'));
+    expect(screen.getByRole('textbox', { name: `${en.shipping.ratePrice} 1` })).toHaveValue('14.99');
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.addRate }));
+    const id = screen.getByRole('textbox', { name: `${en.shipping.rateId} 2` });
+    await userEvent.clear(id);
+    await userEvent.type(id, 'Courier');
+    await userEvent.type(screen.getByRole('textbox', { name: `${en.shipping.rateLabel} 2` }), 'Courier');
+    const price = screen.getByRole('textbox', { name: `${en.shipping.ratePrice} 2` });
+    await userEvent.clear(price);
+    await userEvent.type(price, '19,99');
+    await userEvent.type(screen.getByRole('textbox', { name: `${en.shipping.rateEstimateMin} 2` }), '1');
+    await userEvent.type(screen.getByRole('textbox', { name: `${en.shipping.rateEstimateMax} 2` }), '3');
+    await userEvent.click(screen.getByRole('switch', { name: `${en.shipping.rateActive} 1` }));
+    expect(screen.getByRole('textbox', { name: en.shipping.geowidgetToken })).toHaveAccessibleDescription(
+      expect.stringContaining('Owners and admins see the typed locker code instead of the map on their own checkout.'),
+    );
+    await userEvent.type(screen.getByRole('textbox', { name: en.shipping.geowidgetToken }), 'public-map-token');
+    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await waitFor(() => expect(updates).toContainEqual({
+      shippingRates: [
+        { ...locker, active: false },
+        { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 3 } },
+      ],
+      inpostGeowidgetToken: 'public-map-token',
+    }));
+  });
+
+  it('caps the list at five options and refuses an invalid row before saving', async () => {
+    const rates = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ ...locker, id, label: `Option ${id}` }));
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, shippingRates: rates });
+    await openSettingsSection(en.shipping.settingsHeading);
+    await waitFor(() => expect(screen.getByRole('textbox', { name: `${en.shipping.rateLabel} 5` })).toHaveValue('Option e'));
+    expect(screen.getByRole('button', { name: en.shipping.addRate })).toBeDisabled();
+    expect(screen.getByText(en.shipping.maxRates)).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole('textbox', { name: `${en.shipping.rateLabel} 5` }));
+    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
+    expect(updates).toEqual([]);
   });
 });

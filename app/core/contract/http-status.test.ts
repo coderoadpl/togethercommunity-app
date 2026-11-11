@@ -29,6 +29,11 @@ describe('error taxonomy mappings', () => {
     expect(HTTP_STATUS_BY_ERROR_CODE.conflict).toBe(409);
   });
 
+  it('maps a sold-out product to 409 and its own CLI exit code', () => {
+    expect(HTTP_STATUS_BY_ERROR_CODE.sold_out).toBe(409);
+    expect(EXIT_CODE_BY_ERROR_CODE.sold_out).toBe(26);
+  });
+
   it('maps integration failures to distinct 5xx/412 statuses', () => {
     expect(HTTP_STATUS_BY_ERROR_CODE.integration_not_configured).toBe(412);
     expect(HTTP_STATUS_BY_ERROR_CODE.integration_auth).toBe(502);

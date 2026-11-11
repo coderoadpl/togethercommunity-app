@@ -1,4 +1,4 @@
-import { checkoutSessionStatusInputSchema, err, ok, validation, type AppError, type Result, type CheckoutPurchaseAnalytics } from '#core/domain/index.js';
+import { checkoutSessionStatusInputSchema, err, ok, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics } from '#core/domain/index.js';
 
 import type { PaymentRefundRepository, TenantRepository, ProductRepository } from '../ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
@@ -30,7 +30,7 @@ export const getCheckoutSessionStatus = async (
   const metaCapi = deps.metaCapi ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi) : undefined;
   const capi = metaCapi === undefined ? {} : { metaCapi };
   if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid', ...capi });
-  const lines = order.lines ?? [];
+  const lines = productLines(order.lines ?? []);
   const product = lines.length === 0 ? await deps.products.findById(tenantId, order.productId) : null;
   const salesLink = order.salesLinkId == null ? null : await deps.salesLinks?.findById(tenantId, order.salesLinkId);
   return ok({

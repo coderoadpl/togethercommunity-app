@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ok, salesLinkSchema } from '#core/domain/index.js';
+import { ok, salesLinkSchema, tenantSettingsSchema, type EmailOutboxPayload } from '#core/domain/index.js';
 
 import type {
   Member,
@@ -11,7 +11,8 @@ import type {
   ProductPrice,
 } from '#core/domain/index.js';
 
-import type { AuthPort, ProductRepository, PurchaseRepository } from '../ports.js';
+import type { AuthPort, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
 
 const product = (id: string, tenantId: string, published: boolean): Product => ({
@@ -25,6 +26,7 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published,
   accessItems: [],
   legacyId: null,
@@ -116,6 +118,16 @@ const fakeAuth = (): AuthPort => ({
   createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
 });
 
+const fakeTenants = (): TenantRepository => ({
+  findById: async (tenantId) => ({ id: tenantId, slug: tenantId, name: `Workspace ${tenantId}`, status: 'active', plan: 'hosted', contentVersion: 1 }),
+  findBySlug: async () => null,
+  findSole: async () => null,
+  findSettings: async () => null,
+  updateSettings: async (_tenantId, settings) => settings,
+  createTenantWithOwnerGrant: async () => null,
+  hasAny: async () => true,
+});
+
 const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
   const purchases = fakePurchases();
   const members: Member[] = [];
@@ -202,6 +214,12 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
     },
     ids: { nextId: () => `id-${++sequence}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
+    tenants: fakeTenants(),
+    tenantDomains: { listByTenant: async () => [] },
+    logger: { warn: () => undefined },
+    appBaseUrl: 'https://together.example.com',
+    baseDomain: 'together.example.com',
+    singleTenantMode: false,
   };
 
   return { deps, purchases, orders, subscriptions, grants, members };
@@ -295,13 +313,15 @@ const bundleHarness = () => {
   h.deps.salesLinks = { list: async () => [link], findById: async (tenantId, id) => tenantId === link.tenantId && id === link.id ? link : null, findBySlug: async () => link, save: async (_, next) => ok(next), delete: async () => ok(undefined) };
   let transactionCalls = 0;
   let rejectOrder = false;
+  const queued: { to: string; payload: EmailOutboxPayload }[] = [];
+  const emailOutbox = { enqueue: async (message: { id: string; to: string; payload: EmailOutboxPayload }) => { queued.push({ to: message.to, payload: message.payload }); return ok({ id: message.id }); } };
   h.deps.paymentTransaction = { run: async (operation) => {
     transactionCalls += 1;
     const membersBefore = [...h.members];
     const grantsBefore = new Map(h.grants);
     const ordersBefore = [...h.orders];
     try {
-      return await operation({ members: h.deps.members, grants: h.deps.grants, orders: { ...h.deps.orders, create: async (tenantId, order) => {
+      return await operation({ members: h.deps.members, grants: h.deps.grants, ...(h.deps.stock === undefined ? {} : { stock: h.deps.stock }), emailOutbox, orders: { ...h.deps.orders, create: async (tenantId, order) => {
         if (rejectOrder) throw new Error('Order write failed');
         await h.deps.orders.create(tenantId, order);
       } } });
@@ -313,7 +333,7 @@ const bundleHarness = () => {
       throw error;
     }
   } };
-  return { ...h, transactionCalls: () => transactionCalls, rejectOrderWrite: () => { rejectOrder = true; } };
+  return { ...h, queued, transactionCalls: () => transactionCalls, rejectOrderWrite: () => { rejectOrder = true; } };
 };
 
 it('simulates one mixed-rate bundle payment and grants only its digital products in one transaction', async () => {
@@ -359,4 +379,74 @@ it('records a standalone physical purchase without creating any access grant', a
   expect(h.grants.size).toBe(0);
   expect(h.purchases.grants).toHaveLength(0);
   expect(h.orders[0]).toMatchObject({ salesLinkId: null, amountCents: 1050, lines: [{ productId: 'print', issuedCount: 0 }] });
+});
+
+it('alerts staff about low stock from a simulated purchase like the paid webhook does', async () => {
+  const h = bundleHarness();
+  const stock = createStockRepositoryFake();
+  stock.track('workspace', 'print', 2, 1);
+  h.deps.stock = stock.repository;
+  h.deps.tenantAccess = { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.test', staffRole: 'owner', language: 'en' }] };
+  expect(await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print' }, h.deps)).toMatchObject({ ok: true });
+  expect(stock.levels.get('workspace', 'print')).toMatchObject({ onHand: 1, reserved: 0, lowStockNotifiedAt: '1998-07-12T00:00:00.000Z' });
+  expect(h.queued).toEqual([{ to: 'owner@example.test', payload: expect.objectContaining({ kind: 'stock-low', available: 1, threshold: 1, oversold: false, productTitle: 'Product print' }) }]);
+  expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'committed']);
+});
+
+it('records the order before locking stock, in the same order as the paid webhook', async () => {
+  const h = bundleHarness();
+  const stock = createStockRepositoryFake();
+  stock.track('workspace', 'print', 1);
+  const steps: string[] = [];
+  const orders = h.deps.orders;
+  h.deps.orders = { ...orders, create: async (tenantId, order) => { steps.push('order'); await orders.create(tenantId, order); } };
+  h.deps.stock = {
+    ...stock.repository,
+    reserve: async (tenantId, input) => { steps.push('reserve'); return stock.repository.reserve(tenantId, input); },
+    commit: async (tenantId, input) => { steps.push('commit'); return stock.repository.commit(tenantId, input); },
+  };
+  expect(await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print', salesLinkId: 'link' }, h.deps)).toMatchObject({ ok: true });
+  expect(steps).toEqual(['order', 'reserve', 'commit']);
+  expect(stock.levels.get('workspace', 'print')).toMatchObject({ onHand: 0, reserved: 0 });
+});
+
+describe('simulated shipped purchase', () => {
+  const shippedHarness = () => {
+    const shipped: Product = { ...product('accessory', 't-acme', true), type: 'physical', deliveryMethod: 'shipping', priceCents: 4900, vatRate: 23 };
+    const h = harness({ products: [shipped] });
+    h.deps.tenants = {
+      findById: async () => null, findBySlug: async () => null, findSole: async () => null,
+      findSettings: async () => tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
+        { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+      ] }),
+      updateSettings: async (_tenantId, value) => value, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
+    };
+    h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants, emailOutbox: { enqueue: async (message) => ok({ id: message.id }) } }) };
+    return h;
+  };
+
+  it('synthesises a Polish address and records the same shipped order shape as a paid checkout', async () => {
+    const h = shippedHarness();
+    const result = await simulatePurchase('t-acme', {
+      email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { alreadyOwned: false } });
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({
+      amountCents: 6399, fulfilmentStatus: 'to_pack',
+      lines: [{ productId: 'accessory', productType: 'physical', grossCents: 4900 }, { productId: 'shipping:locker', productType: 'shipping', grossCents: 1499, vatRate: 23, issuedCount: null }],
+      shipping: {
+        rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+        address: { country: 'PL' }, phone: expect.any(String),
+      },
+    });
+    expect(h.grants.size).toBe(0);
+  });
+
+  it('requires a delivery choice for a shipped product', async () => {
+    const h = shippedHarness();
+    expect(await simulatePurchase('t-acme', { email: 'buyer@together.dev', productId: 'accessory' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'shipping_required' } });
+    expect(h.orders).toHaveLength(0);
+  });
 });

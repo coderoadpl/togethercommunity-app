@@ -22,6 +22,7 @@ import {
   surveyContracts,
   salesLinkContracts,
   orderVerificationContracts,
+  orderFulfilmentContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -161,6 +162,8 @@ import {
   productPriceCreateOutputSchema,
   productPriceDeactivateOutputSchema,
   productPricesListOutputSchema,
+  productStockOutputSchema,
+  productStockWriteOutputSchema,
   salesSummaryOutputSchema,
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
@@ -301,6 +304,9 @@ import {
   type OrdersExportQueryInput,
   type ProductPriceCreateInput,
   type ProductPriceDeactivateInput,
+  type ProductStockAdjustInput,
+  type ProductStockEnableInput,
+  type ProductStockThresholdInput,
   type SubscriptionSimulateInput,
   type DiscussionGetInput,
   type PostCreateInput,
@@ -520,6 +526,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
   withdrawMetaCapiConsent: (input: { orderId: string }, signal?: AbortSignal) =>
     request(options, API_ROUTES.withdrawMetaCapiConsent.method, API_ROUTES.withdrawMetaCapiConsent.path, metaCapiStateSchema, input, signal),
   verifyOrder: (input: z.input<typeof orderVerificationContracts.verifyOrder.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), orderVerificationContracts.verifyOrder.output, undefined, signal),
+  shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
+  ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
   issueOrderLine: (input: z.input<typeof orderVerificationContracts.issueOrderLine.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.issueOrderLine.path.replace(':orderId', encodeURIComponent(input.orderId)).replace(':productId', encodeURIComponent(input.productId)), orderVerificationContracts.issueOrderLine.output, input, signal),
   provisionOperatorTenant: (input: ProvisionTenantInput, secret: string) =>
     request(options, API_ROUTES.operatorTenantProvision.method, API_ROUTES.operatorTenantProvision.path,
@@ -1201,6 +1209,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  getProductStock: (productId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productStock.method,
+      API_ROUTES.productStock.path.replace(':productId', encodeURIComponent(productId)),
+      productStockOutputSchema,
+      undefined,
+      signal,
+    ),
+  enableProductStock: (input: ProductStockEnableInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productStockEnable.method, API_ROUTES.productStockEnable.path, productStockWriteOutputSchema, input, signal),
+  adjustProductStock: (input: ProductStockAdjustInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productStockAdjust.method, API_ROUTES.productStockAdjust.path, productStockWriteOutputSchema, input, signal),
+  setProductStockThreshold: (input: ProductStockThresholdInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productStockThreshold.method, API_ROUTES.productStockThreshold.path, productStockWriteOutputSchema, input, signal),
   listOrders: (input: OrdersListQueryInput = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (input.mode !== undefined) params.set('mode', input.mode);
@@ -1208,6 +1231,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.couponId !== undefined) params.set('couponId', input.couponId);
+    if (input.fulfilmentStatus !== undefined) params.set('fulfilmentStatus', input.fulfilmentStatus);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
@@ -1297,6 +1321,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.couponId !== undefined) params.set('couponId', input.couponId);
+    if (input.fulfilmentStatus !== undefined) params.set('fulfilmentStatus', input.fulfilmentStatus);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);

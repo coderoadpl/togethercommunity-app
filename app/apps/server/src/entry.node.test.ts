@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => {
   const deps = {
     dispatchEmails: vi.fn(),
     dispatchAutoInvoices: vi.fn(),
+    releaseExpiredStockReservations: vi.fn(),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger' },
   };
@@ -127,6 +128,7 @@ describe('entry.node composition', () => {
       ok: true,
       value: { processed: false, processedCount: 0, orderId: null },
     });
+    harness.deps.releaseExpiredStockReservations.mockRejectedValueOnce(new Error('stock unavailable'));
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
 
@@ -154,6 +156,8 @@ describe('entry.node composition', () => {
 
     await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
 
+    expect(harness.deps.releaseExpiredStockReservations).toHaveBeenCalledOnce();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
     expect(harness.dispatchKsefInBackground).toHaveBeenCalledWith(
       harness.deps.ksef,

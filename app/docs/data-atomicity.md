@@ -45,6 +45,18 @@ at all.
 - Physical collection: `OrderVerificationRepository.issueLine` serializes on the
   order row and writes the physical line counter and append-only issue event in
   one commit.
+- Fulfilment: `OrderFulfilmentRepository.ship` serializes on the order row and
+  writes the `shipped` status, the shipment projection, the append-only
+  `order_fulfilment_events` row and the buyer e-mail in the outbox in one
+  commit.
+- Stock: `StockRepository.reserve`, `StockRepository.release`,
+  `StockRepository.commit`, `StockRepository.enableTracking`,
+  `StockRepository.adjust`, and `StockRepository.setThreshold` each write the
+  `product_stock` projection, the reservation rows, and the append-only
+  `stock_events` rows of one operation in one transaction (a savepoint when the
+  payment transaction calls `commit`). `StockRepository.releaseExpired` releases
+  each expired reservation in its own transaction. See
+  [Stock reservations](#stock-reservations).
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,
   `InvoiceRepository.createFrozenKsef`, `InvoiceRepository.checkpointKsef`,
@@ -145,6 +157,35 @@ Survey CSV exports read the complete tenant-scoped response set and member names
 in one SQL statement. PostgreSQL supplies one statement snapshot, so concurrent
 submissions cannot shift page boundaries and duplicate or omit exported rows.
 
+## Stock reservations
+
+`StockRepository.reserve` takes the row lock through its conditional update
+`reserved = reserved + 1 WHERE on_hand - reserved >= 1` on each tracked product,
+in product-id order, so concurrent checkouts for the last piece serialize on the
+`product_stock` row and exactly one succeeds; a sold-out product rolls back the
+reservations already taken in the same call. Release and commit lock the
+reservation row first (`UPDATE ... WHERE status = 'active'` or
+`SELECT ... FOR UPDATE`) and the `product_stock` row second, so the expiry sweep
+and a late payment webhook never deadlock and end in exactly one terminal state:
+whichever runs second sees the other's status. Commit locks every
+`product_stock` row it touches, reserved or not, in one pass in product-id order
+before any update, the same order `reserve` uses. A committed reservation makes
+a retried commit a no-op; a released one is committed late. A commit for a
+tracked product without a reservation row inserts a committed row under the
+unique `(tenant_id, checkout_snapshot_id, product_id)` index with `ON CONFLICT
+DO NOTHING`, so concurrent retries decrement `on_hand` once. A commit without a
+checkout snapshot checks, under the `product_stock` row lock, for an earlier
+`committed` or `committed_late` event carrying the same `orderId` and does
+nothing when it finds one, so webhook retries of such an order decrement once;
+the partial index `stock_events_tenant_product_order_commit_idx` on
+`(tenant_id, product_id, reference->>'orderId')` for those two event types keeps
+that lookup off the product's full event history.
+The simulated purchase records its order (taking the sales-link lock) before it
+reserves and commits stock, the same lock order as the payment webhook. `on_hand` and
+`reserved` carry `CHECK (>= 0)`; the commit clamps `on_hand` at zero and records
+the shortfall as an `oversold` event. Stock events are never updated or deleted
+except through the product foreign-key cascade when a draft product is deleted.
+
 ## Sales links and order lines
 
 Sales links use a current projection with an ordered JSON product list and
@@ -175,3 +216,12 @@ timestamp and resulting count. Concurrent issue requests serialize on that
 order row: exactly one request can change the count from zero to one, and the
 others return a conflict. The quantity-one cap keeps events consistent with the
 projection and prevents duplicate collection. Reading or scanning a verification token does not write an event.
+
+Marking an order as shipped follows the same pattern. The repository locks the
+tenant-scoped order row with `FOR UPDATE`, re-checks the payment status and the
+`to_pack` fulfilment status, then sets `fulfilment_status = 'shipped'` and
+`orders.shipment`, appends an `order_fulfilment_events` row and inserts the
+`order-shipped` outbox row with its queued e-mail event. If the outbox insert
+fails, the transaction rolls back and the order stays `to_pack`. A unique index
+on the tenant, order and event type backs the row lock. The e-mail is
+dispatched only after commit, so a refused shipment never sends a message.

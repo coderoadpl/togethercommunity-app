@@ -766,6 +766,12 @@ export const createMultipleTenantsReporter = (
   };
 };
 
+export const selectDatabasePoolOptions = (
+  env: Pick<Env, 'DATABASE_POOL_MAX'>,
+): { max: number } | undefined => env.DATABASE_POOL_MAX === undefined
+  ? undefined
+  : { max: env.DATABASE_POOL_MAX };
+
 export const selectAuthTrustedProxyHeader = (
   env: Pick<Env, 'AUTH_TRUSTED_PROXY_HEADER'>,
 ): string | null => env.AUTH_TRUSTED_PROXY_HEADER === 'direct'
@@ -871,7 +877,7 @@ export const createDeps = (
   options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
 ): AppDeps => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
-  const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL);
+  const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL, selectDatabasePoolOptions(env));
   const tenantDomains = createTenantDomainRepository(db);
   const storageCorsCache = createStorageCorsCache(db);
   const tenantDomainEvents = createTenantDomainEventRepository(db);

@@ -95,6 +95,29 @@ describe('production self-host stack', () => {
     expect(entrypoint).toContain('exec node apps/server/src/entry.node.js');
   });
 
+  it('takes only non-secret release metadata as build arguments and stamps it into one image', () => {
+    const dockerfile = read('Dockerfile');
+    const stages = dockerfile.split(/^FROM /mu).slice(1);
+    const builder = stages.find((stage) => / AS builder$/mu.test(stage.split('\n')[0] ?? '')) ?? '';
+    const runtime = stages.find((stage) => / AS runtime$/mu.test(stage.split('\n')[0] ?? '')) ?? '';
+    const buildArguments = [...dockerfile.matchAll(/^ARG (?<name>[A-Z0-9_]+)=?(?<value>.*)$/gmu)];
+
+    expect([...new Set(buildArguments.map((match) => match.groups?.['name']))].sort()).toEqual([
+      'APP_BASE_DOMAIN',
+      'APP_COMMIT_SHA',
+      'APP_VERSION',
+      'VITE_SENTRY_DSN',
+    ]);
+    expect(buildArguments.every((match) => match.groups?.['value'] === '')).toBe(true);
+    expect(builder).toContain('pnpm exec tsx scripts/stamp-image-version.ts "$APP_VERSION"');
+    expect(builder.indexOf('stamp-image-version')).toBeLessThan(builder.indexOf('pnpm run build:web'));
+    expect(runtime).toContain('COPY --from=builder /build/package.json ./');
+    expect(runtime).toMatch(/^\s+APP_COMMIT_SHA=\$APP_COMMIT_SHA \\$/mu);
+    expect(runtime).toMatch(/^\s+APP_BASE_DOMAIN=\$APP_BASE_DOMAIN$/mu);
+    expect(runtime).not.toContain('VITE_SENTRY_DSN');
+    expect(read('.dockerignore').split('\n')).toEqual(expect.arrayContaining(['.env', '.git']));
+  });
+
   it('keeps certificate issuance behind the private verified-domain check', () => {
     const caddyfile = read('Caddyfile');
     const compose = composeSchema.parse(parse(read('docker-compose.yml')));

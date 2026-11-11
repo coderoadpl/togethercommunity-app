@@ -5,7 +5,12 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
 RUN corepack enable && corepack prepare --activate
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm exec tsc -p tsconfig.docker.json && pnpm run build:web
+ARG APP_VERSION=
+ARG APP_COMMIT_SHA=
+ARG APP_BASE_DOMAIN=
+ARG VITE_SENTRY_DSN=
+RUN if [ -n "$APP_VERSION" ]; then pnpm exec tsx scripts/stamp-image-version.ts "$APP_VERSION"; fi \
+  && pnpm exec tsc -p tsconfig.docker.json && pnpm run build:web
 
 FROM public.ecr.aws/docker/library/node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS prod-deps
 WORKDIR /build
@@ -15,15 +20,23 @@ RUN corepack enable && corepack prepare --activate
 RUN pnpm install --frozen-lockfile --prod
 
 FROM public.ecr.aws/docker/library/node:24-bookworm-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7 AS runtime
+ARG APP_VERSION=
+ARG APP_COMMIT_SHA=
+ARG APP_BASE_DOMAIN=
+LABEL org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_COMMIT_SHA"
 ENV NODE_ENV=production \
     PORT=48730 \
-    WEB_DIST_DIR=dist/web
+    WEB_DIST_DIR=dist/web \
+    APP_COMMIT_SHA=$APP_COMMIT_SHA \
+    APP_BASE_DOMAIN=$APP_BASE_DOMAIN
 WORKDIR /app
 COPY --from=prod-deps /build/node_modules ./node_modules
 COPY --from=builder /build/dist/server/ ./
 COPY --from=builder /build/dist/web ./dist/web
 COPY --from=builder /build/drizzle ./drizzle
-COPY package.json docker-entrypoint.sh ./
+COPY --from=builder /build/package.json ./
+COPY docker-entrypoint.sh ./
 RUN chmod +x ./docker-entrypoint.sh && chown -R node:node /app
 USER node
 EXPOSE 48730

@@ -189,6 +189,7 @@ const deps = (input: {
   authenticated?: boolean;
   databaseUp?: boolean;
   schemaStatus?: Awaited<ReturnType<AppDeps['health']['schemaStatus']>>;
+  migrationCounts?: Awaited<ReturnType<AppDeps['health']['migrationCounts']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
   checkTenantDomains?: AppDeps['checkTenantDomains'];
@@ -916,6 +917,7 @@ const deps = (input: {
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
+      migrationCounts: async () => input.migrationCounts ?? { expected: 82, applied: 82 },
       schemaStatus: async () => input.schemaStatus ?? {
         expectedMigrations: 82,
         appliedMigrations: 82,
@@ -3494,6 +3496,10 @@ describe('health route', () => {
         databasePings += 1;
         return false;
       },
+      migrationCounts: async () => {
+        databasePings += 1;
+        return { expected: 82, applied: null };
+      },
       schemaStatus: async () => ({
         expectedMigrations: 82,
         appliedMigrations: 82,
@@ -3528,6 +3534,27 @@ describe('health route', () => {
       ok: false,
       error: { code: 'unavailable', message: 'Database is not reachable' },
     });
+  });
+
+  it('stays unready until the database holds every migration this release ships', async () => {
+    const pending = await buildApp(deps({ migrationCounts: { expected: 82, applied: 81 } }))
+      .request(API_PATHS.healthReady);
+    expect(pending.status).toBe(503);
+    expect(await pending.json()).toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'Database migrations are behind this release: 81 of 82 applied' },
+    });
+
+    const untouched = await buildApp(deps({ migrationCounts: { expected: 82, applied: null } }))
+      .request(API_PATHS.healthReady);
+    expect(untouched.status).toBe(503);
+    expect(await untouched.json()).toMatchObject({
+      error: { message: 'Database migrations are behind this release: 0 of 82 applied' },
+    });
+
+    const ahead = await buildApp(deps({ migrationCounts: { expected: 82, applied: 83 } }))
+      .request(API_PATHS.healthReady);
+    expect(ahead.status).toBe(200);
   });
 });
 

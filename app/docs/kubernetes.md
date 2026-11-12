@@ -235,7 +235,9 @@ A tenant whose own configuration is incomplete (no SES settings, a missing SES
 secret, or marketing broadcasts disabled) does not fail
 `/api/internal/marketing/tick`: the answer stays 2xx, lists the tenant, the
 step and the error code under `tenantErrors`, and the server logs one warning
-line per tenant. The other tenants are processed as usual. Any other failure,
+line per tenant. The other tenants are processed as usual. A message already
+waiting in a tenant's outbox when its SES secret is missing or fails decryption
+stays queued for a later tick before the failure is reported. Any other failure,
 such as an unreachable database, an error from the e-mail provider or a stored
 SES secret that fails decryption, still answers with an error status and fails
 the Job; a failure in one tenant's step is also logged as an error line naming

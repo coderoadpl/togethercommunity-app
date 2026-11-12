@@ -1234,7 +1234,7 @@ export const createDeps = (
         { workerId: randomUUID(), deadlineAt, maxSends: env.MARKETING_BATCH_CAP }, {
           ...deliveryRepos, contacts: marketingContacts.contacts, delivery, clock, ids, waiter, definitions, consents: marketingConsents, hmac: emailHmac, credentials: marketingCredentials, throttle: marketingThrottle, ses: marketingSes,
         });
-      if (!dispatched.ok) failures.tenant(tenantId, 'outbox', dispatched.error);
+      failures.outbox(tenantId, dispatched);
     }
     const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED && clock.nowIso() < deadlineAt
       ? await purgeExpiredConsentEvidence(

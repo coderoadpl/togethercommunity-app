@@ -1881,6 +1881,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(validation('Invalid avatar completion', parsed.error.flatten())));
     }
     return respond(await completeAvatarUpload(ctxOf(c), parsed.data, {
+      logger: deps.logger,
       avatars: deps.accountAvatars,
       avatarImages: deps.avatarImages,
       secretResolver: deps.secretResolver,

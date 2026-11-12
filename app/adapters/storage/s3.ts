@@ -11,6 +11,7 @@ import {
   integrationUnavailable,
   ok,
   storageConfigurationSchema,
+  storageListInputSchema,
   validation,
   type AppError,
   type ProviderDiagnostic,
@@ -21,6 +22,8 @@ import {
 } from '#core/domain/index.js';
 import { privateNetworkAddress, privateNetworkHostname } from '#core/domain/network.js';
 import type { StorageProvider, TenantSecretResolver } from '#core/server/index.js';
+
+import { parseListObjectsPage } from './list-objects.js';
 
 const S3_HOST_PATTERN =
   /^(?<bucket>[a-z0-9][a-z0-9.-]*)\.s3(?:[.-](?<region>[a-z0-9-]+))?\.amazonaws\.com$/;
@@ -76,7 +79,7 @@ type FetchStorage = (
   url: string,
   init: {
     method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
-    body?: string;
+    body?: string | Uint8Array;
     headers?: Record<string, string>;
     dispatcher?: Dispatcher;
     redirect?: 'error';
@@ -538,6 +541,61 @@ export const createS3StorageProvider = (
   };
 
   return {
+    list: async (input) => {
+      const parsed = storageListInputSchema.safeParse(input);
+      if (!parsed.success) return err(validation('Invalid storage listing request'));
+      const { configuration, prefix, continuationToken, limit } = parsed.data;
+      const target = objectUrl(configuration, '');
+      target.searchParams.set('list-type', '2');
+      target.searchParams.set('encoding-type', 'url');
+      target.searchParams.set('prefix', prefix);
+      target.searchParams.set('max-keys', String(limit));
+      if (continuationToken !== null) target.searchParams.set('continuation-token', continuationToken);
+      const safeTarget = await validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      const signed = signObjectUrl('GET', target, { ...configuration, expiresInSeconds: 60 }, now);
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await fetchStorage(signed, {
+          method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
+          headers: { 'Accept-Encoding': 'identity' },
+        });
+        if (!response.ok || !response.body?.getReader
+          || (response.headers.get('content-encoding') ?? 'identity') !== 'identity') {
+          await discardStorageResponseBody(response);
+          return err(integrationUnavailable('S3 object listing is unavailable.'));
+        }
+        const reader = response.body.getReader();
+        try {
+          const decoder = new TextDecoder('utf-8', { fatal: true });
+          let bytes = 0;
+          let xml = '';
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            bytes += chunk.value?.byteLength ?? 0;
+            if (chunk.value === undefined || bytes > 2 * 1024 * 1024) {
+              await reader.cancel();
+              return err(integrationUnavailable('S3 object listing exceeds the byte ceiling.'));
+            }
+            xml += decoder.decode(chunk.value, { stream: true });
+          }
+          xml += decoder.decode();
+          const page = parseListObjectsPage(xml);
+          if (page.ok && (page.value.objects.length > limit
+            || page.value.objects.some((object) => !object.key.startsWith(prefix)))) {
+            return err(integrationUnavailable('S3 returned objects outside the requested listing.'));
+          }
+          return page;
+        } finally {
+          reader.releaseLock();
+        }
+      } catch {
+        return err(integrationUnavailable('Could not read the S3 object listing.'));
+      } finally {
+        await dispatcher.destroy();
+      }
+    },
     objectUrl,
     probe,
     probeCors,
@@ -566,7 +624,26 @@ export const createS3StorageProvider = (
       }
       return ok({ sizeBytes: Number(contentLength) });
     },
-    getObject: async (input, { maxBytes }) => {
+    putObject: async (input) => {
+      const signed = presign('PUT', { ...input, expiresInSeconds: 60 }, now);
+      if (!signed.ok) return signed;
+      const safeTarget = await validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await fetchStorage(signed.value, {
+          method: 'PUT', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
+          headers: { 'content-type': input.contentType }, body: input.body,
+        });
+        await discardStorageResponseBody(response);
+        return response.ok ? ok(undefined) : err(integrationUnavailable('S3 rejected the published image'));
+      } catch {
+        return err(integrationUnavailable('Could not store the published image'));
+      } finally {
+        await dispatcher.destroy();
+      }
+    },
+    getObject: async (input, { maxBytes, range = false }) => {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return err(validation('Invalid object byte ceiling'));
       const signed = presign('GET', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
@@ -576,10 +653,21 @@ export const createS3StorageProvider = (
       try {
         const response = await fetchStorage(signed.value, {
           method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
-          headers: { 'Accept-Encoding': 'identity' },
+          headers: { 'Accept-Encoding': 'identity', ...(range ? { Range: `bytes=0-${String(maxBytes)}` } : {}) },
         });
         const length = response.headers.get('content-length');
         const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        const contentRange = response.headers.get('content-range');
+        const rangeMatch = contentRange === null ? null : /^bytes 0-(\d+)\/(\d+)$/u.exec(contentRange);
+        if (range && (size > maxBytes || (rangeMatch !== null && Number(rangeMatch[2]) > maxBytes))) {
+          await discardStorageResponseBody(response);
+          return err(validation('Object exceeds the byte ceiling'));
+        }
+        if (range && response.status === 206 && (rangeMatch === null
+          || Number(rangeMatch[1]) + 1 !== size || Number(rangeMatch[2]) !== size)) {
+          await discardStorageResponseBody(response);
+          return err(integrationUnavailable('S3 returned an incomplete object range'));
+        }
         if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
           (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
           await discardStorageResponseBody(response);

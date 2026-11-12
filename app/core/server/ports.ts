@@ -1,4 +1,7 @@
 import type {
+  StorageListInput,
+  StorageListPage,
+  StorageReferenceInventory,
   TenantTeamMember,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
@@ -963,14 +966,14 @@ export interface ImportRedirectRepository extends TenantRedirectRepository {
 export interface ApiKeyRateLimitRepository {
   claim(tenantId: string, input: {
     apiKeyId: string;
-    period: 'minute' | 'hour' | 'day';
+    period: 'minute' | 'hour' | 'day' | 'import-validate-records';
     windowStartedAt: string;
     limit: number;
     cost?: number;
   }): Promise<boolean>;
   release(tenantId: string, input: {
     apiKeyId: string;
-    period: 'minute' | 'hour' | 'day';
+    period: 'minute' | 'hour' | 'day' | 'import-validate-records';
     windowStartedAt: string;
     cost?: number;
   }): Promise<void>;
@@ -1498,13 +1501,26 @@ export interface BunnyTokenSigner {
   }): string;
 }
 
+export interface StorageReferenceRepository {
+  readInventory(tenantId: string): Promise<StorageReferenceInventory>;
+}
+
 export interface StorageProvider {
+  list(input: StorageListInput): Promise<Result<StorageListPage, AppError>>;
   getObject(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
-  }, options: { maxBytes: number }): Promise<Result<Uint8Array, AppError>>;
+  }, options: { maxBytes: number; range?: boolean }): Promise<Result<Uint8Array, AppError>>;
+  putObject(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+    body: Uint8Array;
+    contentType: string;
+  }): Promise<Result<void, AppError>>;
   objectUrl(configuration: StorageConfiguration, key: string): URL;
   probe(
     input: StorageConfiguration,

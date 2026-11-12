@@ -487,7 +487,7 @@ const twoFactorRedirectSchema = z.object({ twoFactorRedirect: z.literal(true) })
 const redirectOrigin = (location: string | null, fallback: string): string => {
   if (location === null) return fallback;
   try {
-    return new URL(location).origin;
+    return new URL(location, fallback).origin;
   } catch {
     return fallback;
   }
@@ -504,7 +504,11 @@ const redirectTwoFactorNavigation = (baseUrl: string) => ({
       handler: createAuthMiddleware(async (ctx) => {
         if (!twoFactorRedirectSchema.safeParse(ctx.context.returned).success) return;
         const location = ctx.context.responseHeaders?.get('location');
-        const origin = redirectOrigin(location ?? null, new URL(baseUrl).origin);
+        const requestOrigin = ctx.request === undefined ? null : new URL(ctx.request.url).origin;
+        const fallbackOrigin = requestOrigin !== null && ctx.context.isTrustedOrigin(requestOrigin)
+          ? requestOrigin
+          : new URL(baseUrl).origin;
+        const origin = redirectOrigin(location ?? null, fallbackOrigin);
         throw ctx.redirect(new URL('/login?twoFactor=required', origin).toString());
       }),
     }],

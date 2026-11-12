@@ -936,6 +936,8 @@ describe('real-provider sign-in and passkey proofs', () => {
   });
 });
 
+const authBaseUrl = 'http://localhost:48730';
+
 const buildAuth = (options: {
   consentRequired?: boolean;
   recordedEmails?: string[];
@@ -979,7 +981,7 @@ const buildAuth = (options: {
   let platformSendAttempts = 0;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
-    baseUrl: 'http://localhost:48730',
+    baseUrl: authBaseUrl,
     baseDomain: options.baseDomain ?? 'localhost',
     singleTenantMode: options.singleTenantMode ?? false,
     trustedOrigins: options.trustedOrigins ??
@@ -1190,9 +1192,12 @@ describe('host-scoped credentials', () => {
     baseDomain,
     verifiedCustomHosts: [customHost],
     trustedOrigins: [
-      'http://localhost:48730',
-      `http://${tenantHost}`,
-      `http://${customHost}`,
+      authBaseUrl,
+      ...[tenantHost, customHost].flatMap((host) => {
+        const deliveryUrl = new URL(authBaseUrl);
+        deliveryUrl.host = host;
+        return [`http://${host}`, deliveryUrl.origin];
+      }),
     ],
   });
 
@@ -1307,6 +1312,77 @@ describe('host-scoped credentials', () => {
 
     expect(completed.status).toBe(200);
     expect(sessionCookie(completed)).not.toContain('Domain=');
+  });
+
+  it.each([
+    { host: customHost, callbackURL: '/', redirectHost: customHost },
+    { host: customHost, callbackURL: '/my', redirectHost: customHost },
+    { host: customHost, callbackURL: null, redirectHost: customHost },
+    { host: customHost, callbackURL: `http://${customHost}/my`, redirectHost: customHost },
+    { host: customHost, callbackURL: `http://${tenantHost}/my`, redirectHost: tenantHost },
+    { host: tenantHost, callbackURL: '/my', redirectHost: tenantHost },
+    { host: 'localhost:48730', callbackURL: '/my', redirectHost: 'localhost:48730' },
+    { host: 'untrusted.example', callbackURL: '/my', redirectHost: 'localhost:48730' },
+    { host: 'untrusted.example', callbackURL: null, redirectHost: 'localhost:48730' },
+  ])('keeps email-verification challenges on the trusted request or callback host ($host, $callbackURL)', async ({ host, callbackURL, redirectHost }) => {
+    const { auth, authPort, emails, flushEmails } = host === 'localhost:48730' ? buildAuth() : buildHostAuth();
+    const signUpHost = host === 'localhost:48730' ? host : customHost;
+    const email = `verification-host-${crypto.randomUUID()}@together.dev`;
+    const password = passwordFixture('verification-host');
+    auth.setEmailVerificationDeliveryContext(email, { language: 'en', baseUrl: `http://${host}` });
+    const token = await register(auth, signUpHost, email, password);
+    const enabled = await call(auth, signUpHost, '/two-factor/enable', {
+      body: { password }, authorization: `Bearer ${token}`,
+    });
+    expect(enabled.status).toBe(200);
+    const secret = new URL(
+      z.object({ totpURI: z.string() }).parse(await enabled.json()).totpURI,
+    ).searchParams.get('secret') ?? '';
+    const enrolled = await call(auth, signUpHost, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) }, authorization: `Bearer ${token}`,
+    });
+    expect(enrolled.status).toBe(200);
+    expect((await call(auth, signUpHost, '/sign-out', {
+      body: {}, cookie: sessionCookie(enrolled).split(';')[0] ?? '',
+    })).status).toBe(200);
+    const { internalAdapter } = await auth.$context;
+    expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({
+      emailVerified: false, twoFactorEnabled: true,
+    });
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verificationUrl = new URL(message?.text.match(/https?:\/\/\S+/)?.[0] ?? '');
+    const expectedDeliveryUrl = new URL(authBaseUrl);
+    expectedDeliveryUrl.host = host;
+    expect(verificationUrl.origin).toBe(expectedDeliveryUrl.origin);
+    const redirectUrl = new URL(`http://${redirectHost}/login?twoFactor=required`);
+    if (host === redirectHost && (callbackURL === null || callbackURL.startsWith('/'))) {
+      redirectUrl.port = verificationUrl.port;
+    }
+    if (callbackURL === null) verificationUrl.searchParams.delete('callbackURL');
+    else verificationUrl.searchParams.set('callbackURL', callbackURL);
+
+    const challenged = await auth.handler(new Request(verificationUrl, { redirect: 'manual' }));
+
+    expect(challenged.status).toBe(302);
+    expect(challenged.headers.get('location')).toBe(redirectUrl.toString());
+    const challengeCookie = challenged.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor=')) ?? '';
+    expect(challengeCookie).not.toBe('');
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${challenged.headers.get('set-auth-token') ?? ''}`,
+    }))).toBeNull();
+    if (host === customHost) expect(challengeCookie).not.toContain('Domain=');
+    if (host !== redirectHost) return;
+    const completed = await call(auth, redirectUrl.host, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) }, cookie: challengeCookie.split(';')[0] ?? '',
+    });
+    expect(completed.status).toBe(200);
+    expect(sessionCookie(completed)).not.toBe('');
+    if (host === customHost) expect(sessionCookie(completed)).not.toContain('Domain=');
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      cookie: sessionCookie(completed).split(';')[0] ?? '',
+    }))).toMatchObject({ email, emailVerified: true });
   });
 
   it('answers passkey ceremonies for the base domain and for the verified custom host', async () => {

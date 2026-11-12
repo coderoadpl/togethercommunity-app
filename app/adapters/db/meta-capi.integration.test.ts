@@ -107,6 +107,36 @@ const dispatchHarness = (repo = repository()) => {
 };
 
 describe('Meta privacy and failure isolation', () => {
+  it('redacts a failed outbox insert and rolls back consent with its identifiers', async () => {
+    const access = await makeOrder('insertfailure');
+    const repo = repository();
+    await database.db.execute(sql`CREATE FUNCTION reject_meta_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'Private capture: % % %', NEW.ip, NEW.user_agent, NEW.fbp USING ERRCODE = '57014'; END;
+    $$`);
+    await database.db.execute(sql`CREATE TRIGGER reject_meta_insert BEFORE INSERT ON meta_capi_outbox
+      FOR EACH ROW EXECUTE FUNCTION reject_meta_insert()`);
+    try {
+      const error: unknown = await repo.decide('workspace', access, async () => ok({ decision: 'granted', capture }))
+        .catch((cause: unknown) => cause);
+      if (!(error instanceof Error)) throw new Error('Expected an outbox insertion failure');
+      expect(error.message).toBe('Meta CAPI database operation failed');
+      expect(error.cause).toEqual(new Error('PostgreSQL SQLSTATE 57014'));
+      for (const identifier of [access.sessionId, capture.ip, capture.userAgent, capture.fbp]) {
+        expect(error.stack).not.toContain(identifier);
+        expect(String(error.cause)).not.toContain(identifier);
+        if (error.cause instanceof Error) {
+          expect(error.cause.stack).not.toContain(identifier);
+          expect(error.cause.cause).toBeUndefined();
+        }
+      }
+      expect((await repo.findOrder('workspace', access))?.consent.consent).toBe('undecided');
+      expect(await database.db.select().from(metaCapiConsentEvidence).where(eq(metaCapiConsentEvidence.orderId, 'insertfailure'))).toEqual([]);
+      expect(await database.db.select().from(metaCapiOutbox).where(eq(metaCapiOutbox.orderId, 'insertfailure'))).toEqual([]);
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER reject_meta_insert ON meta_capi_outbox`);
+      await database.db.execute(sql`DROP FUNCTION reject_meta_insert()`);
+    }
+  });
   it('withdraws and deletes pending identifiers during erasure without changing another tenant', async () => {
     const access = await memberOrder('erased');
     const other = await memberOrder('retained', 'other');

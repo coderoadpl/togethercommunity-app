@@ -14,6 +14,18 @@ const accessFilter = (access: MetaCapiOrderAccess) => 'sessionId' in access
 const iso = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();
 const stateOf = (row: typeof orders.$inferSelect) => ({ consent: row.metaCapiConsent, withdrawnAt: iso(row.metaCapiConsentWithdrawnAt) });
 
+const protectIdentifiers = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    const cause: unknown = error instanceof Error ? error.cause ?? error : error;
+    const code: unknown = typeof cause === 'object' && cause !== null ? Reflect.get(cause, 'code') : undefined;
+    throw new Error('Meta CAPI database operation failed', typeof code === 'string' && /^[0-9A-Z]{5}$/u.test(code)
+      ? { cause: new Error(`PostgreSQL SQLSTATE ${code}`) }
+      : undefined);
+  }
+};
+
 export const createMetaCapiRepository = (
   db: Db, resolveOrigin: (tenantId: string) => Promise<string>, logger: { warn(message: string): void } = console,
 ): MetaCapiRepository => {
@@ -32,11 +44,11 @@ export const createMetaCapiRepository = (
     };
   };
   return {
-    findOrder: async (tenantId, access) => {
+    findOrder: async (tenantId, access) => protectIdentifiers(async () => {
       const row = (await db.select().from(orders).where(and(eq(orders.tenantId, tenantId), accessFilter(access))).limit(1))[0];
       return row ? enrich(db, tenantId, row) : null;
-    },
-    decide: async (tenantId, access, decide) => db.transaction(async (tx) => {
+    }),
+    decide: async (tenantId, access, decide) => protectIdentifiers(async () => db.transaction(async (tx) => {
       const row = (await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), accessFilter(access))).limit(1).for('update'))[0];
       if (!row) return err(notFound('Order not found'));
       const current = await enrich(tx, tenantId, row);
@@ -62,8 +74,8 @@ export const createMetaCapiRepository = (
           recordedAt: capture.at, sentAt: null, status: 'blocked', fbtraceId: null, error: null, fieldsSent: [] }).onConflictDoNothing();
       }
       return ok(updated ? stateOf(updated) : stateOf(row));
-    }),
-    processNext: async (tenantId, now, process) => db.transaction(async (tx) => {
+    })),
+    processNext: async (tenantId, now, process) => protectIdentifiers(async () => db.transaction(async (tx) => {
       const found = (await tx.select({ order: orders, job: metaCapiOutbox }).from(orders)
         .innerJoin(metaCapiOutbox, and(eq(metaCapiOutbox.orderId, orders.id), eq(metaCapiOutbox.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(metaCapiOutbox.tenantId, tenantId), lte(metaCapiOutbox.availableAt, now)))
@@ -94,14 +106,14 @@ export const createMetaCapiRepository = (
         await tx.delete(metaCapiOutbox).where(filter);
       }
       return true;
-    }),
-    listEvents: async (tenantId) => (await db.select().from(metaCapiEvents).where(eq(metaCapiEvents.tenantId, tenantId))
+    })),
+    listEvents: async (tenantId) => protectIdentifiers(async () => (await db.select().from(metaCapiEvents).where(eq(metaCapiEvents.tenantId, tenantId))
       .orderBy(desc(metaCapiEvents.recordedAt), desc(metaCapiEvents.transactionId)).limit(100)).map((row) => metaCapiEventSchema.parse({
         ...row, consentAt: iso(row.consentAt), eventTime: iso(row.eventTime), sentAt: iso(row.sentAt), recordedAt: iso(row.recordedAt),
-      })),
-    listMemberConsents: async (tenantId, memberId) => (await db.select({ orderId: orders.id, consent: orders.metaCapiConsent,
+      }))),
+    listMemberConsents: async (tenantId, memberId) => protectIdentifiers(async () => (await db.select({ orderId: orders.id, consent: orders.metaCapiConsent,
       withdrawnAt: orders.metaCapiConsentWithdrawnAt, consentAt: orders.metaCapiConsentAt }).from(orders)
       .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), ne(orders.metaCapiConsent, 'undecided')))
-      .orderBy(desc(orders.createdAt), desc(orders.id)).limit(100)).map((row) => ({ ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt) })),
+      .orderBy(desc(orders.createdAt), desc(orders.id)).limit(100)).map((row) => ({ ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt) }))),
   };
 };

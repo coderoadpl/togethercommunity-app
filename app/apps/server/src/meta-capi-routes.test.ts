@@ -56,6 +56,28 @@ describe('Meta consent routes', () => {
     expect(h.decide).toHaveBeenCalledWith('workspace', { sessionId: 'cs_live_purchase' }, expect.any(Function));
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
+  describe.each([
+    { path: '/api/public/meta-capi/consent', payload: body },
+    { path: '/api/me/meta-capi/withdraw', payload: { orderId: 'purchase' } },
+  ])('$path behind a TLS-terminating proxy', ({ path, payload }) => {
+    it.each([
+      { origin: 'https://workspace.example.org', status: 200 },
+      { origin: undefined, status: 200 },
+      { origin: 'https://foreign.example.org', status: 403 },
+      { origin: 'not a URL', status: 403 },
+      { origin: 'null', status: 403 },
+      { origin: 'https://workspace.example.org:9443', status: 403 },
+      { origin: 'http://internal:9001', status: 403 },
+    ])('returns $status for Origin $origin', async ({ origin, status }) => {
+      const h = harness();
+      const response = await h.app.request(`http://internal:9001${path}`, {
+        method: 'POST', headers: { 'content-type': 'application/json', host: 'workspace.example.org',
+          ...(origin === undefined ? {} : { origin }) }, body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(status);
+      expect(h.decide).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+    });
+  });
   it('rejects a valid QR credential with the current text version for new decisions', async () => {
     const h = harness();
     for (const decision of ['granted', 'denied']) {

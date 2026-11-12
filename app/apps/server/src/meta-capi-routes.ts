@@ -11,7 +11,7 @@ import { respond } from './respond.js';
 
 const sameOrigin = (request: Request): boolean => {
   const origin = request.headers.get('origin');
-  return origin === null || origin === new URL(request.url).origin;
+  return origin === null || (URL.canParse(origin) && new URL(origin).host === (request.headers.get('host') ?? new URL(request.url).host));
 };
 
 export const registerPublicMetaCapiRoutes = (app: Hono<AppVars>, deps: Pick<AppDeps, 'metaCapi' | 'tenants' | 'tenantDomains' | 'baseDomain' | 'platformHost' | 'singleTenantMode' | 'authTrustedProxyHeader'>): void => {

@@ -343,7 +343,12 @@ export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<
               credentials: 'include',
             }).then(async (response) => {
               if (!response.ok) return;
-              const data: unknown = await response.json();
+              let data: unknown;
+              try {
+                data = await response.json();
+              } catch {
+                return;
+              }
               window.location.assign(readAuthSession(data).twoFactorRedirect
                 ? new URL('/login?twoFactor=required', window.location.origin).toString()
                 : callbackURL);

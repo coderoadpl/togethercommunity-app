@@ -254,11 +254,6 @@ const postPlan = async (
       if (job.kind === 'lesson-question') {
         const staff = await deps.fanoutBatches.listStaffPage(job.tenantId, { afterUserId, limit });
         const recipients = staff.filter((recipient) => recipient.userId !== post.authorUserId);
-        await deps.fanoutBatches.subscribeStaff(job.tenantId, {
-          rootPostId: post.rootPostId,
-          userIds: recipients.map((recipient) => recipient.userId),
-          createdAt: post.createdAt,
-        });
         return {
           recipients: recipients.map((recipient) => ({ ...recipient, language: recipient.language ?? null })),
           nextCursorUserId: staff.at(-1)?.userId ?? null,
@@ -492,17 +487,21 @@ export const drainNotificationFanoutJobs = async (
   options: NotificationFanoutOptions & { jobLimit?: number } = {},
 ): Promise<Result<NotificationFanoutDrainResult, AppError>> => {
   const now = deps.clock.nowIso();
-  const claimed = await deps.fanoutJobs.claimDue({
-    now,
-    limit: options.jobLimit ?? JOBS_PER_RUN,
-    leaseUntil: new Date(Date.parse(now) + NOTIFICATION_FANOUT_LEASE_MS).toISOString(),
-  });
   const deadlineAt =
     options.deadlineAt ?? Date.parse(now) + (options.budgetMs ?? RUN_BUDGET_MS);
   let notificationsCreated = 0;
   let jobsFailed = 0;
-  for (const job of claimed) {
-    if (Date.parse(deps.clock.nowIso()) >= deadlineAt) break;
+  let jobsClaimed = 0;
+  while (jobsClaimed < (options.jobLimit ?? JOBS_PER_RUN)) {
+    const claimAt = deps.clock.nowIso();
+    if (Date.parse(claimAt) >= deadlineAt) break;
+    const [job] = await deps.fanoutJobs.claimDue({
+      now: claimAt,
+      limit: 1,
+      leaseUntil: new Date(Date.parse(claimAt) + NOTIFICATION_FANOUT_LEASE_MS).toISOString(),
+    });
+    if (job === undefined) break;
+    jobsClaimed += 1;
     const jobOptions = { ...options, deadlineAt };
     const result = job.kind === 'space-event'
       ? await runEventFanoutJob(job, deps, jobOptions)
@@ -510,5 +509,5 @@ export const drainNotificationFanoutJobs = async (
     if (result.ok) notificationsCreated += result.value.created;
     else jobsFailed += 1;
   }
-  return ok({ jobsClaimed: claimed.length, notificationsCreated, jobsFailed });
+  return ok({ jobsClaimed, notificationsCreated, jobsFailed });
 };

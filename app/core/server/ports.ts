@@ -327,7 +327,7 @@ export interface PostSearchRow {
 }
 
 export interface PostRepository {
-  createPost(tenantId: string, post: Post, fanoutJob?: NotificationFanoutJob): Promise<Post>;
+  createPost(tenantId: string, post: Post, fanoutJob?: NotificationFanoutJob, subscriberUserIds?: string[]): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
   findByIds(tenantId: string, ids: string[]): Promise<Post[]>;
   countByAuthorSince(

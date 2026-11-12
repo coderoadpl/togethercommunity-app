@@ -49,7 +49,7 @@ const post = (id: string, overrides: Partial<Post> = {}): Post => postSchema.par
 });
 
 beforeAll(async () => {
-  const database = await createTestDatabase('together_community_reads', 'postgres://together:together@localhost:48912/postgres');
+  const database = await createTestDatabase('together_community_reads', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
   close = database.close;
   pool = new pg.Pool({ connectionString: database.url });
   db = drizzle(pool, {

@@ -87,7 +87,7 @@ export interface CommunityDeps {
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
-  dispatchNotificationFanout(): void;
+  dispatchNotificationFanout(tenantId: string): void;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
@@ -265,7 +265,11 @@ export const createPost = async (
     authorDisplay: null,
     now,
   });
-  const created = await deps.posts.createPost(actor.value.tenantId, post, fanoutJob);
+  const staffUserIds = fanoutKind === 'lesson-question'
+    ? (await deps.tenantAccess.listStaffForTenant(actor.value.tenantId))
+      .filter((staff) => staff.userId !== post.authorUserId).map((staff) => staff.userId)
+    : [];
+  const created = await deps.posts.createPost(actor.value.tenantId, post, fanoutJob, staffUserIds);
   const rendered = renderPostContent(created.body, created.bodyFormat);
   const signals = heuristicSignalsFor({
     body: rendered.plainText,
@@ -280,7 +284,7 @@ export const createPost = async (
     rootPostId: created.rootPostId,
     createdAt: created.createdAt,
   });
-  deps.dispatchNotificationFanout();
+  deps.dispatchNotificationFanout(actor.value.tenantId);
   return ok(toRenderedPublicPost(created, actor.value.userId, null, rendered));
 };
 

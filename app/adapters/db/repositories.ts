@@ -160,6 +160,7 @@ import { insertEntityVersion } from './entity-versions.js';
 import { uniqueViolation } from './pg-errors.js';
 import { appendGrantMemberEvent, appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
+import { createNotificationFanoutBatchRepository } from './notification-fanout-batches.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
 import {
@@ -1238,12 +1239,15 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
 });
 
 export const createPostRepository = (db: Db): PostRepository => ({
-  createPost: async (tenantId, post, fanoutJob) => {
+  createPost: async (tenantId, post, fanoutJob, subscriberUserIds = []) => {
     const row = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(posts)
         .values({ ...post, tenantId })
         .returning();
+      await createNotificationFanoutBatchRepository(tx).subscribeStaff(tenantId, {
+        rootPostId: post.rootPostId, userIds: subscriberUserIds, createdAt: post.createdAt,
+      });
       if (fanoutJob !== undefined) await insertFanoutJob(tx, tenantId, fanoutJob);
       return inserted[0];
     });

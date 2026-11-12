@@ -355,8 +355,9 @@ const fixture = (input: {
       userIds.map((userId) => ({ userId, email: `${userId}@example.com`, image: null })),
   };
 
+  const claimable = [...(input.claimable ?? [])];
   const fanoutJobs: NotificationFanoutJobRepository = {
-    claimDue: async () => input.claimable ?? [],
+    claimDue: async ({ limit }) => claimable.splice(0, limit),
     save: async (_tenantId, saved) => {
       saves.push({
         status: saved.status,
@@ -462,7 +463,7 @@ describe('notification fan-out', () => {
     const modulesRead = vi.spyOn(f.deps.modules, 'list');
 
     expect((await runPostFanoutJob(question, f.deps, { batchSize: 2 })).ok).toBe(true);
-    expect(subscribed).toEqual(followerIds(3));
+    expect(subscribed).toEqual([]);
     expect(f.notifications.rows).toHaveLength(3);
     expect(coursesRead).toHaveBeenCalledTimes(1);
     expect(modulesRead).toHaveBeenCalledTimes(1);
@@ -743,8 +744,9 @@ describe('notification fan-out', () => {
 
     const result = await drainNotificationFanoutJobs(deps, { budgetMs: 15_000 });
 
-    expect(result).toMatchObject({ ok: true, value: { jobsClaimed: 2, notificationsCreated: 2 } });
+    expect(result).toMatchObject({ ok: true, value: { jobsClaimed: 1, notificationsCreated: 2 } });
     expect(notifications.rows.map((row) => row.sourceKey)).toEqual([job.sourceKey, job.sourceKey]);
+    expect(await deps.fanoutJobs.claimDue({ now: advancing.nowIso(), limit: 1, leaseUntil: advancing.nowIso() })).toEqual([later]);
   });
 
   it('counts a job whose channel fails as a failed drain without aborting the run', async () => {

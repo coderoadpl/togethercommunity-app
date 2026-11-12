@@ -33,7 +33,7 @@ let close: (() => Promise<void>) | undefined;
 let sequence = 0;
 
 beforeAll(async () => {
-  const database = await createTestDatabase('together_fanout_batches', 'postgres://together:together@localhost:48912/postgres');
+  const database = await createTestDatabase('together_fanout_batches', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
   db = database.db;
   close = database.close;
   await db.insert(tenants).values([TENANT, OTHER].map((id) => ({ id, slug: id, name: id, createdAt: NOW })));
@@ -130,7 +130,10 @@ describe('set-based notification recipients', () => {
       id: 'question-retry-job', tenantId: TENANT, kind: 'lesson-question', sourceId: post.id,
       tenantName: 'Workspace', tenantSlug: null, authorDisplay: null, now: NOW,
     });
-    await d.posts.createPost(TENANT, post, job);
+    const staffUserIds = (await d.tenantAccess.listStaffForTenant(TENANT)).map((staff) => staff.userId);
+    await d.posts.createPost(TENANT, post, job, staffUserIds);
+    expect((await d.threadSubscriptions.listSubscribersPage(TENANT, { rootPostId: post.id, afterUserId: null, limit: 50 }))
+      .map((subscription) => subscription.userId).sort()).toEqual(staffUserIds.sort());
     const claimed = await d.fanoutJobs.claimDue({ now: NOW, limit: 1, leaseUntil: '2026-10-01T12:05:00.000Z' });
     expect(claimed).toEqual([expect.objectContaining({ kind: 'lesson-question', sourceKey: job.sourceKey })]);
     const first = claimed[0];
@@ -156,6 +159,45 @@ describe('set-based notification recipients', () => {
       .toEqual(notifications.map((row) => `notification:${row.id}`).sort());
     expect(await db.select().from(emailEvents)).toHaveLength(3);
     expect(await d.fanoutJobs.claimDue({ now: '2026-10-01T12:10:00.000Z', limit: 1, leaseUntil: '2026-10-01T12:15:00.000Z' })).toEqual([]);
+  });
+
+  it('persists staff subscriptions before a reply overtakes the question delivery and keeps existing mutes', async () => {
+    const d = deps();
+    d.fanoutJobs = createNotificationFanoutJobRepository(db);
+    const rootPostId = 'question-interleaved';
+    const question = postSchema.parse({
+      id: rootPostId, tenantId: TENANT, contextKind: 'lesson', contextId: 'lesson', parentPostId: null,
+      rootPostId, authorUserId: AUTHOR, authorDisplay: 'Author', authorIsStaff: false,
+      body: 'Question', bodyFormat: 'plain', createdAt: NOW, editedAt: null, deletedAt: null,
+    });
+    await d.threadSubscriptions.upsert(TENANT, { rootPostId, userId: 'staff-banned', createdAt: NOW });
+    await d.threadSubscriptions.mute(TENANT, { rootPostId, userId: 'staff-banned', mutedAt: NOW });
+    const questionJob = buildNotificationFanoutJob({
+      id: 'interleaved-question-job', tenantId: TENANT, kind: 'lesson-question', sourceId: rootPostId,
+      tenantName: 'Workspace', tenantSlug: null, authorDisplay: null, now: NOW,
+    });
+    const staffUserIds = (await d.tenantAccess.listStaffForTenant(TENANT)).map((staff) => staff.userId);
+    await d.posts.createPost(TENANT, question, questionJob, staffUserIds);
+    expect(await d.threadSubscriptions.listForUser(TENANT, { userId: 'staff-banned', rootPostIds: [rootPostId] }))
+      .toEqual([expect.objectContaining({ mutedAt: NOW })]);
+    const reply = { ...question, id: 'interleaved-reply', parentPostId: rootPostId, body: 'Reply' };
+    const replyJob = buildNotificationFanoutJob({
+      id: 'interleaved-reply-job', tenantId: TENANT, kind: 'thread-reply', sourceId: reply.id,
+      tenantName: 'Workspace', tenantSlug: null, authorDisplay: null, now: NOW,
+    });
+    await d.posts.createPost(TENANT, reply, replyJob);
+    expect(await runPostFanoutJob(replyJob, d)).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(await runPostFanoutJob(questionJob, d)).toMatchObject({ ok: true, value: { completed: true } });
+    expect(await runPostFanoutJob(replyJob, d)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+    expect((await d.fanoutBatches.listNotificationsForSource(TENANT, replyJob.sourceKey, userIds))
+      .map((notification) => notification.recipientUserId)).toEqual(['staff-absent', 'staff-deleted']);
+    expect(await d.threadSubscriptions.listForUser(TENANT, { userId: 'other-staff', rootPostIds: [rootPostId] })).toEqual([]);
+    const rejected = { ...question, id: 'question-rollback', rootPostId: 'question-rollback' };
+    await expect(d.posts.createPost(TENANT, rejected, {
+      ...questionJob, sourceKey: 'lesson-question:question-rollback', payload: { ...questionJob.payload, postId: rejected.id },
+    }, staffUserIds)).rejects.toThrow();
+    expect(await d.posts.findById(TENANT, rejected.id)).toBeNull();
+    expect(await d.threadSubscriptions.listSubscribersPage(TENANT, { rootPostId: rejected.id, afterUserId: null, limit: 50 })).toEqual([]);
   });
 
   it.each(cases)('matches the original per-recipient exclusions for $kind / $contextKind / $contextId', async (testCase) => {

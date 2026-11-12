@@ -229,7 +229,13 @@ class FakePosts implements PostRepository {
 
   readonly fanoutJobs: NotificationFanoutJob[] = [];
 
-  async createPost(_tenantId: string, post: Post, job?: NotificationFanoutJob): Promise<Post> {
+  constructor(private readonly subscriptions = new FakeSubscriptions()) {}
+
+  async createPost(tenantId: string, post: Post, job?: NotificationFanoutJob, subscriberUserIds: string[] = []): Promise<Post> {
+    for (const userId of subscriberUserIds) {
+      const existing = await this.subscriptions.listForUser(tenantId, { userId, rootPostIds: [post.rootPostId] });
+      if (existing.length === 0) await this.subscriptions.upsert(tenantId, { userId, rootPostId: post.rootPostId, createdAt: post.createdAt });
+    }
     if (job !== undefined) this.fanoutJobs.push(job);
     this.rows.push(post);
     return post;
@@ -781,10 +787,11 @@ const deps = (
         .filter((member) => member.tenantId === tenantId && userIds.includes(member.userId))
         .map((member) => ({ userId: member.userId, email: member.email, image: null })),
   };
+  const subscriptions = new FakeSubscriptions();
   return {
-    posts: new FakePosts(),
+    posts: new FakePosts(subscriptions),
     reports: new FakeReports(),
-    threadSubscriptions: new FakeSubscriptions(),
+    threadSubscriptions: subscriptions,
     spaceSubscriptions: new FakeSpaceSubscriptions(),
     memberBlocks: new FakeMemberBlocks(),
     spaces: emptySpacesRepo,
@@ -816,7 +823,7 @@ const allAccess = product('all', [{ level: 'course', courseId: 'c1' }]);
 const previewAccess = product('preview', [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
 
 describe('community use-cases', () => {
-  it('returns a lesson question with an atomic job before subscription fan-out or channel delivery', async () => {
+  it('returns a lesson question with staff subscriptions and an atomic job before channel delivery', async () => {
     const d = deps([allAccess], [grant('m1', 'all')], ['u2']);
     const deliver = vi.fn<NotificationChannelPort['deliver']>();
     d.notificationChannels.push({ deliver });
@@ -828,15 +835,34 @@ describe('community use-cases', () => {
 
     expect(result.ok).toBe(true);
     expect(deliver).not.toHaveBeenCalled();
-    expect(staffRead).not.toHaveBeenCalled();
-    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(staffRead).toHaveBeenCalledWith('t1');
+    expect(trigger).toHaveBeenCalledExactlyOnceWith('t1');
     if (!(d.posts instanceof FakePosts) || !result.ok) throw new Error('Expected a stored post');
     expect(d.posts.fanoutJobs).toEqual([expect.objectContaining({
       kind: 'lesson-question', sourceKey: `lesson-question:${result.value.id}`,
       payload: expect.objectContaining({ postId: result.value.id }),
     })]);
     expect(await d.threadSubscriptions.listSubscribersPage('t1', { rootPostId: result.value.id, afterUserId: null, limit: 50 }))
-      .toEqual([expect.objectContaining({ userId: 'u1' })]);
+      .toEqual(expect.arrayContaining([expect.objectContaining({ userId: 'u1' }), expect.objectContaining({ userId: 'u2' })]));
+  });
+
+  it('notifies staff exactly once when a reply job runs before its question job', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')], ['u2', 'u3']);
+    const question = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'Question before delivery' }, d);
+    if (!question.ok || !(d.posts instanceof FakePosts)) throw new Error('Expected a stored question');
+    const reply = await createPost(ctx(), {
+      contextKind: 'lesson', contextId: 'l1', parentPostId: question.value.id, body: 'Additional question details',
+    }, d);
+    expect(reply.ok).toBe(true);
+    const [questionJob, replyJob] = d.posts.fanoutJobs;
+    if (questionJob === undefined || replyJob === undefined) throw new Error('Expected both fan-out jobs');
+    const fanout = { ...d, fanoutBatches: fakeFanoutBatches(() => d) };
+    expect(await runPostFanoutJob(replyJob, fanout)).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(await runPostFanoutJob(questionJob, fanout)).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(await runPostFanoutJob(replyJob, fanout)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+    if (!(d.notifications instanceof FakeNotifications)) throw new Error('Expected recorded notifications');
+    expect(d.notifications.rows.filter((row) => row.kind === 'thread-reply').map((row) => row.recipientUserId).sort())
+      .toEqual(['u2', 'u3']);
   });
 
   it('resolves a non-empty post author from names, tagged e-mails, or a localized fallback', () => {

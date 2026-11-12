@@ -482,7 +482,7 @@ export interface AppDeps {
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
   fanoutBatches: NotificationFanoutBatchRepository;
-  dispatchNotificationFanout(): void;
+  dispatchNotificationFanout(tenantId: string): void;
   realtimeBus: RealtimeBusPort;
   links: DiscussionLinkPort;
   progress: MemberCourseProgressRepository;
@@ -1113,7 +1113,7 @@ export const createDeps = (
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
-  const dispatchNotificationFanout = createDeferredCoalescedRunner(async () => {
+  const dispatchNotificationFanout: AppDeps['dispatchNotificationFanout'] = createDeferredCoalescedRunner(async () => {
     const result = await drainNotificationFanoutJobs(deps);
     if (!result.ok) process.stderr.write(`[notification-fanout] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);

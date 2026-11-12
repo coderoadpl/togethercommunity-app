@@ -188,12 +188,15 @@ agreements, international transfers and the procedure for data-subject requests.
 ## Local verification
 
 Run `pnpm run check`, `pnpm run db:up`, `pnpm run smoke` and `pnpm run visual`.
-The focused browser specification runs with `pnpm exec tsx scripts/meta-capi-e2e.ts`.
+The focused browser specification runs with `pnpm run e2e:meta-capi`.
 It creates and removes its own local PostgreSQL database, builds and starts the
 real SPA/API, blocks non-local browser requests, and dispatches through a fake
 Meta gateway. It covers decline without an outbox job, acceptance with one job
 and a sent receipt, Escape without a decision, a disabled tenant, and guest
-withdrawal after disabling CAPI. No Meta access token or external API is used.
+withdrawal after disabling CAPI. English and Polish default-copy cases assert
+the complete stored snapshot and its SHA-256 version; QR grants/denials and a
+stale version after switching locale are rejected. No Meta access token or
+external API is used.
 
 ## Verification before enabling production
 

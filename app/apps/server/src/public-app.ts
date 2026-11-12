@@ -38,7 +38,6 @@ import {
   capabilitiesForPrincipal,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
-  forbidden,
   err,
   internal,
   languageSchema,
@@ -552,12 +551,6 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   });
 
   app.post(API_PATHS.submitSurvey, async (c) => {
-    const origin = c.req.header('origin');
-    if (origin !== undefined) {
-      const parsedOrigin = z.string().url().safeParse(origin);
-      const host = c.req.header('host') ?? new URL(c.req.url).host;
-      if (!parsedOrigin.success || new URL(parsedOrigin.data).hostname !== new URL(`https://${host}`).hostname) return respond(err(forbidden('Survey responses must come from this workspace')));
-    }
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respond(tenant);
     if (tenant.value === null) return respond(err(tenantNotFound()));

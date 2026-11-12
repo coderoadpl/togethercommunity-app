@@ -575,6 +575,7 @@ export interface AppDeps {
   platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
+  developmentWebOrigin?: string;
   customDomainTarget: string;
   customDomainApexARecord?: string | undefined;
   devEndpoints: DevEndpoints;
@@ -1567,6 +1568,8 @@ export const createDeps = (
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
+    ...(isLocalDevelopmentEnvironment(env) && new URL(env.APP_BASE_URL).origin === 'http://localhost:48730'
+      ? { developmentWebOrigin: 'http://localhost:48731' } : {}),
     customDomainTarget,
     customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
     devEndpoints,

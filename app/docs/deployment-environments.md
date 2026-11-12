@@ -148,8 +148,29 @@ pnpm run smoke:remote
 
 The command checks the health/database/SHA attestation, the public offer API
 using the tenant header, and the public web page. It does not mutate deployed
-data. No workflow currently invokes it or turns its result into an automated
-acceptance gate.
+data. The `prod-smoke` workflow invokes `smoke:remote` after a successful
+Production deployment status and on manual dispatch. Deployment-status runs
+use the deployment SHA; manual dispatch permits an empty expected SHA, which
+skips the match and is not sufficient promotion evidence. The workflow may
+reseed the demo tenant before the probe when its operator-secret and host
+checks pass, so the workflow as a whole is not read-only.
+
+The `staging-smoke` workflow runs `smoke:staging` on pushes to `staging`, on a
+daily schedule, and on manual dispatch. Push runs wait for the pushed SHA;
+scheduled runs and manual dispatch without an expected SHA probe the current
+alias. Missing deployment-protection bypass credentials skip the staging
+probe. These are automated post-deployment monitors, not substitutes for the
+owner-approved promotion or its retained SHA attestation.
+
+Live repository rulesets were read on 2026-11-12: `main-protection` (20889929)
+and `staging-gates` (20889930) are active and require pull requests and status
+checks on `main` and `staging`. The main rule requires one code-owner approval,
+dismisses stale approvals, requires last-push approval and resolved review
+threads, and permits merge commits only. Staging requires zero approvals and
+merge commits only. Both branches must require up-to-date status checks and
+resolved review threads. Two live gaps remain open: main has
+`strict_required_status_checks_policy=false`, and staging has
+`required_review_thread_resolution=false`; the requirements are not waived.
 
 The staging smoke also requests a magic-link sign-in for the seeded tenant
 member without reading or following the link, then polls an operator-secret-gated

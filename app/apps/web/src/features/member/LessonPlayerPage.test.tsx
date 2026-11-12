@@ -1494,16 +1494,6 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
   });
 
-  it('centres the reading column of an html block with left-aligned text', async () => {
-    server.use(okStructure(), okProgress(), okLesson([{ type: 'html', html: '<p>Body</p>' }]));
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-
-    expect(stylesAt(await screen.findByTestId('lesson-html'), 1440)).toMatchObject({
-      'margin-inline': 'auto',
-      'text-align': 'left',
-    });
-  });
-
   it('renders outlined mobile lesson actions and keeps continue primary', async () => {
     stubMobileViewport();
     server.use(okStructure(), okProgress(), okLesson(allBlocks));

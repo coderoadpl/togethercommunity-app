@@ -5,6 +5,7 @@ import { prepareMarketingContactAudience } from './marketing-contact-audience.js
 import type { MarketingSignupRepos } from '../marketing-signup-ports.js';
 import type { MarketingContactRepository } from '../marketing-contact-ports.js';
 import { dispatchMarketingOutbox, marketingSendBudget } from './marketing-dispatch.js';
+import { createMarketingTickFailures, type MarketingTenantError } from './marketing-tick-failures.js';
 import type { SesEventApplication, VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
 import type { MarketingDeliveryRepos, MarketingDeliveryTransaction, MarketingSnsInboxRepository, MarketingOutboxRepository, MarketingWaiter, HtmlToText } from '../marketing-delivery-ports.js';
 import { renderMarketingPayload } from './marketing-render.js';
@@ -1831,8 +1832,10 @@ export const runScheduledMarketingJobs = async (
   retentionTenantsProcessed: number;
   identityChecksPerformed: number;
   reputationAlertsSent: number;
+  tenantErrors?: MarketingTenantError[];
 }, AppError>> => {
-  let firstError: AppError | null = null;
+  const tickFailures = createMarketingTickFailures(deps.logger);
+  let maintenanceError: AppError | null = null;
   await deps.runs.failStale({
     startedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
     finishedAt: input.now,
@@ -1863,7 +1866,9 @@ export const runScheduledMarketingJobs = async (
         }, { batchSize: SCHEDULER_RUN_PURGE_BATCH_SIZE, timeoutMs: remainingMs });
       } catch (cause) {
         deps.logger.warn(`[marketing] scheduler run purge stopped reason=purge_failed error=${purgeFailureLabel(cause)}`);
-        if (firstError === null) firstError = internal(cause instanceof Error ? cause.message : String(cause));
+        const failure = internal(cause instanceof Error ? cause.message : String(cause));
+        maintenanceError ??= failure;
+        tickFailures.platform(failure);
         break;
       }
       schedulerRunsPurged += batch.purged;
@@ -1885,7 +1890,10 @@ export const runScheduledMarketingJobs = async (
       ...(input.engagementOlderThan === undefined ? {} : { engagementOlderThan: input.engagementOlderThan }),
       idempotencyNow: input.now,
     });
-    if (!retained.ok && firstError === null) firstError = retained.error;
+    if (!retained.ok) {
+      maintenanceError ??= retained.error;
+      tickFailures.tenant(tenantId, 'retention', retained.error);
+    }
   }
   const checkedBefore = new Date(
     Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
@@ -1904,7 +1912,8 @@ export const runScheduledMarketingJobs = async (
     } else {
       failures.push(`${step}: ${failure.message}`);
     }
-    if (firstError === null) firstError = failure;
+    maintenanceError ??= failure;
+    tickFailures.tenant(tenantId, step, failure);
   };
   for (const tenantId of identityTenantIds) {
     if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
@@ -1923,7 +1932,7 @@ export const runScheduledMarketingJobs = async (
   }
   if (maintenanceRunId !== null) {
     const finishedAt = deps.clock.nowIso();
-    const error = firstError?.message ?? (maintenanceIncomplete ? 'Marketing maintenance exceeded its time budget' : null);
+    const error = maintenanceError?.message ?? (maintenanceIncomplete ? 'Marketing maintenance exceeded its time budget' : null);
     await deps.runs.finalize(maintenanceRunId, {
       finishedAt, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(input.now)),
       status: error === null ? 'completed' : 'failed', error, totals,
@@ -1954,13 +1963,16 @@ export const runScheduledMarketingJobs = async (
     if (input.shouldContinue?.() === false) break;
     campaignsDispatched += 1;
     const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
-    if (!dispatched.ok && firstError === null) firstError = dispatched.error;
+    if (!dispatched.ok) tickFailures.tenant(job.tenantId, 'campaign', dispatched.error);
   }
-  if (firstError !== null) return err(firstError);
+  const platformFailure = tickFailures.firstPlatformFailure();
+  if (platformFailure !== null) return err(platformFailure);
+  const tenantErrors = tickFailures.tenantErrors();
   return ok({
     campaignsDispatched,
     retentionTenantsProcessed: retentionTenantIds.length,
     identityChecksPerformed: identityTenantIds.length,
     reputationAlertsSent,
+    ...(tenantErrors.length === 0 ? {} : { tenantErrors }),
   });
 };

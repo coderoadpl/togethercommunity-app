@@ -130,6 +130,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   KsefInvoicePdf: 'Invoice rendering boundary with no persistence access.',
   MarketingAppDeps: 'Server composition dispatch callbacks.',
   MarketingSignupDeps: 'Use-case email dispatch callback with no direct persistence access.',
+  MarketingTickFailures: 'In-memory failure collector for one scheduled marketing pass; each tenant entry carries its tenant id.',
   NotificationChannelPort: 'Notification delivery boundary with no persistence access.',
   NotificationStreamSource: 'Browser event-stream boundary.',
   NotificationsStreamHandle: 'Browser event-stream lifecycle handle.',

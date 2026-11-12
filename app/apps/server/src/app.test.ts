@@ -1917,6 +1917,29 @@ describe('marketing HTTP surfaces', () => {
     expect(triggers).toEqual(['cron']);
   });
 
+  it('answers the cron with 2xx and the tenant errors when only tenant configuration is missing', async () => {
+    const marketing = marketingDeps();
+    const tenantErrors = [{ tenantId: 't-acme', step: 'campaign' as const, code: 'ses_not_configured' as const, message: 'Tenant SES is not configured' }];
+    marketing.dispatchScheduledMarketing = async () => ok({
+      campaignsDispatched: 1,
+      retentionTenantsProcessed: 0,
+      identityChecksPerformed: 0,
+      reputationAlertsSent: 0,
+      tenantErrors,
+    });
+    const configurationGap = await marketingApp(marketing).request('/api/internal/marketing/tick', {
+      headers: { authorization: 'Bearer test-marketing-cron-secret' },
+    });
+    expect(configurationGap.status).toBe(200);
+    expect(await configurationGap.json()).toMatchObject({ ok: true, data: { tenantErrors } });
+
+    marketing.dispatchScheduledMarketing = async () => err(internal('database unavailable'));
+    const platformFailure = await marketingApp(marketing).request('/api/internal/marketing/tick', {
+      headers: { authorization: 'Bearer test-marketing-cron-secret' },
+    });
+    expect(platformFailure.status).toBe(500);
+  });
+
   it.each<{ scopes: TenantApiKey['scopes'] }>([{ scopes: null }, { scopes: ['marketing'] }])('authenticates automation routes with the tenant API key and releases invalid idempotency claims ($scopes)', async ({ scopes }) => {
     const marketing = marketingDeps();
     marketing.layouts = new InMemoryEmailLayoutRepository([{

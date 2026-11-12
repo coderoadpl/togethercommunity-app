@@ -835,12 +835,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:30` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:210` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1250` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1252` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1274` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1288` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1813` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1813` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1256` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1258` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1280` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1294` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1819` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1819` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -887,10 +887,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:42` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/meta-capi.ts:61` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
-| member-scope | `core/server/usecases/meta-capi.ts:64` | `return recordDecision(tenant.value, { orderId: parsed.data.orderId, memberId: ctx.identity.memberId }, 'withdrawn',` |
-| member-scope | `core/server/usecases/meta-capi.ts:71` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
-| member-scope | `core/server/usecases/meta-capi.ts:72` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
+| member-scope | `core/server/usecases/meta-capi.ts:62` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
+| member-scope | `core/server/usecases/meta-capi.ts:65` | `return recordDecision(tenant.value, { orderId: parsed.data.orderId, memberId: ctx.identity.memberId }, 'withdrawn',` |
+| member-scope | `core/server/usecases/meta-capi.ts:72` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
+| member-scope | `core/server/usecases/meta-capi.ts:73` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
 | member-scope | `core/server/usecases/my-products.ts:75` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

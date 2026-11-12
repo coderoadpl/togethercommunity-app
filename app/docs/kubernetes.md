@@ -172,9 +172,20 @@ that authority's certificate into the pods and the migration Job and add
 
 Each server process opens at most `DATABASE_POOL_MAX` pooled connections
 (10 when unset) plus one direct `LISTEN` connection for the realtime bus. The
-migration Job holds one connection while it runs. Size the database's
-connection limit for every replica during a rolling update, the migration Job
-and an administrative reserve.
+migration Job holds one connection while it runs.
+
+A terminating pod keeps its pool and its `LISTEN` connection until its drain
+and release steps finish, at most 75 seconds after the signal, and the
+Deployment controller does not count terminating pods against `maxSurge`. During
+one rolling update the pods holding connections are therefore at most
+`replicas + maxSurge` running pods plus up to `replicas` terminating ones. Size
+the database's connection limit to at least
+
+`(2 × replicas + maxSurge) × (DATABASE_POOL_MAX + 1) + 1 + reserve`
+
+where the `1` is the migration Job and the reserve covers administrative
+sessions. With 2 replicas, `maxSurge: 1` and the default pool that is
+5 × 11 + 1 = 56 connections plus the reserve.
 
 ## Client address
 

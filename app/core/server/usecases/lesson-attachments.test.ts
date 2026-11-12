@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   LESSON_ATTACHMENT_MAX_BYTES,
@@ -239,8 +239,10 @@ const testDeps = (actualSizeBytes = 2048) => {
   const attachments = attachmentRepository();
   const signed: Array<{ method: 'GET' | 'PUT'; url: string; region?: string; expiresInSeconds: number }> = [];
   const removed: string[] = [];
+  const errors: string[] = [];
   const storage: StorageProvider = {
     putObject: async () => ok(undefined),
+    list: async () => ok({ objects: [], continuationToken: null }),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -280,6 +282,7 @@ const testDeps = (actualSizeBytes = 2048) => {
     products,
     progress,
     storage,
+    logger: { error: (message) => errors.push(message) },
     secretResolver: {
       resolve: async (_tenantId, key) => key === 's3.configuration'
         ? ok(storageConfiguration)
@@ -288,7 +291,7 @@ const testDeps = (actualSizeBytes = 2048) => {
     ids: { nextId: () => 'attachment-1' },
     clock: { nowIso: () => NOW },
   };
-  return { attachments, deps, removed, signed };
+  return { attachments, deps, removed, signed, errors };
 };
 
 describe('lesson attachments', () => {
@@ -306,7 +309,7 @@ describe('lesson attachments', () => {
     expect(started.value.expiresAt).toBe('2026-08-03T12:15:00.000Z');
     expect(signed).toEqual([{
       method: 'PUT',
-      url: 'https://storage.example.test/creator-files/lesson-attachments/lesson-1/attachment-1/Exercises-01.pdf',
+      url: 'https://storage.example.test/creator-files/tenant-1/lesson-attachments/lesson-1/attachment-1/Exercises-01.pdf',
       region: 'eu-central-1',
       expiresInSeconds: ATTACHMENT_UPLOAD_TTL_SECONDS,
     }]);
@@ -356,7 +359,7 @@ describe('lesson attachments', () => {
       completeLessonAttachmentUpload(owner, lesson.id, started.value.attachment.id, deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(removed).toEqual([
-      'https://storage.example.test/creator-files/lesson-attachments/lesson-1/attachment-1/oversized.pdf',
+      'https://storage.example.test/creator-files/tenant-1/lesson-attachments/lesson-1/attachment-1/oversized.pdf',
     ]);
     expect(attachments.rows[0]?.status).toBe('pending');
   });
@@ -483,13 +486,13 @@ describe('lesson attachments', () => {
       deleteLessonAttachment(owner, lesson.id, started.value.attachment.id, deps),
     ).resolves.toEqual({ ok: true, value: { deleted: true } });
     expect(removed).toEqual([
-      'https://storage.example.test/creator-files/lesson-attachments/lesson-1/attachment-1/draft.pdf',
+      'https://storage.example.test/creator-files/tenant-1/lesson-attachments/lesson-1/attachment-1/draft.pdf',
     ]);
     expect(attachments.rows).toEqual([]);
   });
 
   it('detaches an attachment even when storage deletion fails', async () => {
-    const { attachments, deps } = testDeps();
+    const { attachments, deps, errors } = testDeps();
     const owner = ctx({ staffRole: 'owner', memberId: null });
     const started = await beginLessonAttachmentUpload(owner, lesson.id, {
       fileName: 'orphan.pdf',
@@ -515,5 +518,55 @@ describe('lesson attachments', () => {
       },
     });
     expect(attachments.rows).toEqual([]);
+    expect(errors).toEqual([expect.stringContaining('tenant "tenant-1" could not delete storage object "tenant-1/lesson-attachments/lesson-1/attachment-1/orphan.pdf"')]);
+  });
+});
+
+describe('attachment key compatibility', () => {
+  it('separates identical resource and generated ids by tenant', async () => {
+    const keys: string[] = [];
+    for (const tenantId of ['tenant-1', 'tenant-2']) {
+      const { deps } = testDeps();
+      deps.lessons = { ...deps.lessons, findById: async () => ({ ...lesson, tenantId }) };
+      const result = await beginLessonAttachmentUpload(ctx({ tenantId, staffRole: 'owner' }), lesson.id, {
+        fileName: 'file.pdf', contentType: 'application/pdf', sizeBytes: 10,
+      }, deps);
+      if (!result.ok) throw new Error(result.error.message);
+      keys.push(result.value.attachment.storageKey);
+    }
+    expect(keys).toEqual([
+      'tenant-1/lesson-attachments/lesson-1/attachment-1/file.pdf',
+      'tenant-2/lesson-attachments/lesson-1/attachment-1/file.pdf',
+    ]);
+  });
+
+  it('completes, serves and deletes the exact stored legacy key', async () => {
+    const { deps, attachments, signed, removed } = testDeps();
+    const key = 'lesson-attachments/lesson-1/legacy/file.pdf';
+    attachments.rows.push({
+      id: 'legacy', tenantId: 'tenant-1', lessonId: lesson.id, storageKey: key, status: 'pending',
+      fileName: 'file.pdf', contentType: 'application/pdf', sizeBytes: 10, createdAt: NOW,
+    });
+    const head = vi.spyOn(deps.storage, 'head');
+    const owner = ctx({ staffRole: 'owner' });
+    expect(await completeLessonAttachmentUpload(owner, lesson.id, 'legacy', deps)).toMatchObject({ ok: true });
+    expect(head).toHaveBeenCalledWith(expect.objectContaining({ url: `https://storage.example.test/creator-files/${key}` }));
+    expect(await getLessonAttachmentDownload(ctx(), lesson.id, 'legacy', deps)).toMatchObject({ ok: true });
+    expect(signed[0]?.url).toContain(`/creator-files/${key}?`);
+    expect(await deleteLessonAttachment(owner, lesson.id, 'legacy', deps)).toMatchObject({ ok: true });
+    expect(removed).toEqual([`https://storage.example.test/creator-files/${key}`]);
+  });
+
+  it('propagates storage rejections without detaching the row', async () => {
+    const { deps, attachments, errors } = testDeps();
+    const owner = ctx({ staffRole: 'owner' });
+    const started = await beginLessonAttachmentUpload(owner, lesson.id, {
+      fileName: 'file.pdf', contentType: 'application/pdf', sizeBytes: 10,
+    }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+    vi.spyOn(deps.storage, 'delete').mockRejectedValue(new Error('Unexpected storage failure'));
+    await expect(deleteLessonAttachment(owner, lesson.id, started.value.attachment.id, deps)).rejects.toThrow('Unexpected storage failure');
+    expect(attachments.rows).toHaveLength(1);
+    expect(errors).toEqual([]);
   });
 });

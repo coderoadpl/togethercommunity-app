@@ -197,6 +197,7 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
   },
   storage: {
     putObject: async () => ok(undefined),
+    list: async () => ok({ objects: [], continuationToken: null }),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),

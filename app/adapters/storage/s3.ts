@@ -11,6 +11,7 @@ import {
   integrationUnavailable,
   ok,
   storageConfigurationSchema,
+  storageListInputSchema,
   validation,
   type AppError,
   type ProviderDiagnostic,
@@ -21,6 +22,8 @@ import {
 } from '#core/domain/index.js';
 import { privateNetworkAddress, privateNetworkHostname } from '#core/domain/network.js';
 import type { StorageProvider, TenantSecretResolver } from '#core/server/index.js';
+
+import { parseListObjectsPage } from './list-objects.js';
 
 const S3_HOST_PATTERN =
   /^(?<bucket>[a-z0-9][a-z0-9.-]*)\.s3(?:[.-](?<region>[a-z0-9-]+))?\.amazonaws\.com$/;
@@ -538,6 +541,61 @@ export const createS3StorageProvider = (
   };
 
   return {
+    list: async (input) => {
+      const parsed = storageListInputSchema.safeParse(input);
+      if (!parsed.success) return err(validation('Invalid storage listing request'));
+      const { configuration, prefix, continuationToken, limit } = parsed.data;
+      const target = objectUrl(configuration, '');
+      target.searchParams.set('list-type', '2');
+      target.searchParams.set('encoding-type', 'url');
+      target.searchParams.set('prefix', prefix);
+      target.searchParams.set('max-keys', String(limit));
+      if (continuationToken !== null) target.searchParams.set('continuation-token', continuationToken);
+      const safeTarget = await validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      const signed = signObjectUrl('GET', target, { ...configuration, expiresInSeconds: 60 }, now);
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await fetchStorage(signed, {
+          method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
+          headers: { 'Accept-Encoding': 'identity' },
+        });
+        if (!response.ok || !response.body?.getReader
+          || (response.headers.get('content-encoding') ?? 'identity') !== 'identity') {
+          await discardStorageResponseBody(response);
+          return err(integrationUnavailable('S3 object listing is unavailable.'));
+        }
+        const reader = response.body.getReader();
+        try {
+          const decoder = new TextDecoder('utf-8', { fatal: true });
+          let bytes = 0;
+          let xml = '';
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            bytes += chunk.value?.byteLength ?? 0;
+            if (chunk.value === undefined || bytes > 2 * 1024 * 1024) {
+              await reader.cancel();
+              return err(integrationUnavailable('S3 object listing exceeds the byte ceiling.'));
+            }
+            xml += decoder.decode(chunk.value, { stream: true });
+          }
+          xml += decoder.decode();
+          const page = parseListObjectsPage(xml);
+          if (page.ok && (page.value.objects.length > limit
+            || page.value.objects.some((object) => !object.key.startsWith(prefix)))) {
+            return err(integrationUnavailable('S3 returned objects outside the requested listing.'));
+          }
+          return page;
+        } finally {
+          reader.releaseLock();
+        }
+      } catch {
+        return err(integrationUnavailable('Could not read the S3 object listing.'));
+      } finally {
+        await dispatcher.destroy();
+      }
+    },
     objectUrl,
     probe,
     probeCors,

@@ -1347,7 +1347,7 @@ export const createDeps = (
       const tenantIds = await accountAvatarTenants.listTenantIdsForUser(userId);
       await Promise.all(tenantIds.map((tenant) => importGoogleAvatar(
         { tenantId: tenant.id, userId, sourceUrl },
-        { avatars: accountAvatars, avatarImages, ids, secretResolver, storage },
+        { avatars: accountAvatars, avatarImages, ids, secretResolver, storage, logger },
       )));
     },
     isVerifiedCustomHost: memoizeHostCheck(async (host) =>

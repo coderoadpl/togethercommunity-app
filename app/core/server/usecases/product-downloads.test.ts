@@ -182,6 +182,7 @@ const testDeps = (activeGrant = true, actualSizeBytes = 4096) => {
   const warnings: string[] = [];
   const storage: StorageProvider = {
     putObject: async () => ok(undefined),
+    list: async () => ok({ objects: [], continuationToken: null }),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -299,7 +300,7 @@ describe('product downloads', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(removed).toEqual([
-      'https://storage.example.test/creator-files/product-downloads/download-1/asset-1/oversized.pdf',
+      'https://storage.example.test/creator-files/tenant-1/product-downloads/download-1/asset-1/oversized.pdf',
     ]);
     expect(downloadAssets.rows[0]?.status).toBe('pending');
   });
@@ -395,7 +396,7 @@ describe('file version use cases', () => {
     expect(removed).toEqual([]);
     await deleteProductDownloadAsset(ownerCtx, product.id, 'asset-2', deps);
     expect(downloadAssets.rows[0]?.supersededAt).toBeNull();
-    expect(removed).toEqual(['https://storage.example.test/creator-files/product-downloads/download-1/asset-2/errata.pdf']);
+    expect(removed).toEqual(['https://storage.example.test/creator-files/tenant-1/product-downloads/download-1/asset-2/errata.pdf']);
   });
 
   it.each([
@@ -560,5 +561,37 @@ describe('issued download copies', () => {
     deps.storage.getObject = async () => { throw new Error('Must not fetch'); };
     for (const ctx of [memberCtx, ownerCtx]) expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(copies).toEqual([]);
+  });
+});
+
+describe('download key compatibility', () => {
+  it('separates identical resource and generated ids by tenant', async () => {
+    const keys: string[] = [];
+    for (const tenantId of ['tenant-1', 'tenant-2']) {
+      const { deps } = testDeps();
+      deps.products = { ...deps.products, findById: async () => ({ ...product, tenantId }) };
+      const result = await beginProductDownloadUpload({ identity: { ...ownerCtx.identity, tenantId } }, product.id, {
+        fileName: 'file.pdf', contentType: 'application/pdf', sizeBytes: 10,
+      }, deps);
+      if (!result.ok) throw new Error(result.error.message);
+      keys.push(result.value.asset.storageKey);
+    }
+    expect(keys).toEqual([
+      'tenant-1/product-downloads/download-1/asset-1/file.pdf',
+      'tenant-2/product-downloads/download-1/asset-1/file.pdf',
+    ]);
+  });
+
+  it('completes, serves and deletes a legacy key without rewriting it', async () => {
+    const { deps, downloadAssets, signed, removed } = testDeps();
+    const asset = storedAsset({ status: 'pending' });
+    downloadAssets.rows.push(asset);
+    const head = vi.spyOn(deps.storage, 'head');
+    expect(await completeProductDownloadUpload(ownerCtx, product.id, asset.id, deps)).toMatchObject({ ok: true });
+    expect(head).toHaveBeenCalledWith(expect.objectContaining({ url: `https://storage.example.test/creator-files/${asset.storageKey}` }));
+    expect(await getProductDownload(memberCtx, product.id, asset.id, deps)).toMatchObject({ ok: true });
+    expect(signed[0]?.url).toContain(`/creator-files/${asset.storageKey}?`);
+    expect(await deleteProductDownloadAsset(ownerCtx, product.id, asset.id, deps)).toMatchObject({ ok: true });
+    expect(removed).toEqual([`https://storage.example.test/creator-files/${asset.storageKey}`]);
   });
 });

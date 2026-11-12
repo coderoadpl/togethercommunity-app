@@ -66,6 +66,7 @@ const harness = (probeFails = false, corsOrigins?: string[]) => {
   };
   const storage: StorageProvider = {
     putObject: async () => ok(undefined),
+    list: async () => ok({ objects: [], continuationToken: null }),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async (input, origins) => {

@@ -48,10 +48,11 @@ const stubSettings = (
   supportConfigured = false,
   memberVideoAutoplayOverride = false,
   videoAutoplayDefault = false,
+  supportUrl: string | null = null,
 ) =>
-  http.get('*/api/tenant/settings', () =>
+  http.get('*/api/member/settings', () =>
     HttpResponse.json({ ok: true, data: { settings: {
-          name: 'Academy', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null, supportConfigured,
+      billingPortalUrl, supportUrl, supportConfigured,
       memberVideoAutoplayOverride,
       videoAutoplayDefault,
     } } }),
@@ -838,6 +839,16 @@ describe('MemberAccountPage', () => {
     const link = await screen.findByTestId('account-manage-payments');
     expect(link).toHaveAttribute('href', 'https://billing.stripe.com/p/login/test_example');
     expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('keeps the external support link available through member settings', async () => {
+    server.use(stubMe(), stubSettings(null, false, false, false, 'https://example.test/help'), stubBillingOrders());
+    await renderAccount();
+
+    const link = await screen.findByRole('link', { name: en.support.externalLink });
+    expect(link).toHaveAttribute('href', 'https://example.test/help');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(screen.queryByTestId('account-support-open')).not.toBeInTheDocument();
   });
 
   it('keeps support submission inactive until both fields are filled and resets after success', async () => {

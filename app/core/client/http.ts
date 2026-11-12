@@ -213,6 +213,7 @@ import {
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
+  memberSettingsOutputSchema,
   tenantRedirectsOutputSchema,
   tenantRedirectOutputSchema,
   tenantRedirectDeleteOutputSchema,
@@ -2644,6 +2645,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.m2mImportProgress.path,
       m2mImportBatchOutputSchema,
       input,
+      signal,
+    ),
+  getMemberSettings: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberSettings.method,
+      API_ROUTES.memberSettings.path,
+      memberSettingsOutputSchema,
+      undefined,
       signal,
     ),
   getTenantSettings: (signal?: AbortSignal) =>

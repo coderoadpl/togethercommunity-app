@@ -7,6 +7,7 @@ export const CAPABILITIES = [
   'tenant:create',
   'tenant:list-own',
   'tenant:settings:read',
+  'member:settings:read',
   'tenant:settings:write',
   'tenant:domain:read',
   'tenant:secret:read',
@@ -162,7 +163,7 @@ const memberSelfCapabilities = [
   'account:session:self-revoke',
   'tenant:create',
   'tenant:list-own',
-  'tenant:settings:read',
+  'member:settings:read',
   'member:progress:self-write',
   'member:progress:read',
   'member:billing:read',
@@ -191,6 +192,7 @@ const memberSelfCapabilities = [
 
 const sharedStaffCapabilities = [
   ...memberSelfCapabilities,
+  'tenant:settings:read',
   'subscriptions:read',
   'subscriptions:adopt',
   'tenant:domain:read',
@@ -348,7 +350,7 @@ export const capabilitiesForPrincipal = (principal: Principal): readonly Capabil
  * out of the tenant under someone else's name.
  */
 const IMPERSONATION_READ_CAPABILITIES: readonly Capability[] = [
-  'tenant:settings:read',
+  'member:settings:read',
   'member:billing:read',
   'member:erasure:self-request',
   'member:product:read',

@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 440. Exported `Ctx` use-case rows: 344.
+Closed capability count: 124. Route rows: 441. Exported `Ctx` use-case rows: 345.
 
 ## Human-readable diff
 
@@ -320,7 +320,8 @@ no changes
 | `GET /api/tenant-secrets` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant-secrets` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `DELETE /api/tenant-secrets/:key` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
-| `GET /api/tenant/settings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/member/settings` | member:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/tenant/settings` | tenant:settings:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenant/team` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/team` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/team/remove` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
@@ -812,7 +813,8 @@ no changes
 | `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
-| `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
+| `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-settings.ts authorization call |
+| `tenant-settings.ts#getMemberSettings` | member:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-setup-readiness.ts#getTenantSetupReadiness` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-setup-readiness.ts authorization call |
 | `tenant-team.ts#listTenantTeam` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-team.ts authorization call |
@@ -828,12 +830,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:28` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:208` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1246` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1248` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1270` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1284` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1808` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1808` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1247` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1249` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1271` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1285` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1809` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1809` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -889,16 +891,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:25` | `if (identity === null \|\| identity.staffRole === null \|\| cookie === undefined) return false;` |
+| staff-role | `core/server/usecases/tenant-settings.ts:38` | `if (ctx.identity.staffRole === null) return err(forbidden('Staff role is required'));` |
 
 ## Suspicious but preserved
 
 ### development-only routes
 
 When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control (`apps/server/src/internal-app.ts`).
-
-### GET /api/tenant/settings
-
-A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).
 
 ### marketing synthetic identities
 

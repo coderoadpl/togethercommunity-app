@@ -8,6 +8,7 @@ import { marketingSnsJsonValue, parseMarketingSesEvents, storedSnsEnvelopeSchema
 const erasedEventSchema = z.object({
   kind: z.enum(['delivery', 'bounce', 'complaint', 'open', 'click']),
   messageId: z.string().min(1), campaignSendId: z.string().optional(), occurredAt: z.string().datetime(),
+  recipientHmac: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   raw: z.unknown(), linkUrl: z.string().optional(), classification: z.enum(['hard', 'soft', 'unresolved']).optional(),
 });
 const erasedEnvelopeSchema = z.object({ erasedSesEvents: z.array(erasedEventSchema).min(1) });
@@ -16,7 +17,7 @@ export const readStoredMarketingSesEvents = (rawBody: string | null, topicArn: s
   const value = marketingSnsJsonValue(rawBody ?? '');
   const erased = erasedEnvelopeSchema.safeParse(value);
   if (erased.success) return erased.data.erasedSesEvents.map((event): VerifiedSesEvent => {
-    const base = { messageId: event.messageId, campaignSendId: event.campaignSendId, occurredAt: event.occurredAt, raw: event.raw, topicArn };
+    const base = { messageId: event.messageId, campaignSendId: event.campaignSendId, occurredAt: event.occurredAt, recipientHmac: event.recipientHmac, raw: event.raw, topicArn };
     if (event.kind === 'bounce') return { ...base, kind: 'bounce',
       bounceType: event.classification === 'hard' ? 'Permanent' : event.classification === 'soft' ? 'Transient' : 'Undetermined',
       bounceSubType: null, status: null, diagnosticCode: null, action: null };
@@ -32,7 +33,7 @@ export const marketingSesRecipientAddresses = (event: VerifiedSesEvent): string[
   return [...(event.recipient === undefined ? [] : [event.recipient]), ...(mail.success ? mail.data.mail.destination ?? [] : [])];
 };
 
-export const scrubErasedMarketingSnsBody = (rawBody: string | null, topicArn: string): string | null => {
+export const scrubErasedMarketingSnsBody = (rawBody: string | null, topicArn: string, hashRecipient: (email: string) => string): string | null => {
   const events = readStoredMarketingSesEvents(rawBody, topicArn);
   if (events.length === 0) return rawBody;
   return JSON.stringify({ erasedSesEvents: events.map((event) => {
@@ -43,7 +44,8 @@ export const scrubErasedMarketingSnsBody = (rawBody: string | null, topicArn: st
       type, occurredAt: event.occurredAt, createdAt: event.occurredAt,
       meta: { rawProviderPayload: event.raw, classification, ...(event.kind === 'click' ? { linkUrl: event.linkUrl } : {}) },
     }));
-    return { kind: event.kind, messageId: event.messageId, campaignSendId: event.campaignSendId, occurredAt: event.occurredAt,
+    const recipientHmac = event.recipient === undefined ? event.recipientHmac : hashRecipient(event.recipient);
+    return { kind: event.kind, recipientHmac, messageId: event.messageId, campaignSendId: event.campaignSendId, occurredAt: event.occurredAt,
       raw: scrubbed.meta?.['rawProviderPayload'], classification, ...(event.kind === 'click' ? { linkUrl: scrubbed.meta?.linkUrl } : {}) };
   }) });
 };

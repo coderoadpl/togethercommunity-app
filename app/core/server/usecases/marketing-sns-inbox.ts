@@ -29,7 +29,7 @@ const scrubErasedReceipt = async (row: MarketingSnsInbox, repos: MarketingDelive
     if ((send !== null && await repos.suppressions.isErased(row.tenantId, {
       email: send.email, emailHmac: hmac.compute(row.tenantId, send.email), memberId: send.memberId, contactId: send.contactId ?? null,
     })) || (outbox != null && await addressErased(outbox.to)) || erasedAddresses.some(Boolean)) {
-      return { ...row, rawBody: scrubErasedMarketingSnsBody(row.rawBody, row.topicArn) };
+      return { ...row, rawBody: scrubErasedMarketingSnsBody(row.rawBody, row.topicArn, (email) => hmac.compute(row.tenantId, email)) };
     }
   }
   return row;

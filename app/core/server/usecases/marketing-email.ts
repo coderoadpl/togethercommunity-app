@@ -1535,6 +1535,12 @@ export const applyVerifiedSesEvent = async (
   const addressErased = (email: string) => deps.suppressions.isErased(tenantId.value, {
     email, emailHmac: deps.hmac.compute(tenantId.value, email),
   });
+  const recipientMatches = (email: string) => event.recipient !== undefined
+    ? normalizeEmail(event.recipient) === normalizeEmail(email)
+    : event.recipientHmac === undefined || event.recipientHmac === deps.hmac.compute(tenantId.value, email);
+  const recipientErased = () => event.recipient !== undefined ? addressErased(event.recipient)
+    : event.recipientHmac === undefined ? Promise.resolve(false)
+      : deps.suppressions.isErased(tenantId.value, { email: '', emailHmac: event.recipientHmac });
   let erased = false;
   const feedbackEvent = (...args: Parameters<typeof lifecycleEvent>): EmailEvent => {
     const value = lifecycleEvent(...args);
@@ -1546,8 +1552,8 @@ export const applyVerifiedSesEvent = async (
     email: send.email, emailHmac: deps.hmac.compute(tenantId.value, send.email), memberId: send.memberId, contactId: send.contactId ?? null,
   });
   if (send !== null && send.sesMessageId !== null && send.sesMessageId !== event.messageId) return ok({ kind: 'ignored', reason: 'Provider message does not match the correlated send' });
-  if (send !== null && event.recipient !== undefined && normalizeEmail(event.recipient) !== send.email) {
-    const matchesErasedSend = erased && (send.sesMessageId === event.messageId || (send.sesMessageId === null && send.id === event.campaignSendId)) && await addressErased(event.recipient);
+  if (send !== null && !recipientMatches(send.email)) {
+    const matchesErasedSend = erased && (send.sesMessageId === event.messageId || (send.sesMessageId === null && send.id === event.campaignSendId)) && await recipientErased();
     if (!matchesErasedSend) return ok({ kind: 'ignored', reason: 'Recipient does not match the correlated send' });
   }
   if (send !== null && send.status !== 'sent') {
@@ -1561,7 +1567,7 @@ export const applyVerifiedSesEvent = async (
       }
       const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
       if (outbox === null) return ok({ kind: 'awaiting_correlation' });
-      if (event.recipient !== undefined && normalizeEmail(event.recipient) !== normalizeEmail(outbox.to)) return ok({ kind: 'ignored', reason: 'Recipient does not match the transactional send' });
+      if (!recipientMatches(outbox.to)) return ok({ kind: 'ignored', reason: 'Recipient does not match the transactional send' });
       erased = await addressErased(outbox.to);
       const classification = event.kind === 'delivery'
         ? null

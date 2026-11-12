@@ -15,6 +15,7 @@ export type SesEventApplication = { kind: 'applied' } | { kind: 'ignored'; reaso
 export type VerifiedSesEvent = {
   campaignSendId?: string | undefined;
   recipient?: string | undefined;
+  recipientHmac?: string | undefined;
   topicArn: string;
   messageId: string;
   occurredAt: string;

@@ -314,3 +314,18 @@ it('scrubs destination-only address tombstones before send correlation exists', 
   expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, inboxDeps())).toEqual(ok({ processed: 0, retried: 1 }));
   await assertInboxScrubbed(tenantId);
 });
+
+it('retains recipient validation after normalizing an erased send receipt', async () => {
+  const tenantId = 'inbox-mismatch';
+  await seed(tenantId);
+  await erase(tenantId);
+  await database.db.update(campaignSends).set({ status: 'sending', sesMessageId: null }).where(eq(campaignSends.tenantId, tenantId));
+  const input = receipt(tenantId, 'marketing', 'delivery');
+  const rawBody = input.rawBody.replaceAll(address, 'unrelated@example.test');
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { ...input, rawBody }, inboxDeps());
+  expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, inboxDeps())).toEqual(ok({ processed: 1, retried: 0 }));
+  expect((await inboxRows(tenantId))[0]).toMatchObject({ status: 'ignored', ignoreReason: 'No applicable recipients' });
+  const [send] = await database.db.select().from(campaignSends).where(eq(campaignSends.tenantId, tenantId));
+  expect(send).toMatchObject({ status: 'sending', sesMessageId: null, deliveryStatus: null });
+  await assertInboxScrubbed(tenantId);
+});

@@ -72,7 +72,7 @@ const setup = () => {
   const emailFor = vi.fn(() => port);
   const logger = { warn: vi.fn() };
   const resolver = createTenantSesTransactionalResolver({ findByTenant: async () => settings, findByWebhookToken: async () => settings, upsert: async () => settings },
-    { resolve: async () => ok(credentials) }, { readiness: { ensure: (credentials, settings) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) }, logger }, emailFor);
+    { resolve: async () => ok(credentials) }, { readiness: { ensure: (_tenantId, credentials, settings) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) }, logger }, emailFor);
   return { sets, state, resolver, factory, emailFor, port, logger, controlPlane };
 };
 

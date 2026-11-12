@@ -40,7 +40,7 @@ export const createTenantSesTransactionalResolver = (
       return { send: async () => failure, healthcheck: async () => failure, test: async () => failure };
     };
     if (!resolved.ok) return unavailable(resolved.error);
-    const configuration = await infrastructure.readiness.ensure(resolved.value, tenantSettings);
+    const configuration = await infrastructure.readiness.ensure(tenantId, resolved.value, tenantSettings);
     if (!configuration.ok) return unavailable(configuration.error);
     return emailFor({
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),

@@ -2164,6 +2164,7 @@ export interface SesMarketingCredentials {
 
 export interface TransactionalSesReadiness {
   ensure(
+    tenantId: string,
     credentials: SesMarketingCredentials,
     settings: { configurationSet: string | null; snsTopicArn: string | null },
   ): Promise<Result<string, AppError>>;

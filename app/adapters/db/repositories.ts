@@ -2827,7 +2827,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       ));
       await scrubMemberEmailEvents(tx, tenantId, {
         memberId: input.memberId, email: member.email, emailHmac: emailHmac.compute(tenantId, member.email),
-      });
+      }, emailHmac);
       await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 

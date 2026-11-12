@@ -14,7 +14,7 @@ const controlPlane = {
   ensureEventDestination: async () => ok({ ready: true as const }),
 };
 const infrastructure = {
-  readiness: { ensure: (credentials: Parameters<typeof ensureTransactionalSesConfiguration>[0], settings: Parameters<typeof ensureTransactionalSesConfiguration>[1]) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) },
+  readiness: { ensure: (_tenantId: string, credentials: Parameters<typeof ensureTransactionalSesConfiguration>[0], settings: Parameters<typeof ensureTransactionalSesConfiguration>[1]) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) },
   logger: { warn: vi.fn() },
 };
 

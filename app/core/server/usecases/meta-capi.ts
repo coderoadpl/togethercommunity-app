@@ -112,18 +112,26 @@ const dispatchJob = async (tenantId: string, job: MetaCapiJob, deps: MetaCapiDis
 
 export const dispatchMetaCapi = async (deps: MetaCapiDispatchDeps): Promise<{ processed: number }> => {
   let processed = 0;
-  const deadline = Date.parse(deps.clock.nowIso()) + 20_000;
-  for (const tenant of await deps.directory.listAll()) {
-    try {
-      while (processed < 20 && Date.parse(deps.clock.nowIso()) < deadline) {
+  const startedAt = Date.parse(deps.clock.nowIso());
+  const deadline = startedAt + 20_000;
+  const tenants = await deps.directory.listAll();
+  const offset = tenants.length === 0 ? 0 : Math.floor(startedAt / 60_000) % tenants.length;
+  let active = [...tenants.slice(offset), ...tenants.slice(0, offset)];
+  while (active.length > 0) {
+    const nextPass: typeof tenants = [];
+    for (const tenant of active) {
+      if (processed >= 20 || Date.parse(deps.clock.nowIso()) >= deadline) return { processed };
+      try {
         const found = await deps.repository.processNext(tenant.id, deps.clock.nowIso(), (job) => dispatchJob(tenant.id, job, deps));
-        if (!found) break;
-        processed += 1;
+        if (found) {
+          processed += 1;
+          nextPass.push(tenant);
+        }
+      } catch {
+        deps.logger?.warn('[meta-capi] tenant_dispatch_failed');
       }
-    } catch {
-      deps.logger?.warn('[meta-capi] tenant_dispatch_failed');
     }
-    if (processed >= 20 || Date.parse(deps.clock.nowIso()) >= deadline) break;
+    active = nextPass;
   }
   return { processed };
 };

@@ -169,6 +169,60 @@ describe('Meta CAPI use cases', () => {
     expect(processNext.mock.calls.map(([tenantId]) => tenantId)).toEqual(['workspace', 'next']);
     expect(warn.mock.calls).toEqual([['[meta-capi] tenant_dispatch_failed']]);
   });
+  it('gives a later tenant a turn before draining a busy tenant', async () => {
+    const h = harness();
+    await h.decide('granted');
+    const [tenant] = await h.deps.directory.listAll();
+    if (!tenant) throw new Error('Missing test tenant');
+    h.deps.directory.listAll = async () => [tenant, { ...tenant, id: 'later' }];
+    let laterPending = true;
+    const processed: string[] = [];
+    h.deps.repository.processNext = async (tenantId, _at, process) => {
+      if (tenantId === 'later' && !laterPending) return false;
+      if (tenantId === 'later') laterPending = false;
+      await process({ ...h.job, order: { ...h.job.order, tenantId } });
+      processed.push(tenantId);
+      return true;
+    };
+    expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 20 });
+    expect(processed.slice(0, 2)).toEqual(['workspace', 'later']);
+    expect(processed.filter((id) => id === 'workspace')).toHaveLength(19);
+    expect(h.send).toHaveBeenCalledTimes(20);
+  });
+  it('rotates the first tenant so every busy tenant beyond the tick budget gets a turn', async () => {
+    const h = harness();
+    const [tenant] = await h.deps.directory.listAll();
+    if (!tenant) throw new Error('Missing test tenant');
+    const tenants = Array.from({ length: 45 }, (_, index) => ({ ...tenant, id: `tenant-${String(index)}` }));
+    h.deps.directory.listAll = async () => tenants;
+    const processNext = vi.fn<MetaCapiRepository['processNext']>(async () => true);
+    h.deps.repository.processNext = processNext;
+    const visited = new Set<string>();
+    for (let tick = 0; tick < tenants.length; tick += 1) {
+      h.setTime(new Date(Date.parse(now) + tick * 60_000).toISOString());
+      processNext.mockClear();
+      expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 20 });
+      const ids = processNext.mock.calls.map(([id]) => id);
+      expect(new Set(ids).size).toBe(20);
+      for (const id of ids) visited.add(id);
+    }
+    expect([...visited].sort()).toEqual(tenants.map(({ id }) => id).sort());
+  });
+  it('stops round-robin passes at the shared deadline and rotates after slow ticks', async () => {
+    const h = harness();
+    const [tenant] = await h.deps.directory.listAll();
+    if (!tenant) throw new Error('Missing test tenant');
+    h.deps.directory.listAll = async () => [tenant, { ...tenant, id: 'later' }];
+    const processNext = vi.fn<MetaCapiRepository['processNext']>(async () => {
+      h.setTime(new Date(Date.parse(h.deps.clock.nowIso()) + 20_000).toISOString());
+      return true;
+    });
+    h.deps.repository.processNext = processNext;
+    expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 1 });
+    h.setTime('2026-11-01T10:01:00.000Z');
+    expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 1 });
+    expect(processNext.mock.calls.map(([id]) => id)).toEqual(['workspace', 'later']);
+  });
   it('rejects new consent and blocks dispatch for a deleted member', async () => {
     const h = harness();
     h.job.memberDeleted = true;

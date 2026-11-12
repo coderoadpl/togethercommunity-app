@@ -75,6 +75,22 @@ describe('email outbox database adapter', () => {
     expect(await db.select().from(emailEvents).where(eq(emailEvents.id, `${input.id}:queued`))).toHaveLength(1);
   });
 
+  it.each([
+    { field: 'tenant', replacement: { tenantId: null } },
+    { field: 'recipient', replacement: { to: 'another@example.test' } },
+    { field: 'payload', replacement: { payload: payload('https://example.test/another') } },
+    { field: 'source app', replacement: { sourceApp: 'another-app' } },
+    { field: 'transport requirement', replacement: { tenantTransportRequired: true } },
+  ])('rejects a conflicting $field without changing the existing message', async ({ field, replacement }) => {
+    const repo = createEmailOutboxRepository(db);
+    const input = { id: 'collision-' + field, tenantId: 'tenant-outbox', to: 'recipient@example.test', payload: payload(), now: NOW };
+    expect((await repo.enqueue(input)).ok).toBe(true);
+    expect(await repo.enqueue({ ...input, ...replacement })).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, input.id)))
+      .toEqual([expect.objectContaining({ tenantId: input.tenantId, to: input.to, payload: input.payload, sourceApp: null, tenantTransportRequired: false })]);
+    expect(await db.select().from(emailEvents).where(eq(emailEvents.id, input.id + ':queued'))).toHaveLength(1);
+  });
+
   it('emits a typed member event when a transactional email is sent', async () => {
     await db.insert(members).values({
       id: 'member-email-sent',

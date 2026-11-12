@@ -26,6 +26,35 @@ read or checkout begins. Delete is available only before the first paid order;
 after payment, deactivate instead. Refunded orders still preserve that history.
 Edits use a revision check so one editor cannot silently overwrite another.
 
+## Variant choices
+
+Each line can offer chips for published siblings in its variant group, including
+on one-line sales links. Choices stay on `/offer/<slug>` as repeatable
+`variant=<baseProductId>.<chosenProductId>` query parameters. Eligible siblings
+belong to the same workspace, have the same type and delivery method, are not
+memberships, have exactly one active non-imported one-time price in the link
+currency, and have resolvable VAT. The total is the sum of the chosen prices;
+each product may occur only once in the final bundle. A chip already chosen on
+another line is disabled; a simultaneous exchange remains valid when the final
+product IDs are unique.
+
+The public GET ignores stale or invalid pairs and discards all pairs if they
+would duplicate a product. Checkout session, coupon validation and simulation
+accept `variantSelections: [{ productId, variantProductId }]`, with `productId`
+in each pair identifying the saved line. The request's top-level `productId`
+remains the first saved product. These writes reject invalid selections before
+stock holds or snapshots and resolve prices and VAT on the server. Order lines,
+the order's first-product identity, stock, purchase consents, safety information,
+coupon scope and analytics follow the chosen products, not the saved bases.
+
+An offer with at least one two-variant line always routes to
+`?checkout=together`, including when its saved product is sold out. Chips use
+full navigation, retaining attribution, the coupon code, the Together marker,
+the staff test-purchase flag and other effective line choices. Unsaved form
+fields reset. Cancellation and Retry retain variant parameters. The direct
+handoff POST does not accept selections and continues to sell the saved products;
+public listing cards also retain saved-product totals. See [Product variants](shop.md#product-variants).
+
 ## Product VAT and physical items
 
 Products support 5%, 8%, 23%, or VAT exemption with a legal basis. New products

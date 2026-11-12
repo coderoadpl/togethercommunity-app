@@ -2437,7 +2437,7 @@ export type MigrationCounts =
   | { expected: number; applied: number }
   | { expected: number; applied: null; journal: 'missing' | 'unreadable' };
 
-export type SchemaStatus = {
+type SchemaStatus = {
   expectedMigrations: number;
   schemaFingerprint: string | null;
   schemaFingerprintMatch: boolean | null;

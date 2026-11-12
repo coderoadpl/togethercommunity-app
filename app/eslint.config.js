@@ -263,6 +263,11 @@ export default tseslint.config(
           pattern: 'apps/server/src/entry.vercel.test.ts',
           mode: 'full',
         },
+        {
+          type: 'vercel-function',
+          pattern: ['api/index.ts', 'api/platform-reset.ts'],
+          mode: 'full',
+        },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-story-module-test', pattern: 'apps/web/src/stories/stories.test.tsx', mode: 'full' },
         { type: 'visual-support', pattern: ['scripts/story-clock.ts', 'scripts/visual-request-policy.ts'], mode: 'full' },
@@ -374,6 +379,10 @@ export default tseslint.config(
                 'adapter-telemetry',
                 'adapter-personalisation',
               ],
+            },
+            {
+              from: ['vercel-function'],
+              allow: ['platform-entry'],
             },
             {
               from: ['platform-entry'],
@@ -612,6 +621,10 @@ export default tseslint.config(
               allow: ['node:crypto', 'node:dns', 'node:net', 'sharp', 'undici'],
             },
             {
+              from: ['vercel-function'],
+              allow: [],
+            },
+            {
               from: ['platform-entry'],
               allow: ['@hono/node-server', '@vercel/functions', 'node:http'],
             },
@@ -795,7 +808,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['{core,adapters,apps,packages}/**/*.{ts,tsx}'],
+    files: ['{core,adapters,apps,packages,api}/**/*.{ts,tsx}'],
     rules: {
       'boundaries/no-unknown-files': 'error',
     },

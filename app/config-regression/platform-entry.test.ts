@@ -32,7 +32,7 @@ describe('Vercel platform entry boundary', () => {
     expect(eslintSource).toContain("pattern: 'apps/server/src/entry.vercel.ts'");
   });
 
-  it('allows only its exact regression-test element to import the platform entry', async () => {
+  it('allows only its exact regression-test and function elements to import the platform entry', async () => {
     const eslint = new ESLint({ cwd: appRoot });
     const config: {
       rules: {
@@ -41,6 +41,7 @@ describe('Vercel platform entry boundary', () => {
     } = await eslint.calculateConfigForFile('apps/server/src/entry.vercel.test.ts');
     const [, options] = config.rules['boundaries/element-types'];
     expect(options.rules.filter(({ allow }) => allow.includes('platform-entry'))).toEqual([
+      { from: ['vercel-function'], allow: ['platform-entry'] },
       { from: ['platform-entry-test'], allow: ['platform-entry', 'app-server'] },
     ]);
   }, 30_000);

@@ -85,6 +85,28 @@ const eslintFixtures = {
     rel: join('adapters', token, 'unclassified.ts'),
     content: 'export const probe = 1;\n',
   },
+  unknownApiFile: {
+    rel: join('api', token, 'unclassified.ts'),
+    content: 'export const probe = 1;\n',
+  },
+  vercelIndex: {
+    rel: join('api', 'index.ts'),
+    content:
+      "export { entry } from '../apps/server/src/entry.vercel.js';\n" +
+      "import '../apps/server/src/composition.js';\n" +
+      "import 'react';\n" +
+      "import '@vercel/functions';\n" +
+      "import '@neondatabase/serverless';\n",
+  },
+  vercelPlatformReset: {
+    rel: join('api', 'platform-reset.ts'),
+    content:
+      "export { entry } from '../apps/server/src/entry.vercel.js';\n" +
+      "import '../apps/server/src/composition.js';\n" +
+      "import 'react';\n" +
+      "import '@vercel/functions';\n" +
+      "import '@neondatabase/serverless';\n",
+  },
   platformEntryTest: {
     rel: join('apps', 'server', 'src', 'entry.vercel.test.ts'),
     content:
@@ -96,7 +118,10 @@ const eslintFixtures = {
   },
   otherServerTest: {
     rel: join('apps', 'server', 'src', 'other.test.ts'),
-    content: "export const loadEntry = () => import('./entry.vercel.js');\n",
+    content:
+      "export const loadEntry = () => import('./entry.vercel.js');\n" +
+      "import '@vercel/functions';\n" +
+      "import '@neondatabase/serverless';\n",
   },
   restrictedImport: {
     rel: join(featureDir, 'axios.ts'),
@@ -350,6 +375,35 @@ describe('ESLint gate', () => {
     );
   });
 
+  it('rejects unclassified API files', () => {
+    expect(findMessage('unknownApiFile', 'boundaries/no-unknown-files')?.message).toContain(
+      'File is not of any known element type',
+    );
+  });
+
+  it.each(['vercelIndex', 'vercelPlatformReset'] as const)(
+    'classifies %s and allows only its platform entry dependency',
+    (fixture) => {
+      const messages = messagesByFixture.get(eslintFixtures[fixture].rel);
+      expect(messages).toBeDefined();
+      expect(findMessage(fixture, 'boundaries/no-unknown-files')).toBeUndefined();
+      expect(messages?.filter(({ ruleId }) => ruleId === 'boundaries/element-types')).toEqual([
+        expect.objectContaining({
+          message: expect.stringContaining('vercel-function is not allowed to import app-server'),
+        }),
+      ]);
+      expect(messages?.filter(({ ruleId }) => ruleId === 'boundaries/external')).toEqual(
+        ['react', '@vercel/functions', '@neondatabase/serverless'].map((dependency) =>
+          expect.objectContaining({
+            message: expect.stringContaining(
+              `vercel-function is not allowed to import external package "${dependency}"`,
+            ),
+          }),
+        ),
+      );
+    },
+  );
+
   it('allows only the exact entry test to reach the platform entry and app-server', () => {
     const messages = messagesByFixture.get(eslintFixtures.platformEntryTest.rel);
     expect(messages).toBeDefined();
@@ -359,19 +413,22 @@ describe('ESLint gate', () => {
     );
   });
 
-  it('does not grant the entry test any platform vendor exemption', () => {
-    const messages = messagesByFixture.get(eslintFixtures.platformEntryTest.rel);
+  it.each([
+    ['platformEntryTest', 'platform-entry-test'],
+    ['otherServerTest', 'app-server'],
+  ] as const)('does not grant %s a platform vendor exemption', (fixture, element) => {
+    const messages = messagesByFixture.get(eslintFixtures[fixture].rel);
     expect(messages?.filter(({ ruleId }) => ruleId === 'boundaries/external')).toMatchObject([
       {
         ruleId: 'boundaries/external',
         message: expect.stringContaining(
-          'platform-entry-test is not allowed to import external package "@vercel/functions"',
+          `${element} is not allowed to import external package "@vercel/functions"`,
         ),
       },
       {
         ruleId: 'boundaries/external',
         message: expect.stringContaining(
-          'platform-entry-test is not allowed to import external package "@neondatabase/serverless"',
+          `${element} is not allowed to import external package "@neondatabase/serverless"`,
         ),
       },
     ]);

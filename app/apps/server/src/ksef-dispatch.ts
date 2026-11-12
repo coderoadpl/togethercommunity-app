@@ -28,6 +28,9 @@ export const dispatchKsefInBackground = (
   ksef: KsefDispatcher | undefined,
   logger: KsefDispatchLogger,
   source: string,
+  track?: (task: Promise<unknown>) => void,
 ): void => {
-  void dispatchKsef(ksef, logger, source);
+  const dispatched = dispatchKsef(ksef, logger, source);
+  if (track === undefined) void dispatched;
+  else track(dispatched);
 };

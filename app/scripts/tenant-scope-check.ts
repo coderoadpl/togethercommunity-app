@@ -136,6 +136,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   NotificationsStreamHandle: 'Browser event-stream lifecycle handle.',
   NotificationsStreamOptions: 'Browser event-stream callback configuration.',
   PaymentProvider: 'External payment-provider boundary.',
+  PendingWork: 'In-process handle on work the shutdown drain waits for, with no persistence access.',
   PersonalisationSlots: 'Instance-local memory reservations with no persistence or tenant data access.',
   PgRealtimeBus: 'Ephemeral event-delivery boundary with no persistence access.',
   PgRealtimeBusOptions: 'Realtime transport connection settings and error callback.',

@@ -2891,7 +2891,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       },
     );
     if (result.ok && result.value.provider === 'ksef' && result.value.ksef?.state === 'queued' && deps.ksef !== undefined) {
-      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue');
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue', deps.trackBackgroundWork);
     }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });
@@ -2914,7 +2914,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       },
     );
     if (result.ok && result.value.provider === 'ksef' && result.value.ksef?.state === 'queued' && deps.ksef !== undefined) {
-      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice send');
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice send', deps.trackBackgroundWork);
     }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });

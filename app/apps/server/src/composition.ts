@@ -571,6 +571,7 @@ export interface AppDeps {
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void; warn(message: string): void };
+  trackBackgroundWork?: (task: Promise<unknown>) => void;
   baseDomain: string;
   platformHost: string | null;
   singleTenantMode: boolean;
@@ -874,7 +875,12 @@ export const selectDeploymentIdentity = (
  */
 export const createDeps = (
   env: Env,
-  options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
+  options: {
+    clock?: Clock;
+    db?: Db;
+    keepAlive?: (task: Promise<unknown>) => void;
+    trackBackgroundWork?: (task: Promise<unknown>) => void;
+  } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL, selectDatabasePoolOptions(env));
@@ -1411,6 +1417,7 @@ export const createDeps = (
   });
 
   const deps: AppDeps = {
+    ...(options.trackBackgroundWork === undefined ? {} : { trackBackgroundWork: options.trackBackgroundWork }),
     renderQrPng,
     telemetryTenantDirectory: createTelemetryTenantDirectory(db),
     telemetry: { recordAppError },

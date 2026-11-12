@@ -1,7 +1,16 @@
 import { serve, type ServerType } from '@hono/node-server';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { shutdownGracefully, startBackgroundTickers, type BackgroundTickers } from './graceful-shutdown.js';
+import {
+  applyConnectionTimeouts,
+  createPendingWork,
+  createSignalHandler,
+  shutdownGracefully,
+  startBackgroundTickers,
+  trackRequests,
+  type BackgroundTickers,
+} from './graceful-shutdown.js';
+import { SERVER_HEADERS_TIMEOUT_MS, SERVER_KEEP_ALIVE_TIMEOUT_MS } from './node-server-limits.js';
 
 interface Gate {
   promise: Promise<void>;
@@ -54,6 +63,7 @@ describe('graceful shutdown', () => {
     const shutdown = shutdownGracefully({
       servers: [server],
       tickers: { stop: async () => { events.push('tickers stopped'); } },
+      work: createPendingWork(),
       release: [
         { name: 'auth e-mail flush', run: async () => { events.push('auth e-mail flushed'); } },
         { name: 'database connections', run: async () => { events.push('database closed'); } },
@@ -90,6 +100,7 @@ describe('graceful shutdown', () => {
     await shutdownGracefully({
       servers: [server],
       tickers: idleTickers,
+      work: createPendingWork(),
       release: [{ name: 'database connections', run: async () => { databaseClosed = true; } }],
       drainTimeoutMs: 50,
       releaseTimeoutMs: 1_000,
@@ -109,6 +120,7 @@ describe('graceful shutdown', () => {
     await shutdownGracefully({
       servers: [server],
       tickers: idleTickers,
+      work: createPendingWork(),
       release: [
         { name: 'auth e-mail flush', run: () => Promise.reject(new Error('transport offline')) },
         { name: 'trace export', run: () => new Promise<void>(() => undefined) },
@@ -124,6 +136,138 @@ describe('graceful shutdown', () => {
       '[shutdown] trace export did not finish within 20 ms',
     ]);
     expect(databaseClosed).toBe(true);
+  });
+});
+
+describe('graceful shutdown of work outside the connection', () => {
+  it('waits for a handler whose client already disconnected before releasing the database', async () => {
+    const entered = gate();
+    const finish = gate();
+    const work = createPendingWork();
+    const events: string[] = [];
+    const disconnected = gate();
+    const { server, url } = await startServer(trackRequests(async () => {
+      entered.open();
+      await finish.promise;
+      events.push('handler wrote its result');
+      return new Response('done');
+    }, work));
+    server.on('connection', (socket) => {
+      socket.on('close', disconnected.open);
+    });
+
+    const client = new AbortController();
+    const request = fetch(`${url}/api/internal/dispatch-email`, { signal: client.signal }).catch(() => undefined);
+    await entered.promise;
+    client.abort();
+    await request;
+    await disconnected.promise;
+
+    const shutdown = shutdownGracefully({
+      servers: [server],
+      tickers: idleTickers,
+      work,
+      release: [{ name: 'database connections', run: async () => { events.push('database closed'); } }],
+      drainTimeoutMs: 5_000,
+      releaseTimeoutMs: 1_000,
+      log: (line) => { events.push(line); },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toEqual([]);
+
+    finish.open();
+    await shutdown;
+    expect(events).toEqual(['handler wrote its result', 'database closed']);
+  });
+
+  it('waits for background work started after the response, including work it starts in turn', async () => {
+    const work = createPendingWork();
+    const events: string[] = [];
+    const firstBatch = gate();
+    const followUp = gate();
+    work.track(firstBatch.promise.then(() => {
+      events.push('e-mail batch sent');
+      work.track(followUp.promise.then(() => { events.push('follow-up batch sent'); }));
+    }));
+    const { server } = await startServer(async () => new Response('ok'));
+
+    const shutdown = shutdownGracefully({
+      servers: [server],
+      tickers: idleTickers,
+      work,
+      release: [{ name: 'database connections', run: async () => { events.push('database closed'); } }],
+      drainTimeoutMs: 5_000,
+      releaseTimeoutMs: 1_000,
+      log: (line) => { events.push(line); },
+    });
+    firstBatch.open();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toEqual(['e-mail batch sent']);
+
+    followUp.open();
+    await shutdown;
+    expect(events).toEqual(['e-mail batch sent', 'follow-up batch sent', 'database closed']);
+  });
+
+  it('stops waiting for background work at the drain budget and still releases', async () => {
+    const work = createPendingWork();
+    work.track(new Promise(() => undefined));
+    work.track(Promise.reject(new Error('dispatch failed')));
+    const { server } = await startServer(async () => new Response('ok'));
+    const log: string[] = [];
+    let databaseClosed = false;
+
+    await shutdownGracefully({
+      servers: [server],
+      tickers: idleTickers,
+      work,
+      release: [{ name: 'database connections', run: async () => { databaseClosed = true; } }],
+      drainTimeoutMs: 30,
+      releaseTimeoutMs: 1_000,
+      log: (line) => { log.push(line); },
+    });
+
+    expect(log).toEqual(['[shutdown] work still running after 30 ms; closing remaining connections']);
+    expect(databaseClosed).toBe(true);
+  });
+});
+
+describe('shutdown signals', () => {
+  it('runs one shutdown for repeated signals and hands every caller the same promise', async () => {
+    const done = gate();
+    let runs = 0;
+    const log: string[] = [];
+    const onSignal = createSignalHandler(async () => {
+      runs += 1;
+      await done.promise;
+    }, (line) => { log.push(line); });
+
+    const first = onSignal('SIGTERM');
+    const second = onSignal('SIGTERM');
+    const third = onSignal('SIGINT');
+
+    expect(runs).toBe(1);
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+    expect(log).toEqual([
+      '[shutdown] SIGTERM received; draining',
+      '[shutdown] SIGTERM received again; still draining',
+      '[shutdown] SIGINT received again; still draining',
+    ]);
+    done.open();
+    await first;
+  });
+});
+
+describe('connection timeouts', () => {
+  it('keeps idle connections open longer than the edge proxy and waits longer still for headers', async () => {
+    const { server } = await startServer(async () => new Response('ok'));
+
+    applyConnectionTimeouts(server);
+
+    expect('keepAliveTimeout' in server && server.keepAliveTimeout).toBe(SERVER_KEEP_ALIVE_TIMEOUT_MS);
+    expect('headersTimeout' in server && server.headersTimeout).toBe(SERVER_HEADERS_TIMEOUT_MS);
+    expect(SERVER_HEADERS_TIMEOUT_MS).toBeGreaterThan(SERVER_KEEP_ALIVE_TIMEOUT_MS);
   });
 });
 

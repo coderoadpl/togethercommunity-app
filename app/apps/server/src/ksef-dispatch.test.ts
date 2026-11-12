@@ -35,6 +35,19 @@ describe('dispatchKsefInBackground', () => {
     });
   });
 
+  it('hands the dispatch to the shutdown tracker so the process waits for it', async () => {
+    const error = vi.fn();
+    const tracked: Promise<unknown>[] = [];
+
+    dispatchKsefInBackground({
+      dispatch: async () => err(internal('provider timeout')),
+    }, { error }, 'invoice send', (task) => { tracked.push(task); });
+
+    expect(tracked).toHaveLength(1);
+    await tracked[0];
+    expect(error).toHaveBeenCalledWith('[ksef] invoice send dispatch failed: provider timeout');
+  });
+
   it('settles only after the dispatch it awaited has been logged', async () => {
     const error = vi.fn();
 

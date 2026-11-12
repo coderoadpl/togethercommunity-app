@@ -92,12 +92,27 @@ the database is down, so it is not a probe.
 
 On `SIGTERM` or `SIGINT` the server stops accepting connections on both
 listeners, closes idle keep-alive connections, stops the in-process tickers and
-waits for the requests and ticker runs already in progress. After 20 seconds
-it closes the connections that are still open. It then flushes pending
-authentication e-mail, closes the realtime `LISTEN` connection and the database
-pool, flushes trace export, and exits 0; each of those steps gets at most
-5 seconds. Keep `terminationGracePeriodSeconds` at 30 or more, plus the length
-of any `preStop` delay.
+waits for the work already in progress: open requests, request handlers that
+are still running after their client disconnected, ticker runs, and background
+work a request started after it answered (opportunistic e-mail dispatch,
+authentication e-mail, KSeF dispatch). A repeated signal does not interrupt the
+drain. After 60 seconds, the longest a scheduled endpoint may run on the hosted
+platform, it stops waiting and closes the connections that are still open. It
+then flushes pending authentication e-mail, closes the realtime `LISTEN`
+connection and the database pool, flushes trace export, and exits 0; each of
+those steps, at most 3 of them, gets at most 5 seconds.
+
+The worst case from the signal to exit is therefore 75 seconds. Set
+`terminationGracePeriodSeconds` to at least 75 plus the length of any `preStop`
+delay; 90 plus the `preStop` delay leaves a margin.
+
+## Connection timeouts
+
+Both listeners keep an idle keep-alive connection open for 125 seconds
+(`keepAliveTimeout`) and wait up to 126 seconds for a request's headers
+(`headersTimeout`). The edge proxy must close idle upstream connections sooner
+than 125 seconds, so that it never reuses a connection the server is closing;
+set its upstream keep-alive explicitly, for example to 60 seconds.
 
 ## Environment
 

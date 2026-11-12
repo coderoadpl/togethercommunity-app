@@ -2,6 +2,8 @@ import type { ServerType } from '@hono/node-server';
 
 import { safeErrorMessage } from '#core/server/log-safety.js';
 
+import { SERVER_HEADERS_TIMEOUT_MS, SERVER_KEEP_ALIVE_TIMEOUT_MS } from './node-server-limits.js';
+
 export interface BackgroundTicker {
   intervalMs: number;
   run(): Promise<void>;
@@ -29,9 +31,63 @@ export const startBackgroundTickers = (tickers: readonly BackgroundTicker[]): Ba
   };
 };
 
+export interface PendingWork {
+  track(task: Promise<unknown>): void;
+  settled(): Promise<void>;
+}
+
+export const createPendingWork = (): PendingWork => {
+  const pending = new Set<Promise<void>>();
+  return {
+    track: (task) => {
+      const tracked: Promise<void> = task
+        .then(() => undefined, () => undefined)
+        .finally(() => {
+          pending.delete(tracked);
+        });
+      pending.add(tracked);
+    },
+    settled: async () => {
+      while (pending.size > 0) await Promise.all([...pending]);
+    },
+  };
+};
+
+export const trackRequests = <Args extends unknown[], Result>(
+  fetch: (...args: Args) => Result,
+  work: PendingWork,
+): ((...args: Args) => Result) => (...args) => {
+  const response = fetch(...args);
+  work.track(Promise.resolve(response));
+  return response;
+};
+
+export const applyConnectionTimeouts = (server: ServerType): void => {
+  if (!('keepAliveTimeout' in server)) return;
+  server.keepAliveTimeout = SERVER_KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = SERVER_HEADERS_TIMEOUT_MS;
+};
+
+export const createSignalHandler = (
+  shutdown: () => Promise<void>,
+  log: (line: string) => void,
+): ((signal: NodeJS.Signals) => Promise<void>) => {
+  let running: Promise<void> | undefined;
+  return (signal) => {
+    if (running !== undefined) {
+      log(`[shutdown] ${signal} received again; still draining`);
+      return running;
+    }
+    log(`[shutdown] ${signal} received; draining`);
+    running = shutdown();
+    return running;
+  };
+};
+
 export interface ShutdownPlan {
   servers: readonly ServerType[];
   tickers: BackgroundTickers;
+  work: PendingWork;
   release: readonly { name: string; run(): Promise<void> }[];
   drainTimeoutMs: number;
   releaseTimeoutMs: number;
@@ -65,7 +121,7 @@ const withinDeadline = async <T>(work: Promise<T>, timeoutMs: number): Promise<T
 export const shutdownGracefully = async (plan: ShutdownPlan): Promise<void> => {
   const serversClosed = Promise.all(plan.servers.map(closeServer));
   const drained = await withinDeadline(
-    Promise.all([serversClosed, plan.tickers.stop()]),
+    Promise.all([serversClosed, plan.tickers.stop()]).then(() => plan.work.settled()),
     plan.drainTimeoutMs,
   );
   if (drained === 'timeout') {

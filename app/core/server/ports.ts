@@ -2433,16 +2433,23 @@ export interface AuthPort {
   }): Promise<{ url: string }>;
 }
 
+export type MigrationCounts =
+  | { expected: number; applied: number }
+  | { expected: number; applied: null; journal: 'missing' | 'unreadable' };
+
+type SchemaStatus = {
+  expectedMigrations: number;
+  schemaFingerprint: string | null;
+  schemaFingerprintMatch: boolean | null;
+} & (
+  | { appliedMigrations: number; schemaCurrent: boolean }
+  | { appliedMigrations: null; schemaCurrent: false; migrationJournal: 'missing' | 'unreadable' }
+);
+
 export interface HealthPort {
   pingDatabase(): Promise<boolean>;
-  migrationCounts(): Promise<{ expected: number; applied: number | null }>;
-  schemaStatus(): Promise<{
-    expectedMigrations: number;
-    appliedMigrations: number | null;
-    schemaCurrent: boolean;
-    schemaFingerprint: string | null;
-    schemaFingerprintMatch: boolean | null;
-  }>;
+  migrationCounts(): Promise<MigrationCounts>;
+  schemaStatus(): Promise<SchemaStatus>;
 }
 
 /**

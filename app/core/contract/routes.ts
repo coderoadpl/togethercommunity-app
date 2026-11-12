@@ -268,6 +268,7 @@ export const healthOutputSchema = attestationSchema.extend({
   databaseFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
   expectedMigrations: z.number().int().nonnegative(),
   appliedMigrations: z.number().int().nonnegative().nullable(),
+  migrationJournal: z.enum(['missing', 'unreadable']).optional(),
   schemaCurrent: z.boolean(),
   schemaFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
   schemaFingerprintMatch: z.boolean().nullable(),

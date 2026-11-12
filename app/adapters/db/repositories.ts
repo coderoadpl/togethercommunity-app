@@ -157,7 +157,7 @@ import type {
 
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
-import { uniqueViolation } from './pg-errors.js';
+import { undefinedRelation, uniqueViolation } from './pg-errors.js';
 import { appendGrantMemberEvent, appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
@@ -4977,10 +4977,10 @@ export const createHealthPort = (db: Db): HealthPort => {
     migrationCounts: async () => {
       const expected = migrationJournal.entries.length;
       try {
-        const result = await db.execute(sql`select count(*)::int as applied from drizzle.__drizzle_migrations`);
+        const result = await db.execute(sql`select count(*)::int as applied from public.__drizzle_migrations`);
         return { expected, applied: numberField(firstRow(result), 'applied') };
-      } catch {
-        return { expected, applied: null };
+      } catch (error) {
+        return { expected, applied: null, journal: undefinedRelation(error) ? 'missing' : 'unreadable' };
       }
     },
     schemaStatus: async () => {
@@ -4989,7 +4989,7 @@ export const createHealthPort = (db: Db): HealthPort => {
       const fingerprint = await fingerprintStatus();
       try {
         const result = await db.execute(
-          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from drizzle.__drizzle_migrations`,
+          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from public.__drizzle_migrations`,
         );
         const row = firstRow(result);
         return {
@@ -4998,8 +4998,14 @@ export const createHealthPort = (db: Db): HealthPort => {
           schemaCurrent: numberField(row, 'latest') >= lastJournalWhen,
           ...fingerprint,
         };
-      } catch {
-        return { expectedMigrations, appliedMigrations: null, schemaCurrent: false, ...fingerprint };
+      } catch (error) {
+        return {
+          expectedMigrations,
+          appliedMigrations: null,
+          migrationJournal: undefinedRelation(error) ? 'missing' : 'unreadable',
+          schemaCurrent: false,
+          ...fingerprint,
+        };
       }
     },
   };

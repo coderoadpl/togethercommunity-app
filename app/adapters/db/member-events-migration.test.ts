@@ -10,13 +10,12 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { memberEventSchema } from '#core/domain/index.js';
 
+import { runMigrations } from './migration-runner.js';
 import { uniqueTestDatabaseName } from './test-database-name.js';
 
 const TEST_DB = uniqueTestDatabaseName('together_member_event_migration_test');
@@ -58,7 +57,7 @@ beforeAll(async () => {
   );
 
   pool = new pg.Pool({ connectionString: testUrl });
-  await migrate(drizzle(pool), { migrationsFolder: partialMigrations });
+  await runMigrations({ connectionString: testUrl, migrationsFolder: partialMigrations });
 }, 60_000);
 
 afterAll(async () => {
@@ -117,7 +116,7 @@ describe('member event migration', () => {
       [NOW],
     );
 
-    await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
+    await runMigrations({ connectionString: testUrl, migrationsFolder: 'drizzle' });
 
     const grants = await pool.query<{ event_revision: number }>(
       `select event_revision from product_grants where tenant_id = 'tenant-history' and id = 'grant-history'`,

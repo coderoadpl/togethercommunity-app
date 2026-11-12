@@ -648,7 +648,9 @@ by recording the already-rescued `0080_next_martin_li` row with its original
 hash and timestamp when that row is absent. It is a migration because the
 registry is production database state owned by the migrator, and applying the
 repair through the same ordered path makes health counts converge without a
-special-case offset.
+special-case offset. The file names `drizzle.__drizzle_migrations`; the
+migration runner executes it against `public.__drizzle_migrations`, where the
+journal now lives (see [migration journal](deployment-environments.md#migration-journal)).
 
 ### 19. Realtime listener connection
 

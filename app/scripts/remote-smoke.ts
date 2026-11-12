@@ -350,6 +350,21 @@ const runTenantSurfaceChecks = async (
   run.skip('studio-tenant-settings', STUDIO_SETTINGS_SKIP_REASON);
 };
 
+type Health = z.output<typeof healthOutputSchema>;
+
+const assertSchemaCurrent = (health: Health): void => {
+  if (health.schemaCurrent) return;
+  if (health.migrationJournal === 'unreadable') {
+    throw new Error(
+      'health could not read the migration journal: check that the runtime role may read public.__drizzle_migrations, then the database timeouts and connections; rerunning migrations does not help',
+    );
+  }
+  if (health.migrationJournal === 'missing') {
+    throw new Error('health found no migration journal: the migrations never ran against this database');
+  }
+  throw new Error('health reported a stale schema');
+};
+
 export const runRemoteSmoke = async (
   options: RemoteSmokeOptions,
   request: Fetch = fetch,
@@ -362,7 +377,7 @@ export const runRemoteSmoke = async (
       'health',
     );
     if (health.database !== 'up') throw new Error('health reported the database down');
-    if (!health.schemaCurrent) throw new Error('health reported a stale schema');
+    assertSchemaCurrent(health);
     if (options.expectedSha !== undefined && health.sha !== options.expectedSha) {
       throw new Error(`expected SHA ${options.expectedSha}, received ${health.sha}`);
     }
@@ -402,7 +417,6 @@ export interface StagingSmokeResult extends RemoteSmokeResult {
 
 const HEALTH_UNREACHABLE = 'the health attestation did not answer';
 
-type Health = z.output<typeof healthOutputSchema>;
 
 const readHealth = async (get: Get): Promise<Health> =>
   unwrap(
@@ -416,7 +430,7 @@ const assertStagingIdentity = (health: Health): void => {
     throw new Error(`health reports environment "${health.environment}", not staging`);
   }
   if (health.production) throw new Error('health reports the deployment as production');
-  if (!health.schemaCurrent) throw new Error('health reported a stale schema');
+  assertSchemaCurrent(health);
 };
 
 const assertStagingDatabase = (health: Health, options: StagingSmokeOptions): void => {

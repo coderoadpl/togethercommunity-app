@@ -3511,6 +3511,25 @@ describe('health route', () => {
     });
   });
 
+  it('names a migration journal the health attestation could not read', async () => {
+    const response = await buildApp(deps({
+      schemaStatus: {
+        expectedMigrations: 82,
+        appliedMigrations: null,
+        migrationJournal: 'unreadable',
+        schemaCurrent: false,
+        schemaFingerprint: null,
+        schemaFingerprintMatch: null,
+      },
+    })).request(API_PATHS.health);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { appliedMigrations: null, migrationJournal: 'unreadable', schemaCurrent: false },
+    });
+  });
+
   it('serves liveness without touching the database', async () => {
     let databasePings = 0;
     const configured = deps();
@@ -3521,7 +3540,7 @@ describe('health route', () => {
       },
       migrationCounts: async () => {
         databasePings += 1;
-        return { expected: 82, applied: null };
+        return { expected: 82, applied: null, journal: 'missing' };
       },
       schemaStatus: async () => ({
         expectedMigrations: 82,
@@ -3568,16 +3587,35 @@ describe('health route', () => {
       error: { code: 'unavailable', message: 'Database migrations are behind this release: 81 of 82 applied' },
     });
 
-    const untouched = await buildApp(deps({ migrationCounts: { expected: 82, applied: null } }))
+    const untouched = await buildApp(deps({ migrationCounts: { expected: 82, applied: null, journal: 'missing' } }))
       .request(API_PATHS.healthReady);
     expect(untouched.status).toBe(503);
-    expect(await untouched.json()).toMatchObject({
-      error: { message: 'Database migrations are behind this release: 0 of 82 applied' },
+    expect(await untouched.json()).toEqual({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: 'Database migrations are behind this release: no migration journal yet, 0 of 82 applied',
+      },
     });
 
     const ahead = await buildApp(deps({ migrationCounts: { expected: 82, applied: 83 } }))
       .request(API_PATHS.healthReady);
     expect(ahead.status).toBe(200);
+  });
+
+  it('stays unready without blaming pending migrations when the journal cannot be read', async () => {
+    const unreadable = await buildApp(deps({ migrationCounts: { expected: 82, applied: null, journal: 'unreadable' } }))
+      .request(API_PATHS.healthReady);
+
+    expect(unreadable.status).toBe(503);
+    expect(unreadable.headers.get('cache-control')).toBe('no-store');
+    expect(await unreadable.json()).toEqual({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: "The migration journal could not be read, so this release's 82 migrations cannot be confirmed",
+      },
+    });
   });
 });
 

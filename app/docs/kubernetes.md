@@ -63,11 +63,30 @@ Kubernetes overrides `command` so that the two steps run separately.
 | Workload | `command` | Notes |
 |---|---|---|
 | Server Deployment | `["node", "apps/server/src/entry.node.js"]` | Serves HTTP and never migrates. |
-| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`; two migrators must never run at once. |
+| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`. A second run started while one is in progress waits up to five minutes for the migration lock, then exits non-zero without applying anything. Every refusal prints one line without a stack trace and exits non-zero with nothing applied; the [migration journal](deployment-environments.md#migration-journal) section lists each message and its recovery. |
 
 The migration Job reads `DATABASE_URL`, which points at the migration role, and
 optionally `APP_ENV` for its log line. It reads no other configuration. The
-server pods use a separate runtime role.
+migration role owns schema `public` and needs no `CREATE` privilege on the
+database: the journal is `public.__drizzle_migrations` and the runner never
+creates a schema. The server pods use a separate runtime role, which needs
+nothing in any other schema. Besides its grants on the application tables, the
+readiness probe and the health attestation need it to read the journal; run as
+the migration role, after the first migration Job created the journal:
+
+```sql
+GRANT USAGE ON SCHEMA public TO <runtime role>;
+GRANT SELECT ON public.__drizzle_migrations TO <runtime role>;
+```
+
+The first statement is already true where `PUBLIC` keeps its default `USAGE` on
+`public`. Default privileges that the migration role sets for tables in
+`public` cover the journal only when they were set before the journal was
+created. A database moved from an earlier release must be dumped as described
+in [cutover dump](deployment-environments.md#cutover-dump). Where a database
+still has the earlier release's `drizzle` schema, the migration role must own
+`drizzle.__drizzle_migrations` until the first run has fenced it, as described
+under [journal fence](deployment-environments.md#journal-fence).
 
 ## Ports
 
@@ -86,9 +105,22 @@ The admission listener starts only when `INTERNAL_PORT` is set.
 | Readiness | `GET /api/health/ready` | 200 only when the database answers and holds at least as many applied migrations as this release ships. A pod that starts before the migration Job finishes stays unready with `503` and a message naming both counts. A database ahead of the release stays ready, so old pods keep serving while a newer release migrates. |
 | Startup | `GET /api/health/live` | Boot reads the environment and builds the dependency graph before listening. |
 
+The `503` message from readiness names the cause:
+
+| Message begins with | Cause | Action |
+|---|---|---|
+| `Database is not reachable` | The server cannot run a query at all. | Check the database endpoint, credentials, TLS and the connection budget. |
+| `Database migrations are behind this release: no migration journal yet` | The journal table does not exist. | Run the migration Job. |
+| `Database migrations are behind this release: <applied> of <expected> applied` | The journal lists fewer migrations than the release ships. | Run the migration Job, or wait for the running one. |
+| `The migration journal could not be read` | The journal query failed for another reason: the runtime role lacks the grants above, the statement timed out or no pooled connection was free. | Check the grants first; rerunning the migration Job does not help. |
+
 `GET /api/health` is the promotion attestation (version, SHA, database
 fingerprint, migration counts and schema fingerprint); it answers 200 even when
-the database is down, so it is not a probe.
+the database is down, so it is not a probe. When it cannot count the journal,
+`appliedMigrations` is `null` and `migrationJournal` is `missing` or
+`unreadable`, with the same causes and actions as the two readiness messages
+above. The remote smoke reports those two cases by name instead of as a stale
+schema.
 
 ## Shutdown
 

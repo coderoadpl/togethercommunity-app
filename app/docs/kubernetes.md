@@ -99,8 +99,12 @@ edge cannot keep feeding new requests to a terminating pod. Requests a client
 pipelined on one connection before the signal are answered in order, and the
 connection closes after the last of them. A request pipelined after the signal
 behind a response that is still being written never reaches the application,
-because its answer could not be delivered on a connection that is closing; the
-server answers it 503 instead. The server then waits for the work already in
+because its answer could not be delivered on a connection that is closing. The
+client gets no answer for it: the connection closes after the earlier
+response, and the client retries the request on a new connection. Only when
+the earlier response had already started streaming before the signal does the
+client receive a `503` for the pipelined request before the connection closes.
+The server then waits for the work already in
 progress: open requests, request handlers that
 are still running after their client disconnected, ticker runs, and background
 work a request started after it answered (opportunistic e-mail dispatch,

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as GracefulShutdown from './graceful-shutdown.js';
 import type { ShutdownPlan } from './graceful-shutdown.js';
+import { SERVER_HEADERS_TIMEOUT_MS, SERVER_KEEP_ALIVE_TIMEOUT_MS, SHUTDOWN_DRAIN_TIMEOUT_MS, SHUTDOWN_RELEASE_STEP_LIMIT } from './node-server-limits.js';
 
 interface EntryEnv {
   NODE_ENV: string;
@@ -21,7 +22,7 @@ const harness = vi.hoisted(() => {
     EMAIL_DISPATCH_INTERVAL_MS: 1000,
     KSEF_DISPATCH_INTERVAL_MS: 1000,
   };
-  const app = { fetch: vi.fn(), get: vi.fn(), use: vi.fn() };
+  const app = { fetch: vi.fn(() => new Response('ok')), get: vi.fn(), use: vi.fn() };
   const deps = {
     auth: { flushAuthEmails: vi.fn(async () => undefined) },
     close: vi.fn(async () => undefined),
@@ -43,7 +44,11 @@ const harness = vi.hoisted(() => {
     buildApp: vi.fn(() => app),
     createDeps: vi.fn((
       envArg: EntryEnv,
-      optionsArg?: { clock: { nowIso(): string } },
+      optionsArg?: {
+        clock?: { nowIso(): string };
+        keepAlive?: (task: Promise<unknown>) => void;
+        trackBackgroundWork?: (task: Promise<unknown>) => void;
+      },
     ) => {
       void envArg;
       void optionsArg;
@@ -51,7 +56,11 @@ const harness = vi.hoisted(() => {
     }),
     dispatchKsef: vi.fn(async () => undefined),
     loadEnv: vi.fn(() => env),
-    serve: vi.fn((options: { port: number }) => ({ port: options.port })),
+    serve: vi.fn((options: { port: number; fetch(request: Request): unknown }) => ({
+      port: options.port,
+      keepAliveTimeout: 5_000,
+      headersTimeout: 60_000,
+    })),
     shutdownGracefully: vi.fn((plan: ShutdownPlan) => {
       void plan;
       return new Promise<void>(() => undefined);
@@ -89,7 +98,7 @@ beforeEach(() => {
   harness.env.WEB_DIST_DIR = '/web-dist';
   delete harness.env.TOGETHER_VISUAL_CLOCK;
   delete harness.env.INTERNAL_PORT;
-  vi.spyOn(process, 'once').mockImplementation(() => process);
+  vi.spyOn(process, 'on').mockImplementation(() => process);
 });
 
 afterEach(() => {
@@ -103,7 +112,10 @@ describe('entry.node composition', () => {
 
     expect(harness.startServerObservability).toHaveBeenCalledOnce();
     expect(harness.loadEnv).toHaveBeenCalledOnce();
-    expect(harness.createDeps).toHaveBeenCalledWith(harness.env);
+    expect(harness.createDeps).toHaveBeenCalledWith(harness.env, {
+      keepAlive: expect.any(Function),
+      trackBackgroundWork: expect.any(Function),
+    });
     expect(harness.buildApp).toHaveBeenCalledWith(harness.deps);
     expect(harness.serveStatic).toHaveBeenNthCalledWith(1, { root: '/web-dist' });
     expect(harness.serveStatic).toHaveBeenNthCalledWith(2, {
@@ -113,14 +125,21 @@ describe('entry.node composition', () => {
       '*',
       harness.serveStatic.mock.results[0]?.value,
     );
-    expect(harness.app.get).toHaveBeenCalledWith(
-      '*',
-      harness.serveStatic.mock.results[1]?.value,
-    );
+    expect(harness.app.get.mock.calls).toEqual([
+      ['*', expect.objectContaining({ name: 'forwardedPathNotFound' })],
+      ['*', harness.serveStatic.mock.results[1]?.value],
+    ]);
     expect(harness.serve).toHaveBeenCalledWith(
-      { fetch: harness.app.fetch, port: 47100, hostname: '0.0.0.0' },
+      { fetch: expect.any(Function), port: 47100, hostname: '0.0.0.0' },
       expect.any(Function),
     );
+    const request = new Request('http://localhost/api/health');
+    expect(harness.serve.mock.calls[0]?.[0].fetch(request)).toBe(harness.app.fetch.mock.results[0]?.value);
+    expect(harness.app.fetch).toHaveBeenCalledWith(request);
+    expect(harness.serve.mock.results[0]?.value).toMatchObject({
+      keepAliveTimeout: SERVER_KEEP_ALIVE_TIMEOUT_MS,
+      headersTimeout: SERVER_HEADERS_TIMEOUT_MS,
+    });
   });
 
   it('injects the visual clock only when explicitly configured', async () => {
@@ -129,7 +148,7 @@ describe('entry.node composition', () => {
     await importEntry();
 
     const options = harness.createDeps.mock.calls[0]?.[1];
-    expect(options?.clock.nowIso()).toBe('2026-07-01T12:00:00.000Z');
+    expect(options?.clock?.nowIso()).toBe('2026-07-01T12:00:00.000Z');
   });
 
   it('propagates listener startup failures', async () => {
@@ -196,7 +215,8 @@ describe('entry.node composition', () => {
   it('drains both listeners and releases auth mail and database connections on SIGTERM', async () => {
     harness.env.INTERNAL_PORT = 47101;
     const signalHandlers = new Map<string, (signal: NodeJS.Signals) => void>();
-    vi.spyOn(process, 'once').mockImplementation((event, listener) => {
+    const once = vi.spyOn(process, 'once');
+    vi.spyOn(process, 'on').mockImplementation((event, listener) => {
       if (typeof event === 'string') signalHandlers.set(event, listener);
       return process;
     });
@@ -205,15 +225,45 @@ describe('entry.node composition', () => {
     await importEntry();
 
     expect([...signalHandlers.keys()]).toEqual(['SIGTERM', 'SIGINT']);
+    expect(once).not.toHaveBeenCalled();
     signalHandlers.get('SIGTERM')?.('SIGTERM');
+    signalHandlers.get('SIGTERM')?.('SIGTERM');
+    signalHandlers.get('SIGINT')?.('SIGINT');
 
     expect(harness.shutdownGracefully).toHaveBeenCalledOnce();
     const plan = harness.shutdownGracefully.mock.calls[0]?.[0];
-    expect(plan?.servers).toEqual([{ port: 47100 }, { port: 47101 }]);
-    expect(plan?.drainTimeoutMs).toBe(20_000);
+    expect(plan?.servers.map((server) => 'port' in server && server.port)).toEqual([47100, 47101]);
+    expect(plan?.drainTimeoutMs).toBe(SHUTDOWN_DRAIN_TIMEOUT_MS);
     expect(plan?.release.map((step) => step.name)).toEqual(['auth e-mail flush', 'database connections']);
     for (const step of plan?.release ?? []) await step.run();
     expect(harness.deps.auth.flushAuthEmails).toHaveBeenCalledOnce();
     expect(harness.deps.close).toHaveBeenCalledOnce();
+  });
+
+  it('waits for tracked background work and keeps the release steps within the documented limit', async () => {
+    harness.startServerObservability.mockReturnValueOnce(async () => undefined);
+    const signalHandlers = new Map<string, (signal: NodeJS.Signals) => void>();
+    vi.spyOn(process, 'on').mockImplementation((event, listener) => {
+      if (typeof event === 'string') signalHandlers.set(event, listener);
+      return process;
+    });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await importEntry();
+    const options = harness.createDeps.mock.calls[0]?.[1];
+    let finish = (): void => undefined;
+    options?.trackBackgroundWork?.(new Promise<void>((resolve) => { finish = resolve; }));
+    signalHandlers.get('SIGTERM')?.('SIGTERM');
+
+    const plan = harness.shutdownGracefully.mock.calls[0]?.[0];
+    expect(plan?.release.map((step) => step.name)).toEqual(['auth e-mail flush', 'database connections', 'trace export']);
+    expect(plan?.release.length).toBeLessThanOrEqual(SHUTDOWN_RELEASE_STEP_LIMIT);
+    let settled = false;
+    const waiting = plan?.work.settled().then(() => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled).toBe(false);
+    finish();
+    await waiting;
+    expect(settled).toBe(true);
   });
 });

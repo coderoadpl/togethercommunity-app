@@ -7,21 +7,30 @@ import { buildApp } from './app.js';
 import { buildCaddyDomainCheckApp } from './caddy-domain-check.js';
 import { createDeps } from './composition.js';
 import { loadEnv } from './env.js';
-import { startBackgroundTickers, shutdownGracefully, type BackgroundTicker } from './graceful-shutdown.js';
+import { forwardedPathNotFound } from './forwarded-paths.js';
+import {
+  applyConnectionTimeouts,
+  createPendingWork,
+  createSignalHandler,
+  shutdownGracefully,
+  startBackgroundTickers,
+  trackRequests,
+  type BackgroundTicker,
+} from './graceful-shutdown.js';
 import { dispatchKsef } from './ksef-dispatch.js';
+import { SHUTDOWN_DRAIN_TIMEOUT_MS, SHUTDOWN_RELEASE_TIMEOUT_MS } from './node-server-limits.js';
 import { startServerObservability } from './observability.js';
-
-const SHUTDOWN_DRAIN_TIMEOUT_MS = 20_000;
-const SHUTDOWN_RELEASE_TIMEOUT_MS = 5_000;
 
 const flushObservability = startServerObservability();
 
 const env = loadEnv();
 const visualClockOverride = env.TOGETHER_VISUAL_CLOCK;
-const deps =
-  visualClockOverride === undefined
-    ? createDeps(env)
-    : createDeps(env, { clock: { nowIso: () => visualClockOverride } });
+const pendingWork = createPendingWork();
+const deps = createDeps(env, {
+  keepAlive: pendingWork.track,
+  trackBackgroundWork: pendingWork.track,
+  ...(visualClockOverride === undefined ? {} : { clock: { nowIso: () => visualClockOverride } }),
+});
 const app = buildApp(deps);
 
 if (env.NODE_ENV !== 'test') {
@@ -33,11 +42,11 @@ if (env.NODE_ENV !== 'test') {
 const internalServer = env.INTERNAL_PORT === undefined
   ? undefined
   : serve({
-      fetch: buildCaddyDomainCheckApp(deps.tenantDomains, deps.tenants, {
+      fetch: trackRequests(buildCaddyDomainCheckApp(deps.tenantDomains, deps.tenants, {
         appBaseUrl: deps.appBaseUrl,
         baseDomain: deps.baseDomain,
         singleTenantMode: deps.singleTenantMode,
-      }).fetch,
+      }).fetch, pendingWork),
       port: env.INTERNAL_PORT,
       hostname: '0.0.0.0',
     });
@@ -86,17 +95,20 @@ const tickers = startBackgroundTickers(env.NODE_ENV === 'test' ? [] : production
 
 // Same process serves the SPA build — one origin per tenant domain, no CORS.
 app.use('*', serveStatic({ root: env.WEB_DIST_DIR }));
+app.get('*', forwardedPathNotFound);
 app.get('*', serveStatic({ path: `${env.WEB_DIST_DIR}/index.html` }));
 
-const server = serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
+const server = serve({ fetch: trackRequests(app.fetch, pendingWork), port: env.PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`together listening on http://localhost:${info.port}`);
 });
+const servers = internalServer === undefined ? [server] : [server, internalServer];
+for (const listener of servers) applyConnectionTimeouts(listener);
 
-const shutdown = (signal: NodeJS.Signals): void => {
-  process.stdout.write(`[shutdown] ${signal} received; draining\n`);
-  void shutdownGracefully({
-    servers: internalServer === undefined ? [server] : [server, internalServer],
+const shutdown = createSignalHandler(
+  () => shutdownGracefully({
+    servers,
     tickers,
+    work: pendingWork,
     release: [
       { name: 'auth e-mail flush', run: () => deps.auth.flushAuthEmails() },
       { name: 'database connections', run: () => deps.close() },
@@ -116,7 +128,13 @@ const shutdown = (signal: NodeJS.Signals): void => {
       process.stderr.write(`[shutdown] failed: ${safeErrorMessage(error)}\n`);
       process.exit(1);
     },
-  );
+  ),
+  (line) => {
+    process.stdout.write(`${line}\n`);
+  },
+);
+const onSignal = (signal: NodeJS.Signals): void => {
+  void shutdown(signal);
 };
-process.once('SIGTERM', shutdown);
-process.once('SIGINT', shutdown);
+process.on('SIGTERM', onSignal);
+process.on('SIGINT', onSignal);

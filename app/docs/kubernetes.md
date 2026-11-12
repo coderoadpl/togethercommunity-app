@@ -10,10 +10,15 @@ behaviour this contract leaves unchanged.
 
 ## Image
 
-Build one image per commit and promote that image unchanged. The browser
-bundle embeds its configuration at build time, so the values below are build
-arguments, not runtime settings. None of them is a secret; never pass a secret
-as a build argument, because build arguments are visible in the image history.
+Staging and production run separate builds, as they do on the hosted platform
+today: the staging image is built from the `staging` branch and the production
+image from the promotion merge commit on `main`. The production image therefore
+reports that merge commit's SHA and the version derived from it, which is what
+the release tag and the production smoke expect; it is not the image staging
+ran. The browser bundle embeds its configuration at build time, so the values
+below are build arguments, not runtime settings. None of them is a secret;
+never pass a secret as a build argument, because build arguments are visible in
+the image history.
 
 | Build argument | Value | Effect |
 |---|---|---|
@@ -24,12 +29,21 @@ as a build argument, because build arguments are visible in the image history.
 
 ```bash
 cd app
-docker build \
+docker buildx build --platform linux/amd64 --load \
   --build-arg APP_VERSION="$(pnpm exec tsx scripts/derive-version.ts)" \
   --build-arg APP_COMMIT_SHA="$(git rev-parse HEAD)" \
   --build-arg APP_BASE_DOMAIN=togethercommunity.app \
   --tag together:"$(git rev-parse --short HEAD)" .
 ```
+
+Name the nodes' platform with `--platform`; without it the image gets the
+workstation's architecture, and an `arm64` image does not start on `amd64`
+nodes. The `builder` stage runs on the build machine's own platform
+(`FROM --platform=$BUILDPLATFORM`), because its output is JavaScript and the
+web bundle; only the dependency and runtime stages are built for the target
+platform, so a cross-build does not run the web build under emulation. That
+needs BuildKit (`docker buildx`, the default builder of current Docker and
+Compose releases); the deprecated legacy builder rejects `$BUILDPLATFORM`.
 
 The Docker build context excludes `.git`, so the version has to be derived
 before the build. Do not set `APP_COMMIT_SHA` in the pod environment: the image
@@ -84,12 +98,27 @@ the database is down, so it is not a probe.
 
 On `SIGTERM` or `SIGINT` the server stops accepting connections on both
 listeners, closes idle keep-alive connections, stops the in-process tickers and
-waits for the requests and ticker runs already in progress. After 20 seconds
-it closes the connections that are still open. It then flushes pending
-authentication e-mail, closes the realtime `LISTEN` connection and the database
-pool, flushes trace export, and exits 0; each of those steps gets at most
-5 seconds. Keep `terminationGracePeriodSeconds` at 30 or more, plus the length
-of any `preStop` delay.
+waits for the work already in progress: open requests, request handlers that
+are still running after their client disconnected, ticker runs, and background
+work a request started after it answered (opportunistic e-mail dispatch,
+authentication e-mail, KSeF dispatch). A repeated signal does not interrupt the
+drain. After 60 seconds, the longest a scheduled endpoint may run on the hosted
+platform, it stops waiting and closes the connections that are still open. It
+then flushes pending authentication e-mail, closes the realtime `LISTEN`
+connection and the database pool, flushes trace export, and exits 0; each of
+those steps, at most 3 of them, gets at most 5 seconds.
+
+The worst case from the signal to exit is therefore 75 seconds. Set
+`terminationGracePeriodSeconds` to at least 75 plus the length of any `preStop`
+delay; 90 plus the `preStop` delay leaves a margin.
+
+## Connection timeouts
+
+Both listeners keep an idle keep-alive connection open for 125 seconds
+(`keepAliveTimeout`) and wait up to 126 seconds for a request's headers
+(`headersTimeout`). The edge proxy must close idle upstream connections sooner
+than 125 seconds, so that it never reuses a connection the server is closing;
+set its upstream keep-alive explicitly, for example to 60 seconds.
 
 ## Environment
 
@@ -100,7 +129,7 @@ boot on an invalid production configuration.
 Required in production (`NODE_ENV=production` is the image default):
 
 - `APP_ENV=production`, `APP_BASE_URL` (HTTPS), `APP_BASE_DOMAIN`
-- `DATABASE_URL`, `DB_DRIVER=node-postgres`
+- `DATABASE_URL`, `DB_DRIVER=node-postgres` (see the TLS note below)
 - `AUTH_TRUSTED_PROXY_HEADER`
 - `BETTER_AUTH_SECRET`, `SECRETS_MASTER_KEY`
 - `PAYMENT_PROVIDER=stripe`, `SECURE_COOKIES=true`, `KSEF_ENVIRONMENT=production`
@@ -129,6 +158,16 @@ variable, `TOGETHER_VISUAL_CLOCK`, `SNS_TEST_CERT_PEM_BASE64`, and the
 which would hand custom-domain provisioning back to the previous hosting
 provider. Without them custom domains run in the manual activation mode
 described in the [custom domains guide](custom-domains.md).
+
+### Database TLS
+
+The server pool and the migration Job rewrite `sslmode=require`, `prefer` and
+`verify-ca` in `DATABASE_URL` to `verify-full`, and node-postgres treats those
+modes the same way for the realtime `LISTEN` connection. Every connection therefore verifies the server certificate and its
+host name against Node's public certificate store. When the managed database
+presents a certificate from a private or provider-specific authority, mount
+that authority's certificate into the pods and the migration Job and add
+`sslrootcert=<path>` to the URL, or TLS verification fails.
 
 ### Connection budget
 
@@ -176,6 +215,14 @@ HTTP client at least 90 seconds and `activeDeadlineSeconds` at least 120.
 | `/api/internal/marketing/imports/tick` | `* * * * *` | Safe. Each import is held by a 30-second worker lease checked against the worker id and attempt before every write; a second worker yields with a conflict. Budget 20 s. | None. |
 <!-- scheduled-endpoints:end -->
 
+A tenant whose own configuration is incomplete (no SES settings, or marketing
+broadcasts disabled) does not fail `/api/internal/marketing/tick`: the answer
+stays 2xx, lists the tenant, the step and the error code under `tenantErrors`,
+and the server logs one warning line per tenant. The other tenants are
+processed as usual. Any other failure, such as an unreachable database or an
+error from the e-mail provider, still answers with an error status and fails
+the Job.
+
 Production refuses to boot without `CRON_SECRET`, and
 `/api/internal/marketing/imports/tick` accepts no other credential, so the
 CronJobs need only that one secret.
@@ -187,3 +234,25 @@ the other until its lease expires. The tickers cannot replace the CronJobs,
 because the HTTP calls also drain notification fan-out and purge rate-limit
 windows, and three of the endpoints have no ticker at all. No switch to turn
 the tickers off is needed or provided.
+
+## Routing
+
+The server owns the paths the hosted platform forwards to its function:
+`/api/`, `/u/`, `/marketing/`, `/legal/`, `/courses/`, `/link/` and `/offer/`
+([`forwarded-paths.ts`](../apps/server/src/forwarded-paths.ts), checked
+against [`vercel.json`](../vercel.json)). A `GET` under one of them that no
+route answers gets the server's `404` instead of the web app document. The
+exceptions are `/offer/` requests with `checkout=together` or
+`status=success|cancelled`, which the web app renders, as on the hosted
+platform. Every other unmatched `GET` serves the web app document.
+
+## Known limits
+
+- The certificate-admission check at `/internal/domain-check` caches nothing.
+  Every TLS handshake for an unknown name makes the edge ask again, and each
+  ask is a database lookup, so a flood of handshakes with random names becomes
+  a flood of database queries. Rate limiting or negative caching in front of it
+  is planned, not built.
+- Social and search crawlers reach the server on every path on the hosted
+  platform. Here a crawler request outside the paths above that the server does
+  not answer still gets the web app document.

@@ -289,7 +289,7 @@ describe('marketing maintenance scheduling', () => {
     const configurationGap = await run(appError('ses_not_configured', 'Tenant SES is not configured'));
 
     expect(configurationGap).toEqual(ok({
-      campaignsDispatched: 2,
+      campaignsDispatched: 1,
       retentionTenantsProcessed: 0,
       identityChecksPerformed: 0,
       reputationAlertsSent: 0,

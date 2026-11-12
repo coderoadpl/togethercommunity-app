@@ -16,7 +16,7 @@ type Entry = Route & { policy: RequestOriginPolicy };
 const classify = (policy: RequestOriginPolicy, routes: readonly Route[]): Entry[] =>
   routes.map((route) => ({ ...route, policy }));
 
-export const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
+const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
   ...classify('secret', [
     API_ROUTES.operatorTenantProvision,
     API_ROUTES.emailDispatch,

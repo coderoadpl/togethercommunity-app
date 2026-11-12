@@ -1485,7 +1485,7 @@ export const tenantSecretDeleteOutputSchema = z.object({
   key: tenantSecretKeySchema,
 });
 
-export const memberSettingsSchema = z.object({
+const memberSettingsSchema = z.object({
   billingPortalUrl: tenantSettingsSchema.shape.billingPortalUrl,
   supportConfigured: z.boolean(),
   supportUrl: tenantSettingsSchema.shape.supportUrl,

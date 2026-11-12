@@ -71,7 +71,7 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
   const bases = products.value.products;
   const first = products.value.prices[0];
   if (first === undefined) return err(notFound('Sales link was not found'));
-  const published = selections === undefined ? [] : await deps.products.listPublishedByTenant(tenantId);
+  const published = selections === undefined || !bases.some((base) => base.variantGroup != null) ? [] : await deps.products.listPublishedByTenant(tenantId);
   const candidates = published.filter((product) => bases.some((base) => base.variantGroup != null && base.variantGroup === product.variantGroup));
   const prices = candidates.length === 0 ? products.value.prices : await deps.prices.listActiveByProducts(tenantId, [...new Set([...salesLink.productIds, ...candidates.map((product) => product.id)])]);
   const siblings = (base: Product) => published.filter((candidate) => candidate.id === base.id || salesLinkVariantEligible(base, candidate, prices, first.currency, settings));

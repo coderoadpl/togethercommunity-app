@@ -42,6 +42,18 @@ it('lists variants in repository creation order with one stock read and suppress
   ] } });
   expect(h.listStock).toHaveBeenCalledOnce();
   expect(h.listPublished).toHaveBeenCalledExactlyOnceWith('workspace');
+  expect(h.deps.prices.listActiveByProducts).toHaveBeenCalledTimes(2);
+});
+
+it('skips sibling and sibling-price lookups when no saved line has a variant group', async () => {
+  const h = setup();
+  h.black.variantGroup = null;
+  const result = await getPublicSalesLink('workspace', h.link.slug, h.deps);
+  expect(result).toMatchObject({ ok: true, value: { totalCents: 2100, lines: [
+    { productId: 'black', variants: [] }, { productId: 'guide', variants: [] },
+  ] } });
+  expect(h.listPublished).not.toHaveBeenCalled();
+  expect(h.deps.prices.listActiveByProducts).toHaveBeenCalledExactlyOnceWith('workspace', h.link.productIds);
 });
 
 it('prices, taxes and renders compliance from the chosen available sibling instead of the sold-out base', async () => {

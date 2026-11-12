@@ -225,13 +225,15 @@ HTTP client at least 90 seconds and `activeDeadlineSeconds` at least 120.
 | `/api/internal/marketing/imports/tick` | `* * * * *` | Safe. Each import is held by a 30-second worker lease checked against the worker id and attempt before every write; a second worker yields with a conflict. Budget 20 s. | None. |
 <!-- scheduled-endpoints:end -->
 
-A tenant whose own configuration is incomplete (no SES settings, or marketing
-broadcasts disabled) does not fail `/api/internal/marketing/tick`: the answer
-stays 2xx, lists the tenant, the step and the error code under `tenantErrors`,
-and the server logs one warning line per tenant. The other tenants are
-processed as usual. Any other failure, such as an unreachable database or an
-error from the e-mail provider, still answers with an error status and fails
-the Job.
+A tenant whose own configuration is incomplete (no SES settings, a missing SES
+secret, or marketing broadcasts disabled) does not fail
+`/api/internal/marketing/tick`: the answer stays 2xx, lists the tenant, the
+step and the error code under `tenantErrors`, and the server logs one warning
+line per tenant. The other tenants are processed as usual. Any other failure,
+such as an unreachable database, an error from the e-mail provider or a stored
+SES secret that fails decryption, still answers with an error status and fails
+the Job; a failure in one tenant's step is also logged as an error line naming
+the tenant, the step and the error code.
 
 Production refuses to boot without `CRON_SECRET`, and
 `/api/internal/marketing/imports/tick` accepts no other credential, so the

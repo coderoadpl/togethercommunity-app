@@ -1332,7 +1332,7 @@ describe('marketing e-mail use-case integration', () => {
         },
         listSesTenantIds: async () => ['tenant-1', 'tenant-2'],
       },
-      runs, ids, clock, logger: { warn: () => {} },
+      runs, ids, clock, logger: { warn: () => {}, error: () => {} },
       maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async (tenantId, campaignId) => {
         dispatched.push(`${tenantId}:${campaignId}`);
@@ -1400,7 +1400,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesIdentityRefreshTenantIds: async () => [],
         listSesTenantIds: async () => [],
       },
-      runs, ids, clock, logger: { warn: () => {} },
+      runs, ids, clock, logger: { warn: () => {}, error: () => {} },
       maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
@@ -1444,7 +1444,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesIdentityRefreshTenantIds: async () => ['tenant-2'],
         listSesTenantIds: async () => ['tenant-1'],
       },
-      runs, ids, clock, logger: { warn: () => {} },
+      runs, ids, clock, logger: { warn: () => {}, error: () => {} },
       maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async (tenantId) => {
         processed.push(`campaign:${tenantId}`);

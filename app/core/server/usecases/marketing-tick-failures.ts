@@ -20,7 +20,10 @@ export interface MarketingTickFailures {
   tenantErrors(): MarketingTenantError[];
 }
 
-export const createMarketingTickFailures = (logger: { warn(message: string): void }): MarketingTickFailures => {
+export const createMarketingTickFailures = (logger: {
+  warn(message: string): void;
+  error(message: string): void;
+}): MarketingTickFailures => {
   let first: AppError | null = null;
   const tenants: MarketingTenantError[] = [];
   return {
@@ -29,6 +32,7 @@ export const createMarketingTickFailures = (logger: { warn(message: string): voi
     },
     tenant: (tenantId, step, failure) => {
       if (!isTenantConfigurationError(failure)) {
+        logger.error(`[marketing] tick failed tenant=${tenantId} step=${step} error=${failure.code}`);
         first ??= failure;
         return;
       }

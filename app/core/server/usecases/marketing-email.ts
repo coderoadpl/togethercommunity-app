@@ -1825,7 +1825,7 @@ export const runScheduledMarketingJobs = async (
       tenantId: string,
     ): Promise<Result<{ sent: number }, AppError>>;
     maintenanceBackoff: ScheduledMaintenanceBackoff;
-    logger: { warn(message: string): void };
+    logger: { warn(message: string): void; error(message: string): void };
   },
 ): Promise<Result<{
   campaignsDispatched: number;

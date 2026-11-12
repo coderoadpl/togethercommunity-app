@@ -10,7 +10,11 @@ const clock = { nowIso: () => NOW };
 let sequence = 0;
 const ids = { nextId: () => `maintenance-${String(++sequence)}` };
 let warnings: string[] = [];
-const logger = { warn: (message: string) => { warnings.push(message); } };
+let errors: string[] = [];
+const logger = {
+  warn: (message: string) => { warnings.push(message); },
+  error: (message: string) => { errors.push(message); },
+};
 const retentionBoundaries = {
   pendingOlderThan: NOW,
   renderedBodiesOlderThan: NOW,
@@ -24,6 +28,7 @@ let maintenanceBackoff = createScheduledMaintenanceBackoff(new InMemorySesMainte
 describe('marketing maintenance scheduling', () => {
   beforeEach(() => {
     warnings = [];
+    errors = [];
     maintenanceBackoff = createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository());
   });
 
@@ -301,6 +306,7 @@ describe('marketing maintenance scheduling', () => {
     const platformFailure = await run(internal('database unavailable'));
 
     expect(platformFailure).toMatchObject({ ok: false, error: { code: 'internal', message: 'database unavailable' } });
+    expect(errors).toEqual(['[marketing] tick failed tenant=tenant-unconfigured step=campaign error=internal']);
     expect(dispatched).toEqual(['tenant-unconfigured', 'tenant-configured', 'tenant-unconfigured', 'tenant-configured']);
   });
 

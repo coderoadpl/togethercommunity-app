@@ -587,7 +587,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),
       capabilities: capabilitiesForPrincipal('webhook'),
     }, { envelope: verified.value, rawBody, bodySha256: createHash('sha256').update(rawBody).digest('hex') }, {
-      snsInbox: marketing.value.snsInbox, sesSettings: marketing.value.sesSettings, clock: deps.clock, ids: deps.ids,
+      delivery: marketing.value.delivery, hmac: marketing.value.hmac, clock: deps.clock, ids: deps.ids,
     });
     if (!recorded.ok) return response(recorded);
     await recordDelivery({ tenantId: settings.tenantId, outcome: 'recorded', messageType: verified.value.type, topicArn: verified.value.topicArn });

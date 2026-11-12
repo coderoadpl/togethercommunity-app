@@ -1,3 +1,4 @@
+import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 import {
   CreateConfigurationSetCommand,
   CreateConfigurationSetEventDestinationCommand,
@@ -23,7 +24,9 @@ const topicArn = 'arn:aws:sns:eu-central-1:123456789012:tenant';
 const setup = () => {
   const sets = new Map<string, EventDestination[]>([['marketing', []]]);
   const ses = new SESClient(credentials);
-  const state = { fail: false, concurrentCreation: false };
+  const state: { fail: boolean; concurrentCreation: boolean; duplicateDestinations: number; concurrentDestinations: EventDestination[] | null } = {
+    fail: false, concurrentCreation: false, duplicateDestinations: 0, concurrentDestinations: null,
+  };
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- The SDK also declares callback overloads; the adapter only calls the promise overload.
   vi.spyOn(ses, 'send').mockImplementation(async (command) => {
     if (state.fail) throw new Error('AccessDenied');
@@ -41,6 +44,11 @@ const setup = () => {
       const name = command.input.ConfigurationSetName ?? '';
       const destination = command.input.EventDestination;
       if (destination === undefined) throw new Error('Missing destination');
+      if (command instanceof CreateConfigurationSetEventDestinationCommand && sets.get(name)?.some((item) => item.Name === destination.Name)) {
+        state.duplicateDestinations += 1;
+        if (state.concurrentDestinations !== null) sets.set(name, state.concurrentDestinations);
+        throw Object.assign(new Error('Already created'), { name: 'EventDestinationAlreadyExistsException' });
+      }
       sets.set(name, [...(sets.get(name) ?? []).filter((item) => item.Name !== destination.Name), destination]);
       return { $metadata: {} };
     }
@@ -64,7 +72,7 @@ const setup = () => {
   const emailFor = vi.fn(() => port);
   const logger = { warn: vi.fn() };
   const resolver = createTenantSesTransactionalResolver({ findByTenant: async () => settings, findByWebhookToken: async () => settings, upsert: async () => settings },
-    { resolve: async () => ok(credentials) }, { controlPlane, logger }, emailFor);
+    { resolve: async () => ok(credentials) }, { readiness: { ensure: (credentials, settings) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) }, logger }, emailFor);
   return { sets, state, resolver, factory, emailFor, port, logger, controlPlane };
 };
 
@@ -150,4 +158,32 @@ it('retries the transactional outbox after repair failure without transport fall
   test.state.fail = false;
   expect(await dispatchEmailBatch(deps)).toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
   expect(test.port.send).toHaveBeenCalledTimes(1);
+});
+
+it('accepts concurrent first use only after verifying the winning destination', async () => {
+  const test = setup();
+  test.sets.set('marketing-transactional', []);
+  const ports = await Promise.all([test.resolver.resolve('tenant'), test.resolver.resolve('tenant')]);
+  expect(ports).toEqual([test.port, test.port]);
+  expect(test.emailFor).toHaveBeenCalledTimes(2);
+  expect(test.state.duplicateDestinations).toBe(1);
+  expect(test.sets.get('marketing-transactional')).toEqual([{
+    Name: 'together-events', Enabled: true, MatchingEventTypes: ['send', 'delivery', 'bounce', 'complaint'], SNSDestination: { TopicARN: topicArn },
+  }]);
+});
+
+it.each(['engagement', 'topic', 'disabled', 'missing-events'] as const)('rejects an unsafe concurrent destination (%s)', async (drift) => {
+  const test = setup();
+  test.sets.set('marketing-transactional', []);
+  test.state.concurrentDestinations = [{
+    Name: 'together-events', Enabled: drift !== 'disabled',
+    MatchingEventTypes: drift === 'missing-events' ? ['send'] : ['send', 'delivery', 'bounce', 'complaint'],
+    SNSDestination: { TopicARN: drift === 'topic' ? 'different-topic' : topicArn },
+  }, ...(drift === 'engagement' ? [{ Name: 'other', Enabled: true, MatchingEventTypes: ['open' as const] }] : [])];
+  const ports = await Promise.all([test.resolver.resolve('tenant'), test.resolver.resolve('tenant')]);
+  expect(test.state.duplicateDestinations).toBe(1);
+  expect(test.emailFor).toHaveBeenCalledTimes(1);
+  const blocked = ports.find((port) => port !== test.port);
+  expect(await blocked?.send({ to: 'member@example.test', subject: 'Message', html: '<p>Message</p>', text: 'Message' }))
+    .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
 });

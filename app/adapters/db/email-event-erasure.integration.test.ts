@@ -1,16 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, emailEventSchema, memberTombstone } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, emailEventSchema, memberTombstone, ok } from '#core/domain/index.js';
 import type { VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
+import { processMarketingSnsInbox, recordVerifiedMarketingSnsEnvelope } from '#core/server/usecases/marketing-sns-inbox.js';
 import { applyVerifiedSesEvent } from '#core/server/usecases/marketing-email.js';
 
 import { createEmailHmac } from '../crypto/email-hmac.js';
 import { repairErasedEmailEvents, lockEmailEventErasure } from './email-event-erasure.js';
-import { createMarketingDeliveryTransaction } from './marketing-delivery-transactions.js';
+import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from './marketing-delivery-transactions.js';
 import { createMemberErasureRepository } from './repositories.js';
 import { deliveryWebhookCtx } from './marketing-delivery-test-fixture.js';
-import { campaignSends, emailEvents, emailOutbox, marketingContacts, members, suppressions, tenants, tenantSesSettings, user } from './schema.js';
+import { campaignSends, emailEvents, emailOutbox, marketingContacts, marketingOutbox, marketingSnsInbox, members, suppressions, tenants, tenantSesSettings, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const now = '2026-11-01T12:00:00.000Z';
@@ -188,4 +189,128 @@ it('scrubs send linkage even when its email differs from the erased member addre
   const event = { ...feedback('changed-address', 'marketing', 'delivery'), recipient: 'previous@example.test' };
   expect(await apply('changed-address', event)).toEqual({ ok: true, value: { kind: 'applied' } });
   assertScrubbed(await rows('changed-address'));
+});
+
+const inboxDeps = () => ({
+  ...createMarketingDeliveryRepos(database.db), delivery: createMarketingDeliveryTransaction(database.db),
+  hmac, ids: { nextId: () => crypto.randomUUID() }, clock: { nowIso: () => now },
+  credentials: { resolve: async () => ok({ accessKeyId: 'test', secretAccessKey: 'test', region: 'eu-central-1' }) },
+  sns: { verify: async () => { throw new Error('Already verified'); }, confirmSubscription: async () => ok(undefined) },
+});
+const receipt = (tenantId: string, mailKind: 'marketing' | 'transactional', kind: VerifiedSesEvent['kind']) => {
+  const eventType = { delivery: 'Delivery', bounce: 'Bounce', complaint: 'Complaint', open: 'Open', click: 'Click' }[kind];
+  const message = JSON.stringify({ eventType,
+    mail: { messageId: `${tenantId}-${mailKind}`, destination: [address], commonHeaders: { to: ['Private Person'] },
+      ...(mailKind === 'marketing' ? { tags: { 'together-send-id': [`${tenantId}-send`] } } : {}) },
+    delivery: { timestamp: now, recipients: [address] },
+    bounce: { timestamp: now, bounceType: 'Transient', bounceSubType: 'General', bouncedRecipients: [{ emailAddress: address, status: '5.4.4', diagnosticCode: 'Private Person' }] },
+    complaint: { timestamp: now, complaintFeedbackType: 'abuse', complainedRecipients: [{ emailAddress: address }] },
+    open: { timestamp: now, ipAddress: '192.0.2.1', userAgent: 'Private client' },
+    click: { timestamp: now, ipAddress: '192.0.2.1', userAgent: 'Private client', link: meta.linkUrl },
+  });
+  const rawBody = JSON.stringify({ Message: message, Subject: 'Private Person' });
+  return { rawBody, bodySha256: `${tenantId}-${mailKind}-${kind}`,
+    envelope: { type: 'Notification' as const, messageId: `${mailKind}-${kind}`, topicArn: 'topic', timestamp: now, message, subscribeUrl: null } };
+};
+const inboxRows = (tenantId: string) => database.db.select().from(marketingSnsInbox).where(eq(marketingSnsInbox.tenantId, tenantId));
+const assertInboxScrubbed = async (tenantId: string) => {
+  const receipts = await inboxRows(tenantId);
+  expect(receipts.length).toBeGreaterThan(0);
+  const serialized = JSON.stringify(receipts.map((row) => row.rawBody));
+  for (const value of ['private', 'PRIVATE', 'Private', '192.0.2.1', 'userAgent', 'commonHeaders', 'emailAddress', '?', '#']) expect(serialized).not.toContain(value);
+};
+const worker = { workerId: 'worker', deadlineAt: '2026-11-01T12:01:00.000Z', maxEvents: 20 };
+
+it('scrubs late signed receipts at ingestion and through processed, retry and dead-letter saves', async () => {
+  const tenantId = 'inbox-late';
+  await seed(tenantId);
+  await erase(tenantId);
+  const deps = inboxDeps();
+  for (const mailKind of ['marketing', 'transactional'] as const) {
+    for (const kind of ['delivery', 'bounce', 'complaint', 'open', 'click'] as const) {
+      expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), receipt(tenantId, mailKind, kind), deps)).ok).toBe(true);
+    }
+  }
+  await assertInboxScrubbed(tenantId);
+  expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, deps)).toEqual(ok({ processed: 8, retried: 2 }));
+  await assertInboxScrubbed(tenantId);
+  assertScrubbed(await rows(tenantId));
+  const nextDay = '2026-11-02T12:00:00.000Z';
+  expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), { ...worker, deadlineAt: '2026-11-02T12:01:00.000Z' },
+    { ...deps, clock: { nowIso: () => nextDay } })).toEqual(ok({ processed: 0, retried: 2 }));
+  expect((await inboxRows(tenantId)).filter((row) => row.status === 'dead_letter')).toHaveLength(2);
+  await assertInboxScrubbed(tenantId);
+  expect((await rows(tenantId)).filter((row) => row.type === 'bounced').every((row) => row.meta?.['classification'] === 'hard')).toBe(true);
+});
+
+it.each(['processed', 'retry', 'dead_letter'] as const)('does not restore a claimed raw body after concurrent erasure on a %s save', async (status) => {
+  const tenantId = `inbox-stale-${status.replace('_', '-')}`;
+  await seed(tenantId);
+  const deps = inboxDeps();
+  const input = receipt(tenantId, status === 'processed' ? 'marketing' : 'transactional', status === 'processed' ? 'delivery' : 'open');
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), input, deps);
+  const time = status === 'dead_letter' ? '2026-11-02T12:00:00.000Z' : now;
+  let claimed = false;
+  const result = await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), { ...worker, deadlineAt: '2026-11-02T12:01:00.000Z' }, {
+    ...deps, clock: { nowIso: () => time }, snsInbox: { ...deps.snsInbox, claim: async (id, lease) => {
+      if (claimed) return null;
+      claimed = true;
+      const row = await deps.snsInbox.claim(id, lease);
+      await erase(tenantId);
+      return row;
+    } },
+  });
+  expect(result.ok).toBe(true);
+  expect((await inboxRows(tenantId))[0]?.status).toBe(status);
+  await assertInboxScrubbed(tenantId);
+  assertScrubbed(await rows(tenantId));
+});
+
+it('scrubs existing inbox receipts during erasure and historical repair, including dead letters', async () => {
+  const tenantId = 'inbox-history';
+  await seed(tenantId);
+  const deps = inboxDeps();
+  const input = receipt(tenantId, 'marketing', 'click');
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), input, deps);
+  await database.db.update(marketingSnsInbox).set({ status: 'dead_letter' }).where(eq(marketingSnsInbox.tenantId, tenantId));
+  await erase(tenantId);
+  await assertInboxScrubbed(tenantId);
+  await database.db.update(marketingSnsInbox).set({ rawBody: input.rawBody }).where(eq(marketingSnsInbox.tenantId, tenantId));
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, false)).inbox).toEqual({ matched: 1, changed: 1 });
+  expect((await inboxRows(tenantId))[0]?.rawBody).toBe(input.rawBody);
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 1 });
+  await assertInboxScrubbed(tenantId);
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 0 });
+});
+
+it.each(['sending', 'uncertain'] as const)('reconciles an erased %s send from a verified tag before provider-id persistence', async (status) => {
+  const tenantId = `tag-${status}`;
+  await seed(tenantId);
+  await erase(tenantId);
+  await database.db.update(campaignSends).set({ status: 'sending', sesMessageId: null }).where(eq(campaignSends.id, `${tenantId}-send`));
+  await database.db.insert(marketingOutbox).values({ id: `${tenantId}-dispatch`, tenantId, campaignSendId: `${tenantId}-send`,
+    status: status === 'sending' ? 'dispatching' : 'uncertain', nextAttemptAt: now, createdAt: now, updatedAt: now });
+  expect(await apply(tenantId, { ...feedback(tenantId, 'marketing', 'delivery'), campaignSendId: `${tenantId}-send` }))
+    .toEqual(ok({ kind: 'applied' }));
+  const [send] = await database.db.select().from(campaignSends).where(eq(campaignSends.id, `${tenantId}-send`));
+  expect(send).toMatchObject({ status: 'sent', sesMessageId: `${tenantId}-marketing`, deliveryStatus: 'delivered' });
+  const [outbox] = await database.db.select().from(marketingOutbox).where(eq(marketingOutbox.tenantId, tenantId));
+  expect(outbox).toMatchObject({ status: 'sent', sesMessageId: `${tenantId}-marketing` });
+  assertScrubbed(await rows(tenantId));
+  expect(await apply(tenantId, { ...feedback(tenantId, 'marketing', 'delivery'), campaignSendId: `${tenantId}-send`, messageId: 'conflicting' }))
+    .toMatchObject({ ok: true, value: { kind: 'ignored' } });
+});
+
+it('scrubs destination-only address tombstones before send correlation exists', async () => {
+  const tenantId = 'inbox-address';
+  await seed(tenantId);
+  await database.db.insert(suppressions).values({ id: `${tenantId}-tombstone`, tenantId, email: null,
+    emailHmac: hmac.compute(tenantId, address), reason: 'erasure', createdAt: now });
+  await database.db.update(campaignSends).set({ sesMessageId: 'other-provider-id' }).where(eq(campaignSends.tenantId, tenantId));
+  const input = receipt(tenantId, 'transactional', 'open');
+  await database.db.update(emailOutbox).set({ sesMessageId: null }).where(eq(emailOutbox.tenantId, tenantId));
+  expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), input, inboxDeps())).ok).toBe(true);
+  await assertInboxScrubbed(tenantId);
+  expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, inboxDeps())).toEqual(ok({ processed: 0, retried: 1 }));
+  await assertInboxScrubbed(tenantId);
 });

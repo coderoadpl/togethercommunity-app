@@ -98,7 +98,8 @@ describe('durable SNS inbox', () => {
 
   it('propagates receipt database failures and keeps subscription failures retryable', async () => {
     fixture = await createDeliveryFixture();
-    await expect(recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), receipt('sns-1'), { ...fixture.deps, snsInbox: { ...fixture.deps.snsInbox, record: async () => { throw new Error('database unavailable'); } } })).rejects.toThrow('database unavailable');
+    const delivery = fixture.deps.delivery;
+    await expect(recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), receipt('sns-1'), { ...fixture.deps, delivery: { run: (tenantId, operation) => delivery.run(tenantId, (repos) => operation({ ...repos, snsInbox: { ...repos.snsInbox, record: async () => { throw new Error('database unavailable'); } } })) } })).rejects.toThrow('database unavailable');
     const input = receipt('confirmation');
     await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { ...input, envelope: { ...input.envelope, type: 'SubscriptionConfirmation', subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/confirm' }, rawBody: JSON.stringify({ Message: 'confirm', SubscribeURL: 'https://sns.eu-central-1.amazonaws.com/confirm' }) }, fixture.deps);
     await processMarketingSnsInbox(deliveryWebhookCtx(), worker, { ...fixture.deps, sns: { ...fixture.deps.sns, confirmSubscription: async () => { throw new Error('network unavailable'); } } });

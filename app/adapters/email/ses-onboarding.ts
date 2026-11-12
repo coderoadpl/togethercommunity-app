@@ -449,15 +449,31 @@ export const createSesOnboardingControlPlane = (
         SNSDestination: { TopicARN: input.topicArn },
       };
       const exists = configuration.EventDestinations?.some((item) => item.Name === destinationName) ?? false;
-      await ses.send(exists
-        ? new UpdateConfigurationSetEventDestinationCommand({
+      try {
+        await ses.send(exists
+          ? new UpdateConfigurationSetEventDestinationCommand({
+            ConfigurationSetName: input.configurationSet,
+            EventDestination: eventDestination,
+          })
+          : new CreateConfigurationSetEventDestinationCommand({
+            ConfigurationSetName: input.configurationSet,
+            EventDestination: eventDestination,
+          }));
+      } catch (cause) {
+        if (exists || errorName(cause) !== 'EventDestinationAlreadyExistsException') throw cause;
+        const current = await ses.send(new DescribeConfigurationSetCommand({
           ConfigurationSetName: input.configurationSet,
-          EventDestination: eventDestination,
-        })
-        : new CreateConfigurationSetEventDestinationCommand({
-          ConfigurationSetName: input.configurationSet,
-          EventDestination: eventDestination,
+          ConfigurationSetAttributeNames: ['eventDestinations'],
         }));
+        const managed = current.EventDestinations?.find((item) => item.Name === destinationName);
+        const required = input.engagementTracking ? marketingEventTypes : transactionalEventTypes;
+        const unsafe = !input.engagementTracking && current.EventDestinations?.some((item) =>
+          item.Enabled === true && item.MatchingEventTypes?.some((type) => type === 'open' || type === 'click'));
+        if (unsafe || managed?.Enabled !== true || managed.SNSDestination?.TopicARN !== input.topicArn
+          || !required.every((type) => managed.MatchingEventTypes?.includes(type))) {
+          return failed('Concurrent SES event destination is not ready', 'Verify its topic and enabled event types before retrying');
+        }
+      }
       return ok({ ready: true });
     } catch (cause) {
       return failed('Could not wire SES events to the SNS topic', cause);

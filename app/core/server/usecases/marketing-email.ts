@@ -1545,8 +1545,9 @@ export const applyVerifiedSesEvent = async (
   if (send !== null) erased = await deps.suppressions.isErased(tenantId.value, {
     email: send.email, emailHmac: deps.hmac.compute(tenantId.value, send.email), memberId: send.memberId, contactId: send.contactId ?? null,
   });
+  if (send !== null && send.sesMessageId !== null && send.sesMessageId !== event.messageId) return ok({ kind: 'ignored', reason: 'Provider message does not match the correlated send' });
   if (send !== null && event.recipient !== undefined && normalizeEmail(event.recipient) !== send.email) {
-    const matchesErasedSend = erased && send.sesMessageId === event.messageId && await addressErased(event.recipient);
+    const matchesErasedSend = erased && (send.sesMessageId === event.messageId || (send.sesMessageId === null && send.id === event.campaignSendId)) && await addressErased(event.recipient);
     if (!matchesErasedSend) return ok({ kind: 'ignored', reason: 'Recipient does not match the correlated send' });
   }
   if (send !== null && send.status !== 'sent') {

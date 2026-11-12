@@ -1,3 +1,4 @@
+import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { notFound, ok } from '#core/domain/index.js';
@@ -8,11 +9,12 @@ import {
   createTenantSesTransactionalResolver,
 } from './transactional-resolvers.js';
 
+const controlPlane = {
+  ensureConfigurationSet: async (_credentials: unknown, name: string) => ok({ name }),
+  ensureEventDestination: async () => ok({ ready: true as const }),
+};
 const infrastructure = {
-  controlPlane: {
-    ensureConfigurationSet: async (_credentials: unknown, name: string) => ok({ name }),
-    ensureEventDestination: async () => ok({ ready: true as const }),
-  },
+  readiness: { ensure: (credentials: Parameters<typeof ensureTransactionalSesConfiguration>[0], settings: Parameters<typeof ensureTransactionalSesConfiguration>[1]) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) },
   logger: { warn: vi.fn() },
 };
 

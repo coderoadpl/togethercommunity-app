@@ -1,3 +1,4 @@
+import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -1051,7 +1052,7 @@ export const createDeps = (
   const tenantSesTransactional = createTenantSesTransactionalResolver(
     sesSettings,
     tenantMarketingCredentials,
-    { controlPlane: sesOnboardingControlPlane, logger },
+    { readiness: { ensure: (credentials, settings) => ensureTransactionalSesConfiguration(credentials, settings, sesOnboardingControlPlane) }, logger },
     production ? createSesEmailPort : () => email,
   );
   const smtpTransactional = createSmtpTransactionalResolver(

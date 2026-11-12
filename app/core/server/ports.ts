@@ -2162,6 +2162,13 @@ export interface SesMarketingCredentials {
   region: string;
 }
 
+export interface TransactionalSesReadiness {
+  ensure(
+    credentials: SesMarketingCredentials,
+    settings: { configurationSet: string | null; snsTopicArn: string | null },
+  ): Promise<Result<string, AppError>>;
+}
+
 export interface SesMarketingSender {
   send(input: {
     replyTo?: string;

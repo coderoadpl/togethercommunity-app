@@ -3,13 +3,11 @@ import type {
   EmailIntegrationTransportResolver,
   EmailPort,
   MarketingSesCredentialResolver,
-  SesOnboardingControlPlane,
+  TransactionalSesReadiness,
   TenantSecretResolver,
   TenantSesSettingsRepository,
   TransactionalEmailTransportResolver,
 } from '#core/server/index.js';
-
-import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 
 import { createSesEmailPort } from './ses.js';
 import { createSmtpEmailPort, type SmtpEmailSettings } from './smtp.js';
@@ -21,7 +19,7 @@ export const createTenantSesTransactionalResolver = (
   settings: TenantSesSettingsRepository,
   credentials: MarketingSesCredentialResolver,
   infrastructure: {
-    controlPlane: Pick<SesOnboardingControlPlane, 'ensureConfigurationSet' | 'ensureEventDestination'>;
+    readiness: TransactionalSesReadiness;
     logger: { warn(message: string): void };
   },
   emailFor: (input: {
@@ -42,7 +40,7 @@ export const createTenantSesTransactionalResolver = (
       return { send: async () => failure, healthcheck: async () => failure, test: async () => failure };
     };
     if (!resolved.ok) return unavailable(resolved.error);
-    const configuration = await ensureTransactionalSesConfiguration(resolved.value, tenantSettings, infrastructure.controlPlane);
+    const configuration = await infrastructure.readiness.ensure(resolved.value, tenantSettings);
     if (!configuration.ok) return unavailable(configuration.error);
     return emailFor({
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),

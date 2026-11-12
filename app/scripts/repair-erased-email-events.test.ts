@@ -12,7 +12,7 @@ const key = Buffer.alloc(32, 7).toString('base64');
 const now = '2026-11-01T12:00:00.000Z';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 beforeAll(async () => {
-  database = await createTestDatabase('together_email_repair_cli', 'postgres://together:together@localhost:48912/postgres');
+  database = await createTestDatabase('together_email_repair_cli', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
   const db = database.db;
   await db.insert(tenants).values({ id: 'repair', slug: 'repair', name: 'Example', createdAt: now });
   await db.insert(members).values({ id: 'member', tenantId: 'repair', userId: 'deleted:member', email: 'deleted-member@anonymized.invalid', deletedAt: now, createdAt: now });

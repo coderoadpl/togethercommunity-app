@@ -46,8 +46,10 @@ export const createTestDatabase = async (
   const databaseName = uniqueTestDatabaseName(base);
   const url = new URL(baseUrl);
   url.pathname = `/${databaseName}`;
+  const templateName = process.env['TOGETHER_TEST_DATABASE_TEMPLATE'];
+  const templateClause = templateName ? ` TEMPLATE ${pg.escapeIdentifier(templateName)}` : '';
   await withAdminClient(baseUrl, async (client) => {
-    await client.query(`CREATE DATABASE ${pg.escapeIdentifier(databaseName)}`);
+    await client.query(`CREATE DATABASE ${pg.escapeIdentifier(databaseName)}${templateClause}`);
   });
 
   const pool = new pg.Pool({ connectionString: url.toString() });
@@ -59,7 +61,7 @@ export const createTestDatabase = async (
   const db = drizzle(pool, { schema: dbSchema });
 
   try {
-    await migrate(db, { migrationsFolder: 'drizzle' });
+    if (!templateName) await migrate(db, { migrationsFolder: 'drizzle' });
   } catch (error) {
     await pool.end();
     await dropDatabase(baseUrl, databaseName);

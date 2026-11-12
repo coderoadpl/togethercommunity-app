@@ -45,6 +45,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          globalSetup: ['adapters/db/test-database-setup.ts'],
           hookTimeout: 60000,
           include: [
             'core/**/*.test.ts',

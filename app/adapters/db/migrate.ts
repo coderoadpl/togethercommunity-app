@@ -1,10 +1,7 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import pg from 'pg';
-
 import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 
 import { normalizeDatabaseConnectionString } from './client.js';
+import { runMigrations } from './migration-runner.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
@@ -14,8 +11,13 @@ const fingerprint = databaseHostFingerprint(connectionString) ?? 'unknown';
 const environment = process.env['VERCEL_ENV'] ?? process.env['APP_ENV'] ?? 'unset';
 console.log(`Migrating database ${fingerprint} (environment ${environment})`);
 
-const pool = new pg.Pool({ connectionString: normalizeDatabaseConnectionString(connectionString) });
-
-await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
-console.log('Migrations applied');
-await pool.end();
+const result = await runMigrations({
+  connectionString: normalizeDatabaseConnectionString(connectionString),
+  migrationsFolder: 'drizzle',
+});
+if (result.copiedJournalRows !== null) {
+  console.log(
+    `Migration journal moved to public.__drizzle_migrations (${String(result.copiedJournalRows)} rows copied from drizzle.__drizzle_migrations)`,
+  );
+}
+console.log(`Migrations applied (${String(result.applied)} new)`);

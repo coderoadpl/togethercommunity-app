@@ -29,3 +29,5 @@ export const uniqueViolationIn = (
 };
 
 export const queryCanceled = (cause: unknown): boolean => pgError(cause)?.['code'] === '57014';
+
+export const lockNotAvailable = (cause: unknown): boolean => pgError(cause)?.['code'] === '55P03';

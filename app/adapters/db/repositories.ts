@@ -4977,7 +4977,7 @@ export const createHealthPort = (db: Db): HealthPort => {
     migrationCounts: async () => {
       const expected = migrationJournal.entries.length;
       try {
-        const result = await db.execute(sql`select count(*)::int as applied from drizzle.__drizzle_migrations`);
+        const result = await db.execute(sql`select count(*)::int as applied from public.__drizzle_migrations`);
         return { expected, applied: numberField(firstRow(result), 'applied') };
       } catch {
         return { expected, applied: null };
@@ -4989,7 +4989,7 @@ export const createHealthPort = (db: Db): HealthPort => {
       const fingerprint = await fingerprintStatus();
       try {
         const result = await db.execute(
-          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from drizzle.__drizzle_migrations`,
+          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from public.__drizzle_migrations`,
         );
         const row = firstRow(result);
         return {

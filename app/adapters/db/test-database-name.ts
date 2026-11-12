@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 
 import type { Db } from './client.js';
+import { runMigrations } from './migration-runner.js';
 import * as dbSchema from './schema.js';
 
 const POSTGRES_IDENTIFIER_LIMIT = 63;
@@ -59,7 +59,7 @@ export const createTestDatabase = async (
   const db = drizzle(pool, { schema: dbSchema });
 
   try {
-    await migrate(db, { migrationsFolder: 'drizzle' });
+    await runMigrations({ connectionString: url.toString(), migrationsFolder: 'drizzle' });
   } catch (error) {
     await pool.end();
     await dropDatabase(baseUrl, databaseName);

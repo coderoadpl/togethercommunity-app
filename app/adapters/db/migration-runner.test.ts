@@ -1,0 +1,434 @@
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
+import { migrate as previousReleaseMigrate } from 'drizzle-orm/node-postgres/migrator';
+import pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { runMigrations } from './migration-runner.js';
+import { createHealthPort } from './repositories.js';
+import * as dbSchema from './schema.js';
+import { uniqueTestDatabaseName } from './test-database-name.js';
+
+const { spawnSync } = process.getBuiltinModule('node:child_process');
+const { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } =
+  process.getBuiltinModule('node:fs');
+const { tmpdir } = process.getBuiltinModule('node:os');
+const { join } = process.getBuiltinModule('node:path');
+
+const adminUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+const pgToolsContainer = process.env['MIGRATION_TEST_PG_CONTAINER'];
+const migrations = readMigrationFiles({ migrationsFolder: 'drizzle' });
+const expected = migrations.length;
+const migration0080When = migrations[80]?.folderMillis;
+if (migration0080When === undefined) throw new Error('Migration 0080 is missing');
+
+type JournalEntry = { idx: number; when: number; tag: string };
+type ExtraMigration = { tag: string; sql: string };
+type JournalRow = { id: number; hash: string; created_at: string };
+
+const isJournalEntry = (value: unknown): value is JournalEntry =>
+  typeof value === 'object'
+  && value !== null
+  && 'idx' in value
+  && typeof value.idx === 'number'
+  && 'when' in value
+  && typeof value.when === 'number'
+  && 'tag' in value
+  && typeof value.tag === 'string';
+
+const journalEntries = ((): JournalEntry[] => {
+  const value: unknown = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8'));
+  if (
+    typeof value !== 'object'
+    || value === null
+    || !('entries' in value)
+    || !Array.isArray(value.entries)
+    || !value.entries.every(isJournalEntry)
+  ) {
+    throw new Error('The drizzle journal is unreadable');
+  }
+  return value.entries;
+})();
+
+const roleName = uniqueTestDatabaseName('together_migration_runner_role');
+const rolePassword = crypto.randomUUID();
+const temporaryFolders: string[] = [];
+
+const withClient = async <T>(url: string, run: (client: pg.Client) => Promise<T>): Promise<T> => {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    return await run(client);
+  } finally {
+    await client.end();
+  }
+};
+
+const databaseUrl = (database: string, asRole: boolean): string => {
+  const url = new URL(adminUrl);
+  url.pathname = `/${database}`;
+  if (asRole) {
+    url.username = roleName;
+    url.password = rolePassword;
+  }
+  return url.toString();
+};
+
+type RestrictedDatabase = { name: string; url: string; adminUrl: string };
+
+const createRestrictedDatabase = async (base: string, allowCreate: boolean): Promise<RestrictedDatabase> => {
+  const name = uniqueTestDatabaseName(base);
+  await withClient(adminUrl, async (client) => {
+    await client.query(`CREATE DATABASE ${pg.escapeIdentifier(name)}`);
+  });
+  await withClient(databaseUrl(name, false), async (client) => {
+    await client.query(`REVOKE CREATE ON DATABASE ${pg.escapeIdentifier(name)} FROM PUBLIC`);
+    await client.query(`ALTER SCHEMA public OWNER TO ${pg.escapeIdentifier(roleName)}`);
+    if (allowCreate) {
+      await client.query(
+        `GRANT CREATE ON DATABASE ${pg.escapeIdentifier(name)} TO ${pg.escapeIdentifier(roleName)}`,
+      );
+    }
+  });
+  return { name, url: databaseUrl(name, true), adminUrl: databaseUrl(name, false) };
+};
+
+const dropDatabase = async (name: string): Promise<void> => {
+  await withClient(adminUrl, async (client) => {
+    await client.query(`DROP DATABASE IF EXISTS ${pg.escapeIdentifier(name)} WITH (FORCE)`);
+  });
+};
+
+const withRestrictedDatabase = async (
+  base: string,
+  run: (database: RestrictedDatabase) => Promise<void>,
+  options: { allowCreate?: boolean } = {},
+): Promise<void> => {
+  const database = await createRestrictedDatabase(base, options.allowCreate ?? false);
+  try {
+    await run(database);
+  } finally {
+    await dropDatabase(database.name);
+  }
+};
+
+const revokeCreate = async (database: RestrictedDatabase): Promise<void> => {
+  await withClient(database.adminUrl, async (client) => {
+    await client.query(
+      `REVOKE CREATE ON DATABASE ${pg.escapeIdentifier(database.name)} FROM ${pg.escapeIdentifier(roleName)}`,
+    );
+  });
+};
+
+const migrationFolder = (count: number, extras: readonly ExtraMigration[] = [], whenOf?: (entry: JournalEntry) => number): string => {
+  const folder = mkdtempSync(join(tmpdir(), 'together-migration-runner-'));
+  temporaryFolders.push(folder);
+  mkdirSync(join(folder, 'meta'));
+  const entries = journalEntries.slice(0, count).map((entry) => ({
+    idx: entry.idx,
+    when: whenOf?.(entry) ?? entry.when,
+    tag: entry.tag,
+  }));
+  for (const entry of entries) copyFileSync(join('drizzle', `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
+  const lastWhen = entries.at(-1)?.when ?? 0;
+  extras.forEach((extra, index) => {
+    writeFileSync(join(folder, `${extra.tag}.sql`), extra.sql);
+    entries.push({ idx: count + index, when: lastWhen + index + 1, tag: extra.tag });
+  });
+  writeFileSync(
+    join(folder, 'meta', '_journal.json'),
+    JSON.stringify({
+      version: '7',
+      dialect: 'postgresql',
+      entries: entries.map((entry) => ({ ...entry, version: '7', breakpoints: true })),
+    }),
+  );
+  return folder;
+};
+
+const migrateWithPreviousRelease = async (url: string, migrationsFolder: string): Promise<void> => {
+  const pool = new pg.Pool({ connectionString: url });
+  try {
+    await previousReleaseMigrate(drizzle(pool), { migrationsFolder });
+  } finally {
+    await pool.end();
+  }
+};
+
+const journalRows = async (url: string, schema: 'public' | 'drizzle'): Promise<JournalRow[]> =>
+  withClient(url, async (client) =>
+    (
+      await client.query<JournalRow>(
+        `select id, hash, created_at::text as created_at from ${schema}.__drizzle_migrations order by id`,
+      )
+    ).rows);
+
+const relationExists = async (url: string, name: string): Promise<boolean> =>
+  withClient(url, async (client) =>
+    (await client.query<{ name: string | null }>('select to_regclass($1)::text as name', [name])).rows[0]?.name != null);
+
+const schemaExists = async (url: string, name: string): Promise<boolean> =>
+  withClient(url, async (client) =>
+    (await client.query<{ count: number }>('select count(*)::int as count from pg_namespace where nspname = $1', [name]))
+      .rows[0]?.count === 1);
+
+const healthCounts = async (url: string): Promise<{ applied: number | null; current: boolean }> => {
+  const pool = new pg.Pool({ connectionString: url });
+  try {
+    const health = createHealthPort(drizzle(pool, { schema: dbSchema }));
+    const counts = await health.migrationCounts();
+    const status = await health.schemaStatus();
+    return { applied: counts.applied, current: status.schemaCurrent };
+  } finally {
+    await pool.end();
+  }
+};
+
+const chainRows = (): Array<Pick<JournalRow, 'hash' | 'created_at'>> =>
+  migrations.map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) }));
+
+const withoutIds = (rows: readonly JournalRow[]): Array<Pick<JournalRow, 'hash' | 'created_at'>> =>
+  rows.map(({ hash, created_at }) => ({ hash, created_at }));
+
+const pgToolsAvailable =
+  pgToolsContainer !== undefined
+  || (spawnSync('pg_dump', ['--version']).status === 0 && spawnSync('pg_restore', ['--version']).status === 0);
+
+const runPgTool = (tool: 'pg_dump' | 'pg_restore', url: string, args: readonly string[], input?: Buffer): Buffer => {
+  const target = new URL(url);
+  if (pgToolsContainer !== undefined) {
+    target.hostname = '127.0.0.1';
+    target.port = '5432';
+  }
+  const toolArgs = [...args, `--dbname=${target.toString()}`];
+  const result = pgToolsContainer === undefined
+    ? spawnSync(tool, toolArgs, { input, maxBuffer: 512 * 1024 * 1024 })
+    : spawnSync('docker', ['exec', '-i', pgToolsContainer, tool, ...toolArgs], { input, maxBuffer: 512 * 1024 * 1024 });
+  if (result.status !== 0) {
+    throw new Error(`${tool} exited with ${String(result.status)}: ${result.stderr.toString()}`);
+  }
+  return result.stdout;
+};
+
+beforeAll(async () => {
+  await withClient(adminUrl, async (client) => {
+    await client.query(
+      `CREATE ROLE ${pg.escapeIdentifier(roleName)} LOGIN PASSWORD ${pg.escapeLiteral(rolePassword)}`,
+    );
+  });
+});
+
+afterAll(async () => {
+  for (const folder of temporaryFolders) rmSync(folder, { recursive: true, force: true });
+  await withClient(adminUrl, async (client) => {
+    await client.query(`DROP ROLE IF EXISTS ${pg.escapeIdentifier(roleName)}`);
+  });
+});
+
+describe('migration runner', () => {
+  it('migrates a fresh database as a role without CREATE on the database, then applies nothing', async () => {
+    await withRestrictedDatabase('together_runner_fresh', async (database) => {
+      const canCreate = await withClient(database.url, async (client) =>
+        (await client.query<{ allowed: boolean }>(
+          "select has_database_privilege(current_database(), 'CREATE') as allowed",
+        )).rows[0]?.allowed);
+      expect(canCreate).toBe(false);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: expected, copiedJournalRows: null });
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+
+      expect(withoutIds(await journalRows(database.url, 'public'))).toEqual(chainRows());
+      expect(await schemaExists(database.url, 'drizzle')).toBe(false);
+      expect(await healthCounts(database.url)).toEqual({ applied: expected, current: true });
+    });
+  }, 120_000);
+
+  it('moves a journal kept by the previous release into public row for row', async () => {
+    await withRestrictedDatabase('together_runner_upgrade', async (database) => {
+      await migrateWithPreviousRelease(database.url, 'drizzle');
+      await revokeCreate(database);
+      const legacyRows = await journalRows(database.url, 'drizzle');
+      expect(legacyRows).toHaveLength(expected);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: expected });
+      expect(await journalRows(database.url, 'public')).toEqual(legacyRows);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+      expect(await journalRows(database.url, 'public')).toEqual(legacyRows);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await healthCounts(database.url)).toEqual({ applied: expected, current: true });
+
+      const next = migrationFolder(expected, [
+        { tag: `${String(expected).padStart(4, '0')}_runner_probe`, sql: 'CREATE TABLE runner_probe (id integer);' },
+      ]);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: next }))
+        .resolves.toEqual({ applied: 1, copiedJournalRows: null });
+      expect((await journalRows(database.url, 'public')).at(-1)?.id).toBe(Math.max(...legacyRows.map((row) => row.id)) + 1);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+    }, { allowCreate: true });
+  }, 120_000);
+
+  it('records the skipped 0080 row in public when a production-like journal is upgraded', async () => {
+    await withRestrictedDatabase('together_runner_skipped_0080', async (database) => {
+      const production = migrationFolder(80, [], (entry) =>
+        entry.idx === 79 ? migration0080When + 60_000 : entry.when);
+      await migrateWithPreviousRelease(database.url, production);
+      await revokeCreate(database);
+      const legacyRows = await journalRows(database.url, 'drizzle');
+      expect(legacyRows).toHaveLength(80);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: expected - 81, copiedJournalRows: 80 });
+
+      const rows = await journalRows(database.url, 'public');
+      expect(rows).toHaveLength(expected);
+      expect(rows.filter((row) => Number(row.created_at) === migration0080When)).toEqual([
+        expect.objectContaining({ hash: migrations[80]?.hash }),
+      ]);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await healthCounts(database.url)).toEqual({ applied: expected, current: true });
+    }, { allowCreate: true });
+  }, 120_000);
+
+  it('reads only the public journal when both journals exist', async () => {
+    await withRestrictedDatabase('together_runner_both', async (database) => {
+      await migrateWithPreviousRelease(database.url, migrationFolder(100));
+      await revokeCreate(database);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: expected - 100, copiedJournalRows: 100 });
+      await withClient(database.url, async (client) => {
+        await client.query(
+          "insert into drizzle.__drizzle_migrations (hash, created_at) values ('written-by-a-previous-release', 9999999999999)",
+        );
+      });
+      const legacyRows = await journalRows(database.url, 'drizzle');
+      const publicRows = await journalRows(database.url, 'public');
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+      const next = migrationFolder(expected, [
+        { tag: `${String(expected).padStart(4, '0')}_runner_probe`, sql: 'CREATE TABLE runner_probe (id integer);' },
+      ]);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: next }))
+        .resolves.toEqual({ applied: 1, copiedJournalRows: null });
+
+      expect((await journalRows(database.url, 'public')).slice(0, -1)).toEqual(publicRows);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+    }, { allowCreate: true });
+  }, 120_000);
+
+  it('refuses a database that has application tables but no journal', async () => {
+    await withRestrictedDatabase('together_runner_untracked', async (database) => {
+      await withClient(database.url, async (client) => {
+        await client.query('CREATE TABLE tenants (id text PRIMARY KEY)');
+      });
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .rejects.toThrow(
+          'The database has 1 application tables but no migration journal, so migration 0000 would run against existing tables. Restore the database together with public.__drizzle_migrations or start from an empty database; see docs/deployment-environments.md#migration-journal.',
+        );
+      expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
+      expect(await relationExists(database.url, 'public.tenants')).toBe(true);
+    });
+  }, 60_000);
+
+  it('leaves a run that dies after copying the journal for the next run to repair', async () => {
+    await withRestrictedDatabase('together_runner_crash', async (database) => {
+      await migrateWithPreviousRelease(database.url, migrationFolder(100));
+      await revokeCreate(database);
+      const legacyRows = await journalRows(database.url, 'drizzle');
+      const stalled = migrationFolder(100, [{ tag: '0100_runner_stall', sql: 'SELECT pg_sleep(60);' }]);
+
+      const crashed = runMigrations({ connectionString: database.url, migrationsFolder: stalled });
+      const crashedOutcome = crashed.then(() => 'resolved', (error: unknown) => error);
+      await withClient(database.adminUrl, async (client) => {
+        const deadline = Date.now() + 30_000;
+        for (;;) {
+          const sleeping = await client.query<{ pid: number }>(
+            "select pid from pg_stat_activity where datname = current_database() and query like 'SELECT pg_sleep(60)%'",
+          );
+          const pid = sleeping.rows[0]?.pid;
+          if (pid !== undefined) {
+            expect(await relationExists(database.adminUrl, 'public.__drizzle_migrations')).toBe(false);
+            await client.query('select pg_terminate_backend($1)', [pid]);
+            break;
+          }
+          if (Date.now() > deadline) throw new Error('The stalled migration never started');
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      });
+      expect(await crashedOutcome).toBeInstanceOf(Error);
+
+      expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: expected - 100, copiedJournalRows: 100 });
+      expect((await journalRows(database.url, 'public')).slice(0, 100)).toEqual(legacyRows);
+      expect(withoutIds(await journalRows(database.url, 'public'))).toEqual(chainRows());
+    }, { allowCreate: true });
+  }, 120_000);
+
+  it('serializes two runners started together', async () => {
+    await withRestrictedDatabase('together_runner_concurrent', async (database) => {
+      const results = await Promise.all([
+        runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }),
+        runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }),
+      ]);
+
+      expect(results.map((result) => result.applied).toSorted((left, right) => left - right))
+        .toEqual([0, expected]);
+      expect(withoutIds(await journalRows(database.url, 'public'))).toEqual(chainRows());
+    });
+  }, 120_000);
+
+  it('gives up with a clear message when another run holds the lock too long', async () => {
+    await withRestrictedDatabase('together_runner_lock_wait', async (database) => {
+      await withClient(database.adminUrl, async (holder) => {
+        await holder.query('BEGIN');
+        await holder.query("select pg_advisory_xact_lock(hashtextextended('together:migrations', 0))");
+
+        await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle', lockWaitMs: 300 }))
+          .rejects.toThrow(
+            'Another migration run held the migration lock for more than 300 ms; nothing was applied. Run one migrator at a time.',
+          );
+        await holder.query('ROLLBACK');
+      });
+      expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
+    });
+  }, 60_000);
+
+  it.skipIf(!pgToolsAvailable)(
+    'applies nothing after a dump without the drizzle schema is restored by a role without CREATE on the database',
+    async () => {
+      await withRestrictedDatabase('together_runner_dump_source', async (source) => {
+        await migrateWithPreviousRelease(source.url, 'drizzle');
+        await revokeCreate(source);
+        await runMigrations({ connectionString: source.url, migrationsFolder: 'drizzle' });
+        const sourceRows = await journalRows(source.url, 'public');
+        const dump = runPgTool('pg_dump', source.adminUrl, [
+          '--format=custom',
+          '--no-owner',
+          '--no-acl',
+          '--exclude-schema=drizzle',
+        ]);
+
+        await withRestrictedDatabase('together_runner_dump_target', async (target) => {
+          runPgTool('pg_restore', target.url, ['--no-owner', '--no-acl', '--exit-on-error'], dump);
+
+          expect(await schemaExists(target.url, 'drizzle')).toBe(false);
+          expect(await journalRows(target.url, 'public')).toEqual(sourceRows);
+          await expect(runMigrations({ connectionString: target.url, migrationsFolder: 'drizzle' }))
+            .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+          expect(await journalRows(target.url, 'public')).toEqual(sourceRows);
+          expect(await healthCounts(target.url)).toEqual({ applied: expected, current: true });
+        });
+      }, { allowCreate: true });
+    },
+    180_000,
+  );
+});

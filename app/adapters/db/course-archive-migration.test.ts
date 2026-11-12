@@ -107,7 +107,7 @@ describe('course archive serialization', () => {
       progress: createMemberCourseProgressRepository(db),
       attachments: createLessonAttachmentRepository(db),
       storage: {
-        getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
+        putObject: unusedStorage, getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
         presignPut: unusedStorage, presignGet: unusedStorage, delete: unusedStorage, head: unusedStorage,
         healthcheck: unusedStorage, test: unusedStorage,
       },

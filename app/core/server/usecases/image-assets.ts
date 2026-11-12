@@ -5,6 +5,7 @@ import {
   IMAGE_ASSET_MAX_BYTES,
   err,
   imageAssetKindSchema,
+  imageAssetContentTypesFor,
   imageAssetUploadInputSchema,
   notFound,
   ok,
@@ -18,6 +19,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
+import { imageContentMatches } from '../image-content.js';
 import type {
   Clock,
   AccountAvatarRepository,
@@ -67,12 +69,15 @@ export const deleteAvatarImage = async (
   return deleteAvatarObject(tenantId, image, configuration.value, deps.storage);
 };
 
-const parseStoredKey = (
+const fileContentType = (file: string) => Object.entries(IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION)
+  .find(([extension]) => file.endsWith(`.${extension}`))?.[1];
+
+const parseCandidateKey = (
   tenantId: string,
   key: string,
-): { kind: ImageAssetKind; file: string } | null => {
+): { kind: ImageAssetKind; file: string; contentType: string } | null => {
   const parts = key.split('/');
-  if (parts.length !== 4 || parts[0] !== 'image-assets' || parts[1] !== tenantId) return null;
+  if (parts.length !== 4 || parts[0] !== 'image-asset-candidates' || parts[1] !== tenantId) return null;
   const kind = imageAssetKindSchema.safeParse(parts[2]);
   const file = parts[3];
   if (!kind.success || file === undefined || !imageAssetFilePattern.test(file)) return null;
@@ -80,7 +85,9 @@ const parseStoredKey = (
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(id)) {
     return null;
   }
-  return { kind: kind.data, file };
+  const contentType = fileContentType(file);
+  if (contentType === undefined || !imageAssetContentTypesFor(kind.data).includes(contentType)) return null;
+  return { kind: kind.data, file, contentType };
 };
 
 export interface ImageAssetDeps {
@@ -118,7 +125,7 @@ const beginUpload = async (
 
   const extension = IMAGE_ASSET_EXTENSION_BY_CONTENT_TYPE[parsed.data.contentType];
   const file = `${deps.ids.nextId()}.${extension}`;
-  const key = `image-assets/${tenantId}/${parsed.data.kind}/${file}`;
+  const key = `image-asset-candidates/${tenantId}/${parsed.data.kind}/${file}`;
   const signed = deps.storage.presignPut({
     url: deps.storage.objectUrl(configuration.value, key).toString(),
     accessKeyId: configuration.value.accessKeyId,
@@ -142,7 +149,7 @@ const completeUpload = async (
   input: { key: string },
   deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
 ): Promise<Result<{ url: string }, AppError>> => {
-  const parsed = parseStoredKey(tenantId, input.key);
+  const parsed = parseCandidateKey(tenantId, input.key);
   if (parsed === null || !allowedKinds.includes(parsed.kind)) {
     return err(notFound('Image asset not found'));
   }
@@ -166,6 +173,30 @@ const completeUpload = async (
     if (!removed.ok) return removed;
     return err(validation(`Uploaded image must be between 1 and ${String(IMAGE_ASSET_MAX_BYTES)} bytes`));
   }
+  const credentials = {
+    accessKeyId: configuration.value.accessKeyId,
+    secretAccessKey: configuration.value.secretAccessKey,
+    region: configuration.value.region,
+  };
+  const source = await deps.storage.getObject({ url: target, ...credentials }, {
+    maxBytes: IMAGE_ASSET_MAX_BYTES,
+    range: true,
+  });
+  if (!source.ok && source.error.code !== 'validation') return source;
+  if (!source.ok || !imageContentMatches(source.value, parsed.file.split('.').at(-1) ?? '')) {
+    const removed = await deps.storage.delete({ url: target, ...credentials });
+    if (!removed.ok) return removed;
+    return err(validation('Uploaded image does not match its declared format or size'));
+  }
+  const published = await deps.storage.putObject({
+    url: deps.storage.objectUrl(configuration.value, `image-assets/${tenantId}/${parsed.kind}/${parsed.file}`).toString(),
+    ...credentials,
+    body: source.value,
+    contentType: parsed.contentType,
+  });
+  if (!published.ok) return published;
+  const removed = await deps.storage.delete({ url: target, ...credentials });
+  if (!removed.ok) return removed;
   return ok({ url: servePath(parsed.kind, parsed.file) });
 };
 
@@ -248,7 +279,7 @@ export const completeAvatarUpload = async (
   const tenant = authorizeTenant(ctx, 'member:profile:self-write');
   if (!tenant.ok) return tenant;
   if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));
-  const parsed = parseStoredKey(tenant.value, input.key);
+  const parsed = parseCandidateKey(tenant.value, input.key);
   if (parsed === null || parsed.kind !== 'avatar') return err(notFound('Image asset not found'));
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
@@ -278,7 +309,18 @@ export const completeAvatarUpload = async (
     sourceKey: input.key,
     targetKey,
   });
-  if (!processed.ok) return processed;
+  if (!processed.ok) {
+    if (processed.error.code === 'validation') {
+      const removed = await deps.storage.delete({
+        url: sourceUrl,
+        accessKeyId: configuration.value.accessKeyId,
+        secretAccessKey: configuration.value.secretAccessKey,
+        region: configuration.value.region,
+      });
+      if (!removed.ok) return removed;
+    }
+    return processed;
+  }
   const url = servePath('avatar', `${id}.webp`);
   if (targetKey !== input.key) {
     const removed = await deps.storage.delete({
@@ -365,15 +407,18 @@ export const getPublicImageAssetUrl = async (
   const kind = imageAssetKindSchema.safeParse(input.kind);
   const fileMatch = imageAssetFilePattern.exec(input.file);
   if (!kind.success || fileMatch === null) return err(notFound('Image asset not found'));
-  const contentType = Object.entries(IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION)
-    .find(([extension]) => extension === fileMatch[1])?.[1];
-  if (contentType === undefined) return err(notFound('Image asset not found'));
+  const contentType = fileContentType(input.file);
+  if (contentType === undefined || !imageAssetContentTypesFor(kind.data).includes(contentType)
+    || (kind.data === 'avatar' && contentType !== 'image/webp')) {
+    return err(notFound('Image asset not found'));
+  }
   try {
     const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
     if (!configuration.ok) return err(notFound('Image asset not found'));
     const key = `image-assets/${tenantId}/${kind.data}/${input.file}`;
     const target = deps.storage.objectUrl(configuration.value, key);
     target.searchParams.set('response-content-type', contentType);
+    target.searchParams.set('response-content-disposition', contentType === 'image/svg+xml' ? 'attachment' : 'inline');
     const signed = deps.storage.presignGet({
       url: target.toString(),
       accessKeyId: configuration.value.accessKeyId,

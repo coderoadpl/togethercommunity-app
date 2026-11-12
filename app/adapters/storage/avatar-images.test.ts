@@ -16,6 +16,7 @@ const configuration: StorageConfiguration = {
 };
 
 const storage: StorageProvider = {
+  putObject: async () => ok(undefined),
   getObject: async () => ok(new Uint8Array()),
   objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
   probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -29,35 +30,65 @@ const storage: StorageProvider = {
 };
 
 describe('avatar image processor', () => {
-  it('fetches, center-crops, and stores a 256px WebP', async () => {
+  it.each(['png', 'jpeg', 'webp'] as const)('reads bounded %s bytes and publishes a 256px WebP at a distinct key', async (format) => {
     const source = await sharp({
       create: { width: 640, height: 320, channels: 3, background: '#336699' },
-    }).png().toBuffer();
-    const sourceBody = new Uint8Array(new ArrayBuffer(source.byteLength));
-    sourceBody.set(source);
+    }).toFormat(format).toBuffer();
     let stored: Uint8Array | null = null;
-    const fetchImage: typeof fetch = async (_input, init) => {
-      if (init?.method === 'PUT') {
-        if (!(init.body instanceof Uint8Array)) throw new Error('Expected avatar bytes');
-        stored = new Uint8Array(init.body);
-        return new Response(null, { status: 200 });
-      }
-      return new Response(sourceBody, {
-        status: 200,
-        headers: { 'content-type': 'image/png', 'content-length': String(source.byteLength) },
-      });
-    };
-    const processor = createAvatarImageProcessor(storage, fetchImage);
-
+    const processor = createAvatarImageProcessor({
+      ...storage,
+      getObject: async (input, options) => {
+        expect(input.url).toContain('/image-asset-candidates/');
+        expect(options).toEqual({ maxBytes: 2 * 1024 * 1024, range: true });
+        return ok(source);
+      },
+      putObject: async (input) => {
+        expect(input.url).toContain('/image-assets/tenant-1/avatar/target.webp');
+        expect(input.contentType).toBe('image/webp');
+        stored = new Uint8Array(input.body);
+        return ok(undefined);
+      },
+    });
     await expect(processor.processStored({
       configuration,
-      sourceKey: 'image-assets/tenant-1/avatar/source.png',
+      sourceKey: `image-asset-candidates/tenant-1/avatar/source.${format === 'jpeg' ? 'jpg' : format}`,
       targetKey: 'image-assets/tenant-1/avatar/target.webp',
     })).resolves.toEqual(ok(undefined));
-
     expect(stored).not.toBeNull();
     const metadata = await sharp(stored ?? new Uint8Array()).metadata();
     expect(metadata).toMatchObject({ format: 'webp', width: 256, height: 256 });
+  });
+
+  it.each(['png', 'jpg', 'webp'])('rejects SVG bytes declared as %s before publication', async (extension) => {
+    const writes: string[] = [];
+    const processor = createAvatarImageProcessor({
+      ...storage,
+      getObject: async () => ok(new TextEncoder().encode('<svg><script/></svg>')),
+      putObject: async ({ url }) => { writes.push(url); return ok(undefined); },
+    });
+    expect(await processor.processStored({
+      configuration,
+      sourceKey: `image-asset-candidates/tenant-1/avatar/source.${extension}`,
+      targetKey: 'image-assets/tenant-1/avatar/target.webp',
+    })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(writes).toEqual([]);
+  });
+
+  it('retains remote Google avatar conversion', async () => {
+    const source = await sharp({
+      create: { width: 16, height: 16, channels: 3, background: '#336699' },
+    }).png().toBuffer();
+    const writes: Uint8Array[] = [];
+    const processor = createAvatarImageProcessor({
+      ...storage,
+      putObject: async ({ body }) => { writes.push(body); return ok(undefined); },
+    }, async () => new Response(new Uint8Array(source), { headers: { 'content-type': 'image/png' } }));
+    expect(await processor.importRemote({
+      configuration,
+      sourceUrl: 'https://lh3.googleusercontent.com/a/photo',
+      targetKey: 'image-assets/tenant-1/avatar/target.webp',
+    })).toEqual(ok(undefined));
+    expect(await sharp(writes[0]).metadata()).toMatchObject({ format: 'webp', width: 256, height: 256 });
   });
 
   it('accepts only HTTPS Google-hosted profile sources', () => {

@@ -1,3 +1,4 @@
+import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
 import type { SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
@@ -22,6 +23,7 @@ import {
   capabilitiesForPrincipal,
   deepHealthOutputSchema,
   envelopeSchema,
+  imageAssetUploadOutputSchema,
   salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   studentLessonOutputSchema,
@@ -464,6 +466,7 @@ const deps = (input: {
     },
     playbackTokenTtlSeconds: 21_600,
     storage: {
+      putObject: async () => ok(undefined),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -3387,6 +3390,7 @@ describe('tenant domain check route', () => {
               : err(notFound(`No secret "${key}"`)),
         },
         storage: {
+          putObject: async () => ok(undefined),
           getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -4067,6 +4071,7 @@ describe('lesson attachment download route', () => {
         })),
       },
       storage: {
+        putObject: async () => ok(undefined),
         getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
@@ -11005,5 +11010,91 @@ describe('tenant team HTTP surface', () => {
       expect(requestMagicLink).toHaveBeenCalledOnce();
     }
     expect(new Set(responses)).toEqual(new Set([JSON.stringify({ ok: true, data: { status: 'invitation_sent' } })]));
+  });
+});
+
+describe('image upload publication boundary', () => {
+  const id = '00000000-0000-4000-8000-000000000001';
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+  const storageSecret = JSON.stringify({
+    provider: 'minio', endpoint: 'https://storage.example.test', region: 'us-east-1',
+    bucket: 'private-assets', accessKeyId: 'key', secretAccessKey: 'secret',
+  });
+
+  it.each([
+    ['logo', 'owner', API_PATHS.brandingAssetUpload, API_PATHS.brandingAssetComplete],
+    ['course-cover', 'staff', API_PATHS.courseCoverUpload, API_PATHS.courseCoverComplete],
+    ['product-cover', 'staff', API_PATHS.productCoverUpload, API_PATHS.productCoverComplete],
+    ['avatar', 'member', API_PATHS.avatarUpload, API_PATHS.avatarComplete],
+  ] as const)('keeps %s candidates private and publishes only server-owned bytes', async (kind, role, uploadPath, completePath) => {
+    const base = deps();
+    const objects = new Map<string, Uint8Array>();
+    const storage = {
+      ...base.storage,
+      head: async ({ url }: { url: string }) => ok({ sizeBytes: objects.get(url)?.byteLength ?? 0 }),
+      getObject: async ({ url }: { url: string }) => {
+        const bytes = objects.get(url);
+        return bytes === undefined ? err(notFound('missing')) : ok(new Uint8Array(bytes));
+      },
+      putObject: async ({ url, body }: { url: string; body: Uint8Array }) => {
+        objects.set(url, new Uint8Array(body));
+        return ok(undefined);
+      },
+      delete: async ({ url }: { url: string }) => { objects.delete(url); return ok({ deleted: true as const }); },
+    };
+    const app = scopedApp(role, { overrides: {
+      storage, ids: { nextId: () => id }, secretResolver: { resolve: async () => ok(storageSecret) },
+      avatarImages: createAvatarImageProcessor(storage),
+    } });
+    const source = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGUlEQVQokWMwTptJEmIY1ZA2GkrGwzVpAABIfDIQjwcm5wAAAABJRU5ErkJggg==', 'base64');
+    const upload = await app.request(uploadPath, {
+      method: 'POST', headers,
+      body: JSON.stringify({ kind, fileName: 'image.png', contentType: 'image/png', sizeBytes: source.byteLength }),
+    });
+    expect(upload.status).toBe(200);
+    const envelope = envelopeSchema(imageAssetUploadOutputSchema).parse(await upload.json());
+    if (!envelope.ok) throw new Error('Expected upload');
+    const { key, servePath, upload: candidate } = envelope.data;
+    expect(key).toBe(`image-asset-candidates/${acme.id}/${kind}/${id}.png`);
+    objects.set(candidate.url, source);
+    const before = await app.request(servePath, { headers });
+    if (kind === 'avatar') {
+      expect(before.status).toBe(404);
+    } else {
+      expect(before.status).toBe(302);
+      const target = new URL(before.headers.get('location') ?? '');
+      target.search = '';
+      expect(objects.has(target.toString())).toBe(false);
+    }
+    expect((await app.request(`/api/public/assets/image-asset-candidates/${id}.png`, { headers })).status).toBe(404);
+    const complete = await app.request(completePath, { method: 'POST', headers, body: JSON.stringify({ key }) });
+    expect(complete.status).toBe(200);
+    const publishedPath = `/api/public/assets/${kind}/${id}.${kind === 'avatar' ? 'webp' : 'png'}`;
+    expect(await complete.json()).toMatchObject({ ok: true, data: { url: publishedPath } });
+    expect(objects.has(candidate.url)).toBe(false);
+    const served = await app.request(publishedPath, { headers });
+    expect(served.status).toBe(302);
+    const target = new URL(served.headers.get('location') ?? '');
+    expect(target.searchParams.get('response-content-type')).toBe(kind === 'avatar' ? 'image/webp' : 'image/png');
+    expect(target.searchParams.get('response-content-disposition')).toBe('inline');
+    target.search = '';
+    const published = objects.get(target.toString());
+    expect(published).toBeDefined();
+    objects.set(candidate.url, new TextEncoder().encode('<svg><script/></svg>'));
+    expect(objects.get(target.toString())).toEqual(published);
+    const replay = await app.request(completePath, { method: 'POST', headers, body: JSON.stringify({ key }) });
+    expect(replay.status).toBe(400);
+    expect(objects.has(candidate.url)).toBe(false);
+    expect(objects.get(target.toString())).toEqual(published);
+  });
+
+  it('redirects legacy SVGs with attachment semantics and forbids generic SVG avatars', async () => {
+    const app = scopedApp('none', { overrides: { secretResolver: { resolve: async () => ok(storageSecret) } } });
+    const response = await app.request(`/api/public/assets/logo/${id}.svg`, { headers });
+    expect(response.status).toBe(302);
+    const signed = new URL(response.headers.get('location') ?? '');
+    expect(signed.searchParams.get('response-content-type')).toBe('image/svg+xml');
+    expect(signed.searchParams.get('response-content-disposition')).toBe('attachment');
+    expect((await app.request(`/api/public/assets/avatar/${id}.svg`, { headers })).status).toBe(404);
   });
 });

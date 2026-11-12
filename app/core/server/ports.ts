@@ -1504,7 +1504,15 @@ export interface StorageProvider {
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
-  }, options: { maxBytes: number }): Promise<Result<Uint8Array, AppError>>;
+  }, options: { maxBytes: number; range?: boolean }): Promise<Result<Uint8Array, AppError>>;
+  putObject(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+    body: Uint8Array;
+    contentType: string;
+  }): Promise<Result<void, AppError>>;
   objectUrl(configuration: StorageConfiguration, key: string): URL;
   probe(
     input: StorageConfiguration,

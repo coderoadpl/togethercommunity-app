@@ -19,6 +19,7 @@ const depsFor = (result: ProductDraftDeletion) => {
     storage: {
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       delete: remove,
+      putObject: async () => ok(undefined),
       getObject: async () => ok(new Uint8Array()),
       probe: async () => ok({ code: 'storage.available', message: 'Available' }),
       probeCors: async () => [],

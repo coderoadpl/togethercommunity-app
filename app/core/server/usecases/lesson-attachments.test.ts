@@ -240,6 +240,7 @@ const testDeps = (actualSizeBytes = 2048) => {
   const signed: Array<{ method: 'GET' | 'PUT'; url: string; region?: string; expiresInSeconds: number }> = [];
   const removed: string[] = [];
   const storage: StorageProvider = {
+    putObject: async () => ok(undefined),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),

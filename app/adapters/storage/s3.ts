@@ -76,7 +76,7 @@ type FetchStorage = (
   url: string,
   init: {
     method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
-    body?: string;
+    body?: string | Uint8Array;
     headers?: Record<string, string>;
     dispatcher?: Dispatcher;
     redirect?: 'error';
@@ -566,7 +566,26 @@ export const createS3StorageProvider = (
       }
       return ok({ sizeBytes: Number(contentLength) });
     },
-    getObject: async (input, { maxBytes }) => {
+    putObject: async (input) => {
+      const signed = presign('PUT', { ...input, expiresInSeconds: 60 }, now);
+      if (!signed.ok) return signed;
+      const safeTarget = await validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await fetchStorage(signed.value, {
+          method: 'PUT', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
+          headers: { 'content-type': input.contentType }, body: input.body,
+        });
+        await discardStorageResponseBody(response);
+        return response.ok ? ok(undefined) : err(integrationUnavailable('S3 rejected the published image'));
+      } catch {
+        return err(integrationUnavailable('Could not store the published image'));
+      } finally {
+        await dispatcher.destroy();
+      }
+    },
+    getObject: async (input, { maxBytes, range = false }) => {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return err(validation('Invalid object byte ceiling'));
       const signed = presign('GET', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
@@ -576,10 +595,21 @@ export const createS3StorageProvider = (
       try {
         const response = await fetchStorage(signed.value, {
           method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
-          headers: { 'Accept-Encoding': 'identity' },
+          headers: { 'Accept-Encoding': 'identity', ...(range ? { Range: `bytes=0-${String(maxBytes)}` } : {}) },
         });
         const length = response.headers.get('content-length');
         const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        const contentRange = response.headers.get('content-range');
+        const rangeMatch = contentRange === null ? null : /^bytes 0-(\d+)\/(\d+)$/u.exec(contentRange);
+        if (range && (size > maxBytes || (rangeMatch !== null && Number(rangeMatch[2]) > maxBytes))) {
+          await discardStorageResponseBody(response);
+          return err(validation('Object exceeds the byte ceiling'));
+        }
+        if (range && response.status === 206 && (rangeMatch === null
+          || Number(rangeMatch[1]) + 1 !== size || Number(rangeMatch[2]) !== size)) {
+          await discardStorageResponseBody(response);
+          return err(integrationUnavailable('S3 returned an incomplete object range'));
+        }
         if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
           (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
           await discardStorageResponseBody(response);

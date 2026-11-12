@@ -284,6 +284,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       delete: async () => false,
     },
     storage: {
+      putObject: async () => ok(undefined),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),

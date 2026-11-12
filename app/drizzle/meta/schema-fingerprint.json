@@ -1,6 +1,6 @@
 {
-  "hash": "e9a1066c3f4e388d179cee6665ac694b56749c51b7c6d99a0172f5f301f9654f",
-  "shortId": "e9a1066c3f4e",
+  "hash": "3254156d6b38d4fe340c9d1a5ad2f3f2a30852cdb62062144fe9a37b7cf826ef",
+  "shortId": "3254156d6b38",
   "schema": {
     "constraints": [
       {
@@ -3929,7 +3929,7 @@
             "identity": "",
             "name": "meta_capi_consent_at",
             "notNull": false,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -3953,7 +3953,7 @@
             "identity": "",
             "name": "meta_capi_consent_withdrawn_at",
             "notNull": false,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -7048,7 +7048,7 @@
             "identity": "",
             "name": "available_at",
             "notNull": true,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -7056,7 +7056,7 @@
             "identity": "",
             "name": "consent_at",
             "notNull": true,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -11622,7 +11622,7 @@
             "identity": "",
             "name": "consent_at",
             "notNull": false,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -11638,7 +11638,7 @@
             "identity": "",
             "name": "event_time",
             "notNull": false,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -11670,7 +11670,7 @@
             "identity": "",
             "name": "recorded_at",
             "notNull": true,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -11678,7 +11678,7 @@
             "identity": "",
             "name": "sent_at",
             "notNull": false,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -13584,7 +13584,7 @@
             "identity": "",
             "name": "occurred_at",
             "notNull": true,
-            "type": "text"
+            "type": "timestamp with time zone"
           },
           {
             "default": null,

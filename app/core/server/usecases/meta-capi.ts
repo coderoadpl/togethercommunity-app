@@ -20,7 +20,7 @@ export const getMetaCapiConfig = async (tenantId: string, sessionId: string, dep
   const settings = await deps.tenants.findSettings(tenantId);
   if (!current || !settings) return undefined;
   const copy = metaCapiCopy(settings, locale);
-  const enabled = settings.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId && !!copy.privacyUrl
+  const enabled = !current.memberDeleted && settings.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId && !!copy.privacyUrl
     && current.order.mode === 'live' && current.order.provider === 'stripe' && current.order.providerObjectIds.testPurchase !== '1'
     && !sessionId.startsWith('cs_test_');
   return { ...current.consent, ...copy, enabled, locale, textVersion: deps.hash.sha256(JSON.stringify(copy)) };
@@ -30,6 +30,7 @@ const recordDecision = async (
   tenantId: string, access: MetaCapiOrderAccess, decision: 'granted' | 'denied' | 'withdrawn',
   request: { locale?: Language; textVersion?: string; ip: string | null; userAgent: string | null; fbp: string | null }, deps: MetaCapiDeps,
 ): Promise<Result<MetaCapiState, AppError>> => deps.repository.decide(tenantId, access, async (current) => {
+  if (decision !== 'withdrawn' && current.memberDeleted) return err(validation('This order is not eligible for Meta conversions'));
   const settings = await deps.tenants.findSettings(tenantId);
   if (!settings) return err(tenantNotFound());
   const copy = metaCapiCopy(settings, request.locale);
@@ -82,6 +83,7 @@ export interface MetaCapiDispatchDeps extends MetaCapiDeps {
   gateway: MetaCapiGateway;
   secrets: TenantSecretResolver;
   directory: TenantDirectory;
+  logger?: { warn(message: string): void };
 }
 
 const dispatchJob = async (tenantId: string, job: MetaCapiJob, deps: MetaCapiDispatchDeps): Promise<MetaCapiJobOutcome> => {
@@ -90,6 +92,7 @@ const dispatchJob = async (tenantId: string, job: MetaCapiJob, deps: MetaCapiDis
     tenantId, transactionId: job.order.id, orderId: job.order.id, consentAt: job.consentAt, eventTime: job.order.paidAt ?? null,
     recordedAt: now, sentAt: status === 'sent' ? deps.clock.nowIso() : null, status, fbtraceId, error, fieldsSent,
   } });
+  if (job.memberDeleted) return event('blocked');
   const settings = await deps.tenants.findSettings(tenantId);
   const blocked = metaCapiBlockReason(job.order, job.consent, settings?.analyticsMetaCapiEnabled === true, now);
   if (blocked) return event(blocked);
@@ -111,10 +114,14 @@ export const dispatchMetaCapi = async (deps: MetaCapiDispatchDeps): Promise<{ pr
   let processed = 0;
   const deadline = Date.parse(deps.clock.nowIso()) + 20_000;
   for (const tenant of await deps.directory.listAll()) {
-    while (processed < 20 && Date.parse(deps.clock.nowIso()) < deadline) {
-      const found = await deps.repository.processNext(tenant.id, deps.clock.nowIso(), (job) => dispatchJob(tenant.id, job, deps));
-      if (!found) break;
-      processed += 1;
+    try {
+      while (processed < 20 && Date.parse(deps.clock.nowIso()) < deadline) {
+        const found = await deps.repository.processNext(tenant.id, deps.clock.nowIso(), (job) => dispatchJob(tenant.id, job, deps));
+        if (!found) break;
+        processed += 1;
+      }
+    } catch {
+      deps.logger?.warn('[meta-capi] tenant_dispatch_failed');
     }
     if (processed >= 20 || Date.parse(deps.clock.nowIso()) >= deadline) break;
   }

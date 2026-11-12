@@ -21,7 +21,7 @@ const harness = (limited = false) => {
   const current: MetaCapiOrder = { order: orderSchema.parse({ id: 'purchase', tenantId: 'workspace', memberId: 'buyer', productId: 'book',
     priceId: null, kind: 'one_time', status: 'paid', amountCents: 9900, currency: 'PLN', provider: 'stripe',
     providerObjectIds: { checkoutSession: 'cs_live_purchase' }, couponId: null, discountCents: 0, paidAt: now, createdAt: now }),
-    consent: { consent: 'undecided', withdrawnAt: null }, consentAt: null, email: 'buyer@example.org', sourceUrl: 'https://workspace.example.org/offer/book' };
+    consent: { consent: 'undecided', withdrawnAt: null }, consentAt: null, memberDeleted: false, email: 'buyer@example.org', sourceUrl: 'https://workspace.example.org/offer/book' };
   const decide = vi.fn<MetaCapiRepository['decide']>(async (_tenantId, _access, action) => {
     const result = await action(current);
     if (!result.ok) return result;

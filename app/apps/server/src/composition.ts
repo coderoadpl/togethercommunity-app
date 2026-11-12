@@ -1467,7 +1467,7 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
-    metaCapi: { repository: createMetaCapiRepository(db, resolveOrigin), tenants, clock, hash: contentHash,
+    metaCapi: { repository: createMetaCapiRepository(db, resolveOrigin, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),

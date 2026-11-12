@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, lte, ne, sql } from 'drizzle-orm';
-import { err, metaCapiEventSchema, notFound, ok, orderSchema } from '#core/domain/index.js';
-import type { MetaCapiOrder, MetaCapiOrderAccess, MetaCapiRepository } from '#core/server/meta-capi-ports.js';
+import { err, metaCapiEventSchema, metaCapiRetryAt, notFound, ok, orderSchema } from '#core/domain/index.js';
+import type { MetaCapiJobOutcome, MetaCapiOrder, MetaCapiOrderAccess, MetaCapiRepository } from '#core/server/meta-capi-ports.js';
 import type { Db } from './client.js';
 import { members, orders, products } from './app-schema.js';
 import { salesLinks } from './sales-link-schema.js';
@@ -11,11 +11,14 @@ const accessFilter = (access: MetaCapiOrderAccess) => 'sessionId' in access
   ? sql`${orders.providerObjectIds}->>'checkoutSession' = ${access.sessionId}`
   : 'orderToken' in access ? eq(orders.verificationToken, access.orderToken)
     : and(eq(orders.id, access.orderId), eq(orders.memberId, access.memberId));
-const stateOf = (row: typeof orders.$inferSelect) => ({ consent: row.metaCapiConsent, withdrawnAt: row.metaCapiConsentWithdrawnAt });
+const iso = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();
+const stateOf = (row: typeof orders.$inferSelect) => ({ consent: row.metaCapiConsent, withdrawnAt: iso(row.metaCapiConsentWithdrawnAt) });
 
-export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: string) => Promise<string>): MetaCapiRepository => {
+export const createMetaCapiRepository = (
+  db: Db, resolveOrigin: (tenantId: string) => Promise<string>, logger: { warn(message: string): void } = console,
+): MetaCapiRepository => {
   const enrich = async (connection: Db, tenantId: string, row: typeof orders.$inferSelect): Promise<MetaCapiOrder> => {
-    const member = (await connection.select({ email: members.email }).from(members)
+    const member = (await connection.select({ email: members.email, deletedAt: members.deletedAt }).from(members)
       .where(and(eq(members.tenantId, tenantId), eq(members.id, row.memberId))).limit(1))[0];
     const product = (await connection.select({ slug: products.slug }).from(products)
       .where(and(eq(products.tenantId, tenantId), eq(products.id, row.productId))).limit(1))[0];
@@ -23,7 +26,8 @@ export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: strin
       .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, row.salesLinkId))).limit(1))[0];
     const path = link ? `/offer/${encodeURIComponent(link.slug)}` : `/checkout/${encodeURIComponent(product?.slug ?? '')}`;
     return {
-      order: orderSchema.parse(normalizeOrderDates(row)), consent: stateOf(row), consentAt: row.metaCapiConsentAt,
+      order: orderSchema.parse(normalizeOrderDates(row)), consent: stateOf(row), consentAt: iso(row.metaCapiConsentAt),
+      memberDeleted: member === undefined || member.deletedAt !== null,
       email: member?.email ?? '', sourceUrl: new URL(path, await resolveOrigin(tenantId)).toString(),
     };
   };
@@ -35,7 +39,9 @@ export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: strin
     decide: async (tenantId, access, decide) => db.transaction(async (tx) => {
       const row = (await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), accessFilter(access))).limit(1).for('update'))[0];
       if (!row) return err(notFound('Order not found'));
-      const decision = await decide(await enrich(tx, tenantId, row));
+      const current = await enrich(tx, tenantId, row);
+      if (current.memberDeleted) return err(notFound('Order not found'));
+      const decision = await decide(current);
       if (!decision.ok) return decision;
       const { capture, decision: choice } = decision.value;
       if (row.metaCapiConsentWithdrawnAt !== null || (choice !== 'withdrawn' && row.metaCapiConsent !== 'undecided')) return ok(stateOf(row));
@@ -52,7 +58,7 @@ export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: strin
       } else {
         await tx.delete(metaCapiOutbox).where(and(eq(metaCapiOutbox.tenantId, tenantId), eq(metaCapiOutbox.orderId, row.id)));
         await tx.insert(metaCapiEvents).values({ tenantId, transactionId: row.id, orderId: row.id,
-          consentAt: row.metaCapiConsentAt ?? capture.at, eventTime: row.paidAt == null ? null : new Date(row.paidAt).toISOString(),
+          consentAt: row.metaCapiConsentAt ?? capture.at, eventTime: iso(row.paidAt),
           recordedAt: capture.at, sentAt: null, status: 'blocked', fbtraceId: null, error: null, fieldsSent: [] }).onConflictDoNothing();
       }
       return ok(updated ? stateOf(updated) : stateOf(row));
@@ -61,14 +67,26 @@ export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: strin
       const found = (await tx.select({ order: orders, job: metaCapiOutbox }).from(orders)
         .innerJoin(metaCapiOutbox, and(eq(metaCapiOutbox.orderId, orders.id), eq(metaCapiOutbox.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(metaCapiOutbox.tenantId, tenantId), lte(metaCapiOutbox.availableAt, now)))
-        .orderBy(asc(metaCapiOutbox.availableAt)).limit(1).for('update', { of: orders, skipLocked: true }))[0];
+        .orderBy(asc(metaCapiOutbox.availableAt), asc(orders.id)).limit(1).for('update', { of: orders, skipLocked: true }))[0];
       if (!found) return false;
       const filter = and(eq(metaCapiOutbox.tenantId, tenantId), eq(metaCapiOutbox.orderId, found.order.id));
       const prior = (await tx.select().from(metaCapiEvents).where(and(eq(metaCapiEvents.tenantId, tenantId), eq(metaCapiEvents.transactionId, found.order.id))).limit(1))[0];
       if (prior) { await tx.delete(metaCapiOutbox).where(filter); return true; }
-      const outcome = await process({ ...await enrich(tx, tenantId, found.order), attempts: found.job.attempts,
-        capture: { ip: found.job.ip, userAgent: found.job.userAgent, fbp: found.job.fbp, at: found.job.consentAt,
-          textVersion: found.job.textVersion, textSnapshot: found.job.textSnapshot } });
+      let outcome: MetaCapiJobOutcome;
+      try {
+        // A savepoint lets failed enrichment roll back without losing the order lock or retry write.
+        outcome = await tx.transaction(async (savepoint) => process({ ...await enrich(savepoint, tenantId, found.order), attempts: found.job.attempts,
+          capture: { ip: found.job.ip, userAgent: found.job.userAgent, fbp: found.job.fbp, at: new Date(found.job.consentAt).toISOString(),
+            textVersion: found.job.textVersion, textSnapshot: found.job.textSnapshot } }));
+      } catch {
+        logger.warn('[meta-capi] job_processing_failed');
+        const retryAt = metaCapiRetryAt(found.job.attempts + 1, true, now);
+        outcome = retryAt === null ? { event: {
+          tenantId, transactionId: found.order.id, orderId: found.order.id, consentAt: iso(found.job.consentAt),
+          eventTime: iso(found.order.paidAt), recordedAt: now, sentAt: null, status: 'failed',
+          fbtraceId: null, error: 'job_processing_failed', fieldsSent: [],
+        } } : { retryAt };
+      }
       if ('retryAt' in outcome) {
         await tx.update(metaCapiOutbox).set({ attempts: found.job.attempts + 1, availableAt: outcome.retryAt }).where(filter);
       } else {
@@ -78,10 +96,12 @@ export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: strin
       return true;
     }),
     listEvents: async (tenantId) => (await db.select().from(metaCapiEvents).where(eq(metaCapiEvents.tenantId, tenantId))
-      .orderBy(desc(metaCapiEvents.recordedAt)).limit(100)).map((row) => metaCapiEventSchema.parse(row)),
+      .orderBy(desc(metaCapiEvents.recordedAt), desc(metaCapiEvents.transactionId)).limit(100)).map((row) => metaCapiEventSchema.parse({
+        ...row, consentAt: iso(row.consentAt), eventTime: iso(row.eventTime), sentAt: iso(row.sentAt), recordedAt: iso(row.recordedAt),
+      })),
     listMemberConsents: async (tenantId, memberId) => (await db.select({ orderId: orders.id, consent: orders.metaCapiConsent,
       withdrawnAt: orders.metaCapiConsentWithdrawnAt, consentAt: orders.metaCapiConsentAt }).from(orders)
       .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), ne(orders.metaCapiConsent, 'undecided')))
-      .orderBy(desc(orders.createdAt))),
+      .orderBy(desc(orders.createdAt), desc(orders.id)).limit(100)).map((row) => ({ ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt) })),
   };
 };

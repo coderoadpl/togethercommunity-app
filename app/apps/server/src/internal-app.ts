@@ -822,7 +822,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('cron');
-    if (deps.metaCapi) await dispatchMetaCapi(deps.metaCapi);
+    if (deps.metaCapi) {
+      try {
+        await dispatchMetaCapi(deps.metaCapi);
+      } catch {
+        deps.logger.warn('[meta-capi] dispatch_failed');
+      }
+    }
     return respond(emails);
   });
 

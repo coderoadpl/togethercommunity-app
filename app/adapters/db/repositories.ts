@@ -1,3 +1,4 @@
+import { metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
@@ -2793,8 +2794,15 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
         ))),
       ));
-      await tx.update(orders).set({ attribution: null }).where(and(
-        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
+      await tx.update(orders).set({
+        attribution: null,
+        metaCapiConsentWithdrawnAt: sql`coalesce(${orders.metaCapiConsentWithdrawnAt}, ${input.deletedAt}::timestamptz)`,
+      }).where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId)));
+      await tx.delete(metaCapiOutbox).where(and(
+        eq(metaCapiOutbox.tenantId, tenantId),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), eq(orders.id, metaCapiOutbox.orderId),
+        ))),
       ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({

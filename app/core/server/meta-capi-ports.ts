@@ -4,6 +4,7 @@ export interface MetaCapiOrder {
   order: Order;
   consent: MetaCapiState;
   email: string;
+  memberDeleted: boolean;
   sourceUrl: string;
   consentAt: string | null;
 }

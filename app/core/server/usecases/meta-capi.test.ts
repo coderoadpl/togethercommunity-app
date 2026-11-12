@@ -18,7 +18,7 @@ const harness = () => {
     order: orderSchema.parse({ id: 'purchase', tenantId: 'workspace', memberId: 'buyer', productId: 'book', priceId: null,
       kind: 'one_time', status: 'paid', amountCents: 9900, currency: 'PLN', provider: 'stripe',
       providerObjectIds: { checkoutSession: 'cs_live_purchase' }, couponId: null, discountCents: 0, paidAt: now, createdAt: now }),
-    consent: { consent: 'undecided', withdrawnAt: null }, consentAt: null, email: 'buyer@example.org', sourceUrl: 'https://example.org/offer/book',
+    consent: { consent: 'undecided', withdrawnAt: null }, consentAt: null, memberDeleted: false, email: 'buyer@example.org', sourceUrl: 'https://example.org/offer/book',
     attempts: 0, capture: { at: now, ip: null, userAgent: null, fbp: null, textVersion: version, textSnapshot: '{}' },
   };
   let due = now;
@@ -150,6 +150,34 @@ describe('Meta CAPI use cases', () => {
     permanent.send.mockResolvedValue({ ok: false, retryable: false, error: 'http_400' });
     await dispatchMetaCapi(permanent.deps); await dispatchMetaCapi(permanent.deps);
     expect(permanent.send).toHaveBeenCalledTimes(1);
+  });
+  it('isolates a failing tenant and logs no raw exception data', async () => {
+    const h = harness();
+    const tenants = await h.deps.directory.listAll();
+    const tenant = tenants[0];
+    if (!tenant) throw new Error('Missing test tenant');
+    h.deps.directory.listAll = async () => [tenant, { ...tenant, id: 'next' }];
+    const processNext = vi.fn<MetaCapiRepository['processNext']>(async (tenantId) => {
+      if (tenantId === 'workspace') throw new Error('buyer@example.org secret-token');
+      return false;
+    });
+    h.deps.repository.processNext = processNext;
+    const warn = vi.fn();
+    expect(await dispatchMetaCapi({ ...h.deps, logger: { warn } })).toEqual({ processed: 0 });
+    expect(processNext.mock.calls.map(([tenantId]) => tenantId)).toEqual(['workspace', 'next']);
+    expect(warn.mock.calls).toEqual([['[meta-capi] tenant_dispatch_failed']]);
+  });
+  it('rejects new consent and blocks dispatch for a deleted member', async () => {
+    const h = harness();
+    h.job.memberDeleted = true;
+    expect(await h.decide('granted')).toMatchObject({ ok: false });
+    expect(await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps)).toMatchObject({ enabled: false });
+    h.job.memberDeleted = false;
+    await h.decide('granted');
+    h.job.memberDeleted = true;
+    await dispatchMetaCapi(h.deps);
+    expect(h.send).not.toHaveBeenCalled();
+    expect(h.events).toMatchObject([{ status: 'blocked' }]);
   });
   it('does not reveal the workspace evidence log to members', async () => {
     expect(await listMetaCapiEvents({ identity }, harness().deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });

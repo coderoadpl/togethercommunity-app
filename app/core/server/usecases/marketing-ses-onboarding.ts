@@ -20,6 +20,7 @@ import type {
   SesOnboardingControlPlane,
   TenantSesSettingsRepository,
 } from '../ports.js';
+import { ensureTransactionalSesConfiguration } from './transactional-ses-configuration.js';
 import type { SesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 export type { SesOnboardingControlPlane } from '../ports.js';
@@ -361,6 +362,11 @@ export const pollSesOnboarding = async (
   let eventDestinationReady = false;
   let observedSubscription: boolean | null = null;
   if (current.configurationSet !== null && current.snsTopicArn !== null) {
+    const repaired = await ensureTransactionalSesConfiguration(context.value.credentials, current, deps.controlPlane);
+    if (!repaired.ok) {
+      deps.logger.warn(`[marketing-ses] transactional repair failed tenant=${context.value.tenantId} error=${repaired.error.code}`);
+      return repaired;
+    }
     const infrastructure = await deps.controlPlane.readInfrastructure(context.value.credentials, {
       configurationSet: current.configurationSet,
       transactionalConfigurationSet: transactionalSesConfigurationSetName(
@@ -502,6 +508,11 @@ const checkTenantSesIdentity = async (
     });
   }
   const current = migrated.value;
+  const repaired = await ensureTransactionalSesConfiguration(checkedWith, current, deps.controlPlane);
+  if (!repaired.ok) {
+    deps.logger.warn(`[marketing-ses] transactional repair failed tenant=${tenantId} error=${repaired.error.code}`);
+    return store(deps, tenantId, current, { ...patch, identityCheckError: repaired.error.message });
+  }
   const subscriptionMigrationPending = staleSesWebhookEndpoint(current, webhookUrl) !== null;
   const infrastructure = await deps.controlPlane.readInfrastructure(
     checkedWith,

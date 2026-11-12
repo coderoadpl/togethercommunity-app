@@ -309,7 +309,11 @@ export const createSesOnboardingControlPlane = (
     try {
       const ses = factory(credentials).ses;
       if (!await configurationSetExists(ses, name)) {
-        await ses.send(new CreateConfigurationSetCommand({ ConfigurationSet: { Name: name } }));
+        try {
+          await ses.send(new CreateConfigurationSetCommand({ ConfigurationSet: { Name: name } }));
+        } catch (cause) {
+          if (errorName(cause) !== 'ConfigurationSetAlreadyExistsException') throw cause;
+        }
       }
       return ok({ name });
     } catch (cause) {
@@ -405,7 +409,9 @@ export const createSesOnboardingControlPlane = (
             (eventType) => transactionalDestination.MatchingEventTypes?.includes(eventType),
           )
           && !transactionalDestination.MatchingEventTypes?.includes('open')
-          && !transactionalDestination.MatchingEventTypes?.includes('click');
+          && !transactionalDestination.MatchingEventTypes?.includes('click')
+          && !(transactionalConfiguration.EventDestinations ?? []).some((item) =>
+            item.Enabled === true && item.MatchingEventTypes?.some((type) => type === 'open' || type === 'click'));
       } catch (cause) {
         if (!isConfigurationSetMissing(cause)) throw cause;
       }
@@ -429,6 +435,11 @@ export const createSesOnboardingControlPlane = (
         ConfigurationSetName: input.configurationSet,
         ConfigurationSetAttributeNames: ['eventDestinations'],
       }));
+      if (!input.engagementTracking && configuration.EventDestinations?.some((item) =>
+        item.Name !== destinationName && item.Enabled === true
+          && item.MatchingEventTypes?.some((type) => type === 'open' || type === 'click'))) {
+        return failed('Transactional SES configuration has another engagement destination', 'Remove engagement events from that destination before retrying');
+      }
       const eventDestination = {
         Name: destinationName,
         Enabled: true,

@@ -1051,6 +1051,7 @@ export const createDeps = (
   const tenantSesTransactional = createTenantSesTransactionalResolver(
     sesSettings,
     tenantMarketingCredentials,
+    { controlPlane: sesOnboardingControlPlane, logger },
     production ? createSesEmailPort : () => email,
   );
   const smtpTransactional = createSmtpTransactionalResolver(

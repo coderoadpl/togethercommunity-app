@@ -112,6 +112,21 @@ without waiting for the six-hourly refresh.
 Every step can be retried. Completed resource identifiers are saved after each
 successful step, so a later AWS error does not force the wizard to restart.
 
+## Existing tenant repair
+
+Status polls, scheduled identity re-checks and transactional transport resolution
+ensure the derived `-transactional` configuration set and its managed event
+destination using the tenant's own credentials. Repeating this operation is safe
+and restores a missing destination. A second enabled destination publishing Open
+or Click blocks readiness and transactional sending until the operator removes
+those engagement events. Together does not modify unrelated destinations.
+
+If configuration or destination repair fails, the transactional outbox records a
+retryable transport error with tenant context in the server log. It never sends
+without an explicit safe set or falls through to SMTP, Resend or the platform
+pool. Correct the tenant AWS permissions, then poll status again. A tenant with
+no saved configuration-set name or topic must complete infrastructure onboarding.
+
 ## The webhook lives on the platform host
 
 The SNS subscription always points at the platform host for the tenant:
@@ -268,3 +283,18 @@ service.
 References: [Mailjet free-plan limit](https://documentation.mailjet.com/hc/en-us/articles/360043048393-What-is-this-200-emails-per-day-limit-on-free-accounts),
 [SMTP setup](https://documentation.mailjet.com/hc/en-us/articles/360043229473-How-can-I-configure-my-SMTP-parameters),
 [compliance guide](https://documentation.mailjet.com/hc/en-us/articles/360043503313-Mailjet-Compliance-and-Email-Deliverability-Guide).
+
+## Repairing erased-recipient event metadata
+
+Run `pnpm run email:repair-erased-events --tenant <tenant-id>` from `app/` with
+`DATABASE_URL` and `SECRETS_MASTER_KEY` supplied by the deployment's secret
+store. This defaults to a dry run and prints matched and changed counts by event
+type, plus the count of events without a retained send/outbox link. Review those
+counts before adding `--apply`. The command updates only that tenant's event
+metadata; it does not delete events or change delivery projections.
+
+The repair uses deleted-member markers, retained address HMACs and erased
+contact/send/outbox linkage. Unlinked historical events cannot be attributed to
+an erased recipient by this repair and are reported rather than guessed. Keep
+the original HMAC master key available. Running `--apply` outside a disposable
+local test database is an operator decision.

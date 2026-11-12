@@ -1,12 +1,15 @@
-import { transactionalSesConfigurationSetName } from '#core/domain/index.js';
+import { err, integrationUnavailable, type AppError } from '#core/domain/index.js';
 import type {
   EmailIntegrationTransportResolver,
   EmailPort,
   MarketingSesCredentialResolver,
+  SesOnboardingControlPlane,
   TenantSecretResolver,
   TenantSesSettingsRepository,
   TransactionalEmailTransportResolver,
 } from '#core/server/index.js';
+
+import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 
 import { createSesEmailPort } from './ses.js';
 import { createSmtpEmailPort, type SmtpEmailSettings } from './smtp.js';
@@ -17,6 +20,10 @@ const fromLine = (name: string, address: string): string => `${name} <${address}
 export const createTenantSesTransactionalResolver = (
   settings: TenantSesSettingsRepository,
   credentials: MarketingSesCredentialResolver,
+  infrastructure: {
+    controlPlane: Pick<SesOnboardingControlPlane, 'ensureConfigurationSet' | 'ensureEventDestination'>;
+    logger: { warn(message: string): void };
+  },
   emailFor: (input: {
     from: string;
     replyTo: string;
@@ -29,7 +36,14 @@ export const createTenantSesTransactionalResolver = (
     const tenantSettings = await settings.findByTenant(tenantId);
     if (tenantSettings?.identityVerifiedAt === null || tenantSettings === null) return null;
     const resolved = await credentials.resolve(tenantId);
-    if (!resolved.ok) return null;
+    const unavailable = (error: AppError): EmailPort => {
+      infrastructure.logger.warn(`[transactional-ses] infrastructure unavailable tenant=${tenantId} error=${error.code}`);
+      const failure = err(integrationUnavailable('Tenant SES is unavailable; repair its transactional configuration and retry'));
+      return { send: async () => failure, healthcheck: async () => failure, test: async () => failure };
+    };
+    if (!resolved.ok) return unavailable(resolved.error);
+    const configuration = await ensureTransactionalSesConfiguration(resolved.value, tenantSettings, infrastructure.controlPlane);
+    if (!configuration.ok) return unavailable(configuration.error);
     return emailFor({
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),
       replyTo: tenantSettings.replyTo ?? tenantSettings.fromAddress,
@@ -38,9 +52,7 @@ export const createTenantSesTransactionalResolver = (
         accessKeyId: resolved.value.accessKeyId,
         secretAccessKey: resolved.value.secretAccessKey,
       },
-      configurationSet: tenantSettings.configurationSet === null
-        ? null
-        : transactionalSesConfigurationSetName(tenantSettings.configurationSet),
+      configurationSet: configuration.value,
     });
   },
 });

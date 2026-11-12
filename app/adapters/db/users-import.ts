@@ -1,7 +1,6 @@
 import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import {
-  importAuditEventSchema,
   memberCourseProgressSchema,
   memberEventSchema,
   normalizeEmail,
@@ -14,6 +13,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { parseOwnedImportAuditEvent } from './import-audit.js';
 import { appendMemberEvent } from './member-events.js';
 import { uniqueViolationIn } from './pg-errors.js';
 import {
@@ -23,7 +23,6 @@ import {
   members,
   productGrants,
   tenantAdmins,
-  tenantApiKeys,
   user,
 } from './schema.js';
 
@@ -51,13 +50,7 @@ const insertAuditEvent = async (
   tenantId: string,
   mutation: ImportUsersMutation,
 ): Promise<void> => {
-  const event = importAuditEventSchema.parse(mutation.event);
-  const [owned] = await executor
-    .select({ id: tenantApiKeys.id })
-    .from(tenantApiKeys)
-    .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.id, event.apiKeyId)))
-    .limit(1);
-  if (owned === undefined) throw new Error('Import audit API key does not belong to tenant');
+  const event = await parseOwnedImportAuditEvent(executor, tenantId, mutation.event);
   await executor.insert(importAuditEvents).values(event);
 };
 

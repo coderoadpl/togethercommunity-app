@@ -1,15 +1,15 @@
 import { and, count, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 
 import {
-  importAuditEventSchema,
   tenantRedirectSchema,
   type TenantRedirect,
 } from '#core/domain/index.js';
-import type { ImportRedirectMutation, ImportRedirectRepository } from '#core/server/index.js';
+import type { ImportRedirectRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
-import { importAuditEvents, tenantApiKeys, tenantRedirects } from './schema.js';
+import { insertImportAuditEvent } from './import-audit.js';
+import { tenantRedirects } from './schema.js';
 
 const FROM_PATH_CONSTRAINT = 'tenant_redirects_tenant_from_path_uidx';
 
@@ -32,31 +32,6 @@ const listFilter = (tenantId: string, search: string | undefined): SQL | undefin
     scope,
     or(ilike(tenantRedirects.fromPath, pattern), ilike(tenantRedirects.targetPath, pattern)),
   );
-};
-
-const insertAuditEvent = async (
-  executor: Db,
-  tenantId: string,
-  mutation: ImportRedirectMutation,
-): Promise<void> => {
-  const event = importAuditEventSchema.parse(mutation.event);
-  const [owned] = await executor
-    .select({ id: tenantApiKeys.id })
-    .from(tenantApiKeys)
-    .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.id, event.apiKeyId)))
-    .limit(1);
-  if (owned === undefined) throw new Error('Import audit API key does not belong to tenant');
-  await executor.insert(importAuditEvents).values({
-    id: event.id,
-    tenantId,
-    apiKeyId: event.apiKeyId,
-    kind: event.kind,
-    importKey: event.importKey,
-    resourceId: event.resourceId,
-    action: event.action,
-    payloadHash: event.payloadHash,
-    at: event.at,
-  });
 };
 
 export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository => {
@@ -166,7 +141,7 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
               .returning({ id: tenantRedirects.id });
             if (rows.length !== 1) return 'conflict';
           }
-          await insertAuditEvent(tx, tenantId, mutation);
+          await insertImportAuditEvent(tx, tenantId, mutation.event);
           return 'saved';
         });
       } catch (cause) {

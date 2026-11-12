@@ -507,6 +507,7 @@ export interface AppDeps {
   activityReports: ActivityReportRepository;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
   importDailyMemberRecordLimit: number;
+  importHourlyValidationRecordLimit: number;
   importDailyRecordLimit: number;
   rateLimitBuckets: PublicRateLimitRepository;
   publicRateLimitPolicies: PublicRateLimitPolicies;
@@ -1483,6 +1484,7 @@ export const createDeps = (
     activityReports: createActivityReportRepository(db),
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     importDailyMemberRecordLimit: env.IMPORT_DAILY_MEMBER_RECORD_LIMIT,
+    importHourlyValidationRecordLimit: env.IMPORT_HOURLY_VALIDATION_RECORD_LIMIT,
     importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,
     rateLimitBuckets: publicRateLimitBuckets,
     publicRateLimitPolicies: selectPublicRateLimitPolicies(env),

@@ -11,9 +11,10 @@ import type {
 
 import { translateDeletedContent } from '../../../i18n/deleted-content.js';
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { PostContent } from '../../../components/ui/PostContent.js';
 import { PostBody } from '../../../theme.js';
 

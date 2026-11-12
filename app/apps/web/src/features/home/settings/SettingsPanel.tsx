@@ -47,7 +47,8 @@ import type {
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm, localizeChangePasswordError } from '../../../components/ui/ChangePasswordForm.js';

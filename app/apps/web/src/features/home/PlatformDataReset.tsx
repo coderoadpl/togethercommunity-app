@@ -12,7 +12,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
-import { ConfirmDialog } from '../../components/layout/index.js';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useTranslations } from '../../i18n/index.js';
 
 export const PlatformDataReset = ({ environment }: { environment: string }) => {

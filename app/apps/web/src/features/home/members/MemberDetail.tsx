@@ -38,7 +38,8 @@ import {
 import { AdoptStripeSubscriptionDialog } from './AdoptStripeSubscriptionDialog.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';

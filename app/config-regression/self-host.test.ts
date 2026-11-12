@@ -118,6 +118,22 @@ describe('production self-host stack', () => {
     expect(read('.dockerignore').split('\n')).toEqual(expect.arrayContaining(['.env', '.git']));
   });
 
+  it('cross-builds by running only the platform-independent builder stage on the build platform', () => {
+    const dockerfile = read('Dockerfile');
+    const stageHeaders = [...dockerfile.matchAll(/^FROM (?<header>.+)$/gmu)].map((match) => match.groups?.['header'] ?? '');
+    const laterStages = dockerfile.split(/^FROM /mu).slice(1).filter((stage) => !/ AS builder$/mu.test(stage.split('\n')[0] ?? ''));
+
+    expect(stageHeaders.find((header) => header.endsWith(' AS builder'))).toMatch(/^--platform=\$BUILDPLATFORM /u);
+    expect(stageHeaders.filter((header) => header.includes('--platform'))).toHaveLength(1);
+    expect(laterStages.join('').match(/COPY --from=builder \S+/gu)).toEqual([
+      'COPY --from=builder /build/dist/server/',
+      'COPY --from=builder /build/dist/web',
+      'COPY --from=builder /build/drizzle',
+      'COPY --from=builder /build/package.json',
+    ]);
+    expect(read('docs/kubernetes.md')).toContain('docker buildx build --platform linux/amd64');
+  });
+
   it('keeps certificate issuance behind the private verified-domain check', () => {
     const caddyfile = read('Caddyfile');
     const compose = composeSchema.parse(parse(read('docker-compose.yml')));

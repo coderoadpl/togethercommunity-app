@@ -24,12 +24,21 @@ as a build argument, because build arguments are visible in the image history.
 
 ```bash
 cd app
-docker build \
+docker buildx build --platform linux/amd64 --load \
   --build-arg APP_VERSION="$(pnpm exec tsx scripts/derive-version.ts)" \
   --build-arg APP_COMMIT_SHA="$(git rev-parse HEAD)" \
   --build-arg APP_BASE_DOMAIN=togethercommunity.app \
   --tag together:"$(git rev-parse --short HEAD)" .
 ```
+
+Name the nodes' platform with `--platform`; without it the image gets the
+workstation's architecture, and an `arm64` image does not start on `amd64`
+nodes. The `builder` stage runs on the build machine's own platform
+(`FROM --platform=$BUILDPLATFORM`), because its output is JavaScript and the
+web bundle; only the dependency and runtime stages are built for the target
+platform, so a cross-build does not run the web build under emulation. That
+needs BuildKit (`docker buildx`, the default builder of current Docker and
+Compose releases); the deprecated legacy builder rejects `$BUILDPLATFORM`.
 
 The Docker build context excludes `.git`, so the version has to be derived
 before the build. Do not set `APP_COMMIT_SHA` in the pod environment: the image

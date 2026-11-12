@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS builder
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS builder
 WORKDIR /build
 ENV CI=true
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./

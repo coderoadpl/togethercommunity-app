@@ -8,6 +8,7 @@ import { buildCaddyDomainCheckApp } from './caddy-domain-check.js';
 import { createDeps } from './composition.js';
 import { loadEnv } from './env.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
+import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { startServerObservability } from './observability.js';
 
 startServerObservability();
@@ -54,6 +55,7 @@ if (env.NODE_ENV !== 'test') {
     void deps.dispatchEmails('cron').then((result) => {
       if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${safeLogMessage(result.error.message)}\n`);
     });
+    void runMetaCapiDispatch(deps.metaCapi, deps.logger, 'node ticker');
   }, env.EMAIL_DISPATCH_INTERVAL_MS).unref();
   setInterval(() => {
     dispatchKsefInBackground(deps.ksef, deps.logger, 'node ticker');

@@ -3181,7 +3181,7 @@ describe('email dispatch route', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, data: result });
     expect(dispatchEmails).toHaveBeenCalledWith('cron');
-    expect(logger.warn.mock.calls).toEqual([['[meta-capi] dispatch_failed']]);
+    expect(logger.warn.mock.calls).toEqual([['[meta-capi] cron dispatch_failed']]);
   });
 
   it('surfaces a dispatch failure as an error envelope', async () => {

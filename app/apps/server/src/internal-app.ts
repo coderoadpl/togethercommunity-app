@@ -3,7 +3,7 @@ import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/
 import { safeErrorMessage } from '#core/server/log-safety.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
 import { registerMetaCapiRoutes } from './meta-capi-routes.js';
-import { dispatchMetaCapi } from '#core/server/usecases/meta-capi.js';
+import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
@@ -822,13 +822,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('cron');
-    if (deps.metaCapi) {
-      try {
-        await dispatchMetaCapi(deps.metaCapi);
-      } catch {
-        deps.logger.warn('[meta-capi] dispatch_failed');
-      }
-    }
+    await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
     return respond(emails);
   });
 

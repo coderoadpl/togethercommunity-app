@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { err, notFound, ok, orderSchema, tenantSchema, tenantSettingsSchema, type MetaCapiEvent } from '#core/domain/index.js';
+import type { MetaCapiJob } from '#core/server/meta-capi-ports.js';
+import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 
 interface EntryEnv {
   NODE_ENV: string;
@@ -18,12 +21,14 @@ const harness = vi.hoisted(() => {
     KSEF_DISPATCH_INTERVAL_MS: 1000,
   };
   const app = { fetch: vi.fn(), get: vi.fn(), use: vi.fn() };
+  const meta: { metaCapi: MetaCapiDispatchDeps | undefined } = { metaCapi: undefined };
   const deps = {
+    ...meta,
     dispatchEmails: vi.fn(),
     dispatchAutoInvoices: vi.fn(),
     releaseExpiredStockReservations: vi.fn(),
     ksef: { marker: 'ksef' },
-    logger: { marker: 'logger' },
+    logger: { marker: 'logger', warn: vi.fn() },
   };
   return {
     env,
@@ -64,6 +69,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   harness.env.NODE_ENV = 'test';
+  harness.deps.metaCapi = undefined;
   harness.env.PORT = 47100;
   harness.env.WEB_DIST_DIR = '/web-dist';
   delete harness.env.TOGETHER_VISUAL_CLOCK;
@@ -120,6 +126,32 @@ describe('entry.node composition', () => {
   it('runs and unreferences production background tickers', async () => {
     vi.useFakeTimers();
     harness.env.NODE_ENV = 'production';
+    const now = '2026-11-01T10:00:00.000Z';
+    const job: MetaCapiJob = {
+      order: orderSchema.parse({ id: 'purchase', tenantId: 'workspace', memberId: 'buyer', productId: 'book',
+        priceId: null, couponId: null, discountCents: 0, kind: 'one_time', status: 'paid', amountCents: 9900, currency: 'PLN', provider: 'stripe',
+        providerObjectIds: { checkoutSession: 'cs_live_purchase' }, paidAt: now, createdAt: now }),
+      consent: { consent: 'granted', withdrawnAt: null }, consentAt: now, memberDeleted: false,
+      email: 'buyer@example.org', sourceUrl: 'https://example.org/checkout/book', attempts: 0,
+      capture: { at: now, ip: null, userAgent: null, fbp: null, textVersion: 'version', textSnapshot: '{}' },
+    };
+    let pending = true;
+    const events: MetaCapiEvent[] = [];
+    const send = vi.fn<MetaCapiDispatchDeps['gateway']['send']>(async () => ({ ok: true, fbtraceId: 'trace' }));
+    harness.deps.metaCapi = {
+      clock: { nowIso: () => now }, hash: { sha256: () => 'a'.repeat(64) },
+      directory: { listAll: async () => [tenantSchema.parse({ id: 'workspace', slug: 'workspace', name: 'Workspace', status: 'active', plan: 'self_hosted', contentVersion: 1 })] },
+      tenants: { findSettings: async () => tenantSettingsSchema.parse({ name: 'Workspace', billingPortalUrl: null,
+        bunnyStreamLibraryId: null, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890' }) },
+      secrets: { resolve: async () => ok('test-token') }, gateway: { send },
+      repository: { findOrder: async () => job, decide: async () => err(notFound()), listMemberConsents: async () => [],
+        listEvents: async () => events, processNext: async (_tenantId, _at, process) => {
+          if (!pending) return false;
+          const outcome = await process(job);
+          if ('event' in outcome) { events.push(outcome.event); pending = false; }
+          return true;
+        } },
+    };
     harness.deps.dispatchEmails.mockResolvedValueOnce({
       ok: false,
       error: new Error('outbox unavailable'),
@@ -159,6 +191,11 @@ describe('entry.node composition', () => {
     expect(harness.deps.releaseExpiredStockReservations).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(send).toHaveBeenCalledOnce();
+    expect(events).toMatchObject([{ transactionId: 'purchase', status: 'sent', fbtraceId: 'trace' }]);
+    expect(pending).toBe(false);
+    expect(harness.deps.logger.warn).not.toHaveBeenCalled();
+    expect(harness.app.fetch).not.toHaveBeenCalled();
     expect(harness.dispatchKsefInBackground).toHaveBeenCalledWith(
       harness.deps.ksef,
       harness.deps.logger,

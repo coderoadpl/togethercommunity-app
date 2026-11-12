@@ -121,7 +121,12 @@ through the public endpoint. Withdrawal does not claim to recall data from Meta.
 
 The existing authenticated per-minute `GET /api/internal/dispatch-email` tick
 also drains CAPI after email dispatch. It retains the existing bearer cron-secret
-check. A tick handles at most 20 jobs within a 20-second dispatch budget. Each
+check. Self-hosted Node servers also invoke the same isolated runner from the
+email ticker; CAPI cycles for the same runtime dependencies cannot overlap in
+one process, including a concurrent cron request. A tick handles at most 20 jobs
+within a 20-second dispatch budget, taking one due job per tenant per pass.
+The starting tenant rotates every minute, so tenants beyond a tick's budget
+get a turn on subsequent minutes even when earlier tenants stay busy. Each
 request has a 5-second timeout. Consent capture performs no Meta HTTP request.
 
 The adapter pins Graph API **v27.0** in `META_GRAPH_API_VERSION`. The

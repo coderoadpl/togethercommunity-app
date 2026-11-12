@@ -26,6 +26,7 @@ const fixtureAppRoot = join(fixtureRoot, 'app');
 const token = `__together_probe_${String(process.pid)}_${String(Date.now())}__`;
 const coreDomainDir = join('core', 'domain', token);
 const coreServerDir = join('core', 'server', token);
+const webDir = join('apps', 'web', 'src', token);
 const featureDir = join('apps', 'web', 'src', 'features', token);
 const islandCoreDir = join(featureDir, 'core');
 const islandDomFixture = join(islandCoreDir, 'dom.tsx');
@@ -40,6 +41,62 @@ const eslintFixtures = {
   coreImportsAdapter: {
     rel: join(coreDomainDir, 'adapter.ts'),
     content: "import '../../../adapters/db/client.js';\n",
+  },
+  consoleOutsideBootstrap: {
+    rel: join(webDir, 'console.ts'),
+    content: "console.log('probe');\n",
+  },
+  genericQuery: {
+    rel: join(webDir, 'generic-query.ts'),
+    content:
+      "import { useQuery } from '@tanstack/react-query';\n" +
+      "import { actions } from '../api.js';\n" +
+      'export const useProbe = () => useQuery<number>(actions.me);\n',
+  },
+  coreExternal: {
+    rel: join(coreDomainDir, 'query-core.ts'),
+    content: "import '@tanstack/query-core';\n",
+  },
+  layoutReExport: {
+    rel: join(layoutDir, 'ui-export.ts'),
+    content: "export { ConfirmDialog } from '../../ui/ConfirmDialog.js';\n",
+  },
+  forbiddenDynamicImport: {
+    rel: join(coreDomainDir, 'dynamic-adapter.ts'),
+    content: "export const loadAdapter = () => import('../../../adapters/db/client.js');\n",
+  },
+  invoicingExternal: {
+    rel: join('adapters', 'invoicing', token, 'external.ts'),
+    content: "import 'react';\n",
+  },
+  notificationsExternal: {
+    rel: join('adapters', 'notifications', token, 'external.ts'),
+    content: "import 'react';\n",
+  },
+  qrExternal: {
+    rel: join('adapters', 'qr', token, 'external.ts'),
+    content: "import 'react';\n",
+  },
+  schedulerExternal: {
+    rel: join('adapters', 'scheduler', token, 'external.ts'),
+    content: "import 'react';\n",
+  },
+  unknownProductFile: {
+    rel: join('adapters', token, 'unclassified.ts'),
+    content: 'export const probe = 1;\n',
+  },
+  platformEntryTest: {
+    rel: join('apps', 'server', 'src', 'entry.vercel.test.ts'),
+    content:
+      "import 'vitest';\n" +
+      "import './composition.js';\n" +
+      "export const loadEntry = () => import('./entry.vercel.js');\n" +
+      "import '@vercel/functions';\n" +
+      "import '@neondatabase/serverless';\n",
+  },
+  otherServerTest: {
+    rel: join('apps', 'server', 'src', 'other.test.ts'),
+    content: "export const loadEntry = () => import('./entry.vercel.js');\n",
   },
   restrictedImport: {
     rel: join(featureDir, 'axios.ts'),
@@ -168,6 +225,12 @@ const findMessage = (
 beforeAll(async () => {
   createFixtureWorkspace();
   writeFixture(join('adapters', 'db', 'client.ts'), 'export const clientProbe = 1;\n');
+  writeFixture(join('apps', 'server', 'src', 'entry.vercel.ts'), 'export const entry = 1;\n');
+  writeFixture(join('apps', 'server', 'src', 'composition.ts'), 'export const composition = 1;\n');
+  writeFixture(
+    join('apps', 'web', 'src', 'components', 'ui', 'ConfirmDialog.tsx'),
+    'export const ConfirmDialog = () => null;\n',
+  );
   writeFixture(join('apps', 'web', 'src', 'api.ts'), 'export const actions = {};\n');
   writeFixture(
     join('apps', 'web', 'src', 'features', 'auth', 'LoginPage.tsx'),
@@ -240,6 +303,80 @@ describe('ESLint gate', () => {
     expect(findMessage('coreImportsAdapter', 'boundaries/element-types')).toBeDefined();
   });
 
+  it('rejects console logging outside web bootstrap', () => {
+    expect(findMessage('consoleOutsideBootstrap', 'no-console')?.message).toContain(
+      'Unexpected console statement',
+    );
+  });
+
+  it('rejects explicit useQuery type arguments outside features', () => {
+    expect(findMessage('genericQuery', 'no-restricted-syntax')?.message).toContain(
+      'No explicit type arguments',
+    );
+  });
+
+  it('rejects non-zod externals in core domain through default-deny', () => {
+    expect(findMessage('coreExternal', 'boundaries/external')?.message).toContain(
+      'core-domain is not allowed to import external package "@tanstack/query-core"',
+    );
+  });
+
+  it('rejects layout re-exports from UI components', () => {
+    expect(findMessage('layoutReExport', 'boundaries/element-types')?.message).toContain(
+      'web-layout is not allowed to import web-ui',
+    );
+  });
+
+  it('rejects dynamic imports across forbidden boundaries', () => {
+    expect(findMessage('forbiddenDynamicImport', 'boundaries/element-types')?.message).toContain(
+      'core-domain is not allowed to import adapter-db',
+    );
+  });
+
+  it.each([
+    ['invoicingExternal', 'adapter-invoicing'],
+    ['notificationsExternal', 'adapter-notifications'],
+    ['qrExternal', 'adapter-qr'],
+    ['schedulerExternal', 'adapter-scheduler'],
+  ] as const)('rejects unapproved externals in %s', (fixture, element) => {
+    expect(findMessage(fixture, 'boundaries/external')?.message).toContain(
+      `${element} is not allowed to import external package "react"`,
+    );
+  });
+
+  it('rejects new unclassified product directories', () => {
+    expect(findMessage('unknownProductFile', 'boundaries/no-unknown-files')?.message).toContain(
+      'File is not of any known element type',
+    );
+  });
+
+  it('allows only the exact entry test to reach the platform entry and app-server', () => {
+    const messages = messagesByFixture.get(eslintFixtures.platformEntryTest.rel);
+    expect(messages).toBeDefined();
+    expect(messages?.filter(({ ruleId }) => ruleId === 'boundaries/element-types')).toEqual([]);
+    expect(findMessage('otherServerTest', 'boundaries/element-types')?.message).toContain(
+      'app-server is not allowed to import platform-entry',
+    );
+  });
+
+  it('does not grant the entry test any platform vendor exemption', () => {
+    const messages = messagesByFixture.get(eslintFixtures.platformEntryTest.rel);
+    expect(messages?.filter(({ ruleId }) => ruleId === 'boundaries/external')).toMatchObject([
+      {
+        ruleId: 'boundaries/external',
+        message: expect.stringContaining(
+          'platform-entry-test is not allowed to import external package "@vercel/functions"',
+        ),
+      },
+      {
+        ruleId: 'boundaries/external',
+        message: expect.stringContaining(
+          'platform-entry-test is not allowed to import external package "@neondatabase/serverless"',
+        ),
+      },
+    ]);
+  });
+
   it('rejects direct HTTP libraries in web features', () => {
     expect(findMessage('restrictedImport', 'no-restricted-imports')).toBeDefined();
   });
@@ -274,6 +411,10 @@ describe('Dependency Cruiser gate', () => {
     expect(depcruiseRules.has('no-frameworks-in-core')).toBe(true);
   });
 
+  it('rejects non-zod externals in core domain', () => {
+    expect(depcruiseRules.has('core-domain-external-allowlist')).toBe(true);
+  });
+
   it('rejects auth SDKs outside the auth adapter', () => {
     expect(depcruiseRules.has('auth-provider-sdk-only-in-adapters-auth')).toBe(true);
   });
@@ -306,11 +447,13 @@ describe('Dependency Cruiser gate', () => {
     for (const name of [
       'no-circular',
       'core-domain-depends-on-nothing',
+      'core-domain-external-allowlist',
       'core-server-pure',
       'core-contract-only-domain',
       'core-client-never-server-side',
       'adapters-never-import-apps',
       'web-never-server-side',
+      'web-features-are-islands',
       'web-layout-structure-only',
       'island-core-is-framework-agnostic',
       'island-core-is-portable',

@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 import { API_PATHS } from '#core/contract/index.js';
@@ -31,9 +32,18 @@ describe('Vercel platform entry boundary', () => {
     expect(eslintSource).toContain("pattern: 'apps/server/src/entry.vercel.ts'");
   });
 
-  it('keeps the platform entry itself out of every import allowlist', () => {
-    expect(eslintSource).not.toMatch(/^\s+'platform-entry',$/mu);
-  });
+  it('allows only its exact regression-test element to import the platform entry', async () => {
+    const eslint = new ESLint({ cwd: appRoot });
+    const config: {
+      rules: {
+        'boundaries/element-types': [number, { rules: Array<{ from: string[]; allow: unknown[] }> }];
+      };
+    } = await eslint.calculateConfigForFile('apps/server/src/entry.vercel.test.ts');
+    const [, options] = config.rules['boundaries/element-types'];
+    expect(options.rules.filter(({ allow }) => allow.includes('platform-entry'))).toEqual([
+      { from: ['platform-entry-test'], allow: ['platform-entry', 'app-server'] },
+    ]);
+  }, 30_000);
 
   it('does not expose a separate platform runtime helper element', () => {
     expect(eslintSource).not.toContain("type: 'platform-runtime'");

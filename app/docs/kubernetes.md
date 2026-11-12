@@ -95,11 +95,17 @@ listeners, closes idle keep-alive connections, stops the in-process tickers and
 stops reusing connections: every response still to be written carries
 `Connection: close`, and a connection whose response had already started is
 closed as soon as that response ends, so a pooled upstream connection from the
-edge cannot keep feeding new requests to a terminating pod. It then
-waits for the work already in progress: open requests, request handlers that
+edge cannot keep feeding new requests to a terminating pod. Requests a client
+pipelined on one connection before the signal are answered in order, and the
+connection closes after the last of them. A request pipelined after the signal
+behind a response that is still being written never reaches the application,
+because its answer could not be delivered on a connection that is closing; the
+server answers it 503 instead. The server then waits for the work already in
+progress: open requests, request handlers that
 are still running after their client disconnected, ticker runs, and background
 work a request started after it answered (opportunistic e-mail dispatch,
-authentication e-mail, KSeF dispatch). A repeated signal does not interrupt the
+authentication e-mail, the sign-in event recorded after a sign-in, KSeF
+dispatch). A repeated signal does not interrupt the
 drain, which ends as soon as that work ends. After 60 seconds, the longest a
 scheduled endpoint may run on the hosted platform, it stops waiting and closes
 the connections that are still open. It

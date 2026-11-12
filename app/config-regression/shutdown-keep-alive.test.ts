@@ -1,7 +1,8 @@
 import { Agent, request as httpRequest } from 'node:http';
+import { connect, type Socket } from 'node:net';
 
 import { serve, type ServerType } from '@hono/node-server';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   applyConnectionTimeouts,
@@ -35,6 +36,7 @@ interface PooledResponse {
 
 const listening: ServerType[] = [];
 const agents: Agent[] = [];
+const sockets: Socket[] = [];
 
 afterEach(() => {
   for (const server of listening.splice(0)) {
@@ -42,6 +44,7 @@ afterEach(() => {
     if ('closeAllConnections' in server) server.closeAllConnections();
   }
   for (const agent of agents.splice(0)) agent.destroy();
+  for (const socket of sockets.splice(0)) socket.destroy();
 });
 
 const startServer = async (handler: (request: Request) => Promise<Response>): Promise<{ server: ServerType; url: string; handled: string[] }> => {
@@ -106,6 +109,28 @@ const settledWithin = async (work: Promise<unknown>, ms: number): Promise<boolea
   clearTimeout(timer);
   return settled;
 };
+
+interface RawConnection {
+  write(text: string): void;
+  closed: Promise<string>;
+}
+
+const openRaw = async (url: string): Promise<RawConnection> => {
+  const { hostname, port } = new URL(url);
+  const socket = connect(Number(port), hostname);
+  sockets.push(socket);
+  await new Promise<void>((resolve) => { socket.once('connect', resolve); });
+  const chunks: string[] = [];
+  socket.setEncoding('utf8');
+  socket.on('data', (chunk: string) => { chunks.push(chunk); });
+  socket.on('error', () => undefined);
+  return {
+    write: (text) => { socket.write(text); },
+    closed: new Promise((resolve) => { socket.once('close', () => { resolve(chunks.join('')); }); }),
+  };
+};
+
+const statusLines = (received: string): string[] => received.match(/HTTP\/1\.[01] \d{3}/gu) ?? [];
 
 const signalHandler = (server: DrainableServer, events: string[]) => createSignalHandler(
   () => shutdownGracefully({
@@ -179,5 +204,86 @@ describe('shutdown of a pooled keep-alive connection from the edge', () => {
     expect(await outcome(send(edge, `${url}/after-stream`))).toMatch(/^ECONN(?:REFUSED|RESET)$/u);
     expect(handled).toEqual(['/stream']);
     expect(events).toEqual(['[shutdown] SIGTERM received; draining', 'database closed']);
+  });
+});
+
+describe('shutdown of a pipelined HTTP/1.1 connection', () => {
+  const pipelinedServer = async () => {
+    const entered = gate();
+    const finish = gate();
+    const sideEffects: string[] = [];
+    const started = await startServer(async (request) => {
+      const path = new URL(request.url).pathname;
+      if (path === '/first') {
+        entered.open();
+        await finish.promise;
+      }
+      if (request.method === 'POST') sideEffects.push(path);
+      return new Response('ok');
+    });
+    return { ...started, entered, finish, sideEffects };
+  };
+
+  it('never hands the application a request pipelined after SIGTERM behind a response still being answered', async () => {
+    const { server, url, handled, entered, finish, sideEffects } = await pipelinedServer();
+    const events: string[] = [];
+    const onSignal = signalHandler(drainable(server), events);
+    const client = await openRaw(url);
+
+    client.write('GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n');
+    await entered.promise;
+    const shutdown = onSignal('SIGTERM');
+    client.write('POST /after-signal HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nhi');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    finish.open();
+
+    const received = await client.closed;
+    expect(await settledWithin(shutdown, 5_000)).toBe(true);
+    expect(handled).toEqual(['/first']);
+    expect(sideEffects).toEqual([]);
+    expect(statusLines(received)).toEqual(['HTTP/1.1 200']);
+    expect(received).toContain('Connection: close');
+  });
+
+  it('answers in order every pipelined request accepted before SIGTERM and closes after the last one', async () => {
+    const { server, url, handled, entered, finish, sideEffects } = await pipelinedServer();
+    const events: string[] = [];
+    const onSignal = signalHandler(drainable(server), events);
+    const client = await openRaw(url);
+
+    client.write([
+      'GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n',
+      'POST /before-signal HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nhi',
+    ].join(''));
+    await entered.promise;
+    await vi.waitFor(() => { expect(handled).toEqual(['/first', '/before-signal']); });
+    const shutdown = onSignal('SIGTERM');
+    finish.open();
+
+    const received = await client.closed;
+    expect(await settledWithin(shutdown, 5_000)).toBe(true);
+    expect(sideEffects).toEqual(['/before-signal']);
+    expect(statusLines(received)).toEqual(['HTTP/1.1 200', 'HTTP/1.1 200']);
+    const [first, second] = received.split(/(?=HTTP\/1\.1 \d{3} )/u);
+    expect(first).toContain('Connection: keep-alive');
+    expect(second).toContain('Connection: close');
+  });
+
+  it('answers an HTTP/1.0 request in flight at SIGTERM and closes its connection', async () => {
+    const { server, url, handled, entered, finish } = await pipelinedServer();
+    const events: string[] = [];
+    const onSignal = signalHandler(drainable(server), events);
+    const client = await openRaw(url);
+
+    client.write('GET /first HTTP/1.0\r\nHost: localhost\r\n\r\n');
+    await entered.promise;
+    const shutdown = onSignal('SIGTERM');
+    finish.open();
+
+    const received = await client.closed;
+    expect(await settledWithin(shutdown, 5_000)).toBe(true);
+    expect(handled).toEqual(['/first']);
+    expect(statusLines(received)).toEqual(['HTTP/1.1 200']);
+    expect(received.endsWith('ok')).toBe(true);
   });
 });

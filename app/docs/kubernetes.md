@@ -5,8 +5,10 @@ deployment: what to build, which commands to run, which ports and probes to
 wire, which environment variables the processes read, and which scheduled
 calls replace the platform crons in [`vercel.json`](../vercel.json). The
 manifests themselves live outside this repository. The
-[self-host guide](self-host.md) covers the single-machine Compose stack, whose
-behaviour this contract leaves unchanged.
+[self-host guide](self-host.md) covers the single-machine Compose stack. It
+runs the same Node entry, so the shutdown sequence and the not-found answers
+described here apply there too; its Compose file and environment are otherwise
+unchanged.
 
 ## Image
 

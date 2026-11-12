@@ -294,7 +294,6 @@ describe('permission inventory', () => {
     const suspicious = collectPermissionInventory().suspicious.map((item) => item.subject);
     expect(suspicious).toEqual(expect.arrayContaining([
       'development-only routes',
-      'GET /api/tenant/settings',
       'marketing synthetic identities',
       'tenant creation mode',
       'staff lesson access',

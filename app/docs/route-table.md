@@ -298,7 +298,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/member/settings` | authenticated | read | member settings |
-| `GET /api/tenant/settings` | authenticated | read | tenant settings |
+| `GET /api/tenant/settings` | authenticated | read | staff-only tenant settings |
 | `GET /api/tenant/team` | authenticated | read | tenant team |
 | `POST /api/tenant/team` | authenticated | mutating | tenant team add |
 | `POST /api/tenant/team/remove` | authenticated | mutating | tenant team remove |

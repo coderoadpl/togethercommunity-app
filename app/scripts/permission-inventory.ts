@@ -313,7 +313,7 @@ const beforeForRoute = (
     return tenantActors;
   }
   if (path === '/api/integrations/telemetry' && method === 'GET') return staff;
-  if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path === '/api/tenant/settings' && method === 'GET') return staff;
   if (path.startsWith('/api/tenant/team')) return owner;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
@@ -570,7 +570,7 @@ const beforeForUseCase = (
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
   if (file === 'tenant-team.ts') return owner;
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
-  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
+  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
@@ -658,10 +658,6 @@ const suspicious: SuspiciousPermission[] = [
   {
     subject: 'development-only routes',
     behavior: 'When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control (`apps/server/src/internal-app.ts`).',
-  },
-  {
-    subject: 'GET /api/tenant/settings',
-    behavior: 'A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).',
   },
   {
     subject: 'marketing synthetic identities',

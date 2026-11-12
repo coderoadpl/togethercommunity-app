@@ -22,6 +22,7 @@ services:
       dockerfile: Dockerfile
     image: ${COMPOSE_PROJECT_NAME:-together-self-host}-app:latest
     restart: unless-stopped
+    stop_grace_period: 90s
     depends_on:
       postgres:
         condition: service_healthy

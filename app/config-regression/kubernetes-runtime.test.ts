@@ -31,6 +31,12 @@ describe('Node server limits', () => {
     expect(contract).toContain(`\`terminationGracePeriodSeconds\` to at least ${seconds(SHUTDOWN_WORST_CASE_MS)} plus`);
   });
 
+  it('size the rollout connection budget for pods that still drain', () => {
+    expect(contract).toContain(`release steps finish, at most ${seconds(SHUTDOWN_WORST_CASE_MS)} seconds after the signal`);
+    expect(contract).toContain('`(2 × replicas + maxSurge) × (DATABASE_POOL_MAX + 1) + 1 + reserve`');
+    expect(contract).toContain('5 × 11 + 1 = 56 connections');
+  });
+
   it('match the connection timeouts the Kubernetes contract gives the edge proxy', () => {
     expect(contract).toContain(`open for ${seconds(SERVER_KEEP_ALIVE_TIMEOUT_MS)} seconds (\`keepAliveTimeout\`)`);
     expect(contract).toContain(`wait up to ${seconds(SERVER_HEADERS_TIMEOUT_MS)} seconds for a request's headers (\`headersTimeout\`)`);

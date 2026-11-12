@@ -1825,7 +1825,7 @@ export const runScheduledMarketingJobs = async (
       tenantId: string,
     ): Promise<Result<{ sent: number }, AppError>>;
     maintenanceBackoff: ScheduledMaintenanceBackoff;
-    logger: { warn(message: string): void };
+    logger: { warn(message: string): void; error(message: string): void };
   },
 ): Promise<Result<{
   campaignsDispatched: number;
@@ -1961,9 +1961,9 @@ export const runScheduledMarketingJobs = async (
   let campaignsDispatched = 0;
   for (const job of runnable) {
     if (input.shouldContinue?.() === false) break;
-    campaignsDispatched += 1;
     const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
-    if (!dispatched.ok) tickFailures.tenant(job.tenantId, 'campaign', dispatched.error);
+    if (dispatched.ok) campaignsDispatched += 1;
+    else tickFailures.tenant(job.tenantId, 'campaign', dispatched.error);
   }
   const platformFailure = tickFailures.firstPlatformFailure();
   if (platformFailure !== null) return err(platformFailure);

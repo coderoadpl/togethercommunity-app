@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import { SHUTDOWN_WORST_CASE_MS } from '../apps/server/src/node-server-limits.js';
 import { pullImages } from '../scripts/docker-pull.js';
 
 const appRoot = join(import.meta.dirname, '..');
@@ -50,6 +51,7 @@ const composeSchema = z.object({
       env_file: z.array(z.string()),
       environment: z.record(z.string()),
       ports: z.array(portSchema).optional(),
+      stop_grace_period: z.string().regex(/^\d+s$/u),
     }),
     caddy: z.object({
       image: z.string(),
@@ -81,6 +83,16 @@ describe('production self-host stack', () => {
       '${SELF_HOST_HTTPS_PORT:-443}:443/udp',
     ]);
     expect(Object.keys(compose.volumes)).toEqual(['postgres_data', 'caddy_data', 'caddy_config']);
+  });
+
+  it('lets the app finish its shutdown before Docker kills it', () => {
+    const compose = composeSchema.parse(parse(read('docker-compose.yml')));
+    const graceSeconds = Number.parseInt(compose.services.app.stop_grace_period, 10);
+
+    expect(graceSeconds * 1000).toBeGreaterThanOrEqual(SHUTDOWN_WORST_CASE_MS);
+    const guide = read('docs/self-host.md').replace(/\s+/gu, ' ');
+    expect(guide).toContain(`at worst after ${String(SHUTDOWN_WORST_CASE_MS / 1000)} seconds`);
+    expect(guide).toContain(`\`stop_grace_period: ${String(graceSeconds)}s\``);
   });
 
   it('builds a non-root production image and migrates before serving', () => {

@@ -12,6 +12,7 @@ import {
   applyConnectionTimeouts,
   createPendingWork,
   createSignalHandler,
+  drainable,
   shutdownGracefully,
   startBackgroundTickers,
   trackRequests,
@@ -101,8 +102,9 @@ app.get('*', serveStatic({ path: `${env.WEB_DIST_DIR}/index.html` }));
 const server = serve({ fetch: trackRequests(app.fetch, pendingWork), port: env.PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`together listening on http://localhost:${info.port}`);
 });
-const servers = internalServer === undefined ? [server] : [server, internalServer];
-for (const listener of servers) applyConnectionTimeouts(listener);
+const listeners = internalServer === undefined ? [server] : [server, internalServer];
+for (const listener of listeners) applyConnectionTimeouts(listener);
+const servers = listeners.map(drainable);
 
 const shutdown = createSignalHandler(
   () => shutdownGracefully({

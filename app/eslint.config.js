@@ -233,6 +233,7 @@ export default tseslint.config(
       },
     },
     settings: {
+      'boundaries/dependency-nodes': ['import', 'export', 'dynamic-import'],
       'boundaries/elements': [
         { type: 'core-domain', pattern: 'core/domain/**', mode: 'full' },
         { type: 'core-contract', pattern: 'core/contract/**', mode: 'full' },

@@ -9,7 +9,7 @@ export const storageListInputSchema = z.object({
   limit: z.number().int().min(1).max(1000),
 });
 
-export const storageListedObjectSchema = z.object({
+const storageListedObjectSchema = z.object({
   key: z.string().min(1),
   sizeBytes: z.number().int().nonnegative().safe(),
   lastModified: z.string().datetime({ offset: true }),
@@ -54,16 +54,13 @@ export const storageOrphanReportInputSchema = z.object({
   maxPages: z.number().int().min(1).max(10000).default(1000),
 });
 
-export const STORAGE_OBJECT_CLASSIFICATIONS = [
-  'referenced',
-  'referenced-by-history',
-  'pending',
-  'within-grace-period',
-  'unreferenced-candidate',
-  'unknown-owner',
-] as const;
-
-export type StorageObjectClassification = typeof STORAGE_OBJECT_CLASSIFICATIONS[number];
+export type StorageObjectClassification =
+  | 'referenced'
+  | 'referenced-by-history'
+  | 'pending'
+  | 'within-grace-period'
+  | 'unreferenced-candidate'
+  | 'unknown-owner';
 
 export interface StorageOrphanReport {
   tenantId: string;

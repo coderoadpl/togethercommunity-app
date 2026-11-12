@@ -239,6 +239,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
   const lessonStore = store(lessons);
 
   const deps: ContentRestoreDeps = {
+    logger: { error: () => undefined },
     entityVersions: versionsRepo([], records),
     courses: courseStore,
     modules: moduleStore,
@@ -284,6 +285,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       delete: async () => false,
     },
     storage: {
+      list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),

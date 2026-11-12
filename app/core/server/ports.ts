@@ -1,4 +1,7 @@
 import type {
+  StorageListInput,
+  StorageListPage,
+  StorageReferenceInventory,
   TenantTeamMember,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
@@ -1498,7 +1501,12 @@ export interface BunnyTokenSigner {
   }): string;
 }
 
+export interface StorageReferenceRepository {
+  readInventory(tenantId: string): Promise<StorageReferenceInventory>;
+}
+
 export interface StorageProvider {
+  list(input: StorageListInput): Promise<Result<StorageListPage, AppError>>;
   getObject(input: {
     url: string;
     accessKeyId: string;

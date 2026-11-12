@@ -464,6 +464,7 @@ const deps = (input: {
     },
     playbackTokenTtlSeconds: 21_600,
     storage: {
+      list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -3387,6 +3388,7 @@ describe('tenant domain check route', () => {
               : err(notFound(`No secret "${key}"`)),
         },
         storage: {
+          list: async () => ok({ objects: [], continuationToken: null }),
           getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -4067,6 +4069,7 @@ describe('lesson attachment download route', () => {
         })),
       },
       storage: {
+        list: async () => ok({ objects: [], continuationToken: null }),
         getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
@@ -4317,6 +4320,7 @@ describe('purchased product download route', () => {
       }) },
       storage: { ...deps().storage,
         presignGet: () => ok('https://download.example.test/signed-workbook'),
+        list: async () => ok({ objects: [], continuationToken: null }),
         getObject: async (_input, context) => {
           if (stage === 'recorded size') throw new Error('Oversized asset must not be fetched');
           expect(context.maxBytes).toBe(limit);

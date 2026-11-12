@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   IMAGE_ASSET_MAX_BYTES,
@@ -67,7 +67,9 @@ const storageConfiguration = JSON.stringify({
 const testDeps = (sizeBytes = 1024) => {
   const signed: Array<{ method: 'GET' | 'PUT'; url: string; expiresInSeconds: number }> = [];
   const removed: string[] = [];
+  const errors: string[] = [];
   const storage: StorageProvider = {
+    list: async () => ok({ objects: [], continuationToken: null }),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -90,11 +92,12 @@ const testDeps = (sizeBytes = 1024) => {
   };
   const deps: ImageAssetDeps = {
     storage,
+    logger: { error: (message) => errors.push(message) },
     secretResolver: { resolve: async () => ok(storageConfiguration) },
     ids: { nextId: () => ASSET_ID },
     clock: { nowIso: () => NOW },
   };
-  return { deps, removed, signed };
+  return { deps, removed, signed, errors };
 };
 
 describe('image assets', () => {
@@ -378,6 +381,28 @@ describe('image assets', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
+  it.each([
+    ['course-cover', completeCourseCoverUpload],
+    ['product-cover', completeProductCoverUpload],
+    ['logo', completeBrandingAssetUpload],
+    ['logo-dark', completeBrandingAssetUpload],
+    ['favicon', completeBrandingAssetUpload],
+    ['share-image', completeBrandingAssetUpload],
+  ] as const)('keeps earlier %s objects readable after completing a replacement', async (kind, complete) => {
+    const { deps, signed } = testDeps();
+    const remove = vi.spyOn(deps.storage, 'delete').mockImplementation(async () => {
+      throw new Error('Replacing an image must preserve earlier objects');
+    });
+    const previousFile = '00000000-0000-4000-8000-000000000002.png';
+    for (const file of [previousFile, `${ASSET_ID}.png`]) {
+      expect(await complete(ownerCtx, { key: `image-assets/${TENANT_ID}/${kind}/${file}` }, deps))
+        .toEqual(ok({ url: `/api/public/assets/${kind}/${file}` }));
+    }
+    expect(await getPublicImageAssetUrl(TENANT_ID, { kind, file: previousFile }, deps)).toMatchObject({ ok: true });
+    expect(signed[0]?.url).toContain(`image-assets/${TENANT_ID}/${kind}/${previousFile}`);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it('deletes an oversized object during completion', async () => {
     const { deps, removed } = testDeps(IMAGE_ASSET_MAX_BYTES + 1);
     const key = `image-assets/${TENANT_ID}/product-cover/${ASSET_ID}.webp`;
@@ -432,5 +457,65 @@ describe('image assets', () => {
     expect(unconfigured).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(rejected).toMatchObject({ ok: false, error: { code: 'not_found' } });
     if (!rejected.ok) expect(rejected.error.message).not.toContain('403');
+  });
+});
+
+describe('avatar cleanup observability', () => {
+  const avatarFixture = () => {
+    const fixture = testDeps();
+    return {
+      ...fixture,
+      deps: {
+        ...fixture.deps,
+        avatars: {
+          findState: async () => ({ image: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp', canImport: true }),
+          setAvatar: vi.fn(async () => undefined),
+          setAvatarIfMissing: async () => false,
+          removeAvatar: async () => undefined,
+        },
+        avatarImages: {
+          processStored: async () => ok(undefined),
+          importRemote: async () => ok(undefined),
+        },
+      },
+    };
+  };
+
+  it.each(['jpg', 'webp'])('logs a failed compensation after %s avatar cleanup fails', async (extension) => {
+    const { deps, errors } = avatarFixture();
+    vi.spyOn(deps.storage, 'delete').mockResolvedValue(err(integrationUnavailable('Storage unavailable')));
+    expect(await completeAvatarUpload(memberCtx, { key: `image-assets/${TENANT_ID}/avatar/${ASSET_ID}.${extension}` }, deps))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(errors).toEqual([
+      `[avatar] tenant "${TENANT_ID}" could not delete storage object "image-assets/${TENANT_ID}/avatar/${ASSET_ID}.webp": Storage unavailable`,
+    ]);
+    expect(deps.avatars.setAvatar).not.toHaveBeenCalled();
+  });
+
+  it('logs the losing Google import object with tenant and key context', async () => {
+    const { deps, errors } = avatarFixture();
+    vi.spyOn(deps.storage, 'delete').mockResolvedValue(err(integrationUnavailable('Storage unavailable')));
+    await importGoogleAvatar({ tenantId: TENANT_ID, userId: 'user-1', sourceUrl: 'https://example.test/avatar' }, deps);
+    expect(errors).toEqual([
+      `[avatar] tenant "${TENANT_ID}" could not delete storage object "image-assets/${TENANT_ID}/avatar/${ASSET_ID}.webp": Storage unavailable`,
+    ]);
+  });
+
+  it('propagates unexpected Google cleanup rejections to the error seam', async () => {
+    const { deps, errors } = avatarFixture();
+    vi.spyOn(deps.storage, 'delete').mockRejectedValue(new Error('Unexpected delete failure'));
+    await expect(importGoogleAvatar({ tenantId: TENANT_ID, userId: 'user-1', sourceUrl: 'https://example.test/avatar' }, deps))
+      .rejects.toThrow('Unexpected delete failure');
+    expect(errors).toEqual([]);
+  });
+
+  it('propagates unexpected compensation rejections to the error seam', async () => {
+    const { deps, errors } = avatarFixture();
+    vi.spyOn(deps.storage, 'delete')
+      .mockResolvedValueOnce(err(integrationUnavailable('Source cleanup failed')))
+      .mockRejectedValueOnce(new Error('Unexpected compensation failure'));
+    await expect(completeAvatarUpload(memberCtx, { key: `image-assets/${TENANT_ID}/avatar/${ASSET_ID}.jpg` }, deps))
+      .rejects.toThrow('Unexpected compensation failure');
+    expect(errors).toEqual([]);
   });
 });

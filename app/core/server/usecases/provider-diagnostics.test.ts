@@ -121,6 +121,7 @@ const fakeDeps = (
       }),
   },
   storage: {
+    list: async () => ok({ objects: [], continuationToken: null }),
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),

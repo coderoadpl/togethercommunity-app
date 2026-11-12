@@ -106,8 +106,9 @@ describe('course archive serialization', () => {
       products: productRepository,
       progress: createMemberCourseProgressRepository(db),
       attachments: createLessonAttachmentRepository(db),
+      logger: { error: unusedStorage },
       storage: {
-        getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
+        list: unusedStorage, getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
         presignPut: unusedStorage, presignGet: unusedStorage, delete: unusedStorage, head: unusedStorage,
         healthcheck: unusedStorage, test: unusedStorage,
       },

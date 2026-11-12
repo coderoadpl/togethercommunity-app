@@ -84,6 +84,7 @@ const parseStoredKey = (
 };
 
 export interface ImageAssetDeps {
+  logger: { error(message: string): void };
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   ids: IdGenerator;
@@ -243,7 +244,7 @@ export const beginAvatarUpload = async (
 export const completeAvatarUpload = async (
   ctx: Ctx,
   input: { key: string },
-  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'avatarImages' | 'secretResolver' | 'storage'>,
+  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'avatarImages' | 'secretResolver' | 'storage' | 'logger'>,
 ): Promise<Result<{ url: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:profile:self-write');
   if (!tenant.ok) return tenant;
@@ -288,7 +289,10 @@ export const completeAvatarUpload = async (
       region: configuration.value.region,
     });
     if (!removed.ok) {
-      await deleteAvatarObject(tenant.value, url, configuration.value, deps.storage);
+      const compensation = await deleteAvatarObject(tenant.value, url, configuration.value, deps.storage);
+      if (!compensation.ok) {
+        deps.logger.error(`[avatar] tenant "${tenant.value}" could not delete storage object "${targetKey}": ${compensation.error.message}`);
+      }
       return removed;
     }
   }
@@ -300,7 +304,10 @@ export const completeAvatarUpload = async (
       deps.storage,
     );
     if (!removed.ok) {
-      await deleteAvatarObject(tenant.value, url, configuration.value, deps.storage);
+      const compensation = await deleteAvatarObject(tenant.value, url, configuration.value, deps.storage);
+      if (!compensation.ok) {
+        deps.logger.error(`[avatar] tenant "${tenant.value}" could not delete storage object "${targetKey}": ${compensation.error.message}`);
+      }
       return removed;
     }
   }
@@ -324,36 +331,35 @@ export const removeAvatar = async (
 
 export const importGoogleAvatar = async (
   input: { tenantId: string; userId: string; sourceUrl: string },
-  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'avatarImages' | 'ids' | 'secretResolver' | 'storage'>,
+  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'avatarImages' | 'ids' | 'secretResolver' | 'storage' | 'logger'>,
 ): Promise<void> => {
-  try {
-    const state = await deps.avatars.findState(input.tenantId, input.userId);
-    if (state === null || !state.canImport) return;
-    const configuration = await resolveStorageConfiguration(input.tenantId, deps.secretResolver);
-    if (!configuration.ok) return;
-    const file = `${deps.ids.nextId()}.webp`;
-    const targetKey = `image-assets/${input.tenantId}/avatar/${file}`;
-    const imported = await deps.avatarImages.importRemote({
-      configuration: configuration.value,
-      sourceUrl: input.sourceUrl,
-      targetKey,
-    });
-    if (!imported.ok) return;
-    const stored = await deps.avatars.setAvatarIfMissing(
+  const state = await deps.avatars.findState(input.tenantId, input.userId);
+  if (state === null || !state.canImport) return;
+  const configuration = await resolveStorageConfiguration(input.tenantId, deps.secretResolver);
+  if (!configuration.ok) return;
+  const file = `${deps.ids.nextId()}.webp`;
+  const targetKey = `image-assets/${input.tenantId}/avatar/${file}`;
+  const imported = await deps.avatarImages.importRemote({
+    configuration: configuration.value,
+    sourceUrl: input.sourceUrl,
+    targetKey,
+  });
+  if (!imported.ok) return;
+  const stored = await deps.avatars.setAvatarIfMissing(
+    input.tenantId,
+    input.userId,
+    servePath('avatar', file),
+  );
+  if (!stored) {
+    const removed = await deleteAvatarObject(
       input.tenantId,
-      input.userId,
       servePath('avatar', file),
+      configuration.value,
+      deps.storage,
     );
-    if (!stored) {
-      await deleteAvatarObject(
-        input.tenantId,
-        servePath('avatar', file),
-        configuration.value,
-        deps.storage,
-      );
+    if (!removed.ok) {
+      deps.logger.error(`[avatar] tenant "${input.tenantId}" could not delete storage object "${targetKey}": ${removed.error.message}`);
     }
-  } catch {
-    return;
   }
 };
 

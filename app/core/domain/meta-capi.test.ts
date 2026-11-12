@@ -23,6 +23,11 @@ describe('Meta conversion domain rules', () => {
         .toEqual({ heading: 'Custom heading', body: 'Custom body', acceptLabel: 'Accept', declineLabel: 'Decline', privacyUrl: 'https://example.org/privacy' });
     }
   });
+  it.each([undefined, 'en', 'pl'] as const)('restores locale-resolved defaults for null overrides and locale %s', (locale) => {
+    expect(metaCapiCopy({ analyticsMetaCapiConsentHeading: null, analyticsMetaCapiConsentBody: null,
+      analyticsMetaCapiConsentAcceptLabel: null, analyticsMetaCapiConsentDeclineLabel: null }, locale))
+      .toEqual({ ...(locale === 'pl' ? polishCopy : englishCopy), privacyUrl: null });
+  });
   it('allows only explicit, unwithdrawn grants for real paid purchases', () => {
     expect(metaCapiBlockReason(order, granted, true, paidAt)).toBeNull();
     for (const consent of ['undecided', 'denied'] as const) expect(metaCapiBlockReason(order, { consent, withdrawnAt: null }, true, paidAt)).toBe('blocked');

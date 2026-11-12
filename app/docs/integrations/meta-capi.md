@@ -20,8 +20,9 @@ sets these tenant settings through `POST /api/tenant/settings` or the CLI:
 | `analyticsMetaCapiConsentAcceptLabel` | Optional plain text, at most 80 characters |
 | `analyticsMetaCapiConsentDeclineLabel` | Optional plain text, at most 80 characters |
 
-Null copy values restore the default for the buyer’s `locale` (`en` or `pl`,
-English when omitted). Tenant overrides take priority in both locales.
+Null copy values restore the locale-resolved defaults: English for `locale=en`
+and Polish for `locale=pl`. A missing locale resolves to English. Tenant overrides
+take priority in both locales.
 Checkout status and the consent POST carry the same locale; the server resolves
 and hashes that exact copy and privacy URL. Switching locale fetches a distinct
 status query, and a stale text version is rejected before the first decision. The default describes purchase

@@ -17,6 +17,7 @@ export const uniqueTestDatabaseName = (base: string): string => {
 type TestDatabase = {
   db: Db;
   url: string;
+  makeTemplate: () => Promise<string>;
   close: () => Promise<void>;
 };
 
@@ -42,11 +43,11 @@ const dropDatabase = async (baseUrl: string, databaseName: string): Promise<void
 export const createTestDatabase = async (
   base: string,
   baseUrl: string,
+  templateName = process.env['TOGETHER_TEST_DATABASE_TEMPLATE'],
 ): Promise<TestDatabase> => {
   const databaseName = uniqueTestDatabaseName(base);
   const url = new URL(baseUrl);
   url.pathname = `/${databaseName}`;
-  const templateName = process.env['TOGETHER_TEST_DATABASE_TEMPLATE'];
   const templateClause = templateName ? ` TEMPLATE ${pg.escapeIdentifier(templateName)}` : '';
   await withAdminClient(baseUrl, async (client) => {
     await client.query(`CREATE DATABASE ${pg.escapeIdentifier(databaseName)}${templateClause}`);
@@ -68,14 +69,27 @@ export const createTestDatabase = async (
     throw error;
   }
 
+  let poolClosed = false;
+  const closePool = async (): Promise<void> => {
+    if (poolClosed) return;
+    poolClosed = true;
+    await pool.end();
+  };
   let closed = false;
   return {
     db,
     url: url.toString(),
+    makeTemplate: async () => {
+      await closePool();
+      await withAdminClient(baseUrl, async (client) => {
+        await client.query(`ALTER DATABASE ${pg.escapeIdentifier(databaseName)} ALLOW_CONNECTIONS false`);
+      });
+      return databaseName;
+    },
     close: async () => {
       if (closed) return;
       closed = true;
-      await pool.end();
+      await closePool();
       await dropDatabase(baseUrl, databaseName);
       pool.removeListener('error', captureIdleError);
       if (idleError !== null) throw idleError;

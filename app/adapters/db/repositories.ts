@@ -157,7 +157,7 @@ import type {
 
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
-import { uniqueViolation } from './pg-errors.js';
+import { undefinedRelation, uniqueViolation } from './pg-errors.js';
 import { appendGrantMemberEvent, appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
@@ -4979,8 +4979,8 @@ export const createHealthPort = (db: Db): HealthPort => {
       try {
         const result = await db.execute(sql`select count(*)::int as applied from public.__drizzle_migrations`);
         return { expected, applied: numberField(firstRow(result), 'applied') };
-      } catch {
-        return { expected, applied: null };
+      } catch (error) {
+        return { expected, applied: null, journal: undefinedRelation(error) ? 'missing' : 'unreadable' };
       }
     },
     schemaStatus: async () => {

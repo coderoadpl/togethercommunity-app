@@ -4,6 +4,8 @@ import { migrate as previousReleaseMigrate } from 'drizzle-orm/node-postgres/mig
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { MigrationCounts } from '#core/server/index.js';
+
 import { runMigrations } from './migration-runner.js';
 import { createHealthPort } from './repositories.js';
 import * as dbSchema from './schema.js';
@@ -52,6 +54,8 @@ const journalEntries = ((): JournalEntry[] => {
 
 const roleName = uniqueTestDatabaseName('together_migration_runner_role');
 const rolePassword = crypto.randomUUID();
+const runtimeRoleName = uniqueTestDatabaseName('together_runtime_role');
+const runtimeRolePassword = crypto.randomUUID();
 const temporaryFolders: string[] = [];
 
 const withClient = async <T>(url: string, run: (client: pg.Client) => Promise<T>): Promise<T> => {
@@ -71,6 +75,14 @@ const databaseUrl = (database: string, asRole: boolean): string => {
     url.username = roleName;
     url.password = rolePassword;
   }
+  return url.toString();
+};
+
+const runtimeUrl = (database: string): string => {
+  const url = new URL(adminUrl);
+  url.pathname = `/${database}`;
+  url.username = runtimeRoleName;
+  url.password = runtimeRolePassword;
   return url.toString();
 };
 
@@ -184,6 +196,15 @@ const healthCounts = async (url: string): Promise<{ applied: number | null; curr
   }
 };
 
+const runtimeCounts = async (url: string, poolOptions: pg.PoolConfig = {}): Promise<MigrationCounts> => {
+  const pool = new pg.Pool({ connectionString: url, ...poolOptions });
+  try {
+    return await createHealthPort(drizzle(pool, { schema: dbSchema })).migrationCounts();
+  } finally {
+    await pool.end();
+  }
+};
+
 const chainRows = (): Array<Pick<JournalRow, 'hash' | 'created_at'>> =>
   migrations.map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) }));
 
@@ -215,6 +236,9 @@ beforeAll(async () => {
     await client.query(
       `CREATE ROLE ${pg.escapeIdentifier(roleName)} LOGIN PASSWORD ${pg.escapeLiteral(rolePassword)}`,
     );
+    await client.query(
+      `CREATE ROLE ${pg.escapeIdentifier(runtimeRoleName)} LOGIN PASSWORD ${pg.escapeLiteral(runtimeRolePassword)}`,
+    );
   });
 });
 
@@ -222,6 +246,7 @@ afterAll(async () => {
   for (const folder of temporaryFolders) rmSync(folder, { recursive: true, force: true });
   await withClient(adminUrl, async (client) => {
     await client.query(`DROP ROLE IF EXISTS ${pg.escapeIdentifier(roleName)}`);
+    await client.query(`DROP ROLE IF EXISTS ${pg.escapeIdentifier(runtimeRoleName)}`);
   });
 });
 
@@ -431,4 +456,67 @@ describe('migration runner', () => {
     },
     180_000,
   );
+});
+
+describe('readiness journal check', () => {
+  const runtimeRole = (): string => pg.escapeIdentifier(runtimeRoleName);
+
+  it('reports a missing journal on a database that was never migrated', async () => {
+    await withRestrictedDatabase('together_ready_missing', async (database) => {
+      expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: null, journal: 'missing' });
+    });
+  }, 60_000);
+
+  it('reports a journal the runtime role may not read as unreadable until it holds the documented grants', async () => {
+    await withRestrictedDatabase('together_ready_grants', async (database) => {
+      await runMigrations({ connectionString: database.url, migrationsFolder: migrationFolder(1) });
+      await withClient(database.url, async (client) => {
+        await client.query('REVOKE ALL ON SCHEMA public FROM PUBLIC');
+      });
+
+      expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: null, journal: 'unreadable' });
+
+      await withClient(database.url, async (client) => {
+        await client.query(`GRANT USAGE ON SCHEMA public TO ${runtimeRole()}`);
+      });
+      expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: null, journal: 'unreadable' });
+
+      await withClient(database.url, async (client) => {
+        await client.query(`GRANT SELECT ON public.__drizzle_migrations TO ${runtimeRole()}`);
+      });
+      expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: 1 });
+    });
+  }, 60_000);
+
+  it('reports a journal read that times out or finds no free connection as unreadable', async () => {
+    await withRestrictedDatabase('together_ready_timeout', async (database) => {
+      await runMigrations({ connectionString: database.url, migrationsFolder: migrationFolder(1) });
+      await withClient(database.url, async (client) => {
+        await client.query(`GRANT SELECT ON public.__drizzle_migrations TO ${runtimeRole()}`);
+      });
+
+      await withClient(database.url, async (holder) => {
+        await holder.query('BEGIN');
+        await holder.query('LOCK TABLE public.__drizzle_migrations IN ACCESS EXCLUSIVE MODE');
+        expect(await runtimeCounts(runtimeUrl(database.name), { statement_timeout: 300 }))
+          .toEqual({ expected, applied: null, journal: 'unreadable' });
+        await holder.query('ROLLBACK');
+      });
+
+      const pool = new pg.Pool({ connectionString: runtimeUrl(database.name), max: 1, connectionTimeoutMillis: 300 });
+      try {
+        const busy = await pool.connect();
+        try {
+          expect(await createHealthPort(drizzle(pool, { schema: dbSchema })).migrationCounts())
+            .toEqual({ expected, applied: null, journal: 'unreadable' });
+        } finally {
+          busy.release();
+        }
+        expect(await createHealthPort(drizzle(pool, { schema: dbSchema })).migrationCounts())
+          .toEqual({ expected, applied: 1 });
+      } finally {
+        await pool.end();
+      }
+    });
+  }, 60_000);
 });

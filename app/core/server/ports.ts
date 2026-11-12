@@ -2433,9 +2433,13 @@ export interface AuthPort {
   }): Promise<{ url: string }>;
 }
 
+export type MigrationCounts =
+  | { expected: number; applied: number }
+  | { expected: number; applied: null; journal: 'missing' | 'unreadable' };
+
 export interface HealthPort {
   pingDatabase(): Promise<boolean>;
-  migrationCounts(): Promise<{ expected: number; applied: number | null }>;
+  migrationCounts(): Promise<MigrationCounts>;
   schemaStatus(): Promise<{
     expectedMigrations: number;
     appliedMigrations: number | null;

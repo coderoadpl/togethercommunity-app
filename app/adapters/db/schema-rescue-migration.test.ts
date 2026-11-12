@@ -269,7 +269,7 @@ describe('schema rescue migration', () => {
       const health = createHealthPort(drizzle(pool, { schema: dbSchema }));
 
       expect(await health.pingDatabase()).toBe(true);
-      expect(await health.migrationCounts()).toEqual({ expected, applied: null });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: null, journal: 'missing' });
     });
   }, 60_000);
 });

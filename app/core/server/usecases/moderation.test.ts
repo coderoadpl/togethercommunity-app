@@ -379,6 +379,7 @@ const makeDeps = (
       markDmConversationRead: async () => 0,
     },
     notificationChannels: [],
+    dispatchNotificationFanout: () => undefined,
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     courses: {
       list: async () => [],

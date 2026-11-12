@@ -2,7 +2,6 @@ import { ok, type EmailOutboxPayload, type Notification } from '#core/domain/ind
 import type {
   Clock,
   EmailOutboxRepository,
-  IdGenerator,
   NotificationChannelPort,
   NotificationDeliveryContext,
 } from '#core/server/index.js';
@@ -39,7 +38,6 @@ const emailPayloadFor = (
 
 export const createEmailNotificationChannel = (
   emailOutbox: EmailOutboxRepository,
-  ids: IdGenerator,
   clock: Clock,
   dispatchEmail: () => void,
 ): NotificationChannelPort => ({
@@ -48,7 +46,7 @@ export const createEmailNotificationChannel = (
     const payload = emailPayloadFor(notification, context);
     if (payload === null) return ok(undefined);
     const queued = await emailOutbox.enqueue({
-      id: ids.nextId(),
+      id: `notification:${notification.id}`,
       tenantId: notification.tenantId,
       to: context.recipientEmail,
       payload,

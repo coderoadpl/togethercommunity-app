@@ -1420,7 +1420,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
       inArray(sql`${notifications.payload}->>'rootPostId'`, ids),
     )));
     await tx.delete(notificationFanoutJobs).where(and(eq(notificationFanoutJobs.tenantId, tenantId),
-      inArray(notificationFanoutJobs.kind, ['space-post', 'thread-reply']),
+      inArray(notificationFanoutJobs.kind, ['space-post', 'thread-reply', 'lesson-question']),
       inArray(sql`${notificationFanoutJobs.payload}->>'postId'`, ids),
     ));
     await tx.update(spaceEvents).set({ discussionRootPostId: null }).where(and(

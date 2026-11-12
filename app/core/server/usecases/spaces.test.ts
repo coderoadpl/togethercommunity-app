@@ -1,3 +1,6 @@
+import { fakeFanoutBatches } from '../testing/fanout-batches.js';
+import { runPostFanoutJob } from './notification-fanout.js';
+import type { NotificationFanoutJob } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -199,7 +202,10 @@ class FakeSpaces implements SpaceRepository {
 class FakePosts implements PostRepository {
   readonly rows: Post[] = [];
 
-  async createPost(_tenantId: string, post: Post): Promise<Post> {
+  readonly fanoutJobs: NotificationFanoutJob[] = [];
+
+  async createPost(_tenantId: string, post: Post, job?: NotificationFanoutJob): Promise<Post> {
+    if (job !== undefined) this.fanoutJobs.push(job);
     this.rows.push(post);
     return post;
   }
@@ -734,6 +740,7 @@ const fixture = (input: {
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
     posts,
+    dispatchNotificationFanout: () => undefined,
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     reports: {
       open: async () => null,
@@ -838,7 +845,7 @@ describe('space visibility', () => {
     expect(listed.value.map((item) => item.id)).toEqual(['s-open']);
     const feed = await getSpaceFeed(ctx(), { spaceId: 's-club' }, f.deps);
     expect(feed).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    const posted = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'hi' }, f.deps);
+    const posted = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-club', body: 'hi' }, f.deps);
     expect(posted).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
@@ -858,7 +865,7 @@ describe('space visibility', () => {
       grants: [grant('m1', 'p-club')],
       products: [product('p-club')],
     });
-    const posted = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'hej' }, f.deps);
+    const posted = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-club', body: 'hej' }, f.deps);
     expect(posted).toMatchObject({ ok: true, value: { contextKind: 'space', contextId: 's-club' } });
   });
 });
@@ -1035,7 +1042,7 @@ describe('space stats for staff', () => {
 describe('space feed', () => {
   it('pins for staff, denies members, and removes pinned posts from chronological items', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx(),
       { contextKind: 'space', contextId: 's-open', body: 'important' },
       f.deps,
@@ -1063,8 +1070,8 @@ describe('space feed', () => {
 
   it('resolves author avatars for pinned and unpinned feed rows', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'pinned' }, f.deps);
-    const plain = await createPost(
+    const pinned = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-open', body: 'pinned' }, f.deps);
+    const plain = await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2' }),
       { contextKind: 'space', contextId: 's-open', body: 'plain' },
       f.deps,
@@ -1084,9 +1091,9 @@ describe('space feed', () => {
   it('keeps legacy space root tombstones after their last live reply is deleted', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const input = { contextKind: 'space', contextId: 's-open' } as const;
-    const root = await createPost(ctx(), { ...input, body: 'Legacy root' }, f.deps);
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Legacy root' }, f.deps);
     if (!root.ok) throw new Error('Root failed');
-    const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, f.deps);
+    const reply = await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, f.deps);
     if (!reply.ok) throw new Error('Reply failed');
     const stored = await f.posts.findById('t1', root.value.id);
     if (stored === null) throw new Error('Root missing');
@@ -1103,7 +1110,7 @@ describe('space feed', () => {
 
   it('frees the pin slot and keeps a deleted pinned post in the feed as a tombstone', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx(),
       { contextKind: 'space', contextId: 's-open', body: 'delete me' },
       f.deps,
@@ -1141,9 +1148,9 @@ describe('space feed', () => {
   ] as const)('keeps $deletedBy tombstones in the space feed with reply=$reply', async ({ moderator, reply, deletedBy }) => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const input = { contextKind: 'space', contextId: 's-open' } as const;
-    const root = await createPost(ctx(), { ...input, body: 'Original' }, f.deps);
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Original' }, f.deps);
     if (!root.ok) throw new Error('Root failed');
-    if (reply) await createPost(ctx(), { ...input, body: 'Reply', parentPostId: root.value.id }, f.deps);
+    if (reply) await createPostAndDrain(ctx(), { ...input, body: 'Reply', parentPostId: root.value.id }, f.deps);
     await setPostPinned(ctx({ staffRole: 'admin' }), { postId: root.value.id, pinned: true }, f.deps);
     await deletePost(moderator ? ctx({ userId: 'staff', staffRole: 'admin', memberId: null }) : ctx(), { id: root.value.id }, f.deps);
     expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
@@ -1156,7 +1163,7 @@ describe('space feed', () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const staff = ctx({ staffRole: 'admin', memberId: null });
     for (let index = 0; index < MAX_PINNED_POSTS_PER_SPACE; index += 1) {
-      const created = await createPost(
+      const created = await createPostAndDrain(
         ctx(),
         { contextKind: 'space', contextId: 's-open', body: `pin ${String(index)}` },
         f.deps,
@@ -1166,7 +1173,7 @@ describe('space feed', () => {
         await setPostPinned(staff, { postId: created.value.id, pinned: true }, f.deps),
       ).toMatchObject({ ok: true });
     }
-    const overflow = await createPost(
+    const overflow = await createPostAndDrain(
       ctx(),
       { contextKind: 'space', contextId: 's-open', body: 'overflow' },
       f.deps,
@@ -1190,7 +1197,7 @@ describe('space feed', () => {
       await setPostPinned(staff, { postId: lessonPost.id, pinned: true }, f.deps),
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
 
-    const reply = await createPost(
+    const reply = await createPostAndDrain(
       ctx(),
       {
         contextKind: 'space',
@@ -1210,13 +1217,13 @@ describe('space feed', () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const bodies = ['first', 'second', 'third'];
     for (const body of bodies) {
-      const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body }, f.deps);
+      const created = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-open', body }, f.deps);
       expect(created.ok).toBe(true);
     }
     const roots = f.posts.rows.filter((post) => post.parentPostId === null);
     const first = roots[0];
     if (!first) throw new Error('no root post');
-    await createPost(
+    await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2' }),
       { contextKind: 'space', contextId: 's-open', parentPostId: first.id, body: 'reply' },
       f.deps,
@@ -1247,7 +1254,7 @@ describe('space feed', () => {
 describe('reactions', () => {
   it('is idempotent for both react and unreact and keeps counts per emoji', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'post' }, f.deps);
+    const created = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-open', body: 'post' }, f.deps);
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     const postId = created.value.id;
@@ -1277,7 +1284,7 @@ describe('reactions', () => {
       grants: [grant('m2', 'p-club')],
       products: [product('p-club')],
     });
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2' }),
       { contextKind: 'space', contextId: 's-club', body: 'klubowy' },
       f.deps,
@@ -1296,6 +1303,22 @@ describe('reactions', () => {
 });
 
 describe('space-post notifications', () => {
+  it('returns root posts and replies without running any notification batch', async () => {
+    const f = fixture({ spaces: [membersSpace] });
+    await f.spaceSubscriptions.follow('t1', { userId: 'u2', spaceId: membersSpace.id, createdAt: NOW });
+    const root = await createPost(ctx(), { contextKind: 'space', contextId: membersSpace.id, body: 'Deferred root' }, f.deps);
+    expect(root.ok).toBe(true);
+    if (!root.ok) throw new Error('Expected a root post');
+    await f.deps.threadSubscriptions.upsert('t1', { userId: 'u2', rootPostId: root.value.id, createdAt: NOW });
+    const reply = await createPost(ctx(), {
+      contextKind: 'space', contextId: membersSpace.id, parentPostId: root.value.id, body: 'Deferred reply',
+    }, f.deps);
+    expect(reply.ok).toBe(true);
+    expect(f.delivered).toEqual([]);
+    expect(f.notifications.rows).toEqual([]);
+    expect(f.posts.fanoutJobs.map((job) => job.kind)).toEqual(['space-post', 'thread-reply']);
+  });
+
   it('notifies followers of a new root post, minus the author, gated by entitlement', async () => {
     const f = fixture({
       spaces: [space({ ...gatedSpace })],
@@ -1307,7 +1330,7 @@ describe('space-post notifications', () => {
       await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-club', createdAt: NOW });
     }
 
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'new post' }, f.deps);
+    const created = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-club', body: 'new post' }, f.deps);
     expect(created.ok).toBe(true);
 
     expect(f.delivered.sort()).toEqual(['u2', 'u9']);
@@ -1328,7 +1351,7 @@ describe('space-post notifications', () => {
       await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-open', createdAt: NOW });
     }
 
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'new post' }, f.deps);
+    const created = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-open', body: 'new post' }, f.deps);
 
     expect(created.ok).toBe(true);
     expect(f.delivered).toEqual(['u5']);
@@ -1338,13 +1361,13 @@ describe('space-post notifications', () => {
   it('does not fan out space-post notifications for replies (thread machinery owns those)', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     await f.spaceSubscriptions.follow('t1', { userId: 'u2', spaceId: 's-open', createdAt: NOW });
-    const root = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'root' }, f.deps);
+    const root = await createPostAndDrain(ctx(), { contextKind: 'space', contextId: 's-open', body: 'root' }, f.deps);
     expect(root.ok).toBe(true);
     if (!root.ok) return;
     expect(f.delivered).toEqual(['u2']);
     f.delivered.length = 0;
 
-    const reply = await createPost(
+    const reply = await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2' }),
       { contextKind: 'space', contextId: 's-open', parentPostId: root.value.id, body: 'reply' },
       f.deps,
@@ -1418,7 +1441,7 @@ describe('space seen marks', () => {
 describe('post edits inside a space', () => {
   it('stops an author from editing once the space is archived', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx(),
       { contextKind: 'space', contextId: 's-open', body: 'post' },
       f.deps,
@@ -1440,7 +1463,7 @@ describe('post edits inside a space', () => {
 describe('banned member interactions', () => {
   it('blocks reactions and follows while unfollow and seen marks stay open', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx(),
       { contextKind: 'space', contextId: 's-open', body: 'post' },
       f.deps,
@@ -1480,3 +1503,15 @@ describe('space follow toggle', () => {
     expect(listed.value[0]?.isFollowing).toBe(false);
   });
 });
+
+const createPostAndDrain = async (...args: Parameters<typeof createPost>): ReturnType<typeof createPost> => {
+  const result = await createPost(...args);
+  const d = args[2];
+  if (d.posts instanceof FakePosts) {
+    for (const job of d.posts.fanoutJobs.splice(0)) {
+      const drained = await runPostFanoutJob(job, { ...d, fanoutBatches: fakeFanoutBatches(() => d) });
+      if (!drained.ok) throw new Error(drained.error.message);
+    }
+  }
+  return result;
+};

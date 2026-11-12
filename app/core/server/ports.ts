@@ -582,7 +582,6 @@ export interface DmReportRepository {
 
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
-  /** Returns only the rows this call created, so a retried fan-out re-delivers nothing. */
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
@@ -611,6 +610,31 @@ export interface NotificationRepository {
     tenantId: string,
     input: { recipientUserId: string; conversationId: string; readAt: string },
   ): Promise<number>;
+}
+
+export interface NotificationFanoutAccess {
+  userId: string;
+  member: Member | null;
+  isStaff: boolean;
+  activeProductIds: string[];
+  accessItems: Product['accessItems'];
+}
+
+export interface NotificationFanoutBatchRepository {
+  listAccessForUsers(tenantId: string, userIds: string[], now: string): Promise<NotificationFanoutAccess[]>;
+  listStaffPage(
+    tenantId: string,
+    input: { afterUserId: string | null; limit: number },
+  ): Promise<Array<{ userId: string; email: string; language: Member['language'] }>>;
+  subscribeStaff(
+    tenantId: string,
+    input: { rootPostId: string; userIds: string[]; createdAt: string },
+  ): Promise<void>;
+  listNotificationsForSource(
+    tenantId: string,
+    sourceKey: string,
+    userIds: string[],
+  ): Promise<Notification[]>;
 }
 
 export interface NotificationFanoutJobRepository {

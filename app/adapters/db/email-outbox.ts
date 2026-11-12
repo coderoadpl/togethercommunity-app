@@ -149,7 +149,7 @@ export const createEmailOutboxRepository = (
     try {
       const payload = emailOutboxPayloadSchema.parse(input.payload);
       await db.transaction(async (tx) => {
-        await tx.insert(emailOutbox).values({
+        const inserted = await tx.insert(emailOutbox).values({
           id: input.id,
           tenantId: input.tenantId,
           kind: payload.kind,
@@ -159,8 +159,8 @@ export const createEmailOutboxRepository = (
           createdAt: input.now,
           sourceApp: input.sourceApp ?? null,
           tenantTransportRequired: input.tenantTransportRequired ?? false,
-        });
-        if (input.tenantId !== null) {
+        }).onConflictDoNothing({ target: emailOutbox.id }).returning({ id: emailOutbox.id });
+        if (inserted.length > 0 && input.tenantId !== null) {
           await tx.insert(emailEvents).values(emailEventSchema.parse({
             id: `${input.id}:queued`,
             tenantId: input.tenantId,

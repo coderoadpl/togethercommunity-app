@@ -836,6 +836,11 @@ const deps = (input: {
       findDirections: async (_tenantId, query) =>
         new Map(query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }])),
     },
+    dispatchNotificationFanout: () => undefined,
+    fanoutBatches: {
+      listAccessForUsers: async () => [], listStaffPage: async () => [],
+      subscribeStaff: async () => undefined, listNotificationsForSource: async () => [],
+    },
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
       insert: async (_tenantId, notification) => notification,

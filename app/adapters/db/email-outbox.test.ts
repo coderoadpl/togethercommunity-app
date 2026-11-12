@@ -10,7 +10,7 @@ import { createEmailEventRepository } from './email-events.js';
 import { createEmailSendRepository } from './email-sends.js';
 import { appendEmailSentMemberEvents, createMemberEventRepository } from './member-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
-import { emailOutbox, memberEvents, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
+import { emailEvents, emailOutbox, memberEvents, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -60,6 +60,21 @@ const enqueue = async (id: string, now = NOW, tenantId: string | null = null) =>
 };
 
 describe('email outbox database adapter', () => {
+  it('atomically deduplicates concurrent notification enqueues and their queued events', async () => {
+    const repo = createEmailOutboxRepository(db);
+    const input = { id: 'notification:retry-1', tenantId: 'tenant-outbox', to: 'recipient@example.test', payload: payload(), now: NOW };
+    const results = await Promise.all(Array.from({ length: 4 }, () => repo.enqueue(input)));
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, input.id))).toHaveLength(1);
+    expect(await db.select().from(emailEvents).where(eq(emailEvents.id, `${input.id}:queued`))).toHaveLength(1);
+    await db.update(emailOutbox).set({ status: 'sent', sentAt: NOW }).where(eq(emailOutbox.id, input.id));
+    expect((await repo.enqueue(input)).ok).toBe(true);
+    expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, input.id))).toEqual([
+      expect.objectContaining({ status: 'sent', to: input.to }),
+    ]);
+    expect(await db.select().from(emailEvents).where(eq(emailEvents.id, `${input.id}:queued`))).toHaveLength(1);
+  });
+
   it('emits a typed member event when a transactional email is sent', async () => {
     await db.insert(members).values({
       id: 'member-email-sent',

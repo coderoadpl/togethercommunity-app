@@ -1612,7 +1612,7 @@ export const notificationFanoutJobs = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['space-post', 'thread-reply', 'space-event'] }).notNull(),
+    kind: text('kind', { enum: ['space-post', 'thread-reply', 'space-event', 'lesson-question'] }).notNull(),
     sourceKey: text('source_key').notNull(),
     payload: jsonb('payload').notNull(),
     status: text('status', { enum: ['pending', 'completed', 'failed'] }).notNull(),

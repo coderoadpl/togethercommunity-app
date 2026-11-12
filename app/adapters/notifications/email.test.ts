@@ -52,12 +52,21 @@ const captureEmail = () => {
 
 const channel = (port: EmailOutboxRepository) => createEmailNotificationChannel(
   port,
-  { nextId: () => 'email-1' },
   { nowIso: () => '2026-07-15T10:00:00.000Z' },
   () => undefined,
 );
 
 describe('email notification channel', () => {
+  it('uses the persisted notification id as the outbox id across retry attempts', async () => {
+    const { port } = captureEmail();
+    const ids: string[] = [];
+    port.enqueue = async (input) => { ids.push(input.id); return ok({ id: input.id }); };
+    await channel(port).deliver(notification, context);
+    await channel(port).deliver(notification, context);
+    await channel(port).deliver({ ...notification, id: 'n2' }, context);
+    expect(ids).toEqual(['notification:n1', 'notification:n1', 'notification:n2']);
+  });
+
   it('renders the threadReply template onto the recipient address', async () => {
     const { sent, port } = captureEmail();
 

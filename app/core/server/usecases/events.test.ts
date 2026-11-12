@@ -1,3 +1,4 @@
+import { fakeFanoutBatches } from '../testing/fanout-batches.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -441,6 +442,7 @@ const fixture = (input: {
     },
     notifications,
     notificationChannels: [channel],
+    fanoutBatches: fakeFanoutBatches(() => deps),
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     grants: {
       findById: async () => null,

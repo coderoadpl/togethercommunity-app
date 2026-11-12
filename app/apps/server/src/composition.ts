@@ -99,6 +99,7 @@ import {
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
 import { createNotificationFanoutJobRepository } from '#adapters/db/notification-fanout-jobs.js';
+import { createNotificationFanoutBatchRepository } from '#adapters/db/notification-fanout-batches.js';
 import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
 import { reseedMarkers } from '#adapters/db/reseed-guard.js';
 import { runReseed } from '#adapters/db/reseed-run.js';
@@ -286,6 +287,7 @@ import type {
   MemberOrderListReader,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
+  NotificationFanoutBatchRepository,
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
@@ -362,7 +364,7 @@ import {
 } from '#core/domain/index.js';
 import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
-import { createCoalescedRunner } from './coalesced-runner.js';
+import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
@@ -479,6 +481,8 @@ export interface AppDeps {
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
+  fanoutBatches: NotificationFanoutBatchRepository;
+  dispatchNotificationFanout(): void;
   realtimeBus: RealtimeBusPort;
   links: DiscussionLinkPort;
   progress: MemberCourseProgressRepository;
@@ -1109,6 +1113,10 @@ export const createDeps = (
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
+  const dispatchNotificationFanout = createDeferredCoalescedRunner(async () => {
+    const result = await drainNotificationFanoutJobs(deps);
+    if (!result.ok) process.stderr.write(`[notification-fanout] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
+  }, options.keepAlive);
   const refreshMarketingQuota = async (tenantId: string) => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
@@ -1450,9 +1458,11 @@ export const createDeps = (
     memberBlocks: createMemberBlockRepository(db),
     notifications: notificationRepository,
     fanoutJobs: createNotificationFanoutJobRepository(db),
+    fanoutBatches: createNotificationFanoutBatchRepository(db),
+    dispatchNotificationFanout,
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),
-      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(emailOutbox, ids, clock, dispatchEmail)] : []),
+      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(emailOutbox, clock, dispatchEmail)] : []),
     ],
     realtimeBus,
     links,

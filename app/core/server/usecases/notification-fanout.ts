@@ -29,6 +29,7 @@ import type {
   MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
+  NotificationFanoutBatchRepository,
   NotificationRepository,
   PostRepository,
   ProductGrantRepository,
@@ -42,8 +43,8 @@ import type {
 import { renderPostContent } from '../post-content.js';
 import { avatarUrlForAuthor } from './avatar.js';
 import { tenantEmailLanguage } from './email-language.js';
-import { notificationRecipient, spaceNotificationRecipient } from './community-access.js';
-import { subscriberCanAccessContext, threadContextInfo } from './thread-context.js';
+import { fanoutCanAccessSpace, fanoutCanAccessThread, fanoutRecipient } from './fanout-eligibility.js';
+import { threadContextInfo } from './thread-context.js';
 
 const JOBS_PER_RUN = 10;
 const BATCHES_PER_RUN = 8;
@@ -51,6 +52,7 @@ const RUN_BUDGET_MS = 12_000;
 
 export interface PostFanoutDeps {
   fanoutJobs: NotificationFanoutJobRepository;
+  fanoutBatches: NotificationFanoutBatchRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   spaceSubscriptions: SpaceSubscriptionRepository;
@@ -72,6 +74,7 @@ export interface PostFanoutDeps {
 
 export interface EventFanoutDeps {
   fanoutJobs: NotificationFanoutJobRepository;
+  fanoutBatches: NotificationFanoutBatchRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   spaceSubscriptions: SpaceSubscriptionRepository;
@@ -178,12 +181,14 @@ const spaceRecipients =
       afterUserId,
       limit,
     });
+    const accessRows = await deps.fanoutBatches.listAccessForUsers(
+      tenantId, followers.filter((follower) => follower.userId !== authorUserId).map((follower) => follower.userId), deps.clock.nowIso(),
+    );
     const candidates: Recipient[] = [];
-    for (const follower of followers) {
-      if (follower.userId === authorUserId) continue;
-      const eligible = await spaceNotificationRecipient(tenantId, follower.userId, space, deps);
-      if (eligible === null) continue;
-      candidates.push({ userId: follower.userId, email: eligible.email, language: eligible.language });
+    for (const access of accessRows) {
+      const eligible = fanoutRecipient(access);
+      if (eligible === null || (!eligible.isStaff && !fanoutCanAccessSpace(access, space))) continue;
+      candidates.push({ userId: access.userId, email: eligible.email, language: eligible.language });
     }
     return {
       recipients: await withoutAuthorBlockers(tenantId, authorUserId, candidates, deps),
@@ -229,7 +234,7 @@ const postPlan = async (
   }
   const context = await threadContextInfo(job.tenantId, post, deps, job.payload.tenantSlug);
   return {
-    notificationKind: 'thread-reply',
+    notificationKind: job.kind === 'lesson-question' ? 'lesson-question' : 'thread-reply',
     payload: {
       rootPostId: post.rootPostId,
       postId: post.id,
@@ -246,26 +251,35 @@ const postPlan = async (
     contextName: context.contextName,
     contextUrl: context.contextUrl,
     listRecipients: async (afterUserId, limit) => {
+      if (job.kind === 'lesson-question') {
+        const staff = await deps.fanoutBatches.listStaffPage(job.tenantId, { afterUserId, limit });
+        const recipients = staff.filter((recipient) => recipient.userId !== post.authorUserId);
+        await deps.fanoutBatches.subscribeStaff(job.tenantId, {
+          rootPostId: post.rootPostId,
+          userIds: recipients.map((recipient) => recipient.userId),
+          createdAt: post.createdAt,
+        });
+        return {
+          recipients: recipients.map((recipient) => ({ ...recipient, language: recipient.language ?? null })),
+          nextCursorUserId: staff.at(-1)?.userId ?? null,
+          exhausted: staff.length < limit,
+        };
+      }
       const subscribers = await deps.threadSubscriptions.listSubscribersPage(job.tenantId, {
         rootPostId: post.rootPostId,
         afterUserId,
         limit,
       });
+      const accessRows = await deps.fanoutBatches.listAccessForUsers(
+        job.tenantId,
+        subscribers.filter((subscriber) => subscriber.userId !== post.authorUserId && subscriber.mutedAt === null).map((subscriber) => subscriber.userId),
+        deps.clock.nowIso(),
+      );
       const candidates: Recipient[] = [];
-      for (const subscriber of subscribers) {
-        if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
-        const recipient = await notificationRecipient(job.tenantId, subscriber.userId, deps);
-        if (recipient === null) continue;
-        const canAccess =
-          recipient.isStaff ||
-          (recipient.memberId !== null &&
-            (await subscriberCanAccessContext(job.tenantId, recipient.memberId, post, deps)));
-        if (!canAccess) continue;
-        candidates.push({
-          userId: subscriber.userId,
-          email: recipient.email,
-          language: recipient.language,
-        });
+      for (const access of accessRows) {
+        const recipient = fanoutRecipient(access);
+        if (recipient === null || (!recipient.isStaff && !fanoutCanAccessThread(access, context))) continue;
+        candidates.push({ userId: access.userId, email: recipient.email, language: recipient.language });
       }
       return {
         recipients: await withoutAuthorBlockers(job.tenantId, post.authorUserId, candidates, deps),
@@ -325,6 +339,7 @@ const resolvePostPlan = async (
 
 interface FanoutCoreDeps {
   fanoutJobs: NotificationFanoutJobRepository;
+  fanoutBatches: NotificationFanoutBatchRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   tenants: Pick<TenantRepository, 'findSettings'>;
@@ -338,6 +353,7 @@ const runFanout = async (
   deps: FanoutCoreDeps,
   options: NotificationFanoutOptions,
 ): Promise<Result<NotificationFanoutJobResult, AppError>> => {
+  if (job.status === 'completed') return ok({ created: 0, completed: true });
   const batchSize = options.batchSize ?? NOTIFICATION_FANOUT_BATCH_SIZE;
   const maxBatches = options.maxBatches ?? BATCHES_PER_RUN;
   const deadlineAt =
@@ -426,18 +442,23 @@ const runFanout = async (
     }
     created += inserted.length;
     const byUserId = new Map(recipients.map((recipient) => [recipient.userId, recipient]));
-    for (const notification of inserted) {
-      const recipient = byUserId.get(notification.recipientUserId);
-      for (const channel of deps.notificationChannels) {
-        const delivered = await channel.deliver(notification, {
-          recipientEmail: recipient?.email ?? null,
-          tenantName: job.payload.tenantName,
-          contextName: resolved.contextName,
-          contextUrl: resolved.contextUrl,
-          language: recipient?.language ?? tenantLanguage,
-        });
-        if (!delivered.ok) return abandon(delivered.error);
+    try {
+      const pending = await deps.fanoutBatches.listNotificationsForSource(job.tenantId, job.sourceKey, [...byUserId.keys()]);
+      for (const notification of pending) {
+        const recipient = byUserId.get(notification.recipientUserId);
+        for (const channel of deps.notificationChannels) {
+          const delivered = await channel.deliver(notification, {
+            recipientEmail: recipient?.email ?? null,
+            tenantName: job.payload.tenantName,
+            contextName: resolved.contextName,
+            contextUrl: resolved.contextUrl,
+            language: recipient?.language ?? tenantLanguage,
+          });
+          if (!delivered.ok) return abandon(delivered.error);
+        }
       }
+    } catch (cause) {
+      return abandon(internal(`Fan-out delivery failed: ${String(cause)}`));
     }
     cursorUserId = page.nextCursorUserId ?? cursorUserId;
     if (page.exhausted) return finish(true);
@@ -458,14 +479,6 @@ export const runEventFanoutJob = async (
   options: NotificationFanoutOptions = {},
 ): Promise<Result<NotificationFanoutJobResult, AppError>> =>
   runFanout(job, async () => eventPlan(job, deps), deps, options);
-
-/** Keeps small spaces instant; anything past the first page is the scheduler's, as is every retry. */
-export const drainPostFanoutInline = async (
-  job: NotificationFanoutJob,
-  deps: PostFanoutDeps,
-): Promise<void> => {
-  await runPostFanoutJob(job, deps, { maxBatches: 1 }).catch(() => undefined);
-};
 
 export const drainEventFanoutInline = async (
   job: NotificationFanoutJob,

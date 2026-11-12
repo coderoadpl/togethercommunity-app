@@ -190,7 +190,7 @@ describe('production self-host stack', () => {
     const workflow = workflowSchema.parse(parse(read('../.github/workflows/ci.yml')));
     const probe = read('scripts/quickstart-probe.ts');
 
-    expect(probe).toContain("import { pullImages } from './docker-pull.js'");
+    expect(probe).toMatch(/import \{[^}]*\bpullImages\b[^}]*\} from '\.\/docker-pull\.js'/u);
     expect(workflow.jobs.smoke.steps.some((step) => step.run === 'pnpm run quickstart:probe')).toBe(true);
     expect(probe).toContain("'NODE_ENV=production'");
     expect(probe).toContain("'APP_ENV=self-host'");

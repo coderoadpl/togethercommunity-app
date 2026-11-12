@@ -1,3 +1,4 @@
+import { scrubErasedEmailEvent } from '#core/domain/email-event-erasure.js';
 import type { ContactCampaignAudience } from '#core/domain/marketing-audience.js';
 import type { MarketingContactAudienceDeps, MarketingContactAudienceRepository } from '../marketing-audience-ports.js';
 import { scheduleMarketingContactCampaign } from './marketing-contact-campaigns.js';
@@ -1531,12 +1532,26 @@ export const applyVerifiedSesEvent = async (
   if (!tenantId.ok) return tenantId;
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null || settings.snsTopicArn !== event.topicArn) return err(forbidden('SNS topic does not match this tenant'));
+  const addressErased = (email: string) => deps.suppressions.isErased(tenantId.value, {
+    email, emailHmac: deps.hmac.compute(tenantId.value, email),
+  });
+  let erased = false;
+  const feedbackEvent = (...args: Parameters<typeof lifecycleEvent>): EmailEvent => {
+    const value = lifecycleEvent(...args);
+    return erased ? scrubErasedEmailEvent(value) : value;
+  };
   let send = await deps.sends.correlateBySesMessageId(tenantId.value, event.messageId);
   if (send === null && event.campaignSendId !== undefined) send = await deps.sends.findById(tenantId.value, event.campaignSendId);
-  if (send !== null && event.recipient !== undefined && normalizeEmail(event.recipient) !== send.email) return ok({ kind: 'ignored', reason: 'Recipient does not match the correlated send' });
+  if (send !== null) erased = await deps.suppressions.isErased(tenantId.value, {
+    email: send.email, emailHmac: deps.hmac.compute(tenantId.value, send.email), memberId: send.memberId, contactId: send.contactId ?? null,
+  });
+  if (send !== null && event.recipient !== undefined && normalizeEmail(event.recipient) !== send.email) {
+    const matchesErasedSend = erased && send.sesMessageId === event.messageId && await addressErased(event.recipient);
+    if (!matchesErasedSend) return ok({ kind: 'ignored', reason: 'Recipient does not match the correlated send' });
+  }
   if (send !== null && send.status !== 'sent') {
     send = { ...send, status: 'sent', sesMessageId: event.messageId, sentAt: event.occurredAt };
-    await deps.marketingOutbox.reconcile(tenantId.value, send, lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'accepted', { sesMessageId: event.messageId }, event.occurredAt));
+    await deps.marketingOutbox.reconcile(tenantId.value, send, feedbackEvent(deps, tenantId.value, 'marketing', send.id, 'accepted', { sesMessageId: event.messageId }, event.occurredAt));
   }
     if (send === null) {
       if (event.kind === 'open' || event.kind === 'click') return ok({ kind: 'awaiting_correlation' });
@@ -1546,13 +1561,14 @@ export const applyVerifiedSesEvent = async (
       const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
       if (outbox === null) return ok({ kind: 'awaiting_correlation' });
       if (event.recipient !== undefined && normalizeEmail(event.recipient) !== normalizeEmail(outbox.to)) return ok({ kind: 'ignored', reason: 'Recipient does not match the transactional send' });
+      erased = await addressErased(outbox.to);
       const classification = event.kind === 'delivery'
         ? null
         : classifySesEvent(event);
       if (classification === 'unresolved') {
         await deps.events.append(
           tenantId.value,
-          lifecycleEvent(
+          feedbackEvent(
             deps,
             tenantId.value,
             'transactional',
@@ -1577,7 +1593,7 @@ export const applyVerifiedSesEvent = async (
         id: outbox.id,
         status,
         occurredAt: event.occurredAt,
-        event: lifecycleEvent(
+        event: feedbackEvent(
           deps,
           tenantId.value,
           'transactional',
@@ -1588,7 +1604,7 @@ export const applyVerifiedSesEvent = async (
         ),
       });
       if (!marked.ok) return marked;
-      if (classification !== null && bounceAction(classification).suppress) {
+      if (!erased && classification !== null && bounceAction(classification).suppress) {
         const reason =
           classification === 'complaint' ? 'complaint' : 'hard_bounce';
         await deps.suppressions.record(
@@ -1605,7 +1621,7 @@ export const applyVerifiedSesEvent = async (
             liftedAt: null,
             liftedBy: null,
           },
-          lifecycleEvent(
+          feedbackEvent(
             deps,
             tenantId.value,
             'transactional',
@@ -1622,7 +1638,7 @@ export const applyVerifiedSesEvent = async (
       if (!settings.trackingEnabled) return ok({ kind: 'ignored', reason: 'Engagement tracking is disabled' });
       await deps.events.append(
         tenantId.value,
-        lifecycleEvent(
+        feedbackEvent(
           deps,
           tenantId.value,
           'marketing',
@@ -1640,7 +1656,7 @@ export const applyVerifiedSesEvent = async (
       await deps.sends.update(
         tenantId.value,
         { ...send, ...(send.deliveryStatus === 'bounced' || send.deliveryStatus === 'complained' ? {} : { deliveryStatus: 'delivered' as const, deliveryOccurredAt: event.occurredAt }) },
-        [lifecycleEvent(
+        [feedbackEvent(
           deps,
           tenantId.value,
           'marketing',
@@ -1662,7 +1678,7 @@ export const applyVerifiedSesEvent = async (
           ? {}
           : { deliveryStatus, deliveryOccurredAt: event.occurredAt }),
       },
-      [lifecycleEvent(
+      [feedbackEvent(
         deps,
         tenantId.value,
         'marketing',
@@ -1674,7 +1690,7 @@ export const applyVerifiedSesEvent = async (
         event.occurredAt,
       )],
     );
-    if (bounceAction(classification).suppress) {
+    if (!erased && bounceAction(classification).suppress) {
       await deps.suppressions.record(
         tenantId.value,
         {
@@ -1689,7 +1705,7 @@ export const applyVerifiedSesEvent = async (
           liftedAt: null,
           liftedBy: null,
         },
-        lifecycleEvent(
+        feedbackEvent(
           deps,
           tenantId.value,
           'marketing',

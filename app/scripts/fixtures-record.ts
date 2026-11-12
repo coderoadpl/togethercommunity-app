@@ -62,11 +62,11 @@ const plan: Scenario[] = [
   { name: 'lesson-locked', principal: 'student.module@together.dev', tenant: 'studio', page: 'lesson-locked', route: '/my/courses/course-js/lessons/lesson-js-variables-2', courseId: '', lessonId: '', spaceId: '', expectedErrors: { [fixtureKey('studentLesson', ['lesson-js-variables-2'])]: 'forbidden' }, extra: async (api) => { await api.studentLesson('lesson-js-variables-2'); await api.studentLesson('lesson-js-dom-1'); await api.studentCourseStructure('course-js'); await api.studentProgress('course-js'); } },
   ...(['start', 'lesson'] as const).map((page) => ({ name: `acme-${page}`, principal: SMOKE_TENANT_MEMBER_EMAIL, tenant: 'acme', page, courseId: 'course-acme', lessonId: 'lesson-acme-intro', spaceId: '' })),
   ...(['start', 'space-feed', 'lesson'] as const).map((page) => ({ name: page, principal: 'student.active@together.dev', tenant: 'studio', page, courseId: 'course-js', lessonId: 'lesson-js-variables-1', spaceId: 'space-studio-community' })),
-  { name: 'account', principal: 'student.active@together.dev', tenant: 'studio', page: 'account', route: '/account', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listMemberBillingOrders(1, 25); await api.getTenantSettings(); await api.getMyErasureRequest(); await api.listAccountSessions(); } },
+  { name: 'account', principal: 'student.active@together.dev', tenant: 'studio', page: 'account', route: '/account', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listMemberBillingOrders(1, 25); await api.getMemberSettings(); await api.getMyErasureRequest(); await api.listAccountSessions(); } },
   { name: 'community', principal: 'student.active@together.dev', tenant: 'studio', page: 'community', route: '/community', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listSpaces(); } },
   { name: 'course', principal: 'student.active@together.dev', tenant: 'studio', page: 'course', route: '/my/courses/course-js', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentProgress('course-js'); await api.studentCourses(); } },
   { name: 'my-courses', principal: 'student.active@together.dev', tenant: 'studio', page: 'my-courses', route: '/my', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourses(); } },
-  { name: 'my-products', principal: 'student.active@together.dev', tenant: 'studio', page: 'my-products', route: '/my/products', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.getTenantSettings(); } },
+  { name: 'my-products', principal: 'student.active@together.dev', tenant: 'studio', page: 'my-products', route: '/my/products', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.getMemberSettings(); } },
   { name: 'product-stub', principal: 'student.active@together.dev', tenant: 'studio', page: 'product-stub', route: '/my/course/product-js-full', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.studentCourses(); } },
   { name: 'search', principal: 'student.active@together.dev', tenant: 'studio', page: 'search', route: '/search', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourseStructure('course-js'); await api.studentCourseStructure('course-react'); await api.searchPosts({ query: 'lesson' }); } },
   { name: 'anon-home-branded', principal: 'anonymous', tenant: 'akademia', page: 'anon-home-branded', route: '/', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); } },
@@ -142,8 +142,11 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
   await call('unreadMessageCount', [], () => api.unreadMessageCount());
   }
-  if (scenario.principal === 'creator@together.dev' || scenario.page === 'lesson' || scenario.page === 'lesson-locked') {
+  if (scenario.principal === 'creator@together.dev') {
     await call('getTenantSettings', [], () => api.getTenantSettings());
+  }
+  if (scenario.page === 'lesson' || scenario.page === 'lesson-locked') {
+    await call('getMemberSettings', [], () => api.getMemberSettings());
   }
   if (scenario.principal === 'creator@together.dev') {
     await call('unreadNotificationCount', [], () => api.unreadNotificationCount());

@@ -52,6 +52,7 @@ import {
   orderListItemSchema,
   salesLinkSchema,
   couponSchema,
+  tenantSettingsSchema,
   type CheckoutSnapshot,
   type CouponCheckoutSession,
   memberSchema,
@@ -947,6 +948,48 @@ const deps = (input: {
     authTrustedProxyHeader: null,
   };
   return appDeps;
+};
+
+const completeSettings = tenantSettingsSchema.parse({
+  name: 'Acme', defaultLanguage: 'en',
+  socialLinks: [{ label: 'Community', url: 'https://example.test/community' }],
+  signInNotice: { enabled: true, text: 'Welcome' },
+  billingPortalUrl: 'https://billing.example.test/portal',
+  supportEmail: 'private@example.test', supportConfigured: false,
+  supportUrl: 'https://example.test/support',
+  videoAutoplayDefault: true, memberVideoAutoplayOverride: true,
+  bunnyStreamLibraryId: '12345', bunnyStreamCdnHostname: 'video.example.test',
+  logoUrl: 'https://example.test/logo.png', logoDarkUrl: 'https://example.test/dark.png',
+  accentColor: '#112233', accentLight: '#445566', faviconUrl: 'https://example.test/icon.png',
+  ogTitle: 'Acme learning', ogDescription: 'Learn with us', ogImageUrl: 'https://example.test/social.png',
+  termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy',
+  defaultHomeSpaceId: 'space-1', directMessagesEnabled: true,
+  analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '123456789',
+  analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true',
+  analyticsLoadWithoutConsent: true,
+  checkoutAppearance: {
+    displayName: 'Acme Checkout', logoUrl: 'https://example.test/logo.png', iconUrl: 'https://example.test/icon.png',
+    backgroundColor: '#112233', buttonColor: '#445566', fontFamily: 'inter', borderStyle: 'rounded',
+  },
+  autoIssueInvoices: true, autoIssueInvoiceScope: 'all', ksefSubmissionMode: 'manual',
+  invoiceVatMode: 'rate', invoiceVatRatePercent: 23,
+  invoiceExemptionBasisKind: 'other', invoiceExemptionBasis: 'Example exemption basis',
+  invoicingProvider: 'ksef', invoiceSellerName: 'Acme Seller', invoiceSellerAddress: '10 Example Street',
+  shippingRates: [{
+    id: 'locker', label: 'Parcel locker', amountCents: 1500, vatRatePercent: 23,
+    carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 3 },
+  }],
+  inpostGeowidgetToken: 'example-geowidget-token',
+});
+
+const memberSettingsProjection = {
+  settings: {
+    billingPortalUrl: 'https://billing.example.test/portal',
+    supportConfigured: true,
+    supportUrl: 'https://example.test/support',
+    videoAutoplayDefault: true,
+    memberVideoAutoplayOverride: true,
+  },
 };
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
@@ -4452,18 +4495,39 @@ describe('purchased product download route', () => {
     expect(JSON.stringify(body)).not.toContain('replacesAssetId');
   });
 
-  it('returns the personalisation limit only for staff tenant settings readers', async () => {
-    const limit = 12_345;
-    const settingsPath = API_PATHS.tenantSettings;
-    const member = await scopedApp('member', { overrides: { personalisationMaxBytes: limit } })
-      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
-    const staff = await scopedApp('staff', { overrides: { personalisationMaxBytes: limit } })
-      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
-
+  it('serializes exactly the member allowlist and preserves the full staff payload', async () => {
+    const base = deps();
+    const overrides = {
+      personalisationMaxBytes: 12_345,
+      tenants: { ...base.tenants, findSettings: async () => completeSettings },
+    };
+    const headers = { host: 'acme.localhost:48730' };
+    const memberApp = scopedApp('member', { overrides });
+    const member = await memberApp.request(API_PATHS.memberSettings, { headers });
     expect(member.status).toBe(200);
-    expect(await member.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: null } });
-    expect(staff.status).toBe(200);
-    expect(await staff.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: limit } });
+    expect(await member.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    const forbidden = await memberApp.request(API_PATHS.tenantSettings, { headers });
+    expect(forbidden.status).toBe(403);
+    expect(await forbidden.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    for (const scope of ['staff', 'owner'] as const) {
+      const app = scopedApp(scope, { overrides });
+      const staff = await app.request(API_PATHS.tenantSettings, { headers });
+      expect(staff.status).toBe(200);
+      expect(await staff.json()).toEqual({ ok: true, data: {
+        settings: { ...completeSettings, supportConfigured: true },
+        personalisationMaxBytes: overrides.personalisationMaxBytes,
+      } });
+      const memberView = await app.request(API_PATHS.memberSettings, { headers });
+      expect(await memberView.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    }
+  });
+
+  it('requires tenant membership for the member settings route', async () => {
+    const response = await scopedApp('none').request(API_PATHS.memberSettings, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(response.status).toBe(403);
   });
 
 });
@@ -8957,6 +9021,22 @@ describe('impersonation HTTP surface', () => {
 
   const cookieOf = (response: Response): string =>
     (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+  it('returns only member settings while impersonating, never the staff projection', async () => {
+    const base = deps();
+    const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async () => completeSettings } });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    const member = await app.request(API_PATHS.memberSettings, { headers: impersonated });
+    expect(member.status).toBe(200);
+    expect(await member.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    const staff = await app.request(API_PATHS.tenantSettings, { headers: impersonated });
+    expect(staff.status).toBe(403);
+    expect(await staff.json()).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+  });
 
   it('opens a read-only member view and blocks every write and direct message', async () => {
     const accountSecurityRead = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));

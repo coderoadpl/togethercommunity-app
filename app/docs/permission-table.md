@@ -320,6 +320,7 @@ no changes
 | `GET /api/tenant-secrets` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant-secrets` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `DELETE /api/tenant-secrets/:key` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/member/settings` | member:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/tenant/settings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/tenant/team` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/team` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
@@ -813,6 +814,7 @@ no changes
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
+| `tenant-settings.ts#getMemberSettings` | member:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-setup-readiness.ts#getTenantSetupReadiness` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-setup-readiness.ts authorization call |
 | `tenant-team.ts#listTenantTeam` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-team.ts authorization call |

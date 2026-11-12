@@ -1157,6 +1157,14 @@ describe('lesson preview commands', () => {
 });
 
 describe('tenant accent settings', () => {
+  it('returns the forbidden exit code when a member reads staff settings', async () => {
+    h.getTenantSettings.mockResolvedValue(err(appError('forbidden', 'Staff role is required')));
+    await run('--json', 'tenant', 'settings');
+    expect(h.getTenantSettings).toHaveBeenCalledExactlyOnceWith();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+
   it('sends both accents and clears only the light override', async () => {
     h.updateTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
     await run('--json', 'tenant', 'settings-set', '--accent-color', '#F5C842', '--accent-light', '#786000');

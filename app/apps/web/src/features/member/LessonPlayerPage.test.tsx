@@ -200,15 +200,13 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: false,
             },
@@ -945,17 +943,15 @@ describe('LessonPlayerPage', () => {
       releaseSettings = resolve;
     });
     server.use(
-      http.get('/api/tenant/settings', async () => {
+      http.get('/api/member/settings', async () => {
         settingsRequested = true;
         await settingsGate;
         return HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: false,
             },
@@ -1184,15 +1180,13 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: true,
             },
@@ -1221,17 +1215,15 @@ describe('LessonPlayerPage', () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
-      http.get('/api/tenant/settings', async () => {
+      http.get('/api/member/settings', async () => {
         settingsRequested = true;
         await settingsGate;
         return HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: true,
               memberVideoAutoplayOverride: false,
             },
@@ -1255,7 +1247,7 @@ describe('LessonPlayerPage', () => {
 
   it('shows a failed autoplay policy request beside the lesson', async () => {
     server.use(
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: false,
           error: { code: 'internal', message: 'boom' },
@@ -1277,15 +1269,13 @@ describe('LessonPlayerPage', () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: true,
               memberVideoAutoplayOverride: false,
             },

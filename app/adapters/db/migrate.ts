@@ -21,6 +21,11 @@ try {
       `Migration journal moved to public.__drizzle_migrations (${String(result.copiedJournalRows)} ${result.copiedJournalRows === 1 ? 'row' : 'rows'} copied from drizzle.__drizzle_migrations)`,
     );
   }
+  if (result.fencedLegacyJournal) {
+    console.log(
+      'Fenced drizzle.__drizzle_migrations with check constraint migration_journal_moved_to_public; an earlier release\'s migrator can no longer record a migration there',
+    );
+  }
   console.log(`Migrations applied (${String(result.applied)} new)`);
 } catch (error) {
   if (!(error instanceof MigrationRefusal)) throw error;

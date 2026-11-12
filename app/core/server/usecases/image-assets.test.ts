@@ -566,7 +566,7 @@ describe('avatar cleanup observability', () => {
   it.each(['jpg', 'webp'])('logs a failed compensation after %s avatar cleanup fails', async (extension) => {
     const { deps, errors } = avatarFixture();
     vi.spyOn(deps.storage, 'delete').mockResolvedValue(err(integrationUnavailable('Storage unavailable')));
-    expect(await completeAvatarUpload(memberCtx, { key: `image-assets/${TENANT_ID}/avatar/${ASSET_ID}.${extension}` }, deps))
+    expect(await completeAvatarUpload(memberCtx, { key: `image-asset-candidates/${TENANT_ID}/avatar/${ASSET_ID}.${extension}` }, deps))
       .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
     expect(errors).toEqual([
       `[avatar] tenant "${TENANT_ID}" could not delete storage object "image-assets/${TENANT_ID}/avatar/${ASSET_ID}.webp": Storage unavailable`,
@@ -596,7 +596,7 @@ describe('avatar cleanup observability', () => {
     vi.spyOn(deps.storage, 'delete')
       .mockResolvedValueOnce(err(integrationUnavailable('Source cleanup failed')))
       .mockRejectedValueOnce(new Error('Unexpected compensation failure'));
-    await expect(completeAvatarUpload(memberCtx, { key: `image-assets/${TENANT_ID}/avatar/${ASSET_ID}.jpg` }, deps))
+    await expect(completeAvatarUpload(memberCtx, { key: `image-asset-candidates/${TENANT_ID}/avatar/${ASSET_ID}.jpg` }, deps))
       .rejects.toThrow('Unexpected compensation failure');
     expect(errors).toEqual([]);
   });

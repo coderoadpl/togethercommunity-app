@@ -61,7 +61,7 @@ Kubernetes overrides `command` so that the two steps run separately.
 | Workload | `command` | Notes |
 |---|---|---|
 | Server Deployment | `["node", "apps/server/src/entry.node.js"]` | Serves HTTP and never migrates. |
-| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`. A second run started while one is in progress waits up to five minutes for the migration lock, then exits non-zero without applying anything. Every refusal exits non-zero with nothing applied; the [migration journal](deployment-environments.md#migration-journal) section lists each message and its recovery. |
+| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`. A second run started while one is in progress waits up to five minutes for the migration lock, then exits non-zero without applying anything. Every refusal prints one line without a stack trace and exits non-zero with nothing applied; the [migration journal](deployment-environments.md#migration-journal) section lists each message and its recovery. |
 
 The migration Job reads `DATABASE_URL`, which points at the migration role, and
 optionally `APP_ENV` for its log line. It reads no other configuration. The
@@ -81,7 +81,10 @@ The first statement is already true where `PUBLIC` keeps its default `USAGE` on
 `public`. Default privileges that the migration role sets for tables in
 `public` cover the journal only when they were set before the journal was
 created. A database moved from an earlier release must be dumped as described
-in [cutover dump](deployment-environments.md#cutover-dump).
+in [cutover dump](deployment-environments.md#cutover-dump). Where a database
+still has the earlier release's `drizzle` schema, the migration role must own
+`drizzle.__drizzle_migrations` until the first run has fenced it, as described
+under [journal fence](deployment-environments.md#journal-fence).
 
 ## Ports
 

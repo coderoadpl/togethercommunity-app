@@ -127,8 +127,9 @@ the transaction. A second runner waits up to five minutes for the lock and
 then fails with `Another migration run held the migration lock for more than
 300000 ms; nothing was applied.` A `statement_timeout` set on the database or
 the role does not shorten that wait; it still applies to the migrations
-themselves. The previous release's migrator does not take this lock, so a
-deployment still starts one migrator at a time.
+themselves. The previous release's migrator does not take this lock; what
+keeps it from applying a migration next to this runner is the
+[journal fence](#journal-fence).
 
 Migration `0105_record_skipped_0080` names `drizzle.__drizzle_migrations`. The
 runner executes that one migration, identified by its tag, against
@@ -137,57 +138,105 @@ recorded for it is the same in every database. Every other migration runs
 exactly as written, so a later migration that cleans up or drops the old table
 acts on the old table.
 
-The runner refuses to start in three cases, each with nothing applied:
+The runner refuses to start in four cases, each with nothing applied. `db:migrate`
+prints the refusal as one line on stderr, without a stack trace, and exits 1;
+any other failure, such as a migration statement that fails, is reported with
+its stack trace.
 
 | Message begins with | Cause | Recovery |
 |---|---|---|
 | `Another migration run held the migration lock` | Another runner held the lock longer than the wait. | Let the other run finish, then run again. |
-| `drizzle.__drizzle_migrations holds <n> rows that public.__drizzle_migrations lacks` | An earlier release's migrator ran after the journal moved. | [Diverged journals](#diverged-journals). |
-| `The database has <n> application tables but no migration journal` | The database was restored or copied without its journal. | See the last paragraph of [upgrade from the drizzle schema](#upgrade-from-the-drizzle-schema). |
+| `drizzle.__drizzle_migrations belongs to <owner>, not to <role>` | The old journal is owned by a role the migration role is not a member of, so the runner cannot fence it. | [Journal fence](#journal-fence). |
+| `drizzle.__drizzle_migrations holds <n> row(s) that public.__drizzle_migrations lacks` | An earlier release's migrator wrote the old journal while it had no fence. | [Diverged journals](#diverged-journals). |
+| `The database has <n> application table(s) but no migration journal` | The database was restored or copied without its journal. | See the last paragraph of [upgrade from the drizzle schema](#upgrade-from-the-drizzle-schema). |
 
 ### Upgrade from the drizzle schema
 
 Earlier releases kept the journal in `drizzle.__drizzle_migrations`. On such a
-database the first run creates `public.__drizzle_migrations` and copies every
-row with its `id`, `hash` and `created_at`, in `id` order, before it applies
-anything, in the same transaction as the migrations. The operator sees
-`Migration journal moved to public.__drizzle_migrations (<n> rows copied from
+database the first run fences the old table (see [journal fence](#journal-fence)),
+creates `public.__drizzle_migrations` and copies every row with its `id`,
+`hash` and `created_at`, in `id` order, before it applies anything, in the same
+transaction as the migrations. The operator sees `Migration journal moved to
+public.__drizzle_migrations (<n> row(s) copied from
 drizzle.__drizzle_migrations)` and then `Migrations applied (<n> new)`; later
 runs print only the second line. A run that dies part-way leaves the database
 as it was and the next run copies again. The `drizzle` schema stays in place;
-later runs only compare its journal with the public one, and dropping it is a
-separate decision that a later migration can make as written.
+later runs only fence its journal when the fence is missing and compare it with
+the public one, and dropping it is a separate decision that a later migration can make as written.
 
 When both tables exist, `public.__drizzle_migrations` is authoritative. The
-public table only appears in the same commit as the complete copy, and every
-later run of this runner records migrations there alone, so the old table can
-only fall behind. Only a previous release's migrator still writes the old
-table; its files are an older part of the chain that the copied rows already
-cover, so it has nothing to apply (see the rollback below). A hotfix that adds
-a migration is therefore cut from this release or a later one, never from an
-older one. Before it applies anything, the runner checks that the old table
-holds no row newer than the newest public row and no hash the public table
-lacks; otherwise it refuses, as described under
-[diverged journals](#diverged-journals).
+public table only appears in the same commit as the complete copy and the
+[journal fence](#journal-fence), and every later run of this runner records
+migrations there alone, so the old table can only fall behind. A hotfix that
+adds a migration is therefore cut from this release or a later one, never from
+an older one: an older release's migrator can no longer record a migration.
+Before it applies anything, the runner checks that the old table holds no row
+newer than the newest public row and no hash the public table lacks; otherwise
+it refuses, as described under [diverged journals](#diverged-journals).
 
 When the database has application tables in `public` but neither journal — a
 database restored or copied without its journal — or an empty public journal,
-the runner refuses with `The database has <n> application tables but no
+the runner refuses with `The database has <n> application table(s) but no
 migration journal, so migration 0000 would run against existing tables.` and
 changes nothing. Recover by restoring the database together with its journal,
 or start again from an empty database. The `vercel-build` pre-check refuses the
 same case earlier with a pointer to [staging](staging.md#troubleshooting).
 
+### Journal fence
+
+An earlier release's migrator takes no lock and records migrations only in
+`drizzle.__drizzle_migrations`; started next to this runner, for example by a
+hosted-platform build of an older branch, it could apply the same migration a
+second time. Every run that finds the old table therefore makes sure it carries
+the check constraint `migration_journal_moved_to_public`, in the same
+transaction as the copy:
+
+```sql
+ALTER TABLE drizzle.__drizzle_migrations
+  ADD CONSTRAINT migration_journal_moved_to_public CHECK (false) NOT VALID;
+```
+
+`NOT VALID` keeps the rows already there; every row inserted afterwards
+violates the constraint. The earlier migrator applies all its pending
+migrations and their journal rows in one transaction, so its first journal
+insert fails and rolls back everything it applied in that run. On a database
+moved before the constraint existed, the next run adds it. Deleting rows from
+the old table still works, so the reconciliation below and a later migration
+that cleans the old table up are unaffected.
+
+What the operator of an earlier release sees after the move:
+
+- With nothing pending (its newest migration is already in the old journal),
+  its migrator succeeds and applies nothing, as before.
+- With a migration pending, its migrator fails and nothing it ran is kept. The
+  error is either the failure of a migration statement whose effect is already
+  in the database (for example `relation "…" already exists` or `column "…" of
+  relation "…" already exists`) or, when the statements succeed, `new row for
+  relation "__drizzle_migrations" violates check constraint
+  "migration_journal_moved_to_public"`. On the hosted platform this fails the
+  build of that deployment. Cut the change from this release or a later one
+  instead.
+
+Adding the constraint needs ownership of the old table: the migration role
+must own it or be a member of the role that does, which holds when the same
+role ran the earlier migrator. Otherwise the runner refuses with
+`drizzle.__drizzle_migrations belongs to <owner>, not to <role>, so this run
+cannot stop an earlier release's migrator from writing to it.` and changes
+nothing. Run the migration Job once as the owner, or have the owner run the
+statement above and run the Job again; with the constraint present the runner
+needs only `USAGE` on schema `drizzle` and `SELECT` on the old table.
+
 ### Diverged journals
 
-An earlier release's migrator that runs after the move, for example a hotfix
-cut from an older commit or an older branch migrated against a shared
-development database, records what it applies only in
+An earlier release's migrator that wrote the old journal while it had no fence,
+for example a hotfix cut from an older commit or an older branch migrated
+against a shared development database, recorded what it applied only in
 `drizzle.__drizzle_migrations`. This runner would then see the same file as
-pending and apply it a second time. It refuses instead:
+pending and apply it a second time. It refuses instead; a refused run keeps
+nothing, so the fence is added by the first run after the reconciliation:
 
 ```text
-drizzle.__drizzle_migrations holds 1 rows that public.__drizzle_migrations lacks, so an earlier release's migrator ran after the journal moved: id 155 (created_at 1790000000000, hash 1a2b3c4d5e6f, is migration 0154_example of this release). Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in docs/deployment-environments.md#diverged-journals.
+drizzle.__drizzle_migrations holds 1 row that public.__drizzle_migrations lacks, so an earlier release's migrator ran after the journal moved: id 155 (created_at 1790000000000, hash 1a2b3c4d5e6f, is migration 0154_example of this release). Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in docs/deployment-environments.md#diverged-journals.
 ```
 
 The message names up to ten rows by `id`, `created_at` and the first twelve
@@ -222,23 +271,54 @@ once the journals agree.
 
 ### Rollback
 
-The previous release reads only `drizzle.__drizzle_migrations`, which keeps
-the rows it held at the upgrade. When its migrator runs after the upgrade it
-issues `CREATE SCHEMA IF NOT EXISTS drizzle`, finds a newest `created_at` at
-least as late as its own last migration and applies nothing; its readiness and
-health counts read the same table and report it as current. Where the
-migration role has `CREATE` on the database, as on the current Neon databases,
-the rollback is therefore safe without intervention. Migrations this release
-applied after the upgrade stay in place, as with any forward-only rollback, and
-remain recorded only in the public journal.
+The previous release reads and writes only `drizzle.__drizzle_migrations`,
+which keeps the rows it held when this release moved the journal; its
+readiness and health counts read the same table. Redeploying the previous
+release is safe only when both of these hold:
 
-Where the role has no `CREATE` on the database, PostgreSQL checks that
-privilege before it checks whether the schema exists, so the previous
-release's migrator fails on its first statement even though the `drizzle`
-schema exists. A database moved there with the cutover dump below also has no
-`drizzle` schema, so the previous release's readiness check never passes on
-it. Do not roll back across this release on such a database; ship a fix
-forward instead.
+- The old journal covers every migration the previous release ships: the
+  previous release had migrated this database to its own last migration before
+  this release moved the journal. Check it as the migration role; the result
+  must be at least the `when` of the last entry in the previous release's
+  `drizzle/meta/_journal.json`:
+
+  ```sql
+  SELECT created_at FROM drizzle.__drizzle_migrations
+  ORDER BY created_at DESC LIMIT 1;
+  ```
+
+- The migration role has `CREATE` on the database, as on the current Neon
+  databases. The previous release's migrator first issues
+  `CREATE SCHEMA IF NOT EXISTS drizzle`, and PostgreSQL checks that privilege
+  before it checks whether the schema exists, so without it the migrator fails
+  on its first statement with `permission denied for database` even though the
+  schema exists.
+
+Then the previous release's migrator applies nothing, the
+[journal fence](#journal-fence) is never reached, and its readiness reports
+the database as current. Migrations this release applied after the move stay
+in place, as with any forward-only rollback, and remain recorded only in the
+public journal.
+
+Every other database is fix-forward only; ship a fix from this release or a
+later one instead of redeploying the previous release:
+
+- A database this runner initialised from empty has no `drizzle` schema. The
+  previous release's migrator, given `CREATE` on the database, creates the
+  schema and an empty old journal, then fails on migration `0000` with
+  `relation "…" already exists`; without `CREATE` it fails with `permission
+  denied for database`. Its readiness answers `503` with `Database migrations
+  are behind this release: 0 of <expected> applied`. The empty old journal it
+  leaves behind gets the fence on the next run of this runner.
+- An older backup restored and then upgraded by this runner keeps the older
+  watermark in the old journal; the migrations this runner applied are recorded
+  only in the public journal. The previous release's migrator sees them as
+  pending and fails, either on a statement whose effect is already there (for
+  example `column "…" of relation "…" already exists`) or on the fence, and
+  keeps nothing. Its readiness answers `503` with `<applied> of <expected>
+  applied`, counting the older watermark.
+- A database moved with the [cutover dump](#cutover-dump) below has no
+  `drizzle` schema, which puts it in the first case.
 
 ### Cutover dump
 

@@ -81,9 +81,12 @@ been disabled. This uses the existing session credential, not the staff order
 verification page. Preserve that success link; there is no separate guest
 order page. Withdrawal stops future sends, not data already delivered to Meta.
 
-The account list returns the latest 100 decisions, ordered by creation time
-and order ID. Older orders remain withdrawable through the original success
-link or the authenticated withdrawal API. Evidence lists likewise cap at 100
+The account list returns at most 100 decisions, with granted, not-withdrawn
+consents first. Within each group, orders sort by creation time descending,
+then order ID descending. Newer denials and withdrawn grants therefore cannot
+hide an older active grant. If active grants alone exceed the bound, omitted
+orders remain withdrawable through the original success link or the authenticated
+withdrawal API; the list has no pagination. Evidence lists likewise cap at 100
 and use recorded time plus transaction ID for stable ordering.
 
 ## Consent and access

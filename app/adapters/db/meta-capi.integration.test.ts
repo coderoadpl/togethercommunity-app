@@ -221,6 +221,30 @@ describe('Meta privacy and failure isolation', () => {
   });
 });
 
+it('keeps an older active grant withdrawable ahead of more than 100 newer decisions', async () => {
+  const access = await memberOrder('activeconsents');
+  const repo = repository();
+  await repo.decide('workspace', access, async () => ok({ decision: 'granted', capture }));
+  const withdrawnAccess = await makeOrder('withdrawnconsent', 'workspace', 'activeconsents', 'activeconsents');
+  await repo.decide('workspace', withdrawnAccess, async () => ok({ decision: 'granted', capture }));
+  await repo.decide('workspace', withdrawnAccess, async () => ok({ decision: 'withdrawn', capture }));
+  const ids = Array.from({ length: 101 }, (_, index) => `newdenial${String(index).padStart(3, '0')}`);
+  await database.db.insert(orders).values(ids.map((id) => ({ id, tenantId: 'workspace', memberId: 'activeconsents', productId: 'activeconsents',
+    kind: 'one_time' as const, status: 'paid' as const, amountCents: 100, currency: 'PLN', provider: 'stripe' as const,
+    providerObjectIds: {}, createdAt: '2026-11-02T10:00:00.000Z', metaCapiConsent: 'denied' as const, metaCapiConsentAt: now })));
+  const consents = await repo.listMemberConsents('workspace', 'activeconsents');
+  expect(consents).toHaveLength(100);
+  expect(consents.map(({ orderId }) => orderId)).toEqual(['activeconsents', ...[...ids].reverse().slice(0, 99)]);
+  expect(consents[0]).toMatchObject({ consent: 'granted', withdrawnAt: null });
+  const orderId = consents[0]?.orderId;
+  if (!orderId) throw new Error('Missing active consent');
+  expect(await repo.decide('workspace', { orderId, memberId: 'activeconsents' }, async () => ok({ decision: 'withdrawn', capture })))
+    .toEqual(ok({ consent: 'granted', withdrawnAt: now }));
+  expect((await repo.findOrder('workspace', access))?.consent.withdrawnAt).toBe(now);
+  expect(await database.db.select().from(metaCapiOutbox).where(eq(metaCapiOutbox.orderId, orderId))).toEqual([]);
+  expect((await repo.listMemberConsents('workspace', 'activeconsents')).map((row) => row.orderId)).toEqual([...ids].reverse().slice(0, 100));
+});
+
 it('normalizes offset timestamps and applies stable bounded event and consent ordering', async () => {
   const access = await memberOrder('lists');
   const repo = repository();

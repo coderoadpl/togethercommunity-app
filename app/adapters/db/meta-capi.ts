@@ -114,6 +114,7 @@ export const createMetaCapiRepository = (
     listMemberConsents: async (tenantId, memberId) => protectIdentifiers(async () => (await db.select({ orderId: orders.id, consent: orders.metaCapiConsent,
       withdrawnAt: orders.metaCapiConsentWithdrawnAt, consentAt: orders.metaCapiConsentAt }).from(orders)
       .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), ne(orders.metaCapiConsent, 'undecided')))
-      .orderBy(desc(orders.createdAt), desc(orders.id)).limit(100)).map((row) => ({ ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt) }))),
+      .orderBy(desc(sql`(${orders.metaCapiConsent} = 'granted' AND ${orders.metaCapiConsentWithdrawnAt} IS NULL)`), desc(orders.createdAt), desc(orders.id))
+      .limit(100)).map((row) => ({ ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt) }))),
   };
 };

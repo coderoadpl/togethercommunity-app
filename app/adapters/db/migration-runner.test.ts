@@ -205,6 +205,19 @@ const runtimeCounts = async (url: string, poolOptions: pg.PoolConfig = {}): Prom
   }
 };
 
+const waitForBackend = async (url: string, condition: string): Promise<void> => {
+  await withClient(url, async (client) => {
+    const deadline = Date.now() + 30_000;
+    while (
+      (await client.query(`select 1 from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() and ${condition}`))
+        .rowCount === 0
+    ) {
+      if (Date.now() > deadline) throw new Error(`No backend matched ${condition}`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  });
+};
+
 const chainRows = (): Array<Pick<JournalRow, 'hash' | 'created_at'>> =>
   migrations.map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) }));
 
@@ -319,30 +332,84 @@ describe('migration runner', () => {
     }, { allowCreate: true });
   }, 120_000);
 
-  it('reads only the public journal when both journals exist', async () => {
-    await withRestrictedDatabase('together_runner_both', async (database) => {
+  it('runs a later migration that names the previous journal as written', async () => {
+    await withRestrictedDatabase('together_runner_names_legacy', async (database) => {
       await migrateWithPreviousRelease(database.url, migrationFolder(100));
       await revokeCreate(database);
-      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
-        .resolves.toEqual({ applied: expected - 100, copiedJournalRows: 100 });
+      const cleanup = migrationFolder(expected, [{
+        tag: `${String(expected).padStart(4, '0')}_runner_legacy_cleanup`,
+        sql: [
+          'DELETE FROM drizzle.__drizzle_migrations;',
+          "CREATE TABLE runner_probe (note text DEFAULT 'drizzle.__drizzle_migrations');",
+        ].join('\n--> statement-breakpoint\n'),
+      }]);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: cleanup }))
+        .resolves.toEqual({ applied: expected - 99, copiedJournalRows: 100 });
+
+      expect(await journalRows(database.url, 'drizzle')).toEqual([]);
+      expect(await journalRows(database.url, 'public')).toHaveLength(expected + 1);
+      expect(await withClient(database.url, async (client) =>
+        (await client.query<{ value: string }>(
+          "select pg_get_expr(adbin, adrelid) as value from pg_attrdef where adrelid = 'public.runner_probe'::regclass",
+        )).rows[0]?.value)).toBe("'drizzle.__drizzle_migrations'::text");
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: cleanup }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+    }, { allowCreate: true });
+  }, 120_000);
+
+  it('refuses to migrate when the previous journal holds rows the public journal lacks', async () => {
+    await withRestrictedDatabase('together_runner_diverged', async (database) => {
+      await migrateWithPreviousRelease(database.url, migrationFolder(100));
+      await revokeCreate(database);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: migrationFolder(100) }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: 100 });
+      await withClient(database.adminUrl, async (client) => {
+        await client.query(`GRANT CREATE ON DATABASE ${pg.escapeIdentifier(database.name)} TO ${pg.escapeIdentifier(roleName)}`);
+      });
+      const hotfix = migrationFolder(100, [{
+        tag: '0100_runner_hotfix',
+        sql: 'CREATE TABLE IF NOT EXISTS runner_probe (id integer);\n--> statement-breakpoint\nINSERT INTO runner_probe VALUES (1);',
+      }]);
+      await migrateWithPreviousRelease(database.url, hotfix);
+      await revokeCreate(database);
+      const publicRows = await journalRows(database.url, 'public');
+      const hotfixRow = (await journalRows(database.url, 'drizzle')).at(-1);
+      if (hotfixRow === undefined) throw new Error('The previous release recorded no hotfix row');
+      const hotfixHash = readMigrationFiles({ migrationsFolder: hotfix }).at(-1)?.hash;
+      expect(hotfixRow.hash).toBe(hotfixHash);
+      const probeRows = async (): Promise<number | undefined> =>
+        withClient(database.url, async (client) =>
+          (await client.query<{ count: number }>('select count(*)::int as count from runner_probe')).rows[0]?.count);
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: hotfix }))
+        .rejects.toThrow(
+          `drizzle.__drizzle_migrations holds 1 rows that public.__drizzle_migrations lacks, so an earlier release's migrator ran after the journal moved: id ${String(hotfixRow.id)} (created_at ${hotfixRow.created_at}, hash ${hotfixRow.hash.slice(0, 12)}, is migration 0100_runner_hotfix of this release). Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in docs/deployment-environments.md#diverged-journals.`,
+        );
+      expect(await journalRows(database.url, 'public')).toEqual(publicRows);
+      expect(await probeRows()).toBe(1);
+
       await withClient(database.url, async (client) => {
         await client.query(
-          "insert into drizzle.__drizzle_migrations (hash, created_at) values ('written-by-a-previous-release', 9999999999999)",
+          'INSERT INTO public.__drizzle_migrations (hash, created_at) SELECT hash, created_at FROM drizzle.__drizzle_migrations WHERE id IN ($1)',
+          [hotfixRow.id],
+        );
+        await client.query(
+          "insert into drizzle.__drizzle_migrations (hash, created_at) values ('written-by-another-branch', 1)",
         );
       });
-      const legacyRows = await journalRows(database.url, 'drizzle');
-      const publicRows = await journalRows(database.url, 'public');
+      const foreignId = (await journalRows(database.url, 'drizzle')).at(-1)?.id;
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: hotfix }))
+        .rejects.toThrow(
+          `id ${String(foreignId)} (created_at 1, hash written-by-a, matches no migration of this release)`,
+        );
 
-      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+      await withClient(database.url, async (client) => {
+        await client.query('DELETE FROM drizzle.__drizzle_migrations WHERE id IN ($1)', [foreignId]);
+      });
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: hotfix }))
         .resolves.toEqual({ applied: 0, copiedJournalRows: null });
-      const next = migrationFolder(expected, [
-        { tag: `${String(expected).padStart(4, '0')}_runner_probe`, sql: 'CREATE TABLE runner_probe (id integer);' },
-      ]);
-      await expect(runMigrations({ connectionString: database.url, migrationsFolder: next }))
-        .resolves.toEqual({ applied: 1, copiedJournalRows: null });
-
-      expect((await journalRows(database.url, 'public')).slice(0, -1)).toEqual(publicRows);
-      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await probeRows()).toBe(1);
     }, { allowCreate: true });
   }, 120_000);
 
@@ -421,6 +488,62 @@ describe('migration runner', () => {
           .rejects.toThrow(
             'Another migration run held the migration lock for more than 300 ms; nothing was applied. Run one migrator at a time.',
           );
+        await holder.query('ROLLBACK');
+      });
+      expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
+    });
+  }, 60_000);
+
+  it.each(['repeatable read', 'serializable'])(
+    'lets a runner that waited for the lock see what the first one committed under a %s default',
+    async (isolation) => {
+      await withRestrictedDatabase('together_runner_isolation', async (database) => {
+        await runMigrations({ connectionString: database.url, migrationsFolder: migrationFolder(1) });
+        await withClient(database.adminUrl, async (client) => {
+          await client.query(
+            `ALTER DATABASE ${pg.escapeIdentifier(database.name)} SET default_transaction_isolation = ${pg.escapeLiteral(isolation)}`,
+          );
+        });
+        const slow = migrationFolder(1, [{
+          tag: '0001_runner_probe',
+          sql: [
+            'CREATE TABLE IF NOT EXISTS runner_probe (id integer);',
+            'INSERT INTO runner_probe VALUES (1);',
+            'SELECT pg_sleep(3);',
+          ].join('\n--> statement-breakpoint\n'),
+        }]);
+
+        const first = runMigrations({ connectionString: database.url, migrationsFolder: slow });
+        await waitForBackend(database.adminUrl, "query like '%SELECT pg_sleep(3)%'");
+        const second = runMigrations({ connectionString: database.url, migrationsFolder: slow });
+        await waitForBackend(database.adminUrl, "wait_event_type = 'Lock' and wait_event = 'advisory'");
+        const results = await Promise.all([first, second]);
+
+        expect(results.map((result) => result.applied)).toEqual([1, 0]);
+        expect(await withClient(database.url, async (client) =>
+          (await client.query<{ count: number }>('select count(*)::int as count from runner_probe')).rows[0]?.count))
+          .toBe(1);
+        expect(await journalRows(database.url, 'public')).toHaveLength(2);
+      });
+    },
+    60_000,
+  );
+
+  it('keeps the documented lock message when the database sets a shorter statement timeout', async () => {
+    await withRestrictedDatabase('together_runner_statement_timeout', async (database) => {
+      await withClient(database.adminUrl, async (client) => {
+        await client.query(`ALTER DATABASE ${pg.escapeIdentifier(database.name)} SET statement_timeout = '200ms'`);
+      });
+      await withClient(database.adminUrl, async (holder) => {
+        await holder.query('BEGIN');
+        await holder.query("select pg_advisory_xact_lock(hashtextextended('together:migrations', 0))");
+
+        const started = Date.now();
+        await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle', lockWaitMs: 1000 }))
+          .rejects.toThrow(
+            'Another migration run held the migration lock for more than 1000 ms; nothing was applied. Run one migrator at a time.',
+          );
+        expect(Date.now() - started).toBeGreaterThanOrEqual(950);
         await holder.query('ROLLBACK');
       });
       expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);

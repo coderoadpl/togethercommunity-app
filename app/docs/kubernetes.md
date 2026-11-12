@@ -61,7 +61,7 @@ Kubernetes overrides `command` so that the two steps run separately.
 | Workload | `command` | Notes |
 |---|---|---|
 | Server Deployment | `["node", "apps/server/src/entry.node.js"]` | Serves HTTP and never migrates. |
-| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`. A second run started while one is in progress waits up to five minutes for the migration lock, then exits non-zero without applying anything. |
+| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`. A second run started while one is in progress waits up to five minutes for the migration lock, then exits non-zero without applying anything. Every refusal exits non-zero with nothing applied; the [migration journal](deployment-environments.md#migration-journal) section lists each message and its recovery. |
 
 The migration Job reads `DATABASE_URL`, which points at the migration role, and
 optionally `APP_ENV` for its log line. It reads no other configuration. The

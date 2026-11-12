@@ -115,17 +115,35 @@ with drizzle-orm's columns (`id`, `hash`, `created_at`). The runner never
 creates a schema, so a role that owns schema `public` without `CREATE` on the
 database can migrate.
 
-A run is one transaction. It takes a transaction-scoped advisory lock, reads the
-journal only after the lock is granted, and applies every pending migration
-before it commits, so a failed migration leaves the database and its journal as
-they were. A second runner waits up to five minutes for the lock and then fails
-with `Another migration run held the migration lock for more than 300000 ms;
-nothing was applied.` The previous release's migrator does not take this lock,
-so a deployment still starts one migrator at a time.
+A run is one `READ COMMITTED` transaction, whatever
+`default_transaction_isolation` the database or role sets. It takes a
+transaction-scoped advisory lock and reads the journal only after the lock is
+granted; at that isolation level every statement sees what was committed before
+it started, so a runner that waited for the lock sees everything the previous
+run committed. It applies every pending migration before it commits, so a
+failed migration leaves the database and its journal as they were. The lock
+works through a transaction-mode connection pooler, because it never outlives
+the transaction. A second runner waits up to five minutes for the lock and
+then fails with `Another migration run held the migration lock for more than
+300000 ms; nothing was applied.` A `statement_timeout` set on the database or
+the role does not shorten that wait; it still applies to the migrations
+themselves. The previous release's migrator does not take this lock, so a
+deployment still starts one migrator at a time.
 
 Migration `0105_record_skipped_0080` names `drizzle.__drizzle_migrations`. The
-runner executes it against `public.__drizzle_migrations`; the file itself is
-unchanged, so the hash recorded for it is the same in every database.
+runner executes that one migration, identified by its tag, against
+`public.__drizzle_migrations`; the file itself is unchanged, so the hash
+recorded for it is the same in every database. Every other migration runs
+exactly as written, so a later migration that cleans up or drops the old table
+acts on the old table.
+
+The runner refuses to start in three cases, each with nothing applied:
+
+| Message begins with | Cause | Recovery |
+|---|---|---|
+| `Another migration run held the migration lock` | Another runner held the lock longer than the wait. | Let the other run finish, then run again. |
+| `drizzle.__drizzle_migrations holds <n> rows that public.__drizzle_migrations lacks` | An earlier release's migrator ran after the journal moved. | [Diverged journals](#diverged-journals). |
+| `The database has <n> application tables but no migration journal` | The database was restored or copied without its journal. | See the last paragraph of [upgrade from the drizzle schema](#upgrade-from-the-drizzle-schema). |
 
 ### Upgrade from the drizzle schema
 
@@ -136,17 +154,21 @@ anything, in the same transaction as the migrations. The operator sees
 `Migration journal moved to public.__drizzle_migrations (<n> rows copied from
 drizzle.__drizzle_migrations)` and then `Migrations applied (<n> new)`; later
 runs print only the second line. A run that dies part-way leaves the database
-as it was and the next run copies again. The `drizzle` schema stays in place and
-is not read again; dropping it is a separate decision.
+as it was and the next run copies again. The `drizzle` schema stays in place;
+later runs only compare its journal with the public one, and dropping it is a
+separate decision that a later migration can make as written.
 
-When both tables exist, `public.__drizzle_migrations` is authoritative and the
-old table is ignored. No migration can be lost that way: the public table only
-appears in the same commit as the complete copy, and every later run of this
-runner records migrations there alone. Only a previous release's migrator still
-writes the old table, and its files are an older part of the chain that the
-copied rows already cover, so it has nothing to apply (see the rollback below).
-For the same reason a hotfix that adds a migration is cut from this release or
-a later one, never from an older one.
+When both tables exist, `public.__drizzle_migrations` is authoritative. The
+public table only appears in the same commit as the complete copy, and every
+later run of this runner records migrations there alone, so the old table can
+only fall behind. Only a previous release's migrator still writes the old
+table; its files are an older part of the chain that the copied rows already
+cover, so it has nothing to apply (see the rollback below). A hotfix that adds
+a migration is therefore cut from this release or a later one, never from an
+older one. Before it applies anything, the runner checks that the old table
+holds no row newer than the newest public row and no hash the public table
+lacks; otherwise it refuses, as described under
+[diverged journals](#diverged-journals).
 
 When the database has application tables in `public` but neither journal — a
 database restored or copied without its journal — or an empty public journal,
@@ -155,6 +177,48 @@ migration journal, so migration 0000 would run against existing tables.` and
 changes nothing. Recover by restoring the database together with its journal,
 or start again from an empty database. The `vercel-build` pre-check refuses the
 same case earlier with a pointer to [staging](staging.md#troubleshooting).
+
+### Diverged journals
+
+An earlier release's migrator that runs after the move, for example a hotfix
+cut from an older commit or an older branch migrated against a shared
+development database, records what it applies only in
+`drizzle.__drizzle_migrations`. This runner would then see the same file as
+pending and apply it a second time. It refuses instead:
+
+```text
+drizzle.__drizzle_migrations holds 1 rows that public.__drizzle_migrations lacks, so an earlier release's migrator ran after the journal moved: id 155 (created_at 1790000000000, hash 1a2b3c4d5e6f, is migration 0154_example of this release). Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in docs/deployment-environments.md#diverged-journals.
+```
+
+The message names up to ten rows by `id`, `created_at` and the first twelve
+characters of the hash, and says for each whether its hash belongs to a
+migration of the release being migrated. Reconcile as the migration role, with
+the Job stopped:
+
+1. A row that `is migration <tag> of this release` was applied from the same
+   file. When every migration of this release that is older than that row is
+   already in `public.__drizzle_migrations`, record it there and run the Job
+   again:
+
+   ```sql
+   INSERT INTO public.__drizzle_migrations (hash, created_at)
+   SELECT hash, created_at FROM drizzle.__drizzle_migrations WHERE id IN (<ids>);
+   ```
+
+   When an older migration of this release is still missing from the public
+   journal, recording the row would make the runner skip it, because the
+   pending rule compares timestamps; treat the row as in step 2 instead.
+2. A row that `matches no migration of this release` records a change this
+   release does not know. Either ship that migration file unchanged in the
+   release and continue with step 1, or undo its changes by hand (or restore
+   the backup taken before it ran), then delete the row:
+
+   ```sql
+   DELETE FROM drizzle.__drizzle_migrations WHERE id IN (<ids>);
+   ```
+
+Run the Job again after either step; it prints `Migrations applied (<n> new)`
+once the journals agree.
 
 ### Rollback
 

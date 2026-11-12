@@ -258,6 +258,11 @@ export default tseslint.config(
           pattern: 'apps/server/src/entry.vercel.ts',
           mode: 'full',
         },
+        {
+          type: 'platform-entry-test',
+          pattern: 'apps/server/src/entry.vercel.test.ts',
+          mode: 'full',
+        },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-story-module-test', pattern: 'apps/web/src/stories/stories.test.tsx', mode: 'full' },
         { type: 'visual-support', pattern: ['scripts/story-clock.ts', 'scripts/visual-request-policy.ts'], mode: 'full' },
@@ -373,6 +378,10 @@ export default tseslint.config(
             {
               from: ['platform-entry'],
               allow: ['app-server'],
+            },
+            {
+              from: ['platform-entry-test'],
+              allow: ['platform-entry', 'app-server'],
             },
             {
               from: ['app-server'],
@@ -605,6 +614,10 @@ export default tseslint.config(
             {
               from: ['platform-entry'],
               allow: ['@hono/node-server', '@vercel/functions', 'node:http'],
+            },
+            {
+              from: ['platform-entry-test'],
+              allow: ['vitest'],
             },
             {
               from: ['app-server'],

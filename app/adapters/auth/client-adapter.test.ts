@@ -385,6 +385,44 @@ describe('CLI password change', () => {
 });
 
 describe('two-factor and passkey client semantics', () => {
+  it.each([
+    { payload: { twoFactorRedirect: true }, target: 'https://studio.example/login?twoFactor=required' },
+    { payload: { token: 'session-token' }, target: 'https://studio.example/my/courses' },
+  ])('navigates Google One Tap to $target', async ({ payload, target }) => {
+    const assign = vi.fn();
+    const prompt = vi.fn();
+    const initialize = vi.fn<(input: {
+      client_id: string;
+      callback(response: { credential: string }): void;
+    }) => void>();
+    vi.stubGlobal('window', {
+      location: { origin: 'https://studio.example', assign },
+      google: { accounts: { id: { initialize, prompt } } },
+    });
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const auth = createBetterAuthClientAdapter('');
+    const callbackURL = 'https://studio.example/my/courses';
+
+    expect(await auth.promptGoogleOneTap({ clientId: 'google-client-id', callbackURL }))
+      .toEqual({ ok: true, value: undefined });
+    expect(prompt).toHaveBeenCalledOnce();
+    const input = initialize.mock.calls[0]?.[0];
+    expect(input?.client_id).toBe('google-client-id');
+    input?.callback({ credential: 'google-id-token' });
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith(target));
+    expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/auth/one-tap/callback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'google-id-token', callbackURL }),
+      credentials: 'include',
+    });
+  });
+
   it('maps a browser password challenge without treating it as a session', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ twoFactorRedirect: true }), {

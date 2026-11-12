@@ -350,6 +350,7 @@ const additionalTwoFactorPaths = new Set([
   '/sign-in/social',
   '/magic-link/verify',
   '/passkey/verify-authentication',
+  '/one-tap/callback',
 ]);
 
 const magicLinkTeamProofSchema = z.object({ userId: z.string(), origin: z.string().url() });

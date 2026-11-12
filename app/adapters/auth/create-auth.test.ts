@@ -61,6 +61,7 @@ describe('ASVS authentication policy', () => {
     '/magic-link/verify',
     '/passkey/verify-authentication',
     '/sign-in/social',
+    '/one-tap/callback',
   ])('requires the existing two-factor plugin after %s', (path) => {
     expect(isAdditionalTwoFactorPath(path)).toBe(true);
   });
@@ -708,7 +709,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     expect(completed.headers.get('set-auth-token')).not.toBeNull();
   });
 
-  it.each(['/callback/google', '/passkey/verify-authentication', '/sign-in/social'])(
+  it.each(['/callback/google', '/passkey/verify-authentication', '/sign-in/social', '/one-tap/callback'])(
     'extends the two-factor after hook to %s when the route supplies a new session',
     async (path) => {
       const { auth } = buildAuth();

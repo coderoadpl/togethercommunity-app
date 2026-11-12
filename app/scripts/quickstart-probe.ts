@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
 import { assertSafeE2eDatabaseReset } from './e2e-config.js';
-import { pullImages } from './docker-pull.js';
+import { dockerfileBaseImages, pullImages } from './docker-pull.js';
 import { delay, ephemeralPort, rootDir, run, tsxBin } from './server-harness.js';
 
 const PROBE_DB = uniqueTestDatabaseName('together_quickstart_test');
@@ -256,14 +256,7 @@ try {
   for (const service of Object.values(resolvedCompose.services)) {
     if (service.build === undefined && service.image !== undefined) images.add(service.image);
   }
-  const stages = new Set<string>();
-  const dockerfile = readFileSync(join(cloneApp, 'Dockerfile'), 'utf8');
-  for (const match of dockerfile.matchAll(/^\s*FROM\s+(?<image>\S+)(?:\s+AS\s+(?<stage>\S+))?/gimu)) {
-    const image = match.groups?.['image'];
-    const stage = match.groups?.['stage'];
-    if (image !== undefined && !stages.has(image.toLowerCase())) images.add(image);
-    if (stage !== undefined) stages.add(stage.toLowerCase());
-  }
+  for (const image of dockerfileBaseImages(readFileSync(join(cloneApp, 'Dockerfile'), 'utf8'))) images.add(image);
   console.log('quickstart:probe: pulling stack and build images...');
   await pullImages([...images]);
 

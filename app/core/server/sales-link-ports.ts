@@ -1,5 +1,5 @@
 import type { AppError, Result, SalesLink } from '#core/domain/index.js';
-import type { Clock, IdGenerator, ProductPriceRepository, ProductBatchReader, TenantRepository } from './ports.js';
+import type { Clock, IdGenerator, ProductPriceRepository, ProductBatchReader, ProductRepository, TenantRepository } from './ports.js';
 import type { StockRepository } from './stock-ports.js';
 
 export interface SalesLinkRepository {
@@ -11,7 +11,7 @@ export interface SalesLinkRepository {
 }
 export interface SalesLinkDeps {
   salesLinks: SalesLinkRepository;
-  products: Pick<ProductBatchReader, 'findByIds'>;
+  products: Pick<ProductBatchReader, 'findByIds'> & Pick<ProductRepository, 'listPublishedByTenant'>;
   prices: Pick<ProductPriceRepository, 'listActiveByProducts'>;
   tenants: Pick<TenantRepository, 'findSettings'>;
   clock: Clock;

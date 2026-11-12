@@ -1,3 +1,4 @@
+import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/domain/index.js';
 import { createHash } from 'node:crypto';
 import { publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
@@ -530,7 +531,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.ok) return respondPublic(tenant);
     if (tenant.value === null) return respondPublic(err(tenantNotFound()));
     if (deps.salesLinkManagement === undefined) return respondPublic(err(internal('Sales links are unavailable')));
-    const result = await getPublicSalesLink(tenant.value.tenant.id, c.req.param('slug') ?? '', deps.salesLinkManagement);
+    const result = await getPublicSalesLink(tenant.value.tenant.id, c.req.param('slug') ?? '', deps.salesLinkManagement, parseSalesLinkVariantParams(c.req.queries(SALES_LINK_VARIANT_PARAM) ?? []));
     if (!result.ok) return respondPublic(result);
     const workspace = tenant.value.tenant;
     const contexts = await Promise.all(result.value.lines.map(({ productId: productRef }) => getPublicOffer(workspace, {

@@ -212,3 +212,15 @@ it('includes the saved click id and capture time only in configured paid analyti
     ok: true, value: { status: 'paid' },
   });
 });
+
+it('reports the chosen first variant in purchase analytics while retaining the saved offer slug', async () => {
+  const deps = harness([{ ...order, productId: 'white', salesLinkId: 'link-1', amountCents: 2100, lines: [
+    { productId: 'white', name: 'White edition', productType: 'physical', grossCents: 2100,
+      netCents: 2000, vatRate: 5, vatCents: 100, vatExemptionBasis: null, issuedCount: 0 },
+  ] }], analyticsSettings);
+  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({ ok: true, value: {
+    status: 'paid', analytics: { offerSlug: 'workbook', value: 21, items: [{ itemId: 'white', itemName: 'White edition', price: 21 }] },
+  } });
+  expect(deps.salesLinks.findById).toHaveBeenCalledWith('tenant-1', 'link-1');
+  expect(deps.products.findById).not.toHaveBeenCalled();
+});

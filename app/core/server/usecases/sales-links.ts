@@ -1,9 +1,9 @@
-import { err, firstSoldOutProductId, ok, notFound, validation, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkAvailable, resolveProductVat, splitProductGross, type SalesLink, type Product, type ProductPrice, type Result, type AppError } from '#core/domain/index.js';
+import { err, productVariants, publicProductStock, firstSoldOutProductId, ok, notFound, validation, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkAvailable, resolveProductVat, splitProductGross, type SalesLink, type Product, type ProductPrice, type Result, type AppError, type SalesLinkVariantSelection } from '#core/domain/index.js';
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
 import { renderPostContent } from '../post-content.js';
-import { resolveSalesLinkPrices } from './checkout-selection.js';
+import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants } from './checkout-selection.js';
 import { toPublicCompliance } from './public-offer.js';
 
 const validatedProducts = async (tenantId: string, link: Pick<SalesLink, 'productIds' | 'active'>, deps: SalesLinkDeps): Promise<Result<{ products: Product[]; prices: ProductPrice[] }, AppError>> => {
@@ -63,28 +63,39 @@ export const deleteSalesLink = async (ctx: Ctx, input: { id: string }, deps: Sal
   const deleted = await deps.salesLinks.delete(tenant.value, input.id, deps.clock.nowIso());
   return deleted.ok ? ok({ deleted: true as const }) : deleted;
 };
-const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps: SalesLinkDeps) => {
+const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps: SalesLinkDeps, selections?: SalesLinkVariantSelection[]) => {
   if (!salesLinkAvailable(salesLink, deps.clock.nowIso())) return err(notFound('Sales link was not found'));
   const products = await validatedProducts(tenantId, salesLink, deps);
   if (!products.ok) return err(notFound('Sales link was not found'));
   const settings = await deps.tenants.findSettings(tenantId);
-  const lines = products.value.products.flatMap((product) => {
-    const price = products.value.prices.find((item) => item.productId === product.id);
-    const vat = resolveProductVat(product, settings);
-    if (vat === null || price === undefined) return [];
-    const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
-    return [{ productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
-  });
+  const bases = products.value.products;
   const first = products.value.prices[0];
-  if (lines.length !== products.value.products.length || first === undefined) return err(notFound('Sales link was not found'));
-  const stock = await deps.stock?.listByProducts(tenantId, salesLink.productIds) ?? [];
-  const soldOut = firstSoldOutProductId(salesLink.productIds, stock) !== null;
+  if (first === undefined) return err(notFound('Sales link was not found'));
+  const published = selections === undefined ? [] : await deps.products.listPublishedByTenant(tenantId);
+  const candidates = published.filter((product) => bases.some((base) => base.variantGroup != null && base.variantGroup === product.variantGroup));
+  const prices = candidates.length === 0 ? products.value.prices : await deps.prices.listActiveByProducts(tenantId, [...new Set([...salesLink.productIds, ...candidates.map((product) => product.id)])]);
+  const siblings = (base: Product) => published.filter((candidate) => candidate.id === base.id || salesLinkVariantEligible(base, candidate, prices, first.currency, settings));
+  const selected = selectSalesLinkVariants(bases, selections ?? [], (base, id) => siblings(base).find((product) => product.id === id), false);
+  if (!selected.ok) return selected;
+  const stockIds = [...new Set([...selected.value.map((product) => product.id), ...bases.flatMap((base) => siblings(base).map((product) => product.id))])];
+  const stock = await deps.stock?.listByProducts(tenantId, stockIds) ?? [];
+  const soldOutIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
+  const lines = selected.value.flatMap((product, index) => {
+    const base = bases[index];
+    const price = prices.find((item) => item.productId === product.id && item.active && item.kind === 'one_time' && item.imported !== true);
+    const vat = resolveProductVat(product, settings);
+    if (vat === null || price === undefined || base === undefined) return [];
+    const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
+    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), soldOutIds), productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
+  });
+  if (lines.length !== products.value.products.length) return err(notFound('Sales link was not found'));
+  const soldOut = firstSoldOutProductId(selected.value.map((product) => product.id), stock) !== null;
   return ok({ salesLink: { slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0), soldOut });
 };
 
-export const getPublicSalesLink = async (tenantId: string, slug: string, deps: SalesLinkDeps) => {
+export const getPublicSalesLink = async (tenantId: string, slug: string, deps: SalesLinkDeps, selections: SalesLinkVariantSelection[] = []) => {
   const salesLink = await deps.salesLinks.findBySlug(tenantId, slug);
-  return salesLink === null ? err(notFound('Sales link was not found')) : buildPublicSalesLink(tenantId, salesLink, deps);
+  return salesLink === null ? err(notFound('Sales link was not found')) : buildPublicSalesLink(tenantId, salesLink, deps, selections);
 };
 
 export const listPublicSalesLinks = async (tenantId: string, deps: SalesLinkDeps, preloaded?: SalesLink[]) => {

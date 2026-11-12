@@ -1,3 +1,5 @@
+import { createSignedSnsNotification } from '../crypto/sns-test-fixture.js';
+import { marketingSnsJsonValue } from '#core/domain/marketing-sns-inbox.js';
 import type { MarketingDeliveryTransaction } from '#core/server/marketing-delivery-ports.js';
 import { createContentHash } from '../crypto/content-hash.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +9,7 @@ import { dispatchMarketingOutbox } from '#core/server/usecases/marketing-dispatc
 import { listMarketingSnsInbox, processMarketingSnsInbox, recordVerifiedMarketingSnsEnvelope, retryMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 
 import { createDeliveryFixture, deliveryCtx, deliveryWebhookCtx, deliveryWorkerCtx, DELIVERY_NOW } from './marketing-delivery-test-fixture.js';
-import { campaignSends, emailEvents, marketingSnsInbox } from './schema.js';
+import { campaignSends, emailEvents, marketingSnsInbox, suppressions } from './schema.js';
 
 let fixture: Awaited<ReturnType<typeof createDeliveryFixture>> | undefined;
 afterEach(async () => { await fixture?.close(); });
@@ -20,7 +22,7 @@ const receipt = (id: string, type = 'Delivery') => {
 const worker = { workerId: 'worker', deadlineAt: '2026-09-09T10:00:50.000Z', maxEvents: 10 };
 
 describe('durable SNS inbox', () => {
-  it('retains exact verified content, deduplicates receipt IDs, and rejects conflicting content or tenants', async () => {
+  it('retains canonical verified content, deduplicates receipt IDs, and rejects conflicting content or tenants', async () => {
     fixture = await createDeliveryFixture();
     const input = receipt('sns-1');
     expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), input, fixture.deps)).ok).toBe(true);
@@ -29,7 +31,46 @@ describe('durable SNS inbox', () => {
     expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx('delivery-b'), input, fixture.deps)).ok).toBe(false);
     const rows = await fixture.db.select().from(marketingSnsInbox);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.rawBody).toBe(input.rawBody);
+    expect(marketingSnsJsonValue(rows[0]?.rawBody ?? '')).toEqual({ Type: input.envelope.type, MessageId: input.envelope.messageId,
+      TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message });
+  }, 60000);
+
+  it.each([false, true])('rejects unsigned feedback extensions on a valid signature (forged server marker: %s)', async (forgeMarker) => {
+    fixture = await createDeliveryFixture();
+    for (const to of ['signed@example.test', 'unrelated@example.test']) {
+      await fixture.consent(to);
+      await sendMarketingMessages(deliveryCtx(), [{ to, memberId: null, campaignId: null, source: 'api',
+        consentDefinitionId: 'consent', subject: 'News', bodyHtml: '<p>News</p>', data: {} }], fixture.deps);
+    }
+    await dispatchMarketingOutbox(deliveryWorkerCtx(), { workerId: 'sender', deadlineAt: worker.deadlineAt, maxSends: 10 }, fixture.deps);
+    const sends = await fixture.db.select().from(campaignSends);
+    const signedSend = sends.find((send) => send.email === 'signed@example.test');
+    const unrelated = sends.find((send) => send.email === 'unrelated@example.test');
+    if (signedSend === undefined || unrelated === undefined) throw new Error('Missing sends');
+    const message = JSON.stringify({ eventType: 'Delivery', mail: { messageId: signedSend.sesMessageId },
+      delivery: { timestamp: DELIVERY_NOW, recipients: ['signed@example.test'] } });
+    const signed = createSignedSnsNotification({ message, messageId: 'signed-notification', timestamp: DELIVERY_NOW, topicArn: 'topic-a' });
+    const rawBody = JSON.stringify({ ...signed.envelope,
+      ...(forgeMarker ? { serverScrubbed: true, correlations: [] } : {}),
+      erasedSesEvents: ['delivery', 'bounce', 'complaint'].map((kind) => ({ kind, messageId: unrelated.sesMessageId,
+        campaignSendId: unrelated.id, occurredAt: DELIVERY_NOW, classification: 'hard', raw: {} })),
+    });
+    const verified = await signed.verifier.verify({ rawBody, headers: {}, region: 'eu-central-1' });
+    expect(verified.ok).toBe(true);
+    if (!verified.ok) throw new Error('Expected a valid signature');
+    expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), {
+      envelope: verified.value, rawBody, bodySha256: createContentHash().sha256(rawBody),
+    }, fixture.deps)).ok).toBe(true);
+    const stored = (await fixture.deps.snsInbox.list('delivery-a'))[0];
+    expect(stored?.rawBody).not.toContain('erasedSesEvents');
+    expect(stored?.rawBody).not.toContain('serverScrubbed');
+    expect(await processMarketingSnsInbox(deliveryWebhookCtx(), worker, fixture.deps)).toEqual({ ok: true, value: { processed: 1, retried: 0 } });
+    const updated = await fixture.db.select().from(campaignSends);
+    expect(updated.find((send) => send.id === signedSend.id)?.deliveryStatus).toBe('delivered');
+    expect(updated.find((send) => send.id === unrelated.id)).toEqual(unrelated);
+    const feedback = (await fixture.db.select().from(emailEvents)).filter((event) => ['delivered', 'bounced', 'complained'].includes(event.type));
+    expect(feedback).toMatchObject([{ refId: signedSend.id, type: 'delivered' }]);
+    expect(await fixture.db.select().from(suppressions)).toEqual([]);
   }, 60000);
 
   it('retries callback-before-correlation and applies duplicate delivery exactly once', async () => {
@@ -126,7 +167,7 @@ describe('durable SNS inbox', () => {
     fixture = await createDeliveryFixture();
     const input = receipt('unsupported', 'Unsupported');
     const recorded = await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), input, fixture.deps);
-    expect(recorded).toMatchObject({ ok: true, value: { status: 'ignored', ignoreReason: 'Unsupported verified payload', rawBody: input.rawBody } });
+    expect(recorded).toMatchObject({ ok: true, value: { status: 'ignored', ignoreReason: 'Unsupported verified payload' } });
     await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), receipt('pending'), fixture.deps);
     expect(await fixture.deps.snsInbox.purge('delivery-a', '2026-10-10T00:00:00.000Z')).toBe(1);
     const rows = await fixture.deps.snsInbox.list('delivery-a');

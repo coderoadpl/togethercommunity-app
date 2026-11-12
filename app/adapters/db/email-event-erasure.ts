@@ -1,8 +1,7 @@
 import { and, asc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm';
 
 import { emailEventSchema, normalizeEmail, snapshotPayloadsEqual, type EmailEventType } from '#core/domain/index.js';
-import { marketingSesRecipientAddresses, readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from '#core/domain/marketing-sns-erasure.js';
-import type { VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
+import { readStoredMarketingSesCorrelations, scrubErasedMarketingSnsBody, type MarketingSesCorrelation } from '#core/domain/marketing-sns-erasure.js';
 import { scrubErasedEmailEvent } from '#core/domain/email-event-erasure.js';
 import type { EmailHmac } from '#core/server/index.js';
 
@@ -19,7 +18,7 @@ const scrubRow = (row: typeof emailEvents.$inferSelect) => scrubErasedEmailEvent
 }));
 
 const scrubInbox = async (
-  db: Db, tenantId: string, matches: (event: VerifiedSesEvent) => boolean, apply: boolean, hmac: EmailHmac,
+  db: Db, tenantId: string, matches: (event: MarketingSesCorrelation) => boolean, apply: boolean, hmac: EmailHmac,
 ): Promise<{ matched: number; changed: number }> => {
   const totals = { matched: 0, changed: 0 };
   let cursor: string | undefined;
@@ -28,7 +27,7 @@ const scrubInbox = async (
       cursor === undefined ? undefined : gt(marketingSnsInbox.id, cursor))).orderBy(asc(marketingSnsInbox.id)).limit(500);
     if (rows.length === 0) break;
     for (const row of rows) {
-      if (row.messageType !== 'Notification' || !readStoredMarketingSesEvents(row.rawBody, row.topicArn).some(matches)) continue;
+      if (row.messageType !== 'Notification' || !readStoredMarketingSesCorrelations(row.rawBody, row.topicArn).some(matches)) continue;
       totals.matched += 1;
       const rawBody = scrubErasedMarketingSnsBody(row.rawBody, row.topicArn, (email) => hmac.compute(tenantId, email));
       if (rawBody === row.rawBody) continue;
@@ -59,7 +58,7 @@ export const scrubMemberEmailEvents = async (
   const messageIds = new Set([...sends, ...outbox].flatMap((row) => row.sesMessageId === null ? [] : [row.sesMessageId]));
   await scrubInbox(db, tenantId, (event) => messageIds.has(event.messageId)
     || (event.campaignSendId !== undefined && sendIds.has(event.campaignSendId))
-    || marketingSesRecipientAddresses(event).some((email) => normalizeEmail(email) === address), true, hmac);
+    || event.recipients.some((email) => normalizeEmail(email) === address), true, hmac);
   const rows = await db.select().from(emailEvents).where(and(eq(emailEvents.tenantId, tenantId), or(
     and(eq(emailEvents.mailKind, 'marketing'), inArray(emailEvents.refId, [...sendIds])),
     and(eq(emailEvents.mailKind, 'transactional'), inArray(emailEvents.refId, outbox.map((row) => row.id))),
@@ -121,6 +120,6 @@ export const repairErasedEmailEvents = async (
     .flatMap((row) => row.sesMessageId === null ? [] : [row.sesMessageId]));
   const inbox = await scrubInbox(tx, tenantId, (event) => messageIds.has(event.messageId)
     || (event.campaignSendId !== undefined && erasedSends.has(event.campaignSendId))
-    || marketingSesRecipientAddresses(event).some(erasedAddress), apply, hmac);
+    || event.recipients.some(erasedAddress), apply, hmac);
   return { matched, changed, unlinked, inbox };
 });

@@ -11,7 +11,14 @@ const erasedEventSchema = z.object({
   recipientHmac: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   raw: z.unknown(), linkUrl: z.string().optional(), classification: z.enum(['hard', 'soft', 'unresolved']).optional(),
 });
-const erasedEnvelopeSchema = z.object({ erasedSesEvents: z.array(erasedEventSchema).min(1) });
+const correlationSchema = z.object({ messageId: z.string().min(1), campaignSendId: z.string().optional(), recipients: z.array(z.string()) });
+export type MarketingSesCorrelation = z.infer<typeof correlationSchema>;
+const erasedEnvelopeSchema = z.object({ serverScrubbed: z.literal(true), Message: z.string(),
+  correlations: z.array(correlationSchema), erasedSesEvents: z.array(erasedEventSchema) });
+const mailSchema = z.object({ mail: z.object({ messageId: z.string().min(1),
+  tags: z.record(z.array(z.string())).optional(), destination: z.array(z.string()).optional() }) });
+const scrubbedMessageSchema = z.object({ eventType: z.string().optional(), notificationType: z.string().optional(),
+  mail: z.object({ messageId: z.string(), timestamp: z.string().datetime().optional() }) });
 
 export const readStoredMarketingSesEvents = (rawBody: string | null, topicArn: string): VerifiedSesEvent[] => {
   const value = marketingSnsJsonValue(rawBody ?? '');
@@ -28,15 +35,31 @@ export const readStoredMarketingSesEvents = (rawBody: string | null, topicArn: s
   return envelope.success ? parseMarketingSesEvents(marketingSnsJsonValue(envelope.data.Message), topicArn) : [];
 };
 
-export const marketingSesRecipientAddresses = (event: VerifiedSesEvent): string[] => {
-  const mail = z.object({ mail: z.object({ destination: z.array(z.string().email()).optional() }) }).safeParse(event.raw);
-  return [...(event.recipient === undefined ? [] : [event.recipient]), ...(mail.success ? mail.data.mail.destination ?? [] : [])];
+export const readStoredMarketingSesCorrelations = (rawBody: string | null, topicArn: string): MarketingSesCorrelation[] => {
+  const value = marketingSnsJsonValue(rawBody ?? '');
+  const erased = erasedEnvelopeSchema.safeParse(value);
+  if (erased.success) return erased.data.correlations;
+  const envelope = storedSnsEnvelopeSchema.safeParse(value);
+  if (!envelope.success) return [];
+  const raw = marketingSnsJsonValue(envelope.data.Message);
+  const payload = mailSchema.safeParse(raw);
+  if (!payload.success) return [];
+  return [{ messageId: payload.data.mail.messageId, campaignSendId: payload.data.mail.tags?.['together-send-id']?.[0],
+    recipients: [...(payload.data.mail.destination ?? []), ...parseMarketingSesEvents(raw, topicArn)
+      .flatMap((event) => event.recipient === undefined ? [] : [event.recipient])] }];
 };
 
 export const scrubErasedMarketingSnsBody = (rawBody: string | null, topicArn: string, hashRecipient: (email: string) => string): string | null => {
+  const value = marketingSnsJsonValue(rawBody ?? '');
+  if (erasedEnvelopeSchema.safeParse(value).success) return rawBody;
+  const envelope = storedSnsEnvelopeSchema.safeParse(value);
+  if (!envelope.success) return rawBody;
+  const message = scrubbedMessageSchema.safeParse(marketingSnsJsonValue(envelope.data.Message));
+  const correlations = readStoredMarketingSesCorrelations(rawBody, topicArn);
+  if (correlations.length === 0) return rawBody;
   const events = readStoredMarketingSesEvents(rawBody, topicArn);
-  if (events.length === 0) return rawBody;
-  return JSON.stringify({ erasedSesEvents: events.map((event) => {
+  return JSON.stringify({ serverScrubbed: true, Message: JSON.stringify(message.success ? message.data : {}),
+    correlations: correlations.map((correlation) => ({ ...correlation, recipients: [] })), erasedSesEvents: events.map((event) => {
     const type = event.kind === 'click' ? 'clicked' : event.kind === 'open' ? 'opened'
       : event.kind === 'bounce' ? 'bounced' : event.kind === 'complaint' ? 'complained' : 'delivered';
     const classification = event.kind === 'bounce' ? classifySesEvent(event) : undefined;

@@ -1,4 +1,4 @@
-import { marketingSesRecipientAddresses, readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from '#core/domain/marketing-sns-erasure.js';
+import { readStoredMarketingSesCorrelations, readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from '#core/domain/marketing-sns-erasure.js';
 import { marketingSnsJsonValue, parseMarketingSesEvents, storedSnsEnvelopeSchema, marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { appError, err, forbidden, notFound, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { MarketingSnsInbox, SesEventApplication } from '#core/domain/marketing-sns-inbox.js';
@@ -21,11 +21,11 @@ interface InboxDeps extends MarketingDeliveryRepos {
 const scrubErasedReceipt = async (row: MarketingSnsInbox, repos: MarketingDeliveryRepos, hmac: EmailHmac): Promise<MarketingSnsInbox> => {
   if (row.messageType !== 'Notification') return row;
   const addressErased = (email: string) => repos.suppressions.isErased(row.tenantId, { email, emailHmac: hmac.compute(row.tenantId, email) });
-  for (const event of readStoredMarketingSesEvents(row.rawBody, row.topicArn)) {
+  for (const event of readStoredMarketingSesCorrelations(row.rawBody, row.topicArn)) {
     let send = await repos.sends.correlateBySesMessageId(row.tenantId, event.messageId);
     if (send === null && event.campaignSendId !== undefined) send = await repos.sends.findById(row.tenantId, event.campaignSendId);
     const outbox = await repos.outbox.correlateBySesMessageId?.(row.tenantId, event.messageId);
-    const erasedAddresses = await Promise.all(marketingSesRecipientAddresses(event).map(addressErased));
+    const erasedAddresses = await Promise.all(event.recipients.map(addressErased));
     if ((send !== null && await repos.suppressions.isErased(row.tenantId, {
       email: send.email, emailHmac: hmac.compute(row.tenantId, send.email), memberId: send.memberId, contactId: send.contactId ?? null,
     })) || (outbox != null && await addressErased(outbox.to)) || erasedAddresses.some(Boolean)) {
@@ -46,11 +46,15 @@ export const recordVerifiedMarketingSnsEnvelope = async (
     const settings = await repos.sesSettings.findByTenant(tenantId.value);
     if (settings?.snsTopicArn !== input.envelope.topicArn) return err(forbidden('SNS topic does not match this tenant'));
     const now = deps.clock.nowIso();
-    const envelope = storedSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(input.rawBody));
-    const unsupported = !envelope.success || (input.envelope.type === 'SubscriptionConfirmation' && envelope.data.SubscribeURL === undefined) || (input.envelope.type === 'Notification' && parseMarketingSesEvents(marketingSnsJsonValue(envelope.data.Message), input.envelope.topicArn).length === 0);
+    // Unsigned envelope extensions must never impersonate the server-scrubbed receipt format.
+    const rawBody = JSON.stringify({ Type: input.envelope.type, MessageId: input.envelope.messageId,
+      TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message,
+      ...(input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl !== null ? { SubscribeURL: input.envelope.subscribeUrl } : {}) });
+    const unsupported = (input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl === null)
+      || (input.envelope.type === 'Notification' && parseMarketingSesEvents(marketingSnsJsonValue(input.envelope.message), input.envelope.topicArn).length === 0);
     const row = await scrubErasedReceipt({
       id: deps.ids.nextId(), tenantId: tenantId.value, topicArn: input.envelope.topicArn, snsMessageId: input.envelope.messageId,
-      messageType: input.envelope.type, rawBody: input.rawBody, bodySha256: input.bodySha256,
+      messageType: input.envelope.type, rawBody, bodySha256: input.bodySha256,
       verifiedAt: now, receivedAt: now, status: unsupported ? 'ignored' : 'pending', attempts: 0, nextAttemptAt: now,
       lockedBy: null, lockedUntil: null, claimVersion: 0, processedAt: unsupported ? now : null, lastError: null, ignoreReason: unsupported ? 'Unsupported verified payload' : null,
     }, repos, deps.hmac);

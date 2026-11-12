@@ -2,7 +2,8 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { DELETED_MEMBER_DISPLAY, emailEventSchema, memberTombstone, ok } from '#core/domain/index.js';
-import type { VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
+import { marketingSnsJsonValue, storedSnsEnvelopeSchema, type VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
+import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { processMarketingSnsInbox, recordVerifiedMarketingSnsEnvelope } from '#core/server/usecases/marketing-sns-inbox.js';
 import { applyVerifiedSesEvent } from '#core/server/usecases/marketing-email.js';
 
@@ -322,10 +323,57 @@ it('retains recipient validation after normalizing an erased send receipt', asyn
   await database.db.update(campaignSends).set({ status: 'sending', sesMessageId: null }).where(eq(campaignSends.tenantId, tenantId));
   const input = receipt(tenantId, 'marketing', 'delivery');
   const rawBody = input.rawBody.replaceAll(address, 'unrelated@example.test');
-  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { ...input, rawBody }, inboxDeps());
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { ...input, rawBody, envelope: { ...input.envelope, message: input.envelope.message.replaceAll(address, 'unrelated@example.test') } }, inboxDeps());
   expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, inboxDeps())).toEqual(ok({ processed: 1, retried: 0 }));
   expect((await inboxRows(tenantId))[0]).toMatchObject({ status: 'ignored', ignoreReason: 'No applicable recipients' });
   const [send] = await database.db.select().from(campaignSends).where(eq(campaignSends.tenantId, tenantId));
   expect(send).toMatchObject({ status: 'sending', sesMessageId: null, deliveryStatus: null });
   await assertInboxScrubbed(tenantId);
+});
+
+const sendReceipt = (tenantId: string, linkage: 'message' | 'tag' | 'address') => {
+  const message = JSON.stringify({ eventType: 'Send', send: {}, mail: {
+    timestamp: now, messageId: linkage === 'message' ? `${tenantId}-marketing` : 'uncorrelated-provider',
+    destination: [linkage === 'address' ? address : 'previous@example.test'],
+    source: 'sender@example.test', headers: [{ name: 'To', value: 'Private Person <private@example.test>' }],
+    commonHeaders: { to: ['Private Person <private@example.test>'], subject: 'Private subject' },
+    ...(linkage === 'tag' ? { tags: { 'together-send-id': [`${tenantId}-send`] } } : {}),
+  } });
+  return { rawBody: JSON.stringify({ Message: message }), bodySha256: `${tenantId}-send-receipt`,
+    envelope: { type: 'Notification' as const, messageId: 'send-receipt', topicArn: 'topic', timestamp: now, message, subscribeUrl: null } };
+};
+const assertSendReceiptScrubbed = async (tenantId: string) => {
+  await assertInboxScrubbed(tenantId);
+  const [row] = await inboxRows(tenantId);
+  expect(row?.status).toBe('ignored');
+  expect(row?.rawBody).not.toContain('@');
+  expect(row?.rawBody).not.toContain('headers');
+  const envelope = storedSnsEnvelopeSchema.parse(marketingSnsJsonValue(row?.rawBody ?? ''));
+  expect(marketingSnsJsonValue(envelope.Message)).toMatchObject({ eventType: 'Send', mail: { timestamp: now } });
+  expect(readStoredMarketingSesEvents(row?.rawBody ?? null, 'topic')).toEqual([]);
+};
+
+it.each(['message', 'tag', 'address'] as const)('scrubs ignored Send receipts arriving after erasure through %s correlation', async (linkage) => {
+  const tenantId = `send-late-${linkage}`;
+  await seed(tenantId);
+  await erase(tenantId);
+  const result = await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), sendReceipt(tenantId, linkage), inboxDeps());
+  expect(result).toMatchObject({ ok: true, value: { status: 'ignored', ignoreReason: 'Unsupported verified payload' } });
+  await assertSendReceiptScrubbed(tenantId);
+});
+
+it.each(['message', 'tag', 'address'] as const)('scrubs historical ignored Send receipts during erasure and repair through %s correlation', async (linkage) => {
+  const tenantId = `send-history-${linkage}`;
+  await seed(tenantId);
+  const input = sendReceipt(tenantId, linkage);
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), input, inboxDeps());
+  expect((await inboxRows(tenantId))[0]?.rawBody).toContain('Private Person');
+  await erase(tenantId);
+  await assertSendReceiptScrubbed(tenantId);
+  await database.db.update(marketingSnsInbox).set({ rawBody: input.rawBody }).where(eq(marketingSnsInbox.tenantId, tenantId));
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, false)).inbox).toEqual({ matched: 1, changed: 1 });
+  expect((await inboxRows(tenantId))[0]?.rawBody).toBe(input.rawBody);
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 1 });
+  await assertSendReceiptScrubbed(tenantId);
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox.changed).toBe(0);
 });

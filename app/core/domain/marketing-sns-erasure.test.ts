@@ -37,3 +37,13 @@ it('scrubs click URLs by the same policy as email events while preserving a proc
   }]);
   expect(scrubErasedMarketingSnsBody(scrubbed, 'topic', hashRecipient)).toBe(scrubbed);
 });
+
+it('reads the signed Message rather than unmarked normalized feedback extensions', () => {
+  const body = JSON.stringify({ Message: JSON.stringify({ eventType: 'Delivery', mail: { messageId: 'signed-provider' },
+    delivery: { timestamp, recipients: ['signed@example.test'] } }),
+  erasedSesEvents: [{ kind: 'complaint', messageId: 'unrelated-provider', occurredAt: timestamp, raw: {} }] });
+  expect(readStoredMarketingSesEvents(body, 'topic')).toMatchObject([{ kind: 'delivery', messageId: 'signed-provider', recipient: 'signed@example.test' }]);
+  const scrubbed = scrubErasedMarketingSnsBody(body, 'topic', hashRecipient);
+  expect(readStoredMarketingSesEvents(scrubbed, 'topic')).toMatchObject([{ kind: 'delivery', messageId: 'signed-provider' }]);
+  expect(scrubbed).not.toContain('unrelated-provider');
+});

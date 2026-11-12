@@ -24,6 +24,10 @@ describe('image format validation', () => {
     ['svg', text('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')],
     ['svg', text('﻿<?xml version="1.0"?>\n<!-- logo --><svg xmlns="http://www.w3.org/2000/svg"/>')],
     ['svg', text('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg/>')],
+    ['svg', text('<svg aria-label="a > b"/>')],
+    ['svg', text("<svg aria-label='a > b'/>")],
+    ['svg', text('<svg aria-label="a > b"><path/></svg>')],
+    ['svg', text("<svg aria-label='a > b'><path/></svg>")],
   ])('recognizes %s bytes without decoding the image', (extension, bytes) => {
     expect(imageContentMatches(bytes, extension)).toBe(true);
   });
@@ -35,6 +39,9 @@ describe('image format validation', () => {
   it.each([
     '', '<html><svg/></html>', '<svgish/>', '<svg>', '<svg/><html/>', 'prefix<svg/>',
     '<!-- <svg/> -->', '<svg/><!-- unterminated',
+    '<svg aria-label="a > b/>', "<svg aria-label='a > b/>",
+    '<svg aria-label="a > b"/><html/>', "<svg aria-label='a > b'/><html/>",
+    '<svg aria-label="a < b"/>',
   ])('rejects a non-SVG document %s', (source) => {
     expect(imageContentMatches(text(source), 'svg')).toBe(false);
   });

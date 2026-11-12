@@ -10,7 +10,7 @@ import { createTenantRepository, createTenantSecretRepository } from '#adapters/
 import { createStorageReferenceRepository } from '#adapters/db/storage-references.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { storageOrphanReportInputSchema } from '#core/domain/index.js';
-import { reportStorageOrphans } from '#core/server/index.js';
+import { reportStorageOrphans, type TenantSecretResolver } from '#core/server/index.js';
 
 const USAGE = 'Usage: pnpm run storage:orphan-report --tenant <id-or-slug> [--grace-hours <hours>] [--json]\nReport only. No objects or database rows are deleted or changed.';
 
@@ -34,6 +34,13 @@ export const parseStorageReportArgs = (args: string[]) => {
   return { help: false, json: values.json, input } as const;
 };
 
+export const createStorageReportProvider = (secretResolver: TenantSecretResolver, env: unknown) => {
+  const settings = z.object({
+    STORAGE_ALLOW_PRIVATE_ENDPOINTS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  }).parse(env);
+  return createS3StorageProvider(secretResolver, { allowPrivateEndpoints: settings.STORAGE_ALLOW_PRIVATE_ENDPOINTS });
+};
+
 const run = async (): Promise<void> => {
   const args = parseStorageReportArgs(process.argv.slice(2));
   if (args.help) {
@@ -52,7 +59,7 @@ const run = async (): Promise<void> => {
   const secretResolver = createTenantSecretResolver(
     createTenantSecretRepository(db), createSecretCrypto(env.data.SECRETS_MASTER_KEY),
   );
-  const storage = createS3StorageProvider(secretResolver);
+  const storage = createStorageReportProvider(secretResolver, process.env);
   const result = await reportStorageOrphans({ ...args.input, tenantId: tenant.id }, {
     references: createStorageReferenceRepository(db),
     storage: { list: storage.list },

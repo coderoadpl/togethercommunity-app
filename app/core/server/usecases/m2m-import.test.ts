@@ -223,6 +223,42 @@ const publishImportedProduct = (h: ReturnType<typeof harness>): void => {
 };
 
 describe('m2m content import', () => {
+  const boundaryVimeoRecord = () => {
+    const videoId = '1'.repeat(2_048 - 'https://vimeo.com/'.length);
+    return {
+      record: { ...lessonRecord(), contents: [{ type: 'embed', embedUrl: `https://vimeo.com/${videoId}` }] },
+      embedUrl: `https://player.vimeo.com/video/${videoId}`,
+    };
+  };
+
+  it('validates a boundary-length Vimeo URL after its embed transform without writing', async () => {
+    const h = harness();
+    const { record } = boundaryVimeoRecord();
+    const result = await validateM2mImport(ctx, {
+      datasetVersion: 'together-import/v1', records: [{ kind: 'lesson', ...record }],
+    }, h.deps);
+
+    expect(record.contents[0]?.embedUrl).toHaveLength(2_048);
+    expect(result).toMatchObject({ ok: true, value: { valid: true, errors: [] } });
+    expect(h.commitCalls()).toBe(0);
+  });
+
+  it('writes a boundary-length Vimeo URL after another record and keeps replays unchanged', async () => {
+    const h = harness();
+    const { record, embedUrl } = boundaryVimeoRecord();
+    const input = {
+      datasetVersion: 'together-import/v1' as const,
+      records: [{ ...lessonRecord(), importKey: 'earlier-lesson' }, record],
+    };
+    const written = await importM2mContent(ctx, apiKey, 'lesson', input, h.deps);
+    const replayed = await importM2mContent(ctx, apiKey, 'lesson', input, h.deps);
+
+    expect(record.contents[0]?.embedUrl).toHaveLength(2_048);
+    expect(written).toMatchObject({ ok: true, value: { summary: { created: 2, failed: 0 } } });
+    expect(replayed).toMatchObject({ ok: true, value: { summary: { unchanged: 2, failed: 0 } } });
+    expect(h.lessons.get('lesson-source')?.contents).toEqual([{ type: 'embed', embedUrl }]);
+  });
+
   it('creates, updates, and leaves canonical replays unchanged by importKey', async () => {
     const h = harness();
     const created = await importM2mContent(ctx, apiKey, 'lesson', {

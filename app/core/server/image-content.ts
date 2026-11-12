@@ -20,6 +20,22 @@ const isIcon = (bytes: Uint8Array): boolean => {
   return true;
 };
 
+const svgOpeningTagEnd = (document: string): number => {
+  let quote: string | null = null;
+  for (let index = 4; index < document.length; index += 1) {
+    const character = document[index];
+    if (character === '<') return -1;
+    if (quote !== null) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '>') {
+      return index;
+    }
+  }
+  return -1;
+};
+
 const isSvg = (bytes: Uint8Array): boolean => {
   try {
     let document = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim();
@@ -38,8 +54,8 @@ const isSvg = (bytes: Uint8Array): boolean => {
       document = document.slice(0, start).trimEnd();
     }
     if (!/^<svg(?:\s|\/|>)/u.test(document)) return false;
-    const openingEnd = document.indexOf('>');
-    if (openingEnd === -1 || document.slice(1, openingEnd).includes('<')) return false;
+    const openingEnd = svgOpeningTagEnd(document);
+    if (openingEnd === -1) return false;
     if (document[openingEnd - 1] === '/') return openingEnd === document.length - 1;
     return /<\/svg\s*>$/u.test(document);
   } catch {

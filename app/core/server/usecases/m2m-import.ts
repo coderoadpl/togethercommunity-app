@@ -14,7 +14,6 @@ import {
   importProductRecordSchema,
   resolveProductVat,
   importPublicAssetPathSchema,
-  importRecordSchemaFor,
   importValidateRequestSchema,
   importWriteRequestSchema,
   ok,
@@ -199,11 +198,20 @@ const normalizeField = async (
   };
 };
 
+type ContentImportRecord = Extract<ImportRecord, { kind: ImportContentKind }>;
+
+const parseContentRecord = (kind: ImportContentKind, record: unknown) => {
+  if (kind === 'course') return importCourseRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+  if (kind === 'module') return importModuleRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+  if (kind === 'lesson') return importLessonRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+  return importProductRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+};
+
 const normalizeContentAssetUrls = async (
-  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord,
+  record: ContentImportRecord,
   normalizeAssetUrl: ImportAssetUrlNormalizer,
 ): Promise<{
-  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord;
+  record: ContentImportRecord;
   infos: ImportNormalizationInfo[];
 }> => {
   if ('imageUrl' in record) {
@@ -221,20 +229,6 @@ const normalizeContentAssetUrls = async (
     };
   }
   return { record, infos: [] };
-};
-
-const normalizeContentAssetUrlsForKind = async (
-  kind: ImportContentKind,
-  record: unknown,
-  normalizeAssetUrl: ImportAssetUrlNormalizer,
-): Promise<{
-  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord;
-  infos: ImportNormalizationInfo[];
-}> => {
-  if (kind === 'course') return normalizeContentAssetUrls(importCourseRecordSchema.parse(record), normalizeAssetUrl);
-  if (kind === 'module') return normalizeContentAssetUrls(importModuleRecordSchema.parse(record), normalizeAssetUrl);
-  if (kind === 'lesson') return normalizeContentAssetUrls(importLessonRecordSchema.parse(record), normalizeAssetUrl);
-  return normalizeContentAssetUrls(importProductRecordSchema.parse(record), normalizeAssetUrl);
 };
 
 const normalizeImportRecordAssetUrls = async (
@@ -580,18 +574,17 @@ const prepareProduct = async (
 
 const prepareRecord = async (
   tenantId: string,
-  kind: ImportContentKind,
-  record: unknown,
+  record: ContentImportRecord,
   payloadHash: string,
   references: ImportReferenceMaps,
   deps: ImportReaders,
   reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
-  if (kind === 'course') return prepareCourse(tenantId, importCourseRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
-  if (kind === 'module') return prepareModule(tenantId, importModuleRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
-  if (kind === 'lesson') return prepareLesson(tenantId, importLessonRecordSchema.parse(record), payloadHash, deps, reachable, now);
-  return prepareProduct(tenantId, importProductRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
+  if (record.kind === 'course') return prepareCourse(tenantId, record, payloadHash, references, deps, reachable, now);
+  if (record.kind === 'module') return prepareModule(tenantId, record, payloadHash, references, deps, reachable, now);
+  if (record.kind === 'lesson') return prepareLesson(tenantId, record, payloadHash, deps, reachable, now);
+  return prepareProduct(tenantId, record, payloadHash, references, deps, reachable, now);
 };
 
 const recordIdentity = (value: unknown, index: number): { kind?: ImportKind; importKey: string } => {
@@ -693,7 +686,7 @@ export const importM2mContent = async (
   for (let index = 0; index < envelope.data.records.length; index += 1) {
     const raw = envelope.data.records[index];
     const identity = recordIdentity(raw, index);
-    const parsed = importRecordSchemaFor(kind).safeParse(raw);
+    const parsed = parseContentRecord(kind, raw);
     if (!parsed.success) {
       results.push({
         importKey: identity.importKey,
@@ -707,8 +700,8 @@ export const importM2mContent = async (
       results.push({ importKey: parsed.data.importKey, action: 'error', error: timestamp.error });
       continue;
     }
-    const normalized = await normalizeContentAssetUrlsForKind(kind, parsed.data, normalizeAssetUrl);
-    const payloadHash = deps.hash.sha256(canonicalImportPayload(normalized.record));
+    const normalized = await normalizeContentAssetUrls(parsed.data, normalizeAssetUrl);
+    const payloadHash = deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(normalized.record)));
     const previousHash = seen.get(normalized.record.importKey);
     if (previousHash !== undefined && previousHash !== payloadHash) {
       results.push({
@@ -721,7 +714,6 @@ export const importM2mContent = async (
     seen.set(normalized.record.importKey, payloadHash);
     const prepared = await prepareRecord(
       tenantId.value,
-      kind,
       normalized.record,
       payloadHash,
       references,
@@ -877,11 +869,10 @@ const validateImportForTenant = async (
     }
   }
   for (const [index, record] of parsedRecords) {
-    const prepared = importContentKindSchema.safeParse(record.kind).success
+    const prepared = record.kind === 'course' || record.kind === 'module' || record.kind === 'lesson' || record.kind === 'product'
       ? await prepareRecord(
           tenantId,
-          importContentKindSchema.parse(record.kind),
-          payloadWithoutKind(record),
+          record,
           deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(record))),
           references,
           deps,

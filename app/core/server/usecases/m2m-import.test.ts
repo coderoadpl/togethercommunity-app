@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   capabilitiesForApiKey,
@@ -623,14 +623,15 @@ describe('m2m content import', () => {
 
 describe('m2m import rate limits', () => {
   it('uses weighted daily claims and releases the minute claim when the daily budget is exhausted', async () => {
-    const claims: Array<{ period: 'minute' | 'hour' | 'day'; cost: number }> = [];
-    const releases: Array<'minute' | 'hour' | 'day'> = [];
+    const claims: Array<{ period: 'minute' | 'hour' | 'day' | 'import-validate-records'; cost: number }> = [];
+    const releases: Array<'minute' | 'hour' | 'day' | 'import-validate-records'> = [];
     const result = await claimM2mImportRateLimit(TENANT_ID, apiKey, {
       mode: 'content', recordCount: 200,
     }, {
       clock: { nowIso: () => NOW },
       importDailyMemberRecordLimit: 321,
       importDailyRecordLimit: 654,
+      importHourlyValidationRecordLimit: 50_000,
       rateLimits: {
         claim: async (_tenantId, input) => {
           claims.push({ period: input.period, cost: input.cost ?? 1 });
@@ -658,6 +659,7 @@ describe('m2m import rate limits', () => {
       clock: { nowIso: () => NOW },
       importDailyMemberRecordLimit: 321,
       importDailyRecordLimit: 654,
+      importHourlyValidationRecordLimit: 50_000,
       rateLimits: {
         claim: async (_tenantId, input) => {
           limits.push(input.limit);
@@ -720,4 +722,183 @@ it('rejects new references to archived imported courses while allowing course up
   expect(await importM2mContent(ctx, apiKey, 'module', {
     datasetVersion: 'together-import/v1', records: [{ ...moduleRecord(), chapters: [] }],
   }, h.deps)).toMatchObject({ ok: true });
+});
+
+describe('import creation timestamp skew', () => {
+  describe.each([
+    { kind: 'course', record: courseRecord() },
+    { kind: 'module', record: moduleRecord() },
+    { kind: 'lesson', record: lessonRecord() },
+    { kind: 'product', record: productRecord() },
+  ] as const)('$kind records', ({ kind, record }) => {
+    it.each([
+      [undefined, true],
+      ['1990-01-01T00:00:00.000Z', true],
+      [NOW, true],
+      ['1998-08-14T10:04:59.999Z', true],
+      ['1998-08-14T10:05:00.000Z', true],
+      ['1998-08-14T10:05:00.001Z', false],
+      ['2098-08-14T10:00:00.000Z', false],
+      ['not-a-date', false],
+    ] as const)('applies the same createdAt rule to validate and write: %s', async (createdAt, valid) => {
+      const h = harness();
+      await seedImportedProduct(h);
+      const clock = vi.fn(() => NOW);
+      h.deps.clock = { nowIso: clock };
+      const payload = { ...record, ...(createdAt === undefined ? {} : { createdAt }) };
+      const validated = await validateM2mImport(ctx, {
+        datasetVersion: 'together-import/v1', records: [{ kind, ...payload }],
+      }, h.deps);
+      expect(validated).toMatchObject({ ok: true, value: { valid } });
+      expect(clock).toHaveBeenCalledTimes(1);
+      clock.mockClear();
+      const before = h.commitCalls();
+      const written = await importM2mContent(ctx, apiKey, kind, {
+        datasetVersion: 'together-import/v1', records: [payload],
+      }, h.deps);
+      expect(written).toMatchObject({ ok: true, value: { summary: { failed: valid ? 0 : 1 } } });
+      expect(h.commitCalls() - before).toBe(valid ? 1 : 0);
+      expect(clock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('uses a single clock reading for every record, version and audit in a write call', async () => {
+    const h = harness();
+    const clock = vi.fn(() => NOW);
+    h.deps.clock = { nowIso: clock };
+    expect(await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1',
+      records: [lessonRecord(), { ...lessonRecord(), importKey: 'other-lesson' }],
+    }, h.deps)).toMatchObject({ ok: true, value: { summary: { created: 2 } } });
+    expect(clock).toHaveBeenCalledTimes(1);
+    expect(h.mutations.map((mutation) => mutation.event.at)).toEqual([NOW, NOW]);
+    expect(h.versions.map((version) => version.createdAt)).toEqual([NOW, NOW]);
+  });
+});
+
+describe('request-scoped import reference reads', () => {
+  it('shares cached reference hits across content, users and redirects and reads modules once for progress', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    const member = { id: 'member-source', tenantId: TENANT_ID, userId: 'user-source', email: 'user@example.test', displayName: 'Member', legacyId: null, createdAt: NOW };
+    h.audits.set('member:member-source', { id: 'member-audit', tenantId: TENANT_ID, apiKeyId: apiKey.id, kind: 'member', importKey: 'member-source', resourceId: member.id, action: 'created', payloadHash: 'hash', at: NOW });
+    const audit = vi.fn(h.deps.importAuditEvents.findLatestByImportKey);
+    const course = vi.fn(h.deps.courses.findById);
+    const lesson = vi.fn(h.deps.lessons.findById);
+    const module = vi.fn(h.deps.modules.findById);
+    const modules = vi.fn(h.deps.modules.list);
+    const memberById = vi.fn(async () => member);
+    h.deps.importAuditEvents.findLatestByImportKey = audit;
+    h.deps.courses.findById = course;
+    h.deps.lessons.findById = lesson;
+    h.deps.modules.findById = module;
+    h.deps.modules.list = modules;
+    h.deps.importUsers.findMemberById = memberById;
+    const fullCtx = { ...ctx, capabilities: capabilitiesForApiKey({ ...apiKey, scopes: ['import:content', 'import:users'] }) };
+    const result = await validateM2mImport(fullCtx, {
+      datasetVersion: 'together-import/v1',
+      records: [
+        { kind: 'module', importKey: 'new-module', title: 'Module', courseKeys: ['course-source'], prefix: null, chapters: [] },
+        ...Array.from({ length: 20 }, (_, index) => ({ kind: 'progress', importKey: `progress-${index}`, memberKey: 'member-source', courseKey: 'course-source', completedLessonKeys: ['lesson-source'], lastViewedLessonKey: 'lesson-source', lastViewedModuleKey: 'module-source', lastViewedChapterId: 'chapter-1', updatedAt: NOW })),
+        { kind: 'redirect', importKey: 'redirect', fromPath: '/old-course', target: { kind: 'course', importKey: 'course-source' }, permanent: true },
+      ],
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { valid: true, plan: { create: { module: 1, progress: 20, redirect: 1 } } } });
+    expect(course).toHaveBeenCalledTimes(1);
+    expect(lesson).toHaveBeenCalledTimes(1);
+    expect(memberById).toHaveBeenCalledTimes(1);
+    expect(modules).toHaveBeenCalledTimes(1);
+    expect(module.mock.calls.filter(([, id]) => id === 'module-source')).toHaveLength(1);
+    expect(audit.mock.calls.filter(([, kind, key]) => kind === 'course' && key === 'course-source')).toHaveLength(1);
+    expect(audit.mock.calls.filter(([, kind, key]) => kind === 'lesson' && key === 'lesson-source')).toHaveLength(1);
+  });
+
+  it('memoizes misses within a call but rechecks later calls and tenant contexts', async () => {
+    const h = harness();
+    const audit = vi.fn(h.deps.importAuditEvents.findLatestByImportKey);
+    h.deps.importAuditEvents.findLatestByImportKey = audit;
+    const records = Array.from({ length: 3 }, (_, index) => ({ kind: 'module', importKey: `module-${index}`, title: 'Module', courseKeys: ['missing'], prefix: null, chapters: [] }));
+    const request = { datasetVersion: 'together-import/v1' as const, records };
+    expect(await validateM2mImport(ctx, request, h.deps)).toMatchObject({ ok: true, value: { valid: false } });
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(await validateM2mImport(ctx, request, h.deps)).toMatchObject({ ok: true, value: { valid: false } });
+    expect(audit).toHaveBeenCalledTimes(2);
+    const otherCtx = { ...ctx, identity: { ...ctx.identity, tenantId: 'other-tenant' } };
+    await validateM2mImport(otherCtx, request, h.deps);
+    expect(audit).toHaveBeenCalledTimes(3);
+    expect(audit).toHaveBeenLastCalledWith('other-tenant', 'course', 'missing');
+  });
+
+  it('refreshes cached content state after each successful write in the same call', async () => {
+    const h = harness();
+    const result = await importM2mContent(ctx, apiKey, 'course', {
+      datasetVersion: 'together-import/v1', records: [courseRecord(), courseRecord()],
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { results: [{ action: 'created' }, { action: 'unchanged' }] } });
+    expect(h.courses.size).toBe(1);
+  });
+});
+
+describe('weighted import validation budget', () => {
+  it.each([1, 25, 5_000])('charges %i parsed records independently of the request ceiling', async (recordCount) => {
+    const claim = vi.fn(async () => true);
+    expect(await claimM2mImportRateLimit(TENANT_ID, apiKey, { mode: 'validate', recordCount }, {
+      clock: { nowIso: () => NOW }, importHourlyValidationRecordLimit: 50_000,
+      importDailyMemberRecordLimit: 10_000, importDailyRecordLimit: 20_000,
+      rateLimits: { claim, release: async () => undefined },
+    })).toEqual({ ok: true, value: undefined });
+    expect(claim.mock.calls).toEqual([
+      [TENANT_ID, { apiKeyId: apiKey.id, period: 'hour', windowStartedAt: NOW, limit: 30 }],
+      [TENANT_ID, { apiKeyId: apiKey.id, period: 'import-validate-records', windowStartedAt: NOW, limit: 50_000, cost: recordCount }],
+    ]);
+  });
+
+  it('rolls back the request claim when the configurable hourly record budget is exhausted', async () => {
+    const claim = vi.fn(async (_tenantId: string, input: { period: string }) => input.period !== 'import-validate-records');
+    const release = vi.fn(async () => undefined);
+    expect(await claimM2mImportRateLimit(TENANT_ID, apiKey, { mode: 'validate', recordCount: 26 }, {
+      clock: { nowIso: () => NOW }, importHourlyValidationRecordLimit: 25,
+      importDailyMemberRecordLimit: 10_000, importDailyRecordLimit: 20_000,
+      rateLimits: { claim, release },
+    })).toMatchObject({ ok: false, error: { code: 'rate_limited', details: { period: 'hour', retryAfterSeconds: 3_600 } } });
+    expect(claim).toHaveBeenLastCalledWith(TENANT_ID, expect.objectContaining({ limit: 25, cost: 26 }));
+    expect(release).toHaveBeenCalledWith(TENANT_ID, { apiKeyId: apiKey.id, period: 'hour', windowStartedAt: NOW });
+  });
+
+  it('does not charge records when the 30-request hourly ceiling is exhausted', async () => {
+    const claim = vi.fn(async () => false);
+    const release = vi.fn(async () => undefined);
+    const result = await claimM2mImportRateLimit(TENANT_ID, apiKey, { mode: 'validate', recordCount: 1 }, {
+      clock: { nowIso: () => '1998-08-14T10:59:59.999Z' }, importHourlyValidationRecordLimit: 50_000,
+      importDailyMemberRecordLimit: 10_000, importDailyRecordLimit: 20_000,
+      rateLimits: { claim, release },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited', details: { retryAfterSeconds: 1 } } });
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(release).not.toHaveBeenCalled();
+  });
+});
+
+it('preserves forward content, user, progress and redirect references regardless of record order', async () => {
+  const h = harness();
+  const modules = vi.fn(h.deps.modules.list);
+  h.deps.modules.list = modules;
+  const fullCtx = { ...ctx, capabilities: capabilitiesForApiKey({ ...apiKey, scopes: ['import:content', 'import:users'] }) };
+  const future = '2098-01-01T00:00:00.000Z';
+  const result = await validateM2mImport(fullCtx, {
+    datasetVersion: 'together-import/v1',
+    records: [
+      { kind: 'progress', importKey: 'progress', memberKey: 'member', courseKey: 'course-source', completedLessonKeys: ['lesson-source'], lastViewedLessonKey: 'lesson-source', lastViewedModuleKey: 'module-source', lastViewedChapterId: 'chapter-1', updatedAt: future },
+      { kind: 'redirect', importKey: 'redirect', fromPath: '/old', target: { kind: 'module-as-course', importKey: 'module-source' }, permanent: true },
+      { kind: 'grant', importKey: 'grant', memberKey: 'member', productKey: 'product-source', startsAt: future, expiresAt: '2099-01-01T00:00:00.000Z' },
+      { kind: 'module', ...moduleRecord() },
+      { kind: 'lesson', ...lessonRecord() },
+      { kind: 'course', ...courseRecord() },
+      { kind: 'product', ...productRecord() },
+      { kind: 'member', importKey: 'member', email: 'member@example.test', displayName: 'Member' },
+    ],
+  }, h.deps);
+  expect(result).toMatchObject({ ok: true, value: { valid: true, errors: [], plan: { create: { course: 1, module: 1, lesson: 1, product: 1, member: 1, grant: 1, progress: 1, redirect: 1 } } } });
+  expect(modules).toHaveBeenCalledTimes(1);
+  expect(h.commitCalls()).toBe(0);
 });

@@ -905,15 +905,16 @@ describe('marketing retention windows', () => {
   });
 });
 
-describe('import daily record limits', () => {
-  it('defaults to 10,000 member records and 20,000 other records', () => {
+describe('import record limits', () => {
+  it('defaults to 10,000 daily members, 20,000 other daily records and 50,000 hourly validations', () => {
     expect(envSchema.parse({})).toMatchObject({
       IMPORT_DAILY_MEMBER_RECORD_LIMIT: 10_000,
       IMPORT_DAILY_RECORD_LIMIT: 20_000,
+      IMPORT_HOURLY_VALIDATION_RECORD_LIMIT: 50_000,
     });
   });
 
-  it.each(['IMPORT_DAILY_MEMBER_RECORD_LIMIT', 'IMPORT_DAILY_RECORD_LIMIT'] as const)(
+  it.each(['IMPORT_DAILY_MEMBER_RECORD_LIMIT', 'IMPORT_DAILY_RECORD_LIMIT', 'IMPORT_HOURLY_VALIDATION_RECORD_LIMIT'] as const)(
     'accepts positive integer overrides for %s and rejects invalid values',
     (key) => {
       expect(envSchema.parse({ [key]: '1' })[key]).toBe(1);

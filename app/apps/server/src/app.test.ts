@@ -382,6 +382,7 @@ const deps = (input: {
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
     importDailyMemberRecordLimit: 10_000,
     importDailyRecordLimit: 20_000,
+    importHourlyValidationRecordLimit: 50_000,
     apiKeyCrypto: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
@@ -1238,6 +1239,7 @@ const importM2mApp = (options: {
   const configured = { ...deps(), ...options.overrides };
   const mutations: Parameters<AppDeps['importContent']['commit']>[1][] = [];
   const userMutations: Parameters<AppDeps['importUsers']['commit']>[1][] = [];
+  const redirectMutations: Parameters<AppDeps['redirects']['commit']>[1][] = [];
   configured.tenantApiKeys = {
     listByTenant: async () => [],
     create: async () => undefined,
@@ -1267,13 +1269,20 @@ const importM2mApp = (options: {
       return 'saved';
     },
   };
+  configured.redirects = {
+    ...configured.redirects,
+    commit: async (_tenantId, mutation) => {
+      redirectMutations.push(mutation);
+      return 'saved';
+    },
+  };
   configured.importUsersReader = readOnlyImportUsers(configured.importUsers);
   configured.contentHash = { sha256: (content) => String(content) };
-  configured.apiKeyRateLimits = {
+  configured.apiKeyRateLimits = options.overrides?.apiKeyRateLimits ?? {
     claim: async () => options.rateLimited !== true,
     release: async () => undefined,
   };
-  return { app: buildApp(configured), mutations, userMutations };
+  return { app: buildApp(configured), mutations, userMutations, redirectMutations };
 };
 
 const ksefDeps = (dispatch: NonNullable<AppDeps['ksef']>['dispatch']): NonNullable<AppDeps['ksef']> => {
@@ -11100,5 +11109,107 @@ describe('image upload publication boundary', () => {
     expect(signed.searchParams.get('response-content-type')).toBe('image/svg+xml');
     expect(signed.searchParams.get('response-content-disposition')).toBe('attachment');
     expect((await app.request(`/api/public/assets/avatar/${id}.svg`, { headers })).status).toBe(404);
+  });
+});
+
+describe('import validation resource ceilings', () => {
+  const headers = { host: 'acme.localhost:48730', 'x-api-key': 'import-key', 'content-type': 'application/json' };
+  const limitedApp = (recordLimit = 50_000) => {
+    const counts = new Map<string, number>();
+    const claims: Array<{ period: string; cost: number }> = [];
+    const rateLimits: AppDeps['apiKeyRateLimits'] = {
+      claim: async (_tenantId, input) => {
+        const cost = input.cost ?? 1;
+        claims.push({ period: input.period, cost });
+        const previous = counts.get(input.period) ?? 0;
+        if (previous + cost > input.limit) return false;
+        counts.set(input.period, previous + cost);
+        return true;
+      },
+      release: async (_tenantId, input) => {
+        counts.set(input.period, (counts.get(input.period) ?? 0) - (input.cost ?? 1));
+      },
+    };
+    const { app } = importM2mApp({ overrides: { apiKeyRateLimits: rateLimits, importHourlyValidationRecordLimit: recordLimit } });
+    const request = (count: number) => app.request(API_PATHS.m2mImportValidate, {
+      method: 'POST', headers,
+      body: JSON.stringify({ datasetVersion: 'together-import/v1', records: Array.from({ length: count }, () => null) }),
+    });
+    return { counts, claims, request };
+  };
+
+  it('charges invalid records, accepts 5,000 and refuses 5,001 before claiming budget', async () => {
+    const h = limitedApp();
+    for (const count of [1, 25, 5_000]) {
+      const response = await h.request(count);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, data: { valid: false } });
+      expect(h.claims.at(-1)).toEqual({ period: 'import-validate-records', cost: count });
+    }
+    const before = h.claims.length;
+    expect((await h.request(5_001)).status).toBe(400);
+    expect(h.claims).toHaveLength(before);
+    expect(h.counts.get('hour')).toBe(3);
+    expect(h.counts.get('import-validate-records')).toBe(5_026);
+  });
+
+  it('returns 429 with Retry-After after 50,000 records and restores the rejected request claim', async () => {
+    const h = limitedApp();
+    for (let batch = 0; batch < 10; batch += 1) expect((await h.request(5_000)).status).toBe(200);
+    const response = await h.request(1);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('3600');
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited', message: 'Import validation record limit exceeded' } });
+    expect(h.counts.get('hour')).toBe(10);
+    expect(h.counts.get('import-validate-records')).toBe(50_000);
+  });
+
+  it('retains the independent 30-request ceiling for small validations', async () => {
+    const h = limitedApp();
+    for (let request = 0; request < 30; request += 1) expect((await h.request(1)).status).toBe(200);
+    const response = await h.request(1);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('3600');
+    expect(h.counts.get('import-validate-records')).toBe(30);
+    expect(h.claims.at(-1)).toEqual({ period: 'hour', cost: 1 });
+  });
+
+  it('uses the configured record budget without reducing the allowed envelope size', async () => {
+    const h = limitedApp(10);
+    expect((await h.request(10)).status).toBe(200);
+    expect((await h.request(1)).status).toBe(429);
+  });
+});
+
+describe('import creation timestamps over HTTP', () => {
+  const headers = { host: 'acme.localhost:48730', 'x-api-key': 'import-key', 'content-type': 'application/json' };
+  const now = '1998-08-14T10:00:00.000Z';
+  describe.each([
+    { kind: 'course', endpoint: API_PATHS.m2mImportCourses, record: { importKey: 'course', name: 'Course', description: '', imageUrl: null, moduleOrder: [] } },
+    { kind: 'module', endpoint: API_PATHS.m2mImportModules, record: { importKey: 'module', title: 'Module', courseKeys: [], prefix: null, chapters: [] } },
+    { kind: 'lesson', endpoint: API_PATHS.m2mImportLessons, record: { importKey: 'lesson', name: 'Lesson', isPreview: false, contents: [] } },
+    { kind: 'product', endpoint: API_PATHS.m2mImportProducts, record: { importKey: 'product', type: 'physical', slug: 'product', title: 'Product', description: '', coverUrl: null, priceCents: 0, currency: 'USD', accessItems: [] } },
+    { kind: 'member', endpoint: API_PATHS.m2mImportMembers, record: { importKey: 'member', email: 'user@example.test', displayName: 'Member' } },
+    { kind: 'redirect', endpoint: API_PATHS.m2mImportRedirects, record: { importKey: 'redirect', fromPath: '/old', target: { kind: 'path', path: '/new' }, permanent: true } },
+  ])('$kind timestamps', ({ kind, endpoint, record }) => {
+    it.each([
+      [undefined, true], ['1990-01-01T00:00:00.000Z', true], [now, true],
+      ['1998-08-14T10:04:59.999Z', true], ['1998-08-14T10:05:00.000Z', true],
+      ['1998-08-14T10:05:00.001Z', false], ['2098-08-14T10:00:00.000Z', false], ['invalid-date', false],
+    ] as const)('applies the same createdAt rule to validate and write: %s', async (createdAt, valid) => {
+      const { app, mutations, userMutations, redirectMutations } = importM2mApp({ scopes: ['import:content', 'import:users'], overrides: { clock: { nowIso: () => now } } });
+      const payload = { ...record, ...(createdAt === undefined ? {} : { createdAt }) };
+      const validated = await app.request(API_PATHS.m2mImportValidate, {
+        method: 'POST', headers, body: JSON.stringify({ datasetVersion: 'together-import/v1', records: [{ kind, ...payload }] }),
+      });
+      expect(validated.status).toBe(200);
+      expect(await validated.json()).toMatchObject({ ok: true, data: { valid } });
+      const written = await app.request(endpoint, {
+        method: 'POST', headers, body: JSON.stringify({ datasetVersion: 'together-import/v1', records: [payload] }),
+      });
+      expect(written.status).toBe(200);
+      expect(await written.json()).toMatchObject({ ok: true, data: { summary: { failed: valid ? 0 : 1 } } });
+      expect(mutations.length + userMutations.length + redirectMutations.length).toBe(valid ? 1 : 0);
+    });
   });
 });

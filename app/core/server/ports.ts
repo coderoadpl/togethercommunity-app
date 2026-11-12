@@ -966,14 +966,14 @@ export interface ImportRedirectRepository extends TenantRedirectRepository {
 export interface ApiKeyRateLimitRepository {
   claim(tenantId: string, input: {
     apiKeyId: string;
-    period: 'minute' | 'hour' | 'day';
+    period: 'minute' | 'hour' | 'day' | 'import-validate-records';
     windowStartedAt: string;
     limit: number;
     cost?: number;
   }): Promise<boolean>;
   release(tenantId: string, input: {
     apiKeyId: string;
-    period: 'minute' | 'hour' | 'day';
+    period: 'minute' | 'hour' | 'day' | 'import-validate-records';
     windowStartedAt: string;
     cost?: number;
   }): Promise<void>;

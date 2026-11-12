@@ -101,7 +101,9 @@ Boundary values are parsed with zod. `any` and type assertions other than
 `as const` are forbidden. Expected domain and application failures return
 `Result<T, AppError>`. Infrastructure promise rejections propagate to the
 server error seam, which normalizes them to `internal`; use-cases do not catch
-them separately. New errors extend the closed taxonomy and receive
+them separately. The exceptions are durable workflows that must release a
+processing claim or reschedule work before reporting the failure, such as
+Stripe webhook fulfilment and the scheduled job dispatchers. New errors extend the closed taxonomy and receive
 exhaustive HTTP-status and CLI-exit-code mappings. Together retains its own
 error-code set and numbering.
 

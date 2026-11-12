@@ -13,6 +13,11 @@ const LOCK_NAME = 'together:migrations';
 const DEFAULT_LOCK_WAIT_MS = 300_000;
 const RECOVERY_DOC = 'docs/deployment-environments.md#migration-journal';
 const DIVERGED_JOURNALS_DOC = 'docs/deployment-environments.md#diverged-journals';
+const JOURNAL_FENCE_DOC = 'docs/deployment-environments.md#journal-fence';
+const LEGACY_JOURNAL_FENCE = 'migration_journal_moved_to_public';
+// NOT VALID keeps the copied rows; every row inserted afterwards fails, so an earlier release's
+// migrator rolls back the migrations it ran in the same transaction.
+const FENCE_STATEMENT = `ALTER TABLE ${LEGACY_JOURNAL} ADD CONSTRAINT ${LEGACY_JOURNAL_FENCE} CHECK (false) NOT VALID`;
 const NAMED_ROWS_LIMIT = 10;
 
 export interface MigrationRunOptions {
@@ -51,11 +56,25 @@ interface TimeoutsRow {
   statement_timeout: string;
 }
 
+interface LegacyFenceRow {
+  fenced: boolean;
+  owned: boolean;
+  owner: string;
+  runner: string;
+}
+
 interface LegacyRow {
   id: number;
   hash: string;
   created_at: string | null;
 }
+
+export class MigrationRefusal extends Error {
+  override readonly name = 'MigrationRefusal';
+}
+
+const counted = (count: number, one: string, other: string): string =>
+  `${String(count)} ${count === 1 ? one : other}`;
 
 const firstRow = <T extends pg.QueryResultRow>(result: pg.QueryResult<T>, query: string): T => {
   const row = result.rows[0];
@@ -99,7 +118,7 @@ const acquireRunLock = async (client: pg.Client, lockWaitMs: number): Promise<vo
     await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [LOCK_NAME]);
   } catch (error) {
     if (lockNotAvailable(error)) {
-      throw new Error(
+      throw new MigrationRefusal(
         `Another migration run held the migration lock for more than ${String(lockWaitMs)} ms; nothing was applied. Run one migrator at a time.`,
         { cause: error },
       );
@@ -145,7 +164,30 @@ const ensureJournal = async (client: pg.Client, tables: JournalTablesRow): Promi
   return copied.rowCount ?? 0;
 };
 
-const describeLegacyRow = (row: LegacyRow, migrations: readonly Migration[]): string => {
+const fenceLegacyJournal = async (client: pg.Client): Promise<void> => {
+  const state = firstRow(
+    await client.query<LegacyFenceRow>(
+      `select
+         exists (select 1 from pg_constraint where conrelid = c.oid and conname = $1) as fenced,
+         pg_has_role(c.relowner, 'USAGE') as owned,
+         pg_get_userbyid(c.relowner) as owner,
+         current_user as runner
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'drizzle' and c.relname = '__drizzle_migrations'`,
+      [LEGACY_JOURNAL_FENCE],
+    ),
+    'legacy journal fence',
+  );
+  if (state.fenced) return;
+  if (!state.owned) {
+    throw new MigrationRefusal(
+      `${LEGACY_JOURNAL} belongs to ${state.owner}, not to ${state.runner}, so this run cannot stop an earlier release's migrator from writing to it. Nothing was applied. Run the migration as ${state.owner}, or have ${state.owner} run "${FENCE_STATEMENT}" and then run it again; see ${JOURNAL_FENCE_DOC}.`,
+    );
+  }
+  await client.query(FENCE_STATEMENT);
+};
+
+const describeLegacyRow =(row: LegacyRow, migrations: readonly Migration[]): string => {
   const source = migrations.find((migration) => migration.hash === row.hash);
   const origin = source === undefined ? 'matches no migration of this release' : `is migration ${source.tag} of this release`;
   return `id ${String(row.id)} (created_at ${row.created_at ?? 'null'}, hash ${row.hash.slice(0, 12)}, ${origin})`;
@@ -167,8 +209,8 @@ const refuseDivergedLegacyJournal = async (
   if (rows.length === 0) return;
   const named = rows.slice(0, NAMED_ROWS_LIMIT).map((row) => describeLegacyRow(row, migrations));
   const more = rows.length > NAMED_ROWS_LIMIT ? `, and ${String(rows.length - NAMED_ROWS_LIMIT)} more` : '';
-  throw new Error(
-    `${LEGACY_JOURNAL} holds ${String(rows.length)} rows that ${JOURNAL} lacks, so an earlier release's migrator ran after the journal moved: ${named.join('; ')}${more}. Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in ${DIVERGED_JOURNALS_DOC}.`,
+  throw new MigrationRefusal(
+    `${LEGACY_JOURNAL} holds ${counted(rows.length, 'row', 'rows')} that ${JOURNAL} lacks, so an earlier release's migrator ran after the journal moved: ${named.join('; ')}${more}. Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in ${DIVERGED_JOURNALS_DOC}.`,
   );
 };
 
@@ -187,8 +229,8 @@ const refuseUntrackedSchema = async (client: pg.Client): Promise<void> => {
     'application tables',
   ).count;
   if (tables === 0) return;
-  throw new Error(
-    `The database has ${String(tables)} application tables but no migration journal, so migration 0000 would run against existing tables. Restore the database together with ${JOURNAL} or start from an empty database; see ${RECOVERY_DOC}.`,
+  throw new MigrationRefusal(
+    `The database has ${counted(tables, 'application table', 'application tables')} but no migration journal, so migration 0000 would run against existing tables. Restore the database together with ${JOURNAL} or start from an empty database; see ${RECOVERY_DOC}.`,
   );
 };
 
@@ -236,6 +278,7 @@ export const runMigrations = async (options: MigrationRunOptions): Promise<Migra
     try {
       await acquireRunLock(client, lockWaitMs);
       const tables = await journalTables(client);
+      if (tables.legacy) await fenceLegacyJournal(client);
       const copiedJournalRows = await ensureJournal(client, tables);
       if (tables.legacy) await refuseDivergedLegacyJournal(client, migrations);
       await refuseUntrackedSchema(client);

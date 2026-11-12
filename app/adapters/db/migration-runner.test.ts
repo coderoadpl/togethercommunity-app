@@ -167,6 +167,50 @@ const migrateWithPreviousRelease = async (url: string, migrationsFolder: string)
   }
 };
 
+const fence = 'migration_journal_moved_to_public';
+
+type PgFailure = { code: unknown; constraint: unknown } | null;
+
+const pgFailure = async (work: Promise<unknown>): Promise<PgFailure> =>
+  work.then(
+    () => null,
+    (error: unknown) => {
+      const cause: unknown = error instanceof Error && error.cause !== undefined ? error.cause : error;
+      return typeof cause === 'object' && cause !== null
+        ? { code: 'code' in cause ? cause.code : undefined, constraint: 'constraint' in cause ? cause.constraint : undefined }
+        : { code: undefined, constraint: undefined };
+    },
+  );
+
+const fenceViolation = { code: '23514', constraint: fence };
+
+const fenceCount = async (url: string): Promise<number | undefined> =>
+  withClient(url, async (client) =>
+    (await client.query<{ count: number }>(
+      `select count(*)::int as count
+       from pg_constraint con
+       join pg_class rel on rel.oid = con.conrelid
+       join pg_namespace nsp on nsp.oid = rel.relnamespace
+       where nsp.nspname = 'drizzle' and rel.relname = '__drizzle_migrations' and con.conname = $1`,
+      [fence],
+    )).rows[0]?.count);
+
+const dropFence = async (database: RestrictedDatabase): Promise<void> => {
+  await withClient(database.adminUrl, async (client) => {
+    await client.query(`ALTER TABLE drizzle.__drizzle_migrations DROP CONSTRAINT ${fence}`);
+  });
+};
+
+const withApplicationName = (url: string, name: string): string => {
+  const named = new URL(url);
+  named.searchParams.set('application_name', name);
+  return named.toString();
+};
+
+const probeRowCount = async (url: string): Promise<number | undefined> =>
+  withClient(url, async (client) =>
+    (await client.query<{ count: number }>('select count(*)::int as count from runner_probe')).rows[0]?.count);
+
 const journalRows = async (url: string, schema: 'public' | 'drizzle'): Promise<JournalRow[]> =>
   withClient(url, async (client) =>
     (
@@ -309,6 +353,7 @@ describe('migration runner', () => {
         .resolves.toEqual({ applied: 0, copiedJournalRows: null });
       expect(await journalRows(database.url, 'public')).toEqual(legacyRows);
       expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await fenceCount(database.url)).toBe(1);
       expect(await healthCounts(database.url)).toEqual({ applied: expected, current: true });
 
       const next = migrationFolder(expected, [
@@ -382,6 +427,7 @@ describe('migration runner', () => {
         tag: '0100_runner_hotfix',
         sql: 'CREATE TABLE IF NOT EXISTS runner_probe (id integer);\n--> statement-breakpoint\nINSERT INTO runner_probe VALUES (1);',
       }]);
+      await dropFence(database);
       await migrateWithPreviousRelease(database.url, hotfix);
       await revokeCreate(database);
       const publicRows = await journalRows(database.url, 'public');
@@ -389,16 +435,15 @@ describe('migration runner', () => {
       if (hotfixRow === undefined) throw new Error('The previous release recorded no hotfix row');
       const hotfixHash = readMigrationFiles({ migrationsFolder: hotfix }).at(-1)?.hash;
       expect(hotfixRow.hash).toBe(hotfixHash);
-      const probeRows = async (): Promise<number | undefined> =>
-        withClient(database.url, async (client) =>
-          (await client.query<{ count: number }>('select count(*)::int as count from runner_probe')).rows[0]?.count);
+      const probeRows = async (): Promise<number | undefined> => probeRowCount(database.url);
 
       await expect(runMigrations({ connectionString: database.url, migrationsFolder: hotfix }))
         .rejects.toThrow(
-          `drizzle.__drizzle_migrations holds 1 rows that public.__drizzle_migrations lacks, so an earlier release's migrator ran after the journal moved: id ${String(hotfixRow.id)} (created_at ${hotfixRow.created_at}, hash ${hotfixRow.hash.slice(0, 12)}, is migration 0100_runner_hotfix of this release). Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in docs/deployment-environments.md#diverged-journals.`,
+          `drizzle.__drizzle_migrations holds 1 row that public.__drizzle_migrations lacks, so an earlier release's migrator ran after the journal moved: id ${String(hotfixRow.id)} (created_at ${hotfixRow.created_at}, hash ${hotfixRow.hash.slice(0, 12)}, is migration 0100_runner_hotfix of this release). Nothing was applied, because this run could repeat those migrations. Reconcile the two journals as described in docs/deployment-environments.md#diverged-journals.`,
         );
       expect(await journalRows(database.url, 'public')).toEqual(publicRows);
       expect(await probeRows()).toBe(1);
+      expect(await fenceCount(database.url)).toBe(0);
 
       await withClient(database.url, async (client) => {
         await client.query(
@@ -421,10 +466,137 @@ describe('migration runner', () => {
       await expect(runMigrations({ connectionString: database.url, migrationsFolder: hotfix }))
         .resolves.toEqual({ applied: 0, copiedJournalRows: null });
       expect(await probeRows()).toBe(1);
+      expect(await fenceCount(database.url)).toBe(1);
     }, { allowCreate: true });
   }, 120_000);
 
-  it('refuses a database that has application tables but no journal', async () => {
+  it('stops a previous release migrating next to this runner from applying the same migration', async () => {
+    await withRestrictedDatabase('together_runner_previous_concurrent', async (database) => {
+      const base = migrationFolder(1, [{ tag: '0001_runner_table', sql: 'CREATE TABLE runner_probe (id integer);' }]);
+      await migrateWithPreviousRelease(database.url, base);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: base }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: 2 });
+      const legacyRows = await journalRows(database.url, 'drizzle');
+      const pending = migrationFolder(1, [
+        { tag: '0001_runner_table', sql: 'CREATE TABLE runner_probe (id integer);' },
+        { tag: '0002_runner_row', sql: 'SELECT pg_sleep(2);\n--> statement-breakpoint\nINSERT INTO runner_probe VALUES (2);' },
+      ]);
+
+      const runner = runMigrations({
+        connectionString: withApplicationName(database.url, 'runner-under-test'),
+        migrationsFolder: pending,
+      });
+      await waitForBackend(database.adminUrl, "application_name = 'runner-under-test' and query like 'SELECT pg_sleep(2)%'");
+      const previous = await pgFailure(migrateWithPreviousRelease(database.url, pending));
+
+      expect(previous).toEqual(fenceViolation);
+      await expect(runner).resolves.toEqual({ applied: 1, copiedJournalRows: null });
+      expect(await probeRowCount(database.url)).toBe(1);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: pending }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+    }, { allowCreate: true });
+  }, 60_000);
+
+  it('fences the previous journal in the run that moves it, against a previous release already migrating', async () => {
+    await withRestrictedDatabase('together_runner_previous_during_move', async (database) => {
+      const base = migrationFolder(1, [{ tag: '0001_runner_table', sql: 'CREATE TABLE runner_probe (id integer);' }]);
+      await migrateWithPreviousRelease(database.url, base);
+      const legacyRows = await journalRows(database.url, 'drizzle');
+      const pending = migrationFolder(1, [
+        { tag: '0001_runner_table', sql: 'CREATE TABLE runner_probe (id integer);' },
+        { tag: '0002_runner_row', sql: 'SELECT pg_sleep(2);\n--> statement-breakpoint\nINSERT INTO runner_probe VALUES (2);' },
+      ]);
+
+      const previous = pgFailure(migrateWithPreviousRelease(withApplicationName(database.url, 'previous-release'), pending));
+      await waitForBackend(database.adminUrl, "application_name = 'previous-release' and query like 'SELECT pg_sleep(2)%'");
+      const runner = runMigrations({ connectionString: database.url, migrationsFolder: pending });
+
+      expect(await previous).toEqual(fenceViolation);
+      await expect(runner).resolves.toEqual({ applied: 1, copiedJournalRows: 2 });
+      expect(await probeRowCount(database.url)).toBe(1);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await fenceCount(database.url)).toBe(1);
+    }, { allowCreate: true });
+  }, 60_000);
+
+  it('fences a journal moved before the fence existed on the next run, once', async () => {
+    await withRestrictedDatabase('together_runner_fence_later', async (database) => {
+      const base = migrationFolder(1);
+      await migrateWithPreviousRelease(database.url, base);
+      await runMigrations({ connectionString: database.url, migrationsFolder: base });
+      await dropFence(database);
+      const legacyRows = await journalRows(database.url, 'drizzle');
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: base }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+      expect(await fenceCount(database.url)).toBe(1);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: base }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+      expect(await fenceCount(database.url)).toBe(1);
+
+      await expect(migrateWithPreviousRelease(database.url, base)).resolves.toBeUndefined();
+      const pending = migrationFolder(1, [{ tag: '0001_runner_table', sql: 'CREATE TABLE runner_probe (id integer);' }]);
+      expect(await pgFailure(migrateWithPreviousRelease(database.url, pending))).toEqual(fenceViolation);
+      expect(await relationExists(database.url, 'public.runner_probe')).toBe(false);
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+    }, { allowCreate: true });
+  }, 60_000);
+
+  it('leaves the previous release nothing to apply only where the old journal covers its migrations', async () => {
+    await withRestrictedDatabase('together_runner_backup_rollback', async (database) => {
+      await migrateWithPreviousRelease(database.url, migrationFolder(expected - 1));
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: 1, copiedJournalRows: expected - 1 });
+      const publicRows = await journalRows(database.url, 'public');
+      const legacyRows = await journalRows(database.url, 'drizzle');
+
+      expect(await pgFailure(migrateWithPreviousRelease(database.url, 'drizzle'))).not.toBeNull();
+      expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await journalRows(database.url, 'public')).toEqual(publicRows);
+      await expect(migrateWithPreviousRelease(database.url, migrationFolder(expected - 1))).resolves.toBeUndefined();
+    }, { allowCreate: true });
+
+    await withRestrictedDatabase('together_runner_fresh_rollback', async (database) => {
+      await runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' });
+
+      expect(await pgFailure(migrateWithPreviousRelease(database.url, 'drizzle')))
+        .toEqual({ code: '42P07', constraint: undefined });
+      expect(await journalRows(database.url, 'drizzle')).toEqual([]);
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: null });
+      expect(await fenceCount(database.url)).toBe(1);
+    }, { allowCreate: true });
+  }, 180_000);
+
+  it('refuses to move a journal owned by another role and changes nothing', async () => {
+    await withRestrictedDatabase('together_runner_foreign_journal', async (database) => {
+      const base = migrationFolder(1);
+      await migrateWithPreviousRelease(database.adminUrl, base);
+      const owner = new URL(adminUrl).username;
+      const legacyRows = await journalRows(database.adminUrl, 'drizzle');
+
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: base }))
+        .rejects.toThrow(
+          `drizzle.__drizzle_migrations belongs to ${owner}, not to ${roleName}, so this run cannot stop an earlier release's migrator from writing to it. Nothing was applied. Run the migration as ${owner}, or have ${owner} run "ALTER TABLE drizzle.__drizzle_migrations ADD CONSTRAINT ${fence} CHECK (false) NOT VALID" and then run it again; see docs/deployment-environments.md#journal-fence.`,
+        );
+      expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
+      expect(await fenceCount(database.url)).toBe(0);
+      expect(await journalRows(database.adminUrl, 'drizzle')).toEqual(legacyRows);
+
+      await withClient(database.adminUrl, async (client) => {
+        await client.query(`ALTER TABLE drizzle.__drizzle_migrations ADD CONSTRAINT ${fence} CHECK (false) NOT VALID`);
+        await client.query(`GRANT USAGE ON SCHEMA drizzle TO ${pg.escapeIdentifier(roleName)}`);
+        await client.query(`GRANT SELECT ON drizzle.__drizzle_migrations TO ${pg.escapeIdentifier(roleName)}`);
+      });
+      await expect(runMigrations({ connectionString: database.url, migrationsFolder: base }))
+        .resolves.toEqual({ applied: 0, copiedJournalRows: 1 });
+    });
+  }, 60_000);
+
+  it('refuses a database that has application tables but no journal, and the script prints only the refusal', async () => {
+    const untrackedRefusal =
+      'The database has 1 application table but no migration journal, so migration 0000 would run against existing tables. Restore the database together with public.__drizzle_migrations or start from an empty database; see docs/deployment-environments.md#migration-journal.';
     await withRestrictedDatabase('together_runner_untracked', async (database) => {
       await withClient(database.url, async (client) => {
         await client.query('CREATE TABLE tenants (id text PRIMARY KEY)');
@@ -432,10 +604,18 @@ describe('migration runner', () => {
 
       await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
         .rejects.toThrow(
-          'The database has 1 application tables but no migration journal, so migration 0000 would run against existing tables. Restore the database together with public.__drizzle_migrations or start from an empty database; see docs/deployment-environments.md#migration-journal.',
+          untrackedRefusal,
         );
       expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
       expect(await relationExists(database.url, 'public.tenants')).toBe(true);
+
+      const script = spawnSync(join(process.cwd(), 'node_modules/.bin/tsx'), ['adapters/db/migrate.ts'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, DATABASE_URL: database.url },
+      });
+      expect({ status: script.status, stderr: script.stderr }).toEqual({ status: 1, stderr: `${untrackedRefusal}\n` });
+      expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
     });
   }, 60_000);
 
@@ -468,6 +648,7 @@ describe('migration runner', () => {
 
       expect(await relationExists(database.url, 'public.__drizzle_migrations')).toBe(false);
       expect(await journalRows(database.url, 'drizzle')).toEqual(legacyRows);
+      expect(await fenceCount(database.url)).toBe(0);
 
       await expect(runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' }))
         .resolves.toEqual({ applied: expected - 100, copiedJournalRows: 100 });

@@ -2,7 +2,7 @@ import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
-import { useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState, type ComponentProps, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -24,7 +24,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams, FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, formatSalesLinkVariantParam, SALES_LINK_VARIANT_PARAM, FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -103,7 +103,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
   const singleOffer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage && salesLinkSlug === undefined });
-  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? ''), enabled: !statusPage && salesLinkSlug !== undefined });
+  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? '', new URLSearchParams(window.location.search).getAll(SALES_LINK_VARIANT_PARAM)), enabled: !statusPage && salesLinkSlug !== undefined });
   const offer = salesLinkSlug === undefined ? singleOffer : bundleOffer;
   const paymentConfig = useQuery(actions.publicPaymentConfig);
   const sessionId = new URLSearchParams(window.location.search).get('session_id');
@@ -161,11 +161,34 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
   const bundle = bundleOffer.data;
+  const variantSelections = useMemo(() => salesLinkSlug === undefined ? [] : (bundle?.lines ?? []).flatMap((line) =>
+    line.baseProductId === undefined || line.baseProductId === line.productId ? [] : [{ productId: line.baseProductId, variantProductId: line.productId }]), [bundle, salesLinkSlug]);
+  const bundleVariantHref = useCallback((baseId: string, chosenId: string): string => {
+    const search = new URLSearchParams(window.location.search);
+    const params = attributionToSearchParams(attributionFromSearchParams(search));
+    if (search.get('checkout') === 'together') params.set('checkout', 'together');
+    const code = search.get('code');
+    if (code) params.set('code', code);
+    if (search.get('test_purchase') === '1') params.set('test_purchase', '1');
+    for (const line of bundle?.lines ?? []) {
+      const productId = line.baseProductId ?? line.productId;
+      const variantProductId = productId === baseId ? chosenId : line.productId;
+      if (variantProductId !== productId) params.append(SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam({ productId, variantProductId }));
+    }
+    return `${window.location.pathname}?${params}`;
+  }, [bundle]);
+  const renderBundleLineVariants = useCallback<NonNullable<ComponentProps<typeof BundleOfferSummary>['afterName']>>((line) =>
+    bundle === undefined || (line.variants?.length ?? 0) < 2 ? null : <ProductVariantChips
+      productId={line.productId} variants={line.variants ?? []}
+      label={t.productVariants.offerLabelFor({ title: line.name })} ariaCurrent="true"
+      takenProductIds={new Set(bundle.lines.filter((other) => other.productId !== line.productId).map((other) => other.productId))}
+      hrefFor={(variant) => bundleVariantHref(line.baseProductId ?? line.productId, variant.productId)}
+    />, [bundle, bundleVariantHref, t]);
   const product = useMemo(() => {
     const emptyPrices: OfferPrice[] = [];
     return salesLinkSlug === undefined ? singleOffer.data?.products.find(
     (candidate) => candidate.id === productRef || candidate.slug === productRef,
-  ) : bundle === undefined ? undefined : { id: bundle.lines[0]?.productId ?? '', title: bundle.salesLink.heading, description: '', coverUrl: null, vatRate: null, vatExemptionBasis: null, priceCents: bundle.totalCents, currency: bundle.currency, prices: emptyPrices, marketingConsents: bundle.marketingConsents };
+  ) : bundle === undefined ? undefined : { id: bundle.lines[0]?.baseProductId ?? bundle.lines[0]?.productId ?? '', title: bundle.salesLink.heading, description: '', coverUrl: null, vatRate: null, vatExemptionBasis: null, priceCents: bundle.totalCents, currency: bundle.currency, prices: emptyPrices, marketingConsents: bundle.marketingConsents };
   }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
   const offerProduct = salesLinkSlug === undefined ? singleOffer.data?.products.find((candidate) => candidate.id === productId) : undefined;
@@ -216,13 +239,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       couponValidation.mutate({
         productId,
         ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+        ...(variantSelections.length === 0 ? {} : { variantSelections }),
         ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
         email,
         couponCode: initialCouponCode,
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [autoValidationDue, autoValidationKey, couponValidation, email, initialCouponCode, product, productId, salesLinkSlug, selectedPrice]);
+  }, [autoValidationDue, autoValidationKey, couponValidation, email, initialCouponCode, product, productId, salesLinkSlug, selectedPrice, variantSelections]);
 
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -249,6 +273,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
         productId,
         ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+        ...(variantSelections.length === 0 ? {} : { variantSelections }),
         email,
         language,
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
@@ -264,6 +289,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       email,
       productId,
       ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+      ...(variantSelections.length === 0 ? {} : { variantSelections }),
       language,
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
@@ -279,6 +305,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (togetherCheckout) retryParams.set('checkout', 'together');
   const retryCouponCode = new URLSearchParams(window.location.search).get('code');
   if (retryCouponCode !== null && retryCouponCode !== '') retryParams.set('code', retryCouponCode);
+  for (const value of new URLSearchParams(window.location.search).getAll(SALES_LINK_VARIANT_PARAM)) retryParams.append(SALES_LINK_VARIANT_PARAM, value);
   const retryUrl = `${window.location.pathname}${retryParams.size === 0 ? '' : `?${retryParams.toString()}`}`;
   const retry = () => {
     window.history.replaceState(null, '', retryUrl);
@@ -465,7 +492,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             testId="checkout-product-cover"
             fallbackTestId="checkout-product-cover-fallback"
           />
-          {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
+          {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary afterName={renderBundleLineVariants} heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
           {safetyEntries.map((entry) => (
             <ProductSafetyInfo key={entry.productId} compliance={entry.compliance} expanded={entry.type === 'physical'} productTitle={titledSafety ? entry.title : undefined} />
           ))}
@@ -602,7 +629,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 disabled={couponValidation.isPending || couponCode.trim() === ''}
                 onClick={() => couponValidation.mutate({
                   productId,
-        ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+                  ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+                  ...(variantSelections.length === 0 ? {} : { variantSelections }),
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                   ...(email === '' ? {} : { email }),
                   couponCode,
@@ -749,7 +777,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 onClick={() => simulatePurchase.mutate({
                   email,
                   productId,
-        ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+                  ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+                  ...(variantSelections.length === 0 ? {} : { variantSelections }),
                   language,
                   ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                   ...consent,

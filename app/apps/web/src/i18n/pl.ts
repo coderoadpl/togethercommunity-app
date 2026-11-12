@@ -731,6 +731,8 @@ export const pl: Messages = {
     instructions: 'Instrukcja i informacje o bezpieczeństwie',
   },
   productVariants: {
+    offerLabelFor: ({ title }) => `Wariant: ${title}`,
+    inBundle: 'Już w pakiecie',
     heading: 'Warianty',
     hint: 'Każdy wariant to osobny produkt z własną ceną i stanem magazynowym. Opublikowane produkty z tą samą grupą wariantów są oferowane jako warianty siebie nawzajem.',
     group: 'Grupa wariantów',

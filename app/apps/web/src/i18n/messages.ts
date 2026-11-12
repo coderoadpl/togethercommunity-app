@@ -694,6 +694,8 @@ export interface Messages {
     instructions: string;
   };
   productVariants: {
+    offerLabelFor: (params: { title: string }) => string;
+    inBundle: string;
     heading: string;
     hint: string;
     group: string;

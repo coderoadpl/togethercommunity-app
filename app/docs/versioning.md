@@ -52,7 +52,10 @@ version source every surface reads, so nothing else has to be rewired:
 - the CLI `--version` flag and `version` command.
 
 Tests, Docker images and local runs never execute `vercel-build`, so they keep
-the committed manifest value. That is the intended fallback, not a defect.
+the committed manifest value. That is the intended fallback, not a defect. A
+release image receives the derived version as the `APP_VERSION` build argument
+instead, because the Docker build context excludes `.git`; the
+[Kubernetes guide](kubernetes.md#image) shows the build command.
 
 ## The history the derivation needs
 
@@ -67,7 +70,8 @@ the committed manifest value. That is the intended fallback, not a defect.
   `https://github.com/$VERCEL_GIT_REPO_OWNER/$VERCEL_GIT_REPO_SLUG.git`, which
   needs no credentials because the repository is public.
 - **Docker and tests** have no promotion history to read and fall back to the
-  manifest.
+  manifest, unless the image build passes `APP_VERSION` derived outside the
+  build context.
 
 When the history cannot be read, the version becomes the manifest value plus
 the `+unknown` build metadata marker, and the commit identity falls back to

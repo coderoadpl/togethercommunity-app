@@ -7,6 +7,7 @@ import { members, tenants } from '#adapters/db/schema.js';
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
+import { createPendingWork, shutdownGracefully } from './graceful-shutdown.js';
 
 const baseUrl = 'http://localhost:48730';
 const email = 'shared@example.test';
@@ -16,6 +17,7 @@ let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let deps: ReturnType<typeof createDeps>;
 let app: ReturnType<typeof buildApp>;
 let userId: string;
+const pendingWork = createPendingWork();
 
 const post = (path: string, body: unknown, tenant?: string) => app.request(new URL(path, baseUrl).toString(), {
   method: 'POST',
@@ -32,7 +34,7 @@ beforeAll(async () => {
     NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'sign-in-events-secret-at-least-32-characters',
-  }), { db: database.db });
+  }), { db: database.db, keepAlive: pendingWork.track });
   app = buildApp(deps);
   const response = await post(BETTER_AUTH_SIGN_UP_PATH, { name: 'Shared member', email, password });
   expect(response.status).toBe(200);
@@ -88,5 +90,23 @@ describe('tenant sign-in emission', () => {
     const signedOut = await app.request(new URL(BETTER_AUTH_SIGN_OUT_PATH, baseUrl).toString(), { method: 'POST', headers: { origin: baseUrl, cookie, 'x-tenant': 'studio' } });
     expect(signedOut.status).toBe(200);
     expect(await events()).toEqual(recorded);
+  });
+
+  it('keeps the shutdown drain open until a sign-in event that started after the response is recorded', async () => {
+    const before = await events();
+    const link = await deps.authPort.createEnrollmentMagicLink({ email, callbackURL: `${baseUrl}/my`, baseUrl, tenantName: 'Workspace', language: 'en' });
+    const response = await app.request(link.url, { headers: { 'x-tenant': 'acme' } });
+    expect(response.status).toBe(302);
+    let recordedWhenReleased: number | undefined;
+    await shutdownGracefully({
+      servers: [],
+      tickers: { stop: async () => undefined },
+      work: pendingWork,
+      release: [{ name: 'database connections', run: async () => { recordedWhenReleased = (await events()).length; } }],
+      drainTimeoutMs: 10_000,
+      releaseTimeoutMs: 5_000,
+      log: () => undefined,
+    });
+    expect(recordedWhenReleased).toBe(before.length + 1);
   });
 });

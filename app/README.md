@@ -9,7 +9,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 
 ## Quickstart (local demo)
 
-For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+For a production Docker install, use the one-page [self-host guide](docs/self-host.md);
+for a Kubernetes deployment, follow the [Kubernetes contract](docs/kubernetes.md).
 Payment setup and existing Stripe subscription adoption are covered in the
 [payments guide](docs/payments.md).
 
@@ -224,7 +225,7 @@ ECR Public allows one unauthenticated pull per second, so the quickstart smoke
 probe, Caddyfile test, and browser suites pull images one at a time with retries
 for throttling and transient network failures.
 
-The Vitest projects currently discover <!--count:test-files-->580<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->587<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

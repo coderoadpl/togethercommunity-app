@@ -297,13 +297,16 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     respond(ok({ status: 'ok' as const, ...attestation })),
   );
 
-  app.get(API_PATHS.healthReady, async () =>
-    respond(
-      (await deps.health.pingDatabase())
-        ? ok({ status: 'ok' as const, database: 'up' as const, ...attestation })
-        : err(unavailable('Database is not reachable')),
-    ),
-  );
+  app.get(API_PATHS.healthReady, async () => {
+    if (!(await deps.health.pingDatabase())) return respond(err(unavailable('Database is not reachable')));
+    const migrations = await deps.health.migrationCounts();
+    if (migrations.applied === null || migrations.applied < migrations.expected) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: ${String(migrations.applied ?? 0)} of ${String(migrations.expected)} applied`,
+      )));
+    }
+    return respond(ok({ status: 'ok' as const, database: 'up' as const, ...attestation }));
+  });
 
   app.get(API_PATHS.health, async () =>
     respond(

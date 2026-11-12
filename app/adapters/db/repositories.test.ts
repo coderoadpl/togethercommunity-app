@@ -3625,6 +3625,13 @@ describe('health port', () => {
     expect(status.schemaCurrent).toBe(true);
     expect(status.appliedMigrations).toBe(status.expectedMigrations);
   });
+
+  it('counts applied migrations against the journal the code ships', async () => {
+    const counts = await createHealthPort(db).migrationCounts();
+
+    expect(counts.expected).toBeGreaterThan(0);
+    expect(counts.applied).toBe(counts.expected);
+  });
 });
 
 describe('member erasure repository', () => {

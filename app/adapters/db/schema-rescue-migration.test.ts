@@ -202,6 +202,7 @@ describe('schema rescue migration', () => {
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
       });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: 80 });
 
       await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
 
@@ -216,6 +217,7 @@ describe('schema rescue migration', () => {
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
       });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: expected });
     });
   }, 60_000);
 
@@ -256,6 +258,15 @@ describe('schema rescue migration', () => {
       expect(repeatedRows.filter((row) => Number(row.created_at) === migration0080When))
         .toHaveLength(1);
       await expectRescuedSchema(pool);
+    });
+  }, 60_000);
+
+  it('reports no applied migrations on a database the migrator has never touched', async () => {
+    await withDatabase('together_schema_rescue_empty', async (pool) => {
+      const health = createHealthPort(drizzle(pool, { schema: dbSchema }));
+
+      expect(await health.pingDatabase()).toBe(true);
+      expect(await health.migrationCounts()).toEqual({ expected, applied: null });
     });
   }, 60_000);
 });

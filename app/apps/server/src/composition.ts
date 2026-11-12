@@ -36,7 +36,7 @@ import { createMarketingContactCampaignTransaction } from '#adapters/db/marketin
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
 import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from '#adapters/db/marketing-delivery-transactions.js';
 import { createMarketingWaiter } from '#adapters/scheduler/marketing-waiter.js';
-import { processMarketingSnsInbox } from '#core/server/index.js';
+import { createMarketingTickFailures, processMarketingSnsInbox, type MarketingTenantError } from '#core/server/index.js';
 import { dispatchMarketingOutbox } from '#core/server/index.js';
 import type { MarketingDeliveryTransaction, MarketingOutboxRepository, MarketingSnsInboxRepository, MarketingWaiter } from '#core/server/index.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -46,7 +46,7 @@ import { createMarketingDirectoryJobs } from '#adapters/db/marketing-contact-imp
 import type { MarketingContactDeps, MarketingDirectoryJobs } from '#core/server/index.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import { createDb, type Db } from '#adapters/db/client.js';
+import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
@@ -571,6 +571,7 @@ export interface AppDeps {
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void; warn(message: string): void };
+  trackBackgroundWork?: (task: Promise<unknown>) => void;
   baseDomain: string;
   platformHost: string | null;
   singleTenantMode: boolean;
@@ -639,7 +640,7 @@ export interface MarketingAppDeps {
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number; tenantErrors?: MarketingTenantError[] }, AppError>>;
 }
 
 export const selectDevEndpoints = (
@@ -766,6 +767,12 @@ export const createMultipleTenantsReporter = (
   };
 };
 
+export const selectDatabasePoolOptions = (
+  env: Pick<Env, 'DATABASE_POOL_MAX'>,
+): { max: number } | undefined => env.DATABASE_POOL_MAX === undefined
+  ? undefined
+  : { max: env.DATABASE_POOL_MAX };
+
 export const selectAuthTrustedProxyHeader = (
   env: Pick<Env, 'AUTH_TRUSTED_PROXY_HEADER'>,
 ): string | null => env.AUTH_TRUSTED_PROXY_HEADER === 'direct'
@@ -868,10 +875,15 @@ export const selectDeploymentIdentity = (
  */
 export const createDeps = (
   env: Env,
-  options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
-): AppDeps => {
+  options: {
+    clock?: Clock;
+    db?: Db;
+    keepAlive?: (task: Promise<unknown>) => void;
+    trackBackgroundWork?: (task: Promise<unknown>) => void;
+  } = {},
+): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
-  const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL);
+  const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL, selectDatabasePoolOptions(env));
   const tenantDomains = createTenantDomainRepository(db);
   const storageCorsCache = createStorageCorsCache(db);
   const tenantDomainEvents = createTenantDomainEventRepository(db);
@@ -1150,7 +1162,7 @@ export const createDeps = (
   const reputationDashboardUrl = async (tenantId: string): Promise<string> =>
     `${await resolveOrigin(tenantId)}/panel/marketing`;
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
-    let firstError: AppError | null = null;
+    const failures = createMarketingTickFailures(logger);
     const now = clock.nowIso();
     const deadlineAt = new Date(Date.parse(now) + env.MARKETING_WORKER_SECONDS * 1000).toISOString();
     const inboxDeadline = new Date(Math.min(Date.parse(deadlineAt), Date.parse(now) + 5000)).toISOString();
@@ -1159,7 +1171,7 @@ export const createDeps = (
       const inbox = await processMarketingSnsInbox(snsWebhookContext(tenantId),
         { workerId: randomUUID(), deadlineAt: inboxDeadline, maxEvents: 100 },
         { ...deliveryRepos, delivery, clock, ids, hmac: emailHmac, sns, credentials: marketingCredentials });
-      if (!inbox.ok) firstError ??= inbox.error;
+      if (!inbox.ok) failures.tenant(tenantId, 'sns-inbox', inbox.error);
     }
     const marketing = await runScheduledMarketingJobs({
       now,
@@ -1214,7 +1226,7 @@ export const createDeps = (
         ),
       maintenanceBackoff,
     });
-    if (!marketing.ok) firstError ??= marketing.error;
+    if (!marketing.ok) failures.platform(marketing.error);
     for (const tenantId of await deliveryRepos.marketingOutbox.listTenantIds()) {
       if (Date.parse(clock.nowIso()) + 1000 >= Date.parse(deadlineAt)) break;
       await refreshMarketingQuota(tenantId);
@@ -1222,7 +1234,7 @@ export const createDeps = (
         { workerId: randomUUID(), deadlineAt, maxSends: env.MARKETING_BATCH_CAP }, {
           ...deliveryRepos, contacts: marketingContacts.contacts, delivery, clock, ids, waiter, definitions, consents: marketingConsents, hmac: emailHmac, credentials: marketingCredentials, throttle: marketingThrottle, ses: marketingSes,
         });
-      if (!dispatched.ok) firstError ??= dispatched.error;
+      failures.outbox(tenantId, dispatched);
     }
     const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED && clock.nowIso() < deadlineAt
       ? await purgeExpiredConsentEvidence(
@@ -1240,10 +1252,13 @@ export const createDeps = (
       await drainTelemetry(tenantId, { ...telemetryStore, random: Math.random, deadlineAt });
     }
     const sweptViews = clock.nowIso() < deadlineAt ? await sweepLapsedImpersonations({ impersonations, ids, clock }) : ok(undefined);
-    if (firstError !== null) return err(firstError);
+    const platformFailure = failures.firstPlatformFailure();
+    if (platformFailure !== null) return err(platformFailure);
+    if (!marketing.ok) return marketing;
     if (!purged.ok) return purged;
     if (!sweptViews.ok) return sweptViews;
-    return marketing;
+    const tenantErrors = [...marketing.value.tenantErrors ?? [], ...failures.tenantErrors()];
+    return ok({ ...marketing.value, ...(tenantErrors.length === 0 ? {} : { tenantErrors }) });
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
@@ -1402,6 +1417,7 @@ export const createDeps = (
   });
 
   const deps: AppDeps = {
+    ...(options.trackBackgroundWork === undefined ? {} : { trackBackgroundWork: options.trackBackgroundWork }),
     renderQrPng,
     telemetryTenantDirectory: createTelemetryTenantDirectory(db),
     telemetry: { recordAppError },
@@ -1622,5 +1638,9 @@ export const createDeps = (
       dispatchScheduledMarketing,
     },
   };
-  return deps;
+  const close = async (): Promise<void> => {
+    if ('close' in realtimeBus) await realtimeBus.close();
+    if (options.db === undefined) await closeDb(db);
+  };
+  return Object.assign(deps, { close });
 };

@@ -61,6 +61,14 @@ volumes. Back up PostgreSQL before upgrades. To upgrade, check out the intended
 release and run `docker compose up -d --build` again. Inspect health and logs
 with `docker compose ps` and `docker compose logs -f app`.
 
+Stopping or replacing the app container sends it `SIGTERM`, and the server
+drains as described in the [Kubernetes shutdown contract](kubernetes.md#shutdown):
+usually it exits as soon as the requests and background work in progress end,
+at worst after 75 seconds. Docker kills a container 10 seconds after the signal
+unless told otherwise, which would cut off that work and the pending
+authentication e-mail, so the app service sets `stop_grace_period: 90s`. Keep it
+when you adapt the Compose file.
+
 Images are pulled from the AWS public mirror of Docker official images and from GitHub's registry for Mailpit because Docker Hub rate-limits anonymous pulls.
 ECR Public allows one unauthenticated pull per second, so the quickstart probe,
 Caddyfile test, and browser suites pull images one at a time with retries for

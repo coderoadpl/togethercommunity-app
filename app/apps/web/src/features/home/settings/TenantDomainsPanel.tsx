@@ -22,7 +22,8 @@ import type {
   TenantDomainStatus,
 } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
-import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { useToastError, useToastOutcome } from '../../../components/ui/Toast.js';
 import { errorCodeOf, localizePanelError, serverMessageOf, useLanguage, useTranslations } from '../../../i18n/index.js';

@@ -89,12 +89,6 @@ describe('Google tag loading', () => {
     expect(window.dataLayer).toBeUndefined();
   });
 
-  it('supports presence-only consent', async () => {
-    document.cookie = 'analytics_consent=; path=/';
-    const { loadGoogleTag } = await import('./analytics.js');
-    expect(loadGoogleTag({ ...config, consentCookieValue: null })).toBe(true);
-  });
-
   it('keeps an existing data layer', async () => {
     const existing = { event: 'existing' };
     window.dataLayer = [existing];

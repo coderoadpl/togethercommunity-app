@@ -5,8 +5,8 @@ Together derives from the `demo/` reference application in
 
 - Fork commit: `9b4bcd560ac38bb2a98334d31c60f189a98bd9a9`
 - Fork date: 2026-07-12
-- Current upgrade target: `5a82eb5d2f00b856e3da0ef50b19e7aa0d6c9de1`
-- Upgrade target date: 2026-07-27
+- Current upgrade target: `19d31b1cf6cffe35fda45bf989429e0f4e3e7ef0`
+- Upgrade target date: 2026-08-05
 
 The product owns its source and domain model. The portable foundation artifact is
 kept synchronized by reviewing upstream changes to these paths:
@@ -21,6 +21,9 @@ kept synchronized by reviewing upstream changes to these paths:
 - `app/config-regression/`
 - `.github/workflows/`
 - `app/CLAUDE.md` and the layer-local agent instructions
+- `.github/CODEOWNERS`
+- `renovate.json`
+- `app/knip.json`
 
 ## Deliberate divergences
 
@@ -66,3 +69,17 @@ kept synchronized by reviewing upstream changes to these paths:
   from that delay preserve the reviewed npm resolution set during migration.
   Remove an exclusion together with its override once the direct or transitive
   constraint resolves to an equally reviewed safe version.
+- Together derives release versions from promotion and merge history
+  (`app/docs/versioning.md`) instead of upstream's human release cut, manifest
+  version source, and documentation snapshots. Together's 0.x HTTP API makes no
+  compatibility promise (`app/docs/version-surfaces.md`), so upstream's
+  additive-only v1 rule is not adopted.
+- Pull request titles use `<area>: <summary>` because the release-notes generator
+  (`app/scripts/changelog.ts`) classifies them by that prefix; commits keep
+  gitmoji. Upstream puts a gitmoji at the start of both.
+- The password floor is 15 characters (`app/core/domain/password.ts`,
+  `app/docs/security.md`), stricter than upstream's 12, because second-factor
+  enrolment is optional.
+- A self-hosted instance may create its first workspace before the creator's
+  address is verified (`app/docs/self-host.md`); upstream denies workspace
+  creation to every unverified address.

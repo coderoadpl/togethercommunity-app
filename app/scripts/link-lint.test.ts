@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -94,6 +94,29 @@ describe('local Markdown links', () => {
     expect(lint(join(fixture, 'repo'), ['README.md'])).toEqual([
       '[link] README.md: "../repo-sibling/file.md" resolves outside the repository',
     ]);
+  });
+
+  it('rejects links that reach outside the repository through file or directory symlinks', () => {
+    const fixture = plant('outside-symlink', {
+      'outside/file.md': '',
+      'repo/README.md': '[file](./file-link.md) [dir](./dir-link/file.md)\n',
+    });
+    const root = join(fixture, 'repo');
+    symlinkSync(join(fixture, 'outside', 'file.md'), join(root, 'file-link.md'));
+    symlinkSync(join(fixture, 'outside'), join(root, 'dir-link'));
+    expect(lint(root, ['README.md'])).toEqual([
+      '[link] README.md: "./file-link.md" resolves outside the repository through a symbolic link',
+      '[link] README.md: "./dir-link/file.md" resolves outside the repository through a symbolic link',
+    ]);
+  });
+
+  it('accepts symlinks whose targets stay inside the repository', () => {
+    const root = plant('inside-symlink', {
+      'docs/real.md': '',
+      'README.md': '[linked](./linked/real.md)\n',
+    });
+    symlinkSync(join(root, 'docs'), join(root, 'linked'));
+    expect(lint(root, ['README.md'])).toEqual([]);
   });
 
   it('checks in-tree names starting with two dots rather than treating them as traversal', () => {

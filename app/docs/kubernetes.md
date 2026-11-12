@@ -111,7 +111,11 @@ The `503` message from readiness names the cause:
 
 `GET /api/health` is the promotion attestation (version, SHA, database
 fingerprint, migration counts and schema fingerprint); it answers 200 even when
-the database is down, so it is not a probe.
+the database is down, so it is not a probe. When it cannot count the journal,
+`appliedMigrations` is `null` and `migrationJournal` is `missing` or
+`unreadable`, with the same causes and actions as the two readiness messages
+above. The remote smoke reports those two cases by name instead of as a stale
+schema.
 
 ## Shutdown
 

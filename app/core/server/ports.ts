@@ -2437,16 +2437,19 @@ export type MigrationCounts =
   | { expected: number; applied: number }
   | { expected: number; applied: null; journal: 'missing' | 'unreadable' };
 
+export type SchemaStatus = {
+  expectedMigrations: number;
+  schemaFingerprint: string | null;
+  schemaFingerprintMatch: boolean | null;
+} & (
+  | { appliedMigrations: number; schemaCurrent: boolean }
+  | { appliedMigrations: null; schemaCurrent: false; migrationJournal: 'missing' | 'unreadable' }
+);
+
 export interface HealthPort {
   pingDatabase(): Promise<boolean>;
   migrationCounts(): Promise<MigrationCounts>;
-  schemaStatus(): Promise<{
-    expectedMigrations: number;
-    appliedMigrations: number | null;
-    schemaCurrent: boolean;
-    schemaFingerprint: string | null;
-    schemaFingerprintMatch: boolean | null;
-  }>;
+  schemaStatus(): Promise<SchemaStatus>;
 }
 
 /**

@@ -4998,8 +4998,14 @@ export const createHealthPort = (db: Db): HealthPort => {
           schemaCurrent: numberField(row, 'latest') >= lastJournalWhen,
           ...fingerprint,
         };
-      } catch {
-        return { expectedMigrations, appliedMigrations: null, schemaCurrent: false, ...fingerprint };
+      } catch (error) {
+        return {
+          expectedMigrations,
+          appliedMigrations: null,
+          migrationJournal: undefinedRelation(error) ? 'missing' : 'unreadable',
+          schemaCurrent: false,
+          ...fingerprint,
+        };
       }
     },
   };

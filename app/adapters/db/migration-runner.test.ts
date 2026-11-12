@@ -218,6 +218,17 @@ const waitForBackend = async (url: string, condition: string): Promise<void> => 
   });
 };
 
+const runtimeSchemaJournal = async (url: string): Promise<Record<string, unknown>> => {
+  const pool = new pg.Pool({ connectionString: url });
+  try {
+    const { appliedMigrations, schemaCurrent, ...rest } = await createHealthPort(drizzle(pool, { schema: dbSchema }))
+      .schemaStatus();
+    return { appliedMigrations, schemaCurrent, migrationJournal: 'migrationJournal' in rest ? rest.migrationJournal : undefined };
+  } finally {
+    await pool.end();
+  }
+};
+
 const chainRows = (): Array<Pick<JournalRow, 'hash' | 'created_at'>> =>
   migrations.map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) }));
 
@@ -581,12 +592,14 @@ describe('migration runner', () => {
   );
 });
 
-describe('readiness journal check', () => {
+describe('readiness and health journal check', () => {
   const runtimeRole = (): string => pg.escapeIdentifier(runtimeRoleName);
 
   it('reports a missing journal on a database that was never migrated', async () => {
     await withRestrictedDatabase('together_ready_missing', async (database) => {
       expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: null, journal: 'missing' });
+      expect(await runtimeSchemaJournal(runtimeUrl(database.name)))
+        .toEqual({ appliedMigrations: null, schemaCurrent: false, migrationJournal: 'missing' });
     });
   }, 60_000);
 
@@ -598,6 +611,8 @@ describe('readiness journal check', () => {
       });
 
       expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: null, journal: 'unreadable' });
+      expect(await runtimeSchemaJournal(runtimeUrl(database.name)))
+        .toEqual({ appliedMigrations: null, schemaCurrent: false, migrationJournal: 'unreadable' });
 
       await withClient(database.url, async (client) => {
         await client.query(`GRANT USAGE ON SCHEMA public TO ${runtimeRole()}`);
@@ -608,6 +623,8 @@ describe('readiness journal check', () => {
         await client.query(`GRANT SELECT ON public.__drizzle_migrations TO ${runtimeRole()}`);
       });
       expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: 1 });
+      expect(await runtimeSchemaJournal(runtimeUrl(database.name)))
+        .toEqual({ appliedMigrations: 1, schemaCurrent: false, migrationJournal: undefined });
     });
   }, 60_000);
 

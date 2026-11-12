@@ -297,6 +297,26 @@ describe('remote smoke', () => {
     expect(result.checks[0]?.detail).toBe(`expected SHA ${SHA}, received old-sha`);
   });
 
+  it.each([
+    [{}, 'health reported a stale schema'],
+    [
+      { appliedMigrations: null, migrationJournal: 'unreadable' },
+      'health could not read the migration journal: check that the runtime role may read public.__drizzle_migrations, then the database timeouts and connections; rerunning migrations does not help',
+    ],
+    [
+      { appliedMigrations: null, migrationJournal: 'missing' },
+      'health found no migration journal: the migrations never ran against this database',
+    ],
+  ])('tells a journal it cannot read apart from a stale schema (%o)', async (journal, detail) => {
+    const result = await runRemoteSmoke(
+      options,
+      stubbedFetch({ health: healthPayload({ schemaCurrent: false, ...journal }) }),
+    );
+
+    expect(result.failing).toEqual(['health-attestation']);
+    expect(result.checks[0]?.detail).toBe(detail);
+  });
+
   it('accepts any served commit when no SHA is expected', async () => {
     const result = await runRemoteSmoke(
       unpinnedOptions,

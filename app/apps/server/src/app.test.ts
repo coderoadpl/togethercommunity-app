@@ -3511,6 +3511,25 @@ describe('health route', () => {
     });
   });
 
+  it('names a migration journal the health attestation could not read', async () => {
+    const response = await buildApp(deps({
+      schemaStatus: {
+        expectedMigrations: 82,
+        appliedMigrations: null,
+        migrationJournal: 'unreadable',
+        schemaCurrent: false,
+        schemaFingerprint: null,
+        schemaFingerprintMatch: null,
+      },
+    })).request(API_PATHS.health);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { appliedMigrations: null, migrationJournal: 'unreadable', schemaCurrent: false },
+    });
+  });
+
   it('serves liveness without touching the database', async () => {
     let databasePings = 0;
     const configured = deps();

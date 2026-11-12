@@ -301,17 +301,18 @@ export const listDiscussion = async (
     limit: parsed.data.limit,
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
-  const repliesByThread = await Promise.all(
-    listed.threads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
+  const repliesByThread = await deps.posts.listRepliesForRoots(
+    scope.value.tenantId,
+    listed.threads.map((thread) => thread.post.rootPostId),
   );
   const avatarUrls = await avatarUrlsFor(
     scope.value.tenantId,
-    [...listed.threads.map((thread) => thread.post), ...repliesByThread.flat()].map(
+    [...listed.threads.map((thread) => thread.post), ...[...repliesByThread.values()].flat()].map(
       (post) => post.authorUserId,
     ),
     deps,
   );
-  const threads = listed.threads.map((thread, index) => ({
+  const threads = listed.threads.map((thread) => ({
     ...toRenderedPublicPost(
       thread.post,
       scope.value.userId,
@@ -320,7 +321,7 @@ export const listDiscussion = async (
     replyCount: thread.replyCount,
     replies: nestReplies(
       thread.post.id,
-      repliesByThread[index] ?? [],
+      repliesByThread.get(thread.post.rootPostId) ?? [],
       scope.value.userId,
       avatarUrls,
     ),

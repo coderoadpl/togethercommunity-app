@@ -740,6 +740,8 @@ const deps = (input: {
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+      listRepliesForRoots: async () => new Map(),
+      countRepliesIncludingDeleted: async () => new Map(),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
@@ -6773,6 +6775,8 @@ describe('anonymous public surface routes', () => {
             .map((post) => ({ post, replyCount: 0 })),
           nextCursor: null,
         }),
+        listRepliesForRoots: async () => new Map(),
+        countRepliesIncludingDeleted: async () => new Map(),
         listReplies: async () => [],
       },
       courses: {
@@ -7137,6 +7141,8 @@ describe('anonymous public surface routes', () => {
             threads: forAcme(tenantId, [{ post, replyCount: 0 }]),
             nextCursor: null,
           }),
+          listRepliesForRoots: async () => new Map(),
+          countRepliesIncludingDeleted: async () => new Map(),
           listReplies: async () => [],
         },
         courses: {

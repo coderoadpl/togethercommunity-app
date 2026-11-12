@@ -356,6 +356,8 @@ export interface PostRepository {
     query: { spaceIds: string[]; cursor?: string; limit: number },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
+  listRepliesForRoots(tenantId: string, rootPostIds: string[]): Promise<Map<string, Post[]>>;
+  countRepliesIncludingDeleted(tenantId: string, rootPostIds: string[]): Promise<Map<string, number>>;
   updateBody(
     tenantId: string,
     input: { id: string; body: string; bodyFormat: Post['bodyFormat']; editedAt: string },

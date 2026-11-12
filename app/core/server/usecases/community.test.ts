@@ -328,6 +328,18 @@ class FakePosts implements PostRepository {
     };
   }
 
+  async listRepliesForRoots(tenantId: string, rootPostIds: string[]): Promise<Map<string, Post[]>> {
+    return new Map(await Promise.all(rootPostIds.map(async (rootPostId) => [
+      rootPostId, await this.listReplies(tenantId, rootPostId),
+    ] as const)));
+  }
+
+  async countRepliesIncludingDeleted(tenantId: string, rootPostIds: string[]): Promise<Map<string, number>> {
+    return new Map(await Promise.all(rootPostIds.map(async (rootPostId) => [
+      rootPostId, (await this.listReplies(tenantId, rootPostId)).length,
+    ] as const)));
+  }
+
   async listReplies(tenantId: string, rootPostId: string): Promise<Post[]> {
     return this.rows.filter((post) => post.tenantId === tenantId && post.rootPostId === rootPostId && post.parentPostId !== null);
   }

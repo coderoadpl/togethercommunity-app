@@ -333,20 +333,22 @@ const parseThreadCursor = (cursor: string): { createdAt: string; id: string } =>
 const countThreadReplies = async (
   db: Db,
   tenantId: string,
-  post: { id: string; rootPostId: string },
-): Promise<number> => {
+  rootPostIds: string[],
+): Promise<Map<string, number>> => {
+  if (rootPostIds.length === 0) return new Map();
   const counts = await db
-    .select({ value: sql<number>`count(*)::int` })
+    .select({ rootPostId: posts.rootPostId, value: sql<number>`count(*)::int` })
     .from(posts)
     .where(
       and(
         eq(posts.tenantId, tenantId),
-        eq(posts.rootPostId, post.rootPostId),
-        sql`${posts.id} <> ${post.id}`,
+        inArray(posts.rootPostId, rootPostIds),
+        sql`${posts.id} <> ${posts.rootPostId}`,
         isNull(posts.deletedAt),
       ),
-    );
-  return counts[0]?.value ?? 0;
+    )
+    .groupBy(posts.rootPostId);
+  return new Map(counts.map((row) => [row.rootPostId, row.value]));
 };
 
 const parseSpace = (space: typeof spaces.$inferSelect): Space => spaceSchema.parse(space);
@@ -1326,12 +1328,11 @@ export const createPostRepository = (db: Db): PostRepository => ({
       .limit(query.limit + 1);
     const page = rows.slice(0, query.limit);
     const overflow = rows[query.limit];
-    const threads = await Promise.all(
-      page.map(async (post) => ({
-        post: parsePost(post),
-        replyCount: await countThreadReplies(db, tenantId, post),
-      })),
-    );
+    const replyCounts = await countThreadReplies(db, tenantId, page.map((post) => post.rootPostId));
+    const threads = page.map((post) => ({
+      post: parsePost(post),
+      replyCount: replyCounts.get(post.rootPostId) ?? 0,
+    }));
     const last = page.at(-1);
     return {
       threads,
@@ -1360,12 +1361,11 @@ export const createPostRepository = (db: Db): PostRepository => ({
       .limit(query.limit + 1);
     const page = rows.slice(0, query.limit);
     const overflow = rows[query.limit];
-    const threads = await Promise.all(
-      page.map(async (post) => ({
-        post: parsePost(post),
-        replyCount: await countThreadReplies(db, tenantId, post),
-      })),
-    );
+    const replyCounts = await countThreadReplies(db, tenantId, page.map((post) => post.rootPostId));
+    const threads = page.map((post) => ({
+      post: parsePost(post),
+      replyCount: replyCounts.get(post.rootPostId) ?? 0,
+    }));
     const last = page.at(-1);
     return { threads, nextCursor: overflow && last ? threadCursor(last) : null };
   },
@@ -1377,6 +1377,39 @@ export const createPostRepository = (db: Db): PostRepository => ({
         .where(and(eq(posts.tenantId, tenantId), eq(posts.rootPostId, rootPostId), sql`${posts.parentPostId} is not null`))
         .orderBy(asc(posts.createdAt), asc(posts.id))
     ).map(parsePost),
+  listRepliesForRoots: async (tenantId, rootPostIds) => {
+    if (rootPostIds.length === 0) return new Map();
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(and(
+        eq(posts.tenantId, tenantId),
+        inArray(posts.rootPostId, rootPostIds),
+        isNotNull(posts.parentPostId),
+      ))
+      .orderBy(asc(posts.createdAt), asc(posts.id));
+    const replies = new Map<string, Post[]>();
+    for (const row of rows) {
+      const post = parsePost(row);
+      const thread = replies.get(post.rootPostId) ?? [];
+      thread.push(post);
+      replies.set(post.rootPostId, thread);
+    }
+    return replies;
+  },
+  countRepliesIncludingDeleted: async (tenantId, rootPostIds) => {
+    if (rootPostIds.length === 0) return new Map();
+    const rows = await db
+      .select({ rootPostId: posts.rootPostId, value: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(and(
+        eq(posts.tenantId, tenantId),
+        inArray(posts.rootPostId, rootPostIds),
+        isNotNull(posts.parentPostId),
+      ))
+      .groupBy(posts.rootPostId);
+    return new Map(rows.map((row) => [row.rootPostId, row.value]));
+  },
   updateBody: async (tenantId, input) => {
     const rows = await db
       .update(posts)

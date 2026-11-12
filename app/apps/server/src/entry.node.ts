@@ -7,6 +7,7 @@ import { buildApp } from './app.js';
 import { buildCaddyDomainCheckApp } from './caddy-domain-check.js';
 import { createDeps } from './composition.js';
 import { loadEnv } from './env.js';
+import { forwardedPathNotFound } from './forwarded-paths.js';
 import {
   applyConnectionTimeouts,
   createPendingWork,
@@ -94,6 +95,7 @@ const tickers = startBackgroundTickers(env.NODE_ENV === 'test' ? [] : production
 
 // Same process serves the SPA build — one origin per tenant domain, no CORS.
 app.use('*', serveStatic({ root: env.WEB_DIST_DIR }));
+app.get('*', forwardedPathNotFound);
 app.get('*', serveStatic({ path: `${env.WEB_DIST_DIR}/index.html` }));
 
 const server = serve({ fetch: trackRequests(app.fetch, pendingWork), port: env.PORT, hostname: '0.0.0.0' }, (info) => {

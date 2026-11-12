@@ -229,6 +229,17 @@ because the HTTP calls also drain notification fan-out and purge rate-limit
 windows, and three of the endpoints have no ticker at all. No switch to turn
 the tickers off is needed or provided.
 
+## Routing
+
+The server owns the paths the hosted platform forwards to its function:
+`/api/`, `/u/`, `/marketing/`, `/legal/`, `/courses/`, `/link/` and `/offer/`
+([`forwarded-paths.ts`](../apps/server/src/forwarded-paths.ts), checked
+against [`vercel.json`](../vercel.json)). A `GET` under one of them that no
+route answers gets the server's `404` instead of the web app document. The
+exceptions are `/offer/` requests with `checkout=together` or
+`status=success|cancelled`, which the web app renders, as on the hosted
+platform. Every other unmatched `GET` serves the web app document.
+
 ## Known limits
 
 - The certificate-admission check at `/internal/domain-check` caches nothing.
@@ -236,3 +247,6 @@ the tickers off is needed or provided.
   ask is a database lookup, so a flood of handshakes with random names becomes
   a flood of database queries. Rate limiting or negative caching in front of it
   is planned, not built.
+- Social and search crawlers reach the server on every path on the hosted
+  platform. Here a crawler request outside the paths above that the server does
+  not answer still gets the web app document.

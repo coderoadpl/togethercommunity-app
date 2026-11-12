@@ -125,10 +125,10 @@ describe('entry.node composition', () => {
       '*',
       harness.serveStatic.mock.results[0]?.value,
     );
-    expect(harness.app.get).toHaveBeenCalledWith(
-      '*',
-      harness.serveStatic.mock.results[1]?.value,
-    );
+    expect(harness.app.get.mock.calls).toEqual([
+      ['*', expect.objectContaining({ name: 'forwardedPathNotFound' })],
+      ['*', harness.serveStatic.mock.results[1]?.value],
+    ]);
     expect(harness.serve).toHaveBeenCalledWith(
       { fetch: expect.any(Function), port: 47100, hostname: '0.0.0.0' },
       expect.any(Function),

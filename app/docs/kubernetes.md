@@ -10,10 +10,15 @@ behaviour this contract leaves unchanged.
 
 ## Image
 
-Build one image per commit and promote that image unchanged. The browser
-bundle embeds its configuration at build time, so the values below are build
-arguments, not runtime settings. None of them is a secret; never pass a secret
-as a build argument, because build arguments are visible in the image history.
+Staging and production run separate builds, as they do on the hosted platform
+today: the staging image is built from the `staging` branch and the production
+image from the promotion merge commit on `main`. The production image therefore
+reports that merge commit's SHA and the version derived from it, which is what
+the release tag and the production smoke expect; it is not the image staging
+ran. The browser bundle embeds its configuration at build time, so the values
+below are build arguments, not runtime settings. None of them is a secret;
+never pass a secret as a build argument, because build arguments are visible in
+the image history.
 
 | Build argument | Value | Effect |
 |---|---|---|
@@ -103,7 +108,7 @@ boot on an invalid production configuration.
 Required in production (`NODE_ENV=production` is the image default):
 
 - `APP_ENV=production`, `APP_BASE_URL` (HTTPS), `APP_BASE_DOMAIN`
-- `DATABASE_URL`, `DB_DRIVER=node-postgres`
+- `DATABASE_URL`, `DB_DRIVER=node-postgres` (see the TLS note below)
 - `AUTH_TRUSTED_PROXY_HEADER`
 - `BETTER_AUTH_SECRET`, `SECRETS_MASTER_KEY`
 - `PAYMENT_PROVIDER=stripe`, `SECURE_COOKIES=true`, `KSEF_ENVIRONMENT=production`
@@ -132,6 +137,16 @@ variable, `TOGETHER_VISUAL_CLOCK`, `SNS_TEST_CERT_PEM_BASE64`, and the
 which would hand custom-domain provisioning back to the previous hosting
 provider. Without them custom domains run in the manual activation mode
 described in the [custom domains guide](custom-domains.md).
+
+### Database TLS
+
+The server pool and the migration Job rewrite `sslmode=require`, `prefer` and
+`verify-ca` in `DATABASE_URL` to `verify-full`, and node-postgres treats those
+modes the same way for the realtime `LISTEN` connection. Every connection therefore verifies the server certificate and its
+host name against Node's public certificate store. When the managed database
+presents a certificate from a private or provider-specific authority, mount
+that authority's certificate into the pods and the migration Job and add
+`sslrootcert=<path>` to the URL, or TLS verification fails.
 
 ### Connection budget
 
@@ -198,3 +213,11 @@ the other until its lease expires. The tickers cannot replace the CronJobs,
 because the HTTP calls also drain notification fan-out and purge rate-limit
 windows, and three of the endpoints have no ticker at all. No switch to turn
 the tickers off is needed or provided.
+
+## Known limits
+
+- The certificate-admission check at `/internal/domain-check` caches nothing.
+  Every TLS handshake for an unknown name makes the edge ask again, and each
+  ask is a database lookup, so a flood of handshakes with random names becomes
+  a flood of database queries. Rate limiting or negative caching in front of it
+  is planned, not built.

@@ -1,13 +1,16 @@
 import { marketingContactDeps } from '../testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '../testing/marketing-signup-fakes.js';
 import { dispatchMarketingOutbox } from './marketing-dispatch.js';
+import { createMarketingTickFailures } from './marketing-tick-failures.js';
 import { createInMemoryMarketingDelivery } from '../testing/marketing-delivery-fakes.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  appError,
   emailEventSchema,
   err,
   integrationAuth,
+  internal,
   notFound,
   ok,
   SMOKE_TENANT_ID,
@@ -415,6 +418,32 @@ describe('marketing e-mail use-case integration', () => {
       { status: 'retry', lastError: 'Tenant SES is not ready', nextAttemptAt: '1998-07-22T10:00:01.000Z' },
       { status: 'pending', claimVersion: 0 },
     ]);
+  });
+
+  it.each([
+    { failure: appError('ses_not_configured', 'Tenant SES secret key is not configured'), tenantErrors: 1, platform: false },
+    { failure: internal('Stored secret could not be decrypted'), tenantErrors: 0, platform: true },
+  ])('defers the send durably and reports a $failure.code credential failure to the marketing tick', async ({ failure, tenantErrors, platform }) => {
+    const deps = await setup();
+    await enqueueMessages(ctx, [{
+      to: 'member@example.test', memberId: null, campaignId: null, source: 'api',
+      consentDefinitionId: definition.id, subject: 'News', bodyHtml: '<p>News</p>', data: {},
+    }], deps);
+    const dispatched = await dispatchMarketingOutbox(ctx, { workerId: 'worker', deadlineAt: '1998-07-22T10:00:50.000Z', maxSends: 10 },
+      { ...deps, credentials: { resolve: async () => err(failure) } });
+
+    expect(dispatched).toEqual(ok({ sent: 0, skipped: 0, failed: 0, uncertain: 0, credentialsError: failure }));
+    expect(deps.ses.sent).toHaveLength(0);
+    expect(deps.marketingOutbox.rows).toMatchObject([{ status: 'retry', lastError: 'Tenant SES is not ready', lockedBy: null }]);
+    const logged = { warn: vi.fn<(message: string) => void>(), error: vi.fn<(message: string) => void>() };
+    const failures = createMarketingTickFailures(logged);
+    failures.outbox('tenant-1', dispatched);
+    expect(failures.tenantErrors()).toHaveLength(tenantErrors);
+    expect(failures.firstPlatformFailure()).toEqual(platform ? failure : null);
+    expect((platform ? logged.error : logged.warn).mock.calls).toEqual([[
+      `[marketing] tick ${platform ? 'failed' : 'skipped'} tenant=tenant-1 step=outbox error=${failure.code}`,
+    ]]);
+    expect((platform ? logged.warn : logged.error)).not.toHaveBeenCalled();
   });
 
   it('retains uncertain acceptance when the SES transport throws and never automatically resends it', async () => {

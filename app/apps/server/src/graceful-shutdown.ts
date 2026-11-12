@@ -73,32 +73,60 @@ export interface DrainableServer {
   stopReusingConnections(): void;
 }
 
+type Outgoing = HttpBindings['outgoing'];
+type Connection = HttpBindings['incoming']['socket'];
+
 export const drainable = (server: ServerType): DrainableServer => {
   if (!('closeIdleConnections' in server)) return { server, stopReusingConnections: () => undefined };
-  const open = new Set<HttpBindings['outgoing']>();
+  const unanswered = new Map<Connection, Set<Outgoing>>();
   let draining = false;
-  const closeAfter = (response: HttpBindings['outgoing']): void => {
+  const closeAfter = (response: Outgoing): void => {
     if (!response.headersSent) response.shouldKeepAlive = false;
     response.once('finish', () => {
       server.closeIdleConnections();
     });
   };
-  server.prependListener('request', (_request, response) => {
-    if (draining) {
-      closeAfter(response);
+  const refuse = (response: Outgoing): void => {
+    response.shouldKeepAlive = false;
+    response.statusCode = 503;
+    response.end();
+  };
+  const remember = (socket: Connection, response: Outgoing): void => {
+    const responses = unanswered.get(socket) ?? new Set<Outgoing>();
+    if (!unanswered.has(socket)) {
+      unanswered.set(socket, responses);
+      socket.once('close', () => {
+        unanswered.delete(socket);
+      });
+    }
+    responses.add(response);
+    const forget = (): void => {
+      responses.delete(response);
+    };
+    response.once('finish', forget);
+    response.once('close', forget);
+  };
+  const handlers = server.listeners('request');
+  server.removeAllListeners('request');
+  server.on('request', (request, response) => {
+    const earlier = unanswered.get(request.socket);
+    // Draining closes this connection after the earlier response, so a pipelined answer could never be delivered.
+    if (draining && earlier !== undefined && earlier.size > 0) {
+      refuse(response);
       return;
     }
-    open.add(response);
-    response.once('close', () => {
-      open.delete(response);
-    });
+    remember(request.socket, response);
+    if (draining) closeAfter(response);
+    for (const handler of handlers) Reflect.apply(handler, server, [request, response]);
   });
   return {
     server,
     stopReusingConnections: () => {
       draining = true;
-      for (const response of open) closeAfter(response);
-      open.clear();
+      for (const responses of unanswered.values()) {
+        const last = [...responses].at(-1);
+        if (last !== undefined) closeAfter(last);
+      }
     },
   };
 };

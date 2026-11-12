@@ -152,6 +152,10 @@ Erasure retains `meta_capi_consent_evidence` and terminal `meta_capi_events`
 receipts, linked only to the retained order and tenant. Evidence contains the
 copy, version, decision, time and source; receipts contain delivery status,
 field names and bounded gateway labels, not IP, user agent, fbp, fbc or email.
+Erasure appends a withdrawal proof for an existing grant using its original
+copy and version in the same transaction that removes the pending identifiers.
+The tenant/order/decision key preserves the grant and any earlier withdrawal
+when erasure is repeated.
 These are proof of consent and prior disclosure, not permission for future sends.
 Their retention horizon follows the six-year/end-of-calendar-year policy above,
 starting at the order's `meta_capi_consent_withdrawn_at` (set on withdrawal or

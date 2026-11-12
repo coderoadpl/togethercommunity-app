@@ -1,4 +1,4 @@
-import { metaCapiOutbox } from './meta-capi-schema.js';
+import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
@@ -2798,6 +2798,17 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         attribution: null,
         metaCapiConsentWithdrawnAt: sql`coalesce(${orders.metaCapiConsentWithdrawnAt}, ${input.deletedAt}::timestamptz)`,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId)));
+      await tx.insert(metaCapiConsentEvidence).select(tx.select({
+        tenantId: metaCapiConsentEvidence.tenantId, orderId: metaCapiConsentEvidence.orderId,
+        decision: sql<'withdrawn'>`'withdrawn'`.as('decision'), occurredAt: sql<string>`${input.deletedAt}::timestamptz`.as('occurred_at'),
+        textVersion: metaCapiConsentEvidence.textVersion, textSnapshot: metaCapiConsentEvidence.textSnapshot,
+        source: sql<string>`'member-erasure'`.as('source'),
+      }).from(metaCapiConsentEvidence).innerJoin(orders, and(
+        eq(orders.tenantId, metaCapiConsentEvidence.tenantId), eq(orders.id, metaCapiConsentEvidence.orderId),
+      )).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
+        eq(metaCapiConsentEvidence.tenantId, tenantId), eq(metaCapiConsentEvidence.decision, 'granted'),
+      ))).onConflictDoNothing();
       await tx.delete(metaCapiOutbox).where(and(
         eq(metaCapiOutbox.tenantId, tenantId),
         exists(tx.select({ id: orders.id }).from(orders).where(and(

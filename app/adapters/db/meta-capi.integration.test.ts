@@ -116,7 +116,12 @@ describe('Meta privacy and failure isolation', () => {
     await erase('erased');
     expect((await repo.findOrder('workspace', access))?.consent.withdrawnAt).toBe(now);
     expect(await database.db.select().from(metaCapiOutbox).where(eq(metaCapiOutbox.orderId, 'erased'))).toEqual([]);
-    expect(await database.db.select().from(metaCapiConsentEvidence).where(eq(metaCapiConsentEvidence.orderId, 'erased'))).toHaveLength(1);
+    const evidence = await database.db.select().from(metaCapiConsentEvidence).where(eq(metaCapiConsentEvidence.orderId, 'erased'));
+    expect(evidence).toHaveLength(2);
+    expect(evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ decision: 'granted', source: 'return-page', textVersion: capture.textVersion, textSnapshot: capture.textSnapshot }),
+      expect.objectContaining({ decision: 'withdrawn', source: 'member-erasure', textVersion: capture.textVersion, textSnapshot: capture.textSnapshot }),
+    ]));
     expect((await repo.findOrder('other', other))?.consent).toEqual({ consent: 'granted', withdrawnAt: null });
     const dispatch = dispatchHarness(repo);
     await dispatchMetaCapi(dispatch.deps);
@@ -163,8 +168,10 @@ describe('Meta privacy and failure isolation', () => {
     const access = await memberOrder('racing');
     const repo = repository();
     await repo.decide('workspace', access, async () => ok({ decision: 'granted', capture }));
-    const entered = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
+    let signalEntered: () => void = () => undefined;
+    let signalRelease: () => void = () => undefined;
+    const entered = { promise: new Promise<void>((resolve) => { signalEntered = () => { resolve(); }; }), resolve: () => signalEntered() };
+    const release = { promise: new Promise<void>((resolve) => { signalRelease = () => { resolve(); }; }), resolve: () => signalRelease() };
     const sending = repo.processNext('workspace', now, async () => { entered.resolve(); await release.promise; return sent('racing'); });
     await entered.promise;
     let erased = false;
@@ -172,7 +179,7 @@ describe('Meta privacy and failure isolation', () => {
     try {
       await vi.waitFor(async () => {
         const rows = await database.db.execute(sql`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%meta_capi_consent_withdrawn_at%'`);
-        expect(rows.rows.length).toBeGreaterThan(0);
+        expect(rows).toMatchObject({ rows: expect.arrayContaining([expect.objectContaining({ pid: expect.any(Number) })]) });
       });
       expect(erased).toBe(false);
     } finally { release.resolve(); await sending; await erasure; }

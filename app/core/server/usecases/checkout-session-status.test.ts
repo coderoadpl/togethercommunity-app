@@ -223,7 +223,10 @@ it.each([false, true])('preserves shipping analytics and locale-resolved CAPI st
   ] };
   const settings = { ...analyticsSettings, analyticsMetaCapiEnabled: enabled, analyticsMetaPixelId: '1234567890', privacyUrl: 'https://example.org/privacy' };
   const deps = harness([purchase], settings);
-  const metaCapi: MetaCapiDeps = { tenants: deps.tenants, clock: { nowIso: () => order.createdAt }, hash: { sha256: (text) => text },
+  const metaCapi: MetaCapiDeps = { tenants: deps.tenants, clock: { nowIso: () => order.createdAt }, hash: { sha256: (text) => {
+    if (typeof text !== 'string') throw new Error('Consent snapshots must be text');
+    return text;
+  } },
     repository: { findOrder: async () => ({ order: purchase, consent: { consent: 'undecided', withdrawnAt: null },
       email: 'buyer@example.org', memberDeleted: false, sourceUrl: 'https://example.org/checkout/book', consentAt: null }),
     decide: async () => err(notFound()), processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };

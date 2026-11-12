@@ -61,6 +61,7 @@ describe('Meta CAPI use cases', () => {
     const h = harness();
     const copies = new Map<string, string>();
     h.deps.hash.sha256 = (text) => {
+      if (typeof text !== 'string') throw new Error('Consent snapshots must be text');
       const known = copies.get(text);
       if (known) return known;
       const hash = (copies.size + 1).toString(16).padStart(64, '0');
@@ -69,6 +70,7 @@ describe('Meta CAPI use cases', () => {
     };
     const config = await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps, locale);
     if (!config) throw new Error('Missing consent config');
+    expect(config.locale).toBe(locale);
     const input = { sessionId: 'cs_live_purchase', decision: 'granted' as const, locale, textVersion: config.textVersion };
     const request = { ip: null, userAgent: null };
     expect(await recordPublicMetaCapiConsent('workspace', { ...input, locale: locale === 'en' ? 'pl' : 'en' }, request, h.deps))

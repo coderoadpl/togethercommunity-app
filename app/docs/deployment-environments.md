@@ -115,21 +115,26 @@ with drizzle-orm's columns (`id`, `hash`, `created_at`). The runner never
 creates a schema, so a role that owns schema `public` without `CREATE` on the
 database can migrate.
 
-A run is one `READ COMMITTED` transaction, whatever
-`default_transaction_isolation` the database or role sets. It takes a
+A run is two `READ COMMITTED` transactions, whatever
+`default_transaction_isolation` the database or role sets. Each takes a
 transaction-scoped advisory lock and reads the journal only after the lock is
 granted; at that isolation level every statement sees what was committed before
 it started, so a runner that waited for the lock sees everything the previous
-run committed. It applies every pending migration before it commits, so a
-failed migration leaves the database and its journal as they were. The lock
-works through a transaction-mode connection pooler, because it never outlives
-the transaction. A second runner waits up to five minutes for the lock and
-then fails with `Another migration run held the migration lock for more than
-300000 ms; nothing was applied.` A `statement_timeout` set on the database or
-the role does not shorten that wait; it still applies to the migrations
-themselves. The previous release's migrator does not take this lock; what
-keeps it from applying a migration next to this runner is the
-[journal fence](#journal-fence).
+transaction committed. The first, the journal step, adds the
+[journal fence](#journal-fence) when it is missing, creates and fills
+`public.__drizzle_migrations` when it is missing, and makes the checks below;
+it commits before any migration runs. The second reads the journal again and
+applies every pending migration before it commits, so a failed migration leaves
+the database and its journal as the journal step left them. Another runner can
+take the lock between the two; the second transaction then applies only what
+that runner left pending. The lock works through a transaction-mode connection
+pooler, because it never outlives a transaction. A second runner waits up to
+five minutes for the lock and then fails with `Another migration run held the
+migration lock for more than 300000 ms; nothing was applied.` A
+`statement_timeout` set on the database or the role does not shorten that wait;
+it still applies to the migrations themselves. The previous release's migrator
+does not take this lock; what keeps it from applying a migration next to this
+runner is the [journal fence](#journal-fence).
 
 Migration `0105_record_skipped_0080` names `drizzle.__drizzle_migrations`. The
 runner executes that one migration, identified by its tag, against
@@ -138,7 +143,7 @@ recorded for it is the same in every database. Every other migration runs
 exactly as written, so a later migration that cleans up or drops the old table
 acts on the old table.
 
-The runner refuses to start in four cases, each with nothing applied. `db:migrate`
+The runner refuses in six cases, each with no migration applied. `db:migrate`
 prints the refusal as one line on stderr, without a stack trace, and exits 1;
 any other failure, such as a migration statement that fails, is reported with
 its stack trace.
@@ -147,22 +152,31 @@ its stack trace.
 |---|---|---|
 | `Another migration run held the migration lock` | Another runner held the lock longer than the wait. | Let the other run finish, then run again. |
 | `drizzle.__drizzle_migrations belongs to <owner>, not to <role>` | The old journal is owned by a role the migration role is not a member of, so the runner cannot fence it. | [Journal fence](#journal-fence). |
+| `Another session kept drizzle.__drizzle_migrations in use for more than 3000 ms` | An open transaction that read or wrote the old journal kept the fence from being added; the journal step changed nothing. | Run again; [journal fence](#journal-fence). |
+| `public.__drizzle_migrations or the fence on drizzle.__drizzle_migrations changed after this run prepared the journal` | Between the journal step and the migrations, a session dropped the fence or one of the journal tables appeared or disappeared. | Run again; the next journal step restores the fence. |
 | `drizzle.__drizzle_migrations holds <n> row(s) that public.__drizzle_migrations lacks` | An earlier release's migrator wrote the old journal while it had no fence. | [Diverged journals](#diverged-journals). |
 | `The database has <n> application table(s) but no migration journal` | The database was restored or copied without its journal. | See the last paragraph of [upgrade from the drizzle schema](#upgrade-from-the-drizzle-schema). |
 
 ### Upgrade from the drizzle schema
 
 Earlier releases kept the journal in `drizzle.__drizzle_migrations`. On such a
-database the first run fences the old table (see [journal fence](#journal-fence)),
-creates `public.__drizzle_migrations` and copies every row with its `id`,
-`hash` and `created_at`, in `id` order, before it applies anything, in the same
-transaction as the migrations. The operator sees `Migration journal moved to
-public.__drizzle_migrations (<n> row(s) copied from
-drizzle.__drizzle_migrations)` and then `Migrations applied (<n> new)`; later
-runs print only the second line. A run that dies part-way leaves the database
-as it was and the next run copies again. The `drizzle` schema stays in place;
-later runs only fence its journal when the fence is missing and compare it with
-the public one, and dropping it is a separate decision that a later migration can make as written.
+database the first run's journal step fences the old table (see
+[journal fence](#journal-fence)), creates `public.__drizzle_migrations` and
+copies every row with its `id`, `hash` and `created_at`, in `id` order, and
+commits all of it before it applies anything. The operator sees `Migration
+journal moved to public.__drizzle_migrations (<n> row(s) copied from
+drizzle.__drizzle_migrations)`, then `Fenced drizzle.__drizzle_migrations with
+check constraint migration_journal_moved_to_public; an earlier release's
+migrator can no longer record a migration there`, then `Migrations applied (<n>
+new)`. A later run prints the `Fenced` line only when it adds a missing fence
+(a database moved before the fence existed, or a fence dropped since), and
+otherwise only the last line. A run that dies in the journal step leaves the
+database as it was and the next run copies again; a run that dies in a
+migration keeps the moved and fenced journal but nothing of its migrations, and
+the next run applies them without copying again. The `drizzle` schema stays in
+place; later runs only fence its journal when the fence is missing and compare
+it with the public one, and dropping it is a separate decision that a later
+migration can make as written.
 
 When both tables exist, `public.__drizzle_migrations` is authoritative. The
 public table only appears in the same commit as the complete copy and the
@@ -200,7 +214,18 @@ ALTER TABLE drizzle.__drizzle_migrations
 violates the constraint. The earlier migrator applies all its pending
 migrations and their journal rows in one transaction, so its first journal
 insert fails and rolls back everything it applied in that run. On a database
-moved before the constraint existed, the next run adds it. Deleting rows from
+moved before the constraint existed, the next run adds it. The constraint
+commits in the journal step, before any migration runs, so a failed or
+deadlocked migration cannot remove it, and the exclusive lock it needs on the
+old table is held only for that short step; readers of the old table, such as
+the previous release's health check, are not held up while migrations run.
+The statement waits at most 3 seconds for that lock. When an open transaction
+that read or wrote the old table, for example an earlier migrator part-way
+through its run or an operator's `BEGIN` in `psql`, holds it longer, the run
+refuses with `Another session kept drizzle.__drizzle_migrations in use for more
+than 3000 ms, so this run could not fence it. Nothing was changed. Run the
+migration again`; end that transaction or wait for it, then run the Job again.
+Deleting rows from
 the old table still works, so the reconciliation below and a later migration
 that cleans the old table up are unaffected.
 
@@ -272,9 +297,21 @@ once the journals agree.
 ### Rollback
 
 The previous release reads and writes only `drizzle.__drizzle_migrations`,
-which keeps the rows it held when this release moved the journal; its
-readiness and health counts read the same table. Redeploying the previous
-release is safe only when both of these hold:
+which keeps the rows it held when this release moved the journal. Two previous
+releases can exist, and they report the old journal differently:
+
+- The release before the container changes, whose readiness does not count
+  migrations: `/api/health/ready` only checks that the database answers, so it
+  answers `200` whatever the journal holds; only
+  `/api/health` reads the old journal, as `appliedMigrations` and
+  `schemaCurrent`. Its migrator runs in the hosted-platform build, so a failing
+  migrator fails that deployment's build.
+- The release with the container changes, whose readiness counts migrations:
+  `/api/health/ready` reads the old journal and answers `503` with `Database migrations are behind this
+  release: <applied> of <expected> applied` while the old journal holds fewer
+  rows than that release ships, `0` when the old journal is missing.
+
+Redeploying either previous release is safe only when both of these hold:
 
 - The old journal covers every migration the previous release ships: the
   previous release had migrated this database to its own last migration before
@@ -295,9 +332,10 @@ release is safe only when both of these hold:
   schema exists.
 
 Then the previous release's migrator applies nothing, the
-[journal fence](#journal-fence) is never reached, and its readiness reports
-the database as current. Migrations this release applied after the move stay
-in place, as with any forward-only rollback, and remain recorded only in the
+[journal fence](#journal-fence) is never reached, `/api/health` reports
+`schemaCurrent: true`, and the readiness of the release with the container
+changes answers `200`. Migrations this release applied after the move stay in
+place, as with any forward-only rollback, and remain recorded only in the
 public journal.
 
 Every other database is fix-forward only; ship a fix from this release or a
@@ -307,16 +345,24 @@ later one instead of redeploying the previous release:
   previous release's migrator, given `CREATE` on the database, creates the
   schema and an empty old journal, then fails on migration `0000` with
   `relation "…" already exists`; without `CREATE` it fails with `permission
-  denied for database`. Its readiness answers `503` with `Database migrations
-  are behind this release: 0 of <expected> applied`. The empty old journal it
-  leaves behind gets the fence on the next run of this runner.
+  denied for database`. The release before the container changes then fails its
+  build at the migrator; if it serves anyway, its readiness answers `200` and
+  `/api/health` reports `schemaCurrent: false` with `appliedMigrations` `0`
+  (`null` without `CREATE`, because the old journal does not exist). The
+  readiness of the release with the container changes answers `503` with
+  `Database migrations are behind this release: 0 of <expected> applied`. The
+  empty old journal it leaves behind gets the fence on the next run of this
+  runner.
 - An older backup restored and then upgraded by this runner keeps the older
   watermark in the old journal; the migrations this runner applied are recorded
   only in the public journal. The previous release's migrator sees them as
   pending and fails, either on a statement whose effect is already there (for
   example `column "…" of relation "…" already exists`) or on the fence, and
-  keeps nothing. Its readiness answers `503` with `<applied> of <expected>
-  applied`, counting the older watermark.
+  keeps nothing. The release before the container changes fails its build at the
+  migrator, and its `/api/health` reports `schemaCurrent: false` while its
+  readiness answers `200`; the readiness of the release with the container
+  changes answers `503` with `<applied> of <expected> applied`, counting the
+  rows of the older watermark.
 - A database moved with the [cutover dump](#cutover-dump) below has no
   `drizzle` schema, which puts it in the first case.
 

@@ -1,12 +1,11 @@
 import type { ReactNode } from 'react';
-import type { PublicProductVariant } from '#core/domain/index.js';
 import { Box, Divider, Stack, Typography } from '@mui/material';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 
-type OfferLine = { productId: string; name: string; grossCents: number; netCents: number; vatRate: number | 'exempt' | null; vatCents: number; vatExemptionBasis: string | null; baseProductId?: string | undefined; variants?: PublicProductVariant[] | undefined };
+export type OfferLine = { productId: string; name: string; grossCents: number; netCents: number; vatRate: number | 'exempt' | null; vatCents: number; vatExemptionBasis: string | null };
 
-export const OfferLines = ({ lines, currency, afterName }: { lines: readonly OfferLine[]; currency: string; afterName?: ((line: OfferLine) => ReactNode) | undefined }) => {
+export const OfferLines = <L extends OfferLine>({ lines, currency, afterName }: { lines: readonly L[]; currency: string; afterName?: ((line: L) => ReactNode) | undefined }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   return <Stack spacing={2} divider={<Divider />} data-testid="offer-lines">{lines.map((line) => {

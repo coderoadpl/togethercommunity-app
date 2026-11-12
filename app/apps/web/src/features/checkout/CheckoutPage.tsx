@@ -2,7 +2,7 @@ import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
-import { useCallback, useEffect, useMemo, useReducer, useState, type ComponentProps, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -177,7 +177,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     }
     return `${window.location.pathname}?${params}`;
   }, [bundle]);
-  const renderBundleLineVariants = useCallback<NonNullable<ComponentProps<typeof BundleOfferSummary>['afterName']>>((line) =>
+  const renderBundleLineVariants = useCallback((line: NonNullable<typeof bundle>['lines'][number]) =>
     bundle === undefined || (line.variants?.length ?? 0) < 2 ? null : <ProductVariantChips
       productId={line.productId} variants={line.variants ?? []}
       label={t.productVariants.offerLabelFor({ title: line.name })} ariaCurrent="true"

@@ -3,14 +3,14 @@ import { PostContent } from '../../components/ui/PostContent.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle } from '../../theme.js';
-import { OfferLines } from '../../components/ui/OfferLines.js';
-import type { ComponentProps } from 'react';
+import { OfferLines, type OfferLine } from '../../components/ui/OfferLines.js';
+import type { ReactNode } from 'react';
 
-export const BundleOfferSummary = ({ heading, descriptionHtml, lines, currency, totalCents, afterName }: {
+export const BundleOfferSummary = <L extends OfferLine>({ heading, descriptionHtml, lines, currency, totalCents, afterName }: {
   heading: string;
   descriptionHtml: string;
-  lines: ComponentProps<typeof OfferLines>['lines'];
-  afterName?: ComponentProps<typeof OfferLines>['afterName'];
+  lines: readonly L[];
+  afterName?: ((line: L) => ReactNode) | undefined;
   currency: string;
   totalCents: number;
 }) => {

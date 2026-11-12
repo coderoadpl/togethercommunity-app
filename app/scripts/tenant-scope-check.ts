@@ -109,6 +109,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   DownloadCopyCrypto: 'Random identifier and content hashing primitives with no persistence access.',
   DownloadPersonaliser: 'Metadata transform boundary operating only on supplied bytes with no persistence access.',
   DomainProvisionState: 'External domain-provider response shape with no persistence access.',
+  DrainableServer: 'In-process HTTP listener handle the shutdown drain closes, with no persistence access.',
   DomainProvisioner: 'External domain-provider control-plane boundary.',
   FanoutPlan: 'Resolved fan-out description whose reader is already bound to one tenant.',
   EmailPort: 'Email delivery boundary with no persistence access.',

@@ -244,6 +244,10 @@ export default tseslint.config(
         { type: 'adapter-crypto', pattern: 'adapters/crypto/**', mode: 'full' },
         { type: 'adapter-domains', pattern: 'adapters/domains/**', mode: 'full' },
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
+        { type: 'adapter-invoicing', pattern: 'adapters/invoicing/**', mode: 'full' },
+        { type: 'adapter-notifications', pattern: 'adapters/notifications/**', mode: 'full' },
+        { type: 'adapter-qr', pattern: 'adapters/qr/**', mode: 'full' },
+        { type: 'adapter-scheduler', pattern: 'adapters/scheduler/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
         { type: 'adapter-telemetry', pattern: 'adapters/telemetry/**', mode: 'full' },
@@ -336,6 +340,10 @@ export default tseslint.config(
                 'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-invoicing',
+                'adapter-notifications',
+                'adapter-qr',
+                'adapter-scheduler',
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
@@ -351,6 +359,10 @@ export default tseslint.config(
                 'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-invoicing',
+                'adapter-notifications',
+                'adapter-qr',
+                'adapter-scheduler',
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
@@ -373,6 +385,10 @@ export default tseslint.config(
                 'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-invoicing',
+                'adapter-notifications',
+                'adapter-qr',
+                'adapter-scheduler',
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
@@ -558,6 +574,13 @@ export default tseslint.config(
               from: ['adapter-email'],
               allow: ['@aws-sdk/client-ses', '@aws-sdk/client-sns', 'parse5', 'nodemailer'],
             },
+            {
+              from: ['adapter-invoicing'],
+              allow: ['node:child_process', 'node:crypto', 'node:url', 'zod'],
+            },
+            { from: ['adapter-notifications'], allow: [] },
+            { from: ['adapter-qr'], allow: ['qrcode'] },
+            { from: ['adapter-scheduler'], allow: [] },
             {
               from: ['adapter-payment'],
               allow: ['node:crypto', 'stripe'],
@@ -759,6 +782,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['{core,adapters,apps,packages}/**/*.{ts,tsx}'],
+    rules: {
+      'boundaries/no-unknown-files': 'error',
+    },
+  },
+  {
     files: ['core/**/*.test.ts', 'core/**/*.test.tsx'],
     rules: {
       'boundaries/external': [
@@ -824,6 +853,26 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-crypto'], allow: ['node:crypto', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/{invoicing,notifications,qr}/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            {
+              from: ['adapter-invoicing'],
+              allow: ['node:child_process', 'node:crypto', 'node:fs', 'node:url', 'vitest', 'zod'],
+            },
+            { from: ['adapter-notifications'], allow: ['vitest'] },
+            { from: ['adapter-qr'], allow: ['qrcode', 'vitest'] },
+          ],
         },
       ],
     },

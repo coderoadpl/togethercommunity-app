@@ -92,12 +92,17 @@ the database is down, so it is not a probe.
 
 On `SIGTERM` or `SIGINT` the server stops accepting connections on both
 listeners, closes idle keep-alive connections, stops the in-process tickers and
+stops reusing connections: every response still to be written carries
+`Connection: close`, and a connection whose response had already started is
+closed as soon as that response ends, so a pooled upstream connection from the
+edge cannot keep feeding new requests to a terminating pod. It then
 waits for the work already in progress: open requests, request handlers that
 are still running after their client disconnected, ticker runs, and background
 work a request started after it answered (opportunistic e-mail dispatch,
 authentication e-mail, KSeF dispatch). A repeated signal does not interrupt the
-drain. After 60 seconds, the longest a scheduled endpoint may run on the hosted
-platform, it stops waiting and closes the connections that are still open. It
+drain, which ends as soon as that work ends. After 60 seconds, the longest a
+scheduled endpoint may run on the hosted platform, it stops waiting and closes
+the connections that are still open. It
 then flushes pending authentication e-mail, closes the realtime `LISTEN`
 connection and the database pool, flushes trace export, and exits 0; each of
 those steps, at most 3 of them, gets at most 5 seconds.

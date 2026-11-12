@@ -232,7 +232,7 @@ describe('entry.node composition', () => {
 
     expect(harness.shutdownGracefully).toHaveBeenCalledOnce();
     const plan = harness.shutdownGracefully.mock.calls[0]?.[0];
-    expect(plan?.servers.map((server) => 'port' in server && server.port)).toEqual([47100, 47101]);
+    expect(plan?.servers.map(({ server }) => 'port' in server && server.port)).toEqual([47100, 47101]);
     expect(plan?.drainTimeoutMs).toBe(SHUTDOWN_DRAIN_TIMEOUT_MS);
     expect(plan?.release.map((step) => step.name)).toEqual(['auth e-mail flush', 'database connections']);
     for (const step of plan?.release ?? []) await step.run();

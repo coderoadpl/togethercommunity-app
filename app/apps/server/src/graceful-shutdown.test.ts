@@ -5,6 +5,7 @@ import {
   applyConnectionTimeouts,
   createPendingWork,
   createSignalHandler,
+  drainable,
   shutdownGracefully,
   startBackgroundTickers,
   trackRequests,
@@ -61,7 +62,7 @@ describe('graceful shutdown', () => {
     const inFlight = fetch(`${url}/slow`);
     await entered.promise;
     const shutdown = shutdownGracefully({
-      servers: [server],
+      servers: [drainable(server)],
       tickers: { stop: async () => { events.push('tickers stopped'); } },
       work: createPendingWork(),
       release: [
@@ -98,7 +99,7 @@ describe('graceful shutdown', () => {
     const stuck = fetch(`${url}/stuck`);
     await entered.promise;
     await shutdownGracefully({
-      servers: [server],
+      servers: [drainable(server)],
       tickers: idleTickers,
       work: createPendingWork(),
       release: [{ name: 'database connections', run: async () => { databaseClosed = true; } }],
@@ -118,7 +119,7 @@ describe('graceful shutdown', () => {
     let databaseClosed = false;
 
     await shutdownGracefully({
-      servers: [server],
+      servers: [drainable(server)],
       tickers: idleTickers,
       work: createPendingWork(),
       release: [
@@ -164,7 +165,7 @@ describe('graceful shutdown of work outside the connection', () => {
     await disconnected.promise;
 
     const shutdown = shutdownGracefully({
-      servers: [server],
+      servers: [drainable(server)],
       tickers: idleTickers,
       work,
       release: [{ name: 'database connections', run: async () => { events.push('database closed'); } }],
@@ -192,7 +193,7 @@ describe('graceful shutdown of work outside the connection', () => {
     const { server } = await startServer(async () => new Response('ok'));
 
     const shutdown = shutdownGracefully({
-      servers: [server],
+      servers: [drainable(server)],
       tickers: idleTickers,
       work,
       release: [{ name: 'database connections', run: async () => { events.push('database closed'); } }],
@@ -218,7 +219,7 @@ describe('graceful shutdown of work outside the connection', () => {
     let databaseClosed = false;
 
     await shutdownGracefully({
-      servers: [server],
+      servers: [drainable(server)],
       tickers: idleTickers,
       work,
       release: [{ name: 'database connections', run: async () => { databaseClosed = true; } }],

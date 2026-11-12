@@ -1,4 +1,4 @@
-import type { ServerType } from '@hono/node-server';
+import type { HttpBindings, ServerType } from '@hono/node-server';
 
 import { safeErrorMessage } from '#core/server/log-safety.js';
 
@@ -68,6 +68,41 @@ export const applyConnectionTimeouts = (server: ServerType): void => {
   server.headersTimeout = SERVER_HEADERS_TIMEOUT_MS;
 };
 
+export interface DrainableServer {
+  server: ServerType;
+  stopReusingConnections(): void;
+}
+
+export const drainable = (server: ServerType): DrainableServer => {
+  if (!('closeIdleConnections' in server)) return { server, stopReusingConnections: () => undefined };
+  const open = new Set<HttpBindings['outgoing']>();
+  let draining = false;
+  const closeAfter = (response: HttpBindings['outgoing']): void => {
+    if (!response.headersSent) response.shouldKeepAlive = false;
+    response.once('finish', () => {
+      server.closeIdleConnections();
+    });
+  };
+  server.prependListener('request', (_request, response) => {
+    if (draining) {
+      closeAfter(response);
+      return;
+    }
+    open.add(response);
+    response.once('close', () => {
+      open.delete(response);
+    });
+  });
+  return {
+    server,
+    stopReusingConnections: () => {
+      draining = true;
+      for (const response of open) closeAfter(response);
+      open.clear();
+    },
+  };
+};
+
 export const createSignalHandler = (
   shutdown: () => Promise<void>,
   log: (line: string) => void,
@@ -85,7 +120,7 @@ export const createSignalHandler = (
 };
 
 export interface ShutdownPlan {
-  servers: readonly ServerType[];
+  servers: readonly DrainableServer[];
   tickers: BackgroundTickers;
   work: PendingWork;
   release: readonly { name: string; run(): Promise<void> }[];
@@ -94,8 +129,9 @@ export interface ShutdownPlan {
   log(line: string): void;
 }
 
-const closeServer = (server: ServerType): Promise<void> =>
+const closeServer = ({ server, stopReusingConnections }: DrainableServer): Promise<void> =>
   new Promise((resolve) => {
+    stopReusingConnections();
     server.close(() => {
       resolve();
     });
@@ -126,7 +162,7 @@ export const shutdownGracefully = async (plan: ShutdownPlan): Promise<void> => {
   );
   if (drained === 'timeout') {
     plan.log(`[shutdown] work still running after ${String(plan.drainTimeoutMs)} ms; closing remaining connections`);
-    for (const server of plan.servers) {
+    for (const { server } of plan.servers) {
       if ('closeAllConnections' in server) server.closeAllConnections();
     }
   }

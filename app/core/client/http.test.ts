@@ -656,6 +656,24 @@ it('rejects checkout status responses containing extra data', async () => {
   });
 });
 
+it.each([
+  { variant: undefined, query: '' },
+  { variant: [], query: '' },
+  { variant: ['black.white', 'guide.guide/v2&other=value'], query: '?variant=black.white&variant=guide.guide%2Fv2%26other%3Dvalue' },
+])('requests a public sales-link offer with variant query $query and an abort signal', async ({ variant, query }) => {
+  const controller = new AbortController();
+  const refusal = { ok: false, error: { code: 'not_found', message: 'Sales link was not found' } };
+  const fetchImpl: typeof fetch = async (input, init) => {
+    expect(input).toBe(`https://api.example.test/api/public/sales-links/offer%2Fone${query}`);
+    expect(init?.method).toBe('GET');
+    expect(init?.body).toBeNull();
+    expect(init?.signal).toBe(controller.signal);
+    return jsonResponse(refusal, 404);
+  };
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+  await expect(client.getPublicSalesLink({ slug: 'offer/one', variant }, controller.signal)).resolves.toEqual(refusal);
+});
+
 it('starts direct sales-link checkout with an encoded slug and empty body', async () => {
   const fetchImpl: typeof fetch = async (input, init) => {
     expect(input).toBe('https://api.example.test/api/public/sales-links/offer%2Fone/checkout');

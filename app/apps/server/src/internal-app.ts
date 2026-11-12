@@ -989,6 +989,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           {
             email: parsed.data.email,
             productId: parsed.data.productId,
+            variantSelections: parsed.data.variantSelections,
             ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId }),
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),

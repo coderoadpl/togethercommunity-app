@@ -10,6 +10,7 @@ import {
   type AppError,
   type Result,
   type BillingData,
+  type SalesLinkVariantSelection,
   type CheckoutShippingInput,
 } from '#core/domain/index.js';
 
@@ -49,6 +50,7 @@ export interface SimulatePurchaseInputData {
   productId: string;
   salesLinkId?: string;
   salesLinkSlug?: string;
+  variantSelections?: SalesLinkVariantSelection[];
   priceId?: string;
   billing?: BillingData;
   shipping?: CheckoutShippingInput;

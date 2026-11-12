@@ -103,6 +103,95 @@ A successful reset reports through a snackbar. A failure keeps the confirmation
 dialog open and shows the refusal inline rather than as a toast, so the owner can
 correct the confirmation and retry without reopening the dialog.
 
+## Migration journal
+
+`db:migrate` (`adapters/db/migrate.ts`) applies the files in `app/drizzle`
+with the application's own runner, `adapters/db/migration-runner.ts`. It parses
+them with drizzle-orm's `readMigrationFiles`, so each migration's hash and
+timestamp are the values drizzle-orm's migrator recorded, and it keeps the same
+pending rule: a migration runs when its journal timestamp is later than the
+newest `created_at` in the journal. The journal is `public.__drizzle_migrations`
+with drizzle-orm's columns (`id`, `hash`, `created_at`). The runner never
+creates a schema, so a role that owns schema `public` without `CREATE` on the
+database can migrate.
+
+A run is one transaction. It takes a transaction-scoped advisory lock, reads the
+journal only after the lock is granted, and applies every pending migration
+before it commits, so a failed migration leaves the database and its journal as
+they were. A second runner waits up to five minutes for the lock and then fails
+with `Another migration run held the migration lock for more than 300000 ms;
+nothing was applied.` The previous release's migrator does not take this lock,
+so a deployment still starts one migrator at a time.
+
+Migration `0105_record_skipped_0080` names `drizzle.__drizzle_migrations`. The
+runner executes it against `public.__drizzle_migrations`; the file itself is
+unchanged, so the hash recorded for it is the same in every database.
+
+### Upgrade from the drizzle schema
+
+Earlier releases kept the journal in `drizzle.__drizzle_migrations`. On such a
+database the first run creates `public.__drizzle_migrations` and copies every
+row with its `id`, `hash` and `created_at`, in `id` order, before it applies
+anything, in the same transaction as the migrations. The operator sees
+`Migration journal moved to public.__drizzle_migrations (<n> rows copied from
+drizzle.__drizzle_migrations)` and then `Migrations applied (<n> new)`; later
+runs print only the second line. A run that dies part-way leaves the database
+as it was and the next run copies again. The `drizzle` schema stays in place and
+is not read again; dropping it is a separate decision.
+
+When both tables exist, `public.__drizzle_migrations` is authoritative and the
+old table is ignored. No migration can be lost that way: the public table only
+appears in the same commit as the complete copy, and every later run of this
+runner records migrations there alone. Only a previous release's migrator still
+writes the old table, and its files are an older part of the chain that the
+copied rows already cover, so it has nothing to apply (see the rollback below).
+For the same reason a hotfix that adds a migration is cut from this release or
+a later one, never from an older one.
+
+When the database has application tables in `public` but neither journal — a
+database restored or copied without its journal — or an empty public journal,
+the runner refuses with `The database has <n> application tables but no
+migration journal, so migration 0000 would run against existing tables.` and
+changes nothing. Recover by restoring the database together with its journal,
+or start again from an empty database. The `vercel-build` pre-check refuses the
+same case earlier with a pointer to [staging](staging.md#troubleshooting).
+
+### Rollback
+
+The previous release reads only `drizzle.__drizzle_migrations`, which keeps
+the rows it held at the upgrade. When its migrator runs after the upgrade it
+issues `CREATE SCHEMA IF NOT EXISTS drizzle`, finds a newest `created_at` at
+least as late as its own last migration and applies nothing; its readiness and
+health counts read the same table and report it as current. Where the
+migration role has `CREATE` on the database, as on the current Neon databases,
+the rollback is therefore safe without intervention. Migrations this release
+applied after the upgrade stay in place, as with any forward-only rollback, and
+remain recorded only in the public journal.
+
+Where the role has no `CREATE` on the database, PostgreSQL checks that
+privilege before it checks whether the schema exists, so the previous
+release's migrator fails on its first statement even though the `drizzle`
+schema exists. A database moved there with the cutover dump below also has no
+`drizzle` schema, so the previous release's readiness check never passes on
+it. Do not roll back across this release on such a database; ship a fix
+forward instead.
+
+### Cutover dump
+
+Take the dump for a move to another PostgreSQL only after this release has
+migrated the source, so the journal is in `public`, and leave the old schema
+out:
+
+```bash
+pg_dump --format=custom --no-owner --no-acl --exclude-schema=drizzle
+```
+
+Restore it as the role that owns schema `public`; the next migration run
+applies nothing. A dump taken before the upgrade carries the journal only in
+the `drizzle` schema, which a role without `CREATE` on the database cannot
+restore, and leaving that schema out of such a dump produces a database the
+runner refuses.
+
 The function runs in Vercel `fra1`; the Neon project must remain in
 `aws-eu-central-1`. Moving either side requires moving both. Deployed tenant
 resolution uses `X-Tenant` until a wildcard base domain is attached.

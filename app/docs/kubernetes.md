@@ -47,11 +47,17 @@ Kubernetes overrides `command` so that the two steps run separately.
 | Workload | `command` | Notes |
 |---|---|---|
 | Server Deployment | `["node", "apps/server/src/entry.node.js"]` | Serves HTTP and never migrates. |
-| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`; two migrators must never run at once. |
+| Migration Job | `["node", "adapters/db/migrate.js"]` | Applies pending migrations from `/app/drizzle` and exits 0. Run it once per release before the Deployment rolls out, with `parallelism: 1` and `backoffLimit: 0`. A second run started while one is in progress waits up to five minutes for the migration lock, then exits non-zero without applying anything. |
 
 The migration Job reads `DATABASE_URL`, which points at the migration role, and
 optionally `APP_ENV` for its log line. It reads no other configuration. The
-server pods use a separate runtime role.
+migration role owns schema `public` and needs no `CREATE` privilege on the
+database: the journal is `public.__drizzle_migrations` and the runner never
+creates a schema. The server pods use a separate runtime role, which needs
+`SELECT` on `public.__drizzle_migrations` for the readiness probe and the
+health attestation, and nothing in any other schema. A database moved from an
+earlier release must be dumped as described in
+[cutover dump](deployment-environments.md#cutover-dump).
 
 ## Ports
 

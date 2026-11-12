@@ -31,6 +31,7 @@ const domains = [
 
 const deps = (overrides: Partial<Deps> = {}): Deps => ({
   appBaseUrl: 'https://start.together.test',
+  deploymentAuthOrigins: [],
   baseDomain: 'together.test',
   platformHost: 'start.together.test',
   singleTenantMode: false,
@@ -139,6 +140,22 @@ describe('exact tenant request origins', () => {
     config.tenantDomains.listByTenant = async () => domains.filter((domain) => domain.id !== 'alias');
     expect(await allowed({ origin: 'https://alias.example.test' }, config)).toBe(false);
     expect(await allowed({ origin: 'https://start.together.test' }, config, 'https://alias.example.test/api/products')).toBe(false);
+  });
+
+  it('accepts the IPv6 loopback authority without trusting tenant origins on account paths', async () => {
+    const config = deps({ appBaseUrl: 'http://[::1]:48730', baseDomain: 'localhost', platformHost: null });
+    const url = `${config.appBaseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`;
+    expect(await allowed({ origin: config.appBaseUrl, 'sec-fetch-site': 'same-origin' }, config, url)).toBe(true);
+    expect(await allowed({ host: '[0:0:0:0:0:0:0:1]:48730', origin: config.appBaseUrl, 'x-tenant': 'missing' }, config, url)).toBe(true);
+    expect(await allowed({ origin: 'http://acme.localhost:48730', 'x-tenant': 'acme' }, config, url)).toBe(false);
+  });
+
+  it.each([
+    '[::1]:99999', '[::1]:invalid', '[::1]:', '::1:48730', '[:::1]:48730',
+    'user@[::1]:48730', '[::1]:48730/path', '[::1]:48730?query', '[::1]:48730#fragment',
+  ])('rejects malformed IPv6 authorities: %s', async (host) => {
+    const config = deps({ appBaseUrl: 'http://[::1]:48730', baseDomain: 'localhost', platformHost: null });
+    expect(await allowed({ host, origin: config.appBaseUrl }, config, `${config.appBaseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`)).toBe(false);
   });
 
   it('supports only the explicitly composed local Vite/API port pair', async () => {

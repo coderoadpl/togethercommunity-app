@@ -13,7 +13,7 @@ import { respond } from './respond.js';
 
 type OriginDeps = Pick<AppDeps,
   'appBaseUrl' | 'baseDomain' | 'platformHost' | 'singleTenantMode' |
-  'tenantDomains' | 'tenants' | 'developmentWebOrigin'> & {
+  'tenantDomains' | 'tenants' | 'deploymentAuthOrigins' | 'developmentWebOrigin'> & {
     authPort: Pick<AppDeps['authPort'], 'getAuthenticatedUser'>;
   };
 
@@ -22,7 +22,8 @@ const originSchema = z.string().url().regex(/^https?:\/\/[^/?#\\\s]+$/u)
   .refine((url) => url.username === '' && url.password === '')
   .transform((url) => url.origin);
 
-const hostSchema = z.string().regex(/^[a-z0-9.-]+(?::[0-9]{1,5})?$/iu);
+const hostSchema = z.string().regex(/^(?:[a-z0-9.-]+|\[[a-f0-9:.]+\])(?::[0-9]{1,5})?$/iu)
+  .refine((host) => URL.canParse(`http://${host}`));
 const fetchSiteSchema = z.enum(['same-origin', 'same-site', 'cross-site', 'none']);
 const bearerSchema = z.string().regex(/^Bearer\s+\S+$/iu);
 
@@ -52,6 +53,9 @@ const addDevelopmentOrigins = (origins: Set<string>, deps: OriginDeps): void => 
   }
 };
 
+const matchesRequestHost = (origin: string, host: string): boolean =>
+  new URL(`${new URL(origin).protocol}//${host}`).origin === origin;
+
 const allowedRequestOrigins = async (request: Request, deps: OriginDeps): Promise<{
   own: string;
   allowed: Set<string>;
@@ -59,9 +63,12 @@ const allowedRequestOrigins = async (request: Request, deps: OriginDeps): Promis
   const host = hostSchema.safeParse(request.headers.get('host') ?? new URL(request.url).host);
   if (!host.success) return null;
   const configured = platformOrigins(deps);
+  for (const origin of deps.deploymentAuthOrigins) {
+    if (matchesRequestHost(origin, host.data)) configured.add(origin);
+  }
   const platformHosts = [...configured].map((origin) => new URL(origin).hostname);
-  const hostname = host.data.split(':')[0]?.toLowerCase();
-  const tenantHeader = isAccountPath(new URL(request.url).pathname) && hostname !== undefined && platformHosts.includes(hostname)
+  const hostname = new URL(`http://${host.data}`).hostname;
+  const tenantHeader = isAccountPath(new URL(request.url).pathname) && platformHosts.includes(hostname)
     ? null : request.headers.get(TENANT_HEADER);
   const resolved = await resolveTenant(host.data, tenantHeader, deps);
   if (!resolved.ok) return null;
@@ -77,10 +84,7 @@ const allowedRequestOrigins = async (request: Request, deps: OriginDeps): Promis
     for (const origin of tenantOrigins) allowed.add(origin);
   }
   addDevelopmentOrigins(allowed, deps);
-  const own = [...allowed].find((origin) => {
-    const target = `${new URL(origin).protocol}//${host.data}`;
-    return URL.canParse(target) && new URL(target).origin === origin;
-  });
+  const own = [...allowed].find((origin) => matchesRequestHost(origin, host.data));
   if (own === undefined) return null;
   return { own, allowed };
 };

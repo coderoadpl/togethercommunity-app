@@ -575,6 +575,7 @@ export interface AppDeps {
   platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
+  deploymentAuthOrigins: readonly string[];
   developmentWebOrigin?: string;
   customDomainTarget: string;
   customDomainApexARecord?: string | undefined;
@@ -872,6 +873,7 @@ export const createDeps = (
   options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
 ): AppDeps => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
+  const deploymentAuthOrigins = selectDeploymentAuthOrigins(env);
   const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const storageCorsCache = createStorageCorsCache(db);
@@ -1386,7 +1388,7 @@ export const createDeps = (
           singleTenantMode,
           customDomains: [],
         }),
-        ...selectDeploymentAuthOrigins(env),
+        ...deploymentAuthOrigins,
       ],
       loadCustomOrigins: async () => {
         const domains = await tenantDomains.listVerifiedDomains();
@@ -1568,6 +1570,7 @@ export const createDeps = (
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
+    deploymentAuthOrigins,
     ...(isLocalDevelopmentEnvironment(env) && new URL(env.APP_BASE_URL).origin === 'http://localhost:48730'
       ? { developmentWebOrigin: 'http://localhost:48731' } : {}),
     customDomainTarget,

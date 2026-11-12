@@ -12,11 +12,14 @@ import { envSchema } from './env.js';
 
 const baseUrl = 'http://localhost:48730';
 const tenantHost = 'acme.localhost:48730';
+const deploymentHost = 'together-app-9f3a1c.vercel.app';
+const branchHost = 'together-app-git-feature.vercel.app';
 const email = 'origin-member@example.test';
 const password = 'origin-password-15';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let deps: ReturnType<typeof createDeps>;
 let app: ReturnType<typeof buildApp>;
+let previewApp: ReturnType<typeof buildApp>;
 let token: string;
 let cookie: string;
 
@@ -28,6 +31,12 @@ beforeAll(async () => {
     BETTER_AUTH_SECRET: 'request-origin-test-secret-at-least-32-characters',
   }), { db: database.db });
   app = buildApp(deps);
+  previewApp = buildApp(createDeps(envSchema.parse({
+    NODE_ENV: 'production', APP_ENV: 'preview', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
+    APP_BASE_URL: 'https://staging.example.test', APP_BASE_DOMAIN: 'example.test',
+    VERCEL_URL: deploymentHost, VERCEL_BRANCH_URL: branchHost,
+    BETTER_AUTH_SECRET: 'request-origin-test-secret-at-least-32-characters',
+  }), { db: database.db }));
   const signup = await app.request(`${baseUrl}${BETTER_AUTH_SIGN_UP_PATH}`, {
     method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl },
     body: JSON.stringify({ name: 'Origin member', email, password }),
@@ -56,6 +65,35 @@ afterAll(async () => { await database?.close(); });
 const updateProfile = (headers: Record<string, string>) => app.request(`${baseUrl}/api/me/profile`, {
   method: 'POST', headers: { host: tenantHost, 'content-type': 'application/json', ...headers },
   body: JSON.stringify({ displayName: 'Allowed member' }),
+});
+
+describe('request origins on generated preview URLs', () => {
+  it.each([deploymentHost, branchHost])('accepts a same-origin auth POST on %s', async (host) => {
+    const origin = `https://${host}`;
+    const response = await previewApp.request(`${origin}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin, 'sec-fetch-site': 'same-origin' },
+      body: JSON.stringify({ email, password }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ user: { email } });
+  });
+
+  it.each([
+    [deploymentHost, `https://${branchHost}`],
+    [branchHost, `https://${deploymentHost}`],
+    [deploymentHost, 'https://together-app-other.vercel.app'],
+    ['together-app-other.vercel.app', 'https://together-app-other.vercel.app'],
+    ['staging.example.test', `https://${deploymentHost}`],
+  ])('rejects another generated origin on target %s from %s', async (host, origin) => {
+    const response = await previewApp.request(`https://${host}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin, 'sec-fetch-site': 'cross-site' },
+      body: JSON.stringify({ email, password }),
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'forbidden', message: 'Request origin is not allowed' } });
+  });
 });
 
 describe('request origins with real session credentials', () => {

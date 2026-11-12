@@ -942,6 +942,7 @@ const deps = (input: {
     platformHost: 'start.localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
+    deploymentAuthOrigins: [],
     customDomainTarget: 'start.localhost',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },

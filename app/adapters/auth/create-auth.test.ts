@@ -4,7 +4,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
-import { emailEvents, members, passkey, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
+import { emailEvents, members, passkey, session, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader, createTenantTeamRepository } from '#adapters/db/repositories.js';
@@ -62,6 +62,7 @@ describe('ASVS authentication policy', () => {
     '/passkey/verify-authentication',
     '/sign-in/social',
     '/one-tap/callback',
+    '/verify-email',
   ])('requires the existing two-factor plugin after %s', (path) => {
     expect(isAdditionalTwoFactorPath(path)).toBe(true);
   });
@@ -200,6 +201,98 @@ describe('real-provider sign-in and passkey proofs', () => {
     const replayed = await auth.handler(new Request(verificationUrl));
     expect(replayed.status).toBe(302);
     expect(activateTeamInvitation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { twoFactorEnabled: true, useExistingSession: false },
+    { twoFactorEnabled: false, useExistingSession: false },
+    { twoFactorEnabled: true, useExistingSession: true },
+  ])('verifies email without bypassing two-factor (enabled: $twoFactorEnabled, existing session: $useExistingSession)', async ({ twoFactorEnabled, useExistingSession }) => {
+    const { auth, authPort, db, emails, flushEmails } = buildAuth();
+    const email = `two-factor-verification-${crypto.randomUUID()}@together.dev`;
+    const callbackURL = 'http://studio.localhost:48730/login?verification=verified';
+    let authenticated = await signUp(auth, email, { callbackURL });
+    expect(authenticated.status).toBe(200);
+    const post = (path: string, body: unknown, headers: Record<string, string>) => auth.handler(
+      new Request(`http://studio.localhost:48730/api/auth${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+    let secret = '';
+    if (twoFactorEnabled) {
+      const headers = { authorization: `Bearer ${authenticated.headers.get('set-auth-token') ?? ''}` };
+      const enabled = await post('/two-factor/enable', { password: SIGN_UP_PASSWORD }, headers);
+      expect(enabled.status).toBe(200);
+      const enrollment = z.object({ totpURI: z.string() }).parse(await enabled.json());
+      secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+      authenticated = await post('/two-factor/verify-totp', { code: totpCode(secret) }, headers);
+      expect(authenticated.status).toBe(200);
+    }
+    const originalToken = authenticated.headers.get('set-auth-token');
+    expect(originalToken).not.toBeNull();
+    const originalCookie = authenticated.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.session_token='))?.split(';')[0] ?? '';
+    expect(originalCookie).not.toBe('');
+    const { internalAdapter } = await auth.$context;
+    const account = await internalAdapter.findUserByEmail(email);
+    expect(account?.user).toMatchObject({ emailVerified: false, twoFactorEnabled });
+    const userId = account?.user.id ?? '';
+    if (!useExistingSession) {
+      expect((await post('/sign-out', {}, { cookie: originalCookie })).status).toBe(200);
+      expect(await authPort.getAuthenticatedUser(new Headers({ cookie: originalCookie }))).toBeNull();
+    }
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verificationUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    const verified = await auth.handler(new Request(verificationUrl, {
+      headers: useExistingSession ? { cookie: originalCookie } : {},
+      redirect: 'manual',
+    }));
+
+    expect(verified.status).toBe(302);
+    expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({
+      emailVerified: true, twoFactorEnabled,
+    });
+    const challengeCookie = verified.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor='))?.split(';')[0] ?? '';
+    if (twoFactorEnabled && !useExistingSession) {
+      expect(verified.headers.get('location')).toBe('http://studio.localhost:48730/login?twoFactor=required');
+      expect(challengeCookie).not.toBe('');
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+      }))).toBeNull();
+      expect(await db.select().from(session).where(eq(session.userId, userId))).toEqual([]);
+      const responseCookies = verified.headers.getSetCookie()
+        .map((entry) => entry.split(';')[0]).join('; ');
+      expect(await authPort.getAuthenticatedUser(new Headers({ cookie: responseCookies }))).toBeNull();
+      const completed = await post('/two-factor/verify-totp', { code: totpCode(secret) }, {
+        cookie: challengeCookie,
+      });
+      expect(completed.status).toBe(200);
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${completed.headers.get('set-auth-token') ?? ''}`,
+      }))).toMatchObject({ email, emailVerified: true });
+    } else {
+      expect(verified.headers.get('location')).toBe(callbackURL);
+      expect(challengeCookie).toBe('');
+      const token = verified.headers.get('set-auth-token');
+      expect(token).not.toBeNull();
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${token}`,
+      }))).toMatchObject({ email, emailVerified: true });
+      if (useExistingSession) {
+        expect(token).toBe(originalToken);
+        expect(await authPort.getAuthenticatedUser(new Headers({ cookie: originalCookie })))
+          .toMatchObject({ email, emailVerified: true });
+      }
+    }
   });
 
   it.each([false, true])('scopes magic-link credential cleanup to previously unverified users (verified: %s)', async (emailVerified) => {

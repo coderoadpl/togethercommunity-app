@@ -1,5 +1,10 @@
 # CI-security audit
 
+## Purpose
+
+Assess Together's CI/CD trust boundaries, effective privileges, required-check
+behavior, and artifact evidence without treating advisory scanners as gates.
+
 ## Run contract
 
 - **Cadence:** monthly, after any workflow or repository-ruleset change, and
@@ -63,3 +68,50 @@ map to these release tags:
    than assigning a higher level.
 7. Record settings that could not be observed as blind spots. The repository
    workflow alone cannot establish branch-protection or secret posture.
+8. Build a per-workflow inventory, following reusable workflows and composite
+   actions where they cross a trust boundary. Record each trigger and ref/event
+   guard, effective top-level and job permissions, fork/untrusted checkout path,
+   checkout credential persistence, and every secret consumer. Identify whether
+   untrusted code can run before a privileged action or consume its artifacts.
+9. Inspect every `run` step for user-controlled shell interpolation, including
+   pull-request titles/bodies, issue text, branch names, and workflow inputs.
+   Trace values through environment variables and quoting to the actual shell
+   consumer; a declared read-only token alone does not make injection safe.
+10. Read the latest available Scorecard and CodeQL artifacts before judging
+    their results. Record run, date, commit, and coverage; if artifacts expired
+    or access is unavailable, record unverified evidence rather than a pass.
+11. Inspect observable AI-review credential metadata and rotation evidence
+    against the subscription-only boundary in the [AI-review guide](../ai-review.md).
+    Check actual scope, consumers, and blast radius without reading or recording
+    secret values. Record unavailable scope or rotation evidence as unverified.
+12. Compare actual advisory/blocking behavior and live required checks with the
+    dated dependency-audit policy in [agent instructions](../../CLAUDE.md) and
+    the [security posture](../security.md). Record implementation drift without
+    changing that policy, immutable pins, job-specific write grants, rulesets,
+    or the advisory scanner status.
+
+## Finding criteria
+
+- A demonstrated path from fork or other untrusted input/code/artifacts to
+  secrets, write tokens, deployments, or privileged shell execution beyond the
+  documented trust boundary; cite the trigger, checkout, and consumer steps.
+- Missing or excessive effective permissions, unjustified secret consumers,
+  mutable action references, or credential scope inconsistent with the
+  documented job purpose and subscription boundary.
+- Observable required-check or advisory/blocking behavior that contradicts the
+  dated policy or documented ruleset. An inaccessible setting is unverified,
+  not evidence of misconfiguration.
+- A triaged Scorecard/CodeQL result with affected workflow or artifact evidence,
+  or a provenance gap supported by the artifact inventory. An aggregate score
+  or a scanner label alone is not a finding or a SLSA-level assessment.
+
+## Known blind spots
+
+- Repository files cannot prove live rulesets, secret scope, rotation history,
+  runner isolation, or scanner execution; visibility and artifact retention
+  constrain the result even when the source review passes.
+- Immutable action pins do not establish the safety of an action's transitive
+  dependencies or every external service it invokes.
+- This audit reviews CI/CD, not product security as a whole. Advisory scanner
+  coverage and Build L0 evidence do not establish conformance or higher SLSA
+  levels.

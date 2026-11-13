@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { envSchema } from '../apps/server/src/env.js';
 import packageJson from '../package.json' with { type: 'json' };
 import { collectReleaseVersionProblems } from './release-version-lint.js';
+import { lintLinks } from './link-lint.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const repoRoot = join(appRoot, '..');
@@ -222,24 +223,12 @@ if (productionProbe.success) {
   }
 }
 
-const linkPattern = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 for (const [rel, raw] of markdownFiles) {
   for (const delimiter of leakedDelimiters) {
     if (raw.includes(delimiter)) problems.push(`[delimiter] "${delimiter}" leaked into ${rel}`);
   }
-  const proseOnly = raw.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
-  for (const match of proseOnly.matchAll(linkPattern)) {
-    const target = match[1] ?? '';
-    if (/^(https?:|mailto:|tel:|\/\/|#)/.test(target)) continue;
-    const path = target.split('#')[0];
-    if (!path) continue;
-    const resolved = resolve(dirname(join(repoRoot, rel)), path);
-    if (relative(repoRoot, resolved).startsWith('..')) continue;
-    if (!existsSync(resolved)) {
-      problems.push(`[link] ${rel}: "${target}" points at a missing file`);
-    }
-  }
 }
+problems.push(...lintLinks(repoRoot, markdownFiles));
 
 if (problems.length > 0) {
   process.stderr.write(`doc-lint: ${String(problems.length)} issue(s)\n`);

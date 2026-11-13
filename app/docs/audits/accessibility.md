@@ -1,5 +1,10 @@
 # Accessibility audit
 
+## Purpose
+
+Identify barriers in Together's shipped routes and states against the WCAG 2.2
+AA review target, combining the in-house scan with manual interaction evidence.
+
 ## Run contract
 
 - **Cadence:** before a release, after material UI or theme changes, and after
@@ -56,4 +61,27 @@ category as not run rather than inferring a pass from it.
    [route table](../route-table.md) and record unsampled states, browsers,
    assistive technologies, embedded third-party content, and provider-hosted
    pages as blind spots.
+
+## Finding criteria
+
+- A reproducible barrier in an audited route/state that violates a cited WCAG
+  2.2 A or AA criterion. Include the role, locale, viewport, input method,
+  expected interaction, observed result, and affected-user impact.
+- An in-house scanner result supported by the affected element and rule
+  evidence; manually confirm its meaning rather than importing a tool severity
+  as a conformance verdict. Moderate and minor results remain reportable under
+  the existing scan policy.
+- Missing keyboard, focus, name, announcement, contrast, reflow, zoom, or
+  reduced-motion behavior demonstrated by the manual checks, even when the scan
+  is green. Unexercised checks are `not run`, not inferred violations.
+
+## Known blind spots
+
+- The in-house rules do not restore the removed axe or JSX accessibility
+  coverage; a clean report cannot establish WCAG conformance.
+- The selected routes, states, themes, locales, viewports, browsers, and
+  assistive technologies cannot represent every user setup. Report omissions
+  and provider-hosted or embedded content separately.
+- Pixel equality, static lint, and a successful keyboard journey do not prove
+  screen-reader usability or the absence of other accessibility barriers.
 

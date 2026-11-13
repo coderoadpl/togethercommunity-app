@@ -98,8 +98,12 @@ therefore requires both a dependency decision and a graph decision; installing
 it is not sufficient authorization to import it.
 
 Boundary values are parsed with zod. `any` and type assertions other than
-`as const` are forbidden. Use-cases return `Result<T, AppError>` and do not
-throw across a boundary. New errors extend the closed taxonomy and receive
+`as const` are forbidden. Expected domain and application failures return
+`Result<T, AppError>`. Infrastructure promise rejections propagate to the
+server error seam, which normalizes them to `internal`; use-cases do not catch
+them separately. The exceptions are durable workflows that must release a
+processing claim or reschedule work before reporting the failure, such as
+Stripe webhook fulfilment and the scheduled job dispatchers. New errors extend the closed taxonomy and receive
 exhaustive HTTP-status and CLI-exit-code mappings. Together retains its own
 error-code set and numbering.
 
@@ -301,9 +305,9 @@ Architecture is enforced by configuration and executable probes:
 
 | Gate | Guarantee |
 |---|---|
-| `pnpm run check` | `typecheck`, `typecheck:islands`, `lint`, `lock-lint`, `license-lint`, `migration-lint`, `tenant-scope-check`, `tenant-neutral-lint`, `depcruise`, `knip`, `doc-lint`, and `test`. |
+| `pnpm run check` | `typecheck`, `typecheck:islands`, `lint`, `lock-lint`, `license-lint`, `migration-lint`, `tenant-scope-check`, `tenant-neutral-lint`, `depcruise`, `knip`, `doc-lint`, `language-lint`, and `test`. |
 | `pnpm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
-| `pnpm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
+| `pnpm run quickstart:probe` | Repeatable seeding in an isolated database, then a clean clone of the selected commit, a production Docker Compose build and readiness probe, and browser registration, first-workspace creation, and setup-checklist verification within a 15-minute clone-to-panel budget. |
 | `pnpm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
 | `pnpm run e2e:coupon` | The interactive checkout coupon flow in a real browser: reveal, invalid code, valid code, discounted breakdown. |
 | `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level. |

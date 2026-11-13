@@ -13,7 +13,7 @@ import { respond } from './respond.js';
 
 type OriginDeps = Pick<AppDeps,
   'appBaseUrl' | 'baseDomain' | 'platformHost' | 'singleTenantMode' |
-  'tenantDomains' | 'tenants' | 'deploymentAuthOrigins' | 'developmentWebOrigin'> & {
+  'tenantDomains' | 'tenants' | 'deploymentAuthOrigins' | 'developmentWebOrigin' | 'developmentCustomDomainPort'> & {
     authPort: Pick<AppDeps['authPort'], 'getAuthenticatedUser'>;
   };
 
@@ -57,7 +57,7 @@ const matchesRequestHost = (origin: string, host: string): boolean =>
   new URL(`${new URL(origin).protocol}//${host}`).origin === origin;
 
 const allowedRequestOrigins = async (request: Request, deps: OriginDeps): Promise<{
-  own: string;
+  own: Set<string>;
   allowed: Set<string>;
 } | null> => {
   const host = hostSchema.safeParse(request.headers.get('host') ?? new URL(request.url).host);
@@ -79,13 +79,17 @@ const allowedRequestOrigins = async (request: Request, deps: OriginDeps): Promis
     tenantOrigins.add(new URL(tenantUrl(tenant.slug, '/', deps)).origin);
     const domains = await deps.tenantDomains.listByTenant(tenant.id);
     for (const domain of domains) {
-      if (domain.kind === 'custom' && domain.verified) tenantOrigins.add(customDomainOrigin(domain.domain, deps));
+      if (domain.kind !== 'custom' || !domain.verified) continue;
+      tenantOrigins.add(customDomainOrigin(domain.domain, deps));
+      if (deps.developmentCustomDomainPort !== undefined) {
+        tenantOrigins.add(new URL(`http://${domain.domain}:${deps.developmentCustomDomainPort}`).origin);
+      }
     }
     for (const origin of tenantOrigins) allowed.add(origin);
   }
   addDevelopmentOrigins(allowed, deps);
-  const own = [...allowed].find((origin) => matchesRequestHost(origin, host.data));
-  if (own === undefined) return null;
+  const own = new Set([...allowed].filter((origin) => matchesRequestHost(origin, host.data)));
+  if (own.size === 0) return null;
   return { own, allowed };
 };
 
@@ -99,7 +103,7 @@ export const isAllowedRequestOrigin = async (request: Request, deps: OriginDeps)
   if (rawOrigin === null) return site?.data === 'same-origin';
   const origin = originSchema.safeParse(rawOrigin);
   if (!origin.success || !origins.allowed.has(origin.data)) return false;
-  return site?.data !== 'same-origin' || origin.data === origins.own;
+  return site?.data !== 'same-origin' || origins.own.has(origin.data);
 };
 
 const useVerifiedBearer = async (request: Request, deps: OriginDeps): Promise<boolean> => {

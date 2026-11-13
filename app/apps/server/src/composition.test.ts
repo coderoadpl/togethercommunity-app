@@ -28,5 +28,11 @@ describe('createDeps', () => {
     const deps = createDeps(env, { db: database.db });
 
     expect(deps.auth.flushAuthEmails).toEqual(expect.any(Function));
+    expect(deps.developmentCustomDomainPort).toBe(env.PORT);
+    for (const appEnv of ['preview', 'staging', 'production']) {
+      expect(createDeps({ ...env, APP_ENV: appEnv }, { db: database.db }).developmentCustomDomainPort).toBeUndefined();
+    }
+    expect(createDeps({ ...env, NODE_ENV: 'production' }, { db: database.db }).developmentCustomDomainPort).toBeUndefined();
+    expect(createDeps({ ...env, APP_BASE_DOMAIN: 'together.test' }, { db: database.db }).developmentCustomDomainPort).toBeUndefined();
   });
 });

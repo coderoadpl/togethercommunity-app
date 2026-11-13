@@ -547,6 +547,7 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
     const rebased = new URL(rawUrl);
     rebased.protocol = target.protocol;
     rebased.host = target.host;
+    rebased.port = target.port;
     return rebased.toString();
   } catch {
     return rawUrl;

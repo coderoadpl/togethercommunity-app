@@ -1878,6 +1878,22 @@ describe('provider-managed avatars', () => {
 });
 
 describe('createAuthPort.createEnrollmentMagicLink', () => {
+  it.each(['https://courses.example.test', 'https://courses.example.test:8443'])(
+    'uses the exact target origin without inheriting the auth server port: %s', async (baseUrl) => {
+      const { authPort } = buildAuth({ trustedOrigins: ['http://localhost:48730', baseUrl] });
+      const callbackURL = `${baseUrl}/start`;
+      const created = await authPort.createEnrollmentMagicLink({
+        email: `enrollment-port-${crypto.randomUUID()}@together.dev`,
+        callbackURL, baseUrl, tenantName: 'Studio', language: 'en',
+      });
+      const url = new URL(created.url);
+      expect(url.origin).toBe(baseUrl);
+      expect(url.pathname).toBe('/api/auth/magic-link/verify');
+      expect(url.searchParams.get('callbackURL')).toBe(callbackURL);
+      expect(url.searchParams.get('token')).toBeTruthy();
+    },
+  );
+
   it('rebases the captured enrollment link onto the tenant host', async () => {
     const { authPort } = buildAuth();
     const email = `enrollment-${Date.now()}@together.dev`;

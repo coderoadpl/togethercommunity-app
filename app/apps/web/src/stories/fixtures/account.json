@@ -1,21 +1,21 @@
 {
   "calls": {
-    "getMyErasureRequest:[]": {
-      "ok": true,
-      "value": {
-        "request": null
-      }
-    },
     "getMemberSettings:[]": {
       "ok": true,
       "value": {
         "settings": {
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "memberVideoAutoplayOverride": false,
           "supportConfigured": false,
           "supportUrl": null,
-          "videoAutoplayDefault": false,
-          "memberVideoAutoplayOverride": false
+          "videoAutoplayDefault": false
         }
+      }
+    },
+    "getMyErasureRequest:[]": {
+      "ok": true,
+      "value": {
+        "request": null
       }
     },
     "listAccountSessions:[]": {

@@ -9,7 +9,7 @@ import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
-import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
+import { createAuthE2eClient, type AuthE2eTransport } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
@@ -26,6 +26,7 @@ import {
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { continueWithIdentifier, requestMagicLink, signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
+import { createAuthE2eTransport } from './auth-e2e-transport.js';
 import { prepareAttributionPurchase, prepareWelcomePurchases, restrictBrowserToLocalRequests, runAttributionPurchase, runWelcomePurchases } from './purchase-welcome-e2e.js';
 import { prepareCheckoutAnalytics, runCheckoutAnalyticsNavigation } from './checkout-analytics-e2e.js';
 
@@ -93,7 +94,7 @@ const devEmailSchema = z.object({
 });
 
 const runPasswordResetPath = async (
-  transport: { connectUrl: string; origin: string },
+  transport: AuthE2eTransport,
   webBaseUrl: string,
 ): Promise<void> => {
   const email = 'password-reset-e2e@together.dev';
@@ -166,7 +167,7 @@ const runPasswordResetPath = async (
   console.log('auth-e2e: password reset path OK');
 };
 
-const runTotpPath = async (transport: { connectUrl: string; origin: string }): Promise<void> => {
+const runTotpPath = async (transport: AuthE2eTransport): Promise<void> => {
   const email = 'totp-e2e@together.dev';
   const password = passwordFixture('lowercaseonly');
   const auth = createAuthE2eClient(transport);
@@ -389,8 +390,8 @@ try {
       SIMULATED_PAYMENTS: 'true',
     },
   });
-  await runPasswordResetPath({ connectUrl, origin: webBaseUrl }, webBaseUrl);
-  await runTotpPath({ connectUrl, origin: webBaseUrl });
+  await runPasswordResetPath(createAuthE2eTransport(connectUrl, webBaseUrl), webBaseUrl);
+  await runTotpPath(createAuthE2eTransport(connectUrl, webBaseUrl));
   await runIdentifierFirstPath(webBaseUrl);
   await runMagicLinkReturnToPath(webBaseUrl);
   const studioBaseUrl = `http://studio.localhost:${port}`;

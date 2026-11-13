@@ -142,6 +142,27 @@ describe('exact tenant request origins', () => {
     expect(await allowed({ origin: 'https://start.together.test' }, config, 'https://alias.example.test/api/products')).toBe(false);
   });
 
+  it.each([80, 9347])('supports verified HTTP custom domains only at the composed development port %s', async (port) => {
+    const config = deps({
+      appBaseUrl: `http://localhost:${port}`, baseDomain: 'localhost', platformHost: 'start.localhost',
+      developmentCustomDomainPort: port,
+    });
+    const origin = new URL(`http://alias.example.test:${port}`).origin;
+    const url = `${origin}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`;
+    expect(await allowed({ origin, 'sec-fetch-site': 'same-origin' }, config, url)).toBe(true);
+    expect(await allowed({ 'sec-fetch-site': 'same-origin' }, config, url)).toBe(true);
+    expect(await allowed({}, config, url)).toBe(false);
+    expect(await allowed({ origin: `http://studio.example.test:${port}` }, config, url)).toBe(false);
+    expect(await allowed({ origin: `http://pending.example.test:${port}` }, config, url)).toBe(false);
+    expect(await allowed({ origin: 'http://alias.example.test:9348' }, config, url)).toBe(false);
+    expect(await allowed({ origin }, deps(), url)).toBe(false);
+    const withoutDevelopment = { ...config };
+    delete withoutDevelopment.developmentCustomDomainPort;
+    expect(await allowed({ origin }, withoutDevelopment, url)).toBe(false);
+    config.tenantDomains.listByTenant = async () => domains.filter((domain) => domain.id !== 'alias');
+    expect(await allowed({ origin }, config, url)).toBe(false);
+  });
+
   it('accepts the IPv6 loopback authority without trusting tenant origins on account paths', async () => {
     const config = deps({ appBaseUrl: 'http://[::1]:48730', baseDomain: 'localhost', platformHost: null });
     const url = `${config.appBaseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`;

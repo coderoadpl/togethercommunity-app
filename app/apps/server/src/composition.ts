@@ -577,6 +577,7 @@ export interface AppDeps {
   appBaseUrl: string;
   deploymentAuthOrigins: readonly string[];
   developmentWebOrigin?: string;
+  developmentCustomDomainPort?: number;
   customDomainTarget: string;
   customDomainApexARecord?: string | undefined;
   devEndpoints: DevEndpoints;
@@ -1573,6 +1574,8 @@ export const createDeps = (
     deploymentAuthOrigins,
     ...(isLocalDevelopmentEnvironment(env) && new URL(env.APP_BASE_URL).origin === 'http://localhost:48730'
       ? { developmentWebOrigin: 'http://localhost:48731' } : {}),
+    ...(isLocalDevelopmentEnvironment(env) && isLocalHostname(baseDomain)
+      ? { developmentCustomDomainPort: env.PORT } : {}),
     customDomainTarget,
     customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
     devEndpoints,

@@ -15,10 +15,10 @@
       "value": {
         "settings": {
           "billingPortalUrl": null,
+          "memberVideoAutoplayOverride": false,
           "supportConfigured": false,
           "supportUrl": null,
-          "videoAutoplayDefault": false,
-          "memberVideoAutoplayOverride": false
+          "videoAutoplayDefault": false
         }
       }
     },

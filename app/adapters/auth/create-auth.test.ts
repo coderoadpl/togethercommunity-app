@@ -942,6 +942,7 @@ const buildAuth = (options: {
   consentRequired?: boolean;
   recordedEmails?: string[];
   secureCookies?: boolean;
+  baseUrl?: string;
   baseDomain?: string;
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
@@ -981,7 +982,7 @@ const buildAuth = (options: {
   let platformSendAttempts = 0;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
-    baseUrl: authBaseUrl,
+    baseUrl: options.baseUrl ?? authBaseUrl,
     baseDomain: options.baseDomain ?? 'localhost',
     singleTenantMode: options.singleTenantMode ?? false,
     trustedOrigins: options.trustedOrigins ??
@@ -1188,17 +1189,14 @@ describe('host-scoped credentials', () => {
   const tenantHost = `acme.${baseDomain}`;
   const customHost = 'course.acme.example';
 
+  const browserOrigin = (host: string) =>
+    host === 'localhost:48730' ? authBaseUrl : `https://${host}`;
+
   const buildHostAuth = () => buildAuth({
+    baseUrl: browserOrigin(baseDomain),
     baseDomain,
     verifiedCustomHosts: [customHost],
-    trustedOrigins: [
-      authBaseUrl,
-      ...[tenantHost, customHost].flatMap((host) => {
-        const deliveryUrl = new URL(authBaseUrl);
-        deliveryUrl.host = host;
-        return [`http://${host}`, deliveryUrl.origin];
-      }),
-    ],
+    trustedOrigins: [baseDomain, tenantHost, customHost].map(browserOrigin),
   });
 
   const call = (
@@ -1211,7 +1209,7 @@ describe('host-scoped credentials', () => {
     headers: {
       'content-type': 'application/json',
       host,
-      origin: `http://${host}`,
+      origin: browserOrigin(host),
       'x-forwarded-for': `203.0.113.${signUpIpSuffix++}`,
       ...(init.cookie === undefined ? {} : { cookie: init.cookie }),
       ...(init.authorization === undefined ? {} : { authorization: init.authorization }),
@@ -1230,7 +1228,7 @@ describe('host-scoped credentials', () => {
     password: string,
   ) => {
     const response = await call(auth, host, '/sign-up/email', {
-      body: { name: 'Ada', email, password, callbackURL: `http://${host}/my` },
+      body: { name: 'Ada', email, password, callbackURL: `${browserOrigin(host)}/my` },
     });
     expect(response.status).toBe(200);
     return response.headers.get('set-auth-token') ?? '';
@@ -1267,10 +1265,10 @@ describe('host-scoped credentials', () => {
     auth.setMagicLinkDeliveryContext(email, {
       language: 'en',
       mode: 'capture',
-      baseUrl: `http://${customHost}`,
+      baseUrl: browserOrigin(customHost),
     });
     await call(auth, customHost, '/sign-in/magic-link', {
-      body: { email, callbackURL: `http://${customHost}/my` },
+      body: { email, callbackURL: `${browserOrigin(customHost)}/my` },
     });
     const captured = auth.consumeCapturedMagicLink(email);
     expect(captured?.url).toContain(customHost);
@@ -1318,18 +1316,18 @@ describe('host-scoped credentials', () => {
     { host: customHost, callbackURL: '/', redirectHost: customHost },
     { host: customHost, callbackURL: '/my', redirectHost: customHost },
     { host: customHost, callbackURL: null, redirectHost: customHost },
-    { host: customHost, callbackURL: `http://${customHost}/my`, redirectHost: customHost },
-    { host: customHost, callbackURL: `http://${tenantHost}/my`, redirectHost: tenantHost },
+    { host: customHost, callbackURL: `https://${customHost}/my`, redirectHost: customHost },
+    { host: customHost, callbackURL: `https://${tenantHost}/my`, redirectHost: tenantHost },
     { host: tenantHost, callbackURL: '/my', redirectHost: tenantHost },
     { host: 'localhost:48730', callbackURL: '/my', redirectHost: 'localhost:48730' },
-    { host: 'untrusted.example', callbackURL: '/my', redirectHost: 'localhost:48730' },
-    { host: 'untrusted.example', callbackURL: null, redirectHost: 'localhost:48730' },
-  ])('keeps email-verification challenges on the trusted request or callback host ($host, $callbackURL)', async ({ host, callbackURL, redirectHost }) => {
+    { host: 'untrusted.example', callbackURL: '/my', redirectHost: baseDomain },
+    { host: 'untrusted.example', callbackURL: null, redirectHost: baseDomain },
+  ])('keeps email-verification challenges on the trusted request or callback host behind a TLS proxy ($host, $callbackURL)', async ({ host, callbackURL, redirectHost }) => {
     const { auth, authPort, emails, flushEmails } = host === 'localhost:48730' ? buildAuth() : buildHostAuth();
     const signUpHost = host === 'localhost:48730' ? host : customHost;
     const email = `verification-host-${crypto.randomUUID()}@together.dev`;
     const password = passwordFixture('verification-host');
-    auth.setEmailVerificationDeliveryContext(email, { language: 'en', baseUrl: `http://${host}` });
+    auth.setEmailVerificationDeliveryContext(email, { language: 'en', baseUrl: browserOrigin(host) });
     const token = await register(auth, signUpHost, email, password);
     const enabled = await call(auth, signUpHost, '/two-factor/enable', {
       body: { password }, authorization: `Bearer ${token}`,
@@ -1352,15 +1350,11 @@ describe('host-scoped credentials', () => {
     await flushEmails();
     const message = await emails.findByRecipient(normalizeEmail(email));
     const verificationUrl = new URL(message?.text.match(/https?:\/\/\S+/)?.[0] ?? '');
-    const expectedDeliveryUrl = new URL(authBaseUrl);
-    expectedDeliveryUrl.host = host;
-    expect(verificationUrl.origin).toBe(expectedDeliveryUrl.origin);
-    const redirectUrl = new URL(`http://${redirectHost}/login?twoFactor=required`);
-    if (host === redirectHost && (callbackURL === null || callbackURL.startsWith('/'))) {
-      redirectUrl.port = verificationUrl.port;
-    }
+    expect(verificationUrl.origin).toBe(browserOrigin(host));
+    const redirectUrl = new URL('/login?twoFactor=required', browserOrigin(redirectHost));
     if (callbackURL === null) verificationUrl.searchParams.delete('callbackURL');
     else verificationUrl.searchParams.set('callbackURL', callbackURL);
+    verificationUrl.protocol = 'http:';
 
     const challenged = await auth.handler(new Request(verificationUrl, { redirect: 'manual' }));
 

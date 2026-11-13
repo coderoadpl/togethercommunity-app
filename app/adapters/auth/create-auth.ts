@@ -504,10 +504,13 @@ const redirectTwoFactorNavigation = (baseUrl: string) => ({
       handler: createAuthMiddleware(async (ctx) => {
         if (!twoFactorRedirectSchema.safeParse(ctx.context.returned).success) return;
         const location = ctx.context.responseHeaders?.get('location');
-        const requestOrigin = ctx.request === undefined ? null : new URL(ctx.request.url).origin;
+        const deploymentUrl = new URL(baseUrl);
+        const requestOrigin = ctx.request === undefined
+          ? null
+          : new URL(`${deploymentUrl.protocol}//${new URL(ctx.request.url).host}`).origin;
         const fallbackOrigin = requestOrigin !== null && ctx.context.isTrustedOrigin(requestOrigin)
           ? requestOrigin
-          : new URL(baseUrl).origin;
+          : deploymentUrl.origin;
         const origin = redirectOrigin(location ?? null, fallbackOrigin);
         throw ctx.redirect(new URL('/login?twoFactor=required', origin).toString());
       }),

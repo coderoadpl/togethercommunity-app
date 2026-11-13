@@ -1,0 +1,46 @@
+{
+  "href": "https://api-shipx-pl.easypack24.net/v1/organizations/1/shipments/1",
+  "id": "1",
+  "parcels": [
+    {
+      "id": "small package",
+      "template": "small",
+      "dimensions": { "length": "80", "width": "360", "height": "640", "unit": "mm" },
+      "weight": { "amount": "25", "unit": "kg" },
+      "tracking_number": null
+    }
+  ],
+  "custom_attributes": {
+    "target_point": "KRA010",
+    "dropoff_point": null,
+    "sending_method": "parcel_locker",
+    "dispatch_order_id": 1
+  },
+  "reference": "Order No. 12345",
+  "is_return": false,
+  "tracking_number": null,
+  "external_customer_id": "8877xxx",
+  "offers": [
+    {
+      "id": 1456,
+      "carrier": { "id": "inpost_locker", "name": "InPost lockers", "description": "InPost lockers - parcel locker shipments." },
+      "service": { "id": "inpost_locker_standard", "name": "Locker standard", "description": "Standard parcel locker shipment." },
+      "status": "selected",
+      "valid_to": null,
+      "rate": 2.02,
+      "currency": "PLN",
+      "unavailability_reasons": null
+    }
+  ],
+  "selected_offer": {
+    "id": 1456,
+    "carrier": { "id": "inpost_locker", "name": "InPost lockers", "description": "InPost lockers - parcel locker shipments." },
+    "service": { "id": "inpost_locker_standard", "name": "Locker standard", "description": "Standard parcel locker shipment." },
+    "status": "selected",
+    "valid_to": null,
+    "rate": 2.02,
+    "currency": "PLN",
+    "unavailability_reasons": null
+  },
+  "transactions": []
+}

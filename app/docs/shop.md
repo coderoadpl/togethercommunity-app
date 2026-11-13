@@ -3,9 +3,9 @@
 A physical product is either collected in person or shipped by parcel. This
 page covers shipping: delivery methods, delivery options (rates), the parcel
 locker flow, what an order stores, fulfilment (packing and marking orders as
-shipped), product safety information, product variants, the content security
-policy for the parcel locker map, and the CLI. The last section covers stock
-tracking with checkout reservations.
+shipped), InPost ShipX shipments and labels, product safety information,
+product variants, the content security policy for the parcel locker map, and
+the CLI. The last section covers stock tracking with checkout reservations.
 
 ## Delivery methods
 
@@ -242,6 +242,298 @@ link once shipped, with the date in Europe/Warsaw. When the buyer ordered the
 same product more than once, the purchase date, the status and the destination
 all come from the newest order.
 
+## InPost ShipX
+
+Staff create the InPost shipment, pay for it and store the tracking number from
+the order page in one action, then print the A6 label. Manual dispatch in
+Manager Paczek stays available: **Mark as shipped** with a typed tracking number
+works as before.
+
+### Setup
+
+1. Generate the organization id and the API token in Manager Paczek under
+   **My account → API** (the account data, including the invoice data, must be
+   complete). The sandbox uses a separate account in the sandbox Manager Paczek
+   at `https://sandbox-manager.paczkomaty.pl`; sandbox credentials do not work in
+   production and the other way round. Locker shipments need funds on the
+   account; the sandbox account is topped up virtually under **Payments**.
+2. In **Studio → Settings → Shipping → InPost ShipX** the owner chooses the
+   environment (`sandbox` by default, or `production`), enters the organization
+   id and the token and fills in the sender block: name, optional company,
+   e-mail, phone (a Polish 9-digit number, `+48` accepted), street, building
+   number, city and post code (`00-000`). The sender country is always `PL`.
+3. The card says **Ready** once the organization id, the token and the sender
+   are saved.
+
+The environment selects the API base URL: `https://api-shipx-pl.easypack24.net/v1`
+for production and `https://sandbox-api-shipx-pl.easypack24.net/v1` for the
+sandbox (both from the authorization page of the ShipX API documentation).
+Only the ShipX HTTP adapter (`adapters/shipx/http.ts`) knows these
+URLs.
+
+The organization id and the token are stored like the Stripe keys: encrypted
+tenant secrets (`shipx.organizationId`, `shipx.token`) that are write-only in
+Studio and the CLI, which only show a masked preview. They never appear in the
+public payment configuration or in tenant settings, and the server decrypts
+them only for the ShipX call. The environment and the sender block are stored
+on the workspace (`tenants.shipx_environment`, `tenants.shipx_sender`) and are
+read through `GET /api/integrations/shipx`, never through the tenant settings
+that members can read. Reading needs `tenant:secret:read` (owners and admins);
+saving with `POST /api/integrations/shipx/configure` needs `tenant:secret:write`
+(owners). `clearCredentials: true` removes the organization id and the token
+and keeps the sender.
+
+### Parcel size
+
+Every product has `parcelTemplate`: `small`, `medium` (the default) or `large`,
+the InPost locker sizes A (8 × 38 × 64 cm), B (19 × 38 × 64 cm) and C
+(41 × 38 × 64 cm). Studio shows **InPost parcel size** in the editor and on the
+create page of physical products shipped by parcel; the API and the CLI accept
+it on every product. A shipment uses the largest size among the order's product
+lines. Locker shipments send the size as the ShipX `template`; courier
+shipments send the size's dimensions and a fixed weight of 5 kg
+(`SHIPX_COURIER_PARCEL_WEIGHT_KG` in `core/domain/shipx.ts`). Product
+snapshots carry the parcel size from version 9
+(`core/domain/snapshots/product/v9.ts`); version 8 snapshots read unchanged
+because the field is optional, and restoring a product version keeps the
+current size.
+
+### Which ShipX client answers
+
+The workspace's ShipX environment decides which client serves an order, so the
+whole flow can be tried against the sandbox with test orders before any paid
+order reaches InPost:
+
+| Deployment | Environment | Test-mode order | Live (paid) order |
+|---|---|---|---|
+| `PAYMENT_PROVIDER=stripe` | `sandbox` | the real client against the ShipX sandbox | refused with `validation`: "ShipX is configured for the sandbox; switch to production before shipping paid orders" |
+| `PAYMENT_PROVIDER=stripe` | `production` | the deterministic fake client | the real client against ShipX production |
+| `PAYMENT_PROVIDER=fake` | either | the fake client | the fake client |
+
+The rule is `shipxClientKind` in `core/domain/shipx.ts`; `composition.ts` passes
+no real client in deployments with `PAYMENT_PROVIDER=fake` (local development,
+the smoke gate and the end-to-end scripts), so they never contact InPost. The
+order page hides **Create InPost shipment** for a live order while the
+environment is the sandbox and says why (`reason: 'sandbox_environment'`).
+
+The fake client (`adapters/shipx/fake.ts`) answers with an id and a 24-digit
+tracking number derived from the order id and a one-page PDF, charges nothing
+and, like every test-mode shipment, sends no e-mail.
+
+Every `order_shipments` row stores the environment and the organization id it
+was created with. Reads, purchases and label downloads for that shipment use
+the stored environment and organization with the current token. When the
+current settings name another environment or organization, the request answers
+`conflict` and calls nothing: switch the settings back, or finish the shipment
+in Manager Paczek. Opening the order then shows the stored status.
+
+### Creating the shipment
+
+The order page shows **Create InPost shipment** on an order to pack whose
+delivery option has the carrier `inpost`, when the staff role has `order:write`
+and the workspace is ready. The service follows the option: a parcel locker
+option sends `inpost_locker_standard` with the locker code as `target_point`,
+an address option sends `inpost_courier_standard` with the delivery address.
+The confirmation names the service, the parcel size and the buyer e-mail. The
+receiver is the delivery name (split into first and last name at the last
+space), the member e-mail and the delivery phone. For courier shipments the
+street line is split into street and building number; an address without a
+building number is refused with a validation message so staff can dispatch it
+manually. ShipX e-mail and SMS notifications (`additional_services`) stay off
+because Together sends its own shipment e-mail. The ShipX `reference` is the
+order id (cut to 100 characters).
+
+`POST /api/orders/<orderId>/shipx` then:
+
+1. claims the order's `order_shipments` row (one row per order, unique on the
+   workspace and the order): it inserts the row or sets a fresh random
+   `operation_token` and `operation_started_at` with one conditional
+   statement, so only one request at a time works on an order (see
+   [Concurrency](#concurrency));
+2. when the row has no ShipX id yet, records the attempt (`status: 'unknown'`,
+   `create_attempted_at`) and creates the shipment with the simplified ShipX
+   creation mode (`service` given, `only_choice_of_offer` not set), in which
+   ShipX selects and buys the offer itself; the answer stores the ShipX id and
+   status. When the row holds an earlier unconfirmed attempt, it reconciles
+   instead of creating (see [Indeterminate outcomes](#indeterminate-outcomes));
+3. reads the shipment until it is bought (a tracking number and a status past
+   `offer_selected`): at most 10 reads two seconds apart, each one stored on
+   the row. Every read state is first checked for a failed payment: a ShipX
+   transaction that ends in `failure` after the first read of this request
+   (for example missing funds), or an offer that became `unavailable` or
+   `expired`, stops the request at once with `shipx_rejected`,
+   `details.state: 'failed'` and the ShipX reason; the row stays, and staff
+   retry with another click, which pays again. Otherwise a shipment that
+   already existed before this request and still waits for payment
+   (`offers_prepared` or `offer_selected` without a running or successful
+   transaction) is paid with the selected or the matching available offer
+   (`POST /v1/shipments/<id>/buy`), at most once per request;
+4. stores the tracking number and the purchase time and calls the existing
+   **Mark as shipped** use-case with the carrier `inpost` and the tracking
+   number, so the fulfilment event, the shipment projection and the buyer
+   e-mail come from the same code path as a manual shipment. That step is a
+   conditional transition inside the fulfilment transaction: when staff marked
+   the order as shipped by hand in the meantime, the ShipX shipment stays
+   stored and the request answers `fulfilment_conflict` with the tracking
+   number in the message and in `details`, so staff can reconcile the two in
+   Manager Paczek.
+
+The request has one deadline, 20 seconds from its start, checked before every
+ShipX call (the reconciliation lookup, the create, each read and the purchase;
+the label download is a separate request). When the deadline has passed, the
+request makes no further call and answers `shipx_unavailable` with
+`details.state: 'pending'`; the row keeps the ShipX id, or the unconfirmed
+attempt, and the last status, and the order stays to pack. Opening the order reads the live ShipX status once
+for a shipment that is not bought yet and stores it; clicking **Create InPost
+shipment** again continues from that status and never creates a second
+shipment.
+
+### Indeterminate outcomes
+
+ShipX shipment creation is not idempotent, so the client never repeats it. A
+definite rejection (`shipx_rejected`, a 4xx answer) deletes the row, and the
+next click starts over. Any other failure of the create call (a timeout, a lost
+connection, a 5xx answer, an unreadable body) may still have created the
+shipment, so the row stays with `status: 'unknown'` and the attempt time, and
+the request answers `shipx_unavailable` with `details.state: 'unconfirmed'`.
+
+The next click reconciles before creating anything. The ShipX documentation
+lists the organization's shipments (`GET /v1/organizations/<id>/shipments`)
+with `page` and `per_page` but documents no filter by `reference`, so the
+client reads one page of the 50 newest shipments (`page=1`, `per_page=50`,
+`sort_by=created_at`, `sort_order=desc`) per click, without a retry, and
+matches `reference` with the order id. A match is adopted: its id and status are stored and the
+flow continues with step 3. Without a match the request answers `conflict`
+("ShipX did not confirm the previous attempt; check Manager Paczek") and the
+order page shows that warning with **Discard the attempt and create again**.
+That action (`POST /api/orders/<orderId>/shipx/discard`, `order:write`, CLI
+`order shipx discard <orderId>`) deletes only a row that has no ShipX id, holds
+an attempt and is not in use by another request; the page then creates the
+shipment again. Staff check Manager Paczek first, because a shipment that ShipX
+created but did not list yet would be paid twice.
+
+### Concurrency
+
+A request owns the row through its claim: a random `operation_token` and the
+`operation_started_at` lease. Taking the claim is the `INSERT` of a new row or
+one conditional `UPDATE` that succeeds only when `operation_started_at` is
+`NULL` or older than the lease of 90 seconds; a request that finds the claim
+held answers `fulfilment_conflict` ("Another request is creating the InPost
+shipment for this order; refresh the order in a moment") without calling
+ShipX. The lease is longer than the slowest request: the 20-second deadline
+plus one last call of at most 5 seconds, since no call in this flow is retried.
+
+Every later write of the request (the attempt, each ShipX state, the release
+of a rejected attempt, and the final clearing of the claim) is a conditional
+statement on the workspace, the order and the request's `operation_token`. When
+another request holds the row by then, the write changes nothing, and the
+request stops without calling ShipX again and answers `fulfilment_conflict`
+with `details.state: 'lost_lock'`. A request that ends therefore never clears
+or deletes the claim of the next one. A crashed or stuck request keeps the
+lease until it expires after 90 seconds; its row then shows either a ShipX id
+(the next click continues) or an unconfirmed attempt (the next click
+reconciles). Opening the order stores the live ShipX status only while no
+request holds the claim.
+
+### Shipment history
+
+Every ShipX attempt step is recorded with the staff user who caused it in the
+append-only `order_shipment_events` table, written in the same transaction as
+the `order_shipments` change, so the row can be deleted on release or discard
+without losing what happened. Each event stores the workspace, the order, the
+ShipX shipment id known at that moment, the staff user, the request's
+`operation_token` (when the step belongs to a claimed request) and a small
+`details` object:
+
+| Event | Written when | `details` |
+| --- | --- | --- |
+| `attempt_claimed` | a request takes a free claim (new or existing row) | `environment` |
+| `lease_taken_over` | a request takes a claim whose 90-second lease expired | `previousOperationToken`, `previousOperationStartedAt` |
+| `attempt_marked` | the attempt is recorded before the create call | `createAttemptedAt` |
+| `shipment_created` | the create call answers and its ShipX id is stored | `status` |
+| `shipment_adopted` | the reconciliation lookup finds the shipment and stores its id | `status` |
+| `offer_bought` | the purchase time is stored for the first time (by the request or by opening the order) | `status`, `trackingNumber` |
+| `payment_failed` | ShipX reports a failed payment or a dead offer, or refuses the purchase | `status`, `reason` |
+| `attempt_released` | a rejected attempt without a ShipX id is deleted | `status`, `createAttemptedAt` |
+| `attempt_discarded` | staff discard an unconfirmed attempt | `status`, `createAttemptedAt` |
+| `label_fetched` | a label is downloaded | none |
+| `status_refreshed` | a ShipX read (a request's poll or opening the order) changes the stored status or tracking number | `from`, `to` (statuses), `trackingNumber` |
+| `operation_finished` | a request clears its own claim at the end | `outcome`: `bought`, `pending`, `unconfirmed`, `released`, `lost_lock` or `failed` |
+
+Every `order_shipments` change writes at least one event in the same
+transaction. A ShipX read that reports the stored status and tracking number
+again changes nothing and writes nothing. A request whose claim was taken over,
+or whose attempt was already released, finds no row to clear and writes no
+`operation_finished`. Events are never updated or deleted; they go only with
+their workspace.
+
+The shipment row stores only identifiers (the ShipX shipment id and the ShipX
+organization id), the environment, the ShipX status, the tracking number and
+the attempt, claim, purchase and label times; no personal data, so member
+erasure does not touch it. The events add only staff user ids. The receiver data sent to InPost stays in the
+workspace's Manager Paczek account, outside Together's erasure. There are no
+ShipX webhooks.
+
+### Label
+
+**Print label** appears once the shipment has a tracking number. Studio fetches
+`GET /api/orders/<orderId>/shipx/label` (`order:read`) with the API client,
+checks that the answer is `application/pdf` and saves it as a file; an error
+answer is shown under the button instead of being saved. The route asks ShipX
+for the A6 PDF (`POST /v1/organizations/<id>/shipments/labels` with
+`{ "shipment_ids": [id], "format": "Pdf", "type": "A6" }`), checks the `%PDF`
+signature and streams it as `attachment; filename=inpost-<tracking number>.pdf`
+with `no-store`. The browser never sees a ShipX URL, so the content security
+policy is unchanged. ShipX answers `invalid_action` for a shipment that is not
+paid yet.
+
+### Failures
+
+| Situation | Result |
+|---|---|
+| credentials or sender missing | `integration_not_configured` (HTTP 412, CLI exit 8) |
+| live order while the environment is the sandbox | `validation` (HTTP 400, CLI exit 2) |
+| order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
+| delivery option not InPost, phone not a Polish number, building number missing | `validation` |
+| another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
+| the order was marked as shipped by hand while the shipment was bought | `fulfilment_conflict` with the tracking number |
+| the stored shipment belongs to another environment or organization | `conflict` (HTTP 409, CLI exit 6) |
+| an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
+| ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |
+| ShipX does not answer within 5 seconds (body included), answers 5xx, or the shipment is not bought before the 20-second deadline | `shipx_unavailable` (HTTP 503, CLI exit 28) |
+
+Every ShipX call has a 5-second timeout that covers reading the whole body
+(JSON or PDF bytes). Shipment creation, offer purchases, shipment reads and the
+shipment list are never retried by the HTTP client: a lost purchase answer is
+followed by a fresh read, and the request continues from the status ShipX
+reports. Only label downloads are retried once after a network error or a 5xx
+answer; 4xx answers are never retried. Studio shows the error with the ShipX
+reason under the button; the order stays to pack.
+
+### First sandbox run
+
+These details are taken from the ShipX documentation and are not yet confirmed
+against the sandbox. The owner checks them on the first run with the sandbox
+account, with a test-mode order and the environment set to `sandbox`:
+
+- the label request with `format: "Pdf"` and numeric `shipment_ids` returns a
+  PDF (`application/pdf`);
+- the simplified creation buys the offer within the 20-second deadline; when
+  it does not, the order page shows the pending status and a second click
+  finishes;
+- ShipX accepts the shipment without `custom_attributes.sending_method` (the
+  documentation requires it only for Allegro services) and uses the
+  organization's default;
+- the receiver phone as 9 digits without `+48` is accepted;
+- courier shipments are priced with the template dimensions and the fixed
+  weight of 5 kg;
+- the organization shipments list accepts `sort_by=created_at&sort_order=desc`
+  with `per_page=50`, returns the newest shipments first and carries
+  `reference` on each item, which the reconciliation of an unconfirmed attempt
+  relies on;
+- a transaction `failure` (for example an empty sandbox balance) is reported
+  with the ShipX reason.
+
 ## Product safety information (GPSR)
 
 Products have an optional `compliance` object with the manufacturer and safety
@@ -386,6 +678,15 @@ pnpm --silent run cli --tenant acme orders packing-list --format csv --out packi
 pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
+pnpm --silent run cli --tenant acme tenant shipx-set --environment sandbox \
+  --organization-id 1234 --token '<ShipX token>' \
+  --sender '{"name":"Anna Sender","email":"shop@example.com","phone":"500600700","street":"Example Street","buildingNumber":"7","city":"Warsaw","postCode":"00-001"}'
+pnpm --silent run cli --tenant acme tenant shipx
+pnpm --silent run cli --tenant acme product update <id> --parcel-template large
+pnpm --silent run cli --tenant acme --json order shipx show <orderId>
+pnpm --silent run cli --tenant acme --json order shipx create <orderId>
+pnpm --silent run cli --tenant acme order shipx label <orderId> --out label.pdf
+pnpm --silent run cli --tenant acme order shipx discard <orderId>
 pnpm --silent run cli --tenant acme product update <id> \
   --compliance '{"manufacturerName":"Example Workshop","manufacturerAddress":"Example Street 1, 00-001 Warsaw","manufacturerEmail":"safety@example.com","modelIdentifier":"STAND-1"}' \
   --variant-group printed-stand --variant-label 'Black · ASA'
@@ -394,7 +695,10 @@ pnpm --silent run cli --tenant acme product update <id> \
 `--shipping-rates` replaces the whole list; an empty string for
 `--inpost-geowidget-token` clears the token. `--pickup-point` needs
 `--shipping-rate`. `--compliance null` removes the safety information and
-`--clear-variant` removes the variant group and label.
+`--clear-variant` removes the variant group and label. `order` is an alias of
+`orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
+id and token; `--sender null` removes the sender. Passing the token as a flag
+puts it in the shell history: prefer entering it in Studio.
 
 ## Stock
 
@@ -545,8 +849,10 @@ These parts of the shop are not built yet and are handled as described:
 
 - Returns (RMA): there is no return flow. Staff refund the buyer in Stripe and
   put the goods back with a stock adjustment whose reason is `returned`.
-- Carrier labels: no carrier label purchase or InPost label API is integrated.
-  Staff buy the label with the carrier and type the tracking number when they
-  mark the order as shipped.
+- Carrier labels: only InPost is integrated, without dispatch orders (courier
+  pickup orders), webhooks, return labels or multi-parcel shipments; see
+  [InPost ShipX](#inpost-shipx). Other carriers stay manual: staff buy the label
+  with the carrier and type the tracking number when they mark the order as
+  shipped.
 - Parcel-locker map origins: the `connect-src` decision stays as described in
   [Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).

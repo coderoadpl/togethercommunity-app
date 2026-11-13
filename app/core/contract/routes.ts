@@ -2,6 +2,7 @@ import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInp
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
+import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -1926,6 +1927,7 @@ export const API_ROUTES = {
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
   ...ORDER_FULFILMENT_ROUTES,
+  ...SHIPX_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -2248,6 +2250,12 @@ export const API_PATHS = {
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
+  shipxShipment: API_ROUTES.shipxShipment.path,
+  shipxCreate: API_ROUTES.shipxCreate.path,
+  shipxDiscard: API_ROUTES.shipxDiscard.path,
+  shipxLabel: API_ROUTES.shipxLabel.path,
+  shipxSettings: API_ROUTES.shipxSettings.path,
+  shipxConfigure: API_ROUTES.shipxConfigure.path,
   getSalesLink: API_ROUTES.getSalesLink.path,
   createSalesLink: API_ROUTES.createSalesLink.path,
   updateSalesLink: API_ROUTES.updateSalesLink.path,

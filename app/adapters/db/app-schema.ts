@@ -12,6 +12,7 @@ import type {
   ProductCompliance,
   OrderShipping,
   ShippingRate,
+  ShipxSender,
   MarketingListRule,
   MarketingAudienceSnapshot,
   MarketingImportCounts,
@@ -73,6 +74,8 @@ export const tenants = pgTable(
     checkoutAppearance: jsonb('checkout_appearance').$type<CheckoutAppearance>(),
     shippingRates: jsonb('shipping_rates').$type<ShippingRate[]>().notNull().default([]),
     inpostGeowidgetToken: text('inpost_geowidget_token'),
+    shipxEnvironment: text('shipx_environment', { enum: ['sandbox', 'production'] }).notNull().default('sandbox'),
+    shipxSender: jsonb('shipx_sender').$type<ShipxSender>(),
     signInNotice: jsonb('sign_in_notice').$type<{ enabled: boolean; text: string }>().notNull().default({ enabled: false, text: '' }),
     accentColor: text('accent_color'),
     accentLight: text('accent_light'),
@@ -110,6 +113,7 @@ export const tenants = pgTable(
     check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
     check('tenants_default_language_check', sql`${table.defaultLanguage} IN ('pl', 'en')`),
     check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
+    check('tenants_shipx_environment_check', sql`${table.shipxEnvironment} IN ('sandbox', 'production')`),
   ],
 );
 
@@ -369,6 +373,7 @@ export const products = pgTable(
     everPublished: boolean('ever_published').default(false),
     visibility: text('visibility', { enum: ['listed', 'unlisted'] }).notNull().default('listed'),
     deliveryMethod: text('delivery_method', { enum: ['pickup', 'shipping'] }).notNull().default('pickup'),
+    parcelTemplate: text('parcel_template', { enum: ['small', 'medium', 'large'] }).notNull().default('medium'),
     compliance: jsonb('compliance').$type<ProductCompliance>(),
     variantGroup: text('variant_group'),
     variantLabel: text('variant_label'),
@@ -384,6 +389,7 @@ export const products = pgTable(
     index('products_tenant_variant_group_idx').on(table.tenantId, table.variantGroup),
     check('products_visibility_check', sql`${table.visibility} in ('listed', 'unlisted')`),
     check('products_delivery_method_check', sql`${table.deliveryMethod} in ('pickup', 'shipping')`),
+    check('products_parcel_template_check', sql`${table.parcelTemplate} in ('small', 'medium', 'large')`),
     uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)

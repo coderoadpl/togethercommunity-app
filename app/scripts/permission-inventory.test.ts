@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(441);
-    expect(inventory.useCases).toHaveLength(345);
+    expect(inventory.routes).toHaveLength(447);
+    expect(inventory.useCases).toHaveLength(351);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),
@@ -30,8 +30,16 @@ describe('permission inventory', () => {
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/integrations/stripe/probe'),
       inventory.useCases.find((entry) => entry.subject === 'probe-stripe-permissions.ts#probeStripePermissions'),
+      inventory.routes.find((entry) => entry.subject === 'POST /api/integrations/shipx/configure'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#configureShipx'),
     ]) {
       expect(row).toMatchObject({ capability: 'tenant:secret:write', before: ['owner'], after: ['owner'] });
+    }
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'GET /api/integrations/shipx'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#getShipxSettings'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'tenant:secret:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'GET /api/orders/consumer-sales-summary'),
@@ -46,6 +54,10 @@ describe('permission inventory', () => {
       inventory.routes.find((entry) => entry.subject === 'GET /api/orders/verify/:reference'),
       inventory.useCases.find((entry) => entry.subject === 'order-verification.ts#verifyOrder'),
       inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),
+      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/:orderId/shipx'),
+      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/:orderId/shipx/label'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#getInpostShipment'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#inpostShipmentLabel'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
@@ -54,6 +66,10 @@ describe('permission inventory', () => {
       inventory.useCases.find((entry) => entry.subject === 'order-verification.ts#issueOrderLine'),
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/ship'),
       inventory.useCases.find((entry) => entry.subject === 'order-fulfilment.ts#shipOrder'),
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/shipx'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#createInpostShipment'),
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/shipx/discard'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#discardInpostShipmentAttempt'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }

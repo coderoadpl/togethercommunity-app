@@ -7,3 +7,4 @@ export * from './checkout-snapshot-schema.js';
 export * from './order-issue-schema.js';
 export * from './stock-schema.js';
 export * from './order-fulfilment-schema.js';
+export * from './shipx-schema.js';

@@ -1072,6 +1072,13 @@
       "when": 1790964000041,
       "tag": "0152_order_fulfilment_compliance",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1790964000051,
+      "tag": "0153_inpost_shipx",
+      "breakpoints": true
     }
   ]
 }

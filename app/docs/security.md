@@ -452,3 +452,30 @@ checks recorded size before fetching, enforces the storage Content-Length
 ceiling before reading a body, and writes the registry before sending a file
 or signed redirect. Personalised files are private, `no-store` responses.
 Member erasure removes registry rows; see [copy identifiers](storage.md#copy-identifiers).
+
+## InPost ShipX credentials
+
+The ShipX organization id and API token are encrypted tenant secrets
+(`shipx.organizationId`, `shipx.token`), written only through the owner-only
+`POST /api/integrations/shipx/configure` route (or the generic tenant-secret
+route) and returned only as masked previews. They are not part of tenant
+settings, the public offer or the public payment configuration. The server
+decrypts them only for a ShipX call; the readiness check on the order page asks
+the secret repository whether both secrets exist without decrypting them. Each
+`order_shipments` row keeps a plain copy of the organization id it was created
+with (an identifier that also appears in every ShipX URL), so later calls for
+that shipment can refuse to run against another organization; the shipment
+view returned to staff omits it, and the token is never copied. Error envelopes carry
+only the ShipX error key, a description cut to 300 characters with control
+characters removed and the field keys of the validation details, never the raw
+body or the token. The adapter refuses redirects, so the bearer token is only
+sent to the configured ShipX host.
+
+Labels are proxied: `GET /api/orders/<orderId>/shipx/label` returns the PDF with
+`Content-Disposition: attachment` and `Cache-Control: private, no-store`, so no
+ShipX origin is added to any content security policy and the browser never
+contacts ShipX. Deployments with `PAYMENT_PROVIDER=fake` use the in-process
+fake client for every order and never call InPost; with `PAYMENT_PROVIDER=stripe`
+the workspace's ShipX environment decides: the sandbox serves test-mode orders
+only and refuses paid orders, production serves paid orders and leaves test-mode
+orders to the fake client. See [Which ShipX client answers](shop.md#which-shipx-client-answers).

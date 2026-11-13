@@ -754,6 +754,36 @@ describe('ProductsPanel', () => {
     })]);
   });
 
+  it('saves the InPost parcel size of a shipped physical product', async () => {
+    const physical: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', parcelTemplate: 'small', published: false, accessItems: [],
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [physical]);
+    const bodies: unknown[] = [];
+    server.use(http.post('/api/products/update', async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { product: { ...physical, parcelTemplate: 'large' } } });
+    }));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.shipx.parcelTemplateLabel }));
+    await userEvent.click(await screen.findByRole('option', { name: en.shipx.parcelTemplates.large }));
+    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(bodies).toEqual([expect.objectContaining({ id: 'draft-1', deliveryMethod: 'shipping', parcelTemplate: 'large' })]);
+  });
+
+  it('hides the parcel size for products collected in person', async () => {
+    const pickup: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'pickup', published: false, accessItems: [],
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [pickup]);
+    expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: en.shipx.parcelTemplateLabel })).not.toBeInTheDocument();
+  });
+
   it('offers product safety and variant fields only for physical products', async () => {
     await renderProductsPanel([], '/panel/products/draft-1');
     expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();

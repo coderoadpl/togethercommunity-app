@@ -1,4 +1,3 @@
-import { fakeFanoutBatches } from '../testing/fanout-batches.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { err, internal, ok, NOTIFICATION_FANOUT_BATCH_SIZE } from '#core/domain/index.js';
@@ -34,6 +33,7 @@ import type {
   TenantAccessReader,
   ThreadSubscriptionRepository,
 } from '../ports.js';
+import { fakeFanoutBatches } from '../testing/fanout-batches.js';
 import {
   buildNotificationFanoutJob,
   drainNotificationFanoutJobs,

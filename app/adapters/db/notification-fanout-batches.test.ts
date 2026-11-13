@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { err, internal, postSchema, type NotificationFanoutKind, type Product } from '#core/domain/index.js';
+import type { NotificationChannelPort } from '#core/server/index.js';
 import { notificationRecipient, spaceNotificationRecipient } from '#core/server/usecases/community-access.js';
 import { subscriberCanAccessContext } from '#core/server/usecases/thread-context.js';
 import { buildNotificationFanoutJob, runPostFanoutJob, type PostFanoutDeps } from '#core/server/usecases/notification-fanout.js';
@@ -158,6 +160,52 @@ describe('set-based notification recipients', () => {
     expect((await db.select().from(emailOutbox)).map((row) => row.id).sort())
       .toEqual(notifications.map((row) => `notification:${row.id}`).sort());
     expect(await db.select().from(emailEvents)).toHaveLength(3);
+    expect(await d.fanoutJobs.claimDue({ now: '2026-10-01T12:10:00.000Z', limit: 1, leaseUntil: '2026-10-01T12:15:00.000Z' })).toEqual([]);
+  });
+
+  it('completes a retry after a space rename while keeping the first queued email', async () => {
+    const d = deps();
+    d.fanoutJobs = createNotificationFanoutJobRepository(db);
+    const spaceId = 'renamed-space';
+    await db.insert(spaces).values({ id: spaceId, tenantId: TENANT, slug: spaceId, name: 'Original space', visibility: 'members', createdAt: NOW });
+    await d.spaceSubscriptions.follow(TENANT, { userId: 'active', spaceId, createdAt: NOW });
+    const post = postSchema.parse({
+      id: 'space-rename-post', tenantId: TENANT, contextKind: 'space', contextId: spaceId, parentPostId: null,
+      rootPostId: 'space-rename-post', authorUserId: AUTHOR, authorDisplay: 'Author', authorIsStaff: false,
+      body: 'New post', bodyFormat: 'plain', createdAt: NOW, editedAt: null, deletedAt: null,
+    });
+    const job = buildNotificationFanoutJob({
+      id: 'space-rename-job', tenantId: TENANT, kind: 'space-post', sourceId: post.id,
+      tenantName: 'Workspace', tenantSlug: null, authorDisplay: null, now: NOW,
+    });
+    await d.posts.createPost(TENANT, post, job);
+    const [first] = await d.fanoutJobs.claimDue({ now: NOW, limit: 1, leaseUntil: '2026-10-01T12:05:00.000Z' });
+    if (first === undefined) throw new Error('Expected a persisted fan-out job');
+    const deliver = vi.fn<NotificationChannelPort['deliver']>()
+      .mockResolvedValueOnce(err(internal('channel unavailable')))
+      .mockResolvedValue({ ok: true, value: undefined });
+    d.notificationChannels = [
+      createEmailNotificationChannel(createEmailOutboxRepository(db), d.clock, () => undefined),
+      { deliver },
+    ];
+    expect((await runPostFanoutJob(first, d)).ok).toBe(false);
+    const notifications = await d.fanoutBatches.listNotificationsForSource(TENANT, job.sourceKey, ['active']);
+    expect(notifications).toHaveLength(1);
+    const emailId = `notification:${notifications[0]?.id}`;
+    const original = await db.select().from(emailOutbox).where(eq(emailOutbox.id, emailId));
+    expect(original).toEqual([expect.objectContaining({ payload: expect.objectContaining({ spaceName: 'Original space' }) })]);
+    const space = await d.spaces.findById(TENANT, spaceId);
+    if (space === null) throw new Error('Expected the notification space');
+    expect(await d.spaces.update(TENANT, { ...space, name: 'Renamed space' })).toMatchObject({ name: 'Renamed space' });
+    const [retry] = await d.fanoutJobs.claimDue({ now: '2026-10-01T12:01:00.000Z', limit: 1, leaseUntil: '2026-10-01T12:06:00.000Z' });
+    if (retry === undefined) throw new Error('Expected a retryable job');
+    expect(await runPostFanoutJob(retry, d)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(deliver.mock.calls[1]?.[1]).toMatchObject({ contextName: 'Renamed space' });
+    expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, emailId))).toEqual(original);
+    expect(await db.select().from(emailEvents).where(eq(emailEvents.refId, emailId))).toEqual([
+      expect.objectContaining({ type: 'queued' }),
+    ]);
     expect(await d.fanoutJobs.claimDue({ now: '2026-10-01T12:10:00.000Z', limit: 1, leaseUntil: '2026-10-01T12:15:00.000Z' })).toEqual([]);
   });
 

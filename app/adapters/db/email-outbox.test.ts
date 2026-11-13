@@ -62,7 +62,7 @@ const enqueue = async (id: string, now = NOW, tenantId: string | null = null) =>
 describe('email outbox database adapter', () => {
   it('atomically deduplicates concurrent notification enqueues and their queued events', async () => {
     const repo = createEmailOutboxRepository(db);
-    const input = { id: 'notification:retry-1', tenantId: 'tenant-outbox', to: 'recipient@example.test', payload: payload(), now: NOW };
+    const input = { id: 'notification:retry-1', tenantId: 'tenant-outbox', to: 'recipient@example.test', payload: payload(), now: NOW, onConflict: 'keep-existing' as const };
     const results = await Promise.all(Array.from({ length: 4 }, () => repo.enqueue(input)));
     expect(results.every((result) => result.ok)).toBe(true);
     expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, input.id))).toHaveLength(1);
@@ -73,6 +73,23 @@ describe('email outbox database adapter', () => {
       expect.objectContaining({ status: 'sent', to: input.to }),
     ]);
     expect(await db.select().from(emailEvents).where(eq(emailEvents.id, `${input.id}:queued`))).toHaveLength(1);
+  });
+
+  it('keeps an existing message after recipient and payload changes only when explicitly requested', async () => {
+    const repo = createEmailOutboxRepository(db);
+    const input = { id: 'notification:context-change', tenantId: 'tenant-outbox', to: 'recipient@example.test', payload: payload(), now: NOW };
+    expect((await repo.enqueue(input)).ok).toBe(true);
+    await db.update(emailOutbox).set({ status: 'sent', sentAt: NOW }).where(eq(emailOutbox.id, input.id));
+    const original = await db.select().from(emailOutbox).where(eq(emailOutbox.id, input.id));
+    const changed = { ...input, to: 'changed@example.test', payload: { ...payload('https://example.test/changed'), language: 'pl' } };
+    expect(await repo.enqueue(changed)).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(await repo.enqueue({ ...changed, onConflict: 'keep-existing' })).toEqual(ok({ id: input.id }));
+    expect(await repo.enqueue({ ...changed, tenantId: null, onConflict: 'keep-existing' }))
+      .toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, input.id))).toEqual(original);
+    expect(await db.select().from(emailEvents).where(eq(emailEvents.refId, input.id))).toEqual([
+      expect.objectContaining({ type: 'queued' }),
+    ]);
   });
 
   it.each([

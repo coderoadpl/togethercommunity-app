@@ -164,9 +164,11 @@ export const createEmailOutboxRepository = (
           const [existing] = await tx.select({ id: emailOutbox.id }).from(emailOutbox).where(and(
             eq(emailOutbox.id, input.id),
             input.tenantId === null ? isNull(emailOutbox.tenantId) : eq(emailOutbox.tenantId, input.tenantId),
-            eq(emailOutbox.kind, payload.kind), eq(emailOutbox.to, input.to), eq(emailOutbox.payload, payload),
-            input.sourceApp == null ? isNull(emailOutbox.sourceApp) : eq(emailOutbox.sourceApp, input.sourceApp),
-            eq(emailOutbox.tenantTransportRequired, input.tenantTransportRequired ?? false),
+            input.onConflict === 'keep-existing' ? undefined : and(
+              eq(emailOutbox.kind, payload.kind), eq(emailOutbox.to, input.to), eq(emailOutbox.payload, payload),
+              input.sourceApp == null ? isNull(emailOutbox.sourceApp) : eq(emailOutbox.sourceApp, input.sourceApp),
+              eq(emailOutbox.tenantTransportRequired, input.tenantTransportRequired ?? false),
+            ),
           )).limit(1);
           if (existing === undefined) throw new Error('Email id is already used for a different message');
         }

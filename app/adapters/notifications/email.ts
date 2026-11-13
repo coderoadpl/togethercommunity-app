@@ -51,6 +51,7 @@ export const createEmailNotificationChannel = (
       to: context.recipientEmail,
       payload,
       now: clock.nowIso(),
+      onConflict: 'keep-existing',
     });
     if (!queued.ok) return queued;
     dispatchEmail();

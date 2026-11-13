@@ -327,7 +327,7 @@ export interface PostSearchRow {
 }
 
 export interface PostRepository {
-  createPost(tenantId: string, post: Post, fanoutJob?: NotificationFanoutJob): Promise<Post>;
+  createPost(tenantId: string, post: Post, fanoutJob?: NotificationFanoutJob, subscriberUserIds?: string[]): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
   findByIds(tenantId: string, ids: string[]): Promise<Post[]>;
   countByAuthorSince(
@@ -356,6 +356,8 @@ export interface PostRepository {
     query: { spaceIds: string[]; cursor?: string; limit: number },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
+  listRepliesForRoots(tenantId: string, rootPostIds: string[]): Promise<Map<string, Post[]>>;
+  countRepliesIncludingDeleted(tenantId: string, rootPostIds: string[]): Promise<Map<string, number>>;
   updateBody(
     tenantId: string,
     input: { id: string; body: string; bodyFormat: Post['bodyFormat']; editedAt: string },
@@ -582,7 +584,6 @@ export interface DmReportRepository {
 
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
-  /** Returns only the rows this call created, so a retried fan-out re-delivers nothing. */
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
@@ -611,6 +612,31 @@ export interface NotificationRepository {
     tenantId: string,
     input: { recipientUserId: string; conversationId: string; readAt: string },
   ): Promise<number>;
+}
+
+export interface NotificationFanoutAccess {
+  userId: string;
+  member: Member | null;
+  isStaff: boolean;
+  activeProductIds: string[];
+  accessItems: Product['accessItems'];
+}
+
+export interface NotificationFanoutBatchRepository {
+  listAccessForUsers(tenantId: string, userIds: string[], now: string): Promise<NotificationFanoutAccess[]>;
+  listStaffPage(
+    tenantId: string,
+    input: { afterUserId: string | null; limit: number },
+  ): Promise<Array<{ userId: string; email: string; language: Member['language'] }>>;
+  subscribeStaff(
+    tenantId: string,
+    input: { rootPostId: string; userIds: string[]; createdAt: string },
+  ): Promise<void>;
+  listNotificationsForSource(
+    tenantId: string,
+    sourceKey: string,
+    userIds: string[],
+  ): Promise<Notification[]>;
 }
 
 export interface NotificationFanoutJobRepository {
@@ -1758,7 +1784,7 @@ export interface EmailOutboxItem {
 }
 
 export interface EmailOutboxRepository {
-  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean }): Promise<Result<{ id: string }, AppError>>;
+  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean; onConflict?: 'keep-existing' }): Promise<Result<{ id: string }, AppError>>;
   claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
   markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>>;
   markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>>;

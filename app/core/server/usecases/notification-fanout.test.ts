@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { err, internal, ok, NOTIFICATION_FANOUT_BATCH_SIZE } from '#core/domain/index.js';
 import type {
@@ -33,6 +33,7 @@ import type {
   TenantAccessReader,
   ThreadSubscriptionRepository,
 } from '../ports.js';
+import { fakeFanoutBatches } from '../testing/fanout-batches.js';
 import {
   buildNotificationFanoutJob,
   drainNotificationFanoutJobs,
@@ -116,6 +117,8 @@ const unusedPosts: Omit<PostRepository, 'findById'> = {
   listByAuthor: async () => [],
   listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
   listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+  listRepliesForRoots: async () => new Map(),
+  countRepliesIncludingDeleted: async () => new Map(),
   listReplies: async () => [],
   updateBody: async () => null,
   softDelete: async () => null,
@@ -352,8 +355,9 @@ const fixture = (input: {
       userIds.map((userId) => ({ userId, email: `${userId}@example.com`, image: null })),
   };
 
+  const claimable = [...(input.claimable ?? [])];
   const fanoutJobs: NotificationFanoutJobRepository = {
-    claimDue: async () => input.claimable ?? [],
+    claimDue: async ({ limit }) => claimable.splice(0, limit),
     save: async (_tenantId, saved) => {
       saves.push({
         status: saved.status,
@@ -375,6 +379,7 @@ const fixture = (input: {
   const notifications = new RecordingNotifications();
   const deps: NotificationFanoutDeps = {
     fanoutJobs,
+    fanoutBatches: fakeFanoutBatches(() => deps),
     notifications,
     notificationChannels: [
       {
@@ -422,6 +427,81 @@ const job = buildNotificationFanoutJob({
 });
 
 describe('notification fan-out', () => {
+  it.each(['result', 'throw'])('replays persisted notifications after a partial channel failure: %s', async (failure) => {
+    const f = fixture({ followers: followerIds(3) });
+    const delivered: string[] = [];
+    let fail = true;
+    f.deps.notificationChannels = [{ deliver: async (notification) => {
+      if (notification.recipientUserId === 'u002' && fail) {
+        fail = false;
+        if (failure === 'throw') throw new Error('channel unavailable');
+        return err(internal('channel unavailable'));
+      }
+      delivered.push(notification.id);
+      return ok(undefined);
+    } }];
+    expect((await runPostFanoutJob(job, f.deps)).ok).toBe(false);
+    expect(f.notifications.rows).toHaveLength(3);
+    expect(delivered).toHaveLength(1);
+    expect(f.saves[0]?.cursorUserId).toBeNull();
+
+    expect(await runPostFanoutJob({ ...job, attempts: 1 }, f.deps)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+    expect(f.notifications.rows).toHaveLength(3);
+    expect(new Set(delivered)).toEqual(new Set(f.notifications.rows.map((row) => row.id)));
+  });
+
+  it('pages lesson-question staff and reuses their notification source keys on retry', async () => {
+    const f = fixture({ followers: [] });
+    f.deps.posts.findById = async () => ({ ...post, contextKind: 'lesson', contextId: 'lesson-1' });
+    f.deps.tenantAccess.listStaffForTenant = async () => [AUTHOR, ...followerIds(3)].map((userId) => ({
+      userId, email: `${userId}@example.com`, staffRole: 'admin', language: null,
+    }));
+    const subscribed: string[] = [];
+    f.deps.fanoutBatches.subscribeStaff = async (_tenantId, input) => { subscribed.push(...input.userIds); };
+    const question = { ...job, kind: 'lesson-question' as const, sourceKey: 'lesson-question:post-1' };
+    const coursesRead = vi.spyOn(f.deps.courses, 'list');
+    const modulesRead = vi.spyOn(f.deps.modules, 'list');
+
+    expect((await runPostFanoutJob(question, f.deps, { batchSize: 2 })).ok).toBe(true);
+    expect(subscribed).toEqual([]);
+    expect(f.notifications.rows).toHaveLength(3);
+    expect(coursesRead).toHaveBeenCalledTimes(1);
+    expect(modulesRead).toHaveBeenCalledTimes(1);
+    expect(f.notifications.rows.every((row) => row.kind === 'lesson-question' && row.sourceKey === question.sourceKey)).toBe(true);
+    await runPostFanoutJob(question, f.deps, { batchSize: 2 });
+    expect(f.notifications.rows).toHaveLength(3);
+    coursesRead.mockRestore();
+    modulesRead.mockRestore();
+  });
+
+  it.each([1, 49, 120])('reads eligibility once per batch and the lesson catalogue once for %i subscribers', async (count) => {
+    const f = fixture({ followers: [] });
+    const users = followerIds(count);
+    f.deps.posts.findById = async () => ({ ...post, contextKind: 'lesson', contextId: 'lesson-1' });
+    f.deps.threadSubscriptions = { ...threadSubscriptions, listSubscribersPage: async (tenantId, input) => users
+      .filter((userId) => input.afterUserId === null || userId > input.afterUserId).slice(0, input.limit)
+      .map((userId) => ({ tenantId, userId, rootPostId: post.id, mutedAt: null, createdAt: NOW })) };
+    const batchRead = vi.fn<NotificationFanoutDeps['fanoutBatches']['listAccessForUsers']>(async (_tenantId, userIds) =>
+      userIds.map((userId) => ({ userId, member: null, isStaff: true, activeProductIds: [], accessItems: [] })));
+    f.deps.fanoutBatches.listAccessForUsers = batchRead;
+    const coursesRead = vi.spyOn(f.deps.courses, 'list');
+    const modulesRead = vi.spyOn(f.deps.modules, 'list');
+    const staffRead = vi.spyOn(f.deps.tenantAccess, 'findStaffGrant');
+    const memberRead = vi.spyOn(f.deps.tenantAccess, 'findMember');
+    const grantsRead = vi.spyOn(f.deps.grants, 'listActiveForMember');
+
+    const result = await runPostFanoutJob({ ...job, kind: 'thread-reply' }, f.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { created: count } });
+    expect(batchRead).toHaveBeenCalledTimes(Math.ceil(count / 50));
+    expect(coursesRead).toHaveBeenCalledTimes(1);
+    expect(modulesRead).toHaveBeenCalledTimes(1);
+    expect(staffRead).not.toHaveBeenCalled();
+    expect(memberRead).not.toHaveBeenCalled();
+    expect(grantsRead).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
   it('keys the job and its notifications by the source event', async () => {
     const { deps, notifications } = fixture({ followers: ['u001'] });
 
@@ -499,7 +579,7 @@ describe('notification fan-out', () => {
     const { deps, notifications, delivered } = fixture({ followers });
 
     await runPostFanoutJob(job, deps);
-    const replay = await runPostFanoutJob(job, deps);
+    const replay = await runPostFanoutJob({ ...job, status: 'completed' }, deps);
 
     expect(replay).toMatchObject({ ok: true, value: { created: 0, completed: true } });
     expect(notifications.rows).toHaveLength(3);
@@ -664,8 +744,9 @@ describe('notification fan-out', () => {
 
     const result = await drainNotificationFanoutJobs(deps, { budgetMs: 15_000 });
 
-    expect(result).toMatchObject({ ok: true, value: { jobsClaimed: 2, notificationsCreated: 2 } });
+    expect(result).toMatchObject({ ok: true, value: { jobsClaimed: 1, notificationsCreated: 2 } });
     expect(notifications.rows.map((row) => row.sourceKey)).toEqual([job.sourceKey, job.sourceKey]);
+    expect(await deps.fanoutJobs.claimDue({ now: advancing.nowIso(), limit: 1, leaseUntil: advancing.nowIso() })).toEqual([later]);
   });
 
   it('counts a job whose channel fails as a failed drain without aborting the run', async () => {

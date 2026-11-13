@@ -137,6 +137,8 @@ const postsRepository = (rows: Post[]) => {
         nextCursor: roots[query.limit] !== undefined && last !== undefined ? cursorOf(last) : null,
       };
     },
+    listRepliesForRoots: async () => new Map(),
+    countRepliesIncludingDeleted: async () => new Map(),
     listReplies: async () => [],
     updateBody: async () => null,
     softDelete: async () => null,

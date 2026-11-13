@@ -74,9 +74,10 @@ kept synchronized by reviewing upstream changes to these paths:
   version source, and documentation snapshots. Together's 0.x HTTP API makes no
   compatibility promise (`app/docs/version-surfaces.md`), so upstream's
   additive-only v1 rule is not adopted.
-- Pull request titles use `<area>: <summary>` because the release-notes generator
-  (`app/scripts/changelog.ts`) classifies them by that prefix; commits keep
-  gitmoji. Upstream puts a gitmoji at the start of both.
+- Together does not adopt upstream's leading-gitmoji pull request title rule:
+  the release-notes generator (`app/scripts/changelog.ts`) groups pull requests
+  by a leading `feat:`, `fix:`, `ui:`, `docs:` or `ci:` prefix and lists every
+  other title in a catch-all section.
 - The password floor is 15 characters (`app/core/domain/password.ts`,
   `app/docs/security.md`), stricter than upstream's 12, because second-factor
   enrolment is optional.

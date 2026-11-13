@@ -112,6 +112,39 @@ describe('users import repository', () => {
     });
   });
 
+  it('rejects a foreign audit API key and rolls back the auth identity, member, and audit', async () => {
+    const repository = createImportUsersRepository(db);
+    const foreignTenantId = 'tenant-users-import-foreign-key';
+    await db.insert(tenants).values({
+      id: foreignTenantId, slug: 'users-import-foreign-key', name: 'Foreign key', createdAt: NOW,
+    });
+    await db.insert(tenantApiKeys).values({
+      id: 'foreign-import-key', tenantId: foreignTenantId, name: 'Import',
+      keyHash: 'foreign-users-import-key-hash', scopes: ['import:users'], createdAt: NOW,
+    });
+    const source = memberMutation();
+    const attempted = {
+      ...source,
+      resource: {
+        ...source.resource, id: 'member-foreign-key', userId: 'user-foreign-key',
+        email: 'foreign-key@example.test', legacyId: 'legacy-foreign-key',
+      },
+      event: {
+        ...source.event, id: 'audit-foreign-key', apiKeyId: 'foreign-import-key',
+        importKey: 'member-foreign-key', resourceId: 'member-foreign-key',
+      },
+    };
+
+    await expect(repository.commit(TENANT_ID, attempted))
+      .rejects.toThrow('Import audit API key does not belong to tenant');
+    expect(await db.select().from(user).where(eq(user.id, attempted.resource.userId))).toEqual([]);
+    expect(await repository.findMemberById(TENANT_ID, attempted.resource.id)).toBeNull();
+    expect(await db.select().from(marketingMemberSyncJobs)
+      .where(eq(marketingMemberSyncJobs.memberId, attempted.resource.id))).toEqual([]);
+    expect(await db.select().from(importAuditEvents).where(eq(importAuditEvents.id, attempted.event.id)))
+      .toEqual([]);
+  });
+
   it('rejects conflicting grant import history and rolls back its projection', async () => {
     const repository = createImportUsersRepository(db);
     await db.insert(products).values({

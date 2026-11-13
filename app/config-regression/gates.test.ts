@@ -158,6 +158,64 @@ const eslintFixtures = {
   },
 } satisfies Record<string, { rel: string; content: string }>;
 
+const adapterDepcruiseCases = [
+  { adapter: 'invoicing', suffix: 'ts', externalRule: 'adapter-invoicing-external-allowlist', builtinRule: 'adapter-invoicing-builtin-allowlist' },
+  { adapter: 'invoicing', suffix: 'test.ts', externalRule: 'adapter-invoicing-test-external-allowlist', builtinRule: 'adapter-invoicing-test-builtin-allowlist' },
+  { adapter: 'notifications', suffix: 'ts', externalRule: 'adapter-notifications-external-allowlist', builtinRule: 'notification-qr-scheduler-no-builtins' },
+  { adapter: 'notifications', suffix: 'test.ts', externalRule: 'adapter-notifications-test-external-allowlist', builtinRule: 'notification-qr-scheduler-no-builtins' },
+  { adapter: 'qr', suffix: 'ts', externalRule: 'adapter-qr-external-allowlist', builtinRule: 'notification-qr-scheduler-no-builtins' },
+  { adapter: 'qr', suffix: 'test.ts', externalRule: 'adapter-qr-test-external-allowlist', builtinRule: 'notification-qr-scheduler-no-builtins' },
+  { adapter: 'scheduler', suffix: 'ts', externalRule: 'adapter-scheduler-external-allowlist', builtinRule: 'notification-qr-scheduler-no-builtins' },
+  { adapter: 'scheduler', suffix: 'test.ts', externalRule: 'adapter-scheduler-external-allowlist', builtinRule: 'notification-qr-scheduler-no-builtins' },
+];
+
+const forbiddenDepcruiseEdges = [
+  {
+    rel: join(layoutDir, 'ui-import.ts'),
+    dependency: '../../ui/ConfirmDialog.js',
+    dependencyType: 'local',
+    rule: 'web-layout-structure-only',
+  },
+  {
+    rel: join(layoutDir, 'lib-import.ts'),
+    dependency: '../../../lib/probe.js',
+    dependencyType: 'local',
+    rule: 'web-layout-structure-only',
+  },
+  ...adapterDepcruiseCases.flatMap(({ adapter, suffix, externalRule, builtinRule }) => [
+    {
+      rel: join('adapters', adapter, token, `npm-depcruise.${suffix}`),
+      dependency: 'react',
+      dependencyType: 'npm',
+      rule: externalRule,
+    },
+    ...['net', 'node:net'].map((dependency) => ({
+      rel: join('adapters', adapter, token, `${dependency.replace(':', '-')}-depcruise.${suffix}`),
+      dependency,
+      dependencyType: 'core',
+      rule: builtinRule,
+    })),
+  ]),
+];
+
+const allowedDepcruiseEdges = [
+  ...['ts', 'test.ts'].flatMap((suffix) => ['crypto', 'node:crypto'].map((dependency) => ({
+    rel: join('adapters', 'invoicing', token, `${dependency.replace(':', '-')}-allowed.${suffix}`),
+    dependency,
+    dependencyType: 'core',
+  }))),
+  {
+    rel: join(layoutDir, 'layout-allowed.ts'),
+    dependency: './leaf.js',
+    dependencyType: 'local',
+  },
+  {
+    rel: join(layoutDir, 'theme-allowed.ts'),
+    dependency: '../../../theme.js',
+    dependencyType: 'local',
+  },
+];
+
 const depcruiseFixtures = [
   { rel: join(coreDomainDir, 'react.ts'), content: "import 'react';\n" },
   { rel: join(coreDomainDir, 'auth-sdk.ts'), content: "import 'better-auth';\n" },
@@ -168,6 +226,10 @@ const depcruiseFixtures = [
     content: "import '../../../features/auth/LoginPage.js';\n",
   },
   { rel: join(islandCoreDir, 'react-depcruise.ts'), content: "import 'react';\n" },
+  ...[...forbiddenDepcruiseEdges, ...allowedDepcruiseEdges].map(({ rel, dependency }) => ({
+    rel,
+    content: `import '${dependency}';\n`,
+  })),
 ] satisfies Array<{ rel: string; content: string }>;
 
 interface EslintMessage {
@@ -180,8 +242,21 @@ interface EslintResult {
   messages: EslintMessage[];
 }
 
+interface DepcruiseViolation {
+  from: string;
+  to: string;
+  rule: { name: string; severity: string };
+}
+
+interface DepcruiseModule {
+  source: string;
+  dependencies: Array<{ resolved: string }>;
+}
+
 const messagesByFixture = new Map<string, EslintMessage[]>();
 const depcruiseRules = new Set<string>();
+let depcruiseViolations: DepcruiseViolation[] = [];
+let depcruiseModules: DepcruiseModule[] = [];
 let islandTypecheckOutput = '';
 let islandTypecheckStatus: number | null = null;
 let tenantScopeOutput = '';
@@ -257,6 +332,9 @@ beforeAll(async () => {
     'export const ConfirmDialog = () => null;\n',
   );
   writeFixture(join('apps', 'web', 'src', 'api.ts'), 'export const actions = {};\n');
+  writeFixture(join('apps', 'web', 'src', 'lib', 'probe.ts'), 'export const probe = 1;\n');
+  writeFixture(join('apps', 'web', 'src', 'theme.ts'), 'export const theme = {};\n');
+  writeFixture(join(layoutDir, 'leaf.ts'), 'export const leaf = 1;\n');
   writeFixture(
     join('apps', 'web', 'src', 'features', 'auth', 'LoginPage.tsx'),
     'export const LoginPage = () => null;\n',
@@ -286,12 +364,18 @@ beforeAll(async () => {
 
   const depcruiseRun = await runCommand(
     join(fixtureAppRoot, 'node_modules', '.bin', 'depcruise'),
-    ['--output-type', 'json', coreDomainDir, coreServerDir, islandCoreDir, layoutDir],
+    [
+      '--output-type', 'json', coreDomainDir, coreServerDir, islandCoreDir, layoutDir,
+      ...new Set(adapterDepcruiseCases.map(({ adapter }) => join('adapters', adapter, token))),
+    ],
   );
-  const report: { summary: { violations: Array<{ rule: { name: string } }> } } = JSON.parse(
-    depcruiseRun.stdout,
-  );
-  for (const violation of report.summary.violations) {
+  const report: {
+    modules: DepcruiseModule[];
+    summary: { violations: DepcruiseViolation[] };
+  } = JSON.parse(depcruiseRun.stdout);
+  depcruiseViolations = report.summary.violations;
+  depcruiseModules = report.modules;
+  for (const violation of depcruiseViolations) {
     depcruiseRules.add(violation.rule.name);
   }
 
@@ -464,6 +548,43 @@ describe('ESLint gate', () => {
 });
 
 describe('Dependency Cruiser gate', () => {
+  it.each(forbiddenDepcruiseEdges)(
+    'rejects $rel → $dependency with $rule',
+    ({ rel, dependency, dependencyType, rule }) => {
+      const edges = depcruiseModules.find(({ source }) => source === rel)?.dependencies;
+      expect(edges).toEqual([
+        expect.objectContaining({
+          module: dependency.replace(/^node:/, ''),
+          ...(dependency.startsWith('node:') ? { protocol: 'node:' } : {}),
+          dependencyTypes: expect.arrayContaining([dependencyType]),
+          couldNotResolve: false,
+          valid: false,
+        }),
+      ]);
+      expect(depcruiseViolations).toContainEqual(expect.objectContaining({
+        from: rel,
+        to: edges?.[0]?.resolved,
+        rule: { name: rule, severity: 'error' },
+      }));
+    },
+  );
+
+  it.each(allowedDepcruiseEdges)(
+    'allows $rel → $dependency without violations',
+    ({ rel, dependency, dependencyType }) => {
+      expect(depcruiseModules.find(({ source }) => source === rel)?.dependencies).toEqual([
+        expect.objectContaining({
+          module: dependency.replace(/^node:/, ''),
+          ...(dependency.startsWith('node:') ? { protocol: 'node:' } : {}),
+          dependencyTypes: expect.arrayContaining([dependencyType]),
+          couldNotResolve: false,
+          valid: true,
+        }),
+      ]);
+      expect(depcruiseViolations.filter(({ from }) => from === rel)).toEqual([]);
+    },
+  );
+
   it('rejects frameworks in core', () => {
     expect(depcruiseRules.has('no-frameworks-in-core')).toBe(true);
   });
@@ -518,6 +639,7 @@ describe('Dependency Cruiser gate', () => {
       'no-frameworks-in-core',
       'auth-provider-sdk-only-in-adapters-auth',
       'smtp-sdk-only-in-adapters-email',
+      ...new Set(adapterDepcruiseCases.flatMap(({ externalRule, builtinRule }) => [externalRule, builtinRule])),
     ]) {
       expect(severity.get(name)).toBe('error');
     }

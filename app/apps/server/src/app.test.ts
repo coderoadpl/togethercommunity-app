@@ -9,6 +9,7 @@ import { marketingContactDeps } from '#core/server/testing/marketing-contact-fak
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
+import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -2755,7 +2756,10 @@ describe('marketing HTTP surfaces', () => {
         messageType: 'Notification',
         outcome: 'recorded',
       });
-      expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'ignored' }]);
+      const receipts = await marketing.snsInbox.list('t-acme');
+      expect(receipts).toMatchObject([{ status: 'pending' }]);
+      expect(readStoredMarketingSesEvents(receipts[0]?.rawBody ?? null, topicArn))
+        .toMatchObject([{ kind: 'delivery', messageId: 'ses-custom-host-message', occurredAt: now }]);
     });
 
     it('refuses a receipt when tenant topic binding disappears', async () => {

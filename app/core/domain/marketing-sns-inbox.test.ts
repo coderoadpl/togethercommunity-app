@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseMarketingSesEvents } from './marketing-sns-inbox.js';
+import { parseMarketingSesEvents, storedCanonicalSnsEnvelopeSchema } from './marketing-sns-inbox.js';
 
 const NOW = '2026-09-10T10:00:00.000Z';
+
+it.each((['Notification', 'SubscriptionConfirmation'] as const).flatMap((type) =>
+  [undefined, null, { recipient: 'private@example.test' }, 'https://sns.example.test/confirm'].map((subscribeUrl) => ({ type, subscribeUrl }))))('retains only canonical fields for $type with SubscribeURL=$subscribeUrl', ({ type, subscribeUrl }) => {
+  const signed = { Type: type, MessageId: 'receipt-id', TopicArn: 'topic', Timestamp: NOW, Message: 'signed-message' };
+  const canonical = storedCanonicalSnsEnvelopeSchema.parse({ ...signed, SubscribeURL: subscribeUrl, unsignedRecipient: 'private@example.test' });
+  expect(JSON.stringify(canonical)).toBe(JSON.stringify({ ...signed,
+    ...(type === 'SubscriptionConfirmation' && typeof subscribeUrl === 'string' ? { SubscribeURL: subscribeUrl } : {}),
+  }));
+});
 
 describe('parseMarketingSesEvents', () => {
   it.each(['notificationType', 'eventType'] as const)(

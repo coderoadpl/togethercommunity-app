@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 
 import { appError, err, ok } from '#core/domain/index.js';
-import { marketingSnsInboxSchema } from '#core/domain/marketing-sns-inbox.js';
+import { marketingSnsInboxSchema, marketingSnsJsonValue, storedCanonicalSnsEnvelopeSchema } from '#core/domain/marketing-sns-inbox.js';
 import type { MarketingSnsInboxRepository } from '#core/server/index.js';
 
+import { createContentHash } from '../crypto/content-hash.js';
 import type { Db } from './client.js';
 import { marketingSnsInbox, marketingSnsInboxEvents } from './schema.js';
 
@@ -23,8 +24,12 @@ export const createMarketingSnsInboxRepository = (db: Db): MarketingSnsInboxRepo
       return ok(parse(inserted));
     }
     const [existing] = await tx.select().from(marketingSnsInbox).where(and(eq(marketingSnsInbox.tenantId, tenantId), eq(marketingSnsInbox.topicArn, row.topicArn), eq(marketingSnsInbox.snsMessageId, row.snsMessageId)));
-    return existing !== undefined && existing.bodySha256 === row.bodySha256
-      ? ok(parse(existing)) : err(appError('conflict', 'SNS message ID has conflicting content'));
+    if (existing !== undefined) {
+      if (existing.bodySha256 === row.bodySha256) return ok(parse(existing));
+      const canonical = storedCanonicalSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(existing.rawBody ?? ''));
+      if (canonical.success && createContentHash().sha256(JSON.stringify(canonical.data)) === row.bodySha256) return ok(parse(existing));
+    }
+    return err(appError('conflict', 'SNS message ID has conflicting content'));
   }),
   claim: async (tenantId, input) => db.transaction(async (tx) => {
     const [row] = await tx.select().from(marketingSnsInbox).where(and(

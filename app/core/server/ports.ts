@@ -2125,6 +2125,7 @@ export interface CampaignSendRepository {
 }
 
 export interface SuppressionRepository {
+  isErased(tenantId: string, input: { email: string; emailHmac: string; memberId?: string | null; contactId?: string | null }): Promise<boolean>;
   record(tenantId: string, suppression: Suppression, event?: EmailEvent): Promise<boolean>;
   findActive(tenantId: string, emailHmac: string): Promise<Suppression | null>;
   isSuppressed(tenantId: string, emailHmac: string): Promise<boolean>;
@@ -2159,6 +2160,14 @@ export interface SesMarketingCredentials {
   accessKeyId: string;
   secretAccessKey: string;
   region: string;
+}
+
+export interface TransactionalSesReadiness {
+  ensure(
+    tenantId: string,
+    credentials: SesMarketingCredentials,
+    settings: { configurationSet: string | null; snsTopicArn: string | null },
+  ): Promise<Result<string, AppError>>;
 }
 
 export interface SesMarketingSender {

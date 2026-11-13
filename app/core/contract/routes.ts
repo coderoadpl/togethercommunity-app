@@ -25,6 +25,7 @@ import {
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
+  salesLinkVariantSelectionSchema,
   checkoutSessionStatusInputSchema,
   couponCheckoutBreakdownSchema,
   couponRecurringDurationSchema,
@@ -493,6 +494,7 @@ export const checkoutSessionOutputSchema = z.object({
 export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.pick({
   salesLinkId: true,
   salesLinkSlug: true,
+  variantSelections: true,
   productId: true,
   priceId: true,
   email: true,
@@ -692,6 +694,7 @@ const magicLinkSchema = z.object({
 export const simulatePurchaseInputSchema = z.object({
   salesLinkId: z.string().min(1).optional(),
   salesLinkSlug: z.string().min(1).optional(),
+  variantSelections: z.array(salesLinkVariantSelectionSchema).max(50).default([]),
   email: z.string().email(),
   productId: z.string().min(1),
   priceId: z.string().min(1).optional(),

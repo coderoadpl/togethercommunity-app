@@ -304,6 +304,23 @@ tracked variant without an available piece is sold out, an untracked one never
 is. The offer reads the stock of the offered products and of every published
 sibling in their groups in one query.
 
+Sales-link offers, including one-line offers, show chips below each eligible
+line name. A chip stays on `/offer/<slug>` and carries repeatable
+`variant=<baseProductId>.<chosenProductId>` query parameters. Eligible siblings
+are published products of the same workspace and variant group, with the same
+type and delivery method, exactly one active non-imported one-time price in the
+link currency, and resolvable VAT. Memberships are never eligible. Each chosen
+product keeps its own price: the bundle total is the sum of the chosen prices.
+Two lines cannot choose the same product; a sibling already chosen elsewhere
+is disabled with "Already in the bundle". A simultaneous exchange is valid
+when the final products are distinct. Sold-out siblings are disabled, but a
+sold-out current variant does not prevent switching to an available sibling.
+Any link with a line offering two or more eligible variants uses the Together
+checkout, even when its saved base product is sold out. Choices survive Stripe
+cancellation and Retry. Chip navigation reloads the form; typed details and
+consent ticks are not preserved. See [Sales links](sales-links.md) for request
+validation and checkout behaviour.
+
 ## Content security policy for the parcel locker map
 
 Following the owner decision of 2026-11-05, the page injects
@@ -526,8 +543,6 @@ version never changes stock.
 
 These parts of the shop are not built yet and are handled as described:
 
-- Bundles: a sales link that sells more than one product shows no variant
-  chips; the chips appear only on the checkout of a single product.
 - Returns (RMA): there is no return flow. Staff refund the buyer in Stripe and
   put the goods back with a stock adjustment whose reason is `returned`.
 - Carrier labels: no carrier label purchase or InPost label API is integrated.

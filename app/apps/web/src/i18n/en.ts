@@ -724,6 +724,8 @@ export const en: Messages = {
     instructions: 'Instructions and safety information',
   },
   productVariants: {
+    offerLabelFor: ({ title }) => `Variant: ${title}`,
+    inBundle: 'Already in the bundle',
     heading: 'Variants',
     hint: 'Each variant is its own product with its own price and stock. Published products with the same variant group are offered as variants of each other.',
     group: 'Variant group',

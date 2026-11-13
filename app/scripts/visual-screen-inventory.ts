@@ -692,7 +692,10 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-product-downloads',
     auth: 'creator',
     path: '/panel/products/product-download-workbook',
-    ready: (page) => page.getByRole('link', { name: 'member-studio-active', exact: true }).waitFor(visible),
+    ready: async (page) => {
+      await page.getByRole('link', { name: 'member-studio-active', exact: true }).waitFor(visible);
+      await page.waitForFunction(() => !(document.activeElement instanceof HTMLInputElement) && !(document.activeElement instanceof HTMLTextAreaElement));
+    },
     settled: async (page) => {
       await page.getByTestId('download-copy-lookup').evaluate((element) => {
         window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 72);

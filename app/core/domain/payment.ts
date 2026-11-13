@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { salesLinkVariantSelectionSchema } from './sales-link-variants.js';
 import { attributionSchema } from './attribution.js';
 
 import { languageSchema } from './language.js';
@@ -15,6 +16,7 @@ export const checkoutSessionInputSchema = z.object({
   productId: z.string().min(1),
   salesLinkId: z.string().min(1).optional(),
   salesLinkSlug: z.string().min(1).optional(),
+  variantSelections: z.array(salesLinkVariantSelectionSchema).max(50).default([]),
   priceId: z.string().min(1).optional(),
   email: z.string().email().optional(),
   language: languageSchema.optional(),

@@ -1,4 +1,6 @@
 import {
+  SALES_LINK_VARIANT_PARAM,
+  formatSalesLinkVariantParam,
   attributionSchema,
   attributionToSearchParams,
   checkoutSessionInputSchema,
@@ -41,7 +43,7 @@ import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
+import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, type CheckoutSelection } from './checkout-selection.js';
 import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
 import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
@@ -93,9 +95,11 @@ export const testCheckoutRejection = (
 
 const selectCheckoutProducts = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug'>,
-  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'stock'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'stock' | 'tenants'>,
 ): Promise<Result<CheckoutSelection, AppError>> => {
+  const selections = input.variantSelections ?? [];
+  if (selections.length > 0 && input.salesLinkId === undefined && input.salesLinkSlug === undefined) return err(validation('Invalid sales link selection'));
   if (input.salesLinkId !== undefined || input.salesLinkSlug !== undefined) {
     if (input.salesLinkId !== undefined && input.salesLinkSlug !== undefined) return err(validation('Invalid sales link selection'));
     const link = input.salesLinkSlug === undefined
@@ -107,21 +111,34 @@ const selectCheckoutProducts = async (
       return err(notFound('Sales link not found'));
     }
     if (input.priceId !== undefined || link.productIds[0] !== input.productId) return err(validation('Invalid sales link selection'));
-    const products: Product[] = [];
+    const bases: Product[] = [];
     for (const productId of link.productIds) {
       const item = await deps.products.findById(tenantId, productId);
       if (item === null || !item.published) return err(notFound('Sales link not found'));
       if (item.type === 'membership') return err(validation('Subscriptions cannot be included in a sales link'));
-      products.push(item);
+      bases.push(item);
     }
-    const activePrices = await deps.prices.listActiveByProducts(tenantId, link.productIds);
+    const candidates: Product[] = [];
+    for (const selection of selections) {
+      const candidate = await deps.products.findById(tenantId, selection.variantProductId);
+      if (candidate === null) return err(validation('Invalid sales link selection'));
+      candidates.push(candidate);
+    }
+    const activePrices = await deps.prices.listActiveByProducts(tenantId, [...new Set([...link.productIds, ...candidates.map((product) => product.id)])]);
+    const basePrices = resolveSalesLinkPrices(bases, activePrices);
+    if (!basePrices.ok) return basePrices;
+    const settings = selections.length === 0 ? null : await deps.tenants?.findSettings(tenantId) ?? null;
+    const selected = selectSalesLinkVariants(bases, selections, (base, id) => candidates.find((candidate) =>
+      candidate.id === id && salesLinkVariantEligible(base, candidate, activePrices, basePrices.value[0]?.currency ?? '', settings)), true);
+    if (!selected.ok) return selected;
+    const products = selected.value;
     const resolvedPrices = resolveSalesLinkPrices(products, activePrices);
     if (!resolvedPrices.ok) return resolvedPrices;
     const product = products[0];
     if (product === undefined) return err(notFound('Sales link not found'));
     const inStock = await ensureProductsInStock(tenantId, products, deps);
     if (!inStock.ok) return inStock;
-    return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug });
+    return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug, variantSelections: selections.filter((selection) => selection.productId !== selection.variantProductId) });
   }
   const product = await deps.products.findById(tenantId, input.productId);
   if (!product || !product.published) {
@@ -150,7 +167,7 @@ const selectCheckoutProducts = async (
 
 export const validateCheckoutSelection = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'shipping'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping'>,
   deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants'>,
   options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
 ): Promise<Result<CheckoutSelection, AppError>> => {
@@ -220,6 +237,7 @@ export const startCheckoutSession = async (
   const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const campaignQuery = attributionToSearchParams(fields).toString();
+  const variantQuery = new URLSearchParams((selection.variantSelections ?? []).map((item) => [SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam(item)])).toString();
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
   const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product] }, deps);
   let applied:
@@ -312,7 +330,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),

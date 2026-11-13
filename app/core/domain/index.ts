@@ -102,3 +102,5 @@ export * from './consumer-sales.js';
 export * from './tenant-team.js';
 export * from './checkout-analytics.js';
 export * from './storage-report.js';
+
+export * from './sales-link-variants.js';

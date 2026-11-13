@@ -10194,7 +10194,7 @@ it('revalidates listed sales links by revision and validity boundaries before re
   const findByIds = vi.fn(h.base.products.findByIds);
   const findBySlug = vi.fn(async () => link);
   h.base.clock.nowIso = () => now;
-  h.base.salesLinkManagement = { salesLinks: { ...h.salesLinks, list: async () => [link], findBySlug }, products: { findByIds }, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  h.base.salesLinkManagement = { salesLinks: { ...h.salesLinks, list: async () => [link], findBySlug }, products: { ...h.base.products, findByIds }, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
   const headers = { host: 'acme.localhost' };
   const before = await requestPublicOffer(h.app, headers);
   expect((await before.json()).data.salesLinks).toEqual([]);
@@ -11273,4 +11273,108 @@ describe('import creation timestamps over HTTP', () => {
       expect(mutations.length + userMutations.length + redirectMutations.length).toBe(valid ? 1 : 0);
     });
   });
+});
+
+const bundleVariantApp = () => {
+  const h = simulatedBundleApp();
+  const first = h.products[0];
+  if (first === undefined) throw new Error('Missing bundle base');
+  first.variantGroup = 'prints';
+  const sibling: Product = { ...first, id: 'white', slug: 'white', title: 'White print', priceCents: 2100, variantLabel: 'White' };
+  h.products.push(sibling);
+  h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  return { ...h, first, sibling, variantSelections: [{ productId: first.id, variantProductId: sibling.id }] };
+};
+
+it.each([undefined, 'BUNDLE'])('keeps the swapped first product through simulated fulfilment and coupon attribution: %s', async (couponCode) => {
+  const h = bundleVariantApp();
+  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+    productId: h.first.id, salesLinkSlug: h.link.slug, email: 'buyer@example.test', variantSelections: h.variantSelections,
+    ...(couponCode === undefined ? {} : { couponCode }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ ok: true, data: { productId: 'white' } });
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ productId: 'white', salesLinkId: h.link.id, amountCents: couponCode === undefined ? 3180 : 2862,
+    lines: [{ productId: 'white', name: 'White print', grossCents: 2100 }, { productId: 'digital' }] });
+  expect(h.grants.map((grant) => grant.productId)).toEqual(['digital']);
+  if (couponCode !== undefined) expect([...h.couponSessions.values()]).toMatchObject([{ productId: 'white', originalCents: 3180, finalCents: 2862 }]);
+});
+
+it('uses selected prices for coupon previews and rejects a coupon scoped to the saved bundle', async () => {
+  const h = bundleVariantApp();
+  const request = () => h.app.request(API_PATHS.couponCheckoutValidation, {
+    method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' },
+    body: JSON.stringify({ productId: h.first.id, salesLinkSlug: h.link.slug, email: 'buyer@example.test', couponCode: 'BUNDLE', variantSelections: h.variantSelections }),
+  });
+  const response = await request();
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ ok: true, data: { breakdown: { originalCents: 3180, finalCents: 2862 } } });
+  const coupons = h.base.coupons;
+  const coupon = await coupons?.findByCode(acme.id, 'BUNDLE');
+  if (coupon == null || coupons === undefined) throw new Error('Missing coupon fixture');
+  coupons.findByCode = async () => ({ ...coupon, scope: { kind: 'products', productIds: h.link.productIds } });
+  expect(await (await request()).json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Coupon cannot be applied' } });
+});
+
+it.each(['base', 'group', 'no-group', 'unpublished', 'tenant', 'membership', 'type', 'delivery', 'repeated', 'duplicate', 'no-link'])('rejects invalid variant %s on every public purchase boundary before stock or snapshots', async (reason) => {
+  const h = bundleVariantApp();
+  if (reason === 'base') h.variantSelections[0] = { productId: 'foreign', variantProductId: 'white' };
+  if (reason === 'group') h.sibling.variantGroup = 'other';
+  if (reason === 'no-group') h.sibling.variantGroup = null;
+  if (reason === 'unpublished') h.sibling.published = false;
+  if (reason === 'tenant') h.sibling.tenantId = 'foreign';
+  if (reason === 'membership') h.sibling.type = 'membership';
+  if (reason === 'type') h.sibling.type = 'course';
+  if (reason === 'delivery') h.sibling.deliveryMethod = 'shipping';
+  if (reason === 'repeated') h.variantSelections.push(...h.variantSelections);
+  if (reason === 'duplicate') h.link.productIds = [h.first.id, h.sibling.id];
+  const stock = createStockRepositoryFake();
+  const reserve = vi.spyOn(stock.repository, 'reserve');
+  const readStock = vi.spyOn(stock.repository, 'listByProducts');
+  h.base.stock = stock.repository;
+  const find = vi.spyOn(h.base.products, 'findById');
+  for (const endpoint of [API_PATHS.checkoutSession, API_PATHS.devSimulatePurchase, API_PATHS.couponCheckoutValidation]) {
+    const response = await h.app.request(endpoint, {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' },
+      body: JSON.stringify({ productId: h.first.id, ...(reason === 'no-link' ? {} : { salesLinkSlug: h.link.slug }),
+        email: 'buyer@example.test', couponCode: 'BUNDLE', variantSelections: h.variantSelections, tenantId: 'foreign' }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid sales link selection' } });
+  }
+  expect(find.mock.calls.every(([tenantId]) => tenantId === acme.id)).toBe(true);
+  expect(readStock).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
+  expect(h.snapshots.size).toBe(0);
+  expect(h.orders).toHaveLength(0);
+});
+
+it('serves lenient selected offers through the public contract with the host-resolved tenant', async () => {
+  const h = bundleVariantApp();
+  const response = await h.app.request('/api/public/sales-links/bundle?variant=print.white&variant=unknown.foreign&tenantId=foreign', { headers: { host: 'acme.localhost' } });
+  expect(response.status).toBe(200);
+  const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
+  expect(body).toMatchObject({ ok: true, data: { totalCents: 3180, lines: [{ productId: 'white', baseProductId: 'print' }, { productId: 'digital' }] } });
+});
+
+it.each([false, true])('routes a variant offer to Together even when its saved first line is sold out: %s', async (soldOut) => {
+  const h = await directSalesLinkApp();
+  const first = h.products[0];
+  if (first === undefined) throw new Error('Missing base fixture');
+  first.variantGroup = 'prints';
+  h.products.push({ ...first, id: 'white', slug: 'white', title: 'White print' });
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, first.id, soldOut ? 0 : 2);
+  stock.track(acme.id, 'white', 2);
+  if (h.base.salesLinkManagement === undefined) throw new Error('Missing sales link fixture');
+  h.base.salesLinkManagement.stock = stock.repository;
+  const query = 'utm_source=newsletter&variant=print.white';
+  const response = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+  expect(response.status).toBe(302);
+  expect(response.headers.get('location')).toBe(`/offer/bundle?${query}&checkout=together`);
+  const crawler = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost', 'user-agent': 'facebookexternalhit' } });
+  expect(crawler.status).toBe(200);
+  expect(crawler.headers.get('location')).toBeNull();
+  expect(h.create).not.toHaveBeenCalled();
 });

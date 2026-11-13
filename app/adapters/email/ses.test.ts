@@ -126,9 +126,9 @@ it.each(['ConfigurationSetDoesNotExistException', 'EventDestinationDoesNotExistE
   'requests one repair and returns a retryable error for %s', async (name) => {
     const { sender, commands } = recordingSender(Object.assign(new Error('Missing'), { name }));
     const repair = vi.fn(async () => undefined);
-    const port = createSesEmailPort({ from: 'sender@example.test', configurationSet: 'transactional', onConfigurationMissing: repair }, sender);
+    const port = createSesEmailPort({ from: 'sender@example.test', configurationSet: 'transactional', configurationRecovery: { tenantId: 'tenant-1', repair } }, sender);
     expect(await port.send(message)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
-    expect(repair).toHaveBeenCalledTimes(1);
+    expect(repair).toHaveBeenCalledExactlyOnceWith('tenant-1');
     expect(commands).toHaveLength(1);
   },
 );
@@ -136,7 +136,7 @@ it.each(['ConfigurationSetDoesNotExistException', 'EventDestinationDoesNotExistE
 it('does not repair configuration for unrelated SES failures or diagnostics', async () => {
   const { sender } = recordingSender(Object.assign(new Error('Throttled'), { name: 'ThrottlingException' }));
   const repair = vi.fn(async () => undefined);
-  const port = createSesEmailPort({ from: 'sender@example.test', configurationSet: 'transactional', onConfigurationMissing: repair }, sender);
+  const port = createSesEmailPort({ from: 'sender@example.test', configurationSet: 'transactional', configurationRecovery: { tenantId: 'tenant-1', repair } }, sender);
   expect(await port.send(message)).toMatchObject({ ok: false, error: { code: 'internal' } });
   expect(await port.healthcheck()).toMatchObject({ ok: false });
   expect(await port.test()).toMatchObject({ ok: false });

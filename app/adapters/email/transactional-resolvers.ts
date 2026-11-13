@@ -28,7 +28,7 @@ export const createTenantSesTransactionalResolver = (
     region: string;
     credentials: { accessKeyId: string; secretAccessKey: string };
     configurationSet: string;
-    onConfigurationMissing: () => Promise<void>;
+    configurationRecovery: { tenantId: string; repair: (tenantId: string) => Promise<void> };
   }) => EmailPort = createSesEmailPort,
 ): TransactionalEmailTransportResolver => ({
   resolve: async (tenantId) => {
@@ -57,13 +57,16 @@ export const createTenantSesTransactionalResolver = (
         secretAccessKey: resolved.value.secretAccessKey,
       },
       configurationSet: transactionalSesConfigurationSetName(tenantSettings.configurationSet),
-      onConfigurationMissing: async () => {
-        const repaired = await infrastructure.readiness.ensure(tenantId, resolved.value, tenantSettings);
-        infrastructure.logger.warn(`[transactional-ses] missing configuration tenant=${tenantId} repair=${repaired.ok ? 'ready' : repaired.error.code} retry=outbox`);
-        if (!repaired.ok) {
-          const current = await settings.findByTenant(tenantId);
-          if (current !== null) await settings.upsert(tenantId, { ...current, identityCheckError: repaired.error.message });
-        }
+      configurationRecovery: {
+        tenantId,
+        repair: async (tenantId) => {
+          const repaired = await infrastructure.readiness.ensure(tenantId, resolved.value, tenantSettings);
+          infrastructure.logger.warn(`[transactional-ses] missing configuration tenant=${tenantId} repair=${repaired.ok ? 'ready' : repaired.error.code} retry=outbox`);
+          if (!repaired.ok) {
+            const current = await settings.findByTenant(tenantId);
+            if (current !== null) await settings.upsert(tenantId, { ...current, identityCheckError: repaired.error.message });
+          }
+        },
       },
     });
   },

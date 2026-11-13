@@ -63,6 +63,10 @@ follow the same member-erasure selection as live orders.
   payload carries no phone number, and a parcel locker delivery stores no
   postal address there; the shipment e-mail payload
   (`payload.shipment.delivery.address`) receives the same replacement;
+- scrubs related marketing and transactional e-mail event metadata and rewrites
+  matching SNS notification receipts to `together-scrubbed:v1:` without changing
+  their status, so pending feedback remains processable; late feedback for erased
+  recipients is scrubbed before persistence as well;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state

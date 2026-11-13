@@ -86,10 +86,14 @@ ambiguous transport failure becomes `uncertain`; it is never automatically resen
 feedback can reconcile that state through the stable `together-send-id` SES tag. Unresolved acceptance
 keeps a broadcast unfinished. API campaign keys remain reusable across separate automation steps.
 
-The SNS webhook verifies the signature and topic binding, commits the exact raw envelope and its
-SHA-256 hash, and only then returns 200. Receipt identity is `(tenant, topic ARN, verified SNS MessageId)`.
-Duplicates retain the original receipt; conflicting bodies return 409. Storage failures return 5xx,
-allowing SNS redelivery. Unsupported verified payloads are durably ignored with a reason.
+The SNS webhook verifies the signature and topic binding, stores only the canonical signed fields
+(`Type`, `MessageId`, `TopicArn`, `Timestamp`, `Message`, and `SubscribeURL` when present for subscription
+confirmation), and hashes that canonical JSON with SHA-256 before returning 200. Feedback for an
+erased recipient is scrubbed before storage while retaining the canonical hash. Receipt identity is
+`(tenant, topic ARN, verified SNS MessageId)`. Duplicates retain the original receipt; duplicate checks
+also canonicalize existing envelopes stored before this format change. Conflicting signed content
+returns 409. Storage failures return 5xx, allowing SNS redelivery. Unsupported verified payloads are
+durably ignored with a reason.
 
 The SNS subscription always points at the platform host for the tenant webhook path. Custom domains
 never change the subscription endpoint; user-facing unsubscribe and preference links may use the
@@ -126,8 +130,12 @@ resend them. The retention pass purges completed outbox bodies after
 `MARKETING_RETENTION_RENDERED_BODIES_DAYS` and processed or ignored SNS raw envelopes after
 `MARKETING_RETENTION_RAW_SNS_INBOX_DAYS`; both windows are configurable and default below.
 Pending and uncertain payloads remain available for recovery.
-Member erasure removes matching payloads immediately, fences active claims and preserves receipt
-identities and audit events; unprocessed SNS envelopes containing that recipient become ignored.
+Member erasure removes matching marketing outbox payloads immediately and fences their active claims.
+It scrubs related e-mail event metadata and rewrites matching SNS notification receipts in place to the
+`together-scrubbed:v1:` form, retaining correlation identifiers, recipient HMACs and scrubbed feedback
+without plaintext recipients. Receipt identities, hashes, statuses and audit events are preserved, so
+pending receipts remain processable in scrubbed form; the subsequent delivery-payload erasure pass
+skips these scrubbed receipts. Late feedback for erased recipients is also scrubbed before persistence.
 
 ## Cadence, budgets and throughput
 

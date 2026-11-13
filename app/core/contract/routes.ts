@@ -1485,6 +1485,18 @@ export const tenantSecretDeleteOutputSchema = z.object({
   key: tenantSecretKeySchema,
 });
 
+const memberSettingsSchema = z.object({
+  billingPortalUrl: tenantSettingsSchema.shape.billingPortalUrl,
+  supportConfigured: z.boolean(),
+  supportUrl: tenantSettingsSchema.shape.supportUrl,
+  videoAutoplayDefault: z.boolean(),
+  memberVideoAutoplayOverride: z.boolean(),
+});
+
+export const memberSettingsOutputSchema = z.object({
+  settings: memberSettingsSchema,
+});
+
 export const tenantSettingsOutputSchema = z.object({
   settings: tenantSettingsSchema,
   personalisationMaxBytes: z.number().int().positive().nullable().default(null),
@@ -2204,6 +2216,7 @@ export const API_ROUTES = {
   tenantTeamAdd: { method: 'POST', path: '/api/tenant/team' },
   tenantTeamRemove: { method: 'POST', path: '/api/tenant/team/remove' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
+  memberSettings: { method: 'GET', path: '/api/member/settings' },
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
   tenantRedirectCreate: { method: 'POST', path: '/api/tenant/redirects' },
@@ -2580,6 +2593,7 @@ export const API_PATHS = {
   globalSchedulerRuns: API_ROUTES.globalSchedulerRuns.path,
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
+  memberSettings: API_ROUTES.memberSettings.path,
   tenantRouting: API_ROUTES.tenantRouting.path,
   tenantTeam: API_ROUTES.tenantTeam.path,
   tenantTeamAdd: API_ROUTES.tenantTeamAdd.path,

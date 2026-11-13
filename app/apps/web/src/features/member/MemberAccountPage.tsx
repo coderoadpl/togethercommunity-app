@@ -95,7 +95,7 @@ export const MemberAccountPage = () => {
   const impersonating = useImpersonation() !== null;
   const ownAccount = me.data !== undefined && me.data.impersonation === null;
   const billingOrders = useQuery(actions.memberBillingOrders);
-  const tenantSettings = useQuery(actions.tenantSettings);
+  const tenantSettings = useQuery(actions.memberSettings);
   const dataExport = useQuery({ ...actions.myDataExport, enabled: false });
   const erasureRequest = useQuery(actions.myErasureRequest);
   const [erasureConfirmEmail, setErasureConfirmEmail] = useState('');

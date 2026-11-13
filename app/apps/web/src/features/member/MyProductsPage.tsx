@@ -212,7 +212,7 @@ const ProductRow = ({
 export const MyProductsPage = () => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
-  const tenantSettings = useQuery(actions.tenantSettings);
+  const tenantSettings = useQuery(actions.memberSettings);
   const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
 

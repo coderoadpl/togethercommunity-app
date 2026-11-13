@@ -25,6 +25,9 @@ const routeNames = new Map(
 const purposeFor = (route) => {
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) return publicEntry.why;
+  if (route.method === API_ROUTES.tenantSettings.method && route.path === API_ROUTES.tenantSettings.path) {
+    return 'staff-only tenant settings';
+  }
   return routeNames.get(`${route.method} ${route.path}`)
     ?? route.path
       .replaceAll(/[:*]/g, '')

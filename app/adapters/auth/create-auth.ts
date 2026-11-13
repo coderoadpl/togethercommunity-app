@@ -70,6 +70,12 @@ export interface AuthSettings {
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
+export const BETTER_AUTH_TWO_FACTOR_TOTP_PATH = '/api/auth/two-factor/verify-totp';
+
+export const BETTER_AUTH_TWO_FACTOR_BACKUP_CODE_PATH = '/api/auth/two-factor/verify-backup-code';
+
+export const BETTER_AUTH_OAUTH_CALLBACK_PATH_PATTERN = '/api/auth/callback/:provider';
+
 export const BETTER_AUTH_SESSION_PATH = '/api/auth/get-session';
 
 export const BETTER_AUTH_SIGN_OUT_PATH = '/api/auth/sign-out';
@@ -541,6 +547,7 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
     const rebased = new URL(rawUrl);
     rebased.protocol = target.protocol;
     rebased.host = target.host;
+    rebased.port = target.port;
     return rebased.toString();
   } catch {
     return rawUrl;

@@ -53,12 +53,13 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const limited = await claimM2mImportRateLimit(
       authenticated.value.tenant.id,
       authenticated.value.apiKey,
-      { mode: 'validate' },
+      { mode: 'validate', recordCount: parsed.data.records.length },
       {
         rateLimits: deps.apiKeyRateLimits,
         clock: deps.clock,
         importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
         importDailyRecordLimit: deps.importDailyRecordLimit,
+        importHourlyValidationRecordLimit: deps.importHourlyValidationRecordLimit,
       },
     );
     if (!limited.ok) {
@@ -104,6 +105,7 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
           clock: deps.clock,
           importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
           importDailyRecordLimit: deps.importDailyRecordLimit,
+          importHourlyValidationRecordLimit: deps.importHourlyValidationRecordLimit,
         },
       );
       if (!limited.ok) {
@@ -161,6 +163,7 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
           clock: deps.clock,
           importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
           importDailyRecordLimit: deps.importDailyRecordLimit,
+          importHourlyValidationRecordLimit: deps.importHourlyValidationRecordLimit,
         },
       );
       if (!limited.ok) {
@@ -204,6 +207,7 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
         clock: deps.clock,
         importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
         importDailyRecordLimit: deps.importDailyRecordLimit,
+        importHourlyValidationRecordLimit: deps.importHourlyValidationRecordLimit,
       },
     );
     if (!limited.ok) {

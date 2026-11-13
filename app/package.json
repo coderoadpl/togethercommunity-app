@@ -77,6 +77,7 @@
     "e2e:impersonation": "tsx scripts/impersonation-e2e.ts",
     "e2e:image-assets": "tsx scripts/image-assets-e2e.ts",
     "e2e:ksef": "tsx scripts/ksef-e2e.ts",
+    "storage:orphan-report": "tsx --env-file-if-exists=.env scripts/storage-orphan-report.ts",
     "e2e:storage": "tsx scripts/storage-e2e.ts",
     "storybook": "storybook dev -p 9009 --no-open",
     "storybook:build": "APP_BASE_DOMAIN=${APP_BASE_DOMAIN:-localhost} storybook build -o storybook-static",

@@ -35,7 +35,8 @@ describe('durable SNS inbox', () => {
       TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message });
   }, 60000);
 
-  it.each(['ingestion', 'pending', 'retry', 'dead_letter'] as const)('ignores forged receipt markers in signed envelopes through %s', async (stage) => {
+  it.each((['ingestion', 'pending', 'retry', 'dead_letter'] as const).flatMap((stage) =>
+    [null, { recipient: 'unrelated@example.test' }].map((subscribeUrl) => ({ stage, subscribeUrl }))))('ignores unsigned fields in signed envelopes through $stage with SubscribeURL=$subscribeUrl', async ({ stage, subscribeUrl }) => {
     fixture = await createDeliveryFixture();
     for (const to of ['signed@example.test', 'unrelated@example.test']) {
       await fixture.consent(to);
@@ -50,7 +51,7 @@ describe('durable SNS inbox', () => {
     const message = JSON.stringify({ eventType: 'Delivery', mail: { messageId: signedSend.sesMessageId },
       delivery: { timestamp: DELIVERY_NOW, recipients: ['signed@example.test'] } });
     const signed = createSignedSnsNotification({ message, messageId: 'signed-notification', timestamp: DELIVERY_NOW, topicArn: 'topic-a' });
-    const rawBody = JSON.stringify({ ...signed.envelope,
+    const rawBody = JSON.stringify({ ...signed.envelope, SubscribeURL: subscribeUrl,
       serverScrubbed: true, correlations: [{ messageId: unrelated.sesMessageId, campaignSendId: unrelated.id, recipients: ['unrelated@example.test'] }],
       erasedSesEvents: ['delivery', 'bounce', 'complaint'].map((kind) => ({ kind, messageId: unrelated.sesMessageId,
         campaignSendId: unrelated.id, occurredAt: DELIVERY_NOW, classification: 'hard', raw: {} })),
@@ -84,6 +85,32 @@ describe('durable SNS inbox', () => {
     const feedback = (await fixture.db.select().from(emailEvents)).filter((event) => ['delivered', 'bounced', 'complained'].includes(event.type));
     expect(feedback).toMatchObject([{ refId: signedSend.id, type: 'delivered' }]);
     expect(await fixture.db.select().from(suppressions)).toEqual([]);
+  }, 60000);
+
+  it.each([false, true])('accepts authentic redelivery of a legacy raw-body digest with unsigned extensions=%s', async (extensions) => {
+    fixture = await createDeliveryFixture();
+    const input = receipt('legacy-duplicate');
+    const signed = createSignedSnsNotification(input.envelope);
+    const rawBody = JSON.stringify({ ...signed.envelope,
+      ...(extensions ? { SubscribeURL: { recipient: 'unrelated@example.test' }, serverScrubbed: true, erasedSesEvents: null } : {}),
+    }, null, 2);
+    await fixture.db.insert(marketingSnsInbox).values({
+      id: 'legacy-receipt', tenantId: 'delivery-a', topicArn: 'topic-a', snsMessageId: input.envelope.messageId,
+      messageType: 'Notification', rawBody, bodySha256: createContentHash().sha256(rawBody),
+      verifiedAt: DELIVERY_NOW, receivedAt: DELIVERY_NOW, status: 'pending', nextAttemptAt: DELIVERY_NOW,
+    });
+    for (const body of [JSON.stringify(signed.envelope), rawBody]) {
+      const verified = await signed.verifier.verify({ rawBody: body, headers: {}, region: 'eu-central-1' });
+      if (!verified.ok) throw new Error('Expected a valid signature');
+      expect(await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: verified.value }, fixture.deps))
+        .toMatchObject({ ok: true, value: { id: 'legacy-receipt', rawBody } });
+    }
+    const changed = createSignedSnsNotification({ ...input.envelope, message: receipt('legacy-duplicate', 'Complaint').envelope.message });
+    const verified = await changed.verifier.verify({ rawBody: JSON.stringify(changed.envelope), headers: {}, region: 'eu-central-1' });
+    if (!verified.ok) throw new Error('Expected a valid signature');
+    expect(await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: verified.value }, fixture.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await fixture.db.select().from(marketingSnsInbox)).toHaveLength(1);
   }, 60000);
 
   it('retries callback-before-correlation and applies duplicate delivery exactly once', async () => {

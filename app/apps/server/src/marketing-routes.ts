@@ -588,7 +588,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       capabilities: capabilitiesForPrincipal('webhook'),
     }, { envelope: verified.value }, {
       delivery: marketing.value.delivery, hmac: marketing.value.hmac, clock: deps.clock, ids: deps.ids,
-      hash: { sha256: (value) => createHash('sha256').update(value).digest('hex') },
+      hash: deps.contentHash,
     });
     if (!recorded.ok) return response(recorded);
     await recordDelivery({ tenantId: settings.tenantId, outcome: 'recorded', messageType: verified.value.type, topicArn: verified.value.topicArn });

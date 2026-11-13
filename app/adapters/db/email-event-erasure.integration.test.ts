@@ -378,8 +378,9 @@ it.each(['message', 'tag', 'address'] as const)('scrubs historical ignored Send 
   await assertSendReceiptScrubbed(tenantId);
   expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox.changed).toBe(0);
 });
-it.each(['process', 'retry', 'replay', 'erase', 'repair'] as const)('ignores forged durable receipt markers during %s and scrubs the signed payload', async (stage) => {
-  const tenantId = `verbatim-${stage}`;
+it.each((['process', 'retry', 'replay', 'erase', 'repair'] as const).flatMap((stage) =>
+  [null, { recipient: 'other@example.test' }].map((subscribeUrl) => ({ stage, subscribeUrl }))))('ignores unsigned fields during $stage and scrubs the signed payload with SubscribeURL=$subscribeUrl', async ({ stage, subscribeUrl }) => {
+  const tenantId = `verbatim-${stage}-${subscribeUrl === null ? 'null' : 'object'}`;
   await seed(tenantId);
   await database.db.insert(campaignSends).values({ id: `${tenantId}-unrelated`, tenantId, source: 'api', email: 'other@example.test',
     subject: 'Other news', status: 'sent', sesMessageId: `${tenantId}-other-provider`, sentAt: now, createdAt: now });
@@ -389,7 +390,7 @@ it.each(['process', 'retry', 'replay', 'erase', 'repair'] as const)('ignores for
   const deps = inboxDeps();
   const input = receipt(tenantId, stage === 'retry' ? 'transactional' : 'marketing', stage === 'retry' ? 'open' : 'delivery');
   const signed = createSignedSnsNotification(input.envelope);
-  const rawBody = JSON.stringify({ ...signed.envelope, serverScrubbed: true,
+  const rawBody = JSON.stringify({ ...signed.envelope, SubscribeURL: subscribeUrl, serverScrubbed: true,
     correlations: [{ messageId: unrelated.sesMessageId, campaignSendId: unrelated.id, recipients: ['other@example.test'] }],
     erasedSesEvents: ['bounce', 'complaint'].map((kind) => ({ kind, messageId: unrelated.sesMessageId,
       campaignSendId: unrelated.id, occurredAt: now, classification: 'hard', raw: {} })),
@@ -433,4 +434,24 @@ it.each(['process', 'retry', 'replay', 'erase', 'repair'] as const)('ignores for
   expect(await database.db.select().from(campaignSends).where(eq(campaignSends.id, unrelated.id))).toEqual([unrelated]);
   expect(await database.db.select().from(suppressions).where(eq(suppressions.tenantId, tenantId)))
     .toMatchObject([{ reason: 'erasure', email: null }]);
+});
+
+it.each(['object', 'null', 'malformed'] as const)('does not erase an unrelated Notification from unsigned top-level data with %s SubscribeURL', async (variant) => {
+  const tenantId = `unsigned-address-${variant}`;
+  await seed(tenantId);
+  const rawBody = JSON.stringify({ Type: 'Notification', SubscribeURL: variant === 'null' ? null : { recipient: address },
+    ...(variant === 'null' ? { unsignedRecipient: address } : {}),
+    Message: variant === 'malformed' ? null : JSON.stringify({ eventType: 'Delivery',
+      mail: { messageId: 'unrelated-provider', destination: ['other@example.test'] },
+      delivery: { timestamp: now, recipients: ['other@example.test'] } }),
+  });
+  await database.db.insert(marketingSnsInbox).values({
+    id: `${tenantId}-receipt`, tenantId, topicArn: 'topic', snsMessageId: 'unrelated-notification', messageType: 'Notification',
+    rawBody, bodySha256: createContentHash().sha256(rawBody), verifiedAt: now, receivedAt: now, status: 'pending', nextAttemptAt: now,
+  });
+  const before = await inboxRows(tenantId);
+  await erase(tenantId);
+  expect(await inboxRows(tenantId)).toEqual(before);
+  expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 0, changed: 0 });
+  expect(await inboxRows(tenantId)).toEqual(before);
 });

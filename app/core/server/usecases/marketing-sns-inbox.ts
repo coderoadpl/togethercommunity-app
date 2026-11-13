@@ -1,5 +1,5 @@
 import { readStoredMarketingSesCorrelations, readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from '#core/domain/marketing-sns-erasure.js';
-import { marketingSnsJsonValue, parseMarketingSesEvents, storedSnsEnvelopeSchema, marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
+import { marketingSnsJsonValue, parseMarketingSesEvents, storedCanonicalSnsEnvelopeSchema, storedSnsSubscriptionSchema, marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { appError, err, forbidden, notFound, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { MarketingSnsInbox, SesEventApplication } from '#core/domain/marketing-sns-inbox.js';
 
@@ -46,9 +46,9 @@ export const recordVerifiedMarketingSnsEnvelope = async (
     const settings = await repos.sesSettings.findByTenant(tenantId.value);
     if (settings?.snsTopicArn !== input.envelope.topicArn) return err(forbidden('SNS topic does not match this tenant'));
     const now = deps.clock.nowIso();
-    const rawBody = JSON.stringify({ Type: input.envelope.type, MessageId: input.envelope.messageId,
+    const rawBody = JSON.stringify(storedCanonicalSnsEnvelopeSchema.parse({ Type: input.envelope.type, MessageId: input.envelope.messageId,
       TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message,
-      ...(input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl !== null ? { SubscribeURL: input.envelope.subscribeUrl } : {}) });
+      ...(input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl !== null ? { SubscribeURL: input.envelope.subscribeUrl } : {}) }));
     const unsupported = (input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl === null)
       || (input.envelope.type === 'Notification' && parseMarketingSesEvents(marketingSnsJsonValue(input.envelope.message), input.envelope.topicArn).length === 0);
     const row = await scrubErasedReceipt({
@@ -62,8 +62,8 @@ export const recordVerifiedMarketingSnsEnvelope = async (
 };
 
 const processReceipt = async (ctx: Ctx, row: MarketingSnsInbox, deps: InboxDeps, repos: MarketingDeliveryRepos): Promise<Result<SesEventApplication, AppError>> => {
-  const envelope = storedSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(row.rawBody ?? ''));
   if (row.messageType === 'SubscriptionConfirmation') {
+    const envelope = storedSnsSubscriptionSchema.safeParse(marketingSnsJsonValue(row.rawBody ?? ''));
     if (!envelope.success) return ok({ kind: 'ignored', reason: 'Unsupported verified envelope' });
     if (envelope.data.SubscribeURL === undefined) return ok({ kind: 'ignored', reason: 'Missing subscription URL' });
     const credentials = await deps.credentials.resolve(row.tenantId);

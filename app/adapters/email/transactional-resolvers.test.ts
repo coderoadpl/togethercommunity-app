@@ -1,3 +1,4 @@
+import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { notFound, ok } from '#core/domain/index.js';
@@ -7,6 +8,15 @@ import {
   createResendTransactionalResolver,
   createTenantSesTransactionalResolver,
 } from './transactional-resolvers.js';
+
+const controlPlane = {
+  ensureConfigurationSet: async (_credentials: unknown, name: string) => ok({ name }),
+  ensureEventDestination: async () => ok({ ready: true as const }),
+};
+const infrastructure = {
+  readiness: { ensure: (_tenantId: string, credentials: Parameters<typeof ensureTransactionalSesConfiguration>[0], settings: Parameters<typeof ensureTransactionalSesConfiguration>[1]) => ensureTransactionalSesConfiguration(credentials, settings, controlPlane) },
+  logger: { warn: vi.fn() },
+};
 
 describe('transactional e-mail transport resolvers', () => {
   it('attaches the non-engagement configuration set to transactional SES', async () => {
@@ -56,6 +66,7 @@ describe('transactional e-mail transport resolvers', () => {
           region: 'eu-central-1',
         }),
       },
+      infrastructure,
       emailFor,
     );
 
@@ -65,7 +76,7 @@ describe('transactional e-mail transport resolvers', () => {
     }));
   });
 
-  it('keeps the configuration set empty when the tenant has none', async () => {
+  it('blocks sending without a safe configuration set instead of falling through', async () => {
     const tenantSettings = {
       tenantId: 'tenant-1',
       fromAddress: 'mail@example.test',
@@ -113,13 +124,16 @@ describe('transactional e-mail transport resolvers', () => {
             region: 'eu-central-1',
           }),
       },
+      infrastructure,
       emailFor,
     );
 
-    await expect(resolver.resolve('tenant-1')).resolves.not.toBeNull();
-    expect(emailFor).toHaveBeenCalledWith(
-      expect.objectContaining({ configurationSet: null }),
-    );
+    const email = await resolver.resolve('tenant-1');
+    expect(email).not.toBeNull();
+    expect(await email?.send({ to: 'member@example.test', subject: 'Test', html: '<p>Test</p>', text: 'Test' }))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(emailFor).not.toHaveBeenCalled();
+    expect(infrastructure.logger.warn).toHaveBeenCalledWith(expect.stringContaining('tenant=tenant-1'));
   });
 
   it('resolves Resend from the tenant key and shared sender identity', async () => {

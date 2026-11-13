@@ -9,6 +9,7 @@ import {
   ok,
   requiresConsentVersionBump,
   tenantSesBroadcastsReady,
+  TRANSACTIONAL_SES_CONFIGURATION_FAILURE,
   validation,
   type AppError,
   type Capability,
@@ -432,7 +433,8 @@ export const updateTenantSesMarketingSettings = async (
     identityCheckedAt:
       current?.identity === input.identity ? current.identityCheckedAt : null,
     identityCheckError:
-      current?.identity === input.identity ? current.identityCheckError : null,
+      current?.identity === input.identity || current?.identityCheckError?.startsWith(TRANSACTIONAL_SES_CONFIGURATION_FAILURE)
+        ? current?.identityCheckError ?? null : null,
     configurationSet: input.configurationSet,
     snsTopicArn: input.snsTopicArn,
     snsSubscriptionEndpoint:

@@ -1,3 +1,4 @@
+import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-erasure.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
@@ -2787,6 +2788,7 @@ const erasedDmSnapshot = (display: string, senderIsReporter: boolean): SQL =>
 export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) =>
     db.transaction(async (tx) => {
+      await lockEmailEventErasure(tx, tenantId);
       const rows = await tx
         .select()
         .from(members)
@@ -2860,6 +2862,9 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
         sql`jsonb_typeof(${emailOutbox.payload}#>'{shipment,delivery,address}') = 'object'`,
       ));
+      await scrubMemberEmailEvents(tx, tenantId, {
+        memberId: input.memberId, email: member.email, emailHmac: emailHmac.compute(tenantId, member.email),
+      }, emailHmac);
       await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 

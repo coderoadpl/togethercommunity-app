@@ -86,6 +86,7 @@
     "visual:app": "tsx scripts/visual-screenshots.ts",
     "fixtures:record": "tsx scripts/fixtures-record.ts",
     "fixtures:check": "tsx scripts/fixtures-check.ts",
+    "email:repair-erased-events": "tsx --env-file-if-exists=.env scripts/repair-erased-email-events.ts",
     "worker:marketing": "tsx --env-file-if-exists=.env apps/server/src/marketing-worker.ts"
   },
   "dependencies": {

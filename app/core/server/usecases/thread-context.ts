@@ -1,4 +1,4 @@
-import type { Post } from '#core/domain/index.js';
+import type { Post, Space } from '#core/domain/index.js';
 
 import type {
   Clock,
@@ -22,6 +22,8 @@ export interface ThreadContextDeps {
 }
 
 export interface ThreadContextInfo {
+  space: Space | null;
+  lessonLocation: { courseId: string; moduleId: string; lessonId: string } | null;
   courseId: string | null;
   contextName: string;
   contextUrl: string;
@@ -36,6 +38,8 @@ export const threadContextInfo = async (
   if (post.contextKind === 'space') {
     const space = await deps.spaces.findById(tenantId, post.contextId);
     return {
+      space,
+      lessonLocation: null,
       courseId: null,
       contextName: space?.name ?? '',
       contextUrl: await deps.links.spaceUrl({
@@ -54,6 +58,8 @@ export const threadContextInfo = async (
   const location = locateLesson(post.contextId, courses, modules);
   const courseId = location?.course.id ?? null;
   return {
+    space: null,
+    lessonLocation: location === null ? null : { courseId: location.course.id, moduleId: location.moduleId, lessonId: post.contextId },
     courseId,
     contextName: lesson?.name ?? '',
     contextUrl: await deps.links.lessonDiscussionUrl({ tenantId, tenantSlug, courseId, lessonId: post.contextId }),

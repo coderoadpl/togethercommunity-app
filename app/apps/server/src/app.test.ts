@@ -740,6 +740,8 @@ const deps = (input: {
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+      listRepliesForRoots: async () => new Map(),
+      countRepliesIncludingDeleted: async () => new Map(),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
@@ -835,6 +837,11 @@ const deps = (input: {
       unblock: async () => true,
       findDirections: async (_tenantId, query) =>
         new Map(query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }])),
+    },
+    dispatchNotificationFanout: () => undefined,
+    fanoutBatches: {
+      listAccessForUsers: async () => [], listStaffPage: async () => [],
+      subscribeStaff: async () => undefined, listNotificationsForSource: async () => [],
     },
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
@@ -6768,6 +6775,8 @@ describe('anonymous public surface routes', () => {
             .map((post) => ({ post, replyCount: 0 })),
           nextCursor: null,
         }),
+        listRepliesForRoots: async () => new Map(),
+        countRepliesIncludingDeleted: async () => new Map(),
         listReplies: async () => [],
       },
       courses: {
@@ -7132,6 +7141,8 @@ describe('anonymous public surface routes', () => {
             threads: forAcme(tenantId, [{ post, replyCount: 0 }]),
             nextCursor: null,
           }),
+          listRepliesForRoots: async () => new Map(),
+          countRepliesIncludingDeleted: async () => new Map(),
           listReplies: async () => [],
         },
         courses: {

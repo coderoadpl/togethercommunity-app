@@ -350,6 +350,8 @@ const additionalTwoFactorPaths = new Set([
   '/sign-in/social',
   '/magic-link/verify',
   '/passkey/verify-authentication',
+  '/one-tap/callback',
+  '/verify-email',
 ]);
 
 const magicLinkTeamProofSchema = z.object({ userId: z.string(), origin: z.string().url() });
@@ -468,8 +470,13 @@ const twoFactorForEverySignIn = () => {
       ...plugin.hooks,
       after: plugin.hooks.after.map((hook) => ({
         ...hook,
-        matcher: (context: Parameters<typeof hook.matcher>[0]) =>
-          hook.matcher(context) || isAdditionalTwoFactorPath(context.path),
+        matcher: (context: Parameters<typeof hook.matcher>[0]) => {
+          // Verification also sets newSession when refreshing the caller's existing session cookie.
+          if (context.path === '/verify-email'
+            && context.context.session !== null
+            && context.context.session.session.id === context.context.newSession?.session.id) return false;
+          return hook.matcher(context) || isAdditionalTwoFactorPath(context.path);
+        },
       })),
     },
   };
@@ -480,7 +487,7 @@ const twoFactorRedirectSchema = z.object({ twoFactorRedirect: z.literal(true) })
 const redirectOrigin = (location: string | null, fallback: string): string => {
   if (location === null) return fallback;
   try {
-    return new URL(location).origin;
+    return new URL(location, fallback).origin;
   } catch {
     return fallback;
   }
@@ -491,11 +498,20 @@ const redirectTwoFactorNavigation = (baseUrl: string) => ({
   hooks: {
     after: [{
       matcher: (context: { path?: string }) =>
-        context.path === '/magic-link/verify' || context.path?.startsWith('/callback/') === true,
+        context.path === '/magic-link/verify'
+        || context.path === '/verify-email'
+        || context.path?.startsWith('/callback/') === true,
       handler: createAuthMiddleware(async (ctx) => {
         if (!twoFactorRedirectSchema.safeParse(ctx.context.returned).success) return;
         const location = ctx.context.responseHeaders?.get('location');
-        const origin = redirectOrigin(location ?? null, new URL(baseUrl).origin);
+        const deploymentUrl = new URL(baseUrl);
+        const requestOrigin = ctx.request === undefined
+          ? null
+          : new URL(`${deploymentUrl.protocol}//${new URL(ctx.request.url).host}`).origin;
+        const fallbackOrigin = requestOrigin !== null && ctx.context.isTrustedOrigin(requestOrigin)
+          ? requestOrigin
+          : deploymentUrl.origin;
+        const origin = redirectOrigin(location ?? null, fallbackOrigin);
         throw ctx.redirect(new URL('/login?twoFactor=required', origin).toString());
       }),
     }],

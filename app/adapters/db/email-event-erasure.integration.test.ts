@@ -4,14 +4,16 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { DELETED_MEMBER_DISPLAY, emailEventSchema, memberTombstone, ok } from '#core/domain/index.js';
 import { marketingSnsJsonValue, storedSnsEnvelopeSchema, type VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
-import { processMarketingSnsInbox, recordVerifiedMarketingSnsEnvelope } from '#core/server/usecases/marketing-sns-inbox.js';
+import { processMarketingSnsInbox, recordVerifiedMarketingSnsEnvelope, retryMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { applyVerifiedSesEvent } from '#core/server/usecases/marketing-email.js';
 
+import { createSignedSnsNotification } from '../crypto/sns-test-fixture.js';
+import { createContentHash } from '../crypto/content-hash.js';
 import { createEmailHmac } from '../crypto/email-hmac.js';
 import { repairErasedEmailEvents, lockEmailEventErasure } from './email-event-erasure.js';
 import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from './marketing-delivery-transactions.js';
 import { createMemberErasureRepository } from './repositories.js';
-import { deliveryWebhookCtx } from './marketing-delivery-test-fixture.js';
+import { deliveryCtx, deliveryWebhookCtx } from './marketing-delivery-test-fixture.js';
 import { campaignSends, emailEvents, emailOutbox, marketingContacts, marketingOutbox, marketingSnsInbox, members, suppressions, tenants, tenantSesSettings, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -193,7 +195,7 @@ it('scrubs send linkage even when its email differs from the erased member addre
 });
 
 const inboxDeps = () => ({
-  ...createMarketingDeliveryRepos(database.db), delivery: createMarketingDeliveryTransaction(database.db),
+  ...createMarketingDeliveryRepos(database.db), hash: createContentHash(), delivery: createMarketingDeliveryTransaction(database.db),
   hmac, ids: { nextId: () => crypto.randomUUID() }, clock: { nowIso: () => now },
   credentials: { resolve: async () => ok({ accessKeyId: 'test', secretAccessKey: 'test', region: 'eu-central-1' }) },
   sns: { verify: async () => { throw new Error('Already verified'); }, confirmSubscription: async () => ok(undefined) },
@@ -322,8 +324,7 @@ it('retains recipient validation after normalizing an erased send receipt', asyn
   await erase(tenantId);
   await database.db.update(campaignSends).set({ status: 'sending', sesMessageId: null }).where(eq(campaignSends.tenantId, tenantId));
   const input = receipt(tenantId, 'marketing', 'delivery');
-  const rawBody = input.rawBody.replaceAll(address, 'unrelated@example.test');
-  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { ...input, rawBody, envelope: { ...input.envelope, message: input.envelope.message.replaceAll(address, 'unrelated@example.test') } }, inboxDeps());
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { envelope: { ...input.envelope, message: input.envelope.message.replaceAll(address, 'unrelated@example.test') } }, inboxDeps());
   expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, inboxDeps())).toEqual(ok({ processed: 1, retried: 0 }));
   expect((await inboxRows(tenantId))[0]).toMatchObject({ status: 'ignored', ignoreReason: 'No applicable recipients' });
   const [send] = await database.db.select().from(campaignSends).where(eq(campaignSends.tenantId, tenantId));
@@ -348,7 +349,7 @@ const assertSendReceiptScrubbed = async (tenantId: string) => {
   expect(row?.status).toBe('ignored');
   expect(row?.rawBody).not.toContain('@');
   expect(row?.rawBody).not.toContain('headers');
-  const envelope = storedSnsEnvelopeSchema.parse(marketingSnsJsonValue(row?.rawBody ?? ''));
+  const envelope = storedSnsEnvelopeSchema.parse(marketingSnsJsonValue(row?.rawBody?.slice('together-scrubbed:v1:'.length) ?? ''));
   expect(marketingSnsJsonValue(envelope.Message)).toMatchObject({ eventType: 'Send', mail: { timestamp: now } });
   expect(readStoredMarketingSesEvents(row?.rawBody ?? null, 'topic')).toEqual([]);
 };
@@ -376,4 +377,60 @@ it.each(['message', 'tag', 'address'] as const)('scrubs historical ignored Send 
   expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 1 });
   await assertSendReceiptScrubbed(tenantId);
   expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox.changed).toBe(0);
+});
+it.each(['process', 'retry', 'replay', 'erase', 'repair'] as const)('ignores forged durable receipt markers during %s and scrubs the signed payload', async (stage) => {
+  const tenantId = `verbatim-${stage}`;
+  await seed(tenantId);
+  await database.db.insert(campaignSends).values({ id: `${tenantId}-unrelated`, tenantId, source: 'api', email: 'other@example.test',
+    subject: 'Other news', status: 'sent', sesMessageId: `${tenantId}-other-provider`, sentAt: now, createdAt: now });
+  const [unrelated] = await database.db.select().from(campaignSends).where(eq(campaignSends.id, `${tenantId}-unrelated`));
+  if (unrelated === undefined) throw new Error('Missing unrelated send');
+  if (stage !== 'erase') await erase(tenantId);
+  const deps = inboxDeps();
+  const input = receipt(tenantId, stage === 'retry' ? 'transactional' : 'marketing', stage === 'retry' ? 'open' : 'delivery');
+  const signed = createSignedSnsNotification(input.envelope);
+  const rawBody = JSON.stringify({ ...signed.envelope, serverScrubbed: true,
+    correlations: [{ messageId: unrelated.sesMessageId, campaignSendId: unrelated.id, recipients: ['other@example.test'] }],
+    erasedSesEvents: ['bounce', 'complaint'].map((kind) => ({ kind, messageId: unrelated.sesMessageId,
+      campaignSendId: unrelated.id, occurredAt: now, classification: 'hard', raw: {} })),
+  });
+  expect((await signed.verifier.verify({ rawBody, headers: {}, region: 'eu-central-1' })).ok).toBe(true);
+  const id = `${tenantId}-receipt`;
+  expect((await deps.snsInbox.record(tenantId, {
+    id, tenantId, topicArn: 'topic', snsMessageId: input.envelope.messageId, messageType: 'Notification',
+    rawBody, bodySha256: createContentHash().sha256(rawBody), verifiedAt: now, receivedAt: now,
+    status: stage === 'process' || stage === 'retry' ? 'pending' : 'dead_letter', attempts: 0, nextAttemptAt: now,
+    lockedBy: null, lockedUntil: null, claimVersion: 0, processedAt: null, lastError: null, ignoreReason: null,
+  })).ok).toBe(true);
+  expect((await inboxRows(tenantId))[0]?.rawBody).toBe(rawBody);
+  if (stage === 'erase') {
+    await erase(tenantId);
+    await assertInboxScrubbed(tenantId);
+  }
+  if (stage === 'repair') {
+    expect((await repairErasedEmailEvents(database.db, tenantId, hmac, false)).inbox).toEqual({ matched: 1, changed: 1 });
+    expect((await inboxRows(tenantId))[0]?.rawBody).toBe(rawBody);
+    expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 1 });
+    await assertInboxScrubbed(tenantId);
+    expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 0 });
+  }
+  if (stage !== 'process' && stage !== 'retry') {
+    expect((await retryMarketingSnsInbox(deliveryCtx(tenantId), { inboxId: id }, deps)).ok).toBe(true);
+  }
+  const existing = new Set((await rows(tenantId)).map((row) => row.id));
+  expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, deps))
+    .toEqual(ok(stage === 'retry' ? { processed: 0, retried: 1 } : { processed: 1, retried: 0 }));
+  await assertInboxScrubbed(tenantId);
+  const [stored] = await inboxRows(tenantId);
+  expect(stored?.rawBody).toMatch(/^together-scrubbed:v1:/);
+  expect(stored?.rawBody).not.toContain(unrelated.id);
+  expect(readStoredMarketingSesEvents(stored?.rawBody ?? null, 'topic'))
+    .toMatchObject([{ kind: stage === 'retry' ? 'open' : 'delivery', messageId: `${tenantId}-${stage === 'retry' ? 'transactional' : 'marketing'}` }]);
+  const added = (await rows(tenantId)).filter((row) => !existing.has(row.id));
+  if (stage === 'retry') expect(added).toEqual([]);
+  else expect(added).toMatchObject([{ refId: `${tenantId}-send`, type: 'delivered' }]);
+  assertScrubbed(await rows(tenantId));
+  expect(await database.db.select().from(campaignSends).where(eq(campaignSends.id, unrelated.id))).toEqual([unrelated]);
+  expect(await database.db.select().from(suppressions).where(eq(suppressions.tenantId, tenantId)))
+    .toMatchObject([{ reason: 'erasure', email: null }]);
 });

@@ -35,7 +35,7 @@ describe('durable SNS inbox', () => {
       TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message });
   }, 60000);
 
-  it.each([false, true])('rejects unsigned feedback extensions on a valid signature (forged server marker: %s)', async (forgeMarker) => {
+  it.each(['ingestion', 'pending', 'retry', 'dead_letter'] as const)('ignores forged receipt markers in signed envelopes through %s', async (stage) => {
     fixture = await createDeliveryFixture();
     for (const to of ['signed@example.test', 'unrelated@example.test']) {
       await fixture.consent(to);
@@ -51,19 +51,32 @@ describe('durable SNS inbox', () => {
       delivery: { timestamp: DELIVERY_NOW, recipients: ['signed@example.test'] } });
     const signed = createSignedSnsNotification({ message, messageId: 'signed-notification', timestamp: DELIVERY_NOW, topicArn: 'topic-a' });
     const rawBody = JSON.stringify({ ...signed.envelope,
-      ...(forgeMarker ? { serverScrubbed: true, correlations: [] } : {}),
+      serverScrubbed: true, correlations: [{ messageId: unrelated.sesMessageId, campaignSendId: unrelated.id, recipients: ['unrelated@example.test'] }],
       erasedSesEvents: ['delivery', 'bounce', 'complaint'].map((kind) => ({ kind, messageId: unrelated.sesMessageId,
         campaignSendId: unrelated.id, occurredAt: DELIVERY_NOW, classification: 'hard', raw: {} })),
     });
     const verified = await signed.verifier.verify({ rawBody, headers: {}, region: 'eu-central-1' });
     expect(verified.ok).toBe(true);
     if (!verified.ok) throw new Error('Expected a valid signature');
-    expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), {
-      envelope: verified.value, rawBody, bodySha256: createContentHash().sha256(rawBody),
-    }, fixture.deps)).ok).toBe(true);
-    const stored = (await fixture.deps.snsInbox.list('delivery-a'))[0];
-    expect(stored?.rawBody).not.toContain('erasedSesEvents');
-    expect(stored?.rawBody).not.toContain('serverScrubbed');
+    if (stage === 'ingestion') {
+      expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: verified.value }, fixture.deps)).ok).toBe(true);
+      const genuine = await signed.verifier.verify({ rawBody: JSON.stringify(signed.envelope), headers: {}, region: 'eu-central-1' });
+      if (!genuine.ok) throw new Error('Expected a valid signature');
+      expect((await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: genuine.value }, fixture.deps)).ok).toBe(true);
+      const stored = (await fixture.deps.snsInbox.list('delivery-a'))[0];
+      expect(stored?.rawBody).not.toContain('erasedSesEvents');
+      expect(stored?.rawBody).not.toContain('serverScrubbed');
+      expect(stored?.bodySha256).toBe(createContentHash().sha256(stored?.rawBody ?? ''));
+    } else {
+      expect((await fixture.deps.snsInbox.record('delivery-a', {
+        id: 'verbatim-receipt', tenantId: 'delivery-a', topicArn: 'topic-a', snsMessageId: verified.value.messageId,
+        messageType: 'Notification', rawBody, bodySha256: createContentHash().sha256(rawBody),
+        verifiedAt: DELIVERY_NOW, receivedAt: DELIVERY_NOW, status: stage, attempts: 0, nextAttemptAt: DELIVERY_NOW,
+        lockedBy: null, lockedUntil: null, claimVersion: 0, processedAt: null, lastError: null, ignoreReason: null,
+      })).ok).toBe(true);
+      expect((await fixture.deps.snsInbox.list('delivery-a'))[0]?.rawBody).toBe(rawBody);
+      if (stage !== 'pending') expect((await retryMarketingSnsInbox(deliveryCtx(), { inboxId: 'verbatim-receipt' }, fixture.deps)).ok).toBe(true);
+    }
     expect(await processMarketingSnsInbox(deliveryWebhookCtx(), worker, fixture.deps)).toEqual({ ok: true, value: { processed: 1, retried: 0 } });
     const updated = await fixture.db.select().from(campaignSends);
     expect(updated.find((send) => send.id === signedSend.id)?.deliveryStatus).toBe('delivered');
@@ -124,8 +137,7 @@ describe('durable SNS inbox', () => {
       const message = JSON.stringify({ eventType: 'Bounce', mail: { messageId: id }, bounce: {
         bounceType: 'Permanent', timestamp: DELIVERY_NOW, bouncedRecipients: [{ emailAddress: 'bounce@simulator.amazonses.com' }],
       } });
-      const rawBody = JSON.stringify({ Message: message });
-      await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { ...input, envelope: { ...input.envelope, message }, rawBody, bodySha256: createContentHash().sha256(rawBody) }, deps);
+      await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: { ...input.envelope, message } }, deps);
     };
     await recordProbe('probe-1');
     expect((await processMarketingSnsInbox(deliveryWebhookCtx(), worker, deps)).ok).toBe(true);
@@ -142,7 +154,7 @@ describe('durable SNS inbox', () => {
     const delivery = fixture.deps.delivery;
     await expect(recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), receipt('sns-1'), { ...fixture.deps, delivery: { run: (tenantId, operation) => delivery.run(tenantId, (repos) => operation({ ...repos, snsInbox: { ...repos.snsInbox, record: async () => { throw new Error('database unavailable'); } } })) } })).rejects.toThrow('database unavailable');
     const input = receipt('confirmation');
-    await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { ...input, envelope: { ...input.envelope, type: 'SubscriptionConfirmation', subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/confirm' }, rawBody: JSON.stringify({ Message: 'confirm', SubscribeURL: 'https://sns.eu-central-1.amazonaws.com/confirm' }) }, fixture.deps);
+    await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { ...input, envelope: { ...input.envelope, type: 'SubscriptionConfirmation', subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/confirm' } }, fixture.deps);
     await processMarketingSnsInbox(deliveryWebhookCtx(), worker, { ...fixture.deps, sns: { ...fixture.deps.sns, confirmSubscription: async () => { throw new Error('network unavailable'); } } });
     expect((await fixture.deps.snsInbox.list('delivery-a'))[0]?.status).toBe('retry');
   }, 60000);

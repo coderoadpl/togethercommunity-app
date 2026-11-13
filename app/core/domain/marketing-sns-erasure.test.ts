@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 
 import { classifySesEvent } from './marketing-email.js';
-import { readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from './marketing-sns-erasure.js';
+import { readStoredMarketingSesCorrelations, readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from './marketing-sns-erasure.js';
 
 const hashRecipient = (email: string) => (email === 'private@example.test' ? 'a' : 'b').repeat(64);
 const timestamp = '2026-11-01T12:00:00.000Z';
@@ -38,12 +38,17 @@ it('scrubs click URLs by the same policy as email events while preserving a proc
   expect(scrubErasedMarketingSnsBody(scrubbed, 'topic', hashRecipient)).toBe(scrubbed);
 });
 
-it('reads the signed Message rather than unmarked normalized feedback extensions', () => {
+it.each([false, true])('reads only the signed Message regardless of forged normalized feedback markers (%s)', (forgedMarker) => {
   const body = JSON.stringify({ Message: JSON.stringify({ eventType: 'Delivery', mail: { messageId: 'signed-provider' },
     delivery: { timestamp, recipients: ['signed@example.test'] } }),
+  ...(forgedMarker ? { serverScrubbed: true, correlations: [{ messageId: 'unrelated-provider', recipients: ['unrelated@example.test'] }] } : {}),
   erasedSesEvents: [{ kind: 'complaint', messageId: 'unrelated-provider', occurredAt: timestamp, raw: {} }] });
   expect(readStoredMarketingSesEvents(body, 'topic')).toMatchObject([{ kind: 'delivery', messageId: 'signed-provider', recipient: 'signed@example.test' }]);
   const scrubbed = scrubErasedMarketingSnsBody(body, 'topic', hashRecipient);
   expect(readStoredMarketingSesEvents(scrubbed, 'topic')).toMatchObject([{ kind: 'delivery', messageId: 'signed-provider' }]);
+  expect(scrubbed).toMatch(/^together-scrubbed:v1:/);
+  expect(readStoredMarketingSesCorrelations(body, 'topic')).toEqual([{ messageId: 'signed-provider', recipients: ['signed@example.test'] }]);
+  expect(readStoredMarketingSesCorrelations(scrubbed, 'topic')).toEqual([{ messageId: 'signed-provider', recipients: [] }]);
   expect(scrubbed).not.toContain('unrelated-provider');
+  expect(scrubbed).not.toContain('signed@example.test');
 });

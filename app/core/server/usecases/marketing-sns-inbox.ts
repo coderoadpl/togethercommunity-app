@@ -6,7 +6,7 @@ import type { MarketingSnsInbox, SesEventApplication } from '#core/domain/market
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { MarketingDeliveryRepos, MarketingDeliveryTransaction } from '../marketing-delivery-ports.js';
-import type { Clock, EmailHmac, IdGenerator, MarketingSesCredentialResolver, SnsVerifier, VerifiedSnsEnvelope } from '../ports.js';
+import type { Clock, ContentHash, EmailHmac, IdGenerator, MarketingSesCredentialResolver, SnsVerifier, VerifiedSnsEnvelope } from '../ports.js';
 import { applyVerifiedSesEvent } from './marketing-email.js';
 
 interface InboxDeps extends MarketingDeliveryRepos {
@@ -37,8 +37,8 @@ const scrubErasedReceipt = async (row: MarketingSnsInbox, repos: MarketingDelive
 
 export const recordVerifiedMarketingSnsEnvelope = async (
   ctx: Ctx,
-  input: { envelope: VerifiedSnsEnvelope; rawBody: string; bodySha256: string },
-  deps: Pick<InboxDeps, 'delivery' | 'hmac' | 'clock' | 'ids'>,
+  input: { envelope: VerifiedSnsEnvelope },
+  deps: Pick<InboxDeps, 'delivery' | 'hmac' | 'clock' | 'ids'> & { hash: ContentHash },
 ): Promise<Result<MarketingSnsInbox, AppError>> => {
   const tenantId = authorizeRequiredTenant(ctx, 'webhook:process');
   if (!tenantId.ok) return tenantId;
@@ -46,7 +46,6 @@ export const recordVerifiedMarketingSnsEnvelope = async (
     const settings = await repos.sesSettings.findByTenant(tenantId.value);
     if (settings?.snsTopicArn !== input.envelope.topicArn) return err(forbidden('SNS topic does not match this tenant'));
     const now = deps.clock.nowIso();
-    // Unsigned envelope extensions must never impersonate the server-scrubbed receipt format.
     const rawBody = JSON.stringify({ Type: input.envelope.type, MessageId: input.envelope.messageId,
       TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message,
       ...(input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl !== null ? { SubscribeURL: input.envelope.subscribeUrl } : {}) });
@@ -54,7 +53,7 @@ export const recordVerifiedMarketingSnsEnvelope = async (
       || (input.envelope.type === 'Notification' && parseMarketingSesEvents(marketingSnsJsonValue(input.envelope.message), input.envelope.topicArn).length === 0);
     const row = await scrubErasedReceipt({
       id: deps.ids.nextId(), tenantId: tenantId.value, topicArn: input.envelope.topicArn, snsMessageId: input.envelope.messageId,
-      messageType: input.envelope.type, rawBody, bodySha256: input.bodySha256,
+      messageType: input.envelope.type, rawBody, bodySha256: deps.hash.sha256(rawBody),
       verifiedAt: now, receivedAt: now, status: unsupported ? 'ignored' : 'pending', attempts: 0, nextAttemptAt: now,
       lockedBy: null, lockedUntil: null, claimVersion: 0, processedAt: unsupported ? now : null, lastError: null, ignoreReason: unsupported ? 'Unsupported verified payload' : null,
     }, repos, deps.hmac);

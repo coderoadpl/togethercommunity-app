@@ -314,11 +314,14 @@ describe('ProductsPanel', () => {
   });
 
   it('opens product creation from the list and continues at the price editor', async () => {
+    const user = userEvent.setup();
     await renderProductsPanel();
-    await userEvent.click(await screen.findByRole('link', { name: `+ ${en.common.add}` }));
-    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'New Workshop');
-    await userEvent.type(screen.getByLabelText(en.common.description), 'Hands-on session');
-    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
+    await user.click(await screen.findByRole('link', { name: `+ ${en.common.add}` }));
+    await user.click(await screen.findByLabelText(en.products.titleLabel));
+    await user.paste('New Workshop');
+    await user.click(screen.getByLabelText(en.common.description));
+    await user.paste('Hands-on session');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByRole('heading', { name: 'New Workshop', level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('prices-section')).toBeInTheDocument();
@@ -361,7 +364,8 @@ describe('ProductsPanel', () => {
 
     await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
     await user.click(screen.getByRole('option', { name: productTypeLabel('physical', en) }));
-    await user.type(screen.getByLabelText(en.products.titleLabel), 'Printed poster');
+    await user.click(screen.getByLabelText(en.products.titleLabel));
+    await user.paste('Printed poster');
     await user.click(screen.getByRole('switch', { name: en.products.stockTrack }));
     expect(screen.getByRole('button', { name: en.products.create })).toBeDisabled();
     await user.type(screen.getByTestId('stock-on-hand-input'), '5');
@@ -380,7 +384,8 @@ describe('ProductsPanel', () => {
 
     await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
     await user.click(screen.getByRole('option', { name: productTypeLabel('physical', en) }));
-    await user.type(screen.getByLabelText(en.products.titleLabel), 'Printed poster');
+    await user.click(screen.getByLabelText(en.products.titleLabel));
+    await user.paste('Printed poster');
     await user.click(screen.getByRole('switch', { name: en.products.stockTrack }));
     await user.type(screen.getByTestId('stock-on-hand-input'), '5');
     await user.click(screen.getByRole('button', { name: en.products.create }));
@@ -409,10 +414,12 @@ describe('ProductsPanel', () => {
   });
 
   it('continues the onboarding product flow at the price editor', async () => {
+    const user = userEvent.setup();
     const { router } = await renderProductsPanel([], '/panel/products/new#prices');
 
-    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'Priced Workshop');
-    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
+    await user.click(await screen.findByLabelText(en.products.titleLabel));
+    await user.paste('Priced Workshop');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByTestId('prices-section')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/panel/products/product-2');
@@ -668,22 +675,25 @@ describe('ProductsPanel', () => {
   });
 
   it('updates product details while keeping the slug read-only', async () => {
+    const user = userEvent.setup();
     const rendered = await renderProductsPanel([], '/panel/products/draft-1');
 
     const visibility = await screen.findByRole('combobox', { name: en.products.visibilityLabel });
     expect(visibility).toHaveAccessibleDescription(en.products.visibilityHelper);
-    await userEvent.click(visibility);
-    await userEvent.click(screen.getByRole('option', { name: en.products.unlisted }));
+    await user.click(visibility);
+    await user.click(screen.getByRole('option', { name: en.products.unlisted }));
     const title = await screen.findByLabelText(en.products.titleLabel);
-    await userEvent.clear(title);
-    await userEvent.type(title, 'Updated course offer');
-    await userEvent.clear(screen.getByLabelText(en.products.coverUrlLabel));
-    await userEvent.type(screen.getByLabelText(en.products.coverUrlLabel), 'https://cdn.test/new-cover.jpg');
+    await user.clear(title);
+    await user.click(title);
+    await user.paste('Updated course offer');
+    await user.clear(screen.getByLabelText(en.products.coverUrlLabel));
+    await user.click(screen.getByLabelText(en.products.coverUrlLabel));
+    await user.paste('https://cdn.test/new-cover.jpg');
     expect(screen.getByLabelText(en.products.slugLabel)).toHaveAttribute('readonly');
     expect(screen.getByLabelText(en.products.slugLabel)).toHaveAccessibleDescription(
       en.products.slugImmutableHint,
     );
-    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
 
     expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(rendered.updatedProduct()).toMatchObject({
@@ -695,6 +705,7 @@ describe('ProductsPanel', () => {
   });
 
   it('saves product safety information and variant fields for a physical product', async () => {
+    const user = userEvent.setup();
     const physical: Product = {
       id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
       priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', published: false, accessItems: [],
@@ -708,18 +719,24 @@ describe('ProductsPanel', () => {
       return HttpResponse.json({ ok: true, data: { product: physical } });
     }));
     expect(await screen.findByText(en.productVariants.heading)).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText(en.productVariants.group), 'printed-stand');
-    await userEvent.type(screen.getByLabelText(en.productVariants.label), 'Black');
-    await userEvent.click(within(screen.getByTestId('product-compliance')).getByRole('button'));
-    await userEvent.type(await screen.findByLabelText(en.productSafety.manufacturerName), 'Example Workshop');
-    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await user.click(screen.getByLabelText(en.productVariants.group));
+    await user.paste('printed-stand');
+    await user.type(screen.getByLabelText(en.productVariants.label), 'Black');
+    await user.click(within(screen.getByTestId('product-compliance')).getByRole('button'));
+    await user.click(await screen.findByLabelText(en.productSafety.manufacturerName));
+    await user.paste('Example Workshop');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
     expect(await screen.findByRole('alert')).toHaveTextContent(en.productSafety.incomplete);
     expect(bodies).toEqual([]);
-    await userEvent.type(screen.getByLabelText(en.productSafety.manufacturerAddress), 'Example Street 1, Warsaw');
-    await userEvent.type(screen.getByLabelText(en.productSafety.manufacturerEmail), 'safety@example.com');
-    await userEvent.type(screen.getByLabelText(en.productSafety.modelIdentifier), 'STAND-1');
-    await userEvent.type(screen.getByLabelText(en.productSafety.safetyWarnings), 'Keep away from open flame.');
-    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await user.click(screen.getByLabelText(en.productSafety.manufacturerAddress));
+    await user.paste('Example Street 1, Warsaw');
+    await user.click(screen.getByLabelText(en.productSafety.manufacturerEmail));
+    await user.paste('safety@example.com');
+    await user.click(screen.getByLabelText(en.productSafety.modelIdentifier));
+    await user.paste('STAND-1');
+    await user.click(screen.getByLabelText(en.productSafety.safetyWarnings));
+    await user.paste('Keep away from open flame.');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
     expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(bodies).toEqual([expect.objectContaining({
       id: 'draft-1',
@@ -805,6 +822,7 @@ it('keeps unlisted products in Studio with a chip and copyable checkout link', a
 
 
 it('reuses the upload control with replacement details and hides earlier versions initially', async () => {
+  const user = userEvent.setup();
   const base = initialProducts[0];
   if (!base) throw new Error('Missing product fixture');
   const latest: ProductDownloadAssetMetadata = {
@@ -817,7 +835,7 @@ it('reuses the upload control with replacement details and hides earlier version
   ]);
   expect(await screen.findByText('Second edition')).toBeVisible();
   expect(screen.getByText('First edition')).not.toBeVisible();
-  await userEvent.click(screen.getByText(en.products.previousVersions));
+  await user.click(screen.getByText(en.products.previousVersions));
   expect(screen.getByText('First edition')).toBeVisible();
   expect(screen.getByText(en.products.deleteVersion)).toBeVisible();
   let beginBody: unknown;
@@ -835,11 +853,12 @@ it('reuses the upload control with replacement details and hides earlier version
       return HttpResponse.json({ ok: true, data: { asset: { ...latest, id: 'asset-3', versionNumber: 3 } } });
     }),
   );
-  await userEvent.type(screen.getByLabelText(en.products.versionNote), 'Corrected diagram');
+  await user.click(screen.getByLabelText(en.products.versionNote));
+  await user.paste('Corrected diagram');
   const replace = screen.getAllByRole('button', { name: en.products.uploadNewVersion })[0];
   if (!replace) throw new Error('Missing replacement action');
-  await userEvent.click(replace);
-  await userEvent.upload(screen.getByLabelText(en.products.downloadFileInput), new File(['content'], 'corrected.pdf', { type: 'application/pdf' }));
+  await user.click(replace);
+  await user.upload(screen.getByLabelText(en.products.downloadFileInput), new File(['content'], 'corrected.pdf', { type: 'application/pdf' }));
   await waitFor(() => expect(completeBody).toEqual({ replacesAssetId: 'asset-2', versionNote: 'Corrected diagram' }));
   expect(beginBody).toMatchObject({ replacesAssetId: 'asset-2', fileName: 'corrected.pdf' });
 });

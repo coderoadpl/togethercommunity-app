@@ -41,7 +41,8 @@ import { DeliveryMethodField } from './DeliveryMethodField.js';
 import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft } from './ProductComplianceFields.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatFileSize, formatPrice } from '../../../lib/format.js';

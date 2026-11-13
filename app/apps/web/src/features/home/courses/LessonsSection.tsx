@@ -37,7 +37,8 @@ import {
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../../components/ui/LessonLinks.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';

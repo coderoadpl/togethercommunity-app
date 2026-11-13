@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Typography } from '@mui/material';
 
-import { ConfirmDialog } from '../components/layout/ConfirmDialog.js';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.js';
 
 const meta = {
   title: 'Layout/ConfirmDialog',

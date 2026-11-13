@@ -233,6 +233,7 @@ export default tseslint.config(
       },
     },
     settings: {
+      'boundaries/dependency-nodes': ['import', 'export', 'dynamic-import'],
       'boundaries/elements': [
         { type: 'core-domain', pattern: 'core/domain/**', mode: 'full' },
         { type: 'core-contract', pattern: 'core/contract/**', mode: 'full' },
@@ -243,6 +244,10 @@ export default tseslint.config(
         { type: 'adapter-crypto', pattern: 'adapters/crypto/**', mode: 'full' },
         { type: 'adapter-domains', pattern: 'adapters/domains/**', mode: 'full' },
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
+        { type: 'adapter-invoicing', pattern: 'adapters/invoicing/**', mode: 'full' },
+        { type: 'adapter-notifications', pattern: 'adapters/notifications/**', mode: 'full' },
+        { type: 'adapter-qr', pattern: 'adapters/qr/**', mode: 'full' },
+        { type: 'adapter-scheduler', pattern: 'adapters/scheduler/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
         { type: 'adapter-telemetry', pattern: 'adapters/telemetry/**', mode: 'full' },
@@ -251,6 +256,16 @@ export default tseslint.config(
         {
           type: 'platform-entry',
           pattern: 'apps/server/src/entry.vercel.ts',
+          mode: 'full',
+        },
+        {
+          type: 'platform-entry-test',
+          pattern: 'apps/server/src/entry.vercel.test.ts',
+          mode: 'full',
+        },
+        {
+          type: 'vercel-function',
+          pattern: ['api/index.ts', 'api/platform-reset.ts'],
           mode: 'full',
         },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
@@ -335,6 +350,10 @@ export default tseslint.config(
                 'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-invoicing',
+                'adapter-notifications',
+                'adapter-qr',
+                'adapter-scheduler',
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
@@ -350,6 +369,10 @@ export default tseslint.config(
                 'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-invoicing',
+                'adapter-notifications',
+                'adapter-qr',
+                'adapter-scheduler',
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
@@ -358,8 +381,16 @@ export default tseslint.config(
               ],
             },
             {
+              from: ['vercel-function'],
+              allow: ['platform-entry'],
+            },
+            {
               from: ['platform-entry'],
               allow: ['app-server'],
+            },
+            {
+              from: ['platform-entry-test'],
+              allow: ['platform-entry', 'app-server'],
             },
             {
               from: ['app-server'],
@@ -372,6 +403,10 @@ export default tseslint.config(
                 'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-invoicing',
+                'adapter-notifications',
+                'adapter-qr',
+                'adapter-scheduler',
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
@@ -558,6 +593,13 @@ export default tseslint.config(
               allow: ['@aws-sdk/client-ses', '@aws-sdk/client-sns', 'parse5', 'nodemailer'],
             },
             {
+              from: ['adapter-invoicing'],
+              allow: ['node:child_process', 'node:crypto', 'node:url', 'zod'],
+            },
+            { from: ['adapter-notifications'], allow: [] },
+            { from: ['adapter-qr'], allow: ['qrcode'] },
+            { from: ['adapter-scheduler'], allow: [] },
+            {
               from: ['adapter-payment'],
               allow: ['node:crypto', 'stripe'],
             },
@@ -579,8 +621,16 @@ export default tseslint.config(
               allow: ['node:crypto', 'node:dns', 'node:net', 'sharp', 'undici'],
             },
             {
+              from: ['vercel-function'],
+              allow: [],
+            },
+            {
               from: ['platform-entry'],
               allow: ['@hono/node-server', '@vercel/functions', 'node:http'],
+            },
+            {
+              from: ['platform-entry-test'],
+              allow: ['vitest'],
             },
             {
               from: ['app-server'],
@@ -758,6 +808,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['{core,adapters,apps,packages,api}/**/*.{ts,tsx}'],
+    rules: {
+      'boundaries/no-unknown-files': 'error',
+    },
+  },
+  {
     files: ['core/**/*.test.ts', 'core/**/*.test.tsx'],
     rules: {
       'boundaries/external': [
@@ -823,6 +879,26 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-crypto'], allow: ['node:crypto', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/{invoicing,notifications,qr}/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            {
+              from: ['adapter-invoicing'],
+              allow: ['node:child_process', 'node:crypto', 'node:fs', 'node:url', 'vitest', 'zod'],
+            },
+            { from: ['adapter-notifications'], allow: ['vitest'] },
+            { from: ['adapter-qr'], allow: ['qrcode', 'vitest'] },
+          ],
         },
       ],
     },

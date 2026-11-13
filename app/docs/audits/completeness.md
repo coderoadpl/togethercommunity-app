@@ -1,5 +1,12 @@
 # Product-completeness audit
 
+## Purpose
+
+Find undocumented absences and incomplete journeys alongside Together's own
+backlog and launch commitments. Unlike documentation truth, this audit asks
+about capability areas even when no repository document mentions them; it does
+not authorize new product scope.
+
 ## Run contract
 
 - **Cadence:** monthly, at the end of a product milestone, and before go-live.
@@ -48,6 +55,63 @@ document is not an input and cannot create Together scope.
 5. Record out-of-scope decisions, unavailable production settings, and
    unexercised providers as blind spots. A green gate means implemented behavior
    works as tested; it does not mean the product backlog is complete.
+6. Independently review the product-neutral checklist below, even when the
+   backlog says nothing about an area. For each item record current file/test
+   evidence, applicable surfaces, and whether it is surfaced, provider-only,
+   disabled, partial, missing, or untested. Record an accepted deferral with its
+   owner decision and named revisit trigger; an unexplained gap becomes a
+   finding or owner question, never automatic implementation scope.
+7. Read the cited ASVS or NIST requirement text before assigning a result.
+   Record the version, requirement ID, applicability, and direct code/test
+   evidence; names or provider documentation alone cannot establish a pass.
+8. Enumerate public routes exposed by the configured identity provider and each
+   enabled plugin, not only Together's wildcard mount. Map routes to surfaced
+   journeys, authorization, tests, and disabled/provider-only states. Newly
+   enabled plugins require this review as newly shipped public surfaces.
+9. Prioritize absent adjacent capabilities that break a shipped journey, such
+   as recovery from an enabled authentication factor, above isolated absences.
+   Refer scope and prioritization decisions to the product owner.
+
+### Independent capability checklist
+
+This is an absence-search lens, not a new acceptance contract or feature plan.
+Keep Together's backlog and go-live references alongside it, and do not import
+an upstream PRD or demo status ledger.
+
+| Capability area | Questions to reconcile with evidence and owner decisions |
+| --- | --- |
+| Identity entry and exit | Can intended users register, sign in, sign out, verify identity contact details, and recover access without enumeration or lockout? |
+| Credentials and factors | Do password change/reset, passkey and MFA enrollment, challenge, removal, and recovery form complete journeys when the factor is enabled? |
+| Sessions and account management | Are session visibility/revocation, account/profile changes, contact changes, and account erasure surfaced, provider-only, disabled, or explicitly deferred? |
+| Workspace and membership lifecycle | Are bootstrap, roles, invitations, member removal, workspace settings, and workspace closure addressed for the product's intended users? |
+| Tenant and capability boundaries | Do shipped journeys preserve tenant isolation and role/capability decisions across public, creator, member, CLI, worker, and provider paths? |
+| Legal and data lifecycle | Are applicable terms, privacy, consent, retention, export, and erasure obligations connected to shipped journeys and go-live controls? |
+| Recovery and operations | Do enabled mail, payment, background-work, and other provider paths expose the failure/retry/recovery behavior their shipped journeys need? |
+
+## Finding criteria
+
+- A Together backlog or launch commitment lacks an evidenced implementation or
+  silently reduces its promised behavior without a cited owner decision.
+- A checklist item is missing, partial, provider-only, or untested without a
+  documented disposition and revisit trigger. Record applicability uncertainty
+  as an owner question, not a newly imposed feature requirement.
+- A shipped identity control contradicts the cited, applicable ASVS/NIST
+  requirement text, or an enabled provider/plugin route exposes an incomplete
+  journey without an accepted disposition. Include requirement and file evidence.
+- An absent adjacent capability breaks a shipped feature, or current scope
+  sources disagree without an adjudicating owner decision. Preserve soft email
+  verification and the documented first-workspace waiver below.
+
+## Known blind spots
+
+- This checklist is not exhaustive; unknown capability classes can still be
+  missed. A passing audit cannot establish that the product has every useful
+  SaaS feature or conforms to ASVS/NIST.
+- Code and tests do not prove live provider delivery, production configuration,
+  or inaccessible owner decisions. Record unavailable evidence and unexercised
+  journeys, including any sampled identity checks, as unverified or partial.
+- This audit cannot decide whether a capability is worth building or overturn
+  accepted deferrals; gaps require owner triage rather than automatic scope.
 
 ## Email-verification evidence — 2026-08-04
 

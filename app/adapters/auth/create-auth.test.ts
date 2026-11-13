@@ -4,7 +4,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
-import { emailEvents, members, passkey, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
+import { emailEvents, members, passkey, session, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader, createTenantTeamRepository } from '#adapters/db/repositories.js';
@@ -61,6 +61,8 @@ describe('ASVS authentication policy', () => {
     '/magic-link/verify',
     '/passkey/verify-authentication',
     '/sign-in/social',
+    '/one-tap/callback',
+    '/verify-email',
   ])('requires the existing two-factor plugin after %s', (path) => {
     expect(isAdditionalTwoFactorPath(path)).toBe(true);
   });
@@ -199,6 +201,98 @@ describe('real-provider sign-in and passkey proofs', () => {
     const replayed = await auth.handler(new Request(verificationUrl));
     expect(replayed.status).toBe(302);
     expect(activateTeamInvitation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { twoFactorEnabled: true, useExistingSession: false },
+    { twoFactorEnabled: false, useExistingSession: false },
+    { twoFactorEnabled: true, useExistingSession: true },
+  ])('verifies email without bypassing two-factor (enabled: $twoFactorEnabled, existing session: $useExistingSession)', async ({ twoFactorEnabled, useExistingSession }) => {
+    const { auth, authPort, db, emails, flushEmails } = buildAuth();
+    const email = `two-factor-verification-${crypto.randomUUID()}@together.dev`;
+    const callbackURL = 'http://studio.localhost:48730/login?verification=verified';
+    let authenticated = await signUp(auth, email, { callbackURL });
+    expect(authenticated.status).toBe(200);
+    const post = (path: string, body: unknown, headers: Record<string, string>) => auth.handler(
+      new Request(`http://studio.localhost:48730/api/auth${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+    let secret = '';
+    if (twoFactorEnabled) {
+      const headers = { authorization: `Bearer ${authenticated.headers.get('set-auth-token') ?? ''}` };
+      const enabled = await post('/two-factor/enable', { password: SIGN_UP_PASSWORD }, headers);
+      expect(enabled.status).toBe(200);
+      const enrollment = z.object({ totpURI: z.string() }).parse(await enabled.json());
+      secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+      authenticated = await post('/two-factor/verify-totp', { code: totpCode(secret) }, headers);
+      expect(authenticated.status).toBe(200);
+    }
+    const originalToken = authenticated.headers.get('set-auth-token');
+    expect(originalToken).not.toBeNull();
+    const originalCookie = authenticated.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.session_token='))?.split(';')[0] ?? '';
+    expect(originalCookie).not.toBe('');
+    const { internalAdapter } = await auth.$context;
+    const account = await internalAdapter.findUserByEmail(email);
+    expect(account?.user).toMatchObject({ emailVerified: false, twoFactorEnabled });
+    const userId = account?.user.id ?? '';
+    if (!useExistingSession) {
+      expect((await post('/sign-out', {}, { cookie: originalCookie })).status).toBe(200);
+      expect(await authPort.getAuthenticatedUser(new Headers({ cookie: originalCookie }))).toBeNull();
+    }
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verificationUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    const verified = await auth.handler(new Request(verificationUrl, {
+      headers: useExistingSession ? { cookie: originalCookie } : {},
+      redirect: 'manual',
+    }));
+
+    expect(verified.status).toBe(302);
+    expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({
+      emailVerified: true, twoFactorEnabled,
+    });
+    const challengeCookie = verified.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor='))?.split(';')[0] ?? '';
+    if (twoFactorEnabled && !useExistingSession) {
+      expect(verified.headers.get('location')).toBe('http://studio.localhost:48730/login?twoFactor=required');
+      expect(challengeCookie).not.toBe('');
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+      }))).toBeNull();
+      expect(await db.select().from(session).where(eq(session.userId, userId))).toEqual([]);
+      const responseCookies = verified.headers.getSetCookie()
+        .map((entry) => entry.split(';')[0]).join('; ');
+      expect(await authPort.getAuthenticatedUser(new Headers({ cookie: responseCookies }))).toBeNull();
+      const completed = await post('/two-factor/verify-totp', { code: totpCode(secret) }, {
+        cookie: challengeCookie,
+      });
+      expect(completed.status).toBe(200);
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${completed.headers.get('set-auth-token') ?? ''}`,
+      }))).toMatchObject({ email, emailVerified: true });
+    } else {
+      expect(verified.headers.get('location')).toBe(callbackURL);
+      expect(challengeCookie).toBe('');
+      const token = verified.headers.get('set-auth-token');
+      expect(token).not.toBeNull();
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${token}`,
+      }))).toMatchObject({ email, emailVerified: true });
+      if (useExistingSession) {
+        expect(token).toBe(originalToken);
+        expect(await authPort.getAuthenticatedUser(new Headers({ cookie: originalCookie })))
+          .toMatchObject({ email, emailVerified: true });
+      }
+    }
   });
 
   it.each([false, true])('scopes magic-link credential cleanup to previously unverified users (verified: %s)', async (emailVerified) => {
@@ -708,7 +802,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     expect(completed.headers.get('set-auth-token')).not.toBeNull();
   });
 
-  it.each(['/callback/google', '/passkey/verify-authentication', '/sign-in/social'])(
+  it.each(['/callback/google', '/passkey/verify-authentication', '/sign-in/social', '/one-tap/callback'])(
     'extends the two-factor after hook to %s when the route supplies a new session',
     async (path) => {
       const { auth } = buildAuth();
@@ -842,10 +936,13 @@ describe('real-provider sign-in and passkey proofs', () => {
   });
 });
 
+const authBaseUrl = 'http://localhost:48730';
+
 const buildAuth = (options: {
   consentRequired?: boolean;
   recordedEmails?: string[];
   secureCookies?: boolean;
+  baseUrl?: string;
   baseDomain?: string;
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
@@ -885,7 +982,7 @@ const buildAuth = (options: {
   let platformSendAttempts = 0;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
-    baseUrl: 'http://localhost:48730',
+    baseUrl: options.baseUrl ?? authBaseUrl,
     baseDomain: options.baseDomain ?? 'localhost',
     singleTenantMode: options.singleTenantMode ?? false,
     trustedOrigins: options.trustedOrigins ??
@@ -1092,14 +1189,14 @@ describe('host-scoped credentials', () => {
   const tenantHost = `acme.${baseDomain}`;
   const customHost = 'course.acme.example';
 
+  const browserOrigin = (host: string) =>
+    host === 'localhost:48730' ? authBaseUrl : `https://${host}`;
+
   const buildHostAuth = () => buildAuth({
+    baseUrl: browserOrigin(baseDomain),
     baseDomain,
     verifiedCustomHosts: [customHost],
-    trustedOrigins: [
-      'http://localhost:48730',
-      `http://${tenantHost}`,
-      `http://${customHost}`,
-    ],
+    trustedOrigins: [baseDomain, tenantHost, customHost].map(browserOrigin),
   });
 
   const call = (
@@ -1112,7 +1209,7 @@ describe('host-scoped credentials', () => {
     headers: {
       'content-type': 'application/json',
       host,
-      origin: `http://${host}`,
+      origin: browserOrigin(host),
       'x-forwarded-for': `203.0.113.${signUpIpSuffix++}`,
       ...(init.cookie === undefined ? {} : { cookie: init.cookie }),
       ...(init.authorization === undefined ? {} : { authorization: init.authorization }),
@@ -1131,7 +1228,7 @@ describe('host-scoped credentials', () => {
     password: string,
   ) => {
     const response = await call(auth, host, '/sign-up/email', {
-      body: { name: 'Ada', email, password, callbackURL: `http://${host}/my` },
+      body: { name: 'Ada', email, password, callbackURL: `${browserOrigin(host)}/my` },
     });
     expect(response.status).toBe(200);
     return response.headers.get('set-auth-token') ?? '';
@@ -1168,10 +1265,10 @@ describe('host-scoped credentials', () => {
     auth.setMagicLinkDeliveryContext(email, {
       language: 'en',
       mode: 'capture',
-      baseUrl: `http://${customHost}`,
+      baseUrl: browserOrigin(customHost),
     });
     await call(auth, customHost, '/sign-in/magic-link', {
-      body: { email, callbackURL: `http://${customHost}/my` },
+      body: { email, callbackURL: `${browserOrigin(customHost)}/my` },
     });
     const captured = auth.consumeCapturedMagicLink(email);
     expect(captured?.url).toContain(customHost);
@@ -1213,6 +1310,73 @@ describe('host-scoped credentials', () => {
 
     expect(completed.status).toBe(200);
     expect(sessionCookie(completed)).not.toContain('Domain=');
+  });
+
+  it.each([
+    { host: customHost, callbackURL: '/', redirectHost: customHost },
+    { host: customHost, callbackURL: '/my', redirectHost: customHost },
+    { host: customHost, callbackURL: null, redirectHost: customHost },
+    { host: customHost, callbackURL: `https://${customHost}/my`, redirectHost: customHost },
+    { host: customHost, callbackURL: `https://${tenantHost}/my`, redirectHost: tenantHost },
+    { host: tenantHost, callbackURL: '/my', redirectHost: tenantHost },
+    { host: 'localhost:48730', callbackURL: '/my', redirectHost: 'localhost:48730' },
+    { host: 'untrusted.example', callbackURL: '/my', redirectHost: baseDomain },
+    { host: 'untrusted.example', callbackURL: null, redirectHost: baseDomain },
+  ])('keeps email-verification challenges on the trusted request or callback host behind a TLS proxy ($host, $callbackURL)', async ({ host, callbackURL, redirectHost }) => {
+    const { auth, authPort, emails, flushEmails } = host === 'localhost:48730' ? buildAuth() : buildHostAuth();
+    const signUpHost = host === 'localhost:48730' ? host : customHost;
+    const email = `verification-host-${crypto.randomUUID()}@together.dev`;
+    const password = passwordFixture('verification-host');
+    auth.setEmailVerificationDeliveryContext(email, { language: 'en', baseUrl: browserOrigin(host) });
+    const token = await register(auth, signUpHost, email, password);
+    const enabled = await call(auth, signUpHost, '/two-factor/enable', {
+      body: { password }, authorization: `Bearer ${token}`,
+    });
+    expect(enabled.status).toBe(200);
+    const secret = new URL(
+      z.object({ totpURI: z.string() }).parse(await enabled.json()).totpURI,
+    ).searchParams.get('secret') ?? '';
+    const enrolled = await call(auth, signUpHost, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) }, authorization: `Bearer ${token}`,
+    });
+    expect(enrolled.status).toBe(200);
+    expect((await call(auth, signUpHost, '/sign-out', {
+      body: {}, cookie: sessionCookie(enrolled).split(';')[0] ?? '',
+    })).status).toBe(200);
+    const { internalAdapter } = await auth.$context;
+    expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({
+      emailVerified: false, twoFactorEnabled: true,
+    });
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verificationUrl = new URL(message?.text.match(/https?:\/\/\S+/)?.[0] ?? '');
+    expect(verificationUrl.origin).toBe(browserOrigin(host));
+    const redirectUrl = new URL('/login?twoFactor=required', browserOrigin(redirectHost));
+    if (callbackURL === null) verificationUrl.searchParams.delete('callbackURL');
+    else verificationUrl.searchParams.set('callbackURL', callbackURL);
+    verificationUrl.protocol = 'http:';
+
+    const challenged = await auth.handler(new Request(verificationUrl, { redirect: 'manual' }));
+
+    expect(challenged.status).toBe(302);
+    expect(challenged.headers.get('location')).toBe(redirectUrl.toString());
+    const challengeCookie = challenged.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor=')) ?? '';
+    expect(challengeCookie).not.toBe('');
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${challenged.headers.get('set-auth-token') ?? ''}`,
+    }))).toBeNull();
+    if (host === customHost) expect(challengeCookie).not.toContain('Domain=');
+    if (host !== redirectHost) return;
+    const completed = await call(auth, redirectUrl.host, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) }, cookie: challengeCookie.split(';')[0] ?? '',
+    });
+    expect(completed.status).toBe(200);
+    expect(sessionCookie(completed)).not.toBe('');
+    if (host === customHost) expect(sessionCookie(completed)).not.toContain('Domain=');
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      cookie: sessionCookie(completed).split(';')[0] ?? '',
+    }))).toMatchObject({ email, emailVerified: true });
   });
 
   it('answers passkey ceremonies for the base domain and for the verified custom host', async () => {

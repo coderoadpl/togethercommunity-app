@@ -122,6 +122,30 @@ describe('vercel domain provisioner', () => {
     });
   });
 
+  it.each([{}, { misconfigured: 'no' }])(
+    'treats a config response without a boolean flag as misconfigured: %j',
+    async (payload) => {
+      const { subject } = provisioner({
+        'POST /v9/projects/prj_1/domains/course.acme.example/verify': {
+          status: 200,
+          payload: { verified: true },
+        },
+        'GET /v9/projects/prj_1/domains/course.acme.example': {
+          status: 200,
+          payload: { verified: true, verification: [] },
+        },
+        'GET /v6/domains/course.acme.example/config': { status: 200, payload },
+      });
+      const expected = {
+        ok: true,
+        value: { verified: true, misconfigured: true, verification: [], records: [] },
+      };
+
+      expect(await subject.status('course.acme.example')).toEqual(expected);
+      expect(await subject.verify('course.acme.example')).toEqual(expected);
+    },
+  );
+
   it('triggers verification and re-reads the resulting state', async () => {
     const { subject, recorded } = provisioner({
       'POST /v9/projects/prj_1/domains/course.acme.example/verify': { status: 200, payload: { verified: true } },

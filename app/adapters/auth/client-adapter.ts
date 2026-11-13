@@ -341,8 +341,17 @@ export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ idToken: credential, callbackURL }),
               credentials: 'include',
-            }).then((response) => {
-              if (response.ok) window.location.assign(callbackURL);
+            }).then(async (response) => {
+              if (!response.ok) return;
+              let data: unknown;
+              try {
+                data = await response.json();
+              } catch {
+                return;
+              }
+              window.location.assign(readAuthSession(data).twoFactorRedirect
+                ? new URL('/login?twoFactor=required', window.location.origin).toString()
+                : callbackURL);
             });
           },
         });

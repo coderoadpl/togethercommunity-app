@@ -1,7 +1,6 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 
+import { runMigrations } from './migration-runner.js';
 import { uniqueTestDatabaseName } from './test-database-name.js';
 
 export default async function setup(): Promise<(() => Promise<void>) | undefined> {
@@ -18,12 +17,7 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
   try {
     await admin.query(`CREATE DATABASE ${identifier}`);
     try {
-      const pool = new pg.Pool({ connectionString: url.toString() });
-      try {
-        await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
-      } finally {
-        await pool.end();
-      }
+      await runMigrations({ connectionString: url.toString(), migrationsFolder: 'drizzle' });
       await admin.query(`ALTER DATABASE ${identifier} ALLOW_CONNECTIONS false`);
     } catch (error) {
       await admin.query(`DROP DATABASE ${identifier}`);

@@ -32,13 +32,13 @@ import {
 
 import { actions } from '../../../api.js';
 import {
-  ConfirmDialog,
   ListSection,
   PanelPage,
   ResponsiveTable,
   SectionCard,
   StatusView,
 } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useToast } from '../../../components/ui/Toast.js';
 import { lessonHeadingDocument } from '../../../components/ui/lesson-heading-document.js';

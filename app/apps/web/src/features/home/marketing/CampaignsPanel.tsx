@@ -32,7 +32,8 @@ import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
 import type { z } from 'zod';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { ChevronDownIcon } from '../../../components/ui/account-icons.js';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../../../components/ui/MarkdownEditor.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';

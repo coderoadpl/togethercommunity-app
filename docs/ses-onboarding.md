@@ -114,12 +114,18 @@ successful step, so a later AWS error does not force the wizard to restart.
 
 ## Existing tenant repair
 
-Status polls, scheduled identity re-checks and transactional transport resolution
-ensure the derived `-transactional` configuration set and its managed event
-destination using the tenant's own credentials. Repeating this operation is safe
-and restores a missing destination. A second enabled destination publishing Open
-or Click blocks readiness and transactional sending until the operator removes
-those engagement events. Together does not modify unrelated destinations.
+Onboarding, status polls and scheduled identity re-checks ensure the derived
+`-transactional` configuration set and its managed event destination using the
+tenant's own credentials. Repeating this operation is safe and restores a missing
+destination. Resolving a transport, checking availability and sending normal
+messages do not call the SES configuration API. If SES rejects a send because
+the set or managed destination is missing, Together repairs it once and returns
+a retryable error; the outbox retries the message rather than resending inline.
+A second enabled destination publishing Open or Click blocks readiness and
+transactional sending until the operator removes those engagement events and
+re-checks status. Repair failures remain in the saved status across restarts and
+identity-only diagnostics, until a successful repair. Together does not modify
+unrelated destinations.
 
 If configuration or destination repair fails, the transactional outbox records a
 retryable transport error with tenant context in the server log. It never sends
@@ -289,9 +295,11 @@ References: [Mailjet free-plan limit](https://documentation.mailjet.com/hc/en-us
 Run `pnpm run email:repair-erased-events --tenant <tenant-id>` from `app/` with
 `DATABASE_URL` and `SECRETS_MASTER_KEY` supplied by the deployment's secret
 store. This defaults to a dry run and prints matched and changed counts by event
-type, plus the count of events without a retained send/outbox link. Review those
-counts before adding `--apply`. The command updates only that tenant's event
-metadata; it does not delete events or change delivery projections.
+type, matched and changed SNS inbox receipt counts, plus the count of events
+without a retained send/outbox link. Review those counts before adding `--apply`.
+The command scrubs that tenant's event metadata and matching
+`marketing_sns_inbox` receipts; it does not delete events or change delivery
+projections.
 
 The repair uses deleted-member markers, retained address HMACs and erased
 contact/send/outbox linkage. Unlinked historical events cannot be attributed to

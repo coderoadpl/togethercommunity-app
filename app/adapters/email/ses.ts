@@ -24,6 +24,7 @@ export interface SesEmailSettings {
   region?: string;
   credentials?: { accessKeyId: string; secretAccessKey: string };
   configurationSet?: string | null;
+  onConfigurationMissing?: () => Promise<void>;
 }
 
 export interface SesSender {
@@ -117,6 +118,12 @@ export const createSesEmailPort = (
         }
         return ok({ messageId: output.MessageId });
       } catch (cause) {
+        if (settings.onConfigurationMissing !== undefined
+          && typeof cause === 'object' && cause !== null && 'name' in cause
+          && (cause.name === 'ConfigurationSetDoesNotExistException' || cause.name === 'EventDestinationDoesNotExistException')) {
+          await settings.onConfigurationMissing();
+          return err(integrationUnavailable('SES transactional configuration was missing; retry this message through the outbox'));
+        }
         return err(internal(`Could not send SES email: ${String(cause)}`));
       }
     },

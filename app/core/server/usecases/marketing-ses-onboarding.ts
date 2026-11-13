@@ -5,6 +5,7 @@ import {
   ok,
   tenantSesBroadcastsReady,
   transactionalSesConfigurationSetName,
+  TRANSACTIONAL_SES_CONFIGURATION_FAILURE,
   type AppError,
   type Result,
   type TenantSesSettings,
@@ -79,8 +80,12 @@ const store = async (
   tenantId: string,
   settings: TenantSesSettings,
   patch: Partial<TenantSesSettings>,
+  transactionalConfigurationRepaired = false,
 ): Promise<TenantSesSettings> => {
   const next = { ...settings, ...patch, broadcastsEnabled: false };
+  if (!transactionalConfigurationRepaired && settings.identityCheckError?.startsWith(TRANSACTIONAL_SES_CONFIGURATION_FAILURE)) {
+    next.identityCheckError = settings.identityCheckError;
+  }
   next.broadcastsEnabled = tenantSesBroadcastsReady(next);
   return deps.settings.upsert(tenantId, next);
 };
@@ -249,11 +254,6 @@ export const provisionSesInfrastructure = async (
   let current = context.value.settings;
   const configurationSet = await deps.controlPlane.ensureConfigurationSet(context.value.credentials, current.configurationSet ?? name);
   if (!configurationSet.ok) return configurationSet;
-  const transactionalConfigurationSet = await deps.controlPlane.ensureConfigurationSet(
-    context.value.credentials,
-    transactionalSesConfigurationSetName(configurationSet.value.name),
-  );
-  if (!transactionalConfigurationSet.ok) return transactionalConfigurationSet;
   if (current.configurationSet !== configurationSet.value.name) {
     current = await store(deps, context.value.tenantId, current, { configurationSet: configurationSet.value.name });
   }
@@ -290,14 +290,10 @@ export const provisionSesInfrastructure = async (
     engagementTracking: true,
   });
   if (!destination.ok) return destination;
-  const transactionalDestination = await deps.controlPlane.ensureEventDestination(
-    context.value.credentials,
-    {
-      configurationSet: transactionalConfigurationSet.value.name,
-      topicArn: topic.value.arn,
-      engagementTracking: false,
-    },
-  );
+  const transactionalDestination = await ensureTransactionalSesConfiguration(context.value.credentials, current, deps.controlPlane);
+  current = await store(deps, context.value.tenantId, current, {
+    identityCheckError: transactionalDestination.ok ? null : transactionalDestination.error.message,
+  }, transactionalDestination.ok);
   if (!transactionalDestination.ok) return transactionalDestination;
   let feedbackForwardingDisabled = false;
   if (subscription.value.confirmed) {
@@ -361,18 +357,19 @@ export const pollSesOnboarding = async (
   let configurationSetReady = false;
   let eventDestinationReady = false;
   let observedSubscription: boolean | null = null;
-  if (current.configurationSet !== null && current.snsTopicArn !== null) {
+  const { configurationSet, snsTopicArn } = current;
+  if (configurationSet !== null && snsTopicArn !== null) {
     const repaired = await ensureTransactionalSesConfiguration(context.value.credentials, current, deps.controlPlane);
     if (!repaired.ok) {
       deps.logger.warn(`[marketing-ses] transactional repair failed tenant=${context.value.tenantId} error=${repaired.error.code}`);
+      await store(deps, context.value.tenantId, current, { identityCheckError: repaired.error.message });
       return repaired;
     }
+    current = await store(deps, context.value.tenantId, current, { identityCheckError: null }, true);
     const infrastructure = await deps.controlPlane.readInfrastructure(context.value.credentials, {
-      configurationSet: current.configurationSet,
-      transactionalConfigurationSet: transactionalSesConfigurationSetName(
-        current.configurationSet,
-      ),
-      topicArn: current.snsTopicArn,
+      configurationSet,
+      transactionalConfigurationSet: transactionalSesConfigurationSetName(configurationSet),
+      topicArn: snsTopicArn,
       endpoint: context.value.webhookUrl,
       subscribedEndpoint: current.snsSubscriptionEndpoint,
     });
@@ -507,12 +504,13 @@ const checkTenantSesIdentity = async (
       identityCheckError: migrated.error.message,
     });
   }
-  const current = migrated.value;
+  let current = migrated.value;
   const repaired = await ensureTransactionalSesConfiguration(checkedWith, current, deps.controlPlane);
   if (!repaired.ok) {
     deps.logger.warn(`[marketing-ses] transactional repair failed tenant=${tenantId} error=${repaired.error.code}`);
     return store(deps, tenantId, current, { ...patch, identityCheckError: repaired.error.message });
   }
+  current = await store(deps, tenantId, current, { identityCheckError: null }, true);
   const subscriptionMigrationPending = staleSesWebhookEndpoint(current, webhookUrl) !== null;
   const infrastructure = await deps.controlPlane.readInfrastructure(
     checkedWith,

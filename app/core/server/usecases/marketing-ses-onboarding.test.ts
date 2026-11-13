@@ -19,6 +19,7 @@ import {
   pollSesOnboarding,
   provisionSesInfrastructure,
   refreshSesIdentity,
+  refreshTenantSesIdentityStatus,
   resubscribeSesWebhookAfterDomainRemoval,
   sendSesSimulatorTest,
   startSesIdentityVerification,
@@ -463,10 +464,20 @@ describe('SES onboarding wizard', () => {
 
     expect(result).toMatchObject(operation === 'poll'
       ? { ok: false, error: { code: 'integration_unavailable' } }
-      : { ok: true, value: { identityCheckError: 'SES event destination could not be created' } });
-    expect(await repository.findByTenant('tenant-1')).toMatchObject({ configurationSet: 'marketing' });
+      : { ok: true, value: { identityCheckError: 'Transactional SES configuration requires repair: SES event destination could not be created' } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      configurationSet: 'marketing',
+      identityCheckError: 'Transactional SES configuration requires repair: SES event destination could not be created',
+    });
     expect(readiness).not.toHaveBeenCalled();
     expect(warnings).toEqual([expect.stringContaining('tenant=tenant-1')]);
+    const blocked = await repository.findByTenant('tenant-1');
+    if (blocked === null) throw new Error('Missing settings');
+    const refreshed = await refreshTenantSesIdentityStatus('tenant-1', blocked, dependencies);
+    expect(refreshed.identityCheckError).toBe(blocked.identityCheckError);
+    expect(readiness).not.toHaveBeenCalled();
+    expect((await (operation === 'poll' ? pollSesOnboarding : refreshSesIdentity)(ctx, dependencies)).ok).toBe(true);
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({ identityCheckError: null });
   });
 
   it('removes a configuration set that SES no longer reports', async () => {
@@ -1015,6 +1026,28 @@ describe('SES onboarding wizard', () => {
       ok: true,
       value: { settings: { identityCheckedAt: NOW, replyTo: null, identityVerifiedAt: NOW, identityCheckError: null } },
     });
+  });
+
+  it('preserves a transactional safety failure when the sender identity changes', async () => {
+    const identityCheckError = 'Transactional SES configuration requires repair: Unsafe engagement destination';
+    const repository = new InMemoryTenantSesSettingsRepository([settings({ identity: 'old.example.test', identityCheckError })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    const configuration = vi.spyOn(controlPlane, 'ensureConfigurationSet');
+    const destination = vi.spyOn(controlPlane, 'ensureEventDestination');
+    const saved = await updateTenantSesMarketingSettings(ctx, senderInput, {
+      settings: repository,
+      secrets: secretRepository(sesSecretRows),
+      tokens: { nextToken: () => 'webhook_token_123456789012345' },
+      clock: { nowIso: () => NOW },
+      webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
+      pool: platformPool,
+      snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
+      sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
+    });
+    expect(saved).toMatchObject({ ok: true, value: { settings: { identity: senderInput.identity, identityVerifiedAt: NOW, identityCheckError } } });
+    expect(configuration).not.toHaveBeenCalled();
+    expect(destination).not.toHaveBeenCalled();
   });
 
   it('still saves the sender when the AWS identity read fails', async () => {

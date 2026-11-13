@@ -429,7 +429,7 @@ const authMailRequest = (
       expect(new Headers(init?.headers)).toEqual(new Headers({
         'content-type': 'application/json',
         origin: new URL(stagingOptions.baseUrl).origin,
-        [VERCEL_BYPASS_HEADER]: stagingOptions.bypassSecret,
+        [VERCEL_BYPASS_HEADER]: 'bypass-secret',
       }));
       expect(init?.body).toBe(JSON.stringify({
         email: SMOKE_TENANT_MEMBER_EMAIL,
@@ -534,6 +534,16 @@ describe('staging smoke', () => {
     expect(request.mock.calls).toHaveLength(12);
     expect(request.mock.calls.every(([, init]) =>
       new Headers(init?.headers).get(VERCEL_BYPASS_HEADER) === 'bypass-secret')).toBe(true);
+  });
+
+  it('probes a staging target without deployment protection and sends no bypass header', async () => {
+    const request = stubbedFetch({ health: stagingHealth() });
+
+    const result = await runStagingSmoke({ ...stagingOptions, bypassSecret: null }, request);
+
+    expect(result.ok).toBe(true);
+    expect(request.mock.calls).toHaveLength(12);
+    expect(request.mock.calls.some(([, init]) => new Headers(init?.headers).has(VERCEL_BYPASS_HEADER))).toBe(false);
   });
 
   it('skips the auth-mail check without the operator secret and keeps every other check', async () => {
@@ -755,9 +765,15 @@ describe('stagingSmokeOptionsFromEnv', () => {
       ?.expectedFingerprint).toBeNull();
   });
 
-  it('runs no probe without the bypass secret or the production fingerprint', () => {
-    expect(stagingSmokeOptionsFromEnv({ ...environment, VERCEL_AUTOMATION_BYPASS_SECRET: '' }))
+  it('reads a staging target without a bypass secret', () => {
+    expect(stagingSmokeOptionsFromEnv({ ...environment, VERCEL_AUTOMATION_BYPASS_SECRET: '' })?.bypassSecret)
       .toBeNull();
+    const { VERCEL_AUTOMATION_BYPASS_SECRET: omitted, ...withoutBypass } = environment;
+    expect(omitted).toBe('bypass-secret');
+    expect(stagingSmokeOptionsFromEnv(withoutBypass)?.bypassSecret).toBeNull();
+  });
+
+  it('runs no probe without the staging URL or the production fingerprint', () => {
     expect(stagingSmokeOptionsFromEnv({ ...environment, PRODUCTION_DATABASE_FINGERPRINT: '' }))
       .toBeNull();
     expect(stagingSmokeOptionsFromEnv({ ...environment, STAGING_BASE_URL: '' })).toBeNull();

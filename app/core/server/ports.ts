@@ -2488,6 +2488,7 @@ export interface AuthPort {
 
 export interface HealthPort {
   pingDatabase(): Promise<boolean>;
+  migrationCounts(): Promise<{ expected: number; applied: number | null }>;
   schemaStatus(): Promise<{
     expectedMigrations: number;
     appliedMigrations: number | null;

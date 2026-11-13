@@ -1777,7 +1777,13 @@ export const marketingLayoutSaveInputSchema = z.object({
 export const marketingSnsInboxOutputSchema = z.object({ receipts: z.array(marketingSnsReceiptSchema) });
 export const marketingSnsRetryInputSchema = z.object({ inboxId: z.string().min(1) });
 export const marketingSnsRetryOutputSchema = z.object({ retried: z.literal(true) });
-export const marketingWorkerOutputSchema = z.object({ campaignsDispatched: z.number(), retentionTenantsProcessed: z.number(), identityChecksPerformed: z.number(), reputationAlertsSent: z.number() });
+export const marketingWorkerOutputSchema = z.object({
+  campaignsDispatched: z.number(),
+  retentionTenantsProcessed: z.number(),
+  identityChecksPerformed: z.number(),
+  reputationAlertsSent: z.number(),
+  tenantErrors: z.array(z.object({ tenantId: z.string(), step: z.string(), code: z.string(), message: z.string() })).optional(),
+});
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),

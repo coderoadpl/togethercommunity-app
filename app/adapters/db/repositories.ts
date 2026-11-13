@@ -5061,6 +5061,15 @@ export const createHealthPort = (db: Db): HealthPort => {
         return false;
       }
     },
+    migrationCounts: async () => {
+      const expected = migrationJournal.entries.length;
+      try {
+        const result = await db.execute(sql`select count(*)::int as applied from drizzle.__drizzle_migrations`);
+        return { expected, applied: numberField(firstRow(result), 'applied') };
+      } catch {
+        return { expected, applied: null };
+      }
+    },
     schemaStatus: async () => {
       const expectedMigrations = migrationJournal.entries.length;
       const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;

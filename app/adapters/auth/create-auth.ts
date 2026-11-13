@@ -967,7 +967,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
                   (settings.logger ?? console).warn(`[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=${serializeErrorChain(error)}`);
                 }
               }
-              void Promise.resolve()
+              const recorded = Promise.resolve()
                 .then(() => settings.recordSignIn?.({
                   request,
                   userId: signedIn.user.id,
@@ -977,6 +977,11 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
                 .catch(() => {
                   settings.logger?.warn('[auth] tenant-sign-in-events reason=record_sign_in_failed');
                 });
+              try {
+                settings.keepAlive?.(recorded);
+              } catch (cause: unknown) {
+                process.stderr.write(`[auth] Could not register background sign-in recording: ${safeErrorMessage(cause)}\n`);
+              }
             }),
           }],
         },

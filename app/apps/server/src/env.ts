@@ -63,6 +63,10 @@ export const envSchema = z
         }),
       })
       .default('node-postgres'),
+    DATABASE_POOL_MAX: z.preprocess(
+      (value) => value === '' ? undefined : value,
+      z.coerce.number().int().min(1).max(100).optional(),
+    ),
     REALTIME_TRANSPORT: z.enum(['pg', 'in-process']).default('pg'),
     /** `LISTEN` is unsupported on transaction-mode poolers, so the bus needs a direct connection. */
     REALTIME_DATABASE_URL: optionalNonEmptyString,

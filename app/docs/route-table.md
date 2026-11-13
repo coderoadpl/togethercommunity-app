@@ -14,7 +14,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /robots.txt` | public | read | Tenant crawler policy must bypass the SPA and social preview fallback |
 | `GET /sitemap.xml` | public | read | Tenant public navigation must be discoverable at its canonical origin |
 | `GET /api/health/live` | public | read | Process liveness check |
-| `GET /api/health/ready` | public | read | Database readiness check |
+| `GET /api/health/ready` | public | read | Database and migration readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `GET /api/health/deep` | public | read | Aggregated production readiness probe over every tenant |
 | `OPTIONS /api/public/surveys/:slug` | public | read | Active workspace survey definition without an account |

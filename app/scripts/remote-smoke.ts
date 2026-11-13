@@ -375,12 +375,16 @@ export const runRemoteSmoke = async (
 
 export const VERCEL_BYPASS_HEADER = 'x-vercel-protection-bypass';
 
+const bypassHeaders = (bypassSecret: string | null): Record<string, string> =>
+  bypassSecret === null ? {} : { [VERCEL_BYPASS_HEADER]: bypassSecret };
+
 export interface StagingSmokeOptions {
   baseUrl: string;
   tenant: string;
   publicPagePath: string;
   member: MemberCredentials;
-  bypassSecret: string;
+  /** Null for a staging target that sits behind no deployment protection. */
+  bypassSecret: string | null;
   /** Null while the workflow runs without the staging operator secret. */
   operatorSecret: string | null;
   productionFingerprint: string;
@@ -485,7 +489,7 @@ export const runAuthMailServerlessCheck = async (
   const auth = createAuthE2eClient({
     connectUrl: options.baseUrl,
     origin,
-    headers: { [VERCEL_BYPASS_HEADER]: options.bypassSecret },
+    headers: bypassHeaders(options.bypassSecret),
     request,
   });
   const authResponse = await auth.requestMagicLink({
@@ -511,7 +515,7 @@ export const runAuthMailServerlessCheck = async (
       redirect: 'error',
       headers: {
         [SCHEDULER_OPERATOR_SECRET_HEADER]: options.operatorSecret,
-        [VERCEL_BYPASS_HEADER]: options.bypassSecret,
+        ...bypassHeaders(options.bypassSecret),
       },
     });
     const evidence = unwrap(
@@ -544,7 +548,7 @@ export const runStagingSmoke = async (
   request: Fetch = fetch,
 ): Promise<StagingSmokeResult> => {
   const run = createRun(
-    { ...options, headers: { [VERCEL_BYPASS_HEADER]: options.bypassSecret } },
+    { ...options, headers: bypassHeaders(options.bypassSecret) },
     request,
   );
 
@@ -564,7 +568,7 @@ export const runStagingSmoke = async (
     run,
     {
       ...options,
-      authHeaders: { [VERCEL_BYPASS_HEADER]: options.bypassSecret },
+      authHeaders: bypassHeaders(options.bypassSecret),
       expectedCourseTitle: SMOKE_TENANT_COURSE_TITLE,
     },
     request,
@@ -631,7 +635,7 @@ export const stagingSmokeOptionsFromEnv = (env: Environment): StagingSmokeOption
   const baseUrl = provided(env, 'STAGING_BASE_URL');
   const bypassSecret = provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
   const productionFingerprint = provided(env, 'PRODUCTION_DATABASE_FINGERPRINT');
-  if (baseUrl === null || bypassSecret === null || productionFingerprint === null) return null;
+  if (baseUrl === null || productionFingerprint === null) return null;
   return {
     baseUrl,
     tenant: SMOKE_TENANT_SLUG,
@@ -683,7 +687,7 @@ const mainStaging = async (): Promise<void> => {
   const options = stagingSmokeOptionsFromEnv(process.env);
   if (options === null) {
     process.stderr.write(
-      'smoke:staging: STAGING_BASE_URL, VERCEL_AUTOMATION_BYPASS_SECRET and PRODUCTION_DATABASE_FINGERPRINT are required\n',
+      'smoke:staging: STAGING_BASE_URL and PRODUCTION_DATABASE_FINGERPRINT are required\n',
     );
     process.exitCode = 2;
     return;

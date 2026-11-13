@@ -504,10 +504,11 @@ describe('two-factor and passkey client semantics', () => {
   });
 
   it('carries a secure provisional CLI challenge cookie into backup-code redemption', async () => {
-    const calls: Array<{ path: string; cookie: string | null }> = [];
+    const calls: Array<{ path: string; cookie: string | null; origin: string | null }> = [];
     const fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input)).pathname;
-      calls.push({ path, cookie: new Headers(init?.headers).get('cookie') });
+      const headers = new Headers(init?.headers);
+      calls.push({ path, cookie: headers.get('cookie'), origin: headers.get('origin') });
       if (path.endsWith('/sign-in/email')) {
         return Promise.resolve(new Response(JSON.stringify({ twoFactorRedirect: true }), {
           status: 200,
@@ -538,19 +539,21 @@ describe('two-factor and passkey client semantics', () => {
     });
     expect(onToken).toHaveBeenCalledExactlyOnceWith('session-token');
     expect(calls).toEqual([
-      { path: '/api/auth/sign-in/email', cookie: null },
+      { path: '/api/auth/sign-in/email', cookie: null, origin: 'https://api.example' },
       {
         path: '/api/auth/two-factor/verify-backup-code',
         cookie: '__Secure-better-auth.two_factor=signed-challenge',
+        origin: 'https://api.example',
       },
     ]);
   });
 
   it('uses the magic-link response body to reject a provisional token as a session', async () => {
-    const calls: Array<{ path: string; cookie: string | null }> = [];
+    const calls: Array<{ path: string; cookie: string | null; origin: string | null }> = [];
     const fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input)).pathname;
-      calls.push({ path, cookie: new Headers(init?.headers).get('cookie') });
+      const headers = new Headers(init?.headers);
+      calls.push({ path, cookie: headers.get('cookie'), origin: headers.get('origin') });
       if (path.endsWith('/magic-link/verify')) {
         return Promise.resolve(new Response(JSON.stringify({ twoFactorRedirect: true }), {
           status: 200,
@@ -584,10 +587,11 @@ describe('two-factor and passkey client semantics', () => {
     });
     expect(onToken).toHaveBeenCalledExactlyOnceWith('completed-token');
     expect(calls).toEqual([
-      { path: '/api/auth/magic-link/verify', cookie: null },
+      { path: '/api/auth/magic-link/verify', cookie: null, origin: 'https://api.example' },
       {
         path: '/api/auth/two-factor/verify-totp',
         cookie: '__Secure-better-auth.two_factor=signed-magic-challenge',
+        origin: 'https://api.example',
       },
     ]);
   });

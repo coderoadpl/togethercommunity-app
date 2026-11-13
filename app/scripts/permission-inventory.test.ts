@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(440);
-    expect(inventory.useCases).toHaveLength(344);
+    expect(inventory.routes).toHaveLength(441);
+    expect(inventory.useCases).toHaveLength(345);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),
@@ -64,6 +64,21 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('separates staff settings from member settings at both boundaries', () => {
+    const inventory = collectPermissionInventory();
+    for (const [route, useCase, capability, principals] of [
+      ['GET /api/tenant/settings', 'getTenantSettings', 'tenant:settings:read', ['owner', 'admin']],
+      ['GET /api/member/settings', 'getMemberSettings', 'member:settings:read', ['owner', 'admin', 'member']],
+    ] as const) {
+      for (const row of [
+        inventory.routes.find((entry) => entry.subject === route),
+        inventory.useCases.find((entry) => entry.subject === `tenant-settings.ts#${useCase}`),
+      ]) {
+        expect(row).toMatchObject({ capability, before: principals, after: principals });
+      }
+    }
   });
 
   it('keeps team reads and writes owner-only', () => {
@@ -279,7 +294,6 @@ describe('permission inventory', () => {
     const suspicious = collectPermissionInventory().suspicious.map((item) => item.subject);
     expect(suspicious).toEqual(expect.arrayContaining([
       'development-only routes',
-      'GET /api/tenant/settings',
       'marketing synthetic identities',
       'tenant creation mode',
       'staff lesson access',

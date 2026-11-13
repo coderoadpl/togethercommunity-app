@@ -14,7 +14,7 @@ export const ShadcnMobile375: Story = { parameters: { __id: 'account--shadcn--mo
 
 export const Security: Story = { parameters: { fixture: { ...fixture, route: '/account?tab=security' } } };
 export const Notifications: Story = { parameters: { fixture: { ...fixture, route: '/account?tab=notifications' } } };
-const settingsCall = fixture.calls['getTenantSettings:[]'];
+const settingsCall = fixture.calls['getMemberSettings:[]'];
 export const Playback: Story = {
   parameters: {
     docs: { description: { story: 'Synthetic tenant policy permits members to override video autoplay.' } },
@@ -23,7 +23,7 @@ export const Playback: Story = {
       route: '/account?tab=playback',
       calls: {
         ...fixture.calls,
-        'getTenantSettings:[]': {
+        'getMemberSettings:[]': {
           ...settingsCall,
           value: { ...settingsCall.value, settings: { ...settingsCall.value.settings, memberVideoAutoplayOverride: true } },
         },

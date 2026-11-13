@@ -31,6 +31,7 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const PLATFORM_BASE_DOMAIN = 'platform.localhost';
 const CUSTOM_HOST = `course.acme.${PLATFORM_BASE_DOMAIN}`;
+const CUSTOM_ORIGIN = `https://${CUSTOM_HOST}`;
 const STUDIO_CUSTOM_HOST = `files.studio.${PLATFORM_BASE_DOMAIN}`;
 const TENANT_HOST = `acme.${PLATFORM_BASE_DOMAIN}`;
 const CREATOR_PASSWORD = 'demo-password-15';
@@ -258,11 +259,6 @@ const followMagicLinkWithHost = async (
   return requestWithHost(connectUrl, `${url.pathname}${url.search}`, CUSTOM_HOST);
 };
 
-const customHttpsOrigin = (connectUrl: string): string => {
-  const port = new URL(connectUrl).port;
-  return port === '' ? `https://${CUSTOM_HOST}` : `https://${CUSTOM_HOST}:${port}`;
-};
-
 const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -407,7 +403,7 @@ const runCustomDomainMagicLink = async (
   connectUrl: string,
   tenantBaseUrl: string,
 ): Promise<void> => {
-  const customOrigin = customHttpsOrigin(connectUrl);
+  const customOrigin = CUSTOM_ORIGIN;
   const callbackURL = `${customOrigin}/login?verification=verified`;
   const request = await postMagicLink(connectUrl, {
     host: CUSTOM_HOST,
@@ -452,7 +448,7 @@ const runCustomDomainMagicLinkCrossOriginRejected = async (
 ): Promise<void> => {
   const response = await postMagicLink(connectUrl, {
     host: CUSTOM_HOST,
-    origin: customHttpsOrigin(connectUrl),
+    origin: CUSTOM_ORIGIN,
     email: SMOKE_TENANT_MEMBER_EMAIL,
     callbackURL: `${tenantBaseUrl}/login?verification=verified`,
   });
@@ -719,7 +715,6 @@ try {
     connectUrl,
     webBaseUrl: studioBaseUrl,
     canonicalOrigin: studioOrigin,
-    actionOrigin: `${studioOrigin}:${port}`,
     verify: async (context, link) => {
       const url = new URL(link);
       const verified = await requestWithHost(connectUrl, `${url.pathname}${url.search}`, STUDIO_CUSTOM_HOST);

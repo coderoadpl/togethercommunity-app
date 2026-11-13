@@ -309,6 +309,7 @@ import {
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
+  getMemberSettings,
   listTenantRedirects,
   createTenantRedirect,
   updateTenantRedirect,
@@ -2376,6 +2377,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid secret key', parsed.error.flatten())));
     const result = await deleteTenantSecret(ctxOf(c), parsed.data.key, deps);
     return respond(result.ok ? ok({ key: result.value.key }) : result);
+  });
+
+  app.get(API_PATHS.memberSettings, async (c) => {
+    const result = await getMemberSettings(ctxOf(c), deps);
+    return respond(result);
   });
 
   app.get(API_PATHS.tenantSettings, async (c) => {

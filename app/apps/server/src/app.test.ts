@@ -52,6 +52,7 @@ import {
   orderListItemSchema,
   salesLinkSchema,
   couponSchema,
+  tenantSettingsSchema,
   type CheckoutSnapshot,
   type CouponCheckoutSession,
   memberSchema,
@@ -948,12 +949,55 @@ const deps = (input: {
     platformHost: 'start.localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
+    deploymentAuthOrigins: [],
     customDomainTarget: 'start.localhost',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
     authTrustedProxyHeader: null,
   };
   return appDeps;
+};
+
+const completeSettings = tenantSettingsSchema.parse({
+  name: 'Acme', defaultLanguage: 'en',
+  socialLinks: [{ label: 'Community', url: 'https://example.test/community' }],
+  signInNotice: { enabled: true, text: 'Welcome' },
+  billingPortalUrl: 'https://billing.example.test/portal',
+  supportEmail: 'private@example.test', supportConfigured: false,
+  supportUrl: 'https://example.test/support',
+  videoAutoplayDefault: true, memberVideoAutoplayOverride: true,
+  bunnyStreamLibraryId: '12345', bunnyStreamCdnHostname: 'video.example.test',
+  logoUrl: 'https://example.test/logo.png', logoDarkUrl: 'https://example.test/dark.png',
+  accentColor: '#112233', accentLight: '#445566', faviconUrl: 'https://example.test/icon.png',
+  ogTitle: 'Acme learning', ogDescription: 'Learn with us', ogImageUrl: 'https://example.test/social.png',
+  termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy',
+  defaultHomeSpaceId: 'space-1', directMessagesEnabled: true,
+  analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '123456789',
+  analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true',
+  analyticsLoadWithoutConsent: true,
+  checkoutAppearance: {
+    displayName: 'Acme Checkout', logoUrl: 'https://example.test/logo.png', iconUrl: 'https://example.test/icon.png',
+    backgroundColor: '#112233', buttonColor: '#445566', fontFamily: 'inter', borderStyle: 'rounded',
+  },
+  autoIssueInvoices: true, autoIssueInvoiceScope: 'all', ksefSubmissionMode: 'manual',
+  invoiceVatMode: 'rate', invoiceVatRatePercent: 23,
+  invoiceExemptionBasisKind: 'other', invoiceExemptionBasis: 'Example exemption basis',
+  invoicingProvider: 'ksef', invoiceSellerName: 'Acme Seller', invoiceSellerAddress: '10 Example Street',
+  shippingRates: [{
+    id: 'locker', label: 'Parcel locker', amountCents: 1500, vatRatePercent: 23,
+    carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 3 },
+  }],
+  inpostGeowidgetToken: 'example-geowidget-token',
+});
+
+const memberSettingsProjection = {
+  settings: {
+    billingPortalUrl: 'https://billing.example.test/portal',
+    supportConfigured: true,
+    supportUrl: 'https://example.test/support',
+    videoAutoplayDefault: true,
+    memberVideoAutoplayOverride: true,
+  },
 };
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
@@ -2933,7 +2977,7 @@ describe('public rate limiting', () => {
       const app = buildApp(configured);
       const responses = await Promise.all(Array.from({ length: 11 }, (_, index) => app.request(path, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', host: 'localhost:48730', origin: 'http://localhost:48730' },
         body: JSON.stringify({ email: `member-${index}@example.com`, password: 'incorrect-password' }),
       })));
       expect(responses.map((response) => response.status)).toEqual(Array.from({ length: 11 }, () => 200));
@@ -3075,7 +3119,7 @@ describe('public rate limiting', () => {
 
     const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      headers: { 'content-type': 'application/json', host: 'localhost:48730', origin: 'http://localhost:48730', [TENANT_HEADER]: 'acme' },
       body: JSON.stringify({ email: 'Buyer@Together.dev' }),
     });
 
@@ -3761,6 +3805,7 @@ describe('server edge security baseline', () => {
       headers: {
         host: 'acme.localhost:48730',
         cookie: 'session=owner-session',
+        origin: 'http://acme.localhost:48730',
         ...(contentType === null ? {} : { 'content-type': contentType }),
       },
       body: new TextEncoder().encode(JSON.stringify({ key: 'bunny.apiKey', value: 'replacement-secret' })),
@@ -3782,7 +3827,7 @@ describe('server edge security baseline', () => {
       });
       const response = await app.request(API_PATHS.tenantSecrets, {
         method: 'POST',
-        headers: { host: 'acme.localhost:48730', 'content-type': contentType, cookie: 'session=owner-session' },
+        headers: { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': contentType, cookie: 'session=owner-session' },
         body: JSON.stringify({ key: 'bunny.apiKey', value: 'replacement-secret' }),
       });
 
@@ -4459,18 +4504,39 @@ describe('purchased product download route', () => {
     expect(JSON.stringify(body)).not.toContain('replacesAssetId');
   });
 
-  it('returns the personalisation limit only for staff tenant settings readers', async () => {
-    const limit = 12_345;
-    const settingsPath = API_PATHS.tenantSettings;
-    const member = await scopedApp('member', { overrides: { personalisationMaxBytes: limit } })
-      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
-    const staff = await scopedApp('staff', { overrides: { personalisationMaxBytes: limit } })
-      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
-
+  it('serializes exactly the member allowlist and preserves the full staff payload', async () => {
+    const base = deps();
+    const overrides = {
+      personalisationMaxBytes: 12_345,
+      tenants: { ...base.tenants, findSettings: async () => completeSettings },
+    };
+    const headers = { host: 'acme.localhost:48730' };
+    const memberApp = scopedApp('member', { overrides });
+    const member = await memberApp.request(API_PATHS.memberSettings, { headers });
     expect(member.status).toBe(200);
-    expect(await member.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: null } });
-    expect(staff.status).toBe(200);
-    expect(await staff.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: limit } });
+    expect(await member.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    const forbidden = await memberApp.request(API_PATHS.tenantSettings, { headers });
+    expect(forbidden.status).toBe(403);
+    expect(await forbidden.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    for (const scope of ['staff', 'owner'] as const) {
+      const app = scopedApp(scope, { overrides });
+      const staff = await app.request(API_PATHS.tenantSettings, { headers });
+      expect(staff.status).toBe(200);
+      expect(await staff.json()).toEqual({ ok: true, data: {
+        settings: { ...completeSettings, supportConfigured: true },
+        personalisationMaxBytes: overrides.personalisationMaxBytes,
+      } });
+      const memberView = await app.request(API_PATHS.memberSettings, { headers });
+      expect(await memberView.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    }
+  });
+
+  it('requires tenant membership for the member settings route', async () => {
+    const response = await scopedApp('none').request(API_PATHS.memberSettings, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(response.status).toBe(403);
   });
 
 });
@@ -8475,7 +8541,7 @@ describe('tenant-host magic links on login', () => {
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'start.localhost:48730',
         [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
       },
@@ -8497,7 +8563,7 @@ describe('tenant-host magic links on login', () => {
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'acme.localhost:48730',
         [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
       },
@@ -8526,7 +8592,7 @@ describe('tenant-host magic links on login', () => {
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'acme.localhost:48730',
         [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
       },
@@ -8541,7 +8607,7 @@ describe('tenant-host magic links on login', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://localhost:48730/my' }),
     });
 
@@ -8567,7 +8633,7 @@ describe('tenant-host email verification', () => {
     });
     const request = (path: string) => app.request(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email }),
     });
 
@@ -8586,7 +8652,7 @@ describe('tenant-host email verification', () => {
       await app.request(path, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/json', origin: 'http://localhost:48730',
           host: 'acme.localhost:48730',
           [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
         },
@@ -8616,7 +8682,7 @@ describe('tenant-host email verification', () => {
       await app.request(path, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/json', origin: 'http://localhost:48730',
           host: 'learn.acme.example',
           'x-forwarded-proto': 'https',
           [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
@@ -8639,7 +8705,7 @@ describe('tenant-host email verification', () => {
       await app.request(path, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/json', origin: 'http://localhost:48730',
           host: 'localhost:48730',
           [TENANT_HEADER]: 'globex',
         },
@@ -8662,61 +8728,25 @@ describe('auth link host trust', () => {
     origin: 'http://acme.localhost:48730',
   };
 
-  it('keeps the magic-link base on APP_BASE_URL for an unknown host', async () => {
-    const { app, captured } = capturingApp();
-
-    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
-      method: 'POST',
-      headers: attackerHeaders,
-      body: JSON.stringify({ email: 'login@together.dev' }),
-    });
-
-    expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
-    expect(captured.context?.context.tenantId).toBeUndefined();
-  });
-
-  it('keeps the reset base on APP_BASE_URL for an unknown host', async () => {
-    const { app, captured } = capturingApp();
-
-    await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
-      method: 'POST',
-      headers: attackerHeaders,
-      body: JSON.stringify({ email: 'login@together.dev' }),
-    });
-
-    expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
-    expect(captured.resetContext?.context.tenantId).toBeUndefined();
-  });
-
-  it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
-    'keeps %s delivery on APP_BASE_URL for an unknown host',
+  it.each([BETTER_AUTH_MAGIC_LINK_PATH, BETTER_AUTH_PASSWORD_RESET_PATH, BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
+    'rejects %s on an untrusted host before installing delivery context',
     async (path) => {
-      const { app, captured } = capturingApp();
+      for (const host of ['attacker.example', 'missing.localhost:48730']) {
+        const { app, captured } = capturingApp();
+        const response = await app.request(path, {
+          method: 'POST',
+          headers: { ...attackerHeaders, host },
+          body: JSON.stringify({ email: 'account@together.dev' }),
+        });
 
-      await app.request(path, {
-        method: 'POST',
-        headers: attackerHeaders,
-        body: JSON.stringify({ email: 'account@together.dev' }),
-      });
-
-      expect(captured.verificationContext?.context.baseUrl).toBe('http://localhost:48730');
-      expect(captured.verificationContext?.context.tenantId).toBeUndefined();
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ error: { code: 'forbidden' } });
+        expect(captured.context).toBeNull();
+        expect(captured.resetContext).toBeNull();
+        expect(captured.verificationContext).toBeNull();
+      }
     },
   );
-
-  it('keeps the magic-link base on APP_BASE_URL for an unknown slug under the base domain', async () => {
-    const { app, captured } = capturingApp();
-
-    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'missing.localhost:48730' },
-      body: JSON.stringify({ email: 'login@together.dev' }),
-    });
-
-    expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
-    expect(captured.context?.context.tenantId).toBeUndefined();
-    expect(captured.context?.context.tenantName).toBeUndefined();
-  });
 
   it('uses the tenant origin for reset fallback with tenant-header routing', async () => {
     const { app, captured } = capturingApp();
@@ -8724,7 +8754,7 @@ describe('auth link host trust', () => {
     await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'localhost:48730',
         [TENANT_HEADER]: 'globex',
       },
@@ -8739,7 +8769,7 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8755,7 +8785,7 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8771,7 +8801,7 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'learn.acme.example' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'learn.acme.example' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8788,7 +8818,7 @@ describe('auth link host trust', () => {
       });
       await app.request(path, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
+        headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
         body: JSON.stringify({ email: 'login@together.dev' }),
       });
       const baseUrl = path === BETTER_AUTH_MAGIC_LINK_PATH
@@ -8812,7 +8842,7 @@ describe('auth link host trust', () => {
 
     const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8820,7 +8850,7 @@ describe('auth link host trust', () => {
     expect(contexts.size).toBe(0);
   });
 
-  it('rejects an over-long e-mail before resolving the tenant', async () => {
+  it('rejects an over-long e-mail without resolving delivery context after the origin check', async () => {
     const base = deps();
     let resolvedTenants = 0;
     const app = buildApp({
@@ -8836,11 +8866,11 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: `${'a'.repeat(250)}@together.dev` }),
     });
 
-    expect(resolvedTenants).toBe(0);
+    expect(resolvedTenants).toBe(1);
   });
 });
 
@@ -8916,7 +8946,7 @@ describe('scheduler operator routes', () => {
 });
 
 describe('impersonation HTTP surface', () => {
-  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json' };
 
   const impersonatingApp = (extraOverrides: Partial<AppDeps> = {}) => {
     const sessions = new Map<string, ImpersonationSession & { tokenHash: string }>();
@@ -8968,6 +8998,22 @@ describe('impersonation HTTP surface', () => {
 
   const cookieOf = (response: Response): string =>
     (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+  it('returns only member settings while impersonating, never the staff projection', async () => {
+    const base = deps();
+    const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async () => completeSettings } });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    const member = await app.request(API_PATHS.memberSettings, { headers: impersonated });
+    expect(member.status).toBe(200);
+    expect(await member.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    const staff = await app.request(API_PATHS.tenantSettings, { headers: impersonated });
+    expect(staff.status).toBe(403);
+    expect(await staff.json()).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+  });
 
   it('opens a read-only member view and blocks every write and direct message', async () => {
     const accountSecurityRead = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));

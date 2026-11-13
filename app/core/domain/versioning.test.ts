@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 import { SNAPSHOT_FIXTURES } from './snapshots/fixtures.js';
 import {
@@ -135,24 +134,6 @@ describe('upcaster chain runner', () => {
       { type: 'pdf', pdfUrl: 'https://legacy-document.invalid/?url=javascript%3Aalert(1)' },
       { type: 'link', url: 'https://docs.example.test/guide' },
     ]);
-  });
-
-  it('composes multiple registered upcasters in order (synthetic registry)', () => {
-    type Step = (payload: unknown) => unknown;
-    const registry: Record<number, Step> = {
-      1: (payload) => ({ ...z.object({ n: z.number() }).parse(payload), from: 1 }),
-      2: (payload) => ({ ...z.object({ n: z.number(), from: z.number() }).parse(payload), n: 99 }),
-    };
-    const run = (from: number, target: number, payload: unknown): unknown => {
-      let current = payload;
-      for (let v = from; v < target; v += 1) {
-        const step = registry[v];
-        if (!step) throw new Error(`missing ${v}`);
-        current = step(current);
-      }
-      return current;
-    };
-    expect(run(1, 3, { n: 1 })).toEqual({ n: 99, from: 1 });
   });
 
   it('rejects a payload that does not match the current schema after upcasting', () => {

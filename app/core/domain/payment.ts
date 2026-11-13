@@ -9,6 +9,7 @@ import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
+  locale: languageSchema.optional(),
 });
 
 export const checkoutSessionInputSchema = z.object({

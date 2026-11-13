@@ -36,3 +36,22 @@ activation and revocation events are recorded in the tenant audit history.
 
 The owner-only CLI commands are `team list`, `team add <email>` and
 `team remove <email>`. Team changes are recorded in the tenant audit history.
+
+## Meta server-side conversions
+
+The owner configures Meta CAPI beside the checkout analytics pixel settings.
+`analyticsMetaCapiEnabled` defaults to false. A configured pixel and privacy URL
+are required before a buyer can grant consent. The optional test event code and
+plain-text consent heading, body and button labels are ordinary tenant settings;
+the `analyticsMetaCapiAccessToken` is stored separately through the encrypted,
+owner-only tenant-secret API and is never returned, even partially.
+
+The CLI supports `tenant settings-set --analytics-meta-capi-enabled <true|false>`,
+`--analytics-meta-capi-test-event-code <code>`, and the
+`--analytics-meta-capi-consent-{heading,body,accept-label,decline-label}` flags.
+An empty string clears the test code or restores a default copy field.
+`tenant-secret set analyticsMetaCapiAccessToken <value>` sets the token;
+`tenant-secret delete analyticsMetaCapiAccessToken` clears it.
+`meta-capi events` lists the selected workspace's latest delivery evidence.
+See [Meta CAPI](integrations/meta-capi.md) for payload, consent, withdrawal,
+privacy obligations, retry behavior and verification.

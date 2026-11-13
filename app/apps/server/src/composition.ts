@@ -1,4 +1,7 @@
 import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
+import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
+import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
+import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -431,6 +434,7 @@ interface ShipxIntegrationDeps {
 }
 
 export interface AppDeps {
+  metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
   telemetryTenantDirectory: TelemetryTenantDirectory;
@@ -1491,6 +1495,8 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
+    metaCapi: { repository: createMetaCapiRepository(db, resolveOrigin, logger), tenants, clock, hash: contentHash, logger,
+      secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
     shipxIntegration: {
       shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },

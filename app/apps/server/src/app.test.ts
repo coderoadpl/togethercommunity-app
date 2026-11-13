@@ -3233,6 +3233,25 @@ describe('email dispatch route', () => {
     expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
   });
 
+  it('preserves the email result when the Meta tenant directory fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const result = { attemptsMade: 3, sentCount: 2, failedCount: 1 };
+    const dispatchEmails = vi.fn(async () => ok(result));
+    const base = deps({ dispatchEmails, logger });
+    base.metaCapi = {
+      tenants: base.tenants, clock: base.clock, hash: base.contentHash, logger,
+      directory: { listAll: async () => { throw new Error('buyer@example.org secret-token'); } },
+      secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), processNext: async () => false,
+        listEvents: async () => [], listMemberConsents: async () => [] },
+    };
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: result });
+    expect(dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(logger.warn.mock.calls).toEqual([['[meta-capi] cron dispatch_failed']]);
+  });
+
   it('surfaces a dispatch failure as an error envelope', async () => {
     const app = buildApp(deps({ dispatchEmails: async () => err(internal('outbox unavailable')) }));
     const response = await app.request(API_PATHS.emailDispatch, {
@@ -5263,6 +5282,7 @@ describe('public route manifest', () => {
       'Amazon SNS delivery webhook',
       'Stripe payment webhook',
       'Checkout session start',
+      'Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes',
       'Rate-limited direct sales-link checkout session creation',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',

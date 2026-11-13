@@ -299,6 +299,8 @@ const providerObjectIdsForCheckout = (
   event: PaymentWebhookEvent,
 ): Record<string, string> => ({
   checkoutSession: event.objectId ?? '',
+  ...(event.checkoutSession?.customerCountry ? { customerCountry: event.checkoutSession.customerCountry } : {}),
+  ...(event.checkoutSession?.testPurchase ? { testPurchase: '1' } : {}),
   ...(event.checkoutSession?.paymentIntentId == null
     ? {}
     : { paymentIntent: event.checkoutSession.paymentIntentId }),

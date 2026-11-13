@@ -2,6 +2,7 @@ import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/dom
 import { createHash } from 'node:crypto';
 import { publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
+import { registerPublicMetaCapiRoutes } from './meta-capi-routes.js';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -288,6 +289,7 @@ const checkoutIdentity = async (c: Context<AppVars>, deps: AppDeps) => {
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   registerDirectSalesLinkRoutes(app, deps);
+  registerPublicMetaCapiRoutes(app, deps);
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);
@@ -629,7 +631,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
     const parsed = publicCheckoutSessionStatusInputSchema.safeParse(c.req.query());
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout session id')));
-    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps));
+    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps, parsed.data.locale));
   });
 
   app.get(API_PATHS.publicPaymentConfig, async (c) => {

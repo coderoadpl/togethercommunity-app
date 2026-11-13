@@ -2,6 +2,8 @@ import { tenantTeamAddSchema, tenantTeamRemoveSchema } from '#core/contract/inde
 import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/index.js';
 import { safeErrorMessage } from '#core/server/log-safety.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
+import { registerMetaCapiRoutes } from './meta-capi-routes.js';
+import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
 import { registerShipxRoutes } from './shipx-routes.js';
@@ -821,7 +823,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    return respond(await deps.dispatchEmails('cron'));
+    const emails = await deps.dispatchEmails('cron');
+    await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
+    return respond(emails);
   });
 
   app.post(API_PATHS.autoInvoiceDispatch, async (c) => {
@@ -1363,6 +1367,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSurveyRoutes(app, deps);
   registerSalesLinkRoutes(app, deps);
   registerOrderVerificationRoutes(app, deps);
+  registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
   registerShipxRoutes(app, deps);
 

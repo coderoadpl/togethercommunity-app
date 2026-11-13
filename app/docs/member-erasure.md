@@ -37,6 +37,12 @@ follow the same member-erasure selection as live orders.
 `adapters/db/repositories.ts` performs one transaction that:
 
 - records the erasure in `erasedMemberImports`;
+- withdraws Meta purchase-sharing consent on the member's tenant-scoped orders,
+  preserving an earlier withdrawal timestamp, and deletes their pending
+  `meta_capi_outbox` rows (IP, user agent and browser identifier). Clearing the
+  orders' attribution also removes the click identifier from which fbc is built.
+  The order locks serialize erasure with dispatch; after erasure commits no
+  queued conversion can send. New grants and dispatch also reject deleted members;
 - deletes all tenant-scoped `download_copies` for the member;
 - deletes all tenant-scoped `survey_responses` linked to the member;
 - deletes pending `tenant_admin_invitations` for the member's auth user in the
@@ -143,6 +149,25 @@ The marketing suppression path degrades the address to an HMAC, as pinned in
 `adapters/db/repositories.test.ts`; retained plaintext is confined to the
 consent-evidence rows. The long-term backlog direction is to key consent
 evidence to a non-email subject reference.
+
+### Meta purchase-sharing evidence
+
+Erasure retains `meta_capi_consent_evidence` and terminal `meta_capi_events`
+receipts, linked only to the retained order and tenant. Evidence contains the
+copy, version, decision, time and source; receipts contain delivery status,
+field names and bounded gateway labels, not IP, user agent, fbp, fbc or email.
+Erasure appends a withdrawal proof for an existing grant using its original
+copy and version in the same transaction that removes the pending identifiers.
+The tenant/order/decision key preserves the grant and any earlier withdrawal
+when erasure is repeated.
+These are proof of consent and prior disclosure, not permission for future sends.
+Their retention horizon follows the six-year/end-of-calendar-year policy above,
+starting at the order's `meta_capi_consent_withdrawn_at` (set on withdrawal or
+member erasure). The existing scheduled consent-evidence purge currently handles
+terms and marketing consent, not these CAPI tables; CAPI expiry requires an
+operator retention purge until that scheduler is extended. Erasure does not
+rewrite or delete the historical evidence and cannot retract data already sent
+to Meta.
 
 ## Authored content keeps member-typed personal data
 

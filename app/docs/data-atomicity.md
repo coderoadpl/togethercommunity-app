@@ -18,6 +18,17 @@ at all.
 
 <!-- MUST-ATOMIC:begin -->
 
+- Meta conversions: `MetaCapiRepository.decide` records the consent projection,
+  evidence and outbox enqueue/delete atomically under the tenant-scoped order
+  lock. `MetaCapiRepository.processNext` holds that order lock across the Meta
+  HTTP call (bounded by the gateway’s 5 s timeout) and the receipt/retry write.
+  Withdrawal and member erasure take the same order lock, so they cannot
+  interleave with a send. This is not a lease or an exactly-once HTTP guarantee:
+  a crash after Meta accepts can retry the same event ID. A savepoint isolates
+  poisoned job processing; rollback preserves the outer lock and permits the
+  bounded failure/backoff write. Failure of that write propagates to the
+  tenant dispatch boundary, without stalling other tenants or email dispatch.
+
 - Content history: `ProductRepository.updateAccessItems`,
   `CourseRepository.update`, `CourseArchiveRepository.setArchived`,
   `CourseModuleRepository.update`, and

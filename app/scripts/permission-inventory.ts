@@ -95,6 +95,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/public/checkout/session' || path === '/api/public/sales-links/:slug/checkout') return 'checkout:start';
   if (path === '/api/public/auth-config' || path === '/api/public/auth-resolve') return 'auth:use';
   if (path.startsWith('/api/webhooks/')) return 'webhook:process';
+  if (path === '/api/public/meta-capi/consent') return 'marketing:consent:write';
   if (path.startsWith('/u/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/confirm/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/forms/')) return 'offer:read';
@@ -157,6 +158,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/marketing/suppressions') return method === 'GET' ? 'marketing:suppression:read' : 'marketing:suppression:write';
   if (path.startsWith('/api/marketing/sends') || /^\/api\/members\/:id\/emails$/.test(path)) return 'marketing:delivery:read';
   if (path === '/api/me' || path === '/api/tenants') return 'tenant:list-own';
+  if (path === '/api/meta-capi/events') return 'tenant:settings:write';
+  if (path === '/api/me/meta-capi/consents') return 'member:billing:read';
+  if (path === '/api/me/meta-capi/withdraw') return 'member:profile:self-write';
   if (path === '/api/me/billing-orders') return 'member:billing:read';
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
@@ -280,6 +284,7 @@ const beforeForRoute = (
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) {
+    if (path === '/api/public/meta-capi/consent') return token;
     if (path.startsWith('/api/webhooks/')) return webhook;
     if (path.startsWith('/u/') || path.startsWith('/marketing/confirm/')) return token;
     return publicPrincipal;
@@ -304,6 +309,8 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/meta-capi/events') return owner;
+  if (path.startsWith('/api/me/meta-capi/')) return tenantActors;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
   if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return tenantActors;
   if (path === '/api/member/settings') return tenantActors;
@@ -573,6 +580,7 @@ const beforeForUseCase = (
     return capability === 'tenant:domain:read' ? staff : owner;
   }
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
+  if (file === 'meta-capi.ts') return name === 'listMetaCapiEvents' ? owner : tenantActors;
   if (file === 'tenant-team.ts') return owner;
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;

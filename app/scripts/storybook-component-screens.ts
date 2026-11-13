@@ -1,6 +1,10 @@
 import { visible, type ScreenSpec } from './visual-screen-inventory.js';
 
 const storyByScreen: ReadonlyMap<string, string> = new Map([
+  ['meta-capi-consent', 'checkout-meta-capi--default'],
+  ['meta-capi-expanded', 'checkout-meta-capi--expanded-fields'],
+  ['meta-capi-decided', 'checkout-meta-capi--decided'],
+  ['meta-capi-settings', 'checkout-meta-capi--settings'],
   ['order-verification-dark-mobile', 'saleslinks-bundle--verification-dark-mobile'],
   ['order-verification-dark-desktop', 'saleslinks-bundle--verification-dark-desktop'],
   ['order-verification-light-mobile', 'saleslinks-bundle--verification-light-mobile'],
@@ -112,6 +116,10 @@ const telemetryScreens: ScreenSpec[] = [{
 }];
 
 export const componentScreens: readonly ScreenSpec[] = [
+  { name: 'meta-capi-consent', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('dialog').waitFor(visible); } },
+  { name: 'meta-capi-expanded', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('listitem').first().waitFor(visible); } },
+  { name: 'meta-capi-decided', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('meta-capi-preview').getByRole('status').waitFor(visible); } },
+  { name: 'meta-capi-settings', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('meta-capi-settings-preview').waitFor(visible); } },
   { name: 'order-verification-dark-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
   { name: 'order-verification-dark-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
   { name: 'order-verification-light-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },

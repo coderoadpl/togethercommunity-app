@@ -47,6 +47,7 @@ export * from './tenant-creation.js';
 export * from './support.js';
 export * from './consent.js';
 export * from './tenant-secret.js';
+export * from './meta-capi.js';
 export * from './onboarding.js';
 export * from './tenant-setup.js';
 export * from './stream-video.js';

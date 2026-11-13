@@ -1,3 +1,4 @@
+import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
 import { BellIcon, LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
 import { useEffect, useState } from 'react';
 import {
@@ -537,6 +538,8 @@ export const MemberAccountPage = () => {
             />
           </SectionCard>
         ) : null}
+
+        {selectedTab === 'notifications' && !impersonating && me.data.tenant?.memberId ? <MetaCapiPrivacyCard /> : null}
 
         {selectedTab === 'notifications' ? <SectionCard title={t.account.languageHeading} description={t.account.languageDescription}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">

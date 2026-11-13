@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const tenantSecretKeySchema = z.enum([
+  'analyticsMetaCapiAccessToken',
   'stripe.restrictedKey',
   'stripe.webhookSecret',
   'stripe.webhookEndpointId',

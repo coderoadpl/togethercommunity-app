@@ -1628,8 +1628,14 @@ describe('SettingsPanel analytics', () => {
     await userEvent.type(cookieName, 'site_consent');
     await userEvent.type(cookieValue, 'analytics:true');
     await userEvent.click(consentSwitch);
-    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await userEvent.click(within(screen.getByTestId('analytics-settings')).getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({
+      analyticsMetaCapiEnabled: false,
+      analyticsMetaCapiTestEventCode: null,
+      analyticsMetaCapiConsentHeading: null,
+      analyticsMetaCapiConsentBody: null,
+      analyticsMetaCapiConsentAcceptLabel: null,
+      analyticsMetaCapiConsentDeclineLabel: null,
       analyticsTagId: 'G-ABCD123',
       analyticsMetaPixelId: '123456789012345',
       analyticsConsentCookieName: 'site_consent',
@@ -1656,8 +1662,14 @@ describe('SettingsPanel analytics', () => {
     await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName }));
     await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue }));
     await userEvent.click(screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent }));
-    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await userEvent.click(within(screen.getByTestId('analytics-settings')).getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({
+      analyticsMetaCapiEnabled: false,
+      analyticsMetaCapiTestEventCode: null,
+      analyticsMetaCapiConsentHeading: null,
+      analyticsMetaCapiConsentBody: null,
+      analyticsMetaCapiConsentAcceptLabel: null,
+      analyticsMetaCapiConsentDeclineLabel: null,
       analyticsTagId: null,
       analyticsMetaPixelId: null,
       analyticsConsentCookieName: null,

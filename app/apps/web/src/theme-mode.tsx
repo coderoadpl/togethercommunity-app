@@ -63,6 +63,18 @@ export const persistedJsonPreference = <T,>(
   },
 });
 
+export const sessionFlag = (key: string) => ({
+  load: (): boolean => {
+    try { return window.sessionStorage.getItem(key) === '1'; } catch { return false; }
+  },
+  save: (): void => {
+    try { window.sessionStorage.setItem(key, '1'); } catch {}
+  },
+  clear: (): void => {
+    try { window.sessionStorage.removeItem(key); } catch {}
+  },
+});
+
 const isLanguage = (value: string | null): value is Language =>
   value !== null && languageSchema.safeParse(value).success;
 

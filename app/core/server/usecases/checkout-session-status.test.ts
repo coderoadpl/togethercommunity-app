@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { salesLinkSchema, tenantSettingsSchema, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
+import { err, notFound, metaCapiCopy, salesLinkSchema, tenantSettingsSchema, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
 import { type PaymentRefundRepository } from '../ports.js';
+import type { MetaCapiDeps } from './meta-capi.js';
 import { getCheckoutSessionStatus } from './checkout-session-status.js';
 
 const order: Order = {
@@ -223,4 +224,32 @@ it('reports the chosen first variant in purchase analytics while retaining the s
   } });
   expect(deps.salesLinks.findById).toHaveBeenCalledWith('tenant-1', 'link-1');
   expect(deps.products.findById).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('preserves shipping analytics and locale-resolved CAPI status when enabled=%s', async (enabled) => {
+  const purchase: Order = { ...order, paidAt: order.createdAt, amountCents: 1200, lines: [
+    { productId: 'product-1', name: 'Book', productType: 'physical', grossCents: 1000, netCents: 1000,
+      vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: 0 },
+    { productId: 'shipping', name: 'Delivery', productType: 'shipping', grossCents: 200, netCents: 200,
+      vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+  ] };
+  const settings = { ...analyticsSettings, analyticsMetaCapiEnabled: enabled, analyticsMetaPixelId: '1234567890', privacyUrl: 'https://example.org/privacy' };
+  const deps = harness([purchase], settings);
+  const metaCapi: MetaCapiDeps = { tenants: deps.tenants, clock: { nowIso: () => order.createdAt }, hash: { sha256: (text) => {
+    if (typeof text !== 'string') throw new Error('Consent snapshots must be text');
+    return text;
+  } },
+    repository: { findOrder: async () => ({ order: purchase, consent: { consent: 'undecided', withdrawnAt: null },
+      email: 'buyer@example.org', memberDeleted: false, sourceUrl: 'https://example.org/checkout/book', consentAt: null }),
+    decide: async () => err(notFound()), processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };
+  for (const locale of ['en', 'pl'] as const) {
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, locale)).toMatchObject({
+      ok: true, value: { status: 'paid', analytics: { value: 12, items: [{ itemId: 'product-1', itemName: 'Book', price: 10 }] },
+        metaCapi: { ...metaCapiCopy(settings, locale), enabled, locale, textVersion: JSON.stringify(metaCapiCopy(settings, locale)) } },
+    });
+  }
+  deps.tenants.findSettings.mockResolvedValue({ ...settings, analyticsMetaPixelId: null, analyticsTagId: null });
+  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, 'en')).toMatchObject({
+    ok: true, value: { status: 'paid', metaCapi: { enabled: false, locale: 'en' } },
+  });
 });

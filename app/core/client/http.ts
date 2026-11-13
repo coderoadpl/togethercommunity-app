@@ -1,3 +1,5 @@
+import type { Language } from '#core/domain/index.js';
+import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
 import { SALES_LINK_VARIANT_PARAM, type AddTenantAdminInput, type RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
@@ -526,6 +528,14 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  publicMetaCapiConsent: (input: MetaCapiDecisionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.publicMetaCapiConsent.method, API_ROUTES.publicMetaCapiConsent.path, metaCapiStateSchema, input, signal),
+  metaCapiEvents: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.metaCapiEvents.method, API_ROUTES.metaCapiEvents.path, metaCapiEventsOutputSchema, undefined, signal),
+  metaCapiConsents: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.metaCapiConsents.method, API_ROUTES.metaCapiConsents.path, metaCapiConsentsOutputSchema, undefined, signal),
+  withdrawMetaCapiConsent: (input: { orderId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.withdrawMetaCapiConsent.method, API_ROUTES.withdrawMetaCapiConsent.path, metaCapiStateSchema, input, signal),
   verifyOrder: (input: z.input<typeof orderVerificationContracts.verifyOrder.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), orderVerificationContracts.verifyOrder.output, undefined, signal),
   shipxShipment: (input: z.input<typeof shipxContracts.shipxShipment.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxShipment.path.replace(':orderId', encodeURIComponent(input.orderId)), shipxContracts.shipxShipment.output, undefined, signal),
   shipxCreate: (input: z.input<typeof shipxContracts.shipxCreate.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxCreate.path.replace(':orderId', encodeURIComponent(input.orderId)), shipxContracts.shipxCreate.output, {}, signal),
@@ -1002,11 +1012,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal) =>
+  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal, locale?: Language) =>
     request(
       options,
       API_ROUTES.publicCheckoutSessionStatus.method,
-      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}`,
+      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}${locale === undefined ? '' : `&locale=${locale}`}`,
       publicCheckoutSessionStatusOutputSchema,
       undefined,
       signal,

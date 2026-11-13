@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(447);
-    expect(inventory.useCases).toHaveLength(351);
+    expect(inventory.routes).toHaveLength(451);
+    expect(inventory.useCases).toHaveLength(354);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),
@@ -75,6 +75,14 @@ describe('permission inventory', () => {
     }
     expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/orders/qr/:token'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === "GET /api/meta-capi/events"),
+      inventory.useCases.find((entry) => entry.subject === "meta-capi.ts#listMetaCapiEvents"),
+    ]) {
+      expect(row).toMatchObject({ capability: "tenant:settings:write", before: ["owner"], after: ["owner"] });
+    }
+    expect(inventory.routes.find((entry) => entry.subject === "POST /api/public/meta-capi/consent"))
+      .toMatchObject({ capability: "marketing:consent:write", before: ["token"], after: ["token"] });
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);

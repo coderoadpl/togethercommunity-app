@@ -18,6 +18,35 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  metaCapi: {
+    privacyPolicy: string;
+    fieldsToggle: string;
+    fieldsPurchase: string;
+    fieldsIdentity: string;
+    fieldsBrowser: string;
+    fieldsAttribution: string;
+    decisionError: string;
+    granted: string;
+    denied: string;
+    undecided: string;
+    withdrawn: string;
+    withdraw: string;
+    withdrawHint: string;
+    privacyHeading: string;
+    noDecisions: string;
+    order: (params: { id: string }) => string;
+    settingsHeading: string;
+    enabled: string;
+    settingsHelp: string;
+    testCode: string;
+    copyHelp: string;
+    copyHeading: string;
+    copyBody: string;
+    copyAccept: string;
+    copyDecline: string;
+    token: string;
+    tokenHelp: string;
+  };
   orderVerification: {
     title: string;
     reference: string;

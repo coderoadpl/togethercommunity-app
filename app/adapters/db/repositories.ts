@@ -1,4 +1,5 @@
 import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-erasure.js';
+import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
@@ -2834,8 +2835,26 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
         ))),
       ));
-      await tx.update(orders).set({ attribution: null }).where(and(
+      await tx.update(orders).set({
+        attribution: null,
+        metaCapiConsentWithdrawnAt: sql`coalesce(${orders.metaCapiConsentWithdrawnAt}, ${input.deletedAt}::timestamptz)`,
+      }).where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId)));
+      await tx.insert(metaCapiConsentEvidence).select(tx.select({
+        tenantId: metaCapiConsentEvidence.tenantId, orderId: metaCapiConsentEvidence.orderId,
+        decision: sql<'withdrawn'>`'withdrawn'`.as('decision'), occurredAt: sql<string>`${input.deletedAt}::timestamptz`.as('occurred_at'),
+        textVersion: metaCapiConsentEvidence.textVersion, textSnapshot: metaCapiConsentEvidence.textSnapshot,
+        source: sql<string>`'member-erasure'`.as('source'),
+      }).from(metaCapiConsentEvidence).innerJoin(orders, and(
+        eq(orders.tenantId, metaCapiConsentEvidence.tenantId), eq(orders.id, metaCapiConsentEvidence.orderId),
+      )).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
+        eq(metaCapiConsentEvidence.tenantId, tenantId), eq(metaCapiConsentEvidence.decision, 'granted'),
+      ))).onConflictDoNothing();
+      await tx.delete(metaCapiOutbox).where(and(
+        eq(metaCapiOutbox.tenantId, tenantId),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), eq(orders.id, metaCapiOutbox.orderId),
+        ))),
       ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({
@@ -4458,6 +4477,12 @@ export const createTenantRepository = (
         signInNotice: tenants.signInNotice,
         analyticsTagId: tenants.analyticsTagId,
         analyticsMetaPixelId: tenants.analyticsMetaPixelId,
+        analyticsMetaCapiEnabled: tenants.analyticsMetaCapiEnabled,
+        analyticsMetaCapiTestEventCode: tenants.analyticsMetaCapiTestEventCode,
+        analyticsMetaCapiConsentHeading: tenants.analyticsMetaCapiConsentHeading,
+        analyticsMetaCapiConsentBody: tenants.analyticsMetaCapiConsentBody,
+        analyticsMetaCapiConsentAcceptLabel: tenants.analyticsMetaCapiConsentAcceptLabel,
+        analyticsMetaCapiConsentDeclineLabel: tenants.analyticsMetaCapiConsentDeclineLabel,
         analyticsConsentCookieName: tenants.analyticsConsentCookieName,
         analyticsConsentCookieValue: tenants.analyticsConsentCookieValue,
         analyticsLoadWithoutConsent: tenants.analyticsLoadWithoutConsent,
@@ -4506,6 +4531,12 @@ export const createTenantRepository = (
           signInNotice: row.signInNotice,
           analyticsTagId: row.analyticsTagId,
           analyticsMetaPixelId: row.analyticsMetaPixelId,
+          analyticsMetaCapiEnabled: row.analyticsMetaCapiEnabled,
+          analyticsMetaCapiTestEventCode: row.analyticsMetaCapiTestEventCode,
+          analyticsMetaCapiConsentHeading: row.analyticsMetaCapiConsentHeading,
+          analyticsMetaCapiConsentBody: row.analyticsMetaCapiConsentBody,
+          analyticsMetaCapiConsentAcceptLabel: row.analyticsMetaCapiConsentAcceptLabel,
+          analyticsMetaCapiConsentDeclineLabel: row.analyticsMetaCapiConsentDeclineLabel,
           analyticsConsentCookieName: row.analyticsConsentCookieName,
           analyticsConsentCookieValue: row.analyticsConsentCookieValue,
           analyticsLoadWithoutConsent: row.analyticsLoadWithoutConsent,
@@ -4570,6 +4601,12 @@ export const createTenantRepository = (
         signInNotice: settings.signInNotice,
         analyticsTagId: settings.analyticsTagId,
         analyticsMetaPixelId: settings.analyticsMetaPixelId,
+        analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
+        analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
+        analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
+        analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
+        analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
+        analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
         analyticsConsentCookieName: settings.analyticsConsentCookieName,
         analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
         analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
@@ -4614,6 +4651,12 @@ export const createTenantRepository = (
       signInNotice: settings.signInNotice,
       analyticsTagId: settings.analyticsTagId,
       analyticsMetaPixelId: settings.analyticsMetaPixelId,
+      analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
+      analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
+      analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
+      analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
+      analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
+      analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
       analyticsConsentCookieName: settings.analyticsConsentCookieName,
       analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
       analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,

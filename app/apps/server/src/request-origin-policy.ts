@@ -73,6 +73,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.accountSessionsRevokeOthers,
     API_ROUTES.memberErasureRequestCreate,
     API_ROUTES.memberErasureRequestCancel,
+    API_ROUTES.withdrawMetaCapiConsent,
     API_ROUTES.tenantsCreate,
     API_ROUTES.productsCreate,
     API_ROUTES.productsUpdate,
@@ -249,6 +250,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.submitMarketingSignupForm,
     API_ROUTES.directSalesLinkCheckout,
     API_ROUTES.couponCheckoutValidation,
+    API_ROUTES.publicMetaCapiConsent,
     API_ROUTES.authResolve,
   ]),
   ...classify('optional-session', [

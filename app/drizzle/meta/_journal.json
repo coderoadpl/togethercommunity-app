@@ -1079,6 +1079,13 @@
       "when": 1790964000051,
       "tag": "0153_inpost_shipx",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1790964000061,
+      "tag": "0154_meta_capi",
+      "breakpoints": true
     }
   ]
 }

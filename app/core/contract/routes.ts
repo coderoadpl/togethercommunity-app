@@ -1,6 +1,8 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
+import { META_CAPI_ROUTES } from './meta-capi.js';
+import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
 import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
@@ -470,6 +472,7 @@ export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInput
 export const publicCheckoutSessionStatusOutputSchema = z.object({
   status: z.enum(['pending', 'paid']),
   analytics: checkoutPurchaseAnalyticsSchema.optional(),
+  metaCapi: metaCapiConfigSchema.optional(),
 }).strict();
 
 export const publicPaymentConfigOutputSchema = z.object({
@@ -1917,6 +1920,7 @@ export const authSendLogLatestOutputSchema = z.object({
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  ...META_CAPI_ROUTES,
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
@@ -2244,6 +2248,10 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  publicMetaCapiConsent: API_ROUTES.publicMetaCapiConsent.path,
+  metaCapiEvents: API_ROUTES.metaCapiEvents.path,
+  metaCapiConsents: API_ROUTES.metaCapiConsents.path,
+  withdrawMetaCapiConsent: API_ROUTES.withdrawMetaCapiConsent.path,
   directSalesLinkCheckout: API_ROUTES.directSalesLinkCheckout.path,
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,

@@ -9,6 +9,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 |---|---|---|---|
 | `GET /offer/:slug` | public | read | Sales-link metadata and checkout redirect without creating sessions for crawlers |
 | `POST /api/public/sales-links/:slug/checkout` | public | mutating | Rate-limited direct sales-link checkout session creation |
+| `POST /api/public/meta-capi/consent` | public | mutating | Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes |
 | `GET /manifest.webmanifest` | public | read | PWA web app manifest with tenant name |
 | `GET /robots.txt` | public | read | Tenant crawler policy must bypass the SPA and social preview fallback |
 | `GET /sitemap.xml` | public | read | Tenant public navigation must be discoverable at its canonical origin |
@@ -205,6 +206,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/sales-links/:id` | authenticated | mutating | delete sales link |
 | `GET /api/orders/verify/:reference` | authenticated | read | verify order |
 | `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
+| `GET /api/meta-capi/events` | authenticated | read | meta capi events |
+| `GET /api/me/meta-capi/consents` | authenticated | read | meta capi consents |
+| `POST /api/me/meta-capi/withdraw` | authenticated | mutating | withdraw meta capi consent |
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |

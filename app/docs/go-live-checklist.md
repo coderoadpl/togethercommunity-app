@@ -623,8 +623,12 @@ launch record.
 
 **STATUS:** pre-launch-verify
 
-`smoke:remote` is a manual command, no workflow invokes it, and its SHA
-comparison is silently skipped when `EXPECTED_SHA` is absent. For launch,
+`smoke:remote` silently skips its SHA comparison when `EXPECTED_SHA` is absent.
+The `prod-smoke` workflow runs it after each successful Production deployment
+status with the deployment SHA, and on manual dispatch with an optional SHA;
+the `staging-smoke` workflow runs the same script as `smoke:staging` on
+`staging` pushes, daily, and on manual dispatch. Those runs are post-deployment
+monitors that do not block a deployment, not this attestation. For launch,
 `EXPECTED_SHA` is mandatory. Fetch the promoted branch, resolve its exact head,
 and run the command against the deployed production URL:
 

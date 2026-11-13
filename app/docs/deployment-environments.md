@@ -438,18 +438,24 @@ The `staging-smoke` workflow runs `smoke:staging` on pushes to `staging`, on a
 daily schedule, and on manual dispatch. Push runs wait for the pushed SHA;
 scheduled runs and manual dispatch without an expected SHA probe the current
 alias. Missing deployment-protection bypass credentials skip the staging
-probe. These are automated post-deployment monitors, not substitutes for the
-owner-approved promotion or its retained SHA attestation.
+probe. These are automated post-deployment monitors that do not block a
+deployment; they are not substitutes for the owner-approved promotion or its
+retained manual SHA attestation.
 
-Live repository rulesets were read on 2026-11-12: `main-protection` (20889929)
-and `staging-gates` (20889930) are active and require pull requests and status
-checks on `main` and `staging`. The main rule requires one code-owner approval,
-dismisses stale approvals, requires last-push approval and resolved review
-threads, and permits merge commits only. Staging requires zero approvals and
-merge commits only. Both branches must require up-to-date status checks and
-resolved review threads. Two live gaps remain open: main has
-`strict_required_status_checks_policy=false`, and staging has
-`required_review_thread_resolution=false`; the requirements are not waived.
+An agent read the live repository rulesets through the GitHub API on
+2026-11-12: `main-protection` (20889929) and `staging-gates` (20889930) are
+active and require pull requests and status checks on `main` and `staging`. The
+main rule requires one code-owner approval, dismisses stale approvals, requires
+last-push approval and resolved review threads, and permits merge commits only.
+Staging requires zero approvals and merge commits only. Both branches must
+require up-to-date status checks and resolved review threads. Two live gaps
+remain open: main has `strict_required_status_checks_policy=false`, so it does
+not require branches to be up to date, and staging has
+`required_review_thread_resolution=false`, so it does not require resolved
+review threads; the requirements are not waived. The reading is not owner
+evidence: the production-promotion wall stays procedural until the owner records
+the live rules under
+[go-live item 16](go-live-checklist.md#16-production-branch-and-approval-wall).
 
 The staging smoke also requests a magic-link sign-in for the seeded tenant
 member without reading or following the link, then polls an operator-secret-gated

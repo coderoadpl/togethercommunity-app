@@ -302,9 +302,19 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   app.get(API_PATHS.healthReady, async () => {
     if (!(await deps.health.pingDatabase())) return respond(err(unavailable('Database is not reachable')));
     const migrations = await deps.health.migrationCounts();
-    if (migrations.applied === null || migrations.applied < migrations.expected) {
+    if (migrations.applied === null && migrations.journal === 'unreadable') {
       return respond(err(unavailable(
-        `Database migrations are behind this release: ${String(migrations.applied ?? 0)} of ${String(migrations.expected)} applied`,
+        `The migration journal could not be read, so this release's ${String(migrations.expected)} migrations cannot be confirmed`,
+      )));
+    }
+    if (migrations.applied === null) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: no migration journal yet, 0 of ${String(migrations.expected)} applied`,
+      )));
+    }
+    if (migrations.applied < migrations.expected) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: ${String(migrations.applied)} of ${String(migrations.expected)} applied`,
       )));
     }
     return respond(ok({ status: 'ok' as const, database: 'up' as const, ...attestation }));

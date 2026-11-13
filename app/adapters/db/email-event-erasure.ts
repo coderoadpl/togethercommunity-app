@@ -3,8 +3,10 @@ import { and, asc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { emailEventSchema, normalizeEmail, snapshotPayloadsEqual, type EmailEventType } from '#core/domain/index.js';
 import { readStoredMarketingSesCorrelations, scrubErasedMarketingSnsBody, type MarketingSesCorrelation } from '#core/domain/marketing-sns-erasure.js';
 import { scrubErasedEmailEvent } from '#core/domain/email-event-erasure.js';
+import { marketingSnsJsonValue, storedCanonicalSnsEnvelopeSchema } from '#core/domain/marketing-sns-inbox.js';
 import type { EmailHmac } from '#core/server/index.js';
 
+import { createContentHash } from '../crypto/content-hash.js';
 import type { Db } from './client.js';
 import { campaignSends, emailEvents, emailOutbox, erasedMemberImports, marketingContacts, marketingSnsInbox, members, suppressions } from './schema.js';
 
@@ -27,12 +29,17 @@ const scrubInbox = async (
       cursor === undefined ? undefined : gt(marketingSnsInbox.id, cursor))).orderBy(asc(marketingSnsInbox.id)).limit(500);
     if (rows.length === 0) break;
     for (const row of rows) {
-      if (row.messageType !== 'Notification' || !readStoredMarketingSesCorrelations(row.rawBody, row.topicArn).some(matches)) continue;
+      const canonical = storedCanonicalSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(row.rawBody ?? ''));
+      const canonicalBody = canonical.success ? JSON.stringify(canonical.data) : row.rawBody;
+      const bodySha256 = canonical.success ? createContentHash().sha256(canonicalBody ?? '') : row.bodySha256;
+      const recipientErased = row.messageType === 'Notification' && readStoredMarketingSesCorrelations(canonicalBody, row.topicArn).some(matches);
+      const rawBody = recipientErased ? scrubErasedMarketingSnsBody(canonicalBody, row.topicArn, (email) => hmac.compute(tenantId, email)) : canonicalBody;
+      const changed = rawBody !== row.rawBody || bodySha256 !== row.bodySha256;
+      if (!recipientErased && !changed) continue;
       totals.matched += 1;
-      const rawBody = scrubErasedMarketingSnsBody(row.rawBody, row.topicArn, (email) => hmac.compute(tenantId, email));
-      if (rawBody === row.rawBody) continue;
+      if (!changed) continue;
       totals.changed += 1;
-      if (apply) await db.update(marketingSnsInbox).set({ rawBody }).where(and(eq(marketingSnsInbox.tenantId, tenantId), eq(marketingSnsInbox.id, row.id)));
+      if (apply) await db.update(marketingSnsInbox).set({ rawBody, bodySha256 }).where(and(eq(marketingSnsInbox.tenantId, tenantId), eq(marketingSnsInbox.id, row.id)));
     }
     cursor = rows.at(-1)?.id;
   }

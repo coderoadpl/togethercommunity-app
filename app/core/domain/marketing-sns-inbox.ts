@@ -42,7 +42,7 @@ const canonicalSnsEnvelopeSchema = z.object({
 });
 export const storedCanonicalSnsEnvelopeSchema = z.discriminatedUnion('Type', [
   canonicalSnsEnvelopeSchema.extend({ Type: z.literal('Notification') }),
-  canonicalSnsEnvelopeSchema.extend({ Type: z.literal('SubscriptionConfirmation'), SubscribeURL: z.string().optional() }),
+  canonicalSnsEnvelopeSchema.extend({ Type: z.literal('SubscriptionConfirmation'), SubscribeURL: z.string().optional().catch(undefined) }),
 ]);
 export const marketingSnsReceiptSchema = marketingSnsInboxSchema.omit({ rawBody: true });
 const payloadSchema = z.object({

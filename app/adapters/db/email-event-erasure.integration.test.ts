@@ -415,6 +415,13 @@ it.each((['process', 'retry', 'replay', 'erase', 'repair'] as const).flatMap((st
     await assertInboxScrubbed(tenantId);
     expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 0 });
   }
+  if (stage === 'erase' || stage === 'repair') {
+    const canonicalBody = JSON.stringify({ Type: 'Notification', MessageId: input.envelope.messageId,
+      TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message });
+    expect((await inboxRows(tenantId))[0]?.bodySha256).toBe(createContentHash().sha256(canonicalBody));
+    expect(await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), input, deps))
+      .toMatchObject({ ok: true, value: { id, status: 'dead_letter' } });
+  }
   if (stage !== 'process' && stage !== 'retry') {
     expect((await retryMarketingSnsInbox(deliveryCtx(tenantId), { inboxId: id }, deps)).ok).toBe(true);
   }
@@ -436,22 +443,49 @@ it.each((['process', 'retry', 'replay', 'erase', 'repair'] as const).flatMap((st
     .toMatchObject([{ reason: 'erasure', email: null }]);
 });
 
-it.each(['object', 'null', 'malformed'] as const)('does not erase an unrelated Notification from unsigned top-level data with %s SubscribeURL', async (variant) => {
-  const tenantId = `unsigned-address-${variant}`;
+it.each((['erase', 'repair'] as const).flatMap((stage) =>
+  (['object', 'null', 'extra'] as const).map((variant) => ({ stage, variant }))))('canonicalizes unrelated legacy receipts during $stage with $variant unsigned data without affecting processing', async ({ stage, variant }) => {
+  const tenantId = `unsigned-address-${stage}-${variant}`;
   await seed(tenantId);
-  const rawBody = JSON.stringify({ Type: 'Notification', SubscribeURL: variant === 'null' ? null : { recipient: address },
-    ...(variant === 'null' ? { unsignedRecipient: address } : {}),
-    Message: variant === 'malformed' ? null : JSON.stringify({ eventType: 'Delivery',
-      mail: { messageId: 'unrelated-provider', destination: ['other@example.test'] },
-      delivery: { timestamp: now, recipients: ['other@example.test'] } }),
+  if (stage === 'repair') await erase(tenantId);
+  const messageId = `${tenantId}-unrelated-provider`;
+  const sendId = `${tenantId}-unrelated-send`;
+  await database.db.insert(campaignSends).values({ id: sendId, tenantId, source: 'api', email: 'other@example.test',
+    subject: 'Other news', status: 'sent', sesMessageId: messageId, sentAt: now, createdAt: now });
+  const message = JSON.stringify({ eventType: 'Delivery',
+    mail: { messageId, destination: ['other@example.test'] }, delivery: { timestamp: now, recipients: ['other@example.test'] } });
+  const envelope = { type: 'Notification' as const, messageId: 'unrelated-notification', topicArn: 'topic', timestamp: now, message, subscribeUrl: null };
+  const signed = createSignedSnsNotification(envelope);
+  const rawBody = JSON.stringify({ ...signed.envelope,
+    ...(variant === 'extra' ? {} : { SubscribeURL: variant === 'null' ? null : { recipient: address } }),
+    ...(variant === 'object' ? {} : { unsignedRecipient: address }),
   });
+  expect((await signed.verifier.verify({ rawBody, headers: {}, region: 'eu-central-1' })).ok).toBe(true);
+  const id = `${tenantId}-receipt`;
   await database.db.insert(marketingSnsInbox).values({
-    id: `${tenantId}-receipt`, tenantId, topicArn: 'topic', snsMessageId: 'unrelated-notification', messageType: 'Notification',
+    id, tenantId, topicArn: 'topic', snsMessageId: envelope.messageId, messageType: 'Notification',
     rawBody, bodySha256: createContentHash().sha256(rawBody), verifiedAt: now, receivedAt: now, status: 'pending', nextAttemptAt: now,
   });
-  const before = await inboxRows(tenantId);
-  await erase(tenantId);
-  expect(await inboxRows(tenantId)).toEqual(before);
+  const [before] = await inboxRows(tenantId);
+  if (stage === 'erase') await erase(tenantId);
+  else {
+    expect((await repairErasedEmailEvents(database.db, tenantId, hmac, false)).inbox).toEqual({ matched: 1, changed: 1 });
+    expect(await inboxRows(tenantId)).toEqual([before]);
+    expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 1, changed: 1 });
+  }
+  const canonicalBody = JSON.stringify({ Type: envelope.type, MessageId: envelope.messageId,
+    TopicArn: envelope.topicArn, Timestamp: envelope.timestamp, Message: message });
+  const [stored] = await inboxRows(tenantId);
+  expect(stored).toEqual({ ...before, rawBody: canonicalBody, bodySha256: createContentHash().sha256(canonicalBody) });
+  expect(stored?.rawBody).not.toContain(address);
+  expect(readStoredMarketingSesEvents(stored?.rawBody ?? null, 'topic')).toMatchObject([{ kind: 'delivery', messageId, recipient: 'other@example.test' }]);
   expect((await repairErasedEmailEvents(database.db, tenantId, hmac, true)).inbox).toEqual({ matched: 0, changed: 0 });
-  expect(await inboxRows(tenantId)).toEqual(before);
+  const deps = inboxDeps();
+  const duplicate = await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { envelope }, deps);
+  expect(duplicate).toMatchObject({ ok: true, value: { id, status: 'pending', rawBody: canonicalBody } });
+  const conflict = await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(tenantId), { envelope: { ...envelope, message: message + ' ' } }, deps);
+  expect(conflict.ok).toBe(false);
+  expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, deps)).toEqual(ok({ processed: 1, retried: 0 }));
+  expect((await inboxRows(tenantId))[0]).toMatchObject({ status: 'processed', rawBody: canonicalBody });
+  expect((await rows(tenantId)).filter((event) => event.refId === sendId)).toMatchObject([{ type: 'delivered', meta: { rawProviderPayload: marketingSnsJsonValue(message) } }]);
 });

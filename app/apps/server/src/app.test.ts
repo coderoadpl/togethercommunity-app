@@ -10345,6 +10345,63 @@ it('rejects a simulated bundle coupon that applies only to the first product', a
 });
 
 
+describe('public sales-link read CORS', () => {
+  const headers = { host: 'acme.localhost', origin: 'https://studio.togethercommunity.app' };
+
+  it('allows anonymous cross-origin GET and only GET preflights on the declared read route', async () => {
+    const h = simulatedBundleApp();
+    h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+    const response = await h.app.request('/api/public/sales-links/bundle', { headers });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.has('access-control-allow-credentials')).toBe(false);
+    expect(envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json()).ok).toBe(true);
+
+    const preflight = await h.app.request('/api/public/sales-links/bundle', {
+      method: 'OPTIONS',
+      headers: { ...headers, 'access-control-request-method': 'GET', 'access-control-request-headers': 'x-tenant, if-none-match' },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(preflight.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+    expect(preflight.headers.get('access-control-allow-headers')).toBe('x-tenant, content-type, if-none-match');
+    expect(preflight.headers.get('access-control-max-age')).toBe('60');
+    expect(preflight.headers.has('access-control-allow-credentials')).toBe(false);
+    expect(publicRouteManifestEntry({ path: API_PATHS.getPublicSalesLink, method: 'OPTIONS' })).toMatchObject({ mutating: false });
+    expect(publicRouteManifestEntry({ path: API_PATHS.getPublicSalesLink, method: 'POST' })).toBeUndefined();
+  });
+
+  it('keeps the existing public preflight methods and headers unchanged', async () => {
+    const app = buildApp(deps());
+    for (const [path, method] of [
+      [API_PATHS.publicOffer, 'GET'],
+      [API_PATHS.publicPaymentConfig, 'GET'],
+      [API_PATHS.publicCheckoutSessionStatus, 'GET'],
+      [API_PATHS.checkoutSession, 'POST'],
+    ] as const) {
+      const response = await app.request(path, { method: 'OPTIONS', headers: { ...headers, 'access-control-request-method': method } });
+      expect(response.status).toBe(204);
+      expect(response.headers.get('access-control-allow-origin')).toBe('*');
+      expect(response.headers.get('access-control-allow-methods')).toBe(`${method}, OPTIONS`);
+      expect(response.headers.get('access-control-allow-headers')).toBe('x-tenant, content-type, if-none-match');
+      expect(response.headers.has('access-control-allow-credentials')).toBe(false);
+    }
+  });
+
+  it('does not expose the direct checkout POST cross-origin', async () => {
+    const app = buildApp(deps());
+    for (const method of ['OPTIONS', 'POST']) {
+      const response = await app.request('/api/public/sales-links/bundle/checkout', {
+        method,
+        headers: { ...headers, 'content-type': 'application/json', 'access-control-request-method': 'POST' },
+        ...(method === 'POST' ? { body: '{}' } : {}),
+      });
+      expect(response.headers.has('access-control-allow-origin')).toBe(false);
+      expect(response.headers.has('access-control-allow-credentials')).toBe(false);
+    }
+  });
+});
+
 it('exposes only public sales-link fields and accepts its slug for checkout', async () => {
   const h = simulatedBundleApp();
   h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };

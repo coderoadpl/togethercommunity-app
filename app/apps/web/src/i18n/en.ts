@@ -23,7 +23,7 @@ export const en: Messages = {
     enabled: 'Ask buyers for Meta purchase-sharing consent',
     settingsHelp: 'Sends purchases only after an explicit choice on the confirmation page, independently of pixel cookies. Requires a Meta pixel ID, a privacy-policy URL and an access token. Test purchases are excluded.',
     testCode: 'Test event code',
-    copyHelp: 'Leave copy fields empty to use the default Polish consent text. Identify your organization in the copy and publish the applicable privacy notice. Clear the test event code after verification.',
+    copyHelp: "Leave copy fields empty to use the default consent text in the language of the buyer's page (English or Polish). Identify your organization in the copy and publish the applicable privacy notice. Clear the test event code after verification.",
     copyHeading: 'Consent heading',
     copyBody: 'Consent text',
     copyAccept: 'Accept button label',

@@ -29,7 +29,7 @@ export const pl: Messages = {
     enabled: 'Pytaj kupujących o zgodę na przekazanie zakupu do Meta',
     settingsHelp: 'Zakupy są wysyłane tylko po wyraźnym wyborze na stronie potwierdzenia, niezależnie od cookies piksela. Wymagane są: identyfikator piksela Meta, adres polityki prywatności i token dostępu. Zakupy testowe są pomijane.',
     testCode: 'Kod zdarzeń testowych',
-    copyHelp: 'Puste pola treści przywracają domyślny polski tekst zgody. Wskaż swoją organizację w treści i opublikuj odpowiednią politykę prywatności. Usuń kod zdarzeń testowych po weryfikacji.',
+    copyHelp: 'Puste pola treści przywracają domyślny tekst zgody w języku strony kupującego (angielskim lub polskim). Wskaż swoją organizację w treści i opublikuj odpowiednią politykę prywatności. Usuń kod zdarzeń testowych po weryfikacji.',
     copyHeading: 'Nagłówek zgody',
     copyBody: 'Treść zgody',
     copyAccept: 'Etykieta przycisku akceptacji',

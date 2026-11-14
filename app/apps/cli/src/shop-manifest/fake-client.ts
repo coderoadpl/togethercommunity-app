@@ -1,5 +1,6 @@
+import { z } from 'zod';
 import { createApiClient } from '#core/client/index.js';
-import { productPriceSchema, productSchema, productStockSchema, tenantSettingsSchema, type AppError, type Product, type ProductPrice, type ProductStock, type TenantSettings } from '#core/domain/index.js';
+import { newProductSchema, newProductPriceSchema, productPriceSchema, productSchema, productStockSchema, tenantSettingsSchema, updateProductInputSchema, updateTenantSettingsInputSchema, enableStockTrackingInputSchema, adjustStockInputSchema, type AppError, type Product, type ProductPrice, type ProductStock, type TenantSettings } from '#core/domain/index.js';
 
 export const manifestFixture = {
   version: 1,
@@ -24,7 +25,7 @@ export const existingStock = (onHand: number): ProductStock => productStockSchem
 export const createManifestFake = (workspace = 'acme') => {
   const state: {
     settings: TenantSettings; products: Product[]; prices: ProductPrice[]; stock: ProductStock | null;
-    requests: string[]; failure: { path: string; error: AppError } | null;
+    requests: string[]; failure: { path: string; method?: string; error: AppError } | null;
   } = {
     settings: tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null }),
     products: [], prices: [], stock: null, requests: [], failure: null,
@@ -35,11 +36,63 @@ export const createManifestFake = (workspace = 'acme') => {
       const path = new URL(String(input)).pathname;
       state.requests.push(`${init?.method ?? 'GET'} ${path}`);
       const send = (data: unknown) => new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
-      if (state.failure?.path === path) return new Response(JSON.stringify({ ok: false, error: state.failure.error }), { status: 403, headers: { 'content-type': 'application/json' } });
+      if (state.failure?.path === path && (state.failure.method === undefined || state.failure.method === init?.method)) return new Response(JSON.stringify({ ok: false, error: state.failure.error }), { status: 403, headers: { 'content-type': 'application/json' } });
+      if (init?.method === 'POST') {
+        const body: unknown = JSON.parse(z.string().parse(init.body));
+        if (path === '/api/tenant/settings') {
+          state.settings = tenantSettingsSchema.parse({ ...state.settings, ...updateTenantSettingsInputSchema.parse(body) });
+          return send({ settings: state.settings });
+        }
+        if (path === '/api/products') {
+          const fields = newProductSchema.parse(body);
+          const product = existingProduct({ ...fields, id: `p${state.products.length + 1}`, slug: fields.slug ?? 'paperback' });
+          state.products.push(product);
+          return send({ product });
+        }
+        if (path === '/api/products/update') {
+          const fields = updateProductInputSchema.parse(body);
+          const product = state.products.find((product) => product.id === fields.id);
+          if (!product) throw new Error('Missing fake product');
+          Object.assign(product, fields);
+          return send({ product });
+        }
+        if (path === '/api/products/prices') {
+          const fields = newProductPriceSchema.parse(body);
+          const price = existingPrice({ ...fields, id: `price${state.prices.length + 1}`, interval: null });
+          state.prices.push(price);
+          return send({ price });
+        }
+        if (path === '/api/products/prices/deactivate') {
+          const { id } = z.object({ id: z.string() }).parse(body);
+          const price = state.prices.find((price) => price.id === id);
+          if (!price) throw new Error('Missing fake price');
+          price.active = false;
+          return send({ price });
+        }
+        if (path === '/api/products/stock/enable') {
+          const fields = enableStockTrackingInputSchema.parse(body);
+          state.stock = { ...existingStock(fields.onHand), productId: fields.productId, reserved: 0, available: fields.onHand };
+          return send({ stock: state.stock });
+        }
+        if (path === '/api/products/stock/adjust') {
+          const fields = adjustStockInputSchema.parse(body);
+          if (!state.stock) throw new Error('Missing fake stock');
+          state.stock = existingStock(state.stock.onHand + fields.delta);
+          return send({ stock: state.stock });
+        }
+        if (path === '/api/products/publish' || path === '/api/products/unpublish') {
+          const { id } = z.object({ id: z.string() }).parse(body);
+          const product = state.products.find((product) => product.id === id);
+          if (!product) throw new Error('Missing fake product');
+          product.published = path === '/api/products/publish';
+          return send({ product });
+        }
+        throw new Error(`Unexpected fake mutation: ${path}`);
+      }
       if (path === '/api/me') return send({ userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug: workspace, name: 'Acme', staffRole: 'owner', memberId: null, banned: false } });
       if (path === '/api/tenant/settings') return send({ settings: state.settings });
       if (path === '/api/products') return send({ products: state.products });
-      if (path.endsWith('/prices')) return send({ prices: state.prices });
+      if (path.endsWith('/prices')) return send({ prices: state.prices.filter((price) => path === `/api/products/${price.productId}/prices`) });
       if (path.endsWith('/stock')) return send({ stock: state.stock });
       throw new Error(`Unexpected fake request: ${path}`);
     },

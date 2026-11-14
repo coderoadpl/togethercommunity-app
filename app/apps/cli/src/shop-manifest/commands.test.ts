@@ -42,16 +42,16 @@ describe('shop manifest command boundary', () => {
     expect(await readManifestFile(join(path, 'missing'))).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('emits one failure envelope and uses the validation exit code', async () => {
+  it.each(['plan', 'apply'])('%s emits one failure envelope and uses the validation exit code', async (command) => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const path = await inputFile('not JSON');
-    await program().parseAsync(['--json', 'shop', 'plan', '--manifest', path], { from: 'user' });
+    await program().parseAsync(['--json', 'shop', command, '--manifest', path], { from: 'user' });
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
   });
 
-  it('sends the session and shop selector through the existing typed client, read-only', async () => {
+  it.each(['plan', 'apply'])('%s sends the session and shop selector through the typed client without writes for an empty catalogue', async (command) => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       expect(new URL(String(input)).hostname).toBe('acme.togethercommunity.app');
@@ -63,7 +63,7 @@ describe('shop manifest command boundary', () => {
       return new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
     });
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
-    await program().parseAsync(['--json', 'shop', 'plan', '--manifest', path, '--shop', 'acme'], { from: 'user' });
+    await program().parseAsync(['--json', 'shop', command, '--manifest', path, '--shop', 'acme'], { from: 'user' });
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme', products: [] }] } });

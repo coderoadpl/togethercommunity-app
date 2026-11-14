@@ -35,10 +35,11 @@ What it does not prove:
 - **The real Google consent screen and token exchange.** Those still need the
   manual smoke below.
 - **That One Tap loads in production.** The login document's content security
-  policy (`script-src 'self'` from the server middleware in
-  `apps/server/src/app.ts` and from the static hosting headers in `vercel.json`)
-  blocks `https://accounts.google.com/gsi/client`, so the One Tap prompt never
-  runs in a real browser today. The One Tap scenario creates its browser context
+  policy allows scripts from the platform only (`script-src 'self'` in the static
+  hosting headers of `vercel.json`; `'self'` plus a per-response nonce from the
+  server middleware in `apps/server/src/app.ts`). It blocks
+  `https://accounts.google.com/gsi/client`, so the One Tap prompt never runs in a
+  real browser today. The One Tap scenario creates its browser context
   with the policy bypassed, which keeps the page branch and the server path
   covered; the OAuth scenario and the other journeys run under the real policy.
   Allowing Google's script on the login document needs a dated owner decision in

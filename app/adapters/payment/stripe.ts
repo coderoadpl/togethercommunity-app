@@ -281,7 +281,6 @@ const toCheckoutSessionEvent = (
     email: session.customer_details?.email ?? session.customer_email ?? null,
     customerName: session.customer_details?.name ?? null,
     customerCountry: session.customer_details?.address?.country ?? null,
-    testPurchase: session.metadata?.test_purchase === '1',
     billing: checkoutBilling(session.customer_details ?? null),
     termsAccepted: session.consent?.terms_of_service === 'accepted',
     paymentStatus: session.payment_status,

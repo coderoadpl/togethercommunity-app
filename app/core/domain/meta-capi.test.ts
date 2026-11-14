@@ -36,11 +36,10 @@ describe('Meta conversion domain rules', () => {
     expect(metaCapiBlockReason({ ...order, paidAt: null }, granted, true, paidAt)).toBe('blocked');
     expect(metaCapiBlockReason({ ...order, status: 'pending' }, granted, true, paidAt)).toBe('blocked');
   });
-  it('rejects test sessions, explicit test purchases, simulated purchases and future timestamps', () => {
+  it('rejects test sessions, test-mode orders, simulated purchases and future timestamps', () => {
     for (const changed of [
       { ...order, mode: 'test' as const }, { ...order, provider: 'simulated' as const },
       { ...order, providerObjectIds: { checkoutSession: 'cs_test_purchase' } },
-      { ...order, providerObjectIds: { ...order.providerObjectIds, testPurchase: '1' } },
     ]) expect(metaCapiBlockReason(changed, granted, true, paidAt)).toBe('blocked');
     expect(metaCapiBlockReason(order, granted, true, '2026-10-31T10:00:00.000Z')).toBe('blocked');
   });

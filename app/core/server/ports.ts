@@ -1052,7 +1052,6 @@ export interface PaymentWebhookEvent {
     email: string | null;
     customerName?: string | null;
     customerCountry?: string | null;
-    testPurchase?: boolean;
     billing?: Order['billing'];
     termsAccepted?: boolean;
     paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required' | null;

@@ -50,7 +50,7 @@ export const metaCapiConsentsOutputSchema = z.object({ consents: z.array(metaCap
 export const metaCapiBlockReason = (order: Order, state: MetaCapiState, enabled: boolean, now: string): 'blocked' | 'expired' | null => {
   if (!enabled || state.consent !== 'granted' || state.withdrawnAt !== null || order.mode !== 'live'
     || order.provider !== 'stripe' || order.providerObjectIds.checkoutSession?.startsWith('cs_live_') !== true
-    || order.providerObjectIds.testPurchase === '1' || !['paid', 'partially_refunded', 'refunded'].includes(order.status)) return 'blocked';
+    || !['paid', 'partially_refunded', 'refunded'].includes(order.status)) return 'blocked';
   if (!order.paidAt || !Number.isFinite(Date.parse(order.paidAt)) || Date.parse(order.paidAt) > Date.parse(now)) return 'blocked';
   return Date.parse(now) - Date.parse(order.paidAt) >= 7 * 24 * 60 * 60 * 1000 ? 'expired' : null;
 };

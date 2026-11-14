@@ -1390,6 +1390,27 @@ it.each([
   } } });
 });
 
+it.each([
+  [{ email: 'buyer@example.test', address: { line1: null, line2: null, postal_code: null, city: null, state: null, country: 'PL' } }, 'PL'],
+  [{ email: 'buyer@example.test', address: { line1: 'Main 1', line2: null, postal_code: null, city: null, state: null, country: null } }, null],
+  [{ email: 'buyer@example.test', address: null }, null],
+  [null, null],
+])('maps the customer address country onto the checkout session (%j)', async (details, country) => {
+  const result = await verify(JSON.stringify({ id: 'evt_country', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_country', customer_details: details, metadata: { tenantId: 'tenant-a', productId: 'product-1' },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: { customerCountry: country } } });
+});
+
+it('does not read a test-purchase flag from session metadata', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_test_flag', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_test_flag', customer_details: { email: 'buyer@example.test' },
+    metadata: { tenantId: 'tenant-a', productId: 'product-1', test_purchase: '1' },
+  } } }));
+  if (!result.ok) throw new Error('Expected a verified event');
+  expect(result.value.checkoutSession).not.toHaveProperty('testPurchase');
+});
+
 it('preserves long legal URLs through bounded metadata values', async () => {
   const termsUrl = `https://example.com/terms?version=${'a'.repeat(510)}`;
   const privacyUrl = 'https://example.com/privacy';

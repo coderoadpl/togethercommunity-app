@@ -161,10 +161,10 @@ table still starts at v26.0, so no release date is inferred for v27.0.
 | `test_event_code` | Optional workspace test code, outside the event object |
 
 Existing fbclid/gclid attribution persistence is unchanged. Gclid and UTM fields
-are not sent to Meta. Test-mode orders, `cs_test_` sessions, simulated purchases
-and purchases marked `test_purchase=1` are blocked. A missing or future paid-at is
-blocked; purchases at least seven days old expire. Eligibility and withdrawal
-are rechecked before every attempt, including retries.
+are not sent to Meta. Test-mode orders, `cs_test_` sessions and simulated
+purchases are blocked. A missing or future paid-at is blocked; purchases at least
+seven days old expire. Eligibility and withdrawal are rechecked before every
+attempt, including retries.
 
 HTTP 5xx and network/timeout failures receive at most three retries, after 1, 2
 and 4 minutes. HTTP 4xx, including 429, and invalid successful responses are final

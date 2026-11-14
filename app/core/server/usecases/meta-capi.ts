@@ -21,8 +21,7 @@ export const getMetaCapiConfig = async (tenantId: string, sessionId: string, dep
   if (!current || !settings) return undefined;
   const copy = metaCapiCopy(settings, locale);
   const enabled = !current.memberDeleted && settings.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId && !!copy.privacyUrl
-    && current.order.mode === 'live' && current.order.provider === 'stripe' && current.order.providerObjectIds.testPurchase !== '1'
-    && !sessionId.startsWith('cs_test_');
+    && current.order.mode === 'live' && current.order.provider === 'stripe' && !sessionId.startsWith('cs_test_');
   return { ...current.consent, ...copy, enabled, locale, textVersion: deps.hash.sha256(JSON.stringify(copy)) };
 };
 

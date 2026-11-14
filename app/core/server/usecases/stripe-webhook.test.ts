@@ -2830,10 +2830,10 @@ describe('Stripe payment mode isolation', () => {
     const live = completedEvent({ objectId: 'cs-live-country', paymentIntentId: 'pi-live-country' });
     if (live.checkoutSession === null) throw new Error('Missing checkout');
     await fulfillStripeWebhook(tenantA, { ...completedEvent({ id: 'evt-prior', objectId: 'cs-test-country', paymentIntentId: 'pi-test-country' }),
-      checkoutSession: { ...live.checkoutSession, customerCountry: 'PL', testPurchase: true } }, h.deps);
+      checkoutSession: { ...live.checkoutSession, customerCountry: 'PL' } }, h.deps);
     const prior = h.orders[0];
     if (prior === undefined) throw new Error('Missing prior order');
-    h.orders[0] = { ...prior, mode: 'test', providerObjectIds: { checkoutSession: 'cs-test-country', paymentIntent: 'pi-test-country', customerCountry: 'PL', testPurchase: '1' } };
+    h.orders[0] = { ...prior, mode: 'test', providerObjectIds: { checkoutSession: 'cs-test-country', paymentIntent: 'pi-test-country', customerCountry: 'PL' } };
     expect(await fulfillStripeWebhook(tenantA, { ...live, mode: 'live', livemode: true,
       checkoutSession: { ...live.checkoutSession, customerCountry: 'PL' } }, h.deps)).toEqual(ok({ processed: true }));
     expect(h.orders.find((order) => order.providerObjectIds['checkoutSession'] === 'cs-live-country'))
@@ -2846,9 +2846,28 @@ describe('Stripe payment mode isolation', () => {
     if (event.checkoutSession === null) throw new Error('Missing checkout');
     liveOrder.providerObjectIds['customerCountry'] = 'PL';
     expect(await fulfillStripeWebhook(tenantA, { ...event,
-      checkoutSession: { ...event.checkoutSession, customerCountry: 'PL', testPurchase: true } }, h.deps)).toEqual(ok({ processed: true }));
+      checkoutSession: { ...event.checkoutSession, customerCountry: 'PL' } }, h.deps)).toEqual(ok({ processed: true }));
     expect(h.orders[1]).toMatchObject({ id: 'test-order', mode: 'test', status: 'paid' });
     expect(h.warnings.some((message) => message.includes('order mode mismatch'))).toBe(false);
+  });
+
+  it.each([
+    ['DE', { customerCountry: 'DE' }],
+    [null, {}],
+    [undefined, {}],
+  ] as const)('stores the customer country %s only when the checkout carries it and finds the order by Stripe identifiers', async (country, stored) => {
+    const h = harness();
+    const base = completedEvent({ objectId: 'cs-country-stored', paymentIntentId: 'pi-country-stored' });
+    if (base.checkoutSession === null) throw new Error('Missing checkout');
+    const event = { ...base, checkoutSession: { ...base.checkoutSession, ...(country === undefined ? {} : { customerCountry: country }) } };
+    const lookup = vi.spyOn(h.deps.paymentRefunds, 'findOrderByProviderObjectIds');
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]?.providerObjectIds).toEqual({ checkoutSession: 'cs-country-stored', paymentIntent: 'pi-country-stored', ...stored });
+    expect(await fulfillStripeWebhook(tenantA, adjustmentEvent({ paymentIntentId: 'pi-country-stored' }), h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toMatchObject([{ status: 'refunded' }]);
+    expect(lookup).toHaveBeenCalled();
+    for (const [, ids] of lookup.mock.calls) expect(ids).not.toHaveProperty('customerCountry');
   });
 
   it.each(['invoice.paid','invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(

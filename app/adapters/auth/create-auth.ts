@@ -526,7 +526,12 @@ const redirectTwoFactorNavigation = (settings: AuthSettings) => ({
           ? requestOrigin
           : null;
         const origin = customHostOrigin ?? target?.origin ?? fallbackOrigin;
-        throw ctx.redirect(twoFactorChallengeUrl(origin, target?.searchParams ?? new URLSearchParams()));
+        // Social sign-in redirects straight to the requested page, not to a login URL carrying returnTo.
+        const continuation = ctx.path?.startsWith('/callback/') === true
+          && target !== null && target.origin === origin && target.pathname !== '/login'
+          ? new URLSearchParams({ returnTo: `${target.pathname}${target.search}` })
+          : target?.searchParams ?? new URLSearchParams();
+        throw ctx.redirect(twoFactorChallengeUrl(origin, continuation));
       }),
     }],
   },

@@ -14,7 +14,7 @@ development rejects `true` (`apps/server/src/env.ts:219-234`). Local development
 means `NODE_ENV` other than `production` with `APP_ENV` unset or `development`
 (`apps/server/src/env.ts:34-39`), so staging and preview refuse to boot with the
 flag on. In local development the auth adapter writes issued links to `dev_magic_links`
-(`adapters/auth/create-auth.ts:792-801`), the dev magic-link endpoint returns
+(`adapters/auth/create-auth.ts:928-937`), the dev magic-link endpoint returns
 them (`apps/server/src/internal-app.ts:1124-1128`), and the simulated-purchase
 response includes the issued link (`apps/server/src/internal-app.ts:1120-1121`).
 

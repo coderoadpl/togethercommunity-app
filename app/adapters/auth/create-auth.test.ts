@@ -1429,6 +1429,99 @@ describe('host-scoped credentials', () => {
     expect(challengeCookie).not.toBe('');
     expect(challengeCookie).not.toContain('Domain=');
   });
+
+  const twoFactorChallengeLocation = async (
+    auth: ReturnType<typeof buildAuth>['auth'],
+    { path, host, location }: { path: string; host: string; location: string },
+  ): Promise<string | null> => {
+    const context = await auth.$context;
+    const plugin: unknown = context.options.plugins?.find((candidate) => candidate.id === 'two-factor-navigation');
+    const hooks = typeof plugin === 'object' && plugin !== null ? Reflect.get(plugin, 'hooks') : undefined;
+    const after = typeof hooks === 'object' && hooks !== null ? Reflect.get(hooks, 'after') : undefined;
+    const hook = z.object({
+      matcher: z.function().args(z.object({ path: z.string().optional() })).returns(z.boolean()),
+      handler: z.function().args(z.unknown()).returns(z.promise(z.unknown())),
+    }).parse(Array.isArray(after) ? after[0] : undefined);
+    expect(hook.matcher({ path })).toBe(true);
+    try {
+      await hook.handler({
+        path,
+        request: new Request(`http://${host}/api/auth${path}`, { headers: { host } }),
+        headers: new Headers({ host }),
+        context: { ...context, returned: { twoFactorRedirect: true }, responseHeaders: new Headers({ location }) },
+      });
+    } catch (error) {
+      return z.object({ headers: z.instanceof(Headers) }).parse(error).headers.get('location');
+    }
+    return null;
+  };
+
+  it.each([
+    {
+      name: 'a page on the tenant host',
+      host: tenantHost,
+      location: `https://${tenantHost}/account?tab=security`,
+      challenge: `https://${tenantHost}/login?twoFactor=required&returnTo=%2Faccount%3Ftab%3Dsecurity`,
+    },
+    {
+      name: 'a page on the verified custom host',
+      host: customHost,
+      location: `https://${customHost}/my/course?lesson=2`,
+      challenge: `https://${customHost}/login?twoFactor=required&returnTo=%2Fmy%2Fcourse%3Flesson%3D2`,
+    },
+    {
+      name: 'the root page',
+      host: tenantHost,
+      location: `https://${tenantHost}/`,
+      challenge: `https://${tenantHost}/login?twoFactor=required&returnTo=%2F`,
+    },
+  ])('carries the OAuth callback target as the challenge return target for $name', async ({ host, location, challenge }) => {
+    const { auth } = buildHostAuth();
+
+    expect(await twoFactorChallengeLocation(auth, { path: '/callback/google', host, location })).toBe(challenge);
+  });
+
+  it.each([
+    {
+      name: 'a page on another origin than the challenge',
+      host: customHost,
+      location: `https://${tenantHost}/my`,
+      challenge: `https://${customHost}/login?twoFactor=required`,
+    },
+    {
+      name: 'a path that is not a safe return path',
+      host: tenantHost,
+      location: `https://${tenantHost}//evil.example/my`,
+      challenge: `https://${tenantHost}/login?twoFactor=required`,
+    },
+    {
+      name: 'a login page with its own continuation',
+      host: tenantHost,
+      location: `https://${tenantHost}/login?verification=verified&returnTo=%2Fmy`,
+      challenge: `https://${tenantHost}/login?twoFactor=required&verification=verified&returnTo=%2Fmy`,
+    },
+    {
+      name: 'a login page without a continuation',
+      host: tenantHost,
+      location: `https://${tenantHost}/login`,
+      challenge: `https://${tenantHost}/login?twoFactor=required`,
+    },
+  ])('keeps the OAuth callback challenge without the page as return target for $name', async ({ host, location, challenge }) => {
+    const { auth } = buildHostAuth();
+
+    expect(await twoFactorChallengeLocation(auth, { path: '/callback/google', host, location })).toBe(challenge);
+  });
+
+  it.each(['/magic-link/verify', '/verify-email'])(
+    'keeps the %s challenge continuation limited to the login parameters',
+    async (path) => {
+      const { auth } = buildHostAuth();
+
+      expect(await twoFactorChallengeLocation(auth, {
+        path, host: tenantHost, location: `https://${tenantHost}/account?tab=security`,
+      })).toBe(`https://${tenantHost}/login?twoFactor=required`);
+    },
+  );
 });
 
 const signUp = (

@@ -1,6 +1,6 @@
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import { useState } from 'react';
-import { SHIPX_SETUP_GAPS, shipxAttemptUnconfirmed, type OrderListItem, type ShipxOrderView } from '#core/domain/index.js';
+import { SHIPX_SETUP_GAPS, shipxAttemptUnconfirmed, shipxShipmentBought, type OrderListItem, type ShipxOrderView } from '#core/domain/index.js';
 
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizeShipxError, useTranslations } from '../../../i18n/index.js';
@@ -26,10 +26,10 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const [confirming, setConfirming] = useState<'create' | 'discard' | null>(null);
   if (view === undefined || view.service === null) return null;
   const shipment = view.shipment;
-  const labelReady = shipment?.shipxShipmentId != null && shipment.trackingNumber !== null;
+  const labelReady = shipment?.shipxShipmentId != null && shipxShipmentBought(shipment);
   const unconfirmed = shipment !== null && shipxAttemptUnconfirmed(shipment);
   const discardable = shipment !== null && shipment.shipxShipmentId === null;
-  const awaitingPayment = shipment?.shipxShipmentId != null && shipment.trackingNumber === null && view.reason === null;
+  const awaitingPayment = shipment?.shipxShipmentId != null && !shipxShipmentBought(shipment) && view.reason === null;
   const failure = error === null ? null : localizeShipxError(error, t);
   const service = t.shipx.services[view.service];
   const size = t.shipx.parcelTemplates[view.parcelTemplate];

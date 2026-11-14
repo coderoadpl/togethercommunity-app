@@ -104,6 +104,19 @@ describe('OrderShipx', () => {
     expect(screen.queryByRole('button', { name: 'Discard the attempt and create again' })).toBeNull();
   });
 
+  it('keeps an unpaid shipment that already carries a tracking number away from the label', () => {
+    renderWithProviders(<OrderShipx {...props} view={{ ...ready, shipment: shipment({ status: 'offer_selected', boughtAt: null }) }} />);
+    expect(screen.getByTestId('order-shipx-pending')).toHaveTextContent(/Refresh the order/);
+    expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Create InPost shipment' })).toBeVisible();
+  });
+
+  it('offers the label and no payment hint once the shipment is bought', () => {
+    renderWithProviders(<OrderShipx {...props} view={{ ...ready, shipment: shipment() }} />);
+    expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+    expect(screen.queryByTestId('order-shipx-pending')).toBeNull();
+  });
+
   it('shows the ShipX reason of a failure and how to finish the setup', () => {
     const error = new ApiError({
       code: 'shipx_rejected',

@@ -58,7 +58,7 @@ weaken Together's target production wall.
 ## Enforcement and review
 
 The label alone does not enforce these requirements. A read-only GitHub API
-reading taken by an agent on 2026-11-12 showed active branch rulesets:
+reading on 2026-11-12 showed active branch rulesets:
 `main-protection` (20889929) targets `refs/heads/main`, and `staging-gates`
 (20889930) targets `refs/heads/staging`. Both require pull requests, required
 status checks, and merge commits only, and block branch deletion and force

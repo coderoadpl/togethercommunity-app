@@ -442,8 +442,8 @@ probe. These are automated post-deployment monitors that do not block a
 deployment; they are not substitutes for the owner-approved promotion or its
 retained manual SHA attestation.
 
-An agent read the live repository rulesets through the GitHub API on
-2026-11-12: `main-protection` (20889929) and `staging-gates` (20889930) are
+A read-only GitHub API reading of the live repository rulesets on 2026-11-12
+showed that `main-protection` (20889929) and `staging-gates` (20889930) are
 active and require pull requests and status checks on `main` and `staging`. The
 main rule requires one code-owner approval, dismisses stale approvals, requires
 last-push approval and resolved review threads, and permits merge commits only.

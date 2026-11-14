@@ -9,6 +9,7 @@ import { manifestApiUrl, readManifestFile, registerShopManifestCommands } from '
 const directories: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   process.exitCode = 0;
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -49,6 +50,31 @@ describe('shop manifest command boundary', () => {
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
+  });
+
+  it('passes the integrations opt-in and environment values only to the existing configure route', async () => {
+    vi.stubEnv('SHOP_STRIPE_KEY', 'rk_test_private-fixture');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const calls: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      calls.push(`${init?.method} ${url.pathname}`);
+      const data = url.pathname === '/api/me' ? { userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null, banned: false } }
+        : url.pathname === '/api/tenant/settings' ? { settings: tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null }) }
+          : url.pathname === '/api/integrations/stripe/configure' ? { mode: 'test', webhookUrl: 'https://acme.togethercommunity.app/api/stripe/webhook?mode=test' } : { products: [] };
+      if (init?.method === 'POST') {
+        expect(url.pathname).toBe('/api/integrations/stripe/configure');
+        expect(JSON.parse(String(init.body))).toEqual({ mode: 'test', restrictedKey: 'rk_test_private-fixture' });
+      }
+      return Response.json({ ok: true, data });
+    });
+    const path = await inputFile(JSON.stringify({ version: 1, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_KEY', mode: 'test' } } }, shops: [{ workspace: 'acme', products: [] }] }));
+    await program().parseAsync(['shop', 'apply', '--manifest', path], { from: 'user' });
+    expect(calls.every((call) => call.startsWith('GET '))).toBe(true);
+    await program().parseAsync(['shop', 'apply', '--manifest', path, '--integrations'], { from: 'user' });
+    expect(calls.filter((call) => call.startsWith('POST '))).toEqual(['POST /api/integrations/stripe/configure']);
+    expect(log).toHaveBeenCalledTimes(2);
+    for (const call of log.mock.calls) expect(String(call[0])).not.toContain('rk_test_private-fixture');
   });
 
   it.each(['plan', 'apply'])('%s sends the session and shop selector through the typed client without writes for an empty catalogue', async (command) => {

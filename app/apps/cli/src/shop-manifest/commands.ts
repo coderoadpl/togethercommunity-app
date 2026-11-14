@@ -9,7 +9,7 @@ import { planManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
-const optionsSchema = z.object({ manifest: z.string().min(1), shop: z.string().min(1).optional() }).strict();
+const optionsSchema = z.object({ manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional() }).strict();
 
 export const manifestApiUrl = (baseUrl: string, workspace: string): string => {
   const url = new URL(baseUrl);
@@ -33,10 +33,12 @@ export const readManifestFile = async (path: string): Promise<Result<unknown, Ap
 
 export const registerShopManifestCommands = (program: Command, context: () => Result<ManifestCliContext, AppError>): void => {
   const shop = program.command('shop').description('Plan and apply a declarative shop manifest');
-  for (const command of ['plan', 'apply'] as const) shop.command(command)
-    .description(command === 'plan' ? 'Preview settings and catalogue changes without writing' : 'Apply settings and catalogue changes, stopping at the first error')
-    .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace')
-    .action(async (raw: unknown) => {
+  for (const command of ['plan', 'apply'] as const) {
+    const subcommand = shop.command(command)
+      .description(command === 'plan' ? 'Preview settings and catalogue changes without writing' : 'Apply settings and catalogue changes, stopping at the first error')
+      .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace');
+    if (command === 'apply') subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks');
+    subcommand.action(async (raw: unknown) => {
       const ctx = context();
       if (!ctx.ok) {
         const globals = z.object({ json: z.boolean().default(false) }).safeParse(program.optsWithGlobals());
@@ -57,8 +59,9 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {
-          environment: process.env, operator: createApiClient({ baseUrl: ctx.value.apiUrl }),
+          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: ctx.value.apiUrl }),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
     });
+  }
 };

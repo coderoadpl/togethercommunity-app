@@ -1,8 +1,8 @@
 import type { ApiClient } from '#core/client/index.js';
 import { err, ok, validation, type AppError, type Product, type ProductPrice, type ProductStock, type ProvisionTenantInput, type Result } from '#core/domain/index.js';
 import {
-  diffManifestProduct, diffShopSettings, effectiveShopSettings, manifestWorkspaceSlug, shopManifestSchema,
-  type ShopManifestProduct, type ShopManifestSettings,
+  diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, manifestWorkspaceSlug, shopManifestSchema,
+  type ShopManifestIntegrations, type ShopManifestProduct, type ShopManifestSettings,
 } from '#core/domain/shop-manifest.js';
 
 export type ManifestReadClient = Pick<ApiClient, 'me' | 'getTenantSettings' | 'listProducts' | 'listProductPrices' | 'getProductStock'>;
@@ -13,6 +13,7 @@ export type PreparedShop<C extends ManifestReadClient = ManifestReadClient> = {
   workspace: string;
   api: C;
   provision: ProvisionTenantInput | null;
+  integrations: ShopManifestIntegrations;
   settings: ReturnType<typeof diffShopSettings>;
   products: PreparedProduct[];
 };
@@ -45,6 +46,10 @@ export const prepareManifest = async <C extends ManifestReadClient>(
     const slug = manifestWorkspaceSlug(shop.workspace);
     const api = clientFor(slug);
     const desired = effectiveShopSettings(parsed.data.company?.settings, shop.settings);
+    const integrations = effectiveShopIntegrations(parsed.data.company?.integrations, shop.integrations);
+    if (integrations.parcelLocker != null && desired.inpostGeowidgetToken !== undefined) {
+      return err(validation('Manage the parcel locker token through settings or integrations, not both'));
+    }
     const identity = await api.me();
     if (!identity.ok) {
       if (identity.error.code !== 'tenant_not_found' || typeof shop.workspace === 'string') {
@@ -53,7 +58,7 @@ export const prepareManifest = async <C extends ManifestReadClient>(
       const coherent = validateVatSettings(desired, {});
       if (!coherent.ok) return coherent;
       prepared.push({
-        workspace: slug, api, provision: { slug, ...shop.workspace.provision },
+        workspace: slug, api, integrations, provision: { slug, ...shop.workspace.provision },
         settings: diffShopSettings(desired, {}),
         products: shop.products.map((product) => ({ desired: product, current: null, diff: diffManifestProduct(product, null) })),
       });
@@ -80,15 +85,18 @@ export const prepareManifest = async <C extends ManifestReadClient>(
       }
       preparedProducts.push({ desired: desiredProduct, current, diff: diffManifestProduct(desiredProduct, current) });
     }
-    prepared.push({ workspace: slug, api, provision: null, settings: diffShopSettings(desired, settings.value.settings), products: preparedProducts });
+    prepared.push({ workspace: slug, api, integrations, provision: null, settings: diffShopSettings(desired, settings.value.settings), products: preparedProducts });
   }
   return ok(prepared);
 };
 
-export const manifestPlanReport = (shops: PreparedShop[]) => ({
+export const manifestPlanReport = (shops: PreparedShop[], integrations = false) => ({
   shops: shops.map((shop) => ({
     workspace: shop.workspace,
     provisioning: shop.provision === null ? 'unchanged' : 'create',
+    integrations: Object.entries(shop.integrations).filter(([, value]) => value != null).map(([provider]) => ({
+      provider, action: integrations ? 'configure' : 'skipped without --integrations',
+    })),
     settings: { change: Object.keys(shop.settings.changes), unchanged: shop.settings.unchanged },
     products: shop.products.map(({ desired, diff }) => ({
       ...diff,

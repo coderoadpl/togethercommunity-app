@@ -1,6 +1,7 @@
 import type { ApiClient } from '#core/client/index.js';
 import { err, internal, ok, validation, updateProductInputSchema, type AppError, type Result } from '#core/domain/index.js';
 import { productMetadata } from '#core/domain/shop-manifest.js';
+import { resolveManifestIntegrations, type ResolvedManifestIntegrations } from './integrations.js';
 import {
   manifestOperationError, manifestPlanReport, prepareManifest,
   type ManifestClientFactory, type ManifestReadClient, type PreparedProduct,
@@ -8,11 +9,12 @@ import {
 
 type ManifestWriteClient = ManifestReadClient & Pick<ApiClient,
   'updateTenantSettings' | 'createProduct' | 'updateProduct' | 'createProductPrice' | 'deactivateProductPrice' |
-  'enableProductStock' | 'adjustProductStock' | 'publishProduct' | 'unpublishProduct'>;
+  'enableProductStock' | 'adjustProductStock' | 'publishProduct' | 'unpublishProduct' | 'configureStripe' | 'shipxConfigure'>;
 type AppliedOperation = { workspace: string; operation: string; slug?: string };
 
 export const SHOP_OPERATOR_SECRET_ENV = 'TOGETHER_SHOP_OPERATOR_SECRET';
 export type ManifestApplyOptions = {
+  integrations?: boolean;
   environment?: Readonly<Record<string, string | undefined>>;
   operator?: Pick<ApiClient, 'provisionOperatorTenant'>;
 };
@@ -28,6 +30,14 @@ export const applyManifest = async (
   });
   let prepared = await prepareManifest(input, clientFor, workspace);
   if (!prepared.ok) return fail(prepared.error);
+  const integrationsByWorkspace = new Map<string, ResolvedManifestIntegrations>();
+  if (options.integrations === true) {
+    for (const shop of prepared.value) {
+      const resolved = resolveManifestIntegrations(shop.integrations, options.environment ?? {});
+      if (!resolved.ok) return fail(resolved.error);
+      integrationsByWorkspace.set(shop.workspace, resolved.value);
+    }
+  }
   const missing = prepared.value.filter((shop) => shop.provision !== null);
   if (missing.length > 0) {
     const secret = options.environment?.[SHOP_OPERATOR_SECRET_ENV];
@@ -53,6 +63,28 @@ export const applyManifest = async (
     if (Object.keys(shop.settings.changes).length > 0) {
       const result = await write('settings:update', () => shop.api.updateTenantSettings(shop.settings.changes));
       if (!result.ok) return fail(result.error);
+    }
+    const integrations = integrationsByWorkspace.get(shop.workspace);
+    if (integrations !== undefined) {
+      const configure = async <T>(operation: string, action: () => Promise<Result<T, AppError>>) => {
+        try { return await write(operation, action); }
+        catch { return err(manifestOperationError(internal(), shop.workspace, operation)); }
+      };
+      if (integrations.stripe !== undefined) {
+        const stripe = integrations.stripe;
+        const result = await configure('integration:stripe', () => shop.api.configureStripe(stripe));
+        if (!result.ok) return fail(result.error);
+      }
+      if (integrations.shipx !== undefined) {
+        const shipx = integrations.shipx;
+        const result = await configure('integration:shipx', () => shop.api.shipxConfigure(shipx));
+        if (!result.ok) return fail(result.error);
+      }
+      if (integrations.parcelLocker !== undefined) {
+        const parcelLocker = integrations.parcelLocker;
+        const result = await configure('integration:parcelLocker', () => shop.api.updateTenantSettings(parcelLocker));
+        if (!result.ok) return fail(result.error);
+      }
     }
     const ids = new Map<PreparedProduct, string>();
     for (const entry of shop.products) {
@@ -114,5 +146,5 @@ export const applyManifest = async (
       if (!result.ok) return fail(result.error);
     }
   }
-  return ok({ ...manifestPlanReport(prepared.value), applied });
+  return ok({ ...manifestPlanReport(prepared.value, options.integrations), applied });
 };

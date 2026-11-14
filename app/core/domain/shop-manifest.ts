@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
 import { provisionTenantInputSchema } from './operator-tenant.js';
+import { stripeModeSchema } from './integration.js';
+import { configureShipxInputSchema, shipxSenderSchema } from './shipx.js';
 import type { ProductPrice } from './commerce.js';
 import { newProductSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
@@ -39,6 +41,18 @@ export const shopManifestProductSchema = newProductSchema.omit({
   published: z.boolean(),
 }).strict();
 
+const environmentNameSchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
+export const shopManifestIntegrationsSchema = z.object({
+  stripe: z.object({ restrictedKeyEnv: environmentNameSchema, mode: stripeModeSchema }).strict().nullable().optional(),
+  shipx: z.object({
+    environment: configureShipxInputSchema.shape.environment,
+    sender: shipxSenderSchema.strict().nullable().optional(),
+    organizationIdEnv: environmentNameSchema.optional(),
+    tokenEnv: environmentNameSchema.optional(),
+  }).strict().refine((value) => Object.values(value).some((field) => field !== undefined), 'ShipX settings must not be empty').nullable().optional(),
+  parcelLocker: z.object({ tokenEnv: environmentNameSchema }).strict().nullable().optional(),
+}).strict();
+
 const workspaceSchema = z.union([
   productSlugSchema,
   z.object({
@@ -53,13 +67,14 @@ export const manifestWorkspaceSlug = (workspace: z.output<typeof workspaceSchema
 const shopSchema = z.object({
   workspace: workspaceSchema,
   settings: shopManifestSettingsSchema.optional(),
+  integrations: shopManifestIntegrationsSchema.optional(),
   products: z.array(shopManifestProductSchema),
 }).strict().refine((shop) => new Set(shop.products.map((product) => product.slug)).size === shop.products.length,
   'Product slugs must be unique within a shop');
 
 export const shopManifestSchema = z.object({
   version: z.literal(1),
-  company: z.object({ settings: shopManifestSettingsSchema }).strict().optional(),
+  company: z.object({ settings: shopManifestSettingsSchema.optional(), integrations: shopManifestIntegrationsSchema.optional() }).strict().optional(),
   shops: z.array(shopSchema).min(1),
 }).strict().refine((manifest) => new Set(manifest.shops.map((shop) => manifestWorkspaceSlug(shop.workspace))).size === manifest.shops.length,
   'Shop workspaces must be unique');
@@ -67,6 +82,7 @@ export const shopManifestSchema = z.object({
 export type ShopManifest = z.output<typeof shopManifestSchema>;
 export type ShopManifestProduct = z.output<typeof shopManifestProductSchema>;
 export type ShopManifestSettings = z.output<typeof shopManifestSettingsSchema>;
+export type ShopManifestIntegrations = z.output<typeof shopManifestIntegrationsSchema>;
 
 const objectSchema = z.record(z.unknown());
 const mergeFields = (base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> => {
@@ -83,6 +99,10 @@ const mergeFields = (base: Record<string, unknown>, override: Record<string, unk
 export const effectiveShopSettings = (
   company: ShopManifestSettings = {}, shop: ShopManifestSettings = {},
 ): ShopManifestSettings => shopManifestSettingsSchema.parse(mergeFields(company, shop));
+
+export const effectiveShopIntegrations = (
+  company: ShopManifestIntegrations = {}, shop: ShopManifestIntegrations = {},
+): ShopManifestIntegrations => shopManifestIntegrationsSchema.parse(mergeFields(company, shop));
 
 export const manifestValuesEqual = (left: unknown, right: unknown): boolean => {
   if (left === right) return true;

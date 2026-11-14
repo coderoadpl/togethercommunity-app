@@ -1,4 +1,4 @@
-import { err, integrationUnavailable, transactionalSesConfigurationSetName, TRANSACTIONAL_SES_CONFIGURATION_FAILURE, type AppError } from '#core/domain/index.js';
+import { transactionalSesConfigurationSetName, TRANSACTIONAL_SES_CONFIGURATION_FAILURE } from '#core/domain/index.js';
 import type {
   EmailIntegrationTransportResolver,
   EmailPort,
@@ -27,27 +27,20 @@ export const createTenantSesTransactionalResolver = (
     replyTo: string;
     region: string;
     credentials: { accessKeyId: string; secretAccessKey: string };
-    configurationSet: string;
+    configurationSet: string | null;
     configurationRecovery: { tenantId: string; repair: (tenantId: string) => Promise<void> };
   }) => EmailPort = createSesEmailPort,
 ): TransactionalEmailTransportResolver => ({
   resolve: async (tenantId) => {
     const tenantSettings = await settings.findByTenant(tenantId);
-    if (tenantSettings === null) return null;
-    const unavailable = (error: AppError): EmailPort => {
-      infrastructure.logger.warn(`[transactional-ses] infrastructure unavailable tenant=${tenantId} error=${error.code}`);
-      const failure = err(integrationUnavailable('Tenant SES is unavailable; repair its transactional configuration and retry'));
-      return { send: async () => failure, healthcheck: async () => failure, test: async () => failure };
-    };
-    if (tenantSettings.identityCheckError?.startsWith(TRANSACTIONAL_SES_CONFIGURATION_FAILURE)) {
-      return unavailable(integrationUnavailable(tenantSettings.identityCheckError));
-    }
-    if (tenantSettings.identityVerifiedAt === null) return null;
-    if (tenantSettings.configurationSet === null || tenantSettings.snsTopicArn === null) {
-      return unavailable(integrationUnavailable('Complete SES onboarding before sending transactional email'));
-    }
+    if (tenantSettings === null || tenantSettings.identityVerifiedAt === null) return null;
     const resolved = await credentials.resolve(tenantId);
-    if (!resolved.ok) return unavailable(resolved.error);
+    if (!resolved.ok) return null;
+    if (tenantSettings.identityCheckError?.startsWith(TRANSACTIONAL_SES_CONFIGURATION_FAILURE)) {
+      infrastructure.logger.warn(`[transactional-ses] configuration requires repair tenant=${tenantId} sending=continues`);
+    } else if (tenantSettings.configurationSet === null) {
+      infrastructure.logger.warn(`[transactional-ses] no configuration set tenant=${tenantId} sending=without-set`);
+    }
     return emailFor({
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),
       replyTo: tenantSettings.replyTo ?? tenantSettings.fromAddress,
@@ -56,7 +49,9 @@ export const createTenantSesTransactionalResolver = (
         accessKeyId: resolved.value.accessKeyId,
         secretAccessKey: resolved.value.secretAccessKey,
       },
-      configurationSet: transactionalSesConfigurationSetName(tenantSettings.configurationSet),
+      configurationSet: tenantSettings.configurationSet === null
+        ? null
+        : transactionalSesConfigurationSetName(tenantSettings.configurationSet),
       configurationRecovery: {
         tenantId,
         repair: async (tenantId) => {

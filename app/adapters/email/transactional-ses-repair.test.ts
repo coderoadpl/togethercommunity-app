@@ -183,15 +183,16 @@ it.each([true, false])('checks unrelated destinations when reporting readiness (
   })).toMatchObject({ ok: true, value: { configurationSetReady: true, eventDestinationReady: !enabled } });
 });
 
-it('blocks another enabled engagement destination without changing it', async () => {
+it('reports another enabled engagement destination without changing it or blocking transactional mail', async () => {
   const test = setup();
   const foreign: EventDestination = { Name: 'other', Enabled: true, MatchingEventTypes: ['open', 'click'] };
   test.sets.set('marketing-transactional', [foreign]);
   expect(await test.repair()).toMatchObject({ ok: false });
+  expect((await test.repository.findByTenant('tenant'))?.identityCheckError).toMatch(/^Transactional SES configuration requires repair: /);
   const port = await test.resolver.resolve('tenant');
-  expect(await port?.send({ to: 'member@example.test', subject: 'Message', html: '<p>Message</p>', text: 'Message' }))
-    .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
-  expect(test.emailFor).not.toHaveBeenCalled();
+  expect(await port?.send(message)).toEqual(ok({ messageId: 'sent' }));
+  expect(test.emailFor).toHaveBeenCalledWith(expect.objectContaining({ configurationSet: 'marketing-transactional' }));
+  expect(test.logger.warn).toHaveBeenCalledWith(expect.stringContaining('tenant=tenant'));
   expect(test.sets.get('marketing-transactional')).toEqual([foreign]);
 });
 
@@ -244,6 +245,6 @@ it.each(['engagement', 'topic', 'disabled', 'missing-events'] as const)('rejects
   expect(test.state.duplicateDestinations).toBe(1);
   expect(results.filter((result) => result.ok)).toHaveLength(1);
   expect(results.find((result) => !result.ok)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
-  expect(await (await test.resolver.resolve('tenant'))?.send(message)).toMatchObject({ ok: false });
-  expect(test.emailFor).not.toHaveBeenCalled();
+  expect(await (await test.resolver.resolve('tenant'))?.send(message)).toEqual(ok({ messageId: 'sent' }));
+  expect(test.emailFor).toHaveBeenCalledWith(expect.objectContaining({ configurationSet: 'marketing-transactional' }));
 });

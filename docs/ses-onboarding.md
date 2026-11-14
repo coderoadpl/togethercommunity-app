@@ -121,17 +121,20 @@ destination. Resolving a transport, checking availability and sending normal
 messages do not call the SES configuration API. If SES rejects a send because
 the set or managed destination is missing, Together repairs it once and returns
 a retryable error; the outbox retries the message rather than resending inline.
-A second enabled destination publishing Open or Click blocks readiness and
-transactional sending until the operator removes those engagement events and
-re-checks status. Repair failures remain in the saved status across restarts and
-identity-only diagnostics, until a successful repair. Together does not modify
-unrelated destinations.
+A second enabled destination publishing Open or Click blocks readiness until the
+operator removes those engagement events and re-checks status. Repair failures
+remain in the saved status across restarts and identity-only diagnostics, until a
+successful repair. Together does not modify unrelated destinations.
 
-If configuration or destination repair fails, the transactional outbox records a
-retryable transport error with tenant context in the server log. It never sends
-without an explicit safe set or falls through to SMTP, Resend or the platform
-pool. Correct the tenant AWS permissions, then poll status again. A tenant with
-no saved configuration-set name or topic must complete infrastructure onboarding.
+A stored repair failure never blocks transactional mail. A tenant with a verified
+identity and resolvable SES credentials keeps sending transactional messages
+through its own SES: with the derived `-transactional` set when a
+configuration-set name is saved (even without a topic), and without any
+configuration set when none is saved. The server logs a warning with tenant
+context for a stored repair failure or a missing configuration set. A tenant
+without SES settings, with an unverified identity or with SES credentials that do
+not resolve falls through to SMTP, Resend and then the platform pool. Correct the
+tenant AWS permissions, then poll status again.
 
 ## The webhook lives on the platform host
 

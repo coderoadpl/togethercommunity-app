@@ -5063,9 +5063,13 @@ export const createHealthPort = (db: Db): HealthPort => {
     },
     migrationCounts: async () => {
       const expected = migrationJournal.entries.length;
+      const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;
       try {
-        const result = await db.execute(sql`select count(*)::int as applied from public.__drizzle_migrations`);
-        return { expected, applied: numberField(firstRow(result), 'applied') };
+        const result = await db.execute(
+          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from public.__drizzle_migrations`,
+        );
+        const row = firstRow(result);
+        return { expected, applied: numberField(row, 'applied'), current: numberField(row, 'latest') >= lastJournalWhen };
       } catch (error) {
         return { expected, applied: null, journal: undefinedRelation(error) ? 'missing' : 'unreadable' };
       }

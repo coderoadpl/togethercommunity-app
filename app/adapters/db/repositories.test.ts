@@ -3646,8 +3646,8 @@ describe('health port', () => {
   it('counts applied migrations against the journal the code ships', async () => {
     const counts = await createHealthPort(db).migrationCounts();
 
+    expect(counts).toEqual({ expected: counts.expected, applied: counts.expected, current: true });
     expect(counts.expected).toBeGreaterThan(0);
-    expect(counts.applied).toBe(counts.expected);
   });
 });
 

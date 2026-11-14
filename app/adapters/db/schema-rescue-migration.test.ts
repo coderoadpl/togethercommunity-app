@@ -205,7 +205,7 @@ describe('schema rescue migration', () => {
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
       });
-      expect(await health.migrationCounts()).toEqual({ expected, applied: 80 });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: 80, current: false });
 
       await migrateTo('drizzle');
 
@@ -220,7 +220,7 @@ describe('schema rescue migration', () => {
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
       });
-      expect(await health.migrationCounts()).toEqual({ expected, applied: expected });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: expected, current: true });
     });
   }, 60_000);
 

@@ -1063,7 +1063,7 @@ describe('readiness and health journal check', () => {
       await withClient(database.url, async (client) => {
         await client.query(`GRANT SELECT ON public.__drizzle_migrations TO ${runtimeRole()}`);
       });
-      expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: 1 });
+      expect(await runtimeCounts(runtimeUrl(database.name))).toEqual({ expected, applied: 1, current: false });
       expect(await runtimeSchemaJournal(runtimeUrl(database.name)))
         .toEqual({ appliedMigrations: 1, schemaCurrent: false, migrationJournal: undefined });
     });
@@ -1094,10 +1094,26 @@ describe('readiness and health journal check', () => {
           busy.release();
         }
         expect(await createHealthPort(drizzle(pool, { schema: dbSchema })).migrationCounts())
-          .toEqual({ expected, applied: 1 });
+          .toEqual({ expected, applied: 1, current: false });
       } finally {
         await pool.end();
       }
     });
   }, 60_000);
+
+  it('keeps readiness pending when a duplicated journal row makes up for a migration that is still pending', async () => {
+    await withRestrictedDatabase('together_ready_duplicate', async (database) => {
+      await runMigrations({ connectionString: database.url, migrationsFolder: migrationFolder(expected - 1) });
+      await withClient(database.url, async (client) => {
+        await client.query(
+          'insert into public.__drizzle_migrations (hash, created_at) select hash, created_at from public.__drizzle_migrations order by id limit 1',
+        );
+      });
+
+      expect(await runtimeCounts(database.url)).toEqual({ expected, applied: expected, current: false });
+
+      await runMigrations({ connectionString: database.url, migrationsFolder: 'drizzle' });
+      expect(await runtimeCounts(database.url)).toEqual({ expected, applied: expected + 1, current: true });
+    });
+  }, 120_000);
 });

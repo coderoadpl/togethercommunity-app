@@ -931,7 +931,7 @@ const deps = (input: {
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
-      migrationCounts: async () => input.migrationCounts ?? { expected: 82, applied: 82 },
+      migrationCounts: async () => input.migrationCounts ?? { expected: 82, applied: 82, current: true },
       schemaStatus: async () => input.schemaStatus ?? {
         expectedMigrations: 82,
         appliedMigrations: 82,
@@ -3668,7 +3668,7 @@ describe('health route', () => {
   });
 
   it('stays unready until the database holds every migration this release ships', async () => {
-    const pending = await buildApp(deps({ migrationCounts: { expected: 82, applied: 81 } }))
+    const pending = await buildApp(deps({ migrationCounts: { expected: 82, applied: 81, current: false } }))
       .request(API_PATHS.healthReady);
     expect(pending.status).toBe(503);
     expect(await pending.json()).toEqual({
@@ -3687,7 +3687,18 @@ describe('health route', () => {
       },
     });
 
-    const ahead = await buildApp(deps({ migrationCounts: { expected: 82, applied: 83 } }))
+    const duplicated = await buildApp(deps({ migrationCounts: { expected: 82, applied: 82, current: false } }))
+      .request(API_PATHS.healthReady);
+    expect(duplicated.status).toBe(503);
+    expect(await duplicated.json()).toEqual({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: "Database migrations are behind this release: the journal holds 82 rows but not this release's newest migration",
+      },
+    });
+
+    const ahead = await buildApp(deps({ migrationCounts: { expected: 82, applied: 83, current: true } }))
       .request(API_PATHS.healthReady);
     expect(ahead.status).toBe(200);
   });

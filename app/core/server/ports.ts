@@ -2487,7 +2487,7 @@ export interface AuthPort {
 }
 
 export type MigrationCounts =
-  | { expected: number; applied: number }
+  | { expected: number; applied: number; current: boolean }
   | { expected: number; applied: null; journal: 'missing' | 'unreadable' };
 
 type SchemaStatus = {

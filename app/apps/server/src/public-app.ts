@@ -317,6 +317,11 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         `Database migrations are behind this release: ${String(migrations.applied)} of ${String(migrations.expected)} applied`,
       )));
     }
+    if (!migrations.current) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: the journal holds ${String(migrations.applied)} rows but not this release's newest migration`,
+      )));
+    }
     return respond(ok({ status: 'ok' as const, database: 'up' as const, ...attestation }));
   });
 

@@ -102,7 +102,7 @@ The admission listener starts only when `INTERNAL_PORT` is set.
 | Probe | Endpoint | Meaning |
 |---|---|---|
 | Liveness | `GET /api/health/live` | The process answers. It never touches the database, so a database outage does not restart pods. |
-| Readiness | `GET /api/health/ready` | 200 only when the database answers and holds at least as many applied migrations as this release ships. A pod that starts before the migration Job finishes stays unready with `503` and a message naming both counts. A database ahead of the release stays ready, so old pods keep serving while a newer release migrates. |
+| Readiness | `GET /api/health/ready` | 200 only when the database answers, holds at least as many applied migrations as this release ships, and its newest applied migration is not older than this release's last one (the check `/api/health` reports as `schemaCurrent`), so a duplicated journal row cannot stand in for a pending migration. A pod that starts before the migration Job finishes stays unready with `503` and a message naming both counts. A database ahead of the release stays ready, so old pods keep serving while a newer release migrates. |
 | Startup | `GET /api/health/live` | Boot reads the environment and builds the dependency graph before listening. |
 
 The `503` message from readiness names the cause:

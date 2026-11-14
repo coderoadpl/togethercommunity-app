@@ -54,14 +54,22 @@ describe('visual network idle', () => {
     expect(resolved).toHaveBeenCalledOnce();
   });
 
-  it('keeps idle latched through later requests without a frame navigation', async () => {
+  it('leaves idle when a later request starts without a frame navigation and returns to it 500 milliseconds after that request ends', async () => {
     const tracker = createVisualNetworkIdle();
     await vi.advanceTimersByTimeAsync(500);
+    await tracker.wait();
     const request = {};
     tracker.requestStarted(request, 'https://example.test/late');
-    await tracker.wait();
+    const resolved = vi.fn();
+    const waiting = tracker.wait().then(resolved);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(resolved).not.toHaveBeenCalled();
     tracker.requestEnded(request);
-    await tracker.wait();
+    await vi.advanceTimersByTimeAsync(499);
+    expect(resolved).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await waiting;
+    expect(resolved).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
 

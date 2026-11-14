@@ -27,6 +27,7 @@ export const createVisualNetworkIdle = () => {
   return {
     requestStarted: (request: object, url: string): void => {
       requests.set(request, url);
+      idle = false;
       cancelQuietTimer();
     },
     requestEnded: (request: object): void => {

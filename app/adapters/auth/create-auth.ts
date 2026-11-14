@@ -310,6 +310,12 @@ const withoutSharedCookieDomain = (options: AuthOptions): AuthOptions => {
   return { ...options, advanced };
 };
 
+const verifiedCustomHost = async (settings: AuthSettings, host: string | null): Promise<string | null> => {
+  if (host === null || settings.isVerifiedCustomHost === undefined) return null;
+  if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
+  return (await settings.isVerifiedCustomHost(host)) ? host : null;
+};
+
 /**
  * Better Auth freezes the cookie domain and the passkey relying party into the
  * instance it is constructed with, so both are re-derived here from the host that
@@ -318,12 +324,6 @@ const withoutSharedCookieDomain = (options: AuthOptions): AuthOptions => {
  * each dispatch its own copy of the auth context, so replacing these fields in a
  * before hook stays confined to the request being served.
  */
-const verifiedCustomHost = async (settings: AuthSettings, host: string | null): Promise<string | null> => {
-  if (host === null || settings.isVerifiedCustomHost === undefined) return null;
-  if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
-  return (await settings.isVerifiedCustomHost(host)) ? host : null;
-};
-
 const hostScopedCredentials = (settings: AuthSettings) => {
   const routing = {
     baseUrl: settings.baseUrl,

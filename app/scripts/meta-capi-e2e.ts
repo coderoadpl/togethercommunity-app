@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { chromium, type Browser } from 'playwright-core';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
-import { createTenantDirectory, createTenantRepository } from '#adapters/db/repositories.js';
+import { createTenantDirectory, createTenantRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
 import { members, metaCapiConsentEvidence, metaCapiEvents, metaCapiOutbox, orders, products, tenants, user } from '#adapters/db/schema.js';
 import { createApiClient } from '#core/client/index.js';
 import { metaCapiDefaultCopy as englishCopy } from '#core/domain/meta-capi-copy.en.js';
@@ -24,6 +25,9 @@ try {
   await database.db.insert(tenants).values({ id: 'acme', slug: 'acme', name: 'Acme', createdAt: now,
     analyticsMetaPixelId: '123456789', analyticsMetaCapiEnabled: true, privacyUrl: 'https://example.org/privacy',
     analyticsConsentCookieName: 'marketing-consent' });
+  const secretsMasterKey = randomBytes(32).toString('base64');
+  await createTenantSecretRepository(database.db).upsert('acme', { id: 'meta-capi-token', tenantId: 'acme', key: 'analyticsMetaCapiAccessToken',
+    ...createSecretCrypto(secretsMasterKey).encrypt('local-test-token'), maskedPreview: 'configured', updatedAt: now });
   await database.db.insert(user).values({ id: 'buyer', email: 'buyer@example.org', name: 'Buyer' });
   await database.db.insert(members).values({ id: 'buyer', tenantId: 'acme', userId: 'buyer', email: 'buyer@example.org', createdAt: now });
   await database.db.insert(products).values({ id: 'book', tenantId: 'acme', slug: 'book', type: 'digital_download', title: 'Book', description: '', priceCents: 9900, currency: 'PLN', published: true, createdAt: now });
@@ -37,6 +41,7 @@ try {
   const origin = `http://acme.localhost:${port}`;
   server = await bootServer({ port, healthUrl: `http://127.0.0.1:${port}/api/health`, env: {
     NODE_ENV: 'test', DATABASE_URL: database.url, APP_BASE_URL: origin, APP_BASE_DOMAIN: 'localhost', WEB_DIST_DIR: 'dist/web', PAYMENT_PROVIDER: 'fake',
+    SECRETS_MASTER_KEY: secretsMasterKey,
   } });
   const executablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
   browser = await chromium.launch(executablePath ? { headless: true, executablePath } : { headless: true, channel: 'chrome' });

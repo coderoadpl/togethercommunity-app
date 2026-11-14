@@ -263,6 +263,17 @@ describe('Meta CAPI use cases', () => {
       expect(await dispatchMetaCapi(h.deps)).toEqual({ processed });
     }
   });
+  it('asks for consent only while the workspace access token is stored', async () => {
+    const h = harness();
+    const resolve = vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound()));
+    h.deps.secrets = { resolve };
+    expect(await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps)).toMatchObject({ enabled: false, consent: 'undecided', withdrawnAt: null });
+    expect(resolve).toHaveBeenCalledWith('workspace', 'analyticsMetaCapiAccessToken');
+    resolve.mockResolvedValue(ok('secret-token'));
+    const config = await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps);
+    expect(config).toMatchObject({ enabled: true });
+    expect(JSON.stringify(config)).not.toContain('secret-token');
+  });
   it('rejects new consent and blocks dispatch for a deleted member', async () => {
     const h = harness();
     h.job.memberDeleted = true;

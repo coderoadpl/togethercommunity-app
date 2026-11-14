@@ -13,6 +13,7 @@ export interface MetaCapiDeps {
   tenants: Pick<TenantRepository, 'findSettings'>;
   clock: Clock;
   hash: ContentHash;
+  secrets: TenantSecretResolver;
 }
 
 export const getMetaCapiConfig = async (tenantId: string, sessionId: string, deps: MetaCapiDeps, locale: Language = DEFAULT_LANGUAGE): Promise<MetaCapiConfig | undefined> => {
@@ -20,8 +21,9 @@ export const getMetaCapiConfig = async (tenantId: string, sessionId: string, dep
   const settings = await deps.tenants.findSettings(tenantId);
   if (!current || !settings) return undefined;
   const copy = metaCapiCopy(settings, locale);
-  const enabled = !current.memberDeleted && settings.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId && !!copy.privacyUrl
+  const eligible = !current.memberDeleted && settings.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId && !!copy.privacyUrl
     && current.order.mode === 'live' && current.order.provider === 'stripe' && !sessionId.startsWith('cs_test_');
+  const enabled = eligible && (await deps.secrets.resolve(tenantId, 'analyticsMetaCapiAccessToken')).ok;
   return { ...current.consent, ...copy, enabled, locale, textVersion: deps.hash.sha256(JSON.stringify(copy)) };
 };
 
@@ -80,7 +82,6 @@ export const listMetaCapiEvents = async (ctx: Ctx, deps: Pick<MetaCapiDeps, 'rep
 
 export interface MetaCapiDispatchDeps extends MetaCapiDeps {
   gateway: MetaCapiGateway;
-  secrets: TenantSecretResolver;
   directory: TenantDirectory;
   logger?: { warn(message: string): void };
 }

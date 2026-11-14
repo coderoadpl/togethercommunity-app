@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { err, notFound, metaCapiCopy, salesLinkSchema, tenantSettingsSchema, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
+import { err, notFound, ok, metaCapiCopy, salesLinkSchema, tenantSettingsSchema, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
 import { type PaymentRefundRepository } from '../ports.js';
 import type { MetaCapiDeps } from './meta-capi.js';
 import { getCheckoutSessionStatus } from './checkout-session-status.js';
@@ -233,13 +233,14 @@ const capiPurchase: Order = { ...order, paidAt: order.createdAt, amountCents: 12
     vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
 ] };
 
-const capiDeps = (deps: ReturnType<typeof harness>) => {
+const capiDeps = (deps: ReturnType<typeof harness>, tokenStored = true) => {
   const findOrder = vi.fn<MetaCapiDeps['repository']['findOrder']>(async () => ({ order: capiPurchase, consent: { consent: 'undecided', withdrawnAt: null },
     email: 'buyer@example.org', memberDeleted: false, sourceUrl: 'https://example.org/checkout/book', consentAt: null }));
   const metaCapi: MetaCapiDeps = { tenants: deps.tenants, clock: { nowIso: () => order.createdAt }, hash: { sha256: (text) => {
     if (typeof text !== 'string') throw new Error('Consent snapshots must be text');
     return text;
   } },
+    secrets: { resolve: async () => tokenStored ? ok('secret-token') : err(notFound()) },
     repository: { findOrder, decide: async () => err(notFound()), listDueTenantIds: async () => [], processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };
   return { metaCapi, findOrder };
 };
@@ -254,6 +255,16 @@ it('preserves shipping analytics and locale-resolved CAPI status for a tenant wi
         metaCapi: { ...metaCapiCopy(settings, locale), enabled: true, locale, textVersion: JSON.stringify(metaCapiCopy(settings, locale)) } },
     });
   }
+});
+
+it('returns the CAPI state without asking for consent when the workspace has no access token', async () => {
+  const settings = { ...analyticsSettings, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890', privacyUrl: 'https://example.org/privacy' };
+  const deps = harness([capiPurchase], settings);
+  const { metaCapi } = capiDeps(deps, false);
+  const result = await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, 'en');
+  expect(result).toMatchObject({ ok: true, value: { status: 'paid', analytics: { value: 12 },
+    metaCapi: { ...metaCapiCopy(settings, 'en'), consent: 'undecided', withdrawnAt: null, enabled: false } } });
+  expect(JSON.stringify(result)).not.toContain('secret-token');
 });
 
 it.each([

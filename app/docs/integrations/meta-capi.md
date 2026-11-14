@@ -99,7 +99,9 @@ For a workspace with `analyticsMetaCapiEnabled` and a Meta pixel ID, the paid
 checkout status response contains `metaCapi`: enabled, the current
 consent and withdrawal time, copy fields, privacy URL, and a SHA-256 `textVersion`
 over the exact copy and privacy URL. The prompt is disabled for test purchases,
-test sessions, an unconfigured pixel, or a missing privacy URL.
+test sessions, an unconfigured pixel, a missing privacy URL, or a workspace
+without a stored `analyticsMetaCapiAccessToken`. A disabled prompt still shows
+an order's recorded grant and its withdrawal action.
 
 `POST /api/public/meta-capi/consent` accepts exactly one order credential:
 `sessionId` (the existing opaque Stripe checkout return credential) or
@@ -219,7 +221,8 @@ Meta gateway. It covers decline without an outbox job, acceptance with one job
 and a sent receipt, Escape without a decision, a disabled tenant without CAPI
 state on the return page, and guest withdrawal. English and Polish default-copy cases assert
 the complete stored snapshot and its SHA-256 version; QR grants/denials and a
-stale version after switching locale are rejected. No Meta access token or
+stale version after switching locale are rejected. The workspace stores a local
+placeholder token encrypted with a per-run key; no real Meta access token or
 external API is used.
 
 ## Verification before enabling production

@@ -1,7 +1,10 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
+import { META_CAPI_ROUTES } from './meta-capi.js';
+import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
+import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -25,6 +28,7 @@ import {
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
+  salesLinkVariantSelectionSchema,
   checkoutSessionStatusInputSchema,
   couponCheckoutBreakdownSchema,
   couponRecurringDurationSchema,
@@ -268,6 +272,7 @@ export const healthOutputSchema = attestationSchema.extend({
   databaseFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
   expectedMigrations: z.number().int().nonnegative(),
   appliedMigrations: z.number().int().nonnegative().nullable(),
+  migrationJournal: z.enum(['missing', 'unreadable']).optional(),
   schemaCurrent: z.boolean(),
   schemaFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
   schemaFingerprintMatch: z.boolean().nullable(),
@@ -468,6 +473,7 @@ export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInput
 export const publicCheckoutSessionStatusOutputSchema = z.object({
   status: z.enum(['pending', 'paid']),
   analytics: checkoutPurchaseAnalyticsSchema.optional(),
+  metaCapi: metaCapiConfigSchema.optional(),
 }).strict();
 
 export const publicPaymentConfigOutputSchema = z.object({
@@ -493,6 +499,7 @@ export const checkoutSessionOutputSchema = z.object({
 export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.pick({
   salesLinkId: true,
   salesLinkSlug: true,
+  variantSelections: true,
   productId: true,
   priceId: true,
   email: true,
@@ -692,6 +699,7 @@ const magicLinkSchema = z.object({
 export const simulatePurchaseInputSchema = z.object({
   salesLinkId: z.string().min(1).optional(),
   salesLinkSlug: z.string().min(1).optional(),
+  variantSelections: z.array(salesLinkVariantSelectionSchema).max(50).default([]),
   email: z.string().email(),
   productId: z.string().min(1),
   priceId: z.string().min(1).optional(),
@@ -1485,6 +1493,18 @@ export const tenantSecretDeleteOutputSchema = z.object({
   key: tenantSecretKeySchema,
 });
 
+const memberSettingsSchema = z.object({
+  billingPortalUrl: tenantSettingsSchema.shape.billingPortalUrl,
+  supportConfigured: z.boolean(),
+  supportUrl: tenantSettingsSchema.shape.supportUrl,
+  videoAutoplayDefault: z.boolean(),
+  memberVideoAutoplayOverride: z.boolean(),
+});
+
+export const memberSettingsOutputSchema = z.object({
+  settings: memberSettingsSchema,
+});
+
 export const tenantSettingsOutputSchema = z.object({
   settings: tenantSettingsSchema,
   personalisationMaxBytes: z.number().int().positive().nullable().default(null),
@@ -1758,7 +1778,13 @@ export const marketingLayoutSaveInputSchema = z.object({
 export const marketingSnsInboxOutputSchema = z.object({ receipts: z.array(marketingSnsReceiptSchema) });
 export const marketingSnsRetryInputSchema = z.object({ inboxId: z.string().min(1) });
 export const marketingSnsRetryOutputSchema = z.object({ retried: z.literal(true) });
-export const marketingWorkerOutputSchema = z.object({ campaignsDispatched: z.number(), retentionTenantsProcessed: z.number(), identityChecksPerformed: z.number(), reputationAlertsSent: z.number() });
+export const marketingWorkerOutputSchema = z.object({
+  campaignsDispatched: z.number(),
+  retentionTenantsProcessed: z.number(),
+  identityChecksPerformed: z.number(),
+  reputationAlertsSent: z.number(),
+  tenantErrors: z.array(z.object({ tenantId: z.string(), step: z.string(), code: z.string(), message: z.string() })).optional(),
+});
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
@@ -1901,6 +1927,7 @@ export const authSendLogLatestOutputSchema = z.object({
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  ...META_CAPI_ROUTES,
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
@@ -1911,6 +1938,7 @@ export const API_ROUTES = {
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
   ...ORDER_FULFILMENT_ROUTES,
+  ...SHIPX_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -2204,6 +2232,7 @@ export const API_ROUTES = {
   tenantTeamAdd: { method: 'POST', path: '/api/tenant/team' },
   tenantTeamRemove: { method: 'POST', path: '/api/tenant/team/remove' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
+  memberSettings: { method: 'GET', path: '/api/member/settings' },
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
   tenantRedirectCreate: { method: 'POST', path: '/api/tenant/redirects' },
@@ -2226,12 +2255,22 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  publicMetaCapiConsent: API_ROUTES.publicMetaCapiConsent.path,
+  metaCapiEvents: API_ROUTES.metaCapiEvents.path,
+  metaCapiConsents: API_ROUTES.metaCapiConsents.path,
+  withdrawMetaCapiConsent: API_ROUTES.withdrawMetaCapiConsent.path,
   directSalesLinkCheckout: API_ROUTES.directSalesLinkCheckout.path,
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
+  shipxShipment: API_ROUTES.shipxShipment.path,
+  shipxCreate: API_ROUTES.shipxCreate.path,
+  shipxDiscard: API_ROUTES.shipxDiscard.path,
+  shipxLabel: API_ROUTES.shipxLabel.path,
+  shipxSettings: API_ROUTES.shipxSettings.path,
+  shipxConfigure: API_ROUTES.shipxConfigure.path,
   getSalesLink: API_ROUTES.getSalesLink.path,
   createSalesLink: API_ROUTES.createSalesLink.path,
   updateSalesLink: API_ROUTES.updateSalesLink.path,
@@ -2580,6 +2619,7 @@ export const API_PATHS = {
   globalSchedulerRuns: API_ROUTES.globalSchedulerRuns.path,
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
+  memberSettings: API_ROUTES.memberSettings.path,
   tenantRouting: API_ROUTES.tenantRouting.path,
   tenantTeam: API_ROUTES.tenantTeam.path,
   tenantTeamAdd: API_ROUTES.tenantTeamAdd.path,

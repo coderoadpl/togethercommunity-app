@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -151,7 +151,16 @@ const changePasswordOptionsSchema = z.object({
   signOutOtherSessions: z.boolean().default(false),
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
+const metaCapiCliSettingsSchema = z.object({
+  analyticsMetaCapiEnabled: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  analyticsMetaCapiTestEventCode: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentHeading: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentBody: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentAcceptLabel: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentDeclineLabel: z.string().transform((value) => value === '' ? null : value).optional(),
+});
 const tenantSettingsOptionsSchema = z.object({
+  ...metaCapiCliSettingsSchema.shape,
   analyticsTagId: z.string().optional(),
   analyticsMetaPixelId: z.string().optional(),
   analyticsConsentCookieName: z.string().optional(),
@@ -183,6 +192,7 @@ const productCreateOptionsSchema = z.object({
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
+  parcelTemplate: parcelTemplateSchema.optional(),
   type: z.enum(['course', 'digital_download', 'membership', 'physical']).optional(),
   slug: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200),
@@ -201,6 +211,7 @@ const productUpdateOptionsSchema = z.object({
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
+  parcelTemplate: parcelTemplateSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
@@ -214,6 +225,27 @@ const ordersShipOptionsSchema = z.object({
   carrier: shippingCarrierSchema,
   tracking: z.string().min(1),
 });
+const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
+const tenantShipxSetOptionsSchema = z.object({
+  environment: shipxEnvironmentSchema.optional(),
+  organizationId: z.string().min(1).optional(),
+  token: z.string().min(1).optional(),
+  sender: z.string().optional(),
+  clearCredentials: z.boolean().default(false),
+});
+const shipxSettingsLines = (view: ShipxSettingsView): string => [
+  `environment: ${view.environment}`,
+  `organization id: ${view.organizationId?.maskedPreview ?? '(not set)'}`,
+  `token: ${view.token?.maskedPreview ?? '(not set)'}`,
+  `sender: ${view.sender === null ? '(not set)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
+  `configured: ${String(view.configured)}`,
+].join('\n');
+const shipxOrderLines = (view: ShipxOrderView): string => [
+  `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
+  `service: ${view.service ?? '(none)'}`,
+  `parcel template: ${view.parcelTemplate}`,
+  `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
+].join('\n');
 const ordersPackingListOptionsSchema = z.object({
   format: z.literal('csv'),
   fulfilment: fulfilmentStatusSchema.optional(),
@@ -995,6 +1027,13 @@ tenant
     }),
   );
 
+const metaCapi = program.command('meta-capi').description('Meta conversion delivery evidence');
+metaCapi.command('events').description('List the latest 100 conversion outcomes in the selected workspace').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.metaCapiEvents(), ctx.json, (data) => data.events.map((event) =>
+      `${event.transactionId} ${event.status} ${event.sentAt ?? event.recordedAt} ${event.error ?? ''}`).join('\n'));
+  }),
+);
 const shippingSettingsLines = (settings: TenantSettings): string[] => [
   `shipping rates: ${(settings.shippingRates ?? []).length === 0 ? '(none)' : (settings.shippingRates ?? [])
     .map((rate) => `${rate.id} ${rate.label} ${rate.amountCents} (${rate.active ? 'active' : 'inactive'})`).join('; ')}`,
@@ -1016,17 +1055,65 @@ tenant.command('settings').description('Show tenant settings').action(
         `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
         `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
         `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
+        `Meta CAPI enabled: ${String(data.settings.analyticsMetaCapiEnabled ?? false)}`,
+        `Meta CAPI test event code: ${data.settings.analyticsMetaCapiTestEventCode ?? '(not set)'}`,
         ...shippingSettingsLines(data.settings),
       ].join('\n'),
     );
   }),
 );
 
+tenant.command('shipx').description('Show the InPost ShipX settings (credentials masked)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.shipxSettings(), ctx.json, shipxSettingsLines);
+  }),
+);
+
+tenant
+  .command('shipx-set')
+  .description('Update the InPost ShipX environment, sender and credentials (owner)')
+  .option('--environment <environment>', 'sandbox or production')
+  .option('--organization-id <id>', 'ShipX organization id from Manager Paczek')
+  .option('--token <token>', 'ShipX API token from Manager Paczek; stored encrypted')
+  .option('--sender <json>', 'sender block as JSON (name, company, email, phone, street, buildingNumber, city, postCode), or null to clear')
+  .option('--clear-credentials', 'remove the stored organization id and token')
+  .action(
+    withInput(z.tuple([tenantShipxSetOptionsSchema]), async (ctx, [options]) => {
+      let sender: z.output<typeof shipxSenderSchema> | null | undefined;
+      if (options.sender !== undefined) {
+        const payload = await readJsonPayload(options.sender, undefined);
+        const parsed = payload.ok ? parsedInput(shipxSenderSchema.nullable(), payload.value, 'Invalid sender') : payload;
+        if (!parsed.ok) {
+          emit(parsed, ctx.json, () => '');
+          return;
+        }
+        sender = parsed.value;
+      }
+      emit(
+        await ctx.api.shipxConfigure({
+          ...(options.environment === undefined ? {} : { environment: options.environment }),
+          ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
+          ...(options.token === undefined ? {} : { token: options.token }),
+          ...(sender === undefined ? {} : { sender }),
+          ...(options.clearCredentials ? { clearCredentials: true } : {}),
+        }),
+        ctx.json,
+        shipxSettingsLines,
+      );
+    }),
+  );
+
 tenant
   .command('settings-set')
   .description('Update tenant settings (owner)')
   .option('--analytics-tag-id <id>', 'GA4 measurement ID; empty string clears')
   .option('--analytics-meta-pixel-id <id>', 'Meta Pixel ID; empty string clears')
+  .option('--analytics-meta-capi-enabled <value>', 'true or false; requires explicit buyer consent')
+  .option('--analytics-meta-capi-test-event-code <code>', 'Meta test event code; empty string clears')
+  .option('--analytics-meta-capi-consent-heading <text>', 'Consent heading; empty string restores the default')
+  .option('--analytics-meta-capi-consent-body <text>', 'Consent body; empty string restores the default')
+  .option('--analytics-meta-capi-consent-accept-label <text>', 'Consent accept label; empty string restores the default')
+  .option('--analytics-meta-capi-consent-decline-label <text>', 'Consent decline label; empty string restores the default')
   .option('--analytics-consent-cookie-name <name>', 'consent cookie name (readable on the checkout host); empty string clears')
   .option('--analytics-consent-cookie-value <value>', 'required consent cookie substring; empty string clears')
   .option('--analytics-load-without-consent <value>', "'true' or 'false' — load without checking consent")
@@ -1060,7 +1147,16 @@ tenant
       const accentColor = options.clearAccentColor === true ? null : options.accentColor;
       const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
+      const metaCapi = {
+        analyticsMetaCapiEnabled: options.analyticsMetaCapiEnabled,
+        analyticsMetaCapiTestEventCode: options.analyticsMetaCapiTestEventCode,
+        analyticsMetaCapiConsentHeading: options.analyticsMetaCapiConsentHeading,
+        analyticsMetaCapiConsentBody: options.analyticsMetaCapiConsentBody,
+        analyticsMetaCapiConsentAcceptLabel: options.analyticsMetaCapiConsentAcceptLabel,
+        analyticsMetaCapiConsentDeclineLabel: options.analyticsMetaCapiConsentDeclineLabel,
+      };
       if (
+        Object.values(metaCapi).every((value) => value === undefined) &&
         accentColor === undefined && accentLight === undefined &&
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
@@ -1082,6 +1178,7 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...metaCapi,
         ...(options.analyticsTagId === undefined ? {} : { analyticsTagId: options.analyticsTagId }),
         ...(options.analyticsMetaPixelId === undefined ? {} : { analyticsMetaPixelId: options.analyticsMetaPixelId }),
         ...(options.analyticsConsentCookieName === undefined ? {} : { analyticsConsentCookieName: options.analyticsConsentCookieName }),
@@ -1112,6 +1209,8 @@ tenant
           `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
           `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
           `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
+          `Meta CAPI enabled: ${String(data.settings.analyticsMetaCapiEnabled ?? false)}`,
+          `Meta CAPI test event code: ${data.settings.analyticsMetaCapiTestEventCode ?? '(not set)'}`,
           ...shippingSettingsLines(data.settings),
         ].join('\n'),
       );
@@ -1342,6 +1441,7 @@ product
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--delivery-method <method>', 'pickup or shipping (shipping requires --type physical)')
+  .option('--parcel-template <size>', 'InPost parcel size: small, medium (default) or large')
   .requiredOption('--title <title>')
   .option('--type <type>', 'course, digital_download, membership or physical')
   .option('--slug <slug>', 'tenant-unique product slug')
@@ -1397,6 +1497,7 @@ product
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
+          ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }),
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
           ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
           title: options.title,
@@ -1452,9 +1553,10 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, delivery method, safety information or variant')
+  .description('Update product title, description, cover, visibility, delivery method, parcel size, safety information or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
+  .option('--parcel-template <size>', 'InPost parcel size: small, medium or large')
   .option('--vat-rate <rate>', '5, 8, 23 or exempt')
   .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
   .option('--title <title>')
@@ -1488,6 +1590,7 @@ product
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
+          ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }),
           id,
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
           ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
@@ -1632,7 +1735,7 @@ priceCommand
     }),
   );
 
-const ordersCommand = program.command('orders').description('Sales ledger of the active tenant (staff only)');
+const ordersCommand = program.command('orders').alias('order').description('Sales ledger of the active tenant (staff only)');
 
 ordersCommand.command('verify <reference>').description('Verify an order by QR token or order number').action(
   withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [reference]) => {
@@ -1655,6 +1758,38 @@ ordersCommand
         await ctx.api.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
         ctx.json,
         (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`,
+      );
+    }),
+  );
+const ordersShipx = ordersCommand.command('shipx').description('InPost ShipX shipments and labels');
+ordersShipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
+    emit(await ctx.api.shipxShipment({ orderId }), ctx.json, shipxOrderLines);
+  }),
+);
+ordersShipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
+    emit(await ctx.api.shipxCreate({ orderId }), ctx.json, (data) =>
+      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`);
+  }),
+);
+ordersShipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
+    emit(await ctx.api.shipxDiscard({ orderId }), ctx.json, () => `discarded the unconfirmed InPost attempt of ${orderId}`);
+  }),
+);
+ordersShipx
+  .command('label <orderId>')
+  .description('Download the A6 PDF label of the InPost shipment')
+  .requiredOption('--out <file>', 'write the PDF label to this file')
+  .action(
+    withInput(z.tuple([z.string().min(1), ordersShipxLabelOptionsSchema]), async (ctx, [orderId, options]) => {
+      const result = await ctx.api.shipxLabel({ orderId });
+      if (result.ok) await writeFile(options.out, result.value.bytes);
+      emit(
+        result.ok ? ok({ filename: result.value.filename, contentType: result.value.contentType, bytes: result.value.bytes.byteLength, out: options.out }) : result,
+        ctx.json,
+        (file) => `wrote ${file.filename} (${String(file.bytes)} bytes) to ${file.out}`,
       );
     }),
   );

@@ -1,6 +1,7 @@
 export * from './envelope.js';
 export * from './http-status.js';
 export * from './routes.js';
+export * from './meta-capi.js';
 export {
   MEMBER_ROUTE_PATHS,
   PUBLIC_OFFER_ANCHOR,
@@ -24,6 +25,7 @@ export * from './surveys.js';
 export * from './sales-links.js';
 export * from './order-verification.js';
 export * from './order-fulfilment.js';
+export * from './shipx.js';
 
 export * from './consumer-sales.js';
 

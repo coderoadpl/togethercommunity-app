@@ -1,3 +1,4 @@
+import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
 import type { SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
@@ -9,6 +10,7 @@ import { marketingContactDeps } from '#core/server/testing/marketing-contact-fak
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
+import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -22,6 +24,7 @@ import {
   capabilitiesForPrincipal,
   deepHealthOutputSchema,
   envelopeSchema,
+  imageAssetUploadOutputSchema,
   salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   studentLessonOutputSchema,
@@ -52,6 +55,7 @@ import {
   orderListItemSchema,
   salesLinkSchema,
   couponSchema,
+  tenantSettingsSchema,
   type CheckoutSnapshot,
   type CouponCheckoutSession,
   memberSchema,
@@ -189,6 +193,7 @@ const deps = (input: {
   authenticated?: boolean;
   databaseUp?: boolean;
   schemaStatus?: Awaited<ReturnType<AppDeps['health']['schemaStatus']>>;
+  migrationCounts?: Awaited<ReturnType<AppDeps['health']['migrationCounts']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
   checkTenantDomains?: AppDeps['checkTenantDomains'];
@@ -380,6 +385,7 @@ const deps = (input: {
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
     importDailyMemberRecordLimit: 10_000,
     importDailyRecordLimit: 20_000,
+    importHourlyValidationRecordLimit: 50_000,
     apiKeyCrypto: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
@@ -464,6 +470,8 @@ const deps = (input: {
     },
     playbackTokenTtlSeconds: 21_600,
     storage: {
+      putObject: async () => ok(undefined),
+      list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -740,6 +748,8 @@ const deps = (input: {
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+      listRepliesForRoots: async () => new Map(),
+      countRepliesIncludingDeleted: async () => new Map(),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
@@ -836,6 +846,11 @@ const deps = (input: {
       findDirections: async (_tenantId, query) =>
         new Map(query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }])),
     },
+    dispatchNotificationFanout: () => undefined,
+    fanoutBatches: {
+      listAccessForUsers: async () => [], listStaffPage: async () => [],
+      subscribeStaff: async () => undefined, listNotificationsForSource: async () => [],
+    },
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
       insert: async (_tenantId, notification) => notification,
@@ -916,6 +931,7 @@ const deps = (input: {
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
+      migrationCounts: async () => input.migrationCounts ?? { expected: 82, applied: 82, current: true },
       schemaStatus: async () => input.schemaStatus ?? {
         expectedMigrations: 82,
         appliedMigrations: 82,
@@ -941,12 +957,55 @@ const deps = (input: {
     platformHost: 'start.localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
+    deploymentAuthOrigins: [],
     customDomainTarget: 'start.localhost',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
     authTrustedProxyHeader: null,
   };
   return appDeps;
+};
+
+const completeSettings = tenantSettingsSchema.parse({
+  name: 'Acme', defaultLanguage: 'en',
+  socialLinks: [{ label: 'Community', url: 'https://example.test/community' }],
+  signInNotice: { enabled: true, text: 'Welcome' },
+  billingPortalUrl: 'https://billing.example.test/portal',
+  supportEmail: 'private@example.test', supportConfigured: false,
+  supportUrl: 'https://example.test/support',
+  videoAutoplayDefault: true, memberVideoAutoplayOverride: true,
+  bunnyStreamLibraryId: '12345', bunnyStreamCdnHostname: 'video.example.test',
+  logoUrl: 'https://example.test/logo.png', logoDarkUrl: 'https://example.test/dark.png',
+  accentColor: '#112233', accentLight: '#445566', faviconUrl: 'https://example.test/icon.png',
+  ogTitle: 'Acme learning', ogDescription: 'Learn with us', ogImageUrl: 'https://example.test/social.png',
+  termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy',
+  defaultHomeSpaceId: 'space-1', directMessagesEnabled: true,
+  analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '123456789',
+  analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true',
+  analyticsLoadWithoutConsent: true,
+  checkoutAppearance: {
+    displayName: 'Acme Checkout', logoUrl: 'https://example.test/logo.png', iconUrl: 'https://example.test/icon.png',
+    backgroundColor: '#112233', buttonColor: '#445566', fontFamily: 'inter', borderStyle: 'rounded',
+  },
+  autoIssueInvoices: true, autoIssueInvoiceScope: 'all', ksefSubmissionMode: 'manual',
+  invoiceVatMode: 'rate', invoiceVatRatePercent: 23,
+  invoiceExemptionBasisKind: 'other', invoiceExemptionBasis: 'Example exemption basis',
+  invoicingProvider: 'ksef', invoiceSellerName: 'Acme Seller', invoiceSellerAddress: '10 Example Street',
+  shippingRates: [{
+    id: 'locker', label: 'Parcel locker', amountCents: 1500, vatRatePercent: 23,
+    carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 3 },
+  }],
+  inpostGeowidgetToken: 'example-geowidget-token',
+});
+
+const memberSettingsProjection = {
+  settings: {
+    billingPortalUrl: 'https://billing.example.test/portal',
+    supportConfigured: true,
+    supportUrl: 'https://example.test/support',
+    videoAutoplayDefault: true,
+    memberVideoAutoplayOverride: true,
+  },
 };
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
@@ -1234,6 +1293,7 @@ const importM2mApp = (options: {
   const configured = { ...deps(), ...options.overrides };
   const mutations: Parameters<AppDeps['importContent']['commit']>[1][] = [];
   const userMutations: Parameters<AppDeps['importUsers']['commit']>[1][] = [];
+  const redirectMutations: Parameters<AppDeps['redirects']['commit']>[1][] = [];
   configured.tenantApiKeys = {
     listByTenant: async () => [],
     create: async () => undefined,
@@ -1263,13 +1323,20 @@ const importM2mApp = (options: {
       return 'saved';
     },
   };
+  configured.redirects = {
+    ...configured.redirects,
+    commit: async (_tenantId, mutation) => {
+      redirectMutations.push(mutation);
+      return 'saved';
+    },
+  };
   configured.importUsersReader = readOnlyImportUsers(configured.importUsers);
   configured.contentHash = { sha256: (content) => String(content) };
-  configured.apiKeyRateLimits = {
+  configured.apiKeyRateLimits = options.overrides?.apiKeyRateLimits ?? {
     claim: async () => options.rateLimited !== true,
     release: async () => undefined,
   };
-  return { app: buildApp(configured), mutations, userMutations };
+  return { app: buildApp(configured), mutations, userMutations, redirectMutations };
 };
 
 const ksefDeps = (dispatch: NonNullable<AppDeps['ksef']>['dispatch']): NonNullable<AppDeps['ksef']> => {
@@ -1913,6 +1980,29 @@ describe('marketing HTTP surfaces', () => {
       },
     });
     expect(triggers).toEqual(['cron']);
+  });
+
+  it('answers the cron with 2xx and the tenant errors when only tenant configuration is missing', async () => {
+    const marketing = marketingDeps();
+    const tenantErrors = [{ tenantId: 't-acme', step: 'campaign' as const, code: 'ses_not_configured' as const, message: 'Tenant SES is not configured' }];
+    marketing.dispatchScheduledMarketing = async () => ok({
+      campaignsDispatched: 1,
+      retentionTenantsProcessed: 0,
+      identityChecksPerformed: 0,
+      reputationAlertsSent: 0,
+      tenantErrors,
+    });
+    const configurationGap = await marketingApp(marketing).request('/api/internal/marketing/tick', {
+      headers: { authorization: 'Bearer test-marketing-cron-secret' },
+    });
+    expect(configurationGap.status).toBe(200);
+    expect(await configurationGap.json()).toMatchObject({ ok: true, data: { tenantErrors } });
+
+    marketing.dispatchScheduledMarketing = async () => err(internal('database unavailable'));
+    const platformFailure = await marketingApp(marketing).request('/api/internal/marketing/tick', {
+      headers: { authorization: 'Bearer test-marketing-cron-secret' },
+    });
+    expect(platformFailure.status).toBe(500);
   });
 
   it.each<{ scopes: TenantApiKey['scopes'] }>([{ scopes: null }, { scopes: ['marketing'] }])('authenticates automation routes with the tenant API key and releases invalid idempotency claims ($scopes)', async ({ scopes }) => {
@@ -2755,7 +2845,10 @@ describe('marketing HTTP surfaces', () => {
         messageType: 'Notification',
         outcome: 'recorded',
       });
-      expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'ignored' }]);
+      const receipts = await marketing.snsInbox.list('t-acme');
+      expect(receipts).toMatchObject([{ status: 'pending' }]);
+      expect(readStoredMarketingSesEvents(receipts[0]?.rawBody ?? null, topicArn))
+        .toMatchObject([{ kind: 'delivery', messageId: 'ses-custom-host-message', occurredAt: now }]);
     });
 
     it('refuses a receipt when tenant topic binding disappears', async () => {
@@ -2926,7 +3019,7 @@ describe('public rate limiting', () => {
       const app = buildApp(configured);
       const responses = await Promise.all(Array.from({ length: 11 }, (_, index) => app.request(path, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', host: 'localhost:48730', origin: 'http://localhost:48730' },
         body: JSON.stringify({ email: `member-${index}@example.com`, password: 'incorrect-password' }),
       })));
       expect(responses.map((response) => response.status)).toEqual(Array.from({ length: 11 }, () => 200));
@@ -3068,7 +3161,7 @@ describe('public rate limiting', () => {
 
     const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      headers: { 'content-type': 'application/json', host: 'localhost:48730', origin: 'http://localhost:48730', [TENANT_HEADER]: 'acme' },
       body: JSON.stringify({ email: 'Buyer@Together.dev' }),
     });
 
@@ -3163,6 +3256,25 @@ describe('email dispatch route', () => {
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledTimes(2);
     expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
+  });
+
+  it('preserves the email result when the Meta tenant directory fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const result = { attemptsMade: 3, sentCount: 2, failedCount: 1 };
+    const dispatchEmails = vi.fn(async () => ok(result));
+    const base = deps({ dispatchEmails, logger });
+    base.metaCapi = {
+      tenants: base.tenants, clock: base.clock, hash: base.contentHash, logger,
+      directory: { listAll: async () => { throw new Error('buyer@example.org secret-token'); } },
+      secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listDueTenantIds: async () => ['workspace'], processNext: async () => false,
+        listEvents: async () => [], listMemberConsents: async () => [] },
+    };
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: result });
+    expect(dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(logger.warn.mock.calls).toEqual([['[meta-capi] cron dispatch_failed']]);
   });
 
   it('surfaces a dispatch failure as an error envelope', async () => {
@@ -3387,6 +3499,8 @@ describe('tenant domain check route', () => {
               : err(notFound(`No secret "${key}"`)),
         },
         storage: {
+          putObject: async () => ok(undefined),
+          list: async () => ok({ objects: [], continuationToken: null }),
           getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -3486,6 +3600,25 @@ describe('health route', () => {
     });
   });
 
+  it('names a migration journal the health attestation could not read', async () => {
+    const response = await buildApp(deps({
+      schemaStatus: {
+        expectedMigrations: 82,
+        appliedMigrations: null,
+        migrationJournal: 'unreadable',
+        schemaCurrent: false,
+        schemaFingerprint: null,
+        schemaFingerprintMatch: null,
+      },
+    })).request(API_PATHS.health);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { appliedMigrations: null, migrationJournal: 'unreadable', schemaCurrent: false },
+    });
+  });
+
   it('serves liveness without touching the database', async () => {
     let databasePings = 0;
     const configured = deps();
@@ -3493,6 +3626,10 @@ describe('health route', () => {
       pingDatabase: async () => {
         databasePings += 1;
         return false;
+      },
+      migrationCounts: async () => {
+        databasePings += 1;
+        return { expected: 82, applied: null, journal: 'missing' };
       },
       schemaStatus: async () => ({
         expectedMigrations: 82,
@@ -3527,6 +3664,57 @@ describe('health route', () => {
     expect(await down.json()).toEqual({
       ok: false,
       error: { code: 'unavailable', message: 'Database is not reachable' },
+    });
+  });
+
+  it('stays unready until the database holds every migration this release ships', async () => {
+    const pending = await buildApp(deps({ migrationCounts: { expected: 82, applied: 81, current: false } }))
+      .request(API_PATHS.healthReady);
+    expect(pending.status).toBe(503);
+    expect(await pending.json()).toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'Database migrations are behind this release: 81 of 82 applied' },
+    });
+
+    const untouched = await buildApp(deps({ migrationCounts: { expected: 82, applied: null, journal: 'missing' } }))
+      .request(API_PATHS.healthReady);
+    expect(untouched.status).toBe(503);
+    expect(await untouched.json()).toEqual({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: 'Database migrations are behind this release: no migration journal yet, 0 of 82 applied',
+      },
+    });
+
+    const duplicated = await buildApp(deps({ migrationCounts: { expected: 82, applied: 82, current: false } }))
+      .request(API_PATHS.healthReady);
+    expect(duplicated.status).toBe(503);
+    expect(await duplicated.json()).toEqual({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: "Database migrations are behind this release: the journal holds 82 rows but not this release's newest migration",
+      },
+    });
+
+    const ahead = await buildApp(deps({ migrationCounts: { expected: 82, applied: 83, current: true } }))
+      .request(API_PATHS.healthReady);
+    expect(ahead.status).toBe(200);
+  });
+
+  it('stays unready without blaming pending migrations when the journal cannot be read', async () => {
+    const unreadable = await buildApp(deps({ migrationCounts: { expected: 82, applied: null, journal: 'unreadable' } }))
+      .request(API_PATHS.healthReady);
+
+    expect(unreadable.status).toBe(503);
+    expect(unreadable.headers.get('cache-control')).toBe('no-store');
+    expect(await unreadable.json()).toEqual({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: "The migration journal could not be read, so this release's 82 migrations cannot be confirmed",
+      },
     });
   });
 });
@@ -3754,6 +3942,7 @@ describe('server edge security baseline', () => {
       headers: {
         host: 'acme.localhost:48730',
         cookie: 'session=owner-session',
+        origin: 'http://acme.localhost:48730',
         ...(contentType === null ? {} : { 'content-type': contentType }),
       },
       body: new TextEncoder().encode(JSON.stringify({ key: 'bunny.apiKey', value: 'replacement-secret' })),
@@ -3775,7 +3964,7 @@ describe('server edge security baseline', () => {
       });
       const response = await app.request(API_PATHS.tenantSecrets, {
         method: 'POST',
-        headers: { host: 'acme.localhost:48730', 'content-type': contentType, cookie: 'session=owner-session' },
+        headers: { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': contentType, cookie: 'session=owner-session' },
         body: JSON.stringify({ key: 'bunny.apiKey', value: 'replacement-secret' }),
       });
 
@@ -4067,6 +4256,8 @@ describe('lesson attachment download route', () => {
         })),
       },
       storage: {
+        putObject: async () => ok(undefined),
+        list: async () => ok({ objects: [], continuationToken: null }),
         getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
@@ -4317,6 +4508,7 @@ describe('purchased product download route', () => {
       }) },
       storage: { ...deps().storage,
         presignGet: () => ok('https://download.example.test/signed-workbook'),
+        list: async () => ok({ objects: [], continuationToken: null }),
         getObject: async (_input, context) => {
           if (stage === 'recorded size') throw new Error('Oversized asset must not be fetched');
           expect(context.maxBytes).toBe(limit);
@@ -4452,18 +4644,39 @@ describe('purchased product download route', () => {
     expect(JSON.stringify(body)).not.toContain('replacesAssetId');
   });
 
-  it('returns the personalisation limit only for staff tenant settings readers', async () => {
-    const limit = 12_345;
-    const settingsPath = API_PATHS.tenantSettings;
-    const member = await scopedApp('member', { overrides: { personalisationMaxBytes: limit } })
-      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
-    const staff = await scopedApp('staff', { overrides: { personalisationMaxBytes: limit } })
-      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
-
+  it('serializes exactly the member allowlist and preserves the full staff payload', async () => {
+    const base = deps();
+    const overrides = {
+      personalisationMaxBytes: 12_345,
+      tenants: { ...base.tenants, findSettings: async () => completeSettings },
+    };
+    const headers = { host: 'acme.localhost:48730' };
+    const memberApp = scopedApp('member', { overrides });
+    const member = await memberApp.request(API_PATHS.memberSettings, { headers });
     expect(member.status).toBe(200);
-    expect(await member.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: null } });
-    expect(staff.status).toBe(200);
-    expect(await staff.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: limit } });
+    expect(await member.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    const forbidden = await memberApp.request(API_PATHS.tenantSettings, { headers });
+    expect(forbidden.status).toBe(403);
+    expect(await forbidden.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    for (const scope of ['staff', 'owner'] as const) {
+      const app = scopedApp(scope, { overrides });
+      const staff = await app.request(API_PATHS.tenantSettings, { headers });
+      expect(staff.status).toBe(200);
+      expect(await staff.json()).toEqual({ ok: true, data: {
+        settings: { ...completeSettings, supportConfigured: true },
+        personalisationMaxBytes: overrides.personalisationMaxBytes,
+      } });
+      const memberView = await app.request(API_PATHS.memberSettings, { headers });
+      expect(await memberView.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    }
+  });
+
+  it('requires tenant membership for the member settings route', async () => {
+    const response = await scopedApp('none').request(API_PATHS.memberSettings, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(response.status).toBe(403);
   });
 
 });
@@ -5168,6 +5381,7 @@ describe('public route manifest', () => {
       'Amazon SNS delivery webhook',
       'Stripe payment webhook',
       'Checkout session start',
+      'Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes',
       'Rate-limited direct sales-link checkout session creation',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
@@ -6768,6 +6982,8 @@ describe('anonymous public surface routes', () => {
             .map((post) => ({ post, replyCount: 0 })),
           nextCursor: null,
         }),
+        listRepliesForRoots: async () => new Map(),
+        countRepliesIncludingDeleted: async () => new Map(),
         listReplies: async () => [],
       },
       courses: {
@@ -7132,6 +7348,8 @@ describe('anonymous public surface routes', () => {
             threads: forAcme(tenantId, [{ post, replyCount: 0 }]),
             nextCursor: null,
           }),
+          listRepliesForRoots: async () => new Map(),
+          countRepliesIncludingDeleted: async () => new Map(),
           listReplies: async () => [],
         },
         courses: {
@@ -8464,7 +8682,7 @@ describe('tenant-host magic links on login', () => {
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'start.localhost:48730',
         [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
       },
@@ -8486,7 +8704,7 @@ describe('tenant-host magic links on login', () => {
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'acme.localhost:48730',
         [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
       },
@@ -8515,7 +8733,7 @@ describe('tenant-host magic links on login', () => {
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'acme.localhost:48730',
         [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
       },
@@ -8530,7 +8748,7 @@ describe('tenant-host magic links on login', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://localhost:48730/my' }),
     });
 
@@ -8556,7 +8774,7 @@ describe('tenant-host email verification', () => {
     });
     const request = (path: string) => app.request(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email }),
     });
 
@@ -8575,7 +8793,7 @@ describe('tenant-host email verification', () => {
       await app.request(path, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/json', origin: 'http://localhost:48730',
           host: 'acme.localhost:48730',
           [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
         },
@@ -8605,7 +8823,7 @@ describe('tenant-host email verification', () => {
       await app.request(path, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/json', origin: 'http://localhost:48730',
           host: 'learn.acme.example',
           'x-forwarded-proto': 'https',
           [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
@@ -8628,7 +8846,7 @@ describe('tenant-host email verification', () => {
       await app.request(path, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/json', origin: 'http://localhost:48730',
           host: 'localhost:48730',
           [TENANT_HEADER]: 'globex',
         },
@@ -8651,61 +8869,25 @@ describe('auth link host trust', () => {
     origin: 'http://acme.localhost:48730',
   };
 
-  it('keeps the magic-link base on APP_BASE_URL for an unknown host', async () => {
-    const { app, captured } = capturingApp();
-
-    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
-      method: 'POST',
-      headers: attackerHeaders,
-      body: JSON.stringify({ email: 'login@together.dev' }),
-    });
-
-    expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
-    expect(captured.context?.context.tenantId).toBeUndefined();
-  });
-
-  it('keeps the reset base on APP_BASE_URL for an unknown host', async () => {
-    const { app, captured } = capturingApp();
-
-    await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
-      method: 'POST',
-      headers: attackerHeaders,
-      body: JSON.stringify({ email: 'login@together.dev' }),
-    });
-
-    expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
-    expect(captured.resetContext?.context.tenantId).toBeUndefined();
-  });
-
-  it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
-    'keeps %s delivery on APP_BASE_URL for an unknown host',
+  it.each([BETTER_AUTH_MAGIC_LINK_PATH, BETTER_AUTH_PASSWORD_RESET_PATH, BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
+    'rejects %s on an untrusted host before installing delivery context',
     async (path) => {
-      const { app, captured } = capturingApp();
+      for (const host of ['attacker.example', 'missing.localhost:48730']) {
+        const { app, captured } = capturingApp();
+        const response = await app.request(path, {
+          method: 'POST',
+          headers: { ...attackerHeaders, host },
+          body: JSON.stringify({ email: 'account@together.dev' }),
+        });
 
-      await app.request(path, {
-        method: 'POST',
-        headers: attackerHeaders,
-        body: JSON.stringify({ email: 'account@together.dev' }),
-      });
-
-      expect(captured.verificationContext?.context.baseUrl).toBe('http://localhost:48730');
-      expect(captured.verificationContext?.context.tenantId).toBeUndefined();
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ error: { code: 'forbidden' } });
+        expect(captured.context).toBeNull();
+        expect(captured.resetContext).toBeNull();
+        expect(captured.verificationContext).toBeNull();
+      }
     },
   );
-
-  it('keeps the magic-link base on APP_BASE_URL for an unknown slug under the base domain', async () => {
-    const { app, captured } = capturingApp();
-
-    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'missing.localhost:48730' },
-      body: JSON.stringify({ email: 'login@together.dev' }),
-    });
-
-    expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
-    expect(captured.context?.context.tenantId).toBeUndefined();
-    expect(captured.context?.context.tenantName).toBeUndefined();
-  });
 
   it('uses the tenant origin for reset fallback with tenant-header routing', async () => {
     const { app, captured } = capturingApp();
@@ -8713,7 +8895,7 @@ describe('auth link host trust', () => {
     await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': 'application/json', origin: 'http://localhost:48730',
         host: 'localhost:48730',
         [TENANT_HEADER]: 'globex',
       },
@@ -8728,7 +8910,7 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8744,7 +8926,7 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8760,7 +8942,7 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'learn.acme.example' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'learn.acme.example' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8777,7 +8959,7 @@ describe('auth link host trust', () => {
       });
       await app.request(path, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
+        headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
         body: JSON.stringify({ email: 'login@together.dev' }),
       });
       const baseUrl = path === BETTER_AUTH_MAGIC_LINK_PATH
@@ -8801,7 +8983,7 @@ describe('auth link host trust', () => {
 
     const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
@@ -8809,7 +8991,7 @@ describe('auth link host trust', () => {
     expect(contexts.size).toBe(0);
   });
 
-  it('rejects an over-long e-mail before resolving the tenant', async () => {
+  it('rejects an over-long e-mail without resolving delivery context after the origin check', async () => {
     const base = deps();
     let resolvedTenants = 0;
     const app = buildApp({
@@ -8825,11 +9007,11 @@ describe('auth link host trust', () => {
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:48730', host: 'acme.localhost:48730' },
       body: JSON.stringify({ email: `${'a'.repeat(250)}@together.dev` }),
     });
 
-    expect(resolvedTenants).toBe(0);
+    expect(resolvedTenants).toBe(1);
   });
 });
 
@@ -8905,7 +9087,7 @@ describe('scheduler operator routes', () => {
 });
 
 describe('impersonation HTTP surface', () => {
-  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json' };
 
   const impersonatingApp = (extraOverrides: Partial<AppDeps> = {}) => {
     const sessions = new Map<string, ImpersonationSession & { tokenHash: string }>();
@@ -8957,6 +9139,22 @@ describe('impersonation HTTP surface', () => {
 
   const cookieOf = (response: Response): string =>
     (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+  it('returns only member settings while impersonating, never the staff projection', async () => {
+    const base = deps();
+    const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async () => completeSettings } });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    const member = await app.request(API_PATHS.memberSettings, { headers: impersonated });
+    expect(member.status).toBe(200);
+    expect(await member.json()).toEqual({ ok: true, data: memberSettingsProjection });
+    const staff = await app.request(API_PATHS.tenantSettings, { headers: impersonated });
+    expect(staff.status).toBe(403);
+    expect(await staff.json()).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+  });
 
   it('opens a read-only member view and blocks every write and direct message', async () => {
     const accountSecurityRead = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
@@ -9961,13 +10159,13 @@ describe('public surveys', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it('discards honeypots and blocks stale tokens, oversized comments and foreign origins', async () => {
-    const { appDeps, submit, headers, payload } = fixture();
+  it('discards honeypots and blocks stale tokens, oversized comments and signed-in foreign origins', async () => {
+    const { appDeps, submit, headers, payload } = fixture('member-respondent');
     const app = buildApp(appDeps);
     for (const [body, expected] of [[{ ...payload, website: 'bot' }, 200], [{ ...payload, token: 'stale' }, 400], [{ ...payload, comment: 'x'.repeat(2001) }, 400]] as const) {
       expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers, body: JSON.stringify(body) })).status).toBe(expected);
     }
-    expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, origin: 'https://untrusted.example.test' }, body: JSON.stringify(payload) })).status).toBe(403);
+    expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, cookie: 'session=signed-in', origin: 'https://untrusted.example.test' }, body: JSON.stringify(payload) })).status).toBe(403);
     expect(submit).not.toHaveBeenCalled();
   });
 });
@@ -10115,7 +10313,7 @@ it('revalidates listed sales links by revision and validity boundaries before re
   const findByIds = vi.fn(h.base.products.findByIds);
   const findBySlug = vi.fn(async () => link);
   h.base.clock.nowIso = () => now;
-  h.base.salesLinkManagement = { salesLinks: { ...h.salesLinks, list: async () => [link], findBySlug }, products: { findByIds }, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  h.base.salesLinkManagement = { salesLinks: { ...h.salesLinks, list: async () => [link], findBySlug }, products: { ...h.base.products, findByIds }, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
   const headers = { host: 'acme.localhost' };
   const before = await requestPublicOffer(h.app, headers);
   expect((await before.json()).data.salesLinks).toEqual([]);
@@ -11006,4 +11204,296 @@ describe('tenant team HTTP surface', () => {
     }
     expect(new Set(responses)).toEqual(new Set([JSON.stringify({ ok: true, data: { status: 'invitation_sent' } })]));
   });
+});
+
+describe('image upload publication boundary', () => {
+  const id = '00000000-0000-4000-8000-000000000001';
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+  const storageSecret = JSON.stringify({
+    provider: 'minio', endpoint: 'https://storage.example.test', region: 'us-east-1',
+    bucket: 'private-assets', accessKeyId: 'key', secretAccessKey: 'secret',
+  });
+
+  it.each([
+    ['logo', 'owner', API_PATHS.brandingAssetUpload, API_PATHS.brandingAssetComplete],
+    ['course-cover', 'staff', API_PATHS.courseCoverUpload, API_PATHS.courseCoverComplete],
+    ['product-cover', 'staff', API_PATHS.productCoverUpload, API_PATHS.productCoverComplete],
+    ['avatar', 'member', API_PATHS.avatarUpload, API_PATHS.avatarComplete],
+  ] as const)('keeps %s candidates private and publishes only server-owned bytes', async (kind, role, uploadPath, completePath) => {
+    const base = deps();
+    const objects = new Map<string, Uint8Array>();
+    const storage = {
+      ...base.storage,
+      head: async ({ url }: { url: string }) => ok({ sizeBytes: objects.get(url)?.byteLength ?? 0 }),
+      getObject: async ({ url }: { url: string }) => {
+        const bytes = objects.get(url);
+        return bytes === undefined ? err(notFound('missing')) : ok(new Uint8Array(bytes));
+      },
+      putObject: async ({ url, body }: { url: string; body: Uint8Array }) => {
+        objects.set(url, new Uint8Array(body));
+        return ok(undefined);
+      },
+      delete: async ({ url }: { url: string }) => { objects.delete(url); return ok({ deleted: true as const }); },
+    };
+    const app = scopedApp(role, { overrides: {
+      storage, ids: { nextId: () => id }, secretResolver: { resolve: async () => ok(storageSecret) },
+      avatarImages: createAvatarImageProcessor(storage),
+    } });
+    const source = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGUlEQVQokWMwTptJEmIY1ZA2GkrGwzVpAABIfDIQjwcm5wAAAABJRU5ErkJggg==', 'base64');
+    const upload = await app.request(uploadPath, {
+      method: 'POST', headers,
+      body: JSON.stringify({ kind, fileName: 'image.png', contentType: 'image/png', sizeBytes: source.byteLength }),
+    });
+    expect(upload.status).toBe(200);
+    const envelope = envelopeSchema(imageAssetUploadOutputSchema).parse(await upload.json());
+    if (!envelope.ok) throw new Error('Expected upload');
+    const { key, servePath, upload: candidate } = envelope.data;
+    expect(key).toBe(`image-asset-candidates/${acme.id}/${kind}/${id}.png`);
+    objects.set(candidate.url, source);
+    const before = await app.request(servePath, { headers });
+    if (kind === 'avatar') {
+      expect(before.status).toBe(404);
+    } else {
+      expect(before.status).toBe(302);
+      const target = new URL(before.headers.get('location') ?? '');
+      target.search = '';
+      expect(objects.has(target.toString())).toBe(false);
+    }
+    expect((await app.request(`/api/public/assets/image-asset-candidates/${id}.png`, { headers })).status).toBe(404);
+    const complete = await app.request(completePath, { method: 'POST', headers, body: JSON.stringify({ key }) });
+    expect(complete.status).toBe(200);
+    const publishedPath = `/api/public/assets/${kind}/${id}.${kind === 'avatar' ? 'webp' : 'png'}`;
+    expect(await complete.json()).toMatchObject({ ok: true, data: { url: publishedPath } });
+    expect(objects.has(candidate.url)).toBe(false);
+    const served = await app.request(publishedPath, { headers });
+    expect(served.status).toBe(302);
+    const target = new URL(served.headers.get('location') ?? '');
+    expect(target.searchParams.get('response-content-type')).toBe(kind === 'avatar' ? 'image/webp' : 'image/png');
+    expect(target.searchParams.get('response-content-disposition')).toBe('inline');
+    target.search = '';
+    const published = objects.get(target.toString());
+    expect(published).toBeDefined();
+    objects.set(candidate.url, new TextEncoder().encode('<svg><script/></svg>'));
+    expect(objects.get(target.toString())).toEqual(published);
+    const replay = await app.request(completePath, { method: 'POST', headers, body: JSON.stringify({ key }) });
+    expect(replay.status).toBe(400);
+    expect(objects.has(candidate.url)).toBe(false);
+    expect(objects.get(target.toString())).toEqual(published);
+  });
+
+  it('redirects legacy SVGs with attachment semantics and forbids generic SVG avatars', async () => {
+    const app = scopedApp('none', { overrides: { secretResolver: { resolve: async () => ok(storageSecret) } } });
+    const response = await app.request(`/api/public/assets/logo/${id}.svg`, { headers });
+    expect(response.status).toBe(302);
+    const signed = new URL(response.headers.get('location') ?? '');
+    expect(signed.searchParams.get('response-content-type')).toBe('image/svg+xml');
+    expect(signed.searchParams.get('response-content-disposition')).toBe('attachment');
+    expect((await app.request(`/api/public/assets/avatar/${id}.svg`, { headers })).status).toBe(404);
+  });
+});
+
+describe('import validation resource ceilings', () => {
+  const headers = { host: 'acme.localhost:48730', 'x-api-key': 'import-key', 'content-type': 'application/json' };
+  const limitedApp = (recordLimit = 50_000) => {
+    const counts = new Map<string, number>();
+    const claims: Array<{ period: string; cost: number }> = [];
+    const rateLimits: AppDeps['apiKeyRateLimits'] = {
+      claim: async (_tenantId, input) => {
+        const cost = input.cost ?? 1;
+        claims.push({ period: input.period, cost });
+        const previous = counts.get(input.period) ?? 0;
+        if (previous + cost > input.limit) return false;
+        counts.set(input.period, previous + cost);
+        return true;
+      },
+      release: async (_tenantId, input) => {
+        counts.set(input.period, (counts.get(input.period) ?? 0) - (input.cost ?? 1));
+      },
+    };
+    const { app } = importM2mApp({ overrides: { apiKeyRateLimits: rateLimits, importHourlyValidationRecordLimit: recordLimit } });
+    const request = (count: number) => app.request(API_PATHS.m2mImportValidate, {
+      method: 'POST', headers,
+      body: JSON.stringify({ datasetVersion: 'together-import/v1', records: Array.from({ length: count }, () => null) }),
+    });
+    return { counts, claims, request };
+  };
+
+  it('charges invalid records, accepts 5,000 and refuses 5,001 before claiming budget', async () => {
+    const h = limitedApp();
+    for (const count of [1, 25, 5_000]) {
+      const response = await h.request(count);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, data: { valid: false } });
+      expect(h.claims.at(-1)).toEqual({ period: 'import-validate-records', cost: count });
+    }
+    const before = h.claims.length;
+    expect((await h.request(5_001)).status).toBe(400);
+    expect(h.claims).toHaveLength(before);
+    expect(h.counts.get('hour')).toBe(3);
+    expect(h.counts.get('import-validate-records')).toBe(5_026);
+  });
+
+  it('returns 429 with Retry-After after 50,000 records and restores the rejected request claim', async () => {
+    const h = limitedApp();
+    for (let batch = 0; batch < 10; batch += 1) expect((await h.request(5_000)).status).toBe(200);
+    const response = await h.request(1);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('3600');
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited', message: 'Import validation record limit exceeded' } });
+    expect(h.counts.get('hour')).toBe(10);
+    expect(h.counts.get('import-validate-records')).toBe(50_000);
+  });
+
+  it('retains the independent 30-request ceiling for small validations', async () => {
+    const h = limitedApp();
+    for (let request = 0; request < 30; request += 1) expect((await h.request(1)).status).toBe(200);
+    const response = await h.request(1);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('3600');
+    expect(h.counts.get('import-validate-records')).toBe(30);
+    expect(h.claims.at(-1)).toEqual({ period: 'hour', cost: 1 });
+  });
+
+  it('uses the configured record budget without reducing the allowed envelope size', async () => {
+    const h = limitedApp(10);
+    expect((await h.request(10)).status).toBe(200);
+    expect((await h.request(1)).status).toBe(429);
+  });
+});
+
+describe('import creation timestamps over HTTP', () => {
+  const headers = { host: 'acme.localhost:48730', 'x-api-key': 'import-key', 'content-type': 'application/json' };
+  const now = '1998-08-14T10:00:00.000Z';
+  describe.each([
+    { kind: 'course', endpoint: API_PATHS.m2mImportCourses, record: { importKey: 'course', name: 'Course', description: '', imageUrl: null, moduleOrder: [] } },
+    { kind: 'module', endpoint: API_PATHS.m2mImportModules, record: { importKey: 'module', title: 'Module', courseKeys: [], prefix: null, chapters: [] } },
+    { kind: 'lesson', endpoint: API_PATHS.m2mImportLessons, record: { importKey: 'lesson', name: 'Lesson', isPreview: false, contents: [] } },
+    { kind: 'product', endpoint: API_PATHS.m2mImportProducts, record: { importKey: 'product', type: 'physical', slug: 'product', title: 'Product', description: '', coverUrl: null, priceCents: 0, currency: 'USD', accessItems: [] } },
+    { kind: 'member', endpoint: API_PATHS.m2mImportMembers, record: { importKey: 'member', email: 'user@example.test', displayName: 'Member' } },
+    { kind: 'redirect', endpoint: API_PATHS.m2mImportRedirects, record: { importKey: 'redirect', fromPath: '/old', target: { kind: 'path', path: '/new' }, permanent: true } },
+  ])('$kind timestamps', ({ kind, endpoint, record }) => {
+    it.each([
+      [undefined, true], ['1990-01-01T00:00:00.000Z', true], [now, true],
+      ['1998-08-14T10:04:59.999Z', true], ['1998-08-14T10:05:00.000Z', true],
+      ['1998-08-14T10:05:00.001Z', false], ['2098-08-14T10:00:00.000Z', false], ['invalid-date', false],
+    ] as const)('applies the same createdAt rule to validate and write: %s', async (createdAt, valid) => {
+      const { app, mutations, userMutations, redirectMutations } = importM2mApp({ scopes: ['import:content', 'import:users'], overrides: { clock: { nowIso: () => now } } });
+      const payload = { ...record, ...(createdAt === undefined ? {} : { createdAt }) };
+      const validated = await app.request(API_PATHS.m2mImportValidate, {
+        method: 'POST', headers, body: JSON.stringify({ datasetVersion: 'together-import/v1', records: [{ kind, ...payload }] }),
+      });
+      expect(validated.status).toBe(200);
+      expect(await validated.json()).toMatchObject({ ok: true, data: { valid } });
+      const written = await app.request(endpoint, {
+        method: 'POST', headers, body: JSON.stringify({ datasetVersion: 'together-import/v1', records: [payload] }),
+      });
+      expect(written.status).toBe(200);
+      expect(await written.json()).toMatchObject({ ok: true, data: { summary: { failed: valid ? 0 : 1 } } });
+      expect(mutations.length + userMutations.length + redirectMutations.length).toBe(valid ? 1 : 0);
+    });
+  });
+});
+
+const bundleVariantApp = () => {
+  const h = simulatedBundleApp();
+  const first = h.products[0];
+  if (first === undefined) throw new Error('Missing bundle base');
+  first.variantGroup = 'prints';
+  const sibling: Product = { ...first, id: 'white', slug: 'white', title: 'White print', priceCents: 2100, variantLabel: 'White' };
+  h.products.push(sibling);
+  h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  return { ...h, first, sibling, variantSelections: [{ productId: first.id, variantProductId: sibling.id }] };
+};
+
+it.each([undefined, 'BUNDLE'])('keeps the swapped first product through simulated fulfilment and coupon attribution: %s', async (couponCode) => {
+  const h = bundleVariantApp();
+  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+    productId: h.first.id, salesLinkSlug: h.link.slug, email: 'buyer@example.test', variantSelections: h.variantSelections,
+    ...(couponCode === undefined ? {} : { couponCode }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ ok: true, data: { productId: 'white' } });
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ productId: 'white', salesLinkId: h.link.id, amountCents: couponCode === undefined ? 3180 : 2862,
+    lines: [{ productId: 'white', name: 'White print', grossCents: 2100 }, { productId: 'digital' }] });
+  expect(h.grants.map((grant) => grant.productId)).toEqual(['digital']);
+  if (couponCode !== undefined) expect([...h.couponSessions.values()]).toMatchObject([{ productId: 'white', originalCents: 3180, finalCents: 2862 }]);
+});
+
+it('uses selected prices for coupon previews and rejects a coupon scoped to the saved bundle', async () => {
+  const h = bundleVariantApp();
+  const request = () => h.app.request(API_PATHS.couponCheckoutValidation, {
+    method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' },
+    body: JSON.stringify({ productId: h.first.id, salesLinkSlug: h.link.slug, email: 'buyer@example.test', couponCode: 'BUNDLE', variantSelections: h.variantSelections }),
+  });
+  const response = await request();
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ ok: true, data: { breakdown: { originalCents: 3180, finalCents: 2862 } } });
+  const coupons = h.base.coupons;
+  const coupon = await coupons?.findByCode(acme.id, 'BUNDLE');
+  if (coupon == null || coupons === undefined) throw new Error('Missing coupon fixture');
+  coupons.findByCode = async () => ({ ...coupon, scope: { kind: 'products', productIds: h.link.productIds } });
+  expect(await (await request()).json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Coupon cannot be applied' } });
+});
+
+it.each(['base', 'group', 'no-group', 'unpublished', 'tenant', 'membership', 'type', 'delivery', 'repeated', 'duplicate', 'no-link'])('rejects invalid variant %s on every public purchase boundary before stock or snapshots', async (reason) => {
+  const h = bundleVariantApp();
+  if (reason === 'base') h.variantSelections[0] = { productId: 'foreign', variantProductId: 'white' };
+  if (reason === 'group') h.sibling.variantGroup = 'other';
+  if (reason === 'no-group') h.sibling.variantGroup = null;
+  if (reason === 'unpublished') h.sibling.published = false;
+  if (reason === 'tenant') h.sibling.tenantId = 'foreign';
+  if (reason === 'membership') h.sibling.type = 'membership';
+  if (reason === 'type') h.sibling.type = 'course';
+  if (reason === 'delivery') h.sibling.deliveryMethod = 'shipping';
+  if (reason === 'repeated') h.variantSelections.push(...h.variantSelections);
+  if (reason === 'duplicate') h.link.productIds = [h.first.id, h.sibling.id];
+  const stock = createStockRepositoryFake();
+  const reserve = vi.spyOn(stock.repository, 'reserve');
+  const readStock = vi.spyOn(stock.repository, 'listByProducts');
+  h.base.stock = stock.repository;
+  const find = vi.spyOn(h.base.products, 'findById');
+  for (const endpoint of [API_PATHS.checkoutSession, API_PATHS.devSimulatePurchase, API_PATHS.couponCheckoutValidation]) {
+    const response = await h.app.request(endpoint, {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' },
+      body: JSON.stringify({ productId: h.first.id, ...(reason === 'no-link' ? {} : { salesLinkSlug: h.link.slug }),
+        email: 'buyer@example.test', couponCode: 'BUNDLE', variantSelections: h.variantSelections, tenantId: 'foreign' }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid sales link selection' } });
+  }
+  expect(find.mock.calls.every(([tenantId]) => tenantId === acme.id)).toBe(true);
+  expect(readStock).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
+  expect(h.snapshots.size).toBe(0);
+  expect(h.orders).toHaveLength(0);
+});
+
+it('serves lenient selected offers through the public contract with the host-resolved tenant', async () => {
+  const h = bundleVariantApp();
+  const response = await h.app.request('/api/public/sales-links/bundle?variant=print.white&variant=unknown.foreign&tenantId=foreign', { headers: { host: 'acme.localhost' } });
+  expect(response.status).toBe(200);
+  const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
+  expect(body).toMatchObject({ ok: true, data: { totalCents: 3180, lines: [{ productId: 'white', baseProductId: 'print' }, { productId: 'digital' }] } });
+});
+
+it.each([false, true])('routes a variant offer to Together even when its saved first line is sold out: %s', async (soldOut) => {
+  const h = await directSalesLinkApp();
+  const first = h.products[0];
+  if (first === undefined) throw new Error('Missing base fixture');
+  first.variantGroup = 'prints';
+  h.products.push({ ...first, id: 'white', slug: 'white', title: 'White print' });
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, first.id, soldOut ? 0 : 2);
+  stock.track(acme.id, 'white', 2);
+  if (h.base.salesLinkManagement === undefined) throw new Error('Missing sales link fixture');
+  h.base.salesLinkManagement.stock = stock.repository;
+  const query = 'utm_source=newsletter&variant=print.white';
+  const response = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+  expect(response.status).toBe(302);
+  expect(response.headers.get('location')).toBe(`/offer/bundle?${query}&checkout=together`);
+  const crawler = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost', 'user-agent': 'facebookexternalhit' } });
+  expect(crawler.status).toBe(200);
+  expect(crawler.headers.get('location')).toBeNull();
+  expect(h.create).not.toHaveBeenCalled();
 });

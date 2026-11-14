@@ -27,6 +27,8 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   shipping_required: 400,
   sold_out: 409,
   fulfilment_conflict: 409,
+  shipx_unavailable: 503,
+  shipx_rejected: 422,
   internal: 500,
 };
 
@@ -57,5 +59,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   shipping_required: 25,
   sold_out: 26,
   fulfilment_conflict: 27,
+  shipx_unavailable: 28,
+  shipx_rejected: 29,
   internal: 10,
 };

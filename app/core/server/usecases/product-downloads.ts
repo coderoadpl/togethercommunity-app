@@ -96,7 +96,7 @@ export const beginProductDownloadUpload = async (
   if (!configuration.ok) return configuration;
 
   const id = deps.ids.nextId();
-  const storageKey = `product-downloads/${productId}/${id}/${storageFileName(parsed.data.fileName, 'download')}`;
+  const storageKey = `${tenant.value}/product-downloads/${productId}/${id}/${storageFileName(parsed.data.fileName, 'download')}`;
   const signed = deps.storage.presignPut({
     url: deps.storage.objectUrl(configuration.value, storageKey).toString(),
     accessKeyId: configuration.value.accessKeyId,

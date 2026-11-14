@@ -19,6 +19,8 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
+import { twoFactorChallengeUrl } from './two-factor-challenge.js';
+
 /** CLI-only extension of the client auth port: it can verify a magic-link token headlessly. */
 export interface CliAuthAdapter extends AuthClientPort {
   verifyMagicLinkToken(token: string): Promise<Result<AuthSessionResult, AppError>>;
@@ -341,8 +343,17 @@ export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ idToken: credential, callbackURL }),
               credentials: 'include',
-            }).then((response) => {
-              if (response.ok) window.location.assign(callbackURL);
+            }).then(async (response) => {
+              if (!response.ok) return;
+              let data: unknown;
+              try {
+                data = await response.json();
+              } catch {
+                return;
+              }
+              window.location.assign(readAuthSession(data).twoFactorRedirect
+                ? twoFactorChallengeUrl(window.location.origin, new URLSearchParams(window.location.search))
+                : callbackURL);
             });
           },
         });

@@ -401,7 +401,7 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
   await db.connect();
   let steps = 0;
   try {
-    const auth = createAuthE2eClient({ connectUrl: platformBaseUrl, origin: baseUrl });
+    const auth = createAuthE2eClient({ connectUrl: platformBaseUrl, origin: platformBaseUrl });
     const signUp = await auth.signUpEmail({
       name: 'Marketing Owner',
       email: 'owner@marketing.test',
@@ -771,7 +771,7 @@ try {
     healthUrl: `http://localhost:${String(port)}/api/health`,
     env: {
       DATABASE_URL: verifyDatabaseUrl,
-      APP_BASE_URL: `http://${tenantSlug}.localhost:${String(port)}`,
+      APP_BASE_URL: `http://localhost:${String(port)}`,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: webDistDir,
       SIMULATED_PAYMENTS: 'true',

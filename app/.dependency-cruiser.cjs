@@ -19,11 +19,19 @@ const adapterPaymentExternal = 'node_modules/stripe(/|$)';
 const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
 const adapterVideoExternal = 'node_modules/zod(/|$)';
 const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
+const adapterInvoicingExternal = 'node_modules/zod(/|$)';
+const adapterInvoicingTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
+const adapterQrExternal = 'node_modules/qrcode(/|$)';
+const adapterQrTestExternal = 'node_modules/(qrcode|vitest)(/|$)';
 const adapterStorageExternal = 'node_modules/(sharp|undici)(/|$)';
 const adapterDomainsExternal = 'node_modules/zod(/|$)';
 const adapterDomainsTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterStorageTestExternal = 'node_modules/(sharp|vitest)(/|$)';
+const adapterShipxExternal = 'node_modules/zod(/|$)';
+const adapterShipxTestExternal = 'node_modules/(vitest|zod)(/|$)';
+const adapterMarketingExternal = 'node_modules/zod(/|$)';
+const adapterMarketingTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appCliTestExternal = 'node_modules/vitest(/|$)';
@@ -110,7 +118,7 @@ module.exports = {
         'Layout primitives carry structure only: theme atoms in, feature data / api / i18n / core out',
       from: { path: '^apps/web/src/components/layout' },
       to: {
-        path: '^(core/|adapters/|apps/web/src/(features/|routes/|i18n/|api\\.ts|NotificationBell))',
+        pathNot: '^(apps/web/src/(components/layout/|theme[^/]*$)|node_modules/)',
       },
     },
     {
@@ -279,6 +287,54 @@ module.exports = {
       to: { path: external, pathNot: adapterVideoTestExternal },
     },
     {
+      name: 'adapter-invoicing-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/invoicing/', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterInvoicingExternal },
+    },
+    {
+      name: 'adapter-invoicing-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/invoicing/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterInvoicingTestExternal },
+    },
+    {
+      name: 'adapter-invoicing-builtin-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/invoicing/', pathNot: '\\.test\\.tsx?$' },
+      to: { dependencyTypes: ['core'], pathNot: '^(node:)?(child_process|crypto|url)$' },
+    },
+    {
+      name: 'adapter-invoicing-test-builtin-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/invoicing/.*\\.test\\.tsx?$' },
+      to: { dependencyTypes: ['core'], pathNot: '^(node:)?(child_process|crypto|fs|url)$' },
+    },
+    {
+      name: 'adapter-qr-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/qr/', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterQrExternal },
+    },
+    {
+      name: 'adapter-qr-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/qr/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterQrTestExternal },
+    },
+    {
+      name: 'adapter-scheduler-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/scheduler/' },
+      to: { path: external },
+    },
+    {
+      name: 'notification-qr-scheduler-no-builtins',
+      severity: 'error',
+      from: { path: '^adapters/(notifications|qr|scheduler)/' },
+      to: { dependencyTypes: ['core'] },
+    },
+    {
       name: 'adapter-notifications-external-allowlist',
       severity: 'error',
       from: { path: '^adapters/notifications', pathNot: '\\.test\\.tsx?$' },
@@ -313,6 +369,30 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/storage/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterStorageTestExternal },
+    },
+    {
+      name: 'adapter-shipx-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/shipx', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterShipxExternal },
+    },
+    {
+      name: 'adapter-shipx-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/shipx/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterShipxTestExternal },
+    },
+    {
+      name: 'adapter-marketing-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/marketing', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterMarketingExternal },
+    },
+    {
+      name: 'adapter-marketing-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/marketing/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterMarketingTestExternal },
     },
     {
       name: 'app-server-external-allowlist',

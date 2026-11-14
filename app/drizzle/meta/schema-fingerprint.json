@@ -1,6 +1,6 @@
 {
-  "hash": "749d811328cb95dd457eb8481c0481294c9483cd32b071f51b108edf9f4b337b",
-  "shortId": "749d811328cb",
+  "hash": "9cbf912d7efb948b6d4c82a081b627ed47082b6693ff3e83e0b4a26dbdad964b",
+  "shortId": "9cbf912d7efb",
   "schema": {
     "constraints": [
       {
@@ -79,6 +79,11 @@
         "table": "posts"
       },
       {
+        "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",
+        "name": "meta_capi_consent_evidence_decision_check",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
         "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
         "name": "tenants_default_language_check",
         "table": "tenants"
@@ -92,6 +97,11 @@
         "definition": "CHECK ((email = lower(btrim(email))))",
         "name": "marketing_contacts_normalized_email_check",
         "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK ((environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
+        "name": "order_shipments_environment_check",
+        "table": "order_shipments"
       },
       {
         "definition": "CHECK ((interval_count > 0))",
@@ -112,6 +122,11 @@
         "definition": "CHECK ((low_stock_threshold >= 0))",
         "name": "product_stock_low_stock_threshold_check",
         "table": "product_stock"
+      },
+      {
+        "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
+        "name": "orders_meta_capi_consent_check",
+        "table": "orders"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -139,6 +154,11 @@
         "table": "product_stock"
       },
       {
+        "definition": "CHECK ((parcel_template = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])))",
+        "name": "products_parcel_template_check",
+        "table": "products"
+      },
+      {
         "definition": "CHECK ((pending_bytes >= 0))",
         "name": "telemetry_pending_bytes_nonnegative",
         "table": "telemetry_accounting"
@@ -147,6 +167,16 @@
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((provider = 'inpost_shipx'::text))",
+        "name": "order_shipment_events_provider_check",
+        "table": "order_shipment_events"
+      },
+      {
+        "definition": "CHECK ((provider = 'inpost_shipx'::text))",
+        "name": "order_shipments_provider_check",
+        "table": "order_shipments"
       },
       {
         "definition": "CHECK ((quantity > 0))",
@@ -179,6 +209,11 @@
         "table": "surveys"
       },
       {
+        "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
+        "name": "tenants_shipx_environment_check",
+        "table": "tenants"
+      },
+      {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
         "name": "marketing_signup_forms_status_check",
         "table": "marketing_signup_forms"
@@ -204,9 +239,19 @@
         "table": "email_outbox"
       },
       {
+        "definition": "CHECK ((status = ANY (ARRAY['sent'::text, 'blocked'::text, 'expired'::text, 'failed'::text])))",
+        "name": "meta_capi_events_status_check",
+        "table": "meta_capi_events"
+      },
+      {
         "definition": "CHECK ((type = 'shipped'::text))",
         "name": "order_fulfilment_events_type_check",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "CHECK ((type = ANY (ARRAY['attempt_claimed'::text, 'attempt_marked'::text, 'shipment_adopted'::text, 'shipment_created'::text, 'offer_bought'::text, 'payment_failed'::text, 'attempt_released'::text, 'attempt_discarded'::text, 'lease_taken_over'::text, 'label_fetched'::text, 'status_refreshed'::text, 'operation_finished'::text])))",
+        "name": "order_shipment_events_type_check",
+        "table": "order_shipment_events"
       },
       {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
@@ -377,6 +422,16 @@
         "definition": "FOREIGN KEY (marketing_consent_row_id) REFERENCES marketing_consents(id) ON DELETE CASCADE",
         "name": "consent_confirmation_tokens_marketing_consent_row_id_marketing_",
         "table": "consent_confirmation_tokens"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE",
+        "name": "meta_capi_consent_evidence_order_id_fkey",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE",
+        "name": "meta_capi_outbox_order_id_fkey",
+        "table": "meta_capi_outbox"
       },
       {
         "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
@@ -785,6 +840,21 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "meta_capi_consent_evidence_tenant_id_fkey",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "meta_capi_events_tenant_id_fkey",
+        "table": "meta_capi_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "meta_capi_outbox_tenant_id_fkey",
+        "table": "meta_capi_outbox"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "notification_fanout_jobs_tenant_id_tenants_id_fk",
         "table": "notification_fanout_jobs"
       },
@@ -802,6 +872,16 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_issue_events_tenant_id_fkey",
         "table": "order_issue_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_shipment_events_tenant_id_fkey",
+        "table": "order_shipment_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_shipments_tenant_id_fkey",
+        "table": "order_shipments"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1149,6 +1229,21 @@
         "table": "product_grants"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "meta_capi_consent_tenant_order_fk",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "meta_capi_events_tenant_order_fk",
+        "table": "meta_capi_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "meta_capi_outbox_tenant_order_fk",
+        "table": "meta_capi_outbox"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1212,6 +1307,11 @@
         "definition": "FOREIGN KEY (tenant_id, survey_id) REFERENCES surveys(tenant_id, id) ON DELETE CASCADE",
         "name": "survey_responses_survey_fk",
         "table": "survey_responses"
+      },
+      {
+        "definition": "FOREIGN KEY (transaction_id) REFERENCES orders(id) ON DELETE CASCADE",
+        "name": "meta_capi_events_transaction_id_fkey",
+        "table": "meta_capi_events"
       },
       {
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
@@ -1495,6 +1595,16 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "order_shipment_events_pkey",
+        "table": "order_shipment_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_shipments_pkey",
+        "table": "order_shipments"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "orders_pkey",
         "table": "orders"
       },
@@ -1679,6 +1789,11 @@
         "table": "fiscal_artifacts"
       },
       {
+        "definition": "PRIMARY KEY (order_id)",
+        "name": "meta_capi_outbox_pkey",
+        "table": "meta_capi_outbox"
+      },
+      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -1799,6 +1914,11 @@
         "table": "marketing_member_sync_jobs"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, order_id, decision)",
+        "name": "meta_capi_consent_evidence_pkey",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, order_id, product_id, issued_count)",
         "name": "order_issue_events_pkey",
         "table": "order_issue_events"
@@ -1822,6 +1942,11 @@
         "definition": "PRIMARY KEY (tenant_id, survey_id, revision)",
         "name": "survey_events_pkey",
         "table": "survey_events"
+      },
+      {
+        "definition": "PRIMARY KEY (transaction_id)",
+        "name": "meta_capi_events_pkey",
+        "table": "meta_capi_events"
       },
       {
         "definition": "UNIQUE (email)",
@@ -2353,6 +2478,16 @@
         "table": "members"
       },
       {
+        "definition": "CREATE INDEX meta_capi_events_tenant_recorded_idx ON meta_capi_events USING btree (tenant_id, recorded_at)",
+        "name": "meta_capi_events_tenant_recorded_idx",
+        "table": "meta_capi_events"
+      },
+      {
+        "definition": "CREATE INDEX meta_capi_outbox_due_idx ON meta_capi_outbox USING btree (tenant_id, available_at)",
+        "name": "meta_capi_outbox_due_idx",
+        "table": "meta_capi_outbox"
+      },
+      {
         "definition": "CREATE INDEX notification_fanout_jobs_due_idx ON notification_fanout_jobs USING btree (status, next_attempt_at)",
         "name": "notification_fanout_jobs_due_idx",
         "table": "notification_fanout_jobs"
@@ -2361,6 +2496,11 @@
         "definition": "CREATE INDEX notifications_tenant_recipient_read_created_idx ON notifications USING btree (tenant_id, recipient_user_id, read_at, created_at DESC NULLS LAST)",
         "name": "notifications_tenant_recipient_read_created_idx",
         "table": "notifications"
+      },
+      {
+        "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
+        "name": "order_shipment_events_tenant_order_created_idx",
+        "table": "order_shipment_events"
       },
       {
         "definition": "CREATE INDEX orders_tenant_coupon_created_idx ON orders USING btree (tenant_id, coupon_id, created_at DESC NULLS LAST)",
@@ -2823,6 +2963,11 @@
         "table": "order_fulfilment_events"
       },
       {
+        "definition": "CREATE UNIQUE INDEX order_shipments_tenant_order_uidx ON order_shipments USING btree (tenant_id, order_id)",
+        "name": "order_shipments_tenant_order_uidx",
+        "table": "order_shipments"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX orders_tenant_provider_checkout_uidx ON orders USING btree (tenant_id, provider, ((provider_object_ids ->> 'checkoutSession'::text))) WHERE (provider_object_ids ? 'checkoutSession'::text)",
         "name": "orders_tenant_provider_checkout_uidx",
         "table": "orders"
@@ -3052,6 +3197,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "member_events_sequence_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "order_shipment_events_sequence_seq",
         "start": "1"
       },
       {
@@ -3343,6 +3497,14 @@
             "generated": "",
             "identity": "",
             "name": "visibility",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'medium'::text",
+            "generated": "",
+            "identity": "",
+            "name": "parcel_template",
             "notNull": true,
             "type": "text"
           },
@@ -3727,6 +3889,14 @@
             "type": "text"
           },
           {
+            "default": "'undecided'::text",
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'{}'::jsonb",
             "generated": "",
             "identity": "",
@@ -3829,6 +3999,38 @@
             "name": "member_id",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_source",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_text_version",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_withdrawn_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -4259,6 +4461,14 @@
             "type": "text"
           },
           {
+            "default": "'sandbox'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'self_hosted'::text",
             "generated": "",
             "identity": "",
@@ -4287,6 +4497,14 @@
             "generated": "",
             "identity": "",
             "name": "analytics_load_without_consent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_enabled",
             "notNull": true,
             "type": "boolean"
           },
@@ -4351,6 +4569,46 @@
             "generated": "",
             "identity": "",
             "name": "analytics_consent_cookie_value",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_accept_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_body",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_decline_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_heading",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_test_event_code",
             "notNull": false,
             "type": "text"
           },
@@ -4553,6 +4811,14 @@
             "name": "privacy_url",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sender",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -6519,6 +6785,99 @@
       {
         "columns": [
           {
+            "default": "(gen_random_uuid())::text",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "nextval('order_shipment_events_sequence_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "details",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_token",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_shipment_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_shipment_events"
+      },
+      {
+        "columns": [
+          {
             "default": "0",
             "generated": "",
             "identity": "",
@@ -6858,6 +7217,91 @@
           }
         ],
         "name": "telemetry_outbox"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "available_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fbp",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ip",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_snapshot",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_version",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "user_agent",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "meta_capi_outbox"
       },
       {
         "columns": [
@@ -10858,6 +11302,139 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "bought_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "create_attempted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "label_fetched_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_started_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_token",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "organization_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_shipment_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tracking_number",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "order_shipments"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "byte_size",
             "notNull": true,
             "type": "integer"
@@ -11355,6 +11932,99 @@
           }
         ],
         "name": "marketing_signup_submissions"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_time",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fbtrace_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fields_sent",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "recorded_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sent_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "transaction_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "meta_capi_events"
       },
       {
         "columns": [
@@ -13216,6 +13886,67 @@
           }
         ],
         "name": "tenant_documents"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "decision",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_snapshot",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_version",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "meta_capi_consent_evidence"
       },
       {
         "columns": [

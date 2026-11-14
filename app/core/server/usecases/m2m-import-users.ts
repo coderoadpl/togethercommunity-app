@@ -10,6 +10,8 @@ import {
   ok,
   validation,
   type AppError,
+  type CourseModule,
+  type ImportModuleRecord,
   type ImportBatchResponse,
   type ImportBatchResult,
   type ImportGrantRecord,
@@ -24,6 +26,16 @@ import {
   type Result,
   type TenantApiKey,
 } from '#core/domain/index.js';
+
+import {
+  cacheImportContentReaders,
+  checkImportCreatedAt,
+  emptyImportReferenceMaps,
+  memoizeImportRead,
+  rememberImportReference,
+  resolveImportReference,
+  type ImportReferenceMaps,
+} from './m2m-import-context.js';
 
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
@@ -57,19 +69,6 @@ export type M2mImportUsersDeps = M2mImportUsersReaders & {
   ids: IdGenerator;
   clock: Clock;
 };
-
-export type ImportReferenceMaps = Record<ImportKind, Map<string, string>>;
-
-export const emptyImportReferenceMaps = (): ImportReferenceMaps => ({
-  course: new Map(),
-  module: new Map(),
-  lesson: new Map(),
-  product: new Map(),
-  member: new Map(),
-  grant: new Map(),
-  progress: new Map(),
-  redirect: new Map(),
-});
 
 type PredictedAction = {
   action: 'created' | 'updated' | 'unchanged';
@@ -109,7 +108,7 @@ const findTarget = async (
   kind: ImportKind,
   id: string,
   deps: M2mImportUsersReaders,
-): Promise<{ id: string } | null> => {
+): Promise<{ id: string; archivedAt?: string | null | undefined } | null> => {
   if (kind === 'course') return deps.courses.findById(tenantId, id);
   if (kind === 'module') return deps.modules.findById(tenantId, id);
   if (kind === 'lesson') return deps.lessons.findById(tenantId, id);
@@ -119,28 +118,20 @@ const findTarget = async (
   return deps.importUsers.findProgressById(tenantId, id);
 };
 
-const resolveReference = async (
+const resolveReference = (
   tenantId: string,
   kind: ImportKind,
   key: string,
   references: ImportReferenceMaps,
   deps: M2mImportUsersReaders,
-): Promise<Result<string, AppError>> => {
-  const inCall = references[kind].get(key);
-  if (inCall !== undefined) {
-    const course = kind === 'course' ? await deps.courses.findById(tenantId, inCall) : null;
-    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
-    return ok(inCall);
-  }
-  const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key);
-  if (audit !== null) {
-    const course = kind === 'course' ? await deps.courses.findById(tenantId, audit.resourceId) : null;
-    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
-    const imported = await findTarget(tenantId, kind, audit.resourceId, deps);
-    if (imported !== null) return ok(imported.id);
-  }
-  return err(appError('conflict', `Referenced ${kind} "${key}" was not created by import`));
-};
+): Promise<Result<string, AppError>> => resolveImportReference(
+  tenantId,
+  kind,
+  key,
+  references,
+  () => deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key),
+  (id) => findTarget(tenantId, kind, id, deps),
+);
 
 const importPayloadHash = (
   record: unknown,
@@ -293,6 +284,62 @@ const prepareGrant = async (
   });
 };
 
+const progressCourseMembership = (
+  tenantId: string,
+  courseId: string,
+  courseKey: string,
+  references: ImportReferenceMaps,
+  deps: M2mImportUsersReaders,
+  validationRecords: ReadonlyMap<string, ImportRecord> | undefined,
+) => {
+  const cacheKey = JSON.stringify([tenantId, courseId, courseKey]);
+  let membership = references.progressCourses.get(cacheKey);
+  if (membership !== undefined) return membership;
+  let moduleIndex = references.modulesByCourse.get(tenantId);
+  if (moduleIndex === undefined) {
+    moduleIndex = deps.modules.list(tenantId).then((modules) => {
+      const byCourse = new Map<string, CourseModule[]>();
+      for (const module of modules) {
+        for (const id of module.courseIds) {
+          const entries = byCourse.get(id) ?? [];
+          entries.push(module);
+          byCourse.set(id, entries);
+        }
+      }
+      return byCourse;
+    });
+    references.modulesByCourse.set(tenantId, moduleIndex);
+  }
+  if (references.forwardModulesByCourse === undefined) {
+    const byCourse = new Map<string, ImportModuleRecord[]>();
+    for (const record of validationRecords?.values() ?? []) {
+      if (record.kind !== 'module') continue;
+      for (const key of record.courseKeys) {
+        const entries = byCourse.get(key) ?? [];
+        entries.push(record);
+        byCourse.set(key, entries);
+      }
+    }
+    references.forwardModulesByCourse = byCourse;
+  }
+  const inCallModules = references.forwardModulesByCourse.get(courseKey) ?? [];
+  membership = moduleIndex.then((byCourse) => {
+    const modules = byCourse.get(courseId) ?? [];
+    const lessonIds = new Set(modules.flatMap((module) =>
+      module.chapters.flatMap((chapter) => chapter.contents.map((content) => content.lessonId))));
+    for (const module of inCallModules) {
+      for (const chapter of module.chapters) {
+        for (const content of chapter.contents) {
+          lessonIds.add(references.lesson.get(content.lessonKey) ?? content.lessonKey);
+        }
+      }
+    }
+    return { modules, inCallModules, lessonIds };
+  });
+  references.progressCourses.set(cacheKey, membership);
+  return membership;
+};
+
 const prepareProgress = async (
   tenantId: string,
   record: ImportProgressRecord,
@@ -319,23 +366,9 @@ const prepareProgress = async (
     ? undefined
     : await resolveReference(tenantId, 'module', record.lastViewedModuleKey, references, deps);
   if (lastViewedModuleId !== undefined && !lastViewedModuleId.ok) return lastViewedModuleId;
-  const modules = (await deps.modules.list(tenantId)).filter((module) =>
-    module.courseIds.includes(courseId.value));
-  const courseLessonIds = new Set(modules.flatMap((module) =>
-    module.chapters.flatMap((chapter) => chapter.contents.map((content) => content.lessonId))));
-  const inCallModules = validationRecords === undefined
-    ? []
-    : [...validationRecords.values()].flatMap((candidate) =>
-        candidate.kind === 'module' && candidate.courseKeys.includes(record.courseKey)
-          ? [candidate]
-          : []);
-  for (const inCallModule of inCallModules) {
-    for (const chapter of inCallModule.chapters) {
-      for (const content of chapter.contents) {
-        courseLessonIds.add(references.lesson.get(content.lessonKey) ?? content.lessonKey);
-      }
-    }
-  }
+  const { modules, inCallModules, lessonIds: courseLessonIds } = await progressCourseMembership(
+    tenantId, courseId.value, record.courseKey, references, deps, validationRecords,
+  );
   for (const lessonId of completedLessonIds) {
     if (!courseLessonIds.has(lessonId)) {
       return err(appError('conflict', `Lesson "${lessonId}" does not belong to the referenced course`));
@@ -487,7 +520,8 @@ const summarize = (results: ImportBatchResult[]): ImportBatchResponse['summary']
 const mutationFor = (
   prepared: PreparedUsersRecord,
   apiKey: TenantApiKey,
-  deps: Pick<M2mImportUsersDeps, 'ids' | 'clock'>,
+  deps: Pick<M2mImportUsersDeps, 'ids'>,
+  now: string,
 ): ImportUsersMutation => {
   const event = {
     id: deps.ids.nextId(),
@@ -498,7 +532,7 @@ const mutationFor = (
     resourceId: prepared.resource.id,
     action: prepared.action,
     payloadHash: prepared.payloadHash,
-    at: deps.clock.nowIso(),
+    at: now,
   };
   if (prepared.kind === 'member') {
     return {
@@ -526,6 +560,10 @@ export const importM2mUsers = async (
   if (!tenantId.ok) return tenantId;
   const envelope = importWriteRequestSchema.safeParse(input);
   if (!envelope.success) return err(validation('Invalid import batch', envelope.error.flatten()));
+  const cachedReaders = cacheImportContentReaders(deps);
+  const modulesList = memoizeImportRead(deps.modules.list);
+  deps = { ...cachedReaders.deps, modules: { ...cachedReaders.deps.modules, list: modulesList.read } };
+  const now = deps.clock.nowIso();
   const results: ImportBatchResult[] = [];
   const seen = new Map<string, string>();
   const seenMemberEmails = new Map<string, string>();
@@ -540,6 +578,11 @@ export const importM2mUsers = async (
         action: 'error',
         error: validation(`Invalid ${kind} import record`, parsed.error.flatten()),
       });
+      continue;
+    }
+    const timestamp = checkImportCreatedAt(parsed.data, now);
+    if (!timestamp.ok) {
+      results.push({ importKey: parsed.data.importKey, action: 'error', error: timestamp.error });
       continue;
     }
     const payloadHash = importPayloadHash(parsed.data, deps.hash);
@@ -576,7 +619,7 @@ export const importM2mUsers = async (
       payloadHash,
       references,
       deps,
-      deps.clock.nowIso(),
+      now,
       deps.ids.nextId(),
     );
     if (!prepared.ok) {
@@ -585,7 +628,7 @@ export const importM2mUsers = async (
     }
     const committed = await deps.importUsers.commit(
       tenantId.value,
-      mutationFor(prepared.value, apiKey, deps),
+      mutationFor(prepared.value, apiKey, deps, now),
     );
     if (committed !== 'saved') {
       results.push({
@@ -595,6 +638,7 @@ export const importM2mUsers = async (
       });
       continue;
     }
+    rememberImportReference(tenantId.value, kind, parsed.data.importKey, prepared.value.resource.id, references);
     results.push({
       importKey: parsed.data.importKey,
       action: prepared.value.action,

@@ -1,3 +1,4 @@
+import { fakeFanoutBatches } from '../testing/fanout-batches.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -402,6 +403,8 @@ const fixture = (input: {
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+      listRepliesForRoots: async () => new Map(),
+      countRepliesIncludingDeleted: async () => new Map(),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
@@ -441,6 +444,7 @@ const fixture = (input: {
     },
     notifications,
     notificationChannels: [channel],
+    fanoutBatches: fakeFanoutBatches(() => deps),
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     grants: {
       findById: async () => null,

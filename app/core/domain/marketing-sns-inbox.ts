@@ -15,6 +15,7 @@ export type SesEventApplication = { kind: 'applied' } | { kind: 'ignored'; reaso
 export type VerifiedSesEvent = {
   campaignSendId?: string | undefined;
   recipient?: string | undefined;
+  recipientHmac?: string | undefined;
   topicArn: string;
   messageId: string;
   occurredAt: string;
@@ -33,7 +34,16 @@ export type VerifiedSesEvent = {
     action: string | null;
   }
 );
-export const storedSnsEnvelopeSchema = z.object({ Message: z.string(), SubscribeURL: z.string().optional() });
+export const storedSnsEnvelopeSchema = z.object({ Message: z.string() });
+export const storedSnsSubscriptionSchema = storedSnsEnvelopeSchema.extend({ SubscribeURL: z.string().optional() });
+const canonicalSnsEnvelopeSchema = z.object({
+  Type: z.enum(['Notification', 'SubscriptionConfirmation']), MessageId: z.string(),
+  TopicArn: z.string(), Timestamp: z.string(), Message: z.string(),
+});
+export const storedCanonicalSnsEnvelopeSchema = z.discriminatedUnion('Type', [
+  canonicalSnsEnvelopeSchema.extend({ Type: z.literal('Notification') }),
+  canonicalSnsEnvelopeSchema.extend({ Type: z.literal('SubscriptionConfirmation'), SubscribeURL: z.string().optional().catch(undefined) }),
+]);
 export const marketingSnsReceiptSchema = marketingSnsInboxSchema.omit({ rawBody: true });
 const payloadSchema = z.object({
   notificationType: z.string().optional(), eventType: z.string().optional(),

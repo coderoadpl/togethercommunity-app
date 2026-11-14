@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ConfirmDialog } from '../../components/layout/ConfirmDialog.js';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { TriangleAlertIcon } from '../../components/ui/account-icons.js';
 import { Alert, Box, Button, FormControl, FormLabel, OutlinedInput, Typography } from '@mui/material';
 import type { MemberErasureRequest } from '#core/domain/index.js';

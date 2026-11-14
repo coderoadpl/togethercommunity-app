@@ -2,8 +2,11 @@ import { tenantTeamAddSchema, tenantTeamRemoveSchema } from '#core/contract/inde
 import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/index.js';
 import { safeErrorMessage } from '#core/server/log-safety.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
+import { registerMetaCapiRoutes } from './meta-capi-routes.js';
+import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
+import { registerShipxRoutes } from './shipx-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
@@ -309,6 +312,7 @@ import {
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
+  getMemberSettings,
   listTenantRedirects,
   createTenantRedirect,
   updateTenantRedirect,
@@ -819,7 +823,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    return respond(await deps.dispatchEmails('cron'));
+    const emails = await deps.dispatchEmails('cron');
+    await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
+    return respond(emails);
   });
 
   app.post(API_PATHS.autoInvoiceDispatch, async (c) => {
@@ -989,6 +995,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           {
             email: parsed.data.email,
             productId: parsed.data.productId,
+            variantSelections: parsed.data.variantSelections,
             ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId }),
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
@@ -1360,7 +1367,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSurveyRoutes(app, deps);
   registerSalesLinkRoutes(app, deps);
   registerOrderVerificationRoutes(app, deps);
+  registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerShipxRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
@@ -1881,6 +1890,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(validation('Invalid avatar completion', parsed.error.flatten())));
     }
     return respond(await completeAvatarUpload(ctxOf(c), parsed.data, {
+      logger: deps.logger,
       avatars: deps.accountAvatars,
       avatarImages: deps.avatarImages,
       secretResolver: deps.secretResolver,
@@ -2376,6 +2386,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid secret key', parsed.error.flatten())));
     const result = await deleteTenantSecret(ctxOf(c), parsed.data.key, deps);
     return respond(result.ok ? ok({ key: result.value.key }) : result);
+  });
+
+  app.get(API_PATHS.memberSettings, async (c) => {
+    const result = await getMemberSettings(ctxOf(c), deps);
+    return respond(result);
   });
 
   app.get(API_PATHS.tenantSettings, async (c) => {
@@ -2891,7 +2906,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       },
     );
     if (result.ok && result.value.provider === 'ksef' && result.value.ksef?.state === 'queued' && deps.ksef !== undefined) {
-      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue');
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue', deps.trackBackgroundWork);
     }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });
@@ -2914,7 +2929,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       },
     );
     if (result.ok && result.value.provider === 'ksef' && result.value.ksef?.state === 'queued' && deps.ksef !== undefined) {
-      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice send');
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice send', deps.trackBackgroundWork);
     }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });

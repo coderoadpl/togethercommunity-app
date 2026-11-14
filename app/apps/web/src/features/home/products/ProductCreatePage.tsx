@@ -14,10 +14,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from '@tanstack/react-router';
 
 import {
+  DEFAULT_PARCEL_TEMPLATE,
   PRODUCT_TYPES,
   productSlugFromTitle,
   productVatRateSchema,
   type DeliveryMethod,
+  type ParcelTemplate,
   type ProductVatRate,
   type ProductType,
 } from '#core/domain/index.js';
@@ -29,6 +31,7 @@ import { errorCodeOf, localizePanelError, useTranslations } from '../../../i18n/
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { DeliveryMethodField } from './DeliveryMethodField.js';
+import { ParcelTemplateField } from './ParcelTemplateField.js';
 import { productTypeLabel } from './product-type.js';
 import { emptyStockTrackingDraft, StockTrackingFields, stockTrackingInput, type StockTrackingDraft } from './ProductStockSection.js';
 
@@ -46,6 +49,7 @@ export const ProductCreatePage = () => {
   const [vatRate, setVatRate] = useState<ProductVatRate | null>(null);
   const [vatExemptionBasis, setVatExemptionBasis] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
+  const [parcelTemplate, setParcelTemplate] = useState<ParcelTemplate>(DEFAULT_PARCEL_TEMPLATE);
   const [stockDraft, setStockDraft] = useState<StockTrackingDraft>(emptyStockTrackingDraft);
   const enableStock = useMutation(actions.enableProductStock);
   const [untrackedProductId, setUntrackedProductId] = useState<string | null>(null);
@@ -77,6 +81,7 @@ export const ProductCreatePage = () => {
     createProduct.mutate({
       type,
       deliveryMethod: type === 'physical' ? deliveryMethod : 'pickup',
+      ...(type === 'physical' && deliveryMethod === 'shipping' ? { parcelTemplate } : {}),
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       slug: slug.trim(),
@@ -112,6 +117,7 @@ export const ProductCreatePage = () => {
           </Select>
         </FormControl>
         {type === 'physical' ? <DeliveryMethodField value={deliveryMethod} onChange={setDeliveryMethod} /> : null}
+        {type === 'physical' && deliveryMethod === 'shipping' ? <ParcelTemplateField value={parcelTemplate} onChange={setParcelTemplate} /> : null}
         <FormControl fullWidth>
           <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
           <OutlinedInput

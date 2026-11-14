@@ -4,6 +4,8 @@ import { setupServer } from 'msw/node';
 import pkg from '../../../../package.json' with { type: 'json' };
 
 export const server = setupServer(
+  http.get('*/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: [] } })),
+  http.get('*/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets: [], stripeMode: null, stripeWebhookUrl: 'https://example.org/api/webhooks/stripe' } })),
   http.get('*/api/my/products', () =>
     HttpResponse.json({ ok: true, data: { products: [] } }),
   ),
@@ -30,6 +32,12 @@ export const server = setupServer(
   ),
   http.get('*/api/public/spaces/:spaceId/events', () =>
     HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } }),
+  ),
+  http.get('*/api/integrations/shipx', () =>
+    HttpResponse.json({ ok: true, data: { environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false } }),
+  ),
+  http.get('*/api/orders/:orderId/shipx', () =>
+    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', service: null, parcelTemplate: 'medium', shipment: null } }),
   ),
   http.get('*/api/public/payment-config', () =>
     HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: false } }),

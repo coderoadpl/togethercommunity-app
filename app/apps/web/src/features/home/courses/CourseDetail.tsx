@@ -25,7 +25,8 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';

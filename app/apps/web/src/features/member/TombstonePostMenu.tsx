@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, IconButton, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
 
-import { ConfirmDialog } from '../../components/layout/index.js';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { PostMenuIcon } from './community-icons.js';
 import { usePostMutations } from './usePostMutations.js';

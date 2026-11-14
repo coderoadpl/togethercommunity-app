@@ -150,6 +150,8 @@ const deps = (
       authoredPosts.filter((value) => value.authorUserId === authorUserId),
     listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
     listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+    listRepliesForRoots: async () => new Map(),
+    countRepliesIncludingDeleted: async () => new Map(),
     listReplies: async () => [],
     updateBody: async () => null,
     softDelete: async () => null,

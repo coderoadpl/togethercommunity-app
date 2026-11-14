@@ -11,10 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 
+import { runMigrations } from './migration-runner.js';
 import { createHealthPort } from './repositories.js';
 import * as dbSchema from './schema.js';
 import { uniqueTestDatabaseName } from './test-database-name.js';
@@ -100,7 +100,7 @@ const buildPartialFolder = (
 
 const withDatabase = async (
   base: string,
-  run: (pool: pg.Pool) => Promise<void>,
+  run: (pool: pg.Pool, migrateTo: (migrationsFolder: string) => Promise<void>) => Promise<void>,
 ): Promise<void> => {
   const databaseName = uniqueTestDatabaseName(base);
   const url = new URL(baseDatabaseUrl);
@@ -112,8 +112,11 @@ const withDatabase = async (
   await admin.end();
 
   const pool = new pg.Pool({ connectionString: url.toString() });
+  const migrateTo = async (migrationsFolder: string): Promise<void> => {
+    await runMigrations({ connectionString: url.toString(), migrationsFolder });
+  };
   try {
-    await run(pool);
+    await run(pool, migrateTo);
   } finally {
     await pool.end();
     const cleanup = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -125,7 +128,7 @@ const withDatabase = async (
 
 const migrationRows = async (pool: pg.Pool): Promise<Array<{ hash: string; created_at: string }>> => {
   const result = await pool.query<{ hash: string; created_at: string }>(
-    'select hash, created_at from drizzle.__drizzle_migrations order by created_at',
+    'select hash, created_at from public.__drizzle_migrations order by created_at',
   );
   return result.rows;
 };
@@ -173,12 +176,12 @@ afterAll(() => {
 
 describe('schema rescue migration', () => {
   it('converges a production-like database that skipped 0080', async () => {
-    await withDatabase('together_schema_rescue_prod', async (pool) => {
+    await withDatabase('together_schema_rescue_prod', async (pool, migrateTo) => {
       const prodMigrations = buildPartialFolder(79, (entries) =>
         entries.map((entry) => entry.idx === 79
           ? { ...entry, when: migration0080When + 60_000 }
           : entry));
-      await migrate(drizzle(pool), { migrationsFolder: prodMigrations });
+      await migrateTo(prodMigrations);
 
       const missingColumn = await pool.query<{ count: number }>(`
         select count(*)::int as count
@@ -202,8 +205,9 @@ describe('schema rescue migration', () => {
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
       });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: 80, current: false });
 
-      await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
+      await migrateTo('drizzle');
 
       const rows = await migrationRows(pool);
       expect(rows).toHaveLength(expected);
@@ -216,16 +220,17 @@ describe('schema rescue migration', () => {
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
       });
+      expect(await health.migrationCounts()).toEqual({ expected, applied: expected, current: true });
     });
   }, 60_000);
 
   it('is a no-op on a staging-like database where 0080 already converged the schema', async () => {
-    await withDatabase('together_schema_rescue_staging', async (pool) => {
+    await withDatabase('together_schema_rescue_staging', async (pool, migrateTo) => {
       const stagingMigrations = buildPartialFolder(80);
-      await migrate(drizzle(pool), { migrationsFolder: stagingMigrations });
+      await migrateTo(stagingMigrations);
       await expectRescuedSchema(pool);
 
-      await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
+      await migrateTo('drizzle');
 
       const rows = await migrationRows(pool);
       expect(rows).toHaveLength(expected);
@@ -242,20 +247,29 @@ describe('schema rescue migration', () => {
   }, 60_000);
 
   it('is a no-op after 0080 on a fresh database and remains migrator-idempotent', async () => {
-    await withDatabase('together_schema_rescue_fresh', async (pool) => {
-      await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
+    await withDatabase('together_schema_rescue_fresh', async (pool, migrateTo) => {
+      await migrateTo('drizzle');
       const rows = await migrationRows(pool);
       expect(rows).toHaveLength(expected);
       expect(rows.filter((row) => Number(row.created_at) === migration0080When)).toHaveLength(1);
       await expectRescuedSchema(pool);
 
-      await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
+      await migrateTo('drizzle');
 
       const repeatedRows = await migrationRows(pool);
       expect(repeatedRows).toHaveLength(expected);
       expect(repeatedRows.filter((row) => Number(row.created_at) === migration0080When))
         .toHaveLength(1);
       await expectRescuedSchema(pool);
+    });
+  }, 60_000);
+
+  it('reports no applied migrations on a database the migrator has never touched', async () => {
+    await withDatabase('together_schema_rescue_empty', async (pool) => {
+      const health = createHealthPort(drizzle(pool, { schema: dbSchema }));
+
+      expect(await health.pingDatabase()).toBe(true);
+      expect(await health.migrationCounts()).toEqual({ expected, applied: null, journal: 'missing' });
     });
   }, 60_000);
 });

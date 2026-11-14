@@ -8,7 +8,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TenantTeamMember } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { useToastOutcome } from '../../../components/ui/Toast.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';

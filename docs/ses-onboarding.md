@@ -112,6 +112,30 @@ without waiting for the six-hourly refresh.
 Every step can be retried. Completed resource identifiers are saved after each
 successful step, so a later AWS error does not force the wizard to restart.
 
+## Existing tenant repair
+
+Onboarding, status polls and scheduled identity re-checks ensure the derived
+`-transactional` configuration set and its managed event destination using the
+tenant's own credentials. Repeating this operation is safe and restores a missing
+destination. Resolving a transport, checking availability and sending normal
+messages do not call the SES configuration API. If SES rejects a send because
+the set or managed destination is missing, Together repairs it once and returns
+a retryable error; the outbox retries the message rather than resending inline.
+A second enabled destination publishing Open or Click blocks readiness until the
+operator removes those engagement events and re-checks status. Repair failures
+remain in the saved status across restarts and identity-only diagnostics, until a
+successful repair. Together does not modify unrelated destinations.
+
+A stored repair failure never blocks transactional mail. A tenant with a verified
+identity and resolvable SES credentials keeps sending transactional messages
+through its own SES: with the derived `-transactional` set when a
+configuration-set name is saved (even without a topic), and without any
+configuration set when none is saved. The server logs a warning with tenant
+context for a stored repair failure or a missing configuration set. A tenant
+without SES settings, with an unverified identity or with SES credentials that do
+not resolve falls through to SMTP, Resend and then the platform pool. Correct the
+tenant AWS permissions, then poll status again.
+
 ## The webhook lives on the platform host
 
 The SNS subscription always points at the platform host for the tenant:
@@ -268,3 +292,20 @@ service.
 References: [Mailjet free-plan limit](https://documentation.mailjet.com/hc/en-us/articles/360043048393-What-is-this-200-emails-per-day-limit-on-free-accounts),
 [SMTP setup](https://documentation.mailjet.com/hc/en-us/articles/360043229473-How-can-I-configure-my-SMTP-parameters),
 [compliance guide](https://documentation.mailjet.com/hc/en-us/articles/360043503313-Mailjet-Compliance-and-Email-Deliverability-Guide).
+
+## Repairing erased-recipient event metadata
+
+Run `pnpm run email:repair-erased-events --tenant <tenant-id>` from `app/` with
+`DATABASE_URL` and `SECRETS_MASTER_KEY` supplied by the deployment's secret
+store. This defaults to a dry run and prints matched and changed counts by event
+type, matched and changed SNS inbox receipt counts, plus the count of events
+without a retained send/outbox link. Review those counts before adding `--apply`.
+The command scrubs that tenant's event metadata and matching
+`marketing_sns_inbox` receipts; it does not delete events or change delivery
+projections.
+
+The repair uses deleted-member markers, retained address HMACs and erased
+contact/send/outbox linkage. Unlinked historical events cannot be attributed to
+an erased recipient by this repair and are reported rather than guessed. Keep
+the original HMAC master key available. Running `--apply` outside a disposable
+local test database is an operator decision.

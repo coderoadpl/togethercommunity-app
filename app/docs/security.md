@@ -17,6 +17,85 @@ host as the relying party. Non-local authentication origins are HTTPS-only. HTTP
 for `localhost` and its subdomains, and boot rejects an HTTP `APP_BASE_URL`
 outside local development.
 
+## Unsafe request origins
+
+Every `/api/*` request other than `GET`, `HEAD` and `OPTIONS` passes an origin
+guard before impersonation, identity resolution or route mutations. The explicit
+method/path inventory in `apps/server/src/request-origin-policy.ts` classifies
+session, optional-session, authentication and independently authorized routes.
+Application construction and coverage tests reject an unclassified unsafe route;
+the runtime fallback is protected, not exempt. There is no public/internal prefix
+exemption and no exemption based on a credential-shaped header alone.
+
+For cookie-authorized operations, `Origin` must be an exact HTTP(S) origin from
+the request target's trust set: the configured application/platform origin,
+the target tenant's generated subdomain, and all its currently verified custom
+domains, including canonical and noncanonical aliases. Scheme and effective port
+matter. Domain verification is read on each decision, without a stale allowlist
+cache. Host routing takes precedence over `X-Tenant`; an unknown host cannot
+become trusted by supplying that header. Account/authentication endpoints on the
+platform host do not expand their trust set using a tenant header. A configured
+application, platform or deployment authentication host that does not resolve to
+a tenant (for example an `APP_BASE_URL` host shaped like a subdomain of the base
+domain) is treated as tenantless and trusts only the configured origins; any
+other host whose tenant resolution fails is rejected. A sibling tenant's origin
+is never implicitly trusted.
+
+The request authority must itself match one of those configured/verified origins.
+The scheme and port come from `APP_BASE_URL` (custom domains use HTTPS), not
+`Forwarded` or `X-Forwarded-*`. This also supports TLS-terminating deployments
+without trusting client-supplied proxy headers. In local development only, the
+shipped `http://localhost:48730` API configuration composes the explicit Vite
+`http://localhost:48731` origin and corresponding tenant subdomains. The Vite
+proxy preserves `Host`. Other ports are not implicitly accepted.
+
+A missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` for a
+validated target. `same-site`, `cross-site` and `none` require an allowed Origin;
+`same-site` alone does not protect sibling tenants. Contradictory same-origin
+metadata, malformed/multiple/opaque (`null`) origins and missing browser metadata
+on cookie-authorized mutations fail closed. Rejections use the normal JSON error
+seam, HTTP 403 and the stable `forbidden` code. Installed PWAs follow the same
+rules. Origin permission does not grant CORS access, tenant capabilities or
+cross-site cookie availability.
+
+The independently authorized exceptions retain their own mandatory checks:
+tenant API keys for import/M2M/automation, Stripe and SNS/SES provider signatures,
+and scheduler/operator shared secrets. Session-backed API routes also accept a
+successfully verified CLI bearer token without browser metadata: verification
+runs with cookies removed, and downstream processing receives no ambient cookies
+on this path. An invalid bearer that falls back to a cookie is not exempt.
+Requests without any session authority still receive the route's ordinary
+unauthorized response rather than gaining a session from the guard.
+
+Better Auth browser mutations, including sign-in, password recovery, passkeys and
+two-factor challenges, remain protected even when a bearer header is supplied.
+CLI authentication POSTs already send their canonical API Origin, including
+provisional two-factor cookie requests. Better Auth's own CSRF and callback
+validation remain enabled; its broad trusted-origins list is not the tenant trust
+set. Safe OAuth/magic-link GET callbacks retain their protocol validation. A new
+POST callback needs an individually reviewed protocol exception, not a wildcard.
+
+Guest checkout and survey submissions that carry no credentials, or credentials
+that resolve to no signed-in user, pass the guard from any origin, including a
+sales page hosted elsewhere, because they hold no ambient authority. When they
+carry the session of a signed-in user, they use the exact-origin policy before
+checkout test-mode authority or member attribution. The sign-in resolver, coupon
+lookup and direct sales-link guest handoff keep their existing public validation; the direct
+handoff retains its local-origin restriction. Embedded newsletter/signup forms
+keep their explicit JSON/CORS allowlists and external HTML form-post flow and do
+not consume session authority. Development-only writes retain their composition
+gate and headerless automation support but reject foreign browser origins.
+Scoped-token mail endpoints outside `/api` are inventoried separately: RFC 8058
+one-click unsubscribe POSTs, confirmation, preference and double-opt-in POSTs
+continue to accept server-to-server delivery without browser metadata.
+
+This boundary does not isolate account-level cookies from trusted scripts already
+running on a tenant's own origin. The shared-cookie vendor-script exposure
+accepted in the repository policy remains; solving it requires cookie/account
+isolation rather than a broader claim about CSRF protection.
+
+## Account and delivery boundaries
+
 A signed-in account visiting another platform tenant without a staff grant or
 membership receives a successful `/api/me` response with `tenantAccess: "none"`
 and null tenant fields. The web shell presents that tenant’s public visitor
@@ -32,8 +111,10 @@ client `x-forwarded-proto`. A tenant resolved by subdomain — including one
 matched through a `subdomain` domain row — gets its own subdomain origin on
 the scheme and port of `APP_BASE_URL`, a tenant resolved through a verified
 custom domain gets `https://<domain>` on the HTTPS port of `APP_BASE_URL`, and
-every other case — `X-Tenant` routing, single-tenant mode, an unknown host, or
-a failed tenant lookup — gets `APP_BASE_URL`. Delivery contexts for the three
+`X-Tenant` routing and single-tenant mode use that tenant's canonical verified
+custom origin or generated tenant origin. Tenantless delivery uses `APP_BASE_URL`;
+unsafe authentication requests on unknown hosts are rejected by the origin guard
+before delivery context is installed. Delivery contexts for the three
 authentication flows are keyed by e-mail address, capped at 512 entries per
 flow, and cleared once the request finishes, so a rejected request leaves no
 residue for the next legitimate one.
@@ -48,8 +129,10 @@ proxies must overwrite the selected header. Vercel uses the platform-written
 values are not treated as client addresses and emit one diagnostic per process.
 
 Unauthenticated write routes carry their own PostgreSQL fixed-window limiter in
-`rate_limit_buckets`: checkout session creation, coupon validation and the
-marketing consent forms are limited per client address and per resolved tenant,
+`rate_limit_buckets`: checkout session creation, sales-link checkout, coupon
+validation, survey submissions, the marketing unsubscribe, preference and double
+opt-in confirmation forms and Meta conversion consent decisions are limited per
+client address and per resolved tenant,
 and magic-link, password-reset, sign-up and verification requests are limited
 per client address and per e-mail address. The client address comes from the
 same trusted forwarding resolution as authentication, never from a raw
@@ -376,3 +459,68 @@ checks recorded size before fetching, enforces the storage Content-Length
 ceiling before reading a body, and writes the registry before sending a file
 or signed redirect. Personalised files are private, `no-store` responses.
 Member erasure removes registry rows; see [copy identifiers](storage.md#copy-identifiers).
+
+## InPost ShipX credentials
+
+The ShipX organization id and API token are encrypted tenant secrets
+(`shipx.organizationId`, `shipx.token`), written only through the owner-only
+`POST /api/integrations/shipx/configure` route (or the generic tenant-secret
+route) and returned only as masked previews. They are not part of tenant
+settings, the public offer or the public payment configuration. The server
+decrypts them only for a ShipX call; the readiness check on the order page asks
+the secret repository whether both secrets exist without decrypting them. Each
+`order_shipments` row keeps a plain copy of the organization id it was created
+with (an identifier that also appears in every ShipX URL), so later calls for
+that shipment can refuse to run against another organization; the shipment
+view returned to staff omits it, and the token is never copied. Error envelopes carry
+only the ShipX error key, a description cut to 300 characters with control
+characters removed and the field keys of the validation details, never the raw
+body or the token. The adapter refuses redirects, so the bearer token is only
+sent to the configured ShipX host.
+
+Labels are proxied: `GET /api/orders/<orderId>/shipx/label` returns the PDF with
+`Content-Disposition: attachment` and `Cache-Control: private, no-store`, so no
+ShipX origin is added to any content security policy and the browser never
+contacts ShipX. Deployments with `PAYMENT_PROVIDER=fake` use the in-process
+fake client for every order and never call InPost; with `PAYMENT_PROVIDER=stripe`
+the workspace's ShipX environment decides: the sandbox serves test-mode orders
+only and refuses paid orders, production serves paid orders and leaves test-mode
+orders to the fake client. See [Which ShipX client answers](shop.md#which-shipx-client-answers).
+
+## Meta conversions credentials
+
+The Meta Conversions API access token is the tenant secret
+`analyticsMetaCapiAccessToken`, not a tenant setting. It is encrypted at rest
+with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
+the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
+`DELETE /api/tenant-secrets/:key`). Reads return only the key, the update time
+and the literal `configured`, never a token fragment. The server decrypts it
+when the checkout status decides whether to offer the consent prompt, when a
+new consent decision is recorded and when a dispatch builds a request. It is sent only to
+`https://graph.facebook.com/<version>/<pixel id>/events`, in the `Authorization`
+header and never in the URL; the request refuses redirects and times out after
+5 seconds.
+
+Capturing a decision makes no Meta request. The dispatch tick calls Meta only
+for an order whose buyer granted consent for that order and has not withdrawn
+it. Before every attempt it rechecks that the workspace still has the feature
+enabled with a pixel id and a stored token; that the order is a live-mode
+Stripe order from a `cs_live_` checkout session with status paid, partially
+refunded or refunded and a paid time in the past and less than seven days ago;
+and that the buyer's member record exists, has not been erased and has an
+email address. The request carries one `Purchase` event with the order id, the
+paid time, the workspace's offer or checkout URL without a query string, the
+SHA-256 of the trimmed, lower-case buyer email and, when available, the IP
+address, user agent and `_fbp` value captured with the consent request, an
+`fbc` value built from the stored `fbclid`, the SHA-256 of the customer country
+captured from Stripe, and the order's amount, currency and product ids; the
+workspace's test event code is added when configured. The
+[field table](integrations/meta-capi.md#delivery-and-fields) lists the sources.
+
+Meta's response body is never stored. A receipt keeps the status, the field
+names sent, Meta's trace id only when it is at most 100 letters, digits, `_` or
+`-` and does not contain the access token, and a fixed error label
+(`http_<status>`, `invalid_response`, `network_or_timeout`, `invalid_pixel_id`
+or `invalid_tenant`); dispatch failures log a fixed message without request or
+response data. Consent, retention and
+retry rules are described in [Meta Conversions API](integrations/meta-capi.md).

@@ -9,11 +9,12 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 |---|---|---|---|
 | `GET /offer/:slug` | public | read | Sales-link metadata and checkout redirect without creating sessions for crawlers |
 | `POST /api/public/sales-links/:slug/checkout` | public | mutating | Rate-limited direct sales-link checkout session creation |
+| `POST /api/public/meta-capi/consent` | public | mutating | Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes |
 | `GET /manifest.webmanifest` | public | read | PWA web app manifest with tenant name |
 | `GET /robots.txt` | public | read | Tenant crawler policy must bypass the SPA and social preview fallback |
 | `GET /sitemap.xml` | public | read | Tenant public navigation must be discoverable at its canonical origin |
 | `GET /api/health/live` | public | read | Process liveness check |
-| `GET /api/health/ready` | public | read | Database readiness check |
+| `GET /api/health/ready` | public | read | Database and migration readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `GET /api/health/deep` | public | read | Aggregated production readiness probe over every tenant |
 | `OPTIONS /api/public/surveys/:slug` | public | read | Active workspace survey definition without an account |
@@ -29,7 +30,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
 | `OPTIONS /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
-| `OPTIONS /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation with opt-in purchase analytics and no buyer details |
+| `OPTIONS /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation with opt-in purchase analytics and, for Meta conversions, the order consent state with locale-resolved consent copy; no buyer name, email or address |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
@@ -49,7 +50,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
 | `GET /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
-| `GET /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation with opt-in purchase analytics and no buyer details |
+| `GET /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation with opt-in purchase analytics and, for Meta conversions, the order consent state with locale-resolved consent copy; no buyer name, email or address |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
@@ -205,8 +206,17 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/sales-links/:id` | authenticated | mutating | delete sales link |
 | `GET /api/orders/verify/:reference` | authenticated | read | verify order |
 | `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
+| `GET /api/meta-capi/events` | authenticated | read | meta capi events |
+| `GET /api/me/meta-capi/consents` | authenticated | read | meta capi consents |
+| `POST /api/me/meta-capi/withdraw` | authenticated | mutating | withdraw meta capi consent |
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
+| `GET /api/integrations/shipx` | authenticated | read | shipx settings |
+| `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |
+| `GET /api/orders/:orderId/shipx` | authenticated | read | shipx shipment |
+| `POST /api/orders/:orderId/shipx` | authenticated | mutating | shipx create |
+| `POST /api/orders/:orderId/shipx/discard` | authenticated | mutating | shipx discard |
+| `GET /api/orders/:orderId/shipx/label` | authenticated | read | shipx label |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |
@@ -297,7 +307,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/tenant-secrets` | authenticated | read | tenant secrets |
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
-| `GET /api/tenant/settings` | authenticated | read | tenant settings |
+| `GET /api/member/settings` | authenticated | read | member settings |
+| `GET /api/tenant/settings` | authenticated | read | staff-only tenant settings |
 | `GET /api/tenant/team` | authenticated | read | tenant team |
 | `POST /api/tenant/team` | authenticated | mutating | tenant team add |
 | `POST /api/tenant/team/remove` | authenticated | mutating | tenant team remove |

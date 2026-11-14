@@ -24,6 +24,8 @@ import { registerPublicRoutes } from './public-app.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
+import { requestOriginGuard } from './request-origin.js';
+import { assertRequestOriginCoverage } from './request-origin-policy.js';
 import { registerSocialPreviewRoute } from './social-preview.js';
 import { registerTenantRedirects } from './tenant-redirects.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
@@ -137,6 +139,7 @@ export const buildApp = (deps: AppDeps) => {
     }
     await next();
   });
+  app.use('/api/*', requestOriginGuard(deps));
   app.use(API_PATHS.operatorTenantProvision, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.operatorTenantReadiness, operatorTenantSecretGuard(deps.operatorSecret));
   app.use('*', impersonationGuard(deps));
@@ -159,6 +162,7 @@ export const buildApp = (deps: AppDeps) => {
   registerTenantRedirects(app, deps);
   registerSocialPreviewRoute(app, deps);
   assertPublicRouteManifest(app.routes.slice(socialRouteStart), PUBLIC_ROUTE_MANIFEST);
+  assertRequestOriginCoverage(app.routes);
 
   return app;
 };

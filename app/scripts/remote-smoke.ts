@@ -350,6 +350,21 @@ const runTenantSurfaceChecks = async (
   run.skip('studio-tenant-settings', STUDIO_SETTINGS_SKIP_REASON);
 };
 
+type Health = z.output<typeof healthOutputSchema>;
+
+const assertSchemaCurrent = (health: Health): void => {
+  if (health.schemaCurrent) return;
+  if (health.migrationJournal === 'unreadable') {
+    throw new Error(
+      'health could not read the migration journal: check that the runtime role may read public.__drizzle_migrations, then the database timeouts and connections; rerunning migrations does not help',
+    );
+  }
+  if (health.migrationJournal === 'missing') {
+    throw new Error('health found no migration journal: the migrations never ran against this database');
+  }
+  throw new Error('health reported a stale schema');
+};
+
 export const runRemoteSmoke = async (
   options: RemoteSmokeOptions,
   request: Fetch = fetch,
@@ -362,7 +377,7 @@ export const runRemoteSmoke = async (
       'health',
     );
     if (health.database !== 'up') throw new Error('health reported the database down');
-    if (!health.schemaCurrent) throw new Error('health reported a stale schema');
+    assertSchemaCurrent(health);
     if (options.expectedSha !== undefined && health.sha !== options.expectedSha) {
       throw new Error(`expected SHA ${options.expectedSha}, received ${health.sha}`);
     }
@@ -375,12 +390,16 @@ export const runRemoteSmoke = async (
 
 export const VERCEL_BYPASS_HEADER = 'x-vercel-protection-bypass';
 
+const bypassHeaders = (bypassSecret: string | null): Record<string, string> =>
+  bypassSecret === null ? {} : { [VERCEL_BYPASS_HEADER]: bypassSecret };
+
 export interface StagingSmokeOptions {
   baseUrl: string;
   tenant: string;
   publicPagePath: string;
   member: MemberCredentials;
-  bypassSecret: string;
+  /** Null for a staging target that sits behind no deployment protection. */
+  bypassSecret: string | null;
   /** Null while the workflow runs without the staging operator secret. */
   operatorSecret: string | null;
   productionFingerprint: string;
@@ -398,8 +417,6 @@ export interface StagingSmokeResult extends RemoteSmokeResult {
 
 const HEALTH_UNREACHABLE = 'the health attestation did not answer';
 
-type Health = z.output<typeof healthOutputSchema>;
-
 const readHealth = async (get: Get): Promise<Health> =>
   unwrap(
     await envelopeOf(await get('/api/health'), envelopeSchema(healthOutputSchema), 'health'),
@@ -412,7 +429,7 @@ const assertStagingIdentity = (health: Health): void => {
     throw new Error(`health reports environment "${health.environment}", not staging`);
   }
   if (health.production) throw new Error('health reports the deployment as production');
-  if (!health.schemaCurrent) throw new Error('health reported a stale schema');
+  assertSchemaCurrent(health);
 };
 
 const assertStagingDatabase = (health: Health, options: StagingSmokeOptions): void => {
@@ -485,7 +502,7 @@ export const runAuthMailServerlessCheck = async (
   const auth = createAuthE2eClient({
     connectUrl: options.baseUrl,
     origin,
-    headers: { [VERCEL_BYPASS_HEADER]: options.bypassSecret },
+    headers: bypassHeaders(options.bypassSecret),
     request,
   });
   const authResponse = await auth.requestMagicLink({
@@ -511,7 +528,7 @@ export const runAuthMailServerlessCheck = async (
       redirect: 'error',
       headers: {
         [SCHEDULER_OPERATOR_SECRET_HEADER]: options.operatorSecret,
-        [VERCEL_BYPASS_HEADER]: options.bypassSecret,
+        ...bypassHeaders(options.bypassSecret),
       },
     });
     const evidence = unwrap(
@@ -544,7 +561,7 @@ export const runStagingSmoke = async (
   request: Fetch = fetch,
 ): Promise<StagingSmokeResult> => {
   const run = createRun(
-    { ...options, headers: { [VERCEL_BYPASS_HEADER]: options.bypassSecret } },
+    { ...options, headers: bypassHeaders(options.bypassSecret) },
     request,
   );
 
@@ -564,7 +581,7 @@ export const runStagingSmoke = async (
     run,
     {
       ...options,
-      authHeaders: { [VERCEL_BYPASS_HEADER]: options.bypassSecret },
+      authHeaders: bypassHeaders(options.bypassSecret),
       expectedCourseTitle: SMOKE_TENANT_COURSE_TITLE,
     },
     request,
@@ -631,7 +648,7 @@ export const stagingSmokeOptionsFromEnv = (env: Environment): StagingSmokeOption
   const baseUrl = provided(env, 'STAGING_BASE_URL');
   const bypassSecret = provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
   const productionFingerprint = provided(env, 'PRODUCTION_DATABASE_FINGERPRINT');
-  if (baseUrl === null || bypassSecret === null || productionFingerprint === null) return null;
+  if (baseUrl === null || productionFingerprint === null) return null;
   return {
     baseUrl,
     tenant: SMOKE_TENANT_SLUG,
@@ -683,7 +700,7 @@ const mainStaging = async (): Promise<void> => {
   const options = stagingSmokeOptionsFromEnv(process.env);
   if (options === null) {
     process.stderr.write(
-      'smoke:staging: STAGING_BASE_URL, VERCEL_AUTOMATION_BYPASS_SECRET and PRODUCTION_DATABASE_FINGERPRINT are required\n',
+      'smoke:staging: STAGING_BASE_URL and PRODUCTION_DATABASE_FINGERPRINT are required\n',
     );
     process.exitCode = 2;
     return;

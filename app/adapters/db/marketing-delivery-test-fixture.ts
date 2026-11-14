@@ -1,6 +1,7 @@
 import { capabilitiesForPrincipal, ok } from '#core/domain/index.js';
 import type { Ctx } from '#core/server/index.js';
 
+import { createContentHash } from '../crypto/content-hash.js';
 import { createEmailHmac } from '../crypto/email-hmac.js';
 import { createHtmlToText } from '../email/html-to-text.js';
 import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from './marketing-delivery-transactions.js';
@@ -23,7 +24,7 @@ export const createDeliveryFixture = async () => {
   let now = Date.parse(DELIVERY_NOW);
   const sent: Array<{ to: string; html: string; text: string; replyTo?: string }> = [];
   const deps = {
-    ...createMarketingDeliveryRepos(database.db), delivery: createMarketingDeliveryTransaction(database.db),
+    ...createMarketingDeliveryRepos(database.db), hash: createContentHash(), delivery: createMarketingDeliveryTransaction(database.db),
     definitions: createConsentDefinitionRepository(database.db), consents: createMarketingConsentRepository(database.db), layouts: createEmailLayoutRepository(database.db),
     tenants: createTenantRepository(database.db),
     hmac: createEmailHmac(Buffer.alloc(32, 1).toString('base64')), clock: { nowIso: () => new Date(now).toISOString() },

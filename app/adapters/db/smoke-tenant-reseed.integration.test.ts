@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { verifyPassword } from 'better-auth/crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
@@ -19,6 +19,8 @@ const CREATOR_PASSWORD = 'production-only-creator-password';
 let testDatabaseUrl: string;
 let closeTestDatabase: () => Promise<void>;
 let client: pg.Client;
+let seededTemplateName: string;
+let closeSeededTemplate: (() => Promise<void>) | undefined;
 
 const runDatabaseScript = (
   script: 'seed.ts' | 'reseed-acme.ts',
@@ -94,13 +96,24 @@ const addForeignMarketingConsent = async (): Promise<void> => {
   );
 };
 
+beforeAll(async () => {
+  const template = await createTestDatabase('together_acme_reseed_fixture', baseDatabaseUrl);
+  closeSeededTemplate = template.close;
+  testDatabaseUrl = template.url;
+  runSucceeds('seed.ts');
+  seededTemplateName = await template.makeTemplate();
+}, 180_000);
+
+afterAll(async () => {
+  await closeSeededTemplate?.();
+}, 180_000);
+
 beforeEach(async () => {
-  const testDatabase = await createTestDatabase('together_acme_reseed_test', baseDatabaseUrl);
+  const testDatabase = await createTestDatabase('together_acme_reseed_test', baseDatabaseUrl, seededTemplateName);
   testDatabaseUrl = testDatabase.url;
   closeTestDatabase = testDatabase.close;
   client = new pg.Client({ connectionString: testDatabaseUrl });
   await client.connect();
-  runSucceeds('seed.ts');
 }, 180_000);
 
 afterEach(async () => {

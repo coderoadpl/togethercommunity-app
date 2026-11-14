@@ -67,7 +67,7 @@ const harness = (options: { transport?: boolean; perMinute?: number; perDay?: nu
   const outbox = new InMemoryEmailOutboxRepository(events);
   const suppressions = new InMemorySuppressionRepository(events);
   const counts = new Map<string, number>();
-  const rateLimitClaims: Array<'minute' | 'hour' | 'day'> = [];
+  const rateLimitClaims: Array<Parameters<ApiKeyRateLimitRepository['claim']>[1]['period']> = [];
   const rateLimits: ApiKeyRateLimitRepository = {
     claim: async (_tenantId, claim) => {
       rateLimitClaims.push(claim.period);

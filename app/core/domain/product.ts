@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { productComplianceSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 import { productVatFields } from './product-vat.js';
 import { deliveryMethodSchema } from './shipping.js';
+import { DEFAULT_PARCEL_TEMPLATE, parcelTemplateSchema } from './shipx.js';
 
 import { slugify } from './slug.js';
 
@@ -115,6 +116,7 @@ export const productSchema = z.object({
   published: z.boolean(),
   visibility: productVisibilitySchema.default('listed'),
   deliveryMethod: deliveryMethodSchema.default('pickup'),
+  parcelTemplate: parcelTemplateSchema.optional(),
   compliance: productComplianceSchema.nullable().optional(),
   variantGroup: variantGroupSchema.nullable().optional(),
   variantLabel: variantLabelSchema.nullable().optional(),
@@ -131,6 +133,7 @@ export const newProductSchema = z.object({
   type: productTypeSchema.default('course'),
   visibility: productVisibilitySchema.default('listed'),
   deliveryMethod: deliveryMethodSchema.default('pickup'),
+  parcelTemplate: parcelTemplateSchema.default(DEFAULT_PARCEL_TEMPLATE),
   compliance: productComplianceSchema.nullable().optional(),
   variantGroup: variantGroupSchema.nullable().optional(),
   variantLabel: variantLabelSchema.nullable().optional(),
@@ -149,6 +152,7 @@ export const updateProductInputSchema = z.object({
   ...productVatFields,
   visibility: productVisibilitySchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
+  parcelTemplate: parcelTemplateSchema.optional(),
   compliance: productComplianceSchema.nullable().optional(),
   variantGroup: variantGroupSchema.nullable().optional(),
   variantLabel: variantLabelSchema.nullable().optional(),

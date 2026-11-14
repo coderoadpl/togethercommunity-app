@@ -7,6 +7,7 @@ import {
   createMultipleTenantsReporter,
   memoizeHostCheck,
   selectAuthTrustedProxyHeader,
+  selectDatabasePoolOptions,
   selectDeploymentAuthOrigins,
   selectDeploymentIdentity,
   selectDevEndpoints,
@@ -78,6 +79,21 @@ describe('redirect hit rate limit configuration', () => {
     expect(envSchema.safeParse({
       PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: '-1',
     }).success).toBe(false);
+  });
+});
+
+describe('database pool size configuration', () => {
+  it('keeps the driver default when the variable is unset or empty', () => {
+    expect(selectDatabasePoolOptions(envSchema.parse({}))).toBeUndefined();
+    expect(selectDatabasePoolOptions(envSchema.parse({ DATABASE_POOL_MAX: '' }))).toBeUndefined();
+  });
+
+  it('passes a configured maximum to the pool', () => {
+    expect(selectDatabasePoolOptions(envSchema.parse({ DATABASE_POOL_MAX: '4' }))).toEqual({ max: 4 });
+  });
+
+  it.each(['0', '-1', '2.5', '101', 'many'])('rejects %s', (value) => {
+    expect(envSchema.safeParse({ DATABASE_POOL_MAX: value }).success).toBe(false);
   });
 });
 
@@ -905,15 +921,16 @@ describe('marketing retention windows', () => {
   });
 });
 
-describe('import daily record limits', () => {
-  it('defaults to 10,000 member records and 20,000 other records', () => {
+describe('import record limits', () => {
+  it('defaults to 10,000 daily members, 20,000 other daily records and 50,000 hourly validations', () => {
     expect(envSchema.parse({})).toMatchObject({
       IMPORT_DAILY_MEMBER_RECORD_LIMIT: 10_000,
       IMPORT_DAILY_RECORD_LIMIT: 20_000,
+      IMPORT_HOURLY_VALIDATION_RECORD_LIMIT: 50_000,
     });
   });
 
-  it.each(['IMPORT_DAILY_MEMBER_RECORD_LIMIT', 'IMPORT_DAILY_RECORD_LIMIT'] as const)(
+  it.each(['IMPORT_DAILY_MEMBER_RECORD_LIMIT', 'IMPORT_DAILY_RECORD_LIMIT', 'IMPORT_HOURLY_VALIDATION_RECORD_LIMIT'] as const)(
     'accepts positive integer overrides for %s and rejects invalid values',
     (key) => {
       expect(envSchema.parse({ [key]: '1' })[key]).toBe(1);

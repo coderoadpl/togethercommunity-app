@@ -1,5 +1,5 @@
 import { appendEmailEvents } from './telemetry-events.js';
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 
 import {
   automationIdempotencyKeySchema,
@@ -53,6 +53,8 @@ import {
   consentDefinitions,
   consentDefinitionVersions,
   emailLayouts,
+  erasedMemberImports,
+  marketingContacts,
   emailEvents,
   marketingConsents,
   marketingOutbox,
@@ -65,6 +67,7 @@ import {
   tenantDocuments,
   tenantDocumentVersions,
   tenantSesSettings,
+  tenants,
   unsubscribeTokens,
 } from './schema.js';
 import { uniqueViolation } from './pg-errors.js';
@@ -581,6 +584,15 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
 });
 
 export const createSuppressionRepository = (db: Db): SuppressionRepository => ({
+  isErased: async (tenantId, input) => {
+    const [row] = await db.select({ erased: sql<boolean>`${or(
+      exists(db.select({ id: erasedMemberImports.memberId }).from(erasedMemberImports).where(and(eq(erasedMemberImports.tenantId, tenantId), eq(erasedMemberImports.emailHmac, input.emailHmac)))),
+      exists(db.select({ id: members.id }).from(members).where(and(eq(members.tenantId, tenantId), isNotNull(members.deletedAt), or(sql`lower(btrim(${members.email})) = ${normalizeEmail(input.email)}`, input.memberId == null ? undefined : eq(members.id, input.memberId))))),
+      exists(db.select({ id: marketingContacts.id }).from(marketingContacts).where(and(eq(marketingContacts.tenantId, tenantId), eq(marketingContacts.source, 'erasure'), or(eq(marketingContacts.emailHmac, input.emailHmac), input.contactId == null ? undefined : eq(marketingContacts.id, input.contactId))))),
+      exists(db.select({ id: suppressions.id }).from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.reason, 'erasure'), eq(suppressions.emailHmac, input.emailHmac)))),
+    )}` }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    return row?.erased === true;
+  },
   record: async (tenantId, suppression, event) => {
     const parsed = suppressionSchema.parse({ ...suppression, tenantId });
     return db.transaction(async (tx) => {

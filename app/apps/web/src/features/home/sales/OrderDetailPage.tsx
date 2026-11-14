@@ -11,6 +11,16 @@ import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { OrderShipment } from './OrderShipment.js';
+import { OrderShipx } from './OrderShipx.js';
+
+const saveLabel = (file: { filename: string; contentType: string; bytes: Uint8Array }) => {
+  const url = URL.createObjectURL(new Blob([Uint8Array.from(file.bytes)], { type: file.contentType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = file.filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
@@ -38,6 +48,27 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     },
   });
   const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
+  const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
+  const shipx = useQuery({ ...actions.shipxShipment(orderId), enabled: inpostOrder });
+  const createShipment = useMutation({
+    ...actions.shipxCreate,
+    onSettled: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const discardShipment = useMutation({
+    ...actions.shipxDiscard,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.shipxShipmentInvalidates(orderId));
+      createShipment.mutate(orderId);
+    },
+  });
+  const downloadLabel = useMutation({
+    ...actions.shipxLabel,
+    onSuccess: (file) => {
+      saveLabel(file);
+    },
+  });
   const refreshInvoice = useMutation({
     ...actions.refreshInvoice,
     onSuccess: async () => {
@@ -140,6 +171,29 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                 <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
               </Stack>
             ))}
+            <OrderShipx
+              order={order}
+              view={shipx.data}
+              canCreate={canShip}
+              pending={createShipment.isPending}
+              error={createShipment.error ?? discardShipment.error ?? downloadLabel.error}
+              discarding={discardShipment.isPending}
+              downloading={downloadLabel.isPending}
+              onCreate={() => {
+                downloadLabel.reset();
+                discardShipment.reset();
+                createShipment.mutate(order.id);
+              }}
+              onDiscard={() => {
+                createShipment.reset();
+                downloadLabel.reset();
+                discardShipment.mutate(order.id);
+              }}
+              onDownloadLabel={() => {
+                createShipment.reset();
+                downloadLabel.mutate(order.id);
+              }}
+            />
             <OrderShipment
               order={order}
               canShip={canShip}

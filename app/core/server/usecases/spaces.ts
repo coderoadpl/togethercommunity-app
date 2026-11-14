@@ -276,8 +276,9 @@ export const getSpaceFeed = async (
     postIds: [...listed.threads.map((thread) => thread.post.id), ...pinnedIds],
     viewerUserId: actor.value.userId,
   });
-  const pinnedReplies = await Promise.all(
-    pinnedPosts.map((post) => deps.posts.listReplies(actor.value.tenantId, post.rootPostId)),
+  const pinnedReplyCounts = await deps.posts.countRepliesIncludingDeleted(
+    actor.value.tenantId,
+    pinnedPosts.map((post) => post.rootPostId),
   );
   const followed = await deps.spaceSubscriptions.listForUser(actor.value.tenantId, {
     userId: actor.value.userId,
@@ -292,13 +293,13 @@ export const getSpaceFeed = async (
   );
   return ok({
     spaceId: space.value.id,
-    pinned: pinnedPosts.map((post, index) => ({
+    pinned: pinnedPosts.map((post) => ({
       ...toRenderedPublicPost(
         post,
         actor.value.userId,
         avatarUrls.get(post.authorUserId) ?? null,
       ),
-      replyCount: pinnedReplies[index]?.length ?? 0,
+      replyCount: pinnedReplyCounts.get(post.rootPostId) ?? 0,
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads

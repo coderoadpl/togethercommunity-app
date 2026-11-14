@@ -212,6 +212,12 @@ export const orderSchema = z.object({
 
 export type Order = z.infer<typeof orderSchema>;
 
+const ORDER_PROVIDER_IDENTIFIER_KEYS = ['checkoutSession', 'paymentIntent', 'charge', 'invoice', 'subscription'] as const;
+
+export const orderProviderIdentifiers = (providerObjectIds: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(providerObjectIds)
+    .filter(([key]) => ORDER_PROVIDER_IDENTIFIER_KEYS.some((identifier) => identifier === key)));
+
 export const orderListItemSchema = orderSchema.extend({
   invoice: invoiceSchema.nullable().optional(),
   lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),

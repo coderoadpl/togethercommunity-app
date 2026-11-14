@@ -1,3 +1,7 @@
+import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
+import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
+import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
+import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -6,7 +10,10 @@ import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
 import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
-import type { OrderFulfilmentRepository, OrderVerificationRepository } from '#core/server/index.js';
+import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
+import { createFakeShipxClient } from '#adapters/shipx/fake.js';
+import { createShipxHttpClient } from '#adapters/shipx/http.js';
+import type { OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -36,7 +43,7 @@ import { createMarketingContactCampaignTransaction } from '#adapters/db/marketin
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
 import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from '#adapters/db/marketing-delivery-transactions.js';
 import { createMarketingWaiter } from '#adapters/scheduler/marketing-waiter.js';
-import { processMarketingSnsInbox } from '#core/server/index.js';
+import { createMarketingTickFailures, processMarketingSnsInbox, type MarketingTenantError } from '#core/server/index.js';
 import { dispatchMarketingOutbox } from '#core/server/index.js';
 import type { MarketingDeliveryTransaction, MarketingOutboxRepository, MarketingSnsInboxRepository, MarketingWaiter } from '#core/server/index.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -46,7 +53,7 @@ import { createMarketingDirectoryJobs } from '#adapters/db/marketing-contact-imp
 import type { MarketingContactDeps, MarketingDirectoryJobs } from '#core/server/index.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import { createDb, type Db } from '#adapters/db/client.js';
+import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
@@ -99,6 +106,7 @@ import {
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
 import { createNotificationFanoutJobRepository } from '#adapters/db/notification-fanout-jobs.js';
+import { createNotificationFanoutBatchRepository } from '#adapters/db/notification-fanout-batches.js';
 import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
 import { reseedMarkers } from '#adapters/db/reseed-guard.js';
 import { runReseed } from '#adapters/db/reseed-run.js';
@@ -286,6 +294,7 @@ import type {
   MemberOrderListReader,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
+  NotificationFanoutBatchRepository,
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
@@ -362,7 +371,7 @@ import {
 } from '#core/domain/index.js';
 import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
-import { createCoalescedRunner } from './coalesced-runner.js';
+import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
@@ -417,7 +426,15 @@ interface KsefAppDeps {
   }, AppError>>;
 }
 
+interface ShipxIntegrationDeps {
+  shipx: ShipxClients;
+  shipxShipments: ShipxShipmentRepository;
+  shipxSettings: ShipxSettingsRepository;
+  wait(milliseconds: number): Promise<void>;
+}
+
 export interface AppDeps {
+  metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
   telemetryTenantDirectory: TelemetryTenantDirectory;
@@ -479,6 +496,8 @@ export interface AppDeps {
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
+  fanoutBatches: NotificationFanoutBatchRepository;
+  dispatchNotificationFanout(tenantId: string): void;
   realtimeBus: RealtimeBusPort;
   links: DiscussionLinkPort;
   progress: MemberCourseProgressRepository;
@@ -488,6 +507,7 @@ export interface AppDeps {
   orderDetails?: OrderDetailRepository;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
+  shipxIntegration?: ShipxIntegrationDeps;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
@@ -507,6 +527,7 @@ export interface AppDeps {
   activityReports: ActivityReportRepository;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
   importDailyMemberRecordLimit: number;
+  importHourlyValidationRecordLimit: number;
   importDailyRecordLimit: number;
   rateLimitBuckets: PublicRateLimitRepository;
   publicRateLimitPolicies: PublicRateLimitPolicies;
@@ -571,10 +592,14 @@ export interface AppDeps {
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void; warn(message: string): void };
+  trackBackgroundWork?: (task: Promise<unknown>) => void;
   baseDomain: string;
   platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
+  deploymentAuthOrigins: readonly string[];
+  developmentWebOrigin?: string;
+  developmentCustomDomainPort?: number;
   customDomainTarget: string;
   customDomainApexARecord?: string | undefined;
   devEndpoints: DevEndpoints;
@@ -639,7 +664,7 @@ export interface MarketingAppDeps {
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number; tenantErrors?: MarketingTenantError[] }, AppError>>;
 }
 
 export const selectDevEndpoints = (
@@ -766,6 +791,12 @@ export const createMultipleTenantsReporter = (
   };
 };
 
+export const selectDatabasePoolOptions = (
+  env: Pick<Env, 'DATABASE_POOL_MAX'>,
+): { max: number } | undefined => env.DATABASE_POOL_MAX === undefined
+  ? undefined
+  : { max: env.DATABASE_POOL_MAX };
+
 export const selectAuthTrustedProxyHeader = (
   env: Pick<Env, 'AUTH_TRUSTED_PROXY_HEADER'>,
 ): string | null => env.AUTH_TRUSTED_PROXY_HEADER === 'direct'
@@ -868,10 +899,16 @@ export const selectDeploymentIdentity = (
  */
 export const createDeps = (
   env: Env,
-  options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
-): AppDeps => {
+  options: {
+    clock?: Clock;
+    db?: Db;
+    keepAlive?: (task: Promise<unknown>) => void;
+    trackBackgroundWork?: (task: Promise<unknown>) => void;
+  } = {},
+): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
-  const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL);
+  const deploymentAuthOrigins = selectDeploymentAuthOrigins(env);
+  const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL, selectDatabasePoolOptions(env));
   const tenantDomains = createTenantDomainRepository(db);
   const storageCorsCache = createStorageCorsCache(db);
   const tenantDomainEvents = createTenantDomainEventRepository(db);
@@ -880,11 +917,12 @@ export const createDeps = (
     env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname;
   const notificationRepository = createNotificationRepository(db);
   const publicRateLimitBuckets = createPublicRateLimitRepository(db);
-  const tenants = createTenantRepository(db, singleTenantMode
+  const tenantRepositoryOptions = singleTenantMode
     ? {
         onMultipleTenants: createMultipleTenantsReporter(),
       }
-    : undefined);
+    : undefined;
+  const tenants = createTenantRepository(db, tenantRepositoryOptions);
   const tenantAccess = createTenantAccessReader(db);
   const accountSecurity = createAccountSecurityReader(db);
   const consents = createTermsConsentRepository(db);
@@ -993,6 +1031,16 @@ export const createDeps = (
   const resolveOrigin = createTenantOriginResolver({
     tenants, tenantDomains, appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
   });
+  const metaCapiReaders = (connection: Db) => {
+    const connectionTenants = createTenantRepository(connection, tenantRepositoryOptions);
+    return {
+      tenants: connectionTenants,
+      secrets: createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      resolveOrigin: createTenantOriginResolver({
+        tenants: connectionTenants, tenantDomains: createTenantDomainRepository(connection), appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
+      }),
+    };
+  };
   const unsubscribeBaseUrl = async (tenantId: string): Promise<string> => `${await resolveOrigin(tenantId)}/u`;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants,
@@ -1051,6 +1099,7 @@ export const createDeps = (
   const tenantSesTransactional = createTenantSesTransactionalResolver(
     sesSettings,
     tenantMarketingCredentials,
+    { readiness: { ensure: (_tenantId, credentials, settings) => ensureTransactionalSesConfiguration(credentials, settings, sesOnboardingControlPlane) }, logger },
     production ? createSesEmailPort : () => email,
   );
   const smtpTransactional = createSmtpTransactionalResolver(
@@ -1109,6 +1158,10 @@ export const createDeps = (
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
+  const dispatchNotificationFanout: AppDeps['dispatchNotificationFanout'] = createDeferredCoalescedRunner(async () => {
+    const result = await drainNotificationFanoutJobs(deps);
+    if (!result.ok) process.stderr.write(`[notification-fanout] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
+  }, options.keepAlive);
   const refreshMarketingQuota = async (tenantId: string) => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
@@ -1150,7 +1203,7 @@ export const createDeps = (
   const reputationDashboardUrl = async (tenantId: string): Promise<string> =>
     `${await resolveOrigin(tenantId)}/panel/marketing`;
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
-    let firstError: AppError | null = null;
+    const failures = createMarketingTickFailures(logger);
     const now = clock.nowIso();
     const deadlineAt = new Date(Date.parse(now) + env.MARKETING_WORKER_SECONDS * 1000).toISOString();
     const inboxDeadline = new Date(Math.min(Date.parse(deadlineAt), Date.parse(now) + 5000)).toISOString();
@@ -1159,7 +1212,7 @@ export const createDeps = (
       const inbox = await processMarketingSnsInbox(snsWebhookContext(tenantId),
         { workerId: randomUUID(), deadlineAt: inboxDeadline, maxEvents: 100 },
         { ...deliveryRepos, delivery, clock, ids, hmac: emailHmac, sns, credentials: marketingCredentials });
-      if (!inbox.ok) firstError ??= inbox.error;
+      if (!inbox.ok) failures.tenant(tenantId, 'sns-inbox', inbox.error);
     }
     const marketing = await runScheduledMarketingJobs({
       now,
@@ -1214,7 +1267,7 @@ export const createDeps = (
         ),
       maintenanceBackoff,
     });
-    if (!marketing.ok) firstError ??= marketing.error;
+    if (!marketing.ok) failures.platform(marketing.error);
     for (const tenantId of await deliveryRepos.marketingOutbox.listTenantIds()) {
       if (Date.parse(clock.nowIso()) + 1000 >= Date.parse(deadlineAt)) break;
       await refreshMarketingQuota(tenantId);
@@ -1222,7 +1275,7 @@ export const createDeps = (
         { workerId: randomUUID(), deadlineAt, maxSends: env.MARKETING_BATCH_CAP }, {
           ...deliveryRepos, contacts: marketingContacts.contacts, delivery, clock, ids, waiter, definitions, consents: marketingConsents, hmac: emailHmac, credentials: marketingCredentials, throttle: marketingThrottle, ses: marketingSes,
         });
-      if (!dispatched.ok) firstError ??= dispatched.error;
+      failures.outbox(tenantId, dispatched);
     }
     const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED && clock.nowIso() < deadlineAt
       ? await purgeExpiredConsentEvidence(
@@ -1240,10 +1293,13 @@ export const createDeps = (
       await drainTelemetry(tenantId, { ...telemetryStore, random: Math.random, deadlineAt });
     }
     const sweptViews = clock.nowIso() < deadlineAt ? await sweepLapsedImpersonations({ impersonations, ids, clock }) : ok(undefined);
-    if (firstError !== null) return err(firstError);
+    const platformFailure = failures.firstPlatformFailure();
+    if (platformFailure !== null) return err(platformFailure);
+    if (!marketing.ok) return marketing;
     if (!purged.ok) return purged;
     if (!sweptViews.ok) return sweptViews;
-    return marketing;
+    const tenantErrors = [...marketing.value.tenantErrors ?? [], ...failures.tenantErrors()];
+    return ok({ ...marketing.value, ...(tenantErrors.length === 0 ? {} : { tenantErrors }) });
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
@@ -1347,7 +1403,7 @@ export const createDeps = (
       const tenantIds = await accountAvatarTenants.listTenantIdsForUser(userId);
       await Promise.all(tenantIds.map((tenant) => importGoogleAvatar(
         { tenantId: tenant.id, userId, sourceUrl },
-        { avatars: accountAvatars, avatarImages, ids, secretResolver, storage },
+        { avatars: accountAvatars, avatarImages, ids, secretResolver, storage, logger },
       )));
     },
     isVerifiedCustomHost: memoizeHostCheck(async (host) =>
@@ -1385,7 +1441,7 @@ export const createDeps = (
           singleTenantMode,
           customDomains: [],
         }),
-        ...selectDeploymentAuthOrigins(env),
+        ...deploymentAuthOrigins,
       ],
       loadCustomOrigins: async () => {
         const domains = await tenantDomains.listVerifiedDomains();
@@ -1402,6 +1458,7 @@ export const createDeps = (
   });
 
   const deps: AppDeps = {
+    ...(options.trackBackgroundWork === undefined ? {} : { trackBackgroundWork: options.trackBackgroundWork }),
     renderQrPng,
     telemetryTenantDirectory: createTelemetryTenantDirectory(db),
     telemetry: { recordAppError },
@@ -1450,9 +1507,11 @@ export const createDeps = (
     memberBlocks: createMemberBlockRepository(db),
     notifications: notificationRepository,
     fanoutJobs: createNotificationFanoutJobRepository(db),
+    fanoutBatches: createNotificationFanoutBatchRepository(db),
+    dispatchNotificationFanout,
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),
-      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(emailOutbox, ids, clock, dispatchEmail)] : []),
+      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(emailOutbox, clock, dispatchEmail)] : []),
     ],
     realtimeBus,
     links,
@@ -1463,7 +1522,15 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
+    metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
+      secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
+    shipxIntegration: {
+      shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
+      shipxShipments: createShipxShipmentRepository(db),
+      shipxSettings: createShipxSettingsRepository(db),
+      wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    },
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
@@ -1483,6 +1550,7 @@ export const createDeps = (
     activityReports: createActivityReportRepository(db),
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     importDailyMemberRecordLimit: env.IMPORT_DAILY_MEMBER_RECORD_LIMIT,
+    importHourlyValidationRecordLimit: env.IMPORT_HOURLY_VALIDATION_RECORD_LIMIT,
     importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,
     rateLimitBuckets: publicRateLimitBuckets,
     publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
@@ -1567,6 +1635,11 @@ export const createDeps = (
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
+    deploymentAuthOrigins,
+    ...(isLocalDevelopmentEnvironment(env) && new URL(env.APP_BASE_URL).origin === 'http://localhost:48730'
+      ? { developmentWebOrigin: 'http://localhost:48731' } : {}),
+    ...(isLocalDevelopmentEnvironment(env) && isLocalHostname(baseDomain)
+      ? { developmentCustomDomainPort: env.PORT } : {}),
     customDomainTarget,
     customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
     devEndpoints,
@@ -1622,5 +1695,9 @@ export const createDeps = (
       dispatchScheduledMarketing,
     },
   };
-  return deps;
+  const close = async (): Promise<void> => {
+    if ('close' in realtimeBus) await realtimeBus.close();
+    if (options.db === undefined) await closeDb(db);
+  };
+  return Object.assign(deps, { close });
 };

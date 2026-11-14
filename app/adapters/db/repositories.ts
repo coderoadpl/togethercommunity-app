@@ -1,7 +1,9 @@
+import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-erasure.js';
+import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
-import { lessonEditionSchema } from '#core/domain/index.js';
+import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -157,9 +159,10 @@ import type {
 
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
-import { uniqueViolation } from './pg-errors.js';
+import { undefinedRelation, uniqueViolation } from './pg-errors.js';
 import { appendGrantMemberEvent, appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
+import { createNotificationFanoutBatchRepository } from './notification-fanout-batches.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
 import {
@@ -333,20 +336,22 @@ const parseThreadCursor = (cursor: string): { createdAt: string; id: string } =>
 const countThreadReplies = async (
   db: Db,
   tenantId: string,
-  post: { id: string; rootPostId: string },
-): Promise<number> => {
+  rootPostIds: string[],
+): Promise<Map<string, number>> => {
+  if (rootPostIds.length === 0) return new Map();
   const counts = await db
-    .select({ value: sql<number>`count(*)::int` })
+    .select({ rootPostId: posts.rootPostId, value: sql<number>`count(*)::int` })
     .from(posts)
     .where(
       and(
         eq(posts.tenantId, tenantId),
-        eq(posts.rootPostId, post.rootPostId),
-        sql`${posts.id} <> ${post.id}`,
+        inArray(posts.rootPostId, rootPostIds),
+        sql`${posts.id} <> ${posts.rootPostId}`,
         isNull(posts.deletedAt),
       ),
-    );
-  return counts[0]?.value ?? 0;
+    )
+    .groupBy(posts.rootPostId);
+  return new Map(counts.map((row) => [row.rootPostId, row.value]));
 };
 
 const parseSpace = (space: typeof spaces.$inferSelect): Space => spaceSchema.parse(space);
@@ -419,6 +424,7 @@ export const createProductRepository = (
           coverUrl: product.coverUrl,
           visibility: product.visibility,
           deliveryMethod: product.deliveryMethod,
+          parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
           compliance: product.compliance ?? null,
           variantGroup: product.variantGroup ?? null,
           variantLabel: product.variantLabel ?? null,
@@ -449,6 +455,7 @@ export const createProductRepository = (
         coverUrl: product.coverUrl,
         visibility: product.visibility,
         deliveryMethod: product.deliveryMethod,
+        parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
         compliance: product.compliance ?? null,
         variantGroup: product.variantGroup ?? null,
         variantLabel: product.variantLabel ?? null,
@@ -1236,12 +1243,15 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
 });
 
 export const createPostRepository = (db: Db): PostRepository => ({
-  createPost: async (tenantId, post, fanoutJob) => {
+  createPost: async (tenantId, post, fanoutJob, subscriberUserIds = []) => {
     const row = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(posts)
         .values({ ...post, tenantId })
         .returning();
+      await createNotificationFanoutBatchRepository(tx).subscribeStaff(tenantId, {
+        rootPostId: post.rootPostId, userIds: subscriberUserIds, createdAt: post.createdAt,
+      });
       if (fanoutJob !== undefined) await insertFanoutJob(tx, tenantId, fanoutJob);
       return inserted[0];
     });
@@ -1326,12 +1336,11 @@ export const createPostRepository = (db: Db): PostRepository => ({
       .limit(query.limit + 1);
     const page = rows.slice(0, query.limit);
     const overflow = rows[query.limit];
-    const threads = await Promise.all(
-      page.map(async (post) => ({
-        post: parsePost(post),
-        replyCount: await countThreadReplies(db, tenantId, post),
-      })),
-    );
+    const replyCounts = await countThreadReplies(db, tenantId, page.map((post) => post.rootPostId));
+    const threads = page.map((post) => ({
+      post: parsePost(post),
+      replyCount: replyCounts.get(post.rootPostId) ?? 0,
+    }));
     const last = page.at(-1);
     return {
       threads,
@@ -1360,12 +1369,11 @@ export const createPostRepository = (db: Db): PostRepository => ({
       .limit(query.limit + 1);
     const page = rows.slice(0, query.limit);
     const overflow = rows[query.limit];
-    const threads = await Promise.all(
-      page.map(async (post) => ({
-        post: parsePost(post),
-        replyCount: await countThreadReplies(db, tenantId, post),
-      })),
-    );
+    const replyCounts = await countThreadReplies(db, tenantId, page.map((post) => post.rootPostId));
+    const threads = page.map((post) => ({
+      post: parsePost(post),
+      replyCount: replyCounts.get(post.rootPostId) ?? 0,
+    }));
     const last = page.at(-1);
     return { threads, nextCursor: overflow && last ? threadCursor(last) : null };
   },
@@ -1377,6 +1385,39 @@ export const createPostRepository = (db: Db): PostRepository => ({
         .where(and(eq(posts.tenantId, tenantId), eq(posts.rootPostId, rootPostId), sql`${posts.parentPostId} is not null`))
         .orderBy(asc(posts.createdAt), asc(posts.id))
     ).map(parsePost),
+  listRepliesForRoots: async (tenantId, rootPostIds) => {
+    if (rootPostIds.length === 0) return new Map();
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(and(
+        eq(posts.tenantId, tenantId),
+        inArray(posts.rootPostId, rootPostIds),
+        isNotNull(posts.parentPostId),
+      ))
+      .orderBy(asc(posts.createdAt), asc(posts.id));
+    const replies = new Map<string, Post[]>();
+    for (const row of rows) {
+      const post = parsePost(row);
+      const thread = replies.get(post.rootPostId) ?? [];
+      thread.push(post);
+      replies.set(post.rootPostId, thread);
+    }
+    return replies;
+  },
+  countRepliesIncludingDeleted: async (tenantId, rootPostIds) => {
+    if (rootPostIds.length === 0) return new Map();
+    const rows = await db
+      .select({ rootPostId: posts.rootPostId, value: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(and(
+        eq(posts.tenantId, tenantId),
+        inArray(posts.rootPostId, rootPostIds),
+        isNotNull(posts.parentPostId),
+      ))
+      .groupBy(posts.rootPostId);
+    return new Map(rows.map((row) => [row.rootPostId, row.value]));
+  },
   updateBody: async (tenantId, input) => {
     const rows = await db
       .update(posts)
@@ -1420,7 +1461,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
       inArray(sql`${notifications.payload}->>'rootPostId'`, ids),
     )));
     await tx.delete(notificationFanoutJobs).where(and(eq(notificationFanoutJobs.tenantId, tenantId),
-      inArray(notificationFanoutJobs.kind, ['space-post', 'thread-reply']),
+      inArray(notificationFanoutJobs.kind, ['space-post', 'thread-reply', 'lesson-question']),
       inArray(sql`${notificationFanoutJobs.payload}->>'postId'`, ids),
     ));
     await tx.update(spaceEvents).set({ discussionRootPostId: null }).where(and(
@@ -2750,6 +2791,7 @@ const erasedDmSnapshot = (display: string, senderIsReporter: boolean): SQL =>
 export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) =>
     db.transaction(async (tx) => {
+      await lockEmailEventErasure(tx, tenantId);
       const rows = await tx
         .select()
         .from(members)
@@ -2793,8 +2835,26 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
         ))),
       ));
-      await tx.update(orders).set({ attribution: null }).where(and(
+      await tx.update(orders).set({
+        attribution: null,
+        metaCapiConsentWithdrawnAt: sql`coalesce(${orders.metaCapiConsentWithdrawnAt}, ${input.deletedAt}::timestamptz)`,
+      }).where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId)));
+      await tx.insert(metaCapiConsentEvidence).select(tx.select({
+        tenantId: metaCapiConsentEvidence.tenantId, orderId: metaCapiConsentEvidence.orderId,
+        decision: sql<'withdrawn'>`'withdrawn'`.as('decision'), occurredAt: sql<string>`${input.deletedAt}::timestamptz`.as('occurred_at'),
+        textVersion: metaCapiConsentEvidence.textVersion, textSnapshot: metaCapiConsentEvidence.textSnapshot,
+        source: sql<string>`'member-erasure'`.as('source'),
+      }).from(metaCapiConsentEvidence).innerJoin(orders, and(
+        eq(orders.tenantId, metaCapiConsentEvidence.tenantId), eq(orders.id, metaCapiConsentEvidence.orderId),
+      )).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
+        eq(metaCapiConsentEvidence.tenantId, tenantId), eq(metaCapiConsentEvidence.decision, 'granted'),
+      ))).onConflictDoNothing();
+      await tx.delete(metaCapiOutbox).where(and(
+        eq(metaCapiOutbox.tenantId, tenantId),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), eq(orders.id, metaCapiOutbox.orderId),
+        ))),
       ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({
@@ -2823,6 +2883,9 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
         sql`jsonb_typeof(${emailOutbox.payload}#>'{shipment,delivery,address}') = 'object'`,
       ));
+      await scrubMemberEmailEvents(tx, tenantId, {
+        memberId: input.memberId, email: member.email, emailHmac: emailHmac.compute(tenantId, member.email),
+      }, emailHmac);
       await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 
@@ -3633,7 +3696,7 @@ export const createOrderRepository = (
 
 export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
   findOrderByProviderObjectIds: async (tenantId, providerObjectIds, mode) => {
-    const matches = Object.entries(providerObjectIds).map(
+    const matches = Object.entries(orderProviderIdentifiers(providerObjectIds)).map(
       ([key, value]) => key === 'checkoutSession'
         ? sql`${orders.providerObjectIds} ? 'checkoutSession' and ${orders.providerObjectIds} ->> 'checkoutSession' = ${value}`
         : sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
@@ -4414,6 +4477,12 @@ export const createTenantRepository = (
         signInNotice: tenants.signInNotice,
         analyticsTagId: tenants.analyticsTagId,
         analyticsMetaPixelId: tenants.analyticsMetaPixelId,
+        analyticsMetaCapiEnabled: tenants.analyticsMetaCapiEnabled,
+        analyticsMetaCapiTestEventCode: tenants.analyticsMetaCapiTestEventCode,
+        analyticsMetaCapiConsentHeading: tenants.analyticsMetaCapiConsentHeading,
+        analyticsMetaCapiConsentBody: tenants.analyticsMetaCapiConsentBody,
+        analyticsMetaCapiConsentAcceptLabel: tenants.analyticsMetaCapiConsentAcceptLabel,
+        analyticsMetaCapiConsentDeclineLabel: tenants.analyticsMetaCapiConsentDeclineLabel,
         analyticsConsentCookieName: tenants.analyticsConsentCookieName,
         analyticsConsentCookieValue: tenants.analyticsConsentCookieValue,
         analyticsLoadWithoutConsent: tenants.analyticsLoadWithoutConsent,
@@ -4462,6 +4531,12 @@ export const createTenantRepository = (
           signInNotice: row.signInNotice,
           analyticsTagId: row.analyticsTagId,
           analyticsMetaPixelId: row.analyticsMetaPixelId,
+          analyticsMetaCapiEnabled: row.analyticsMetaCapiEnabled,
+          analyticsMetaCapiTestEventCode: row.analyticsMetaCapiTestEventCode,
+          analyticsMetaCapiConsentHeading: row.analyticsMetaCapiConsentHeading,
+          analyticsMetaCapiConsentBody: row.analyticsMetaCapiConsentBody,
+          analyticsMetaCapiConsentAcceptLabel: row.analyticsMetaCapiConsentAcceptLabel,
+          analyticsMetaCapiConsentDeclineLabel: row.analyticsMetaCapiConsentDeclineLabel,
           analyticsConsentCookieName: row.analyticsConsentCookieName,
           analyticsConsentCookieValue: row.analyticsConsentCookieValue,
           analyticsLoadWithoutConsent: row.analyticsLoadWithoutConsent,
@@ -4526,6 +4601,12 @@ export const createTenantRepository = (
         signInNotice: settings.signInNotice,
         analyticsTagId: settings.analyticsTagId,
         analyticsMetaPixelId: settings.analyticsMetaPixelId,
+        analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
+        analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
+        analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
+        analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
+        analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
+        analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
         analyticsConsentCookieName: settings.analyticsConsentCookieName,
         analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
         analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
@@ -4570,6 +4651,12 @@ export const createTenantRepository = (
       signInNotice: settings.signInNotice,
       analyticsTagId: settings.analyticsTagId,
       analyticsMetaPixelId: settings.analyticsMetaPixelId,
+      analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
+      analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
+      analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
+      analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
+      analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
+      analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
       analyticsConsentCookieName: settings.analyticsConsentCookieName,
       analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
       analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
@@ -4974,13 +5061,26 @@ export const createHealthPort = (db: Db): HealthPort => {
         return false;
       }
     },
+    migrationCounts: async () => {
+      const expected = migrationJournal.entries.length;
+      const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;
+      try {
+        const result = await db.execute(
+          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from public.__drizzle_migrations`,
+        );
+        const row = firstRow(result);
+        return { expected, applied: numberField(row, 'applied'), current: numberField(row, 'latest') >= lastJournalWhen };
+      } catch (error) {
+        return { expected, applied: null, journal: undefinedRelation(error) ? 'missing' : 'unreadable' };
+      }
+    },
     schemaStatus: async () => {
       const expectedMigrations = migrationJournal.entries.length;
       const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;
       const fingerprint = await fingerprintStatus();
       try {
         const result = await db.execute(
-          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from drizzle.__drizzle_migrations`,
+          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from public.__drizzle_migrations`,
         );
         const row = firstRow(result);
         return {
@@ -4989,8 +5089,14 @@ export const createHealthPort = (db: Db): HealthPort => {
           schemaCurrent: numberField(row, 'latest') >= lastJournalWhen,
           ...fingerprint,
         };
-      } catch {
-        return { expectedMigrations, appliedMigrations: null, schemaCurrent: false, ...fingerprint };
+      } catch (error) {
+        return {
+          expectedMigrations,
+          appliedMigrations: null,
+          migrationJournal: undefinedRelation(error) ? 'missing' : 'unreadable',
+          schemaCurrent: false,
+          ...fingerprint,
+        };
       }
     },
   };

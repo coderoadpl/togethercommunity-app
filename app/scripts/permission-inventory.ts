@@ -95,6 +95,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/public/checkout/session' || path === '/api/public/sales-links/:slug/checkout') return 'checkout:start';
   if (path === '/api/public/auth-config' || path === '/api/public/auth-resolve') return 'auth:use';
   if (path.startsWith('/api/webhooks/')) return 'webhook:process';
+  if (path === '/api/public/meta-capi/consent') return 'marketing:consent:write';
   if (path.startsWith('/u/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/confirm/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/forms/')) return 'offer:read';
@@ -157,6 +158,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/marketing/suppressions') return method === 'GET' ? 'marketing:suppression:read' : 'marketing:suppression:write';
   if (path.startsWith('/api/marketing/sends') || /^\/api\/members\/:id\/emails$/.test(path)) return 'marketing:delivery:read';
   if (path === '/api/me' || path === '/api/tenants') return 'tenant:list-own';
+  if (path === '/api/meta-capi/events') return 'tenant:settings:write';
+  if (path === '/api/me/meta-capi/consents') return 'member:billing:read';
+  if (path === '/api/me/meta-capi/withdraw') return 'member:profile:self-write';
   if (path === '/api/me/billing-orders') return 'member:billing:read';
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
@@ -191,6 +195,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path.startsWith('/api/tenant/team')) return 'tenant:settings:write';
+  if (path === '/api/member/settings') return 'member:settings:read';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/tenant/routing') return 'tenant:domain:read';
   if (path.startsWith('/api/tenant/redirects')) {
@@ -205,6 +210,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/integrations/stripe/test-mode/remove') return 'tenant:secret:write';
   if (path === '/api/integrations/stripe/probe') return 'tenant:secret:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
+  if (path === '/api/integrations/shipx') return 'tenant:secret:read';
+  if (path === '/api/integrations/shipx/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
   if (path.startsWith('/api/integrations/telemetry')) return method === 'GET' ? 'tenant:secret:read' : 'tenant:settings:write';
@@ -224,6 +231,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
+  if (path === '/api/orders/:orderId/shipx' || path === '/api/orders/:orderId/shipx/label') return method === 'GET' ? 'order:read' : 'order:write';
+  if (path === '/api/orders/:orderId/shipx/discard') return 'order:write';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/consumer-sales-summary') return 'order:export';
@@ -275,6 +284,7 @@ const beforeForRoute = (
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) {
+    if (path === '/api/public/meta-capi/consent') return token;
     if (path.startsWith('/api/webhooks/')) return webhook;
     if (path.startsWith('/u/') || path.startsWith('/marketing/confirm/')) return token;
     return publicPrincipal;
@@ -299,8 +309,11 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/meta-capi/events') return owner;
+  if (path.startsWith('/api/me/meta-capi/')) return tenantActors;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
   if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return tenantActors;
+  if (path === '/api/member/settings') return tenantActors;
   if (path === '/api/member/navigation') return tenantActors;
   if (path === '/api/member/home-feed') return tenantActors;
   if (path === '/api/member/upcoming-events') return tenantActors;
@@ -311,7 +324,8 @@ const beforeForRoute = (
     return tenantActors;
   }
   if (path === '/api/integrations/telemetry' && method === 'GET') return staff;
-  if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path === '/api/integrations/shipx' && method === 'GET') return staff;
+  if (path === '/api/tenant/settings' && method === 'GET') return staff;
   if (path.startsWith('/api/tenant/team')) return owner;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
@@ -566,12 +580,15 @@ const beforeForUseCase = (
     return capability === 'tenant:domain:read' ? staff : owner;
   }
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
+  if (file === 'meta-capi.ts') return name === 'listMetaCapiEvents' ? owner : tenantActors;
   if (file === 'tenant-team.ts') return owner;
-  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
+  if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
+  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts' || file === 'probe-stripe-permissions.ts') return owner;
+  if (file === 'shipx.ts' && name === 'configureShipx') return owner;
   if (file === 'stripe-test-session.ts') return staff;
   if (capability === 'integration:test') return owner;
   if (file === 'community.ts' && name === 'purgePost') return staff;
@@ -655,10 +672,6 @@ const suspicious: SuspiciousPermission[] = [
   {
     subject: 'development-only routes',
     behavior: 'When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control (`apps/server/src/internal-app.ts`).',
-  },
-  {
-    subject: 'GET /api/tenant/settings',
-    behavior: 'A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).',
   },
   {
     subject: 'marketing synthetic identities',

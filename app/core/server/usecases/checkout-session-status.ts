@@ -1,7 +1,9 @@
-import { checkoutSessionStatusInputSchema, err, ok, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics } from '#core/domain/index.js';
+import { checkoutSessionStatusInputSchema, err, ok, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics, type Language } from '#core/domain/index.js';
 
 import type { PaymentRefundRepository, TenantRepository, ProductRepository } from '../ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
+import type { MetaCapiConfig } from '#core/domain/meta-capi.js';
+import { getMetaCapiConfig, type MetaCapiDeps } from './meta-capi.js';
 
 export const getCheckoutSessionStatus = async (
   tenantId: string,
@@ -11,8 +13,10 @@ export const getCheckoutSessionStatus = async (
     tenants: Pick<TenantRepository, 'findSettings'>;
     products: Pick<ProductRepository, 'findById'>;
     salesLinks?: Pick<SalesLinkRepository, 'findById'>;
+    metaCapi?: MetaCapiDeps;
   },
-): Promise<Result<{ status: 'pending' | 'paid'; analytics?: CheckoutPurchaseAnalytics }, AppError>> => {
+  locale?: Language,
+): Promise<Result<{ status: 'pending' | 'paid'; analytics?: CheckoutPurchaseAnalytics; metaCapi?: MetaCapiConfig }, AppError>> => {
   const parsed = checkoutSessionStatusInputSchema.safeParse({ session_id: sessionId });
   if (!parsed.success) return err(validation('Invalid checkout session id'));
   const mode = parsed.data.session_id.startsWith('cs_test_') ? 'test' : 'live';
@@ -24,12 +28,16 @@ export const getCheckoutSessionStatus = async (
     ['paid', 'partially_refunded', 'refunded'].includes(order.status);
   if (!paid || order === null) return ok({ status: 'pending' });
   const settings = await deps.tenants.findSettings(tenantId);
-  if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid' });
+  const metaCapiEnabled = settings?.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId;
+  const metaCapi = deps.metaCapi && metaCapiEnabled ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi, locale) : undefined;
+  const capi = metaCapi === undefined ? {} : { metaCapi };
+  if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid', ...capi });
   const lines = productLines(order.lines ?? []);
   const product = lines.length === 0 ? await deps.products.findById(tenantId, order.productId) : null;
   const salesLink = order.salesLinkId == null ? null : await deps.salesLinks?.findById(tenantId, order.salesLinkId);
   return ok({
     status: 'paid',
+    ...capi,
     analytics: {
       transactionId: order.id,
       fbclid: order.attribution?.fbclid ?? null,

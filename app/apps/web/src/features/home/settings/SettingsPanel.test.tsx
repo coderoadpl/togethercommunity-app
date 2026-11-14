@@ -16,6 +16,7 @@ import {
   deriveLightAccent,
   TENANT_OG_DESCRIPTION_MAX_LENGTH,
   TENANT_OG_TITLE_MAX_LENGTH,
+  type ShipxSettingsView,
 } from '#core/domain/index.js';
 
 import { ToastProvider } from '../../../components/ui/Toast.js';
@@ -1627,8 +1628,14 @@ describe('SettingsPanel analytics', () => {
     await userEvent.type(cookieName, 'site_consent');
     await userEvent.type(cookieValue, 'analytics:true');
     await userEvent.click(consentSwitch);
-    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await userEvent.click(within(screen.getByTestId('analytics-settings')).getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({
+      analyticsMetaCapiEnabled: false,
+      analyticsMetaCapiTestEventCode: null,
+      analyticsMetaCapiConsentHeading: null,
+      analyticsMetaCapiConsentBody: null,
+      analyticsMetaCapiConsentAcceptLabel: null,
+      analyticsMetaCapiConsentDeclineLabel: null,
       analyticsTagId: 'G-ABCD123',
       analyticsMetaPixelId: '123456789012345',
       analyticsConsentCookieName: 'site_consent',
@@ -1655,8 +1662,14 @@ describe('SettingsPanel analytics', () => {
     await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName }));
     await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue }));
     await userEvent.click(screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent }));
-    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await userEvent.click(within(screen.getByTestId('analytics-settings')).getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({
+      analyticsMetaCapiEnabled: false,
+      analyticsMetaCapiTestEventCode: null,
+      analyticsMetaCapiConsentHeading: null,
+      analyticsMetaCapiConsentBody: null,
+      analyticsMetaCapiConsentAcceptLabel: null,
+      analyticsMetaCapiConsentDeclineLabel: null,
       analyticsTagId: null,
       analyticsMetaPixelId: null,
       analyticsConsentCookieName: null,
@@ -1734,5 +1747,61 @@ describe('SettingsPanel shipping', () => {
     await userEvent.click(screen.getByRole('button', { name: en.common.save }));
     expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
     expect(updates).toEqual([]);
+  });
+
+  it('saves the InPost ShipX credentials write-only with the sender and the environment', async () => {
+    const configured: unknown[] = [];
+    let view: ShipxSettingsView = { environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false };
+    server.use(
+      http.get('*/api/integrations/shipx', () => HttpResponse.json({ ok: true, data: view })),
+      http.post('*/api/integrations/shipx/configure', async ({ request }) => {
+        const body: unknown = await request.json();
+        configured.push(body);
+        view = {
+          ...view,
+          environment: 'production',
+          organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' },
+          token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' },
+        };
+        return HttpResponse.json({ ok: true, data: view });
+      }),
+    );
+    renderPanel({ ...EMPTY_SETTINGS, shippingRates: [locker] });
+    await openSettingsSection(en.shipping.settingsHeading);
+    const card = within(await screen.findByTestId('shipx-settings'));
+    expect(await card.findByText(en.shipx.notConfigured)).toBeVisible();
+    await userEvent.click(card.getByRole('combobox', { name: en.shipx.environment }));
+    await userEvent.click(await screen.findByRole('option', { name: en.shipx.environments.production }));
+    await userEvent.type(card.getByLabelText(en.shipx.organizationId), '1234');
+    await userEvent.type(card.getByLabelText(en.shipx.token), 'secret-token-5678');
+    const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
+    await userEvent.type(card.getByLabelText(en.shipx.senderName), sender.name);
+    await userEvent.type(card.getByLabelText(en.shipx.senderEmail), sender.email);
+    await userEvent.type(card.getByLabelText(en.shipx.senderPhone), sender.phone);
+    await userEvent.type(card.getByLabelText(en.shipx.senderStreet), sender.street);
+    await userEvent.type(card.getByLabelText(en.shipx.senderBuildingNumber), sender.buildingNumber);
+    await userEvent.type(card.getByLabelText(en.shipx.senderCity), sender.city);
+    await userEvent.type(card.getByLabelText(en.shipx.senderPostCode), sender.postCode);
+    await userEvent.click(card.getByRole('button', { name: en.shipx.save }));
+    await waitFor(() => expect(configured).toEqual([{
+      environment: 'production', organizationId: '1234', token: 'secret-token-5678', sender: { ...sender, company: null },
+    }]));
+    await waitFor(() => expect(card.getByLabelText(en.shipx.token)).toHaveValue(''));
+    expect(card.getByText(en.shipx.credentialSaved({ preview: '••••5678' }))).toBeVisible();
+  });
+
+  it('refuses an incomplete sender before calling the server', async () => {
+    const configured: unknown[] = [];
+    server.use(http.post('*/api/integrations/shipx/configure', async ({ request }) => {
+      configured.push(await request.json());
+      return HttpResponse.json({ ok: true, data: {} });
+    }));
+    renderPanel({ ...EMPTY_SETTINGS, shippingRates: [locker] });
+    await openSettingsSection(en.shipping.settingsHeading);
+    const card = within(await screen.findByTestId('shipx-settings'));
+    await userEvent.type(await card.findByLabelText(en.shipx.senderName), 'Anna Sender');
+    await userEvent.click(card.getByRole('button', { name: en.shipx.save }));
+    expect(await card.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
+    expect(configured).toEqual([]);
   });
 });

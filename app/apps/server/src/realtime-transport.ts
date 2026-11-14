@@ -1,5 +1,5 @@
 import { createPgRealtimeBus, SERVERLESS_IDLE_CLOSE_MS } from '#adapters/db/realtime-bus.js';
-import type { RealtimeNotifyDb } from '#adapters/db/realtime-bus.js';
+import type { PgRealtimeBus, RealtimeNotifyDb } from '#adapters/db/realtime-bus.js';
 import { createRealtimeBus } from '#adapters/notifications/in-app.js';
 import type { RealtimeBusPort } from '#core/server/index.js';
 
@@ -18,7 +18,7 @@ export const createRealtimeTransport = (input: {
   env: RealtimeTransportEnv;
   db: RealtimeNotifyDb;
   logger: { error(message: string): void; warn(message: string): void };
-}): RealtimeBusPort =>
+}): RealtimeBusPort | PgRealtimeBus =>
   input.env.REALTIME_TRANSPORT === 'in-process'
     ? createRealtimeBus()
     : createPgRealtimeBus({

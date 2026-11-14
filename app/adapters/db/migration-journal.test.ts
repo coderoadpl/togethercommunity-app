@@ -73,7 +73,34 @@ describe('migration journal state', () => {
     });
   }, 60_000);
 
-  it('reports migration journal rows', async () => {
+  it('prefers the public journal and leaves it out of the table count', async () => {
+    await withTemporaryDatabase(async (connectionString) => {
+      await withClient(connectionString, async (client) => {
+        await client.query('CREATE TABLE example (id text PRIMARY KEY)');
+        await client.query('CREATE SCHEMA drizzle');
+        for (const journal of ['public.__drizzle_migrations', 'drizzle.__drizzle_migrations']) {
+          await client.query(
+            `CREATE TABLE ${journal} (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint)`,
+          );
+        }
+        await client.query(
+          `INSERT INTO public.__drizzle_migrations (hash, created_at)
+           VALUES ('migration-journal-test', 1), ('migration-journal-test', 2)`,
+        );
+        await client.query(
+          `INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+           VALUES ('migration-journal-test', 1)`,
+        );
+      });
+
+      await expect(migrationJournalState(connectionString)).resolves.toEqual({
+        tables: 1,
+        journalRows: 2,
+      });
+    });
+  }, 60_000);
+
+  it('reports rows of a journal the previous release kept in the drizzle schema', async () => {
     await withTemporaryDatabase(async (connectionString) => {
       await withClient(connectionString, async (client) => {
         await client.query('CREATE TABLE example (id text PRIMARY KEY)');

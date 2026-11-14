@@ -1,5 +1,7 @@
+import type { Language } from '#core/domain/index.js';
+import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
-import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
+import { SALES_LINK_VARIANT_PARAM, type AddTenantAdminInput, type RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import { consumerSalesSummarySchema } from '#core/contract/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
@@ -22,6 +24,7 @@ import {
   salesLinkContracts,
   orderVerificationContracts,
   orderFulfilmentContracts,
+  shipxContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -213,6 +216,7 @@ import {
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
+  memberSettingsOutputSchema,
   tenantRedirectsOutputSchema,
   tenantRedirectOutputSchema,
   tenantRedirectDeleteOutputSchema,
@@ -420,7 +424,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
-  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean; redactErrors?: boolean; responseFilename?: string },
+  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean; redactErrors?: boolean; responseFilename?: string; responseBinary?: string },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -455,6 +459,14 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     if (!response.headers.get('content-type')?.startsWith('text/csv')) return err(internal('Invalid CSV response content type'));
     const parsed = outputSchema.safeParse({ filename: raw.responseFilename, mimeType: response.headers.get('content-type') ?? 'text/csv', content: await response.text() });
     return parsed.success ? ok(parsed.data) : err(internal('Invalid export response'));
+  }
+
+  if (response.ok && raw?.responseBinary !== undefined) {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.startsWith(raw.responseBinary)) return err(internal('Invalid download response content type'));
+    const filename = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? 'download';
+    const parsed = outputSchema.safeParse({ filename, contentType, bytes: new Uint8Array(await response.arrayBuffer()) });
+    return parsed.success ? ok(parsed.data) : err(internal('Invalid download response'));
   }
 
   let payload: unknown;
@@ -516,7 +528,21 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  publicMetaCapiConsent: (input: MetaCapiDecisionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.publicMetaCapiConsent.method, API_ROUTES.publicMetaCapiConsent.path, metaCapiStateSchema, input, signal),
+  metaCapiEvents: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.metaCapiEvents.method, API_ROUTES.metaCapiEvents.path, metaCapiEventsOutputSchema, undefined, signal),
+  metaCapiConsents: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.metaCapiConsents.method, API_ROUTES.metaCapiConsents.path, metaCapiConsentsOutputSchema, undefined, signal),
+  withdrawMetaCapiConsent: (input: { orderId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.withdrawMetaCapiConsent.method, API_ROUTES.withdrawMetaCapiConsent.path, metaCapiStateSchema, input, signal),
   verifyOrder: (input: z.input<typeof orderVerificationContracts.verifyOrder.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), orderVerificationContracts.verifyOrder.output, undefined, signal),
+  shipxShipment: (input: z.input<typeof shipxContracts.shipxShipment.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxShipment.path.replace(':orderId', encodeURIComponent(input.orderId)), shipxContracts.shipxShipment.output, undefined, signal),
+  shipxCreate: (input: z.input<typeof shipxContracts.shipxCreate.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxCreate.path.replace(':orderId', encodeURIComponent(input.orderId)), shipxContracts.shipxCreate.output, {}, signal),
+  shipxDiscard: (input: z.input<typeof shipxContracts.shipxDiscard.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxDiscard.path.replace(':orderId', encodeURIComponent(input.orderId)), shipxContracts.shipxDiscard.output, {}, signal),
+  shipxLabel: (input: z.input<typeof shipxContracts.shipxLabel.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxLabel.path.replace(':orderId', encodeURIComponent(input.orderId)), shipxContracts.shipxLabel.output, undefined, signal, { headers: {}, responseBinary: 'application/pdf' }),
+  shipxSettings: (signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxSettings.path, shipxContracts.shipxSettings.output, undefined, signal),
+  shipxConfigure: (input: z.input<typeof shipxContracts.shipxConfigure.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxConfigure.path, shipxContracts.shipxConfigure.output, input, signal),
   shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
   ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
   issueOrderLine: (input: z.input<typeof orderVerificationContracts.issueOrderLine.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.issueOrderLine.path.replace(':orderId', encodeURIComponent(input.orderId)).replace(':productId', encodeURIComponent(input.productId)), orderVerificationContracts.issueOrderLine.output, input, signal),
@@ -537,7 +563,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   createSalesLink: (input: z.input<typeof salesLinkContracts.createSalesLink.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createSalesLink.path, salesLinkContracts.createSalesLink.output, input, signal),
   updateSalesLink: (input: z.input<typeof salesLinkContracts.updateSalesLink.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.updateSalesLink.output, input, signal),
   deleteSalesLink: (input: z.input<typeof salesLinkContracts.deleteSalesLink.input>, signal?: AbortSignal) => request(options, 'DELETE', API_ROUTES.deleteSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.deleteSalesLink.output, input, signal),
-  getPublicSalesLink: (input: z.input<typeof salesLinkContracts.getPublicSalesLink.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getPublicSalesLink.path.replace(':slug', encodeURIComponent(input.slug)), salesLinkContracts.getPublicSalesLink.output, undefined, signal),
+  getPublicSalesLink: (input: z.input<typeof salesLinkContracts.getPublicSalesLink.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.getPublicSalesLink.path.replace(':slug', encodeURIComponent(input.slug))}${input.variant?.length ? `?${new URLSearchParams(input.variant.map((value) => [SALES_LINK_VARIANT_PARAM, value]))}` : ''}`, salesLinkContracts.getPublicSalesLink.output, undefined, signal),
   directSalesLinkCheckout: ({ slug, ...input }: z.input<typeof salesLinkContracts.directSalesLinkCheckout.input> & { slug: string }, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.directSalesLinkCheckout.path.replace(':slug', encodeURIComponent(slug)), salesLinkContracts.directSalesLinkCheckout.output, input, signal),
   listSurveys: (input: z.input<typeof surveyContracts.listSurveys.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listSurveys.path, surveyContracts.listSurveys.output, undefined, signal),
   getSurvey: (input: z.input<typeof surveyContracts.getSurvey.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getSurvey.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.getSurvey.output, undefined, signal),
@@ -986,11 +1012,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal) =>
+  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal, locale?: Language) =>
     request(
       options,
       API_ROUTES.publicCheckoutSessionStatus.method,
-      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}`,
+      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}${locale === undefined ? '' : `&locale=${locale}`}`,
       publicCheckoutSessionStatusOutputSchema,
       undefined,
       signal,
@@ -2644,6 +2670,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.m2mImportProgress.path,
       m2mImportBatchOutputSchema,
       input,
+      signal,
+    ),
+  getMemberSettings: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberSettings.method,
+      API_ROUTES.memberSettings.path,
+      memberSettingsOutputSchema,
+      undefined,
       signal,
     ),
   getTenantSettings: (signal?: AbortSignal) =>

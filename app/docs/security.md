@@ -75,11 +75,12 @@ validation remain enabled; its broad trusted-origins list is not the tenant trus
 set. Safe OAuth/magic-link GET callbacks retain their protocol validation. A new
 POST callback needs an individually reviewed protocol exception, not a wildcard.
 
-Guest checkout and survey submissions remain available without browser metadata
-when they carry no authenticated session. Browser submissions and any consumption
-of an optional session use the exact-origin policy before checkout test-mode
-authority or member attribution. The sign-in resolver, coupon lookup and direct
-sales-link guest handoff keep their existing public validation; the direct
+Guest checkout and survey submissions that carry no credentials, or credentials
+that resolve to no signed-in user, pass the guard from any origin, including a
+sales page hosted elsewhere, because they hold no ambient authority. When they
+carry the session of a signed-in user, they use the exact-origin policy before
+checkout test-mode authority or member attribution. The sign-in resolver, coupon
+lookup and direct sales-link guest handoff keep their existing public validation; the direct
 handoff retains its local-origin restriction. Embedded newsletter/signup forms
 keep their explicit JSON/CORS allowlists and external HTML form-post flow and do
 not consume session authority. Development-only writes retain their composition

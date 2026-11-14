@@ -10159,13 +10159,13 @@ describe('public surveys', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it('discards honeypots and blocks stale tokens, oversized comments and foreign origins', async () => {
-    const { appDeps, submit, headers, payload } = fixture();
+  it('discards honeypots and blocks stale tokens, oversized comments and signed-in foreign origins', async () => {
+    const { appDeps, submit, headers, payload } = fixture('member-respondent');
     const app = buildApp(appDeps);
     for (const [body, expected] of [[{ ...payload, website: 'bot' }, 200], [{ ...payload, token: 'stale' }, 400], [{ ...payload, comment: 'x'.repeat(2001) }, 400]] as const) {
       expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers, body: JSON.stringify(body) })).status).toBe(expected);
     }
-    expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, origin: 'https://untrusted.example.test' }, body: JSON.stringify(payload) })).status).toBe(403);
+    expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, cookie: 'session=signed-in', origin: 'https://untrusted.example.test' }, body: JSON.stringify(payload) })).status).toBe(403);
     expect(submit).not.toHaveBeenCalled();
   });
 });

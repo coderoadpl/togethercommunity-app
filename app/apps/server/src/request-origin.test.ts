@@ -257,13 +257,21 @@ describe('request origin guard', () => {
     expect(config.authPort.getAuthenticatedUser).not.toHaveBeenCalled();
   });
 
-  it('allows headerless guest checkout and survey tokens but not foreign browser submissions', async () => {
-    const { send } = harness();
-    for (const path of ['/api/public/checkout/session', '/api/public/surveys/feedback/submit']) {
-      expect((await send(path)).status).toBe(204);
-      expect((await send(path, { origin: 'https://studio.together.test' })).status).toBe(403);
-      expect((await send(path, { cookie: 'session=valid', origin: 'https://alias.example.test' })).status).toBe(204);
-    }
+  it.each(['/api/public/checkout/session', '/api/public/surveys/feedback/submit'])('enforces the origin on %s only for a signed-in session', async (path) => {
+    const { send, mutation } = harness();
+    const foreign = { origin: 'https://external.test', 'sec-fetch-site': 'cross-site' };
+    expect((await send(path, foreign)).status).toBe(204);
+    expect((await send(path, { origin: 'https://studio.together.test' })).status).toBe(204);
+    expect((await send(path, { ...foreign, cookie: 'session=invalid' })).status).toBe(204);
+    expect(mutation).toHaveBeenCalledTimes(3);
+    const rejected = await send(path, { ...foreign, cookie: 'session=valid' });
+    expect(rejected.status).toBe(403);
+    expect(await rejected.json()).toEqual({ ok: false, error: { code: 'forbidden', message: 'Request origin is not allowed' } });
+    expect(mutation).toHaveBeenCalledTimes(3);
+    expect((await send(path)).status).toBe(204);
+    expect((await send(path, { cookie: 'session=valid' })).status).toBe(403);
+    expect((await send(path, { cookie: 'session=valid', origin: 'https://alias.example.test' })).status).toBe(204);
+    expect((await send(path, { cookie: 'session=valid', 'sec-fetch-site': 'same-origin' })).status).toBe(204);
   });
 
   it('does not turn invalid credentials into authority or exempt neighboring routes', async () => {

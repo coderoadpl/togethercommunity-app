@@ -123,7 +123,7 @@ export const requestOriginGuard = (deps: OriginDeps): MiddlewareHandler<AppVars>
   if (policy !== 'auth' && await useVerifiedBearer(c.req.raw, deps)) return next();
   const hasMetadata = c.req.header('origin') !== undefined || c.req.header('sec-fetch-site') !== undefined;
   if (!hasMetadata && policy === 'development') return next();
-  if (policy === 'session' || (policy === 'optional-session' && !hasMetadata)) {
+  if (policy === 'session' || policy === 'optional-session') {
     if (!c.req.raw.headers.has('cookie') && !c.req.raw.headers.has('authorization')) return next();
     if (await deps.authPort.getAuthenticatedUser(c.req.raw.headers) === null) return next();
   }

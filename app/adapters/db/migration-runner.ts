@@ -213,7 +213,7 @@ const fenceLegacyJournal = async (client: pg.Client, fenceLockWaitMs: number): P
   return true;
 };
 
-const describeLegacyRow =(row: LegacyRow, migrations: readonly Migration[]): string => {
+const describeLegacyRow = (row: LegacyRow, migrations: readonly Migration[]): string => {
   const source = migrations.find((migration) => migration.hash === row.hash);
   const origin = source === undefined ? 'matches no migration of this release' : `is migration ${source.tag} of this release`;
   return `id ${String(row.id)} (created_at ${row.created_at ?? 'null'}, hash ${row.hash.slice(0, 12)}, ${origin})`;

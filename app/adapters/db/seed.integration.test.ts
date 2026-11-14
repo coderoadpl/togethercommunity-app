@@ -160,7 +160,7 @@ describe('demo seed lifecycle', () => {
   }, 180_000);
 });
 
-describe('demo seed lifecycle', () => {
+describe('demo seed rerun on a seeded database', () => {
   let seededTemplateName: string;
   let closeSeededTemplate: (() => Promise<void>) | undefined;
 

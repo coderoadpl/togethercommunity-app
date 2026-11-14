@@ -417,7 +417,6 @@ export interface StagingSmokeResult extends RemoteSmokeResult {
 
 const HEALTH_UNREACHABLE = 'the health attestation did not answer';
 
-
 const readHealth = async (get: Get): Promise<Health> =>
   unwrap(
     await envelopeOf(await get('/api/health'), envelopeSchema(healthOutputSchema), 'health'),

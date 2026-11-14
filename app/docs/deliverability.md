@@ -91,8 +91,9 @@ The SNS webhook verifies the signature and topic binding, stores only the canoni
 confirmation), and hashes that canonical JSON with SHA-256 before returning 200. Feedback for an
 erased recipient is scrubbed before storage while retaining the canonical hash. Receipt identity is
 `(tenant, topic ARN, verified SNS MessageId)`. Duplicates retain the original receipt; duplicate checks
-also canonicalize existing envelopes stored before this format change. Conflicting signed content
-returns 409. Storage failures return 5xx, allowing SNS redelivery. Unsupported verified payloads are
+also canonicalize existing envelopes stored before this format change. A receipt whose raw body was
+already purged by retention or erasure cannot be compared and is accepted as a duplicate of the same topic and
+MessageId. Conflicting signed content returns 409. Storage failures return 5xx, allowing SNS redelivery. Unsupported verified payloads are
 durably ignored with a reason.
 
 The SNS subscription always points at the platform host for the tenant webhook path. Custom domains

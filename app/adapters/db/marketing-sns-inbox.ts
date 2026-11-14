@@ -25,7 +25,7 @@ export const createMarketingSnsInboxRepository = (db: Db): MarketingSnsInboxRepo
     }
     const [existing] = await tx.select().from(marketingSnsInbox).where(and(eq(marketingSnsInbox.tenantId, tenantId), eq(marketingSnsInbox.topicArn, row.topicArn), eq(marketingSnsInbox.snsMessageId, row.snsMessageId)));
     if (existing !== undefined) {
-      if (existing.bodySha256 === row.bodySha256) return ok(parse(existing));
+      if (existing.bodySha256 === row.bodySha256 || existing.rawBody === null) return ok(parse(existing));
       const canonical = storedCanonicalSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(existing.rawBody ?? ''));
       if (canonical.success && createContentHash().sha256(JSON.stringify(canonical.data)) === row.bodySha256) return ok(parse(existing));
     }

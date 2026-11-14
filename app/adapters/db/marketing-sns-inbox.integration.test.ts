@@ -114,6 +114,24 @@ describe('durable SNS inbox', () => {
     expect(await fixture.db.select().from(marketingSnsInbox)).toHaveLength(1);
   }, 60000);
 
+  it('accepts authentic redelivery of a legacy receipt whose raw body was purged', async () => {
+    fixture = await createDeliveryFixture();
+    const input = receipt('legacy-purged');
+    const signed = createSignedSnsNotification(input.envelope);
+    const legacyBody = JSON.stringify(signed.envelope, null, 2);
+    await fixture.db.insert(marketingSnsInbox).values({
+      id: 'legacy-purged', tenantId: 'delivery-a', topicArn: 'topic-a', snsMessageId: input.envelope.messageId,
+      messageType: 'Notification', rawBody: null, bodySha256: createContentHash().sha256(legacyBody),
+      verifiedAt: DELIVERY_NOW, receivedAt: DELIVERY_NOW, status: 'processed', nextAttemptAt: DELIVERY_NOW, processedAt: DELIVERY_NOW,
+    });
+    const verified = await signed.verifier.verify({ rawBody: JSON.stringify(signed.envelope), headers: {}, region: 'eu-central-1' });
+    if (!verified.ok) throw new Error('Expected a valid signature');
+    expect(await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: verified.value }, fixture.deps))
+      .toMatchObject({ ok: true, value: { id: 'legacy-purged', status: 'processed', rawBody: null } });
+    expect(await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx('delivery-b'), { envelope: verified.value }, fixture.deps)).toMatchObject({ ok: false });
+    expect(await fixture.db.select().from(marketingSnsInbox)).toHaveLength(1);
+  }, 60000);
+
   it('keeps a body canonicalised by erasure after a worker claimed the legacy receipt', async () => {
     fixture = await createDeliveryFixture();
     const input = receipt('legacy-claimed');

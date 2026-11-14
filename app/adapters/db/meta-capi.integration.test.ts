@@ -266,6 +266,21 @@ it('normalizes offset timestamps and applies stable bounded event and consent or
   expect(events[0]?.recordedAt).toBe('2026-11-02T10:00:00.000Z');
 });
 
+it('records a withdrawal with the consent text the buyer granted, falling back to the request text without a grant', async () => {
+  const repo = repository();
+  const shown = { ...capture, textVersion: 'b'.repeat(64), textSnapshot: '{"body":"Shown consent in Polish"}' };
+  const request = { ...capture, textVersion: 'c'.repeat(64), textSnapshot: '{"body":"Default consent"}' };
+  const granted = await makeOrder('withdrawgranted');
+  await repo.decide('workspace', granted, async () => ok({ decision: 'granted', capture: shown }));
+  await repo.decide('workspace', granted, async () => ok({ decision: 'withdrawn', capture: request }));
+  const ungranted = await makeOrder('withdrawungranted');
+  await repo.decide('workspace', ungranted, async () => ok({ decision: 'withdrawn', capture: request }));
+  const withdrawal = async (orderId: string) => (await database.db.select().from(metaCapiConsentEvidence)
+    .where(and(eq(metaCapiConsentEvidence.orderId, orderId), eq(metaCapiConsentEvidence.decision, 'withdrawn'))))[0];
+  expect(await withdrawal('withdrawgranted')).toMatchObject({ textVersion: shown.textVersion, textSnapshot: shown.textSnapshot });
+  expect(await withdrawal('withdrawungranted')).toMatchObject({ textVersion: request.textVersion, textSnapshot: request.textSnapshot });
+});
+
 it('lists each tenant with a due outbox row once and skips tenants whose rows are not due yet', async () => {
   const early = '2026-10-30T00:00:00.000Z';
   await memberOrder('dueother', 'other');

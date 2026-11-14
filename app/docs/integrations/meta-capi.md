@@ -180,6 +180,10 @@ internal labels such as `http_400` or `network_or_timeout`.
 | `meta_capi_outbox` | Pending order reference, consent request IP/UA/fbp, copy snapshot, attempts and next due time; deleted at a terminal outcome or withdrawal |
 | `meta_capi_events` | One terminal receipt per transaction: workspace, order and consent time, paid time, sent/recorded time, sent/blocked/expired/failed status, trace ID, redacted error label and field names only |
 
+A withdrawal record copies the text version and snapshot of the order's grant
+record, so it names the wording the buyer accepted; a withdrawal without a grant
+record stores the copy for the request locale.
+
 No full outgoing payload, raw email, token or token fragment is stored in the
 CAPI evidence log. The text snapshot is consent wording, not a payload snapshot.
 A terminal event is append-only: withdrawal after a successful send preserves

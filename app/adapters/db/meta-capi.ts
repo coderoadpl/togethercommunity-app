@@ -62,8 +62,11 @@ export const createMetaCapiRepository = (
         metaCapiConsent: choice, metaCapiConsentAt: capture.at,
         metaCapiConsentTextVersion: capture.textVersion, metaCapiConsentSource: source,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, row.id))).returning())[0];
-      await tx.insert(metaCapiConsentEvidence).values({ tenantId, orderId: row.id, decision: choice,
-        occurredAt: capture.at, textVersion: capture.textVersion, textSnapshot: capture.textSnapshot, source }).onConflictDoNothing();
+      const grant = choice === 'withdrawn' ? (await tx.select({ textVersion: metaCapiConsentEvidence.textVersion, textSnapshot: metaCapiConsentEvidence.textSnapshot })
+        .from(metaCapiConsentEvidence).where(and(eq(metaCapiConsentEvidence.tenantId, tenantId), eq(metaCapiConsentEvidence.orderId, row.id),
+          eq(metaCapiConsentEvidence.decision, 'granted'))).orderBy(asc(metaCapiConsentEvidence.occurredAt)).limit(1))[0] : undefined;
+      await tx.insert(metaCapiConsentEvidence).values({ tenantId, orderId: row.id, decision: choice, occurredAt: capture.at,
+        textVersion: grant?.textVersion ?? capture.textVersion, textSnapshot: grant?.textSnapshot ?? capture.textSnapshot, source }).onConflictDoNothing();
       if (choice === 'granted') {
         await tx.insert(metaCapiOutbox).values({ tenantId, orderId: row.id, availableAt: capture.at, consentAt: capture.at,
           ip: capture.ip, userAgent: capture.userAgent, fbp: capture.fbp, textVersion: capture.textVersion, textSnapshot: capture.textSnapshot }).onConflictDoNothing();

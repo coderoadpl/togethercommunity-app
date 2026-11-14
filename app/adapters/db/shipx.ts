@@ -10,6 +10,7 @@ import type {
   ShipxShipmentPatch,
   ShipxShipmentRecord,
   ShipxShipmentRepository,
+  ShipxShipmentVersion,
 } from '#core/server/index.js';
 
 import { tenants } from './app-schema.js';
@@ -79,6 +80,19 @@ const patchChanges = (before: ShipmentRow, patch: ShipxShipmentPatch): boolean =
     trackingNumber: patch.trackingNumber === undefined ? before.trackingNumber : patch.trackingNumber,
     createAttemptedAt: patch.createAttemptedAt ?? before.createAttemptedAt,
   }) || (before.boughtAt === null && patch.boughtAt != null);
+
+const sameVersion = (row: ShipmentRow, version: ShipxShipmentVersion): boolean =>
+  !storedChange(row, {
+    providerShipmentId: version.shipxShipmentId,
+    status: version.status,
+    trackingNumber: version.trackingNumber,
+    createAttemptedAt: version.createAttemptedAt,
+  })
+  && sameInstant(row.boughtAt, version.boughtAt)
+  && sameInstant(row.updatedAt, version.updatedAt);
+
+const refreshRegresses = (row: ShipmentRow, patch: ShipxShipmentPatch): boolean =>
+  row.boughtAt !== null || (row.trackingNumber !== null && patch.trackingNumber === null);
 
 const statusRefresh = (before: ShipmentRow, after: ShipmentRow) =>
   storedChange(before, after)
@@ -181,11 +195,11 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       }]);
       return { kind: 'released' };
     }),
-    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch, actorUserId) => await db.transaction(async (tx) => {
+    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, readBefore, patch, actorUserId) => await db.transaction(async (tx) => {
       const unclaimed = and(byOrder(tenantId, orderId), operationFree(leaseExpiredBefore));
       const [before] = await tx.select().from(orderShipments).where(unclaimed).for('update');
       if (before === undefined) return null;
-      if (!patchChanges(before, patch)) return toShipment(before);
+      if (!sameVersion(before, readBefore) || refreshRegresses(before, patch) || !patchChanges(before, patch)) return toShipment(before);
       const [row] = await tx.update(orderShipments).set(patchValues(patch)).where(unclaimed).returning();
       if (row === undefined) return null;
       await record(tx, tenantId, orderId, [...statusRefresh(before, row), ...boughtTransition(before, row)].map((event) => ({

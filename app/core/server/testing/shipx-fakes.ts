@@ -129,9 +129,12 @@ export const createShipxShipmentRepositoryFake = () => {
       });
       return { kind: 'released' };
     },
-    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch, actorUserId) => {
+    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, readBefore, patch, actorUserId) => {
       const existing = rows.get(key(tenantId, orderId));
       if (existing === undefined || !free(existing, leaseExpiredBefore)) return null;
+      const moved = storedChange(existing, { ...existing, ...readBefore }) || existing.boughtAt !== readBefore.boughtAt || existing.updatedAt !== readBefore.updatedAt;
+      const regresses = existing.boughtAt !== null || (existing.trackingNumber !== null && patch.trackingNumber === null);
+      if (moved || regresses) return existing;
       const shipment = applyPatch(existing, patch);
       if (unchanged(existing, shipment)) return existing;
       rows.set(key(tenantId, orderId), shipment);

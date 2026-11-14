@@ -253,7 +253,7 @@ const refreshedShipment = async (
   const remote = await client.value.getShipment(credentials.value, shipment.shipxShipmentId);
   if (!remote.ok) return shipment;
   const now = deps.clock.nowIso();
-  return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), remotePatch(remote.value, now), actorUserId) ?? shipment;
+  return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), shipment, remotePatch(remote.value, now), actorUserId) ?? shipment;
 };
 
 export const getInpostShipment = async (

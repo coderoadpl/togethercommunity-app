@@ -44,6 +44,12 @@ const seedShipment = async (repository: ShipxShipmentRepository, orderId: string
   await repository.finishOperation('workspace', orderId, `seed-${orderId}`, finished);
 };
 
+const readRow = async (repository: ShipxShipmentRepository, orderId: string) => {
+  const row = await repository.findByOrder('workspace', orderId);
+  if (row === null) throw new Error(`No shipment row for ${orderId}`);
+  return row;
+};
+
 describe('ShipX shipment repository', () => {
   it('acquires an order once, reports a running operation and lets an expired lease be taken over', async () => {
     const repository = createShipxShipmentRepository(database.db);
@@ -141,9 +147,9 @@ describe('ShipX shipment repository', () => {
     const repository = createShipxShipmentRepository(database.db);
     await repository.acquire('workspace', { id: 'refresh-1', orderId: 'order-refresh', token: 'refresh', ...context, now, leaseExpiredBefore });
     await repository.update('workspace', 'order-refresh', 'refresh', { shipxShipmentId: '4321', status: 'offer_selected', updatedAt: now }, synced);
-    expect(await repository.refreshUnclaimed('workspace', 'order-refresh', leaseExpiredBefore, { status: 'confirmed', updatedAt: now }, 'staff')).toBeNull();
+    expect(await repository.refreshUnclaimed('workspace', 'order-refresh', leaseExpiredBefore, await readRow(repository, 'order-refresh'), { status: 'confirmed', updatedAt: now }, 'staff')).toBeNull();
     await repository.finishOperation('workspace', 'order-refresh', 'refresh', finished);
-    expect(await repository.refreshUnclaimed('workspace', 'order-refresh', leaseExpiredBefore, { status: 'confirmed', trackingNumber: '6001', boughtAt: now, updatedAt: now }, 'viewer')).toMatchObject({
+    expect(await repository.refreshUnclaimed('workspace', 'order-refresh', leaseExpiredBefore, await readRow(repository, 'order-refresh'), { status: 'confirmed', trackingNumber: '6001', boughtAt: now, updatedAt: now }, 'viewer')).toMatchObject({
       status: 'confirmed', trackingNumber: '6001', boughtAt: now,
     });
     expect((await repository.listEvents('workspace', 'order-refresh')).at(-1)).toEqual({
@@ -153,6 +159,32 @@ describe('ShipX shipment repository', () => {
     expect((await repository.listEvents('workspace', 'order-refresh')).at(-2)).toMatchObject({
       type: 'status_refreshed', actorUserId: 'viewer', operationToken: null, details: { from: 'offer_selected', to: 'confirmed', trackingNumber: '6001' },
     });
+  });
+
+  it('drops a refresh read before a concurrent purchase and never clears a tracking number or changes a bought row', async () => {
+    const repository = createShipxShipmentRepository(database.db);
+    await seedShipment(repository, 'order-fence', '7001');
+    const stale = await readRow(repository, 'order-fence');
+    const paidAt = '2026-11-08T10:00:30.000Z';
+    await repository.acquire('workspace', { id: 'fence-1', orderId: 'order-fence', token: 'fence', ...context, now: paidAt, leaseExpiredBefore });
+    await repository.update('workspace', 'order-fence', 'fence', { status: 'confirmed', trackingNumber: '6001', boughtAt: paidAt, updatedAt: paidAt }, synced);
+    await repository.finishOperation('workspace', 'order-fence', 'fence', finished);
+    const refreshedAt = '2026-11-08T10:01:00.000Z';
+    expect(await repository.refreshUnclaimed('workspace', 'order-fence', leaseExpiredBefore, stale, { status: 'offer_selected', trackingNumber: null, updatedAt: refreshedAt }, 'viewer'))
+      .toMatchObject({ status: 'confirmed', trackingNumber: '6001', boughtAt: paidAt });
+    const bought = await readRow(repository, 'order-fence');
+    expect(await repository.refreshUnclaimed('workspace', 'order-fence', leaseExpiredBefore, bought, { status: 'offer_selected', trackingNumber: null, updatedAt: refreshedAt }, 'viewer'))
+      .toMatchObject({ status: 'confirmed', trackingNumber: '6001', updatedAt: paidAt });
+
+    await seedShipment(repository, 'order-tracked', '7002');
+    await repository.acquire('workspace', { id: 'tracked-1', orderId: 'order-tracked', token: 'tracked', ...context, now, leaseExpiredBefore });
+    await repository.update('workspace', 'order-tracked', 'tracked', { status: 'offer_selected', trackingNumber: '6002', updatedAt: paidAt }, synced);
+    await repository.finishOperation('workspace', 'order-tracked', 'tracked', finished);
+    const tracked = await readRow(repository, 'order-tracked');
+    expect(await repository.refreshUnclaimed('workspace', 'order-tracked', leaseExpiredBefore, tracked, { status: 'offers_prepared', trackingNumber: null, updatedAt: refreshedAt }, 'viewer'))
+      .toMatchObject({ status: 'offer_selected', trackingNumber: '6002', updatedAt: paidAt });
+    expect((await repository.listEvents('workspace', 'order-fence')).filter((event) => event.actorUserId === 'viewer')).toEqual([]);
+    expect((await repository.listEvents('workspace', 'order-tracked')).filter((event) => event.actorUserId === 'viewer')).toEqual([]);
   });
 
   it('records a changed ShipX status as status_refreshed and writes nothing when the status is the same', async () => {
@@ -166,7 +198,7 @@ describe('ShipX shipment repository', () => {
     expect(same).toMatchObject({ kind: 'updated', shipment: { status: 'offers_prepared', updatedAt: now } });
     await repository.update('workspace', 'order-poll', 'poll', { shipxShipmentId: '9001', status: 'confirmed', trackingNumber: null, updatedAt: polled }, synced);
     await repository.finishOperation('workspace', 'order-poll', 'poll', { actorUserId: 'staff', at: '2026-11-08T10:00:20.000Z', outcome: 'pending' });
-    expect(await repository.refreshUnclaimed('workspace', 'order-poll', leaseExpiredBefore, { shipxShipmentId: '9001', status: 'confirmed', trackingNumber: null, updatedAt: '2026-11-08T10:01:00.000Z' }, 'viewer'))
+    expect(await repository.refreshUnclaimed('workspace', 'order-poll', leaseExpiredBefore, await readRow(repository, 'order-poll'), { shipxShipmentId: '9001', status: 'confirmed', trackingNumber: null, updatedAt: '2026-11-08T10:01:00.000Z' }, 'viewer'))
       .toMatchObject({ status: 'confirmed', updatedAt: polled });
     expect(await repository.listEvents('workspace', 'order-poll')).toEqual([
       expect.objectContaining({ type: 'attempt_claimed' }),
@@ -243,7 +275,7 @@ describe('ShipX shipment repository', () => {
     await expect(repository.finishOperation('workspace', 'order-atomic', 'atomic', { actorUserId: 'refused', at: now, outcome: 'unconfirmed' })).rejects.toThrow();
     expect(await repository.findByOrder('workspace', 'order-atomic')).toMatchObject({ operationToken: 'atomic', operationStartedAt: now });
     await repository.finishOperation('workspace', 'order-atomic', 'atomic', finished);
-    await expect(repository.refreshUnclaimed('workspace', 'order-atomic', leaseExpiredBefore, { status: 'confirmed', updatedAt: now }, 'refused')).rejects.toThrow();
+    await expect(repository.refreshUnclaimed('workspace', 'order-atomic', leaseExpiredBefore, await readRow(repository, 'order-atomic'), { status: 'confirmed', updatedAt: now }, 'refused')).rejects.toThrow();
     await expect(repository.discardUnconfirmed('workspace', 'order-atomic', leaseExpiredBefore, { actorUserId: 'refused', at: now })).rejects.toThrow();
     expect(await repository.findByOrder('workspace', 'order-atomic')).toMatchObject({ status: 'unknown', operationToken: null });
     expect((await repository.listEvents('workspace', 'order-atomic')).map((event) => event.type)).toEqual(['attempt_claimed', 'status_refreshed', 'operation_finished']);

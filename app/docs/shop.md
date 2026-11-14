@@ -433,7 +433,10 @@ or deletes the claim of the next one. A crashed or stuck request keeps the
 lease until it expires after 90 seconds; its row then shows either a ShipX id
 (the next click continues) or an unconfirmed attempt (the next click
 reconciles). Opening the order stores the live ShipX status only while no
-request holds the claim.
+request holds the claim and only when the row is unchanged since it was read
+before the ShipX call; it never clears a stored tracking number and never
+changes a bought row, so a slow read cannot overwrite a purchase that a
+concurrent click confirmed.
 
 ### Shipment history
 

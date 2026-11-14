@@ -55,6 +55,8 @@ export interface ShipxShipmentPatch {
   updatedAt: string;
 }
 
+export type ShipxShipmentVersion = Pick<ShipxShipment, 'shipxShipmentId' | 'status' | 'trackingNumber' | 'createAttemptedAt' | 'boughtAt' | 'updatedAt'>;
+
 export type ShipxShipmentEventDetails = Record<string, string | number | null>;
 
 export interface ShipxShipmentEvent {
@@ -100,6 +102,7 @@ export interface ShipxShipmentRepository {
     tenantId: string,
     orderId: string,
     leaseExpiredBefore: string,
+    readBefore: ShipxShipmentVersion,
     patch: ShipxShipmentPatch,
     actorUserId: string | null,
   ): Promise<ShipxShipmentRecord | null>;

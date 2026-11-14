@@ -789,6 +789,29 @@ describe('InPost shipment view and label', () => {
     }]);
   });
 
+  it('drops a slow live read when another request confirmed the shipment meanwhile', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
+    const slow = createScriptedShipxClient({
+      polls: [(id) => {
+        const current = h.row();
+        if (current !== undefined) {
+          h.shipments.rows.set(h.shipments.key('workspace', 'order-1'), {
+            ...current, status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW, updatedAt: NOW,
+          });
+        }
+        return ok(remoteShipment(id, { status: 'offer_selected' }));
+      }],
+    });
+    h.deps.shipx.real = slow.client;
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true,
+      value: { shipment: { status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW } },
+    });
+    expect(h.row()).toMatchObject({ status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW });
+    expect(await h.eventTypes()).toEqual([]);
+  });
+
   it('keeps the stored status when the live read fails or the settings changed', async () => {
     const failing = harness({ real: createScriptedShipxClient({ polls: [() => err(shipxUnavailable())] }) });
     failing.seed({ shipxShipmentId: '1001', status: 'offer_selected' });

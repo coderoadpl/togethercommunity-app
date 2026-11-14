@@ -76,8 +76,11 @@ at all.
   `refreshUnclaimed` skip the write entirely when ShipX reports nothing new.
   `acquire`, `update` and `refreshUnclaimed` lock the existing row with
   `FOR UPDATE` before changing it, so a lease takeover, a status change and the
-  first purchase time are recorded exactly once. A failed event insert rolls
-  the projection change back. The shipment is then marked as shipped through
+  first purchase time are recorded exactly once. `refreshUnclaimed` writes
+  only when the locked row still matches the version read before the ShipX
+  call, never clears a tracking number and never changes a bought row. A
+  failed event insert rolls the projection change back. The shipment is then
+  marked as shipped through
   `OrderFulfilmentRepository.ship` above.
 - Stock: `StockRepository.reserve`, `StockRepository.release`,
   `StockRepository.commit`, `StockRepository.enableTracking`,

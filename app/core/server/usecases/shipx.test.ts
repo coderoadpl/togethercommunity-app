@@ -68,7 +68,7 @@ const lockerShipping: OrderShipping = {
   phone: '+48500000000',
 };
 
-const line = (productId: string, productType: 'physical' | 'shipping'): OrderLine => ({
+const line = (productId: string, productType: OrderLine['productType']): OrderLine => ({
   productId, name: productId, productType, grossCents: 1000, netCents: 1000, vatRate: 23, vatCents: 0, vatExemptionBasis: null,
   issuedCount: productType === 'physical' ? 0 : null,
 });
@@ -773,6 +773,19 @@ describe('InPost shipment view and label', () => {
     expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, sandbox.deps)).toMatchObject({ ok: true, value: { available: false, reason: 'sandbox_environment' } });
     const sandboxTest = harness({ environment: 'sandbox', order: testOrder });
     expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, sandboxTest.deps)).toMatchObject({ ok: true, value: { available: true } });
+  });
+
+  it('sizes the parcel from the shipped products of a bundle and from every product when none is shipped', async () => {
+    const ebook = productSchema.parse({ ...product('ebook', 'small'), type: 'digital_download', deliveryMethod: 'pickup', parcelTemplate: undefined });
+    const bundle = orderListItemSchema.parse({ ...baseOrder, lines: [line('stand', 'physical'), line('ebook', 'digital_download'), line('shipping:locker', 'shipping')] });
+    const parcelTemplate = async (stand: ReturnType<typeof product>) => {
+      const h = harness({ order: bundle });
+      h.deps.products = { findByIds: async (_tenantId, productIds) => [stand, ebook].filter((row) => productIds.includes(row.id)) };
+      const view = await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps);
+      return view.ok ? view.value.parcelTemplate : view.error.code;
+    };
+    expect(await parcelTemplate(product('stand', 'small'))).toBe('small');
+    expect(await parcelTemplate(productSchema.parse({ ...product('stand', 'small'), deliveryMethod: 'pickup' }))).toBe('medium');
   });
 
   it('reads the live ShipX status of a shipment waiting for payment when the order is opened', async () => {

@@ -219,7 +219,8 @@ const orderParcelTemplate = async (tenantId: string, order: OrderListItem, deps:
   const lines = productLines(order.lines ?? []);
   const productIds = [...new Set(lines.length === 0 ? [order.productId] : lines.map((line) => line.productId))];
   const products = await deps.products.findByIds(tenantId, productIds);
-  return largestParcelTemplate(products.map((product) => product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE));
+  const shipped = products.filter((product) => product.deliveryMethod === 'shipping');
+  return largestParcelTemplate((shipped.length === 0 ? products : shipped).map((product) => product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE));
 };
 
 const loadOrder = async (tenantId: string, orderId: string, deps: Pick<ShipxOrderDeps, 'orderDetails'>): Promise<Result<OrderListItem, AppError>> => {

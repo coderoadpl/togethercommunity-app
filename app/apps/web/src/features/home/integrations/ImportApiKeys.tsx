@@ -24,7 +24,8 @@ import {
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 

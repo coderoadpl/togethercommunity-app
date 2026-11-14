@@ -10,55 +10,14 @@
         }
       }
     },
-    "getTenantSettings:[]": {
+    "getMemberSettings:[]": {
       "ok": true,
       "value": {
-        "personalisationMaxBytes": null,
         "settings": {
-          "accentColor": null,
-          "accentLight": null,
-          "analyticsConsentCookieName": null,
-          "analyticsConsentCookieValue": null,
-          "analyticsLoadWithoutConsent": false,
-          "analyticsMetaPixelId": null,
-          "analyticsTagId": null,
-          "autoIssueInvoices": false,
-          "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": null,
-          "bunnyStreamCdnHostname": null,
-          "bunnyStreamLibraryId": null,
-          "checkoutAppearance": null,
-          "defaultHomeSpaceId": null,
-          "defaultLanguage": "en",
-          "directMessagesEnabled": true,
-          "faviconUrl": null,
-          "inpostGeowidgetToken": null,
-          "invoiceExemptionBasis": null,
-          "invoiceExemptionBasisKind": null,
-          "invoiceSellerAddress": null,
-          "invoiceSellerName": null,
-          "invoiceVatMode": "rate",
-          "invoiceVatRatePercent": null,
-          "invoicingProvider": null,
-          "ksefSubmissionMode": "automatic",
-          "logoDarkUrl": null,
-          "logoUrl": null,
           "memberVideoAutoplayOverride": false,
-          "name": "Acme Courses",
-          "ogDescription": null,
-          "ogImageUrl": null,
-          "ogTitle": null,
-          "privacyUrl": null,
-          "shippingRates": [],
-          "signInNotice": {
-            "enabled": false,
-            "text": ""
-          },
-          "socialLinks": [],
           "supportConfigured": false,
-          "supportEmail": null,
           "supportUrl": null,
-          "termsUrl": null,
           "videoAutoplayDefault": false
         }
       }

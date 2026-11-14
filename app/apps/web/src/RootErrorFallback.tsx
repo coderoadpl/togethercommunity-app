@@ -45,6 +45,8 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'transactional_platform_cap_reached':
     case 'invoice_exemption_basis_missing':
     case 'shipping_required':
+    case 'shipx_unavailable':
+    case 'shipx_rejected':
     case 'internal':
       return t.errors.headingGeneric;
   }

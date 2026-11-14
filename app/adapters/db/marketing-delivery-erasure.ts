@@ -19,7 +19,7 @@ export const eraseMarketingDeliveryPayloads = async (db: Db, tenantId: string, i
   const receipts = await db.select().from(marketingSnsInbox).where(and(eq(marketingSnsInbox.tenantId, tenantId), sql`${marketingSnsInbox.rawBody} IS NOT NULL`));
   for (const receipt of receipts) {
     const envelope = storedSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(receipt.rawBody ?? ''));
-    const content = envelope.success ? JSON.stringify(marketingSnsJsonValue(envelope.data.Message)) : receipt.rawBody;
+    const content = envelope.success ? JSON.stringify(marketingSnsJsonValue(envelope.data.Message)) : receipt.messageType === 'Notification' ? null : receipt.rawBody;
     if (!content?.toLowerCase().includes(address)) continue;
     const terminal = receipt.status === 'processed' || receipt.status === 'ignored';
     await db.update(marketingSnsInbox).set({ rawBody: null, status: terminal ? receipt.status : 'ignored',

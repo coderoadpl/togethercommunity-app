@@ -20,7 +20,8 @@ import { Link } from '@tanstack/react-router';
 import type { Product, ProductAccessIssues, ProductStock, StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { PanelListRow } from '../../../components/ui/PanelListRow.js';

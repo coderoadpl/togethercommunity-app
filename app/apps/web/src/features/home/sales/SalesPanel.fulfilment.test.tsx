@@ -11,7 +11,7 @@ import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
-import { PanelContextProvider } from '../panel-context.js';
+import { PanelContextProvider, type PanelContextValue } from '../panel-context.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
 import { SalesPanel } from './SalesPanel.js';
 
@@ -28,12 +28,12 @@ const order = (id: string, fulfilmentStatus: 'to_pack' | 'shipped' | null): Orde
 
 const panelContext = { tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner' as const, memberId: 'm1' }, email: 'owner@example.com', emailVerified: true };
 
-const renderAt = async (path: string, component: () => ReactElement) => {
+const renderAt = async (path: string, component: () => ReactElement, context: PanelContextValue = panelContext) => {
   const rootRoute = createRootRoute();
   const route = createRoute({ getParentRoute: () => rootRoute, path, component });
   const router = createRouter({ routeTree: rootRoute.addChildren([route]), history: createMemoryHistory({ initialEntries: [path.replace('$orderId', 'o1')] }) });
   await router.load();
-  return renderWithProviders(<PanelContextProvider value={panelContext}><RouterProvider router={router} /></PanelContextProvider>);
+  return renderWithProviders(<PanelContextProvider value={context}><RouterProvider router={router} /></PanelContextProvider>);
 };
 
 beforeEach(() => {
@@ -136,6 +136,102 @@ describe('order detail shipment', () => {
     expect(screen.getByRole('link', { name: 'ABCD1234' })).toHaveAttribute('href', 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234');
     expect(screen.getByText('Jordan Smith')).toBeInTheDocument();
     expect(screen.getByTestId('order-shipped')).toHaveTextContent(en.shipping.fulfilmentStatuses.shipped);
+  });
+
+  it('downloads the InPost label through the API client and shows a JSON error instead of saving it', async () => {
+    const shipment = {
+      shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311', environment: 'production', createAttemptedAt: null,
+      boughtAt: '2026-11-08T10:00:00.000Z', labelFetchedAt: null, createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+    };
+    let labelAnswer: 'error' | 'pdf' = 'error';
+    const views: string[] = [];
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'shipped'), invoice: null } })),
+      http.get('/api/orders/o1/shipx', () => {
+        views.push('stored');
+        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+      }),
+      http.post('/api/orders/o1/shipx/refresh', () => {
+        views.push('refreshed');
+        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+      }),
+      http.post('/api/orders/o1/shipx/label', () => labelAnswer === 'error'
+        ? HttpResponse.json({ ok: false, error: { code: 'shipx_rejected', message: 'InPost could not generate the label', details: { status: 400, error: 'label_generation_failed', description: 'Template error', fields: {} } } }, { status: 422 })
+        : new HttpResponse(new TextEncoder().encode('%PDF-1.4'), { headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="inpost-520000011395200025754311.pdf"' } })),
+    );
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:label');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: en.shipx.printLabel }));
+    expect(await screen.findByText('InPost: Template error')).toBeInTheDocument();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+
+    labelAnswer = 'pdf';
+    await userEvent.click(screen.getByRole('button', { name: en.shipx.printLabel }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('order-shipx-error')).toBeNull();
+    expect(views).toEqual(['refreshed']);
+  });
+
+  it('reads the stored InPost view without the refresh for a viewer who cannot ship', async () => {
+    const views: string[] = [];
+    const shipment = {
+      shipxShipmentId: '1001', status: 'offer_selected', trackingNumber: null, environment: 'production', createAttemptedAt: null,
+      boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+    };
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'to_pack'), invoice: null } })),
+      http.get('/api/orders/o1/shipx', () => {
+        views.push('stored');
+        return HttpResponse.json({ ok: true, data: { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+      }),
+      http.post('/api/orders/o1/shipx/refresh', () => {
+        views.push('refreshed');
+        return HttpResponse.json({ ok: false, error: { code: 'forbidden', message: 'order:write is not permitted' } }, { status: 403 });
+      }),
+    );
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />, { ...panelContext, tenant: { ...panelContext.tenant, staffRole: null } });
+
+    expect(await screen.findByTestId('order-shipx-status')).toBeInTheDocument();
+    expect(views).toEqual(['stored']);
+    expect(screen.queryByTestId('order-shipx-create')).toBeNull();
+  });
+
+  it('discards an unconfirmed InPost attempt and creates the shipment again', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), memberEmail: 'buyer@example.org' }, invoice: null } })),
+      http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
+        ok: true,
+        data: {
+          available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium',
+          shipment: calls.includes('discard') ? null : {
+            shipxShipmentId: null, status: 'unknown', trackingNumber: null, environment: 'production', createAttemptedAt: '2026-11-08T09:55:00.000Z',
+            boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-08T09:55:00.000Z', updatedAt: '2026-11-08T09:55:00.000Z',
+          },
+        },
+      })),
+      http.post('/api/orders/o1/shipx/discard', () => {
+        calls.push('discard');
+        return HttpResponse.json({ ok: true, data: { discarded: true } });
+      }),
+      http.post('/api/orders/o1/shipx', () => {
+        calls.push('create');
+        return HttpResponse.json({ ok: false, error: { code: 'shipx_unavailable', message: 'InPost ShipX is unavailable; retry in a moment' } }, { status: 503 });
+      }),
+    );
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+
+    expect(await screen.findByTestId('order-shipx-unconfirmed')).toHaveTextContent(en.shipx.attemptUnconfirmed);
+    await userEvent.click(screen.getByRole('button', { name: en.shipx.discardAttempt }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(en.shipx.discardConfirmBody)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: en.shipx.discardConfirm }));
+    await waitFor(() => expect(calls).toEqual(['discard', 'create']));
   });
 
   it('shows the conflict when the order was shipped meanwhile', async () => {

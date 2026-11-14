@@ -1,6 +1,7 @@
 import {
   appError,
   err,
+  forbidden,
   ok,
   resolveInvoiceVat,
   tenantNotFound,
@@ -34,20 +35,33 @@ export const getTenantSettings = async (
 ): Promise<Result<TenantSettingsProjection, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:read');
   if (!tenant.ok) return tenant;
+  if (ctx.identity.staffRole === null) return err(forbidden('Staff role is required'));
   const settings = await deps.tenants.findSettings(tenant.value);
   if (!settings) return err(tenantNotFound());
   const supportConfigured = settings.supportEmail !== null && settings.supportEmail !== undefined;
-  return ok(
-    ctx.identity.staffRole === null
-      ? {
-          settings: { ...settings, supportEmail: null, supportConfigured },
-          personalisationMaxBytes: null,
-        }
-      : {
-          settings: { ...settings, supportConfigured },
-          personalisationMaxBytes: deps.personalisationMaxBytes,
-        },
-  );
+  return ok({
+    settings: { ...settings, supportConfigured },
+    personalisationMaxBytes: deps.personalisationMaxBytes,
+  });
+};
+
+export const getMemberSettings = async (
+  ctx: Ctx,
+  deps: Pick<TenantSettingsDeps, 'tenants'>,
+) => {
+  const tenant = authorizeTenant(ctx, 'member:settings:read');
+  if (!tenant.ok) return tenant;
+  const settings = await deps.tenants.findSettings(tenant.value);
+  if (!settings) return err(tenantNotFound());
+  return ok({
+    settings: {
+      billingPortalUrl: settings.billingPortalUrl,
+      supportConfigured: settings.supportEmail !== null && settings.supportEmail !== undefined,
+      supportUrl: settings.supportUrl,
+      videoAutoplayDefault: settings.videoAutoplayDefault ?? false,
+      memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride ?? false,
+    },
+  });
 };
 
 export const updateTenantSettings = async (

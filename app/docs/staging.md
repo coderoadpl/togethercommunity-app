@@ -32,12 +32,13 @@ database on a protected Neon branch. It is not a copy of production data.
 
 ## Troubleshooting
 
-If staging build migration fails with `42P07 relation already exists` while
-running migration `0000`, the database has tables but no
-`drizzle.__drizzle_migrations` rows. That means it was created as a schema-only
-copy of `main`, so drizzle-orm's journal-based migrator sees no baseline and
-tries to run every migration again. Recreate staging as an empty database on the
-protected staging branch.
+If the staging build refuses to migrate because the database has tables but no
+migration journal, it has no rows in `public.__drizzle_migrations` (or, before
+the journal moved, in `drizzle.__drizzle_migrations`). That means it was
+created as a schema-only copy of `main`, so the migrator sees no baseline and
+would run every migration again from `0000`. Recreate staging as an empty
+database on the protected staging branch. See
+[migration journal](deployment-environments.md#migration-journal).
 
 ## Promotion to Production
 

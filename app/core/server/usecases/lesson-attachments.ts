@@ -32,6 +32,7 @@ export const ATTACHMENT_UPLOAD_TTL_SECONDS = 15 * 60;
 export const ATTACHMENT_DOWNLOAD_TTL_SECONDS = 60 * 60;
 
 export interface LessonAttachmentDeps {
+  logger: { error(message: string): void };
   attachments: LessonAttachmentRepository;
   lessons: CourseLessonRepository;
   storage: StorageProvider;
@@ -69,7 +70,7 @@ export const beginLessonAttachmentUpload = async (
   if (!configuration.ok) return configuration;
 
   const id = deps.ids.nextId();
-  const storageKey = `lesson-attachments/${lessonId}/${id}/${storageFileName(parsed.data.fileName, 'attachment')}`;
+  const storageKey = `${tenant.value}/lesson-attachments/${lessonId}/${id}/${storageFileName(parsed.data.fileName, 'attachment')}`;
   const signed = deps.storage.presignPut({
     url: deps.storage.objectUrl(configuration.value, storageKey).toString(),
     accessKeyId: configuration.value.accessKeyId,
@@ -197,7 +198,7 @@ export const deleteLessonAttachment = async (
   ctx: Ctx,
   lessonId: string,
   attachmentId: string,
-  deps: Pick<LessonAttachmentDeps, 'attachments' | 'secretResolver' | 'storage'>,
+  deps: Pick<LessonAttachmentDeps, 'attachments' | 'secretResolver' | 'storage' | 'logger'>,
 ): Promise<Result<{ deleted: true }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
@@ -206,13 +207,19 @@ export const deleteLessonAttachment = async (
     return err(notFound(`No attachment "${attachmentId}" on this lesson`));
   }
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
-  if (!configuration.ok) return configuration;
+  if (!configuration.ok) {
+    deps.logger.error(`[lesson-attachment] tenant "${tenant.value}" could not delete storage object "${attachment.storageKey}": ${configuration.error.message}`);
+    return configuration;
+  }
   const deletedObject = await deps.storage.delete({
     url: deps.storage.objectUrl(configuration.value, attachment.storageKey).toString(),
     accessKeyId: configuration.value.accessKeyId,
     secretAccessKey: configuration.value.secretAccessKey,
     region: configuration.value.region,
   });
+  if (!deletedObject.ok) {
+    deps.logger.error(`[lesson-attachment] tenant "${tenant.value}" could not delete storage object "${attachment.storageKey}": ${deletedObject.error.message}`);
+  }
   const deleted = await deps.attachments.delete(tenant.value, attachmentId);
   if (!deleted) return err(notFound(`No attachment "${attachmentId}" on this lesson`));
   return deletedObject.ok
@@ -226,14 +233,19 @@ export const deleteLessonAttachment = async (
 export const deleteLessonAttachmentObjects = async (
   ctx: Ctx,
   lessonId: string,
-  deps: Pick<LessonAttachmentDeps, 'attachments' | 'secretResolver' | 'storage'>,
+  deps: Pick<LessonAttachmentDeps, 'attachments' | 'secretResolver' | 'storage' | 'logger'>,
 ): Promise<Result<{ deletedObjects: number }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const attachments = await deps.attachments.listByLesson(tenant.value, lessonId);
   if (attachments.length === 0) return ok({ deletedObjects: 0 });
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
-  if (!configuration.ok) return configuration;
+  if (!configuration.ok) {
+    for (const attachment of attachments) {
+      deps.logger.error(`[lesson-attachment] tenant "${tenant.value}" could not delete storage object "${attachment.storageKey}": ${configuration.error.message}`);
+    }
+    return configuration;
+  }
   for (const attachment of attachments) {
     const deleted = await deps.storage.delete({
       url: deps.storage.objectUrl(configuration.value, attachment.storageKey).toString(),
@@ -241,7 +253,10 @@ export const deleteLessonAttachmentObjects = async (
       secretAccessKey: configuration.value.secretAccessKey,
       region: configuration.value.region,
     });
-    if (!deleted.ok) return deleted;
+    if (!deleted.ok) {
+      deps.logger.error(`[lesson-attachment] tenant "${tenant.value}" could not delete storage object "${attachment.storageKey}": ${deleted.error.message}`);
+      return deleted;
+    }
   }
   return ok({ deletedObjects: attachments.length });
 };

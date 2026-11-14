@@ -63,6 +63,10 @@ export const envSchema = z
         }),
       })
       .default('node-postgres'),
+    DATABASE_POOL_MAX: z.preprocess(
+      (value) => value === '' ? undefined : value,
+      z.coerce.number().int().min(1).max(100).optional(),
+    ),
     REALTIME_TRANSPORT: z.enum(['pg', 'in-process']).default('pg'),
     /** `LISTEN` is unsupported on transaction-mode poolers, so the bus needs a direct connection. */
     REALTIME_DATABASE_URL: optionalNonEmptyString,
@@ -169,6 +173,7 @@ export const envSchema = z
     PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES: optionalCount,
     IMPORT_DAILY_MEMBER_RECORD_LIMIT: z.coerce.number().int().positive().default(10_000),
+    IMPORT_HOURLY_VALIDATION_RECORD_LIMIT: z.coerce.number().int().positive().default(50_000),
     IMPORT_DAILY_RECORD_LIMIT: z.coerce.number().int().positive().default(20_000),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: z.coerce.number().int().positive().default(60),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: z.coerce.number().int().positive().default(5000),

@@ -10,5 +10,6 @@ export {
   rejectedCorsOriginOf,
   serverMessageOf,
 } from './errors.js';
+export { localizeShipxError } from './shipx-errors.js';
 export type { Messages } from './messages.js';
 export type { Language } from '#core/domain/index.js';

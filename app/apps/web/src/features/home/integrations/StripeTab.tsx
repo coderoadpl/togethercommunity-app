@@ -14,7 +14,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StripeMode } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';

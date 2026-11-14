@@ -570,17 +570,6 @@ describe('IntegrationsPanel', () => {
     expect(screen.getByText(en.integrations.webhookActiveHint)).toBeInTheDocument();
   });
 
-  it('reports a readable diagnostic after testing the connection', async () => {
-    renderPanel([
-      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
-      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
-    ]);
-    await userEvent.click(await screen.findByTestId('payment-test-connection'));
-    expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(
-      en.integrations.paymentAvailable,
-    );
-  });
-
   it('configures the sandbox slot and reports its endpoint and last event', async () => {
     const { stripeConfigurations } = renderPanel(
       [

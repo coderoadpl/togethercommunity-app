@@ -112,6 +112,7 @@ const tableNames = async (db: Db): Promise<string[]> => {
         from pg_class cls
         join pg_namespace nsp on nsp.oid = cls.relnamespace
         where nsp.nspname = 'public' and cls.relkind in ('r', 'p')
+          and cls.relname <> '__drizzle_migrations'
         order by cls.relname`,
   );
   return rows.map((row) => textField(row, 'name'));
@@ -133,6 +134,7 @@ const columnsByTable = async (db: Db): Promise<Map<string, ColumnFact[]>> => {
         left join pg_attrdef def on def.adrelid = att.attrelid and def.adnum = att.attnum
         where nsp.nspname = 'public'
           and cls.relkind in ('r', 'p')
+          and cls.relname <> '__drizzle_migrations'
           and att.attnum > 0
           and not att.attisdropped
         order by cls.relname, att.attname`,
@@ -172,6 +174,7 @@ const constraintsStatement = sql`select rel.relname as table_name,
                                  join pg_class rel on rel.oid = con.conrelid
                                  join pg_namespace nsp on nsp.oid = con.connamespace
                                  where nsp.nspname = 'public' and con.contype in ('p', 'u', 'f', 'c')
+                                   and rel.relname <> '__drizzle_migrations'
                                  order by rel.relname, con.conname`;
 
 const indexesStatement = sql`select rel.relname as table_name,
@@ -226,6 +229,7 @@ const sequences = async (db: Db): Promise<SequenceFact[]> => {
                (cycle_option = 'YES')::text as cycle
         from information_schema.sequences
         where sequence_schema = 'public'
+          and sequence_name <> '__drizzle_migrations_id_seq'
         order by sequence_name`,
   );
   return rows.map((row) => ({

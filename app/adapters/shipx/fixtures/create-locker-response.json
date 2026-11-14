@@ -1,0 +1,83 @@
+{
+  "href": "https://api-shipx-pl.easypack24.net/v1/shipments/12345",
+  "id": 12345,
+  "status": "created",
+  "tracking_number": null,
+  "return_tracking_number": null,
+  "service": "inpost_locker_standard",
+  "reference": "Test",
+  "is_return": false,
+  "application_id": 25,
+  "created_by_id": null,
+  "external_customer_id": null,
+  "sending_method": "dispatch_order",
+  "end_of_week_collection": false,
+  "comments": null,
+  "mpk": null,
+  "additional_services": [],
+  "custom_attributes": {
+    "target_point": "BTO02M",
+    "sending_method": "dispatch_order"
+  },
+  "cod": {
+    "amount": 12.5,
+    "currency": "PLN"
+  },
+  "insurance": {
+    "amount": 25.0,
+    "currency": "PLN"
+  },
+  "sender": {
+    "id": 2798165704,
+    "name": null,
+    "company_name": "Company_name",
+    "first_name": "first_name",
+    "last_name": "last_name",
+    "email": "test@example.com",
+    "phone": "321321321",
+    "address": {
+      "id": 1970672593,
+      "street": "Czerniakowska",
+      "building_number": "87A",
+      "line1": null,
+      "line2": null,
+      "city": "Warszawa",
+      "post_code": "00-718",
+      "country_code": "PL"
+    }
+  },
+  "receiver": {
+    "id": 2798165703,
+    "name": null,
+    "company_name": "Company name",
+    "first_name": "Jan",
+    "last_name": "Kowalski",
+    "email": "receiver@example.com",
+    "phone": "111222333",
+    "address": null
+  },
+  "selected_offer": null,
+  "offers": [],
+  "transactions": [],
+  "parcels": [
+    {
+      "id": 1404049260,
+      "identify_number": null,
+      "tracking_number": null,
+      "is_non_standard": false,
+      "template": "small",
+      "dimensions": {
+        "length": 380.0,
+        "width": 640.0,
+        "height": 80.0,
+        "unit": "mm"
+      },
+      "weight": {
+        "amount": 25.0,
+        "unit": "kg"
+      }
+    }
+  ],
+  "created_at": "2023-12-19T00:02:05.991+01:00",
+  "updated_at": "2023-12-19T00:02:05.991+01:00"
+}

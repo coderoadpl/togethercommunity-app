@@ -61,7 +61,7 @@ import type {
   TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { avatarUrlForAuthor, avatarUrlsFor, type AvatarUrlMap } from './avatar.js';
+import { avatarUrlsFor, type AvatarUrlMap } from './avatar.js';
 import {
   accessibleLessonIds,
   lessonContextAccess,
@@ -72,13 +72,10 @@ import {
   requireTenant,
   spaceContextAccess,
 } from './community-access.js';
-import { tenantEmailLanguage } from './email-language.js';
 import { openHeuristicReport } from './moderation-heuristics.js';
 import {
   buildNotificationFanoutJob,
-  drainPostFanoutInline,
 } from './notification-fanout.js';
-import { threadContextInfo } from './thread-context.js';
 
 export interface CommunityDeps {
   posts: PostRepository;
@@ -90,6 +87,7 @@ export interface CommunityDeps {
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
+  dispatchNotificationFanout(tenantId: string): void;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
@@ -171,61 +169,6 @@ export const nestReplies = (
     };
   };
   return (byParent.get(rootId) ?? []).map(build);
-};
-
-const notifyLessonQuestionStaff = async (
-  tenantId: string,
-  post: Post,
-  deps: CommunityDeps,
-  tenant: { tenantName: string; tenantSlug: string | null },
-): Promise<Result<void, AppError>> => {
-  const staff = await deps.tenantAccess.listStaffForTenant(tenantId);
-  if (staff.length === 0) return ok(undefined);
-  const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
-  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
-  const tenantLanguage = await tenantEmailLanguage(tenantId, deps);
-  for (const recipient of staff) {
-    if (recipient.userId === post.authorUserId) continue;
-    await deps.threadSubscriptions.upsert(tenantId, {
-      userId: recipient.userId,
-      rootPostId: post.rootPostId,
-      createdAt: post.createdAt,
-    });
-    const notification: Notification = {
-      id: deps.ids.nextId(),
-      tenantId,
-      recipientUserId: recipient.userId,
-      kind: 'lesson-question',
-      payload: {
-        rootPostId: post.rootPostId,
-        postId: post.id,
-        contextKind: post.contextKind,
-        contextId: post.contextId,
-        courseId: context.courseId,
-        eventId: null,
-        domain: null,
-        lessonName: context.contextName,
-        authorDisplay: post.authorDisplay,
-        authorAvatarUrl,
-        snippet: postSnippet(renderPostContent(post.body, post.bodyFormat).plainText),
-      },
-      sourceKey: null,
-      readAt: null,
-      createdAt: deps.clock.nowIso(),
-    };
-    const inserted = await deps.notifications.insert(tenantId, notification);
-    for (const channel of deps.notificationChannels) {
-      const delivered = await channel.deliver(inserted, {
-        recipientEmail: recipient.email,
-        tenantName: tenant.tenantName,
-        contextName: context.contextName,
-        contextUrl: context.contextUrl,
-        language: recipient.language ?? tenantLanguage,
-      });
-      if (!delivered.ok) return delivered;
-    }
-  }
-  return ok(undefined);
 };
 
 export const resolveActorDisplay = async (
@@ -311,24 +254,22 @@ export const createPost = async (
   const post = postRecord.data;
   const fanoutKind = parentPost !== null
     ? 'thread-reply'
-    : post.contextKind === 'space'
-      ? 'space-post'
-      : null;
-  const fanoutJob = fanoutKind === null
-    ? null
-    : buildNotificationFanoutJob({
-        id: deps.ids.nextId(),
-        tenantId: actor.value.tenantId,
-        kind: fanoutKind,
-        sourceId: post.id,
-        tenantName: ctx.identity.tenantName ?? 'Together',
-        tenantSlug: ctx.identity.tenantSlug,
-        authorDisplay: null,
-        now,
-      });
-  const created = fanoutJob === null
-    ? await deps.posts.createPost(actor.value.tenantId, post)
-    : await deps.posts.createPost(actor.value.tenantId, post, fanoutJob);
+    : post.contextKind === 'space' ? 'space-post' : 'lesson-question';
+  const fanoutJob = buildNotificationFanoutJob({
+    id: deps.ids.nextId(),
+    tenantId: actor.value.tenantId,
+    kind: fanoutKind,
+    sourceId: post.id,
+    tenantName: ctx.identity.tenantName ?? 'Together',
+    tenantSlug: ctx.identity.tenantSlug,
+    authorDisplay: null,
+    now,
+  });
+  const staffUserIds = fanoutKind === 'lesson-question'
+    ? (await deps.tenantAccess.listStaffForTenant(actor.value.tenantId))
+      .filter((staff) => staff.userId !== post.authorUserId).map((staff) => staff.userId)
+    : [];
+  const created = await deps.posts.createPost(actor.value.tenantId, post, fanoutJob, staffUserIds);
   const rendered = renderPostContent(created.body, created.bodyFormat);
   const signals = heuristicSignalsFor({
     body: rendered.plainText,
@@ -343,16 +284,7 @@ export const createPost = async (
     rootPostId: created.rootPostId,
     createdAt: created.createdAt,
   });
-  const tenant = {
-    tenantName: ctx.identity.tenantName ?? 'Together',
-    tenantSlug: ctx.identity.tenantSlug,
-  };
-  if (fanoutJob !== null) {
-    await drainPostFanoutInline(fanoutJob, deps);
-  } else {
-    const notified = await notifyLessonQuestionStaff(actor.value.tenantId, created, deps, tenant);
-    if (!notified.ok) return notified;
-  }
+  deps.dispatchNotificationFanout(actor.value.tenantId);
   return ok(toRenderedPublicPost(created, actor.value.userId, null, rendered));
 };
 
@@ -373,17 +305,18 @@ export const listDiscussion = async (
     limit: parsed.data.limit,
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
-  const repliesByThread = await Promise.all(
-    listed.threads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
+  const repliesByThread = await deps.posts.listRepliesForRoots(
+    scope.value.tenantId,
+    listed.threads.map((thread) => thread.post.rootPostId),
   );
   const avatarUrls = await avatarUrlsFor(
     scope.value.tenantId,
-    [...listed.threads.map((thread) => thread.post), ...repliesByThread.flat()].map(
+    [...listed.threads.map((thread) => thread.post), ...[...repliesByThread.values()].flat()].map(
       (post) => post.authorUserId,
     ),
     deps,
   );
-  const threads = listed.threads.map((thread, index) => ({
+  const threads = listed.threads.map((thread) => ({
     ...toRenderedPublicPost(
       thread.post,
       scope.value.userId,
@@ -392,7 +325,7 @@ export const listDiscussion = async (
     replyCount: thread.replyCount,
     replies: nestReplies(
       thread.post.id,
-      repliesByThread[index] ?? [],
+      repliesByThread.get(thread.post.rootPostId) ?? [],
       scope.value.userId,
       avatarUrls,
     ),

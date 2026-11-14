@@ -269,11 +269,13 @@ const deps = (input: {
   attachments?: LessonAttachment[];
   removedObjects?: string[];
   storageDeleteFails?: boolean;
+  errors?: string[];
 } = {}): CourseManagementDeps & { courses: CourseRepository & CourseArchiveRepository } => {
   const ids = input.ids ?? ['generated-id'];
   const versions = input.versions ?? [];
   const attachments = input.attachments ?? [];
   return {
+    logger: { error: (message) => input.errors?.push(message) },
     courses: courseRepo(input.courses ?? [], versions, input.products),
     modules: moduleRepo(input.modules ?? [], versions),
     lessons: lessonRepo(input.lessons ?? [], versions),
@@ -295,6 +297,8 @@ const deps = (input: {
       delete: async () => false,
     },
     storage: {
+      putObject: async () => ok(undefined),
+      list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
@@ -488,7 +492,7 @@ describe('course management use-cases', () => {
     await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
-    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 8]);
+    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 9]);
     expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
     expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
     expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });
@@ -843,10 +847,12 @@ describe('course management use-cases', () => {
   });
 
   it('deletes the lesson even when storage cleanup fails', async () => {
+    const errors: string[] = [];
     const lessons = [lesson('l1', 't-acme')];
     const d = deps({
       lessons,
       storageDeleteFails: true,
+      errors,
       attachments: [{
         id: 'attachment-1',
         tenantId: 't-acme',
@@ -864,6 +870,7 @@ describe('course management use-cases', () => {
       deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d),
     ).resolves.toMatchObject({ ok: true, value: { lessonId: 'l1' } });
     expect(lessons).toHaveLength(0);
+    expect(errors).toEqual([expect.stringContaining('tenant "t-acme" could not delete storage object "lesson-attachments/l1/attachment-1/handout.pdf"')]);
   });
 
   it('reports not found when deleting a missing lesson', async () => {

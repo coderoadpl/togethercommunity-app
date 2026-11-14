@@ -1,4 +1,4 @@
-import { ConfirmDialog } from '../../components/layout/index.js';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { useTranslations } from '../../i18n/index.js';
 
 export const DeletePostDialog = ({

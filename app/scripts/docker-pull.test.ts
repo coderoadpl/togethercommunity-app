@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it, vi } from 'vitest';
 
-import { backoffDelayMs, isTransientPullFailure, pullImages } from './docker-pull.js';
+import { backoffDelayMs, dockerfileBaseImages, isTransientPullFailure, pullImages } from './docker-pull.js';
 
 const success = { code: 0, stdout: 'Pulled', stderr: '' };
 
@@ -100,4 +102,24 @@ describe('isTransientPullFailure', () => {
     ('rejects %s', (output) => {
       expect(isTransientPullFailure(output)).toBe(false);
     });
+});
+
+describe('dockerfileBaseImages', () => {
+  it('skips FROM flags and stage references', () => {
+    const dockerfile = [
+      'FROM --platform=$BUILDPLATFORM registry.example/node:24 AS builder',
+      'FROM registry.example/node:24 AS prod-deps',
+      'FROM --platform=linux/amd64 registry.example/node:24-slim AS runtime',
+      'FROM builder AS assets',
+    ].join('\n');
+
+    expect(dockerfileBaseImages(dockerfile)).toEqual(['registry.example/node:24', 'registry.example/node:24-slim']);
+  });
+
+  it('returns only pullable references for the production Dockerfile', () => {
+    const images = dockerfileBaseImages(readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8'));
+
+    expect(images.length).toBeGreaterThan(0);
+    for (const image of images) expect(image).toMatch(/^[a-z0-9][^\s$]*@sha256:[0-9a-f]{64}$/u);
+  });
 });

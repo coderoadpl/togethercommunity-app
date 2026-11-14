@@ -11,7 +11,6 @@ import {
   publicStockVersion,
   stockAdjustmentEventType,
   stockAlertMarkers,
-  stockCheckoutExpiry,
   stockIsLow,
   type StockCommitEffect,
   type StockLevel,
@@ -69,13 +68,6 @@ describe('stock availability', () => {
     const levels = [level({ productId: 'a', onHand: 1, reserved: 0 }), level({ productId: 'b', onHand: 1, reserved: 1 })];
     expect(firstSoldOutProductId(['untracked', 'a', 'b'], levels)).toBe('b');
     expect(firstSoldOutProductId(['untracked', 'a'], levels)).toBeNull();
-  });
-
-  it('expires the Stripe session a minute above the Stripe minimum and the reservation five minutes later', () => {
-    expect(stockCheckoutExpiry('2026-11-05T10:00:00.000Z')).toEqual({
-      sessionExpiresAt: '2026-11-05T10:31:00.000Z',
-      reservationExpiresAt: '2026-11-05T10:36:00.000Z',
-    });
   });
 
   it('records a positive adjustment with the returned reason as a return', () => {

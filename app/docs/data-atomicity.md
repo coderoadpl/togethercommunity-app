@@ -18,6 +18,17 @@ at all.
 
 <!-- MUST-ATOMIC:begin -->
 
+- Meta conversions: `MetaCapiRepository.decide` records the consent projection,
+  evidence and outbox enqueue/delete atomically under the tenant-scoped order
+  lock. `MetaCapiRepository.processNext` holds that order lock across the Meta
+  HTTP call (bounded by the gateway’s 5 s timeout) and the receipt/retry write.
+  Withdrawal and member erasure take the same order lock, so they cannot
+  interleave with a send. This is not a lease or an exactly-once HTTP guarantee:
+  a crash after Meta accepts can retry the same event ID. A savepoint isolates
+  poisoned job processing; rollback preserves the outer lock and permits the
+  bounded failure/backoff write. Failure of that write propagates to the
+  tenant dispatch boundary, without stalling other tenants or email dispatch.
+
 - Content history: `ProductRepository.updateAccessItems`,
   `CourseRepository.update`, `CourseArchiveRepository.setArchived`,
   `CourseModuleRepository.update`, and
@@ -49,6 +60,28 @@ at all.
   writes the `shipped` status, the shipment projection, the append-only
   `order_fulfilment_events` row and the buyer e-mail in the outbox in one
   commit.
+- InPost shipments: `ShipxShipmentRepository.acquire` takes the claim on the
+  one `order_shipments` row per order with a single `INSERT … ON CONFLICT DO
+  NOTHING` or a single conditional `UPDATE` that sets a random
+  `operation_token` and `operation_started_at` (free, or older than the
+  90-second lease), so two concurrent clicks cannot both create or pay a ShipX
+  shipment. `update`, `release` and `finishOperation` are conditional on the
+  request's `operation_token` and report `lost_lock` without changing anything
+  when another request holds the row, so a finished request never clears the
+  next one's claim. Every `order_shipments` write pairs with its append-only
+  `order_shipment_events` rows (the step, the staff user and the request's
+  `operation_token`) in one transaction: `acquire`, `update`, `finishOperation`,
+  `release`, `refreshUnclaimed`, `markLabelFetched` and `discardUnconfirmed`
+  each write the projection change and its events together, and `update` and
+  `refreshUnclaimed` skip the write entirely when ShipX reports nothing new.
+  `acquire`, `update` and `refreshUnclaimed` lock the existing row with
+  `FOR UPDATE` before changing it, so a lease takeover, a status change and the
+  first purchase time are recorded exactly once. `refreshUnclaimed` writes
+  only when the locked row still matches the version read before the ShipX
+  call, never clears a tracking number and never changes a bought row. A
+  failed event insert rolls the projection change back. The shipment is then
+  marked as shipped through
+  `OrderFulfilmentRepository.ship` above.
 - Stock: `StockRepository.reserve`, `StockRepository.release`,
   `StockRepository.commit`, `StockRepository.enableTracking`,
   `StockRepository.adjust`, and `StockRepository.setThreshold` each write the

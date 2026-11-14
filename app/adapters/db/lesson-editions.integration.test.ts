@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 
 import { buildSnapshot, type CourseLesson } from '#core/domain/index.js';
 import { markLessonEdition, type Ctx, type EntityVersionRecord, type ImportContentMutation } from '#core/server/index.js';
@@ -8,7 +9,7 @@ import { createImportContentRepository } from './content-import.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { createLessonEditionRepository, createLessonEditionTransaction } from './lesson-editions.js';
 import { createCourseLessonRepository, createEntityVersionRepository } from './repositories.js';
-import { entityVersions, tenantApiKeys, tenants } from './schema.js';
+import { entityVersions, importAuditEvents, tenantApiKeys, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -161,19 +162,26 @@ describe('lesson edition persistence', () => {
     expect((await editions.find(TENANT, resource.id, '1'))?.payload).toMatchObject({ name: 'Chapter 3' });
   });
 
-  it('rolls back the lesson and marked snapshot when the import audit rejects the write', async () => {
-    const resource = { ...lesson, id: 'rolled-back-lesson' };
+  it.each(['missing-key', 'foreign-key'])('rolls back the lesson, marked snapshot, and audit for %s', async (apiKeyId) => {
+    if (apiKeyId === 'foreign-key') {
+      await db.insert(tenants).values({ id: 'foreign-edition-tenant', slug: 'foreign-editions', name: 'Foreign editions', createdAt: NOW });
+      await db.insert(tenantApiKeys).values({ id: apiKeyId, tenantId: 'foreign-edition-tenant', name: 'Import', keyHash: 'foreign-edition-hash', scopes: ['import:content'], createdAt: NOW });
+    }
+    const resource = { ...lesson, id: `rolled-back-lesson-${apiKeyId}` };
+    const versionId = `rolled-back-version-${apiKeyId}`;
     const mutation: ImportContentMutation = {
-      kind: 'lesson', action: 'created', resource, version: version('rolled-back-version', resource),
-      edition: { number: '1' }, event: { id: 'rolled-back-event', tenantId: TENANT, apiKeyId: 'missing-key',
+      kind: 'lesson', action: 'created', resource, version: version(versionId, resource),
+      edition: { number: '1' }, event: { id: `rolled-back-event-${apiKeyId}`, tenantId: TENANT, apiKeyId,
         kind: 'lesson', importKey: resource.id, resourceId: resource.id, action: 'created',
         payloadHash: 'b'.repeat(64), at: NOW },
     };
     await expect(createImportContentRepository(db).commit(TENANT, mutation))
       .rejects.toThrow('Import audit API key does not belong to tenant');
     expect(await createCourseLessonRepository(db).findById(TENANT, resource.id)).toBeNull();
-    expect(await createEntityVersionRepository(db).findById(TENANT, 'rolled-back-version')).toBeNull();
+    expect(await createEntityVersionRepository(db).findById(TENANT, versionId)).toBeNull();
     expect(await createLessonEditionRepository(db).list(TENANT, resource.id)).toEqual([]);
+    expect(await db.select().from(importAuditEvents).where(eq(importAuditEvents.id, mutation.event.id)))
+      .toEqual([]);
   });
 
 });

@@ -31,6 +31,8 @@ import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/ser
 import type { Db } from '#adapters/db/client.js';
 import { account, devMagicLinks, passkey as passkeyTable, session, twoFactor as twoFactorTable, user, verification } from '#adapters/db/schema.js';
 
+import { twoFactorChallengeUrl } from './two-factor-challenge.js';
+
 export interface AuthSettings {
   secret: string;
   /** Public URL of the API, e.g. http://localhost:48730 */
@@ -69,6 +71,12 @@ export interface AuthSettings {
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
+
+export const BETTER_AUTH_TWO_FACTOR_TOTP_PATH = '/api/auth/two-factor/verify-totp';
+
+export const BETTER_AUTH_TWO_FACTOR_BACKUP_CODE_PATH = '/api/auth/two-factor/verify-backup-code';
+
+export const BETTER_AUTH_OAUTH_CALLBACK_PATH_PATTERN = '/api/auth/callback/:provider';
 
 export const BETTER_AUTH_SESSION_PATH = '/api/auth/get-session';
 
@@ -302,6 +310,12 @@ const withoutSharedCookieDomain = (options: AuthOptions): AuthOptions => {
   return { ...options, advanced };
 };
 
+const verifiedCustomHost = async (settings: AuthSettings, host: string | null): Promise<string | null> => {
+  if (host === null || settings.isVerifiedCustomHost === undefined) return null;
+  if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
+  return (await settings.isVerifiedCustomHost(host)) ? host : null;
+};
+
 /**
  * Better Auth freezes the cookie domain and the passkey relying party into the
  * instance it is constructed with, so both are re-derived here from the host that
@@ -317,18 +331,13 @@ const hostScopedCredentials = (settings: AuthSettings) => {
     singleTenantMode: settings.singleTenantMode,
   };
   const fallbackRelyingParty = baseRelyingPartyId(routing);
-  const verifiedCustomHost = async (host: string | null): Promise<string | null> => {
-    if (host === null || settings.isVerifiedCustomHost === undefined) return null;
-    if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
-    return (await settings.isVerifiedCustomHost(host)) ? host : null;
-  };
   return {
     id: 'host-scoped-credentials',
     hooks: {
       before: [{
         matcher: () => true,
         handler: createAuthMiddleware(async (ctx) => {
-          const customHost = await verifiedCustomHost(authRequestHost(ctx));
+          const customHost = await verifiedCustomHost(settings, authRequestHost(ctx));
           const ceremony = isPasskeyCeremonyPath(ctx.path);
           if (customHost === null && !ceremony) return;
           const scoped = customHost === null
@@ -350,6 +359,8 @@ const additionalTwoFactorPaths = new Set([
   '/sign-in/social',
   '/magic-link/verify',
   '/passkey/verify-authentication',
+  '/one-tap/callback',
+  '/verify-email',
 ]);
 
 const magicLinkTeamProofSchema = z.object({ userId: z.string(), origin: z.string().url() });
@@ -468,8 +479,13 @@ const twoFactorForEverySignIn = () => {
       ...plugin.hooks,
       after: plugin.hooks.after.map((hook) => ({
         ...hook,
-        matcher: (context: Parameters<typeof hook.matcher>[0]) =>
-          hook.matcher(context) || isAdditionalTwoFactorPath(context.path),
+        matcher: (context: Parameters<typeof hook.matcher>[0]) => {
+          // Verification also sets newSession when refreshing the caller's existing session cookie.
+          if (context.path === '/verify-email'
+            && context.context.session !== null
+            && context.context.session.session.id === context.context.newSession?.session.id) return false;
+          return hook.matcher(context) || isAdditionalTwoFactorPath(context.path);
+        },
       })),
     },
   };
@@ -477,26 +493,45 @@ const twoFactorForEverySignIn = () => {
 
 const twoFactorRedirectSchema = z.object({ twoFactorRedirect: z.literal(true) });
 
-const redirectOrigin = (location: string | null, fallback: string): string => {
-  if (location === null) return fallback;
+const redirectTarget = (location: string | null, fallback: string): URL | null => {
+  if (location === null) return null;
   try {
-    return new URL(location).origin;
+    return new URL(location, fallback);
   } catch {
-    return fallback;
+    return null;
   }
 };
 
-const redirectTwoFactorNavigation = (baseUrl: string) => ({
+const redirectTwoFactorNavigation = (settings: AuthSettings) => ({
   id: 'two-factor-navigation',
   hooks: {
     after: [{
       matcher: (context: { path?: string }) =>
-        context.path === '/magic-link/verify' || context.path?.startsWith('/callback/') === true,
+        context.path === '/magic-link/verify'
+        || context.path === '/verify-email'
+        || context.path?.startsWith('/callback/') === true,
       handler: createAuthMiddleware(async (ctx) => {
         if (!twoFactorRedirectSchema.safeParse(ctx.context.returned).success) return;
         const location = ctx.context.responseHeaders?.get('location');
-        const origin = redirectOrigin(location ?? null, new URL(baseUrl).origin);
-        throw ctx.redirect(new URL('/login?twoFactor=required', origin).toString());
+        const deploymentUrl = new URL(settings.baseUrl);
+        const requestOrigin = ctx.request === undefined
+          ? null
+          : new URL(`${deploymentUrl.protocol}//${new URL(ctx.request.url).host}`).origin;
+        const fallbackOrigin = requestOrigin !== null && ctx.context.isTrustedOrigin(requestOrigin)
+          ? requestOrigin
+          : deploymentUrl.origin;
+        const target = redirectTarget(location ?? null, fallbackOrigin);
+        // The challenge cookie is host-only on a verified custom host, so the challenge must stay there.
+        const customHostOrigin = requestOrigin !== null && await verifiedCustomHost(settings, authRequestHost(ctx)) !== null
+          ? requestOrigin
+          : null;
+        const origin = customHostOrigin ?? target?.origin ?? fallbackOrigin;
+        // Social sign-in redirects straight to the requested page, not to a login URL carrying returnTo.
+        const continuation = ctx.path?.startsWith('/callback/') === true
+          && target !== null && target.origin === origin && target.pathname !== '/login'
+          ? new URLSearchParams({ returnTo: `${target.pathname}${target.search}` })
+          : target?.searchParams ?? new URLSearchParams();
+        throw ctx.redirect(twoFactorChallengeUrl(origin, continuation));
       }),
     }],
   },
@@ -541,6 +576,7 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
     const rebased = new URL(rawUrl);
     rebased.protocol = target.protocol;
     rebased.host = target.host;
+    rebased.port = target.port;
     return rebased.toString();
   } catch {
     return rawUrl;
@@ -903,7 +939,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       }),
       twoFactorForEverySignIn(),
       sensitivePasskeyManagement(),
-      redirectTwoFactorNavigation(settings.baseUrl),
+      redirectTwoFactorNavigation(settings),
       passkeyWithSensitiveManagement(),
       {
         id: 'tenant-sign-in-events',
@@ -944,7 +980,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
                   (settings.logger ?? console).warn(`[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=${serializeErrorChain(error)}`);
                 }
               }
-              void Promise.resolve()
+              const recorded = Promise.resolve()
                 .then(() => settings.recordSignIn?.({
                   request,
                   userId: signedIn.user.id,
@@ -954,6 +990,11 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
                 .catch(() => {
                   settings.logger?.warn('[auth] tenant-sign-in-events reason=record_sign_in_failed');
                 });
+              try {
+                settings.keepAlive?.(recorded);
+              } catch (cause: unknown) {
+                process.stderr.write(`[auth] Could not register background sign-in recording: ${safeErrorMessage(cause)}\n`);
+              }
             }),
           }],
         },

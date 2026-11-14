@@ -8,8 +8,9 @@ reviewed pull request, merges the change, and then pushes
 `sdk-v<version>` on the merge commit.
 
 Cut an SDK release alongside any application release that changes
-`core/client`, `core/contract`, `core/domain`, or
-`adapters/auth/client-adapter.ts`. A breaking client-surface change requires a
+`core/client`, `core/contract`, `core/domain`,
+`adapters/auth/client-adapter.ts`, or `adapters/auth/two-factor-challenge.ts`.
+A breaking client-surface change requires a
 major release, or a minor release while the SDK remains pre-1.0 under SemVer's
 0.x rules.
 

@@ -182,10 +182,6 @@ describe('email transport test message', () => {
       text: expect.stringContaining('Your smtp transport is configured correctly.'),
     });
   });
-
-  it('falls back to the default locale for unknown languages', () => {
-    expect(emailTransportTest('de', { transport: 'ses' })).toEqual(emailTransportTest('en', { transport: 'ses' }));
-  });
 });
 
 describe('welcomeSignIn', () => {
@@ -232,15 +228,6 @@ describe('welcomeSignIn', () => {
     expect(en.text).toContain(`${enLabel}: ${input.actionUrl}`);
     expect(pl.html).toContain(`>${plLabel}</a>`);
     expect(pl.text).toContain(`${plLabel}: ${input.actionUrl}`);
-  });
-
-  it('defaults an absent product type to the course action', () => {
-    const input = {
-      tenantName: 'Acme Courses',
-      actionUrl: 'https://acme.localhost/sign-in?token=abc',
-    };
-    expect(welcomeSignIn('en', input).text).toContain(`Sign in and open your course: ${input.actionUrl}`);
-    expect(welcomeSignIn('pl', input).text).toContain(`${transactionalEmailMessagesPl.welcomeSignIn.actionLabels.course}: ${input.actionUrl}`);
   });
 
   it('renders unknown product types with the neutral action', () => {

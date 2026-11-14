@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { err, integrationAuth, ok, type AppError, type Result } from '#core/domain/index.js';
+import { appError, err, integrationAuth, internal, ok, type AppError, type Result } from '#core/domain/index.js';
 
 import { InMemorySchedulerRunRepository, InMemorySesMaintenanceBackoffRepository } from '../testing/marketing-fakes.js';
 import { SCHEDULER_RUN_PURGE_BATCH_SIZE, createScheduledMaintenanceBackoff, runScheduledMarketingJobs } from './marketing-email.js';
@@ -10,7 +10,11 @@ const clock = { nowIso: () => NOW };
 let sequence = 0;
 const ids = { nextId: () => `maintenance-${String(++sequence)}` };
 let warnings: string[] = [];
-const logger = { warn: (message: string) => { warnings.push(message); } };
+let errors: string[] = [];
+const logger = {
+  warn: (message: string) => { warnings.push(message); },
+  error: (message: string) => { errors.push(message); },
+};
 const retentionBoundaries = {
   pendingOlderThan: NOW,
   renderedBodiesOlderThan: NOW,
@@ -24,6 +28,7 @@ let maintenanceBackoff = createScheduledMaintenanceBackoff(new InMemorySesMainte
 describe('marketing maintenance scheduling', () => {
   beforeEach(() => {
     warnings = [];
+    errors = [];
     maintenanceBackoff = createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository());
   });
 
@@ -257,6 +262,52 @@ describe('marketing maintenance scheduling', () => {
       '[marketing] ses maintenance deferred tenant=tenant-1 step=identity error=integration_auth retryAt=1998-07-22T10:03:01.000Z',
       '[marketing] ses maintenance deferred tenant=tenant-1 step=identity error=integration_auth retryAt=1998-07-22T10:07:03.000Z',
     ]);
+  });
+
+  it('reports a tenant without SES in the result and keeps dispatching the other tenants', async () => {
+    const dispatched: string[] = [];
+    const run = (failure: AppError) => runScheduledMarketingJobs({ now: NOW, ...retentionBoundaries,
+      sesIdentityRefreshIntervalMs: 1000 }, {
+      jobs: { listRunnableCampaigns: async () => [
+        { tenantId: 'tenant-unconfigured', campaignId: 'campaign-1' },
+        { tenantId: 'tenant-configured', campaignId: 'campaign-2' },
+      ], listRetentionTenantIds: async () => [], listSesIdentityRefreshTenantIds: async () => [], listSesTenantIds: async () => [] },
+      runs: new InMemorySchedulerRunRepository(),
+      ids,
+      clock,
+      logger,
+      maintenanceBackoff,
+      dispatchCampaign: async (tenantId) => {
+        dispatched.push(tenantId);
+        return tenantId === 'tenant-unconfigured' ? err(failure) : ok(undefined);
+      },
+      runRetention: async () => ok(undefined),
+      refreshIdentity: async () => ok(undefined),
+      runReputationAlerts: async () => ok({ sent: 0 }),
+    });
+
+    const configurationGap = await run(appError('ses_not_configured', 'Tenant SES is not configured'));
+
+    expect(configurationGap).toEqual(ok({
+      campaignsDispatched: 1,
+      retentionTenantsProcessed: 0,
+      identityChecksPerformed: 0,
+      reputationAlertsSent: 0,
+      tenantErrors: [{
+        tenantId: 'tenant-unconfigured',
+        step: 'campaign',
+        code: 'ses_not_configured',
+        message: 'Tenant SES is not configured',
+      }],
+    }));
+    expect(dispatched).toEqual(['tenant-unconfigured', 'tenant-configured']);
+    expect(warnings).toEqual(['[marketing] tick skipped tenant=tenant-unconfigured step=campaign error=ses_not_configured']);
+
+    const platformFailure = await run(internal('database unavailable'));
+
+    expect(platformFailure).toMatchObject({ ok: false, error: { code: 'internal', message: 'database unavailable' } });
+    expect(errors).toEqual(['[marketing] tick failed tenant=tenant-unconfigured step=campaign error=internal']);
+    expect(dispatched).toEqual(['tenant-unconfigured', 'tenant-configured', 'tenant-unconfigured', 'tenant-configured']);
   });
 
   it('records the deferred tenant and its failure on the maintenance run', async () => {

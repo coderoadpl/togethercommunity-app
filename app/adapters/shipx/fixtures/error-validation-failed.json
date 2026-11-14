@@ -1,0 +1,8 @@
+{
+  "status": 400,
+  "error": "validation_failed",
+  "description": "Some of data sent in payload are invalid. Check details for more information.",
+  "details": {
+    "email": ["invalid"]
+  }
+}

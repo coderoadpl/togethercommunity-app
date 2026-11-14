@@ -300,7 +300,7 @@ export const LessonPlayerPage = ({
     isForbidden(lesson.error) ||
     (!invalidEdition && lesson.isPending && cachedMe !== undefined);
   const me = useQuery({ ...actions.me, enabled: authenticated });
-  const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
+  const tenantSettings = useQuery({ ...actions.memberSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
   const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated, meta: { background: true } });

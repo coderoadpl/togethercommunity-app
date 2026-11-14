@@ -180,6 +180,14 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
     },
   },
   product: {
+    9: {
+      id: 'product-fixture-9', tenantId: 'tenant-fixture', type: 'physical', slug: 'printed-lamp',
+      title: 'Printed lamp', description: '', coverUrl: null, priceCents: 8900,
+      vatRate: 23, vatExemptionBasis: null, currency: 'PLN', published: true, visibility: 'listed',
+      deliveryMethod: 'shipping', parcelTemplate: 'large',
+      compliance: null, variantGroup: null, variantLabel: null,
+      accessItems: [], legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+    },
     8: {
       id: 'product-fixture-8', tenantId: 'tenant-fixture', type: 'physical', slug: 'printed-stand-black',
       title: 'Printed stand', description: '', coverUrl: null, priceCents: 5900,

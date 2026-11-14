@@ -66,10 +66,10 @@ describe('member pages', () => {
   it('lists my products with course links', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
-      http.get('/api/tenant/settings', () => HttpResponse.json({
+      http.get('/api/member/settings', () => HttpResponse.json({
         ok: true,
         data: { settings: {
-          name: 'Academy', socialLinks: [], billingPortalUrl: null, bunnyStreamLibraryId: null,
+          billingPortalUrl: null, supportUrl: null, supportConfigured: false, videoAutoplayDefault: false, memberVideoAutoplayOverride: false,
         } },
       })),
       http.get('/api/me', () =>
@@ -128,14 +128,12 @@ describe('member pages', () => {
           ],
         },
       })),
-      http.get('/api/tenant/settings', () => HttpResponse.json({
+      http.get('/api/member/settings', () => HttpResponse.json({
         ok: true,
         data: {
           settings: {
-            name: 'Academy',
-            socialLinks: [],
             billingPortalUrl: 'https://billing.stripe.com/p/login/example',
-            bunnyStreamLibraryId: null,
+            supportUrl: null, supportConfigured: false, videoAutoplayDefault: false, memberVideoAutoplayOverride: false,
           },
         },
       })),
@@ -197,9 +195,9 @@ describe('member pages', () => {
           }],
         },
       })),
-      http.get('/api/tenant/settings', () => HttpResponse.json({
+      http.get('/api/member/settings', () => HttpResponse.json({
         ok: true,
-        data: { settings: { billingPortalUrl: null, bunnyStreamLibraryId: null } },
+        data: { settings: { billingPortalUrl: null, supportUrl: null, supportConfigured: false, videoAutoplayDefault: false, memberVideoAutoplayOverride: false } },
       })),
     );
 
@@ -276,9 +274,9 @@ describe('member pages', () => {
           }],
         },
       })),
-      http.get('/api/tenant/settings', () => HttpResponse.json({
+      http.get('/api/member/settings', () => HttpResponse.json({
         ok: true,
-        data: { settings: { billingPortalUrl: null, bunnyStreamLibraryId: null } },
+        data: { settings: { billingPortalUrl: null, supportUrl: null, supportConfigured: false, videoAutoplayDefault: false, memberVideoAutoplayOverride: false } },
       })),
     );
 

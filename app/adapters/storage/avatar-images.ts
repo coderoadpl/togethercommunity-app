@@ -10,6 +10,7 @@ import {
   type Result,
   type StorageConfiguration,
 } from '#core/domain/index.js';
+import { imageContentMatches } from '#core/server/image-content.js';
 import type { AvatarImageProcessor, StorageProvider } from '#core/server/index.js';
 
 const AVATAR_SIZE = 256;
@@ -71,46 +72,30 @@ const storageCredentials = (configuration: StorageConfiguration) => ({
   region: configuration.region,
 });
 
-const storeProcessed = async (
+const storeProcessed = (
   storage: StorageProvider,
   configuration: StorageConfiguration,
   targetKey: string,
   body: Uint8Array,
-  fetchImage: typeof fetch,
-): Promise<Result<void, AppError>> => {
-  const signed = storage.presignPut({
-    url: storage.objectUrl(configuration, targetKey).toString(),
-    ...storageCredentials(configuration),
-    expiresInSeconds: 60,
-  });
-  if (!signed.ok) return signed;
-  try {
-    const response = await fetchImage(signed.value, {
-      method: 'PUT',
-      headers: { 'content-type': 'image/webp' },
-      body: Buffer.from(body),
-      redirect: 'error',
-    });
-    if (!response.ok) return err(integrationUnavailable('S3 rejected the processed avatar'));
-    return ok(undefined);
-  } catch {
-    return err(integrationUnavailable('Could not store the processed avatar'));
-  }
-};
+): Promise<Result<void, AppError>> => storage.putObject({
+  url: storage.objectUrl(configuration, targetKey).toString(),
+  ...storageCredentials(configuration),
+  contentType: 'image/webp',
+  body,
+});
 
 const processResponse = async (
   storage: StorageProvider,
   configuration: StorageConfiguration,
   targetKey: string,
   response: Response,
-  fetchImage: typeof fetch,
 ): Promise<Result<void, AppError>> => {
   if (!response.ok) return err(integrationUnavailable('Could not read the avatar source'));
   const source = await readLimited(response);
   if (!source.ok) return source;
   const processed = await transform(source.value);
   if (!processed.ok) return processed;
-  return storeProcessed(storage, configuration, targetKey, processed.value, fetchImage);
+  return storeProcessed(storage, configuration, targetKey, processed.value);
 };
 
 export const isGoogleProfileImageUrl = (value: string): boolean => {
@@ -128,23 +113,17 @@ export const createAvatarImageProcessor = (
   fetchImage: typeof fetch = fetch,
 ): AvatarImageProcessor => ({
   processStored: async ({ configuration, sourceKey, targetKey }) => {
-    const signed = storage.presignGet({
+    const source = await storage.getObject({
       url: storage.objectUrl(configuration, sourceKey).toString(),
       ...storageCredentials(configuration),
-      expiresInSeconds: 60,
-    });
-    if (!signed.ok) return signed;
-    try {
-      return await processResponse(
-        storage,
-        configuration,
-        targetKey,
-        await fetchImage(signed.value, { redirect: 'error' }),
-        fetchImage,
-      );
-    } catch {
-      return err(integrationUnavailable('Could not read the uploaded avatar'));
+    }, { maxBytes: AVATAR_IMAGE_MAX_BYTES, range: true });
+    if (!source.ok) return source;
+    if (!imageContentMatches(source.value, sourceKey.split('.').at(-1) ?? '')) {
+      return err(validation('Avatar image does not match its declared format'));
     }
+    const processed = await transform(source.value);
+    if (!processed.ok) return processed;
+    return storeProcessed(storage, configuration, targetKey, processed.value);
   },
   importRemote: async ({ configuration, sourceUrl, targetKey }) => {
     if (!isGoogleProfileImageUrl(sourceUrl)) return err(validation('Invalid Google profile image URL'));
@@ -154,7 +133,6 @@ export const createAvatarImageProcessor = (
         configuration,
         targetKey,
         await fetchImage(sourceUrl, { redirect: 'error' }),
-        fetchImage,
       );
     } catch {
       return err(integrationUnavailable('Could not import the Google profile image'));

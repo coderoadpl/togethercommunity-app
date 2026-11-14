@@ -3,7 +3,7 @@ import { Alert, Box, Button, FormControl, FormLabel, OutlinedInput, Typography }
 import { useMutation } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { navigateFresh } from '../../../lib/navigation.js';
 

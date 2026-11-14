@@ -56,23 +56,28 @@ export const ProductSafetyInfo = ({ compliance, expanded, productTitle }: { comp
   );
 };
 
-export const ProductVariantChips = ({ productId, variants }: { productId: string; variants: PublicProductVariant[] }) => {
+export const ProductVariantChips = ({ productId, variants, label: navLabel, hrefFor, ariaCurrent = 'page', takenProductIds }: {
+  productId: string; variants: PublicProductVariant[]; label?: string;
+  hrefFor?: (variant: PublicProductVariant) => string; ariaCurrent?: 'page' | 'true'; takenProductIds?: ReadonlySet<string>;
+}) => {
   const t = useTranslations();
   if (variants.length < 2) return null;
   const attribution = attributionToSearchParams(attributionFromSearchParams(new URLSearchParams(window.location.search))).toString();
   return (
-    <Stack component="nav" direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }} aria-label={t.productVariants.offerLabel} data-testid="product-variants">
+    <Stack component="nav" direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }} aria-label={navLabel ?? t.productVariants.offerLabel} data-testid="product-variants">
       {variants.map((variant) => {
         const current = variant.productId === productId;
-        const label = variant.soldOut ? `${variant.label} · ${t.productVariants.soldOut}` : variant.label;
-        return current || variant.soldOut ? (
+        const taken = !current && takenProductIds?.has(variant.productId) === true;
+        const suffix = taken ? t.productVariants.inBundle : variant.soldOut ? t.productVariants.soldOut : undefined;
+        const label = suffix === undefined ? variant.label : `${variant.label} · ${suffix}`;
+        return current || variant.soldOut || taken ? (
           <Chip
             key={variant.productId}
             label={label}
             color={current ? 'primary' : 'default'}
             variant={current ? 'filled' : 'outlined'}
-            disabled={variant.soldOut && !current}
-            {...(current ? { 'aria-current': 'page' as const } : {})}
+            disabled={!current && (variant.soldOut || taken)}
+            {...(current ? { 'aria-current': ariaCurrent } : {})}
             data-testid={`product-variant-${variant.productId}`}
           />
         ) : (
@@ -81,7 +86,7 @@ export const ProductVariantChips = ({ productId, variants }: { productId: string
             label={label}
             variant="outlined"
             component="a"
-            href={`/checkout/${encodeURIComponent(variant.slug)}${attribution === '' ? '' : `?${attribution}`}`}
+            href={hrefFor?.(variant) ?? `/checkout/${encodeURIComponent(variant.slug)}${attribution === '' ? '' : `?${attribution}`}`}
             clickable
             data-testid={`product-variant-${variant.productId}`}
           />

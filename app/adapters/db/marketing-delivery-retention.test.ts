@@ -4,7 +4,6 @@ import { sendMarketingMessages } from '#core/server/usecases/marketing-email.js'
 import { dispatchMarketingOutbox } from '#core/server/usecases/marketing-dispatch.js';
 import { recordVerifiedMarketingSnsEnvelope } from '#core/server/usecases/marketing-sns-inbox.js';
 
-import { createContentHash } from '../crypto/content-hash.js';
 import { createDeliveryFixture, deliveryCtx, deliveryWebhookCtx, deliveryWorkerCtx, DELIVERY_NOW } from './marketing-delivery-test-fixture.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { marketingOutbox, marketingSnsInbox, marketingSnsInboxEvents } from './schema.js';
@@ -27,8 +26,7 @@ it('erases queued bodies and recipient-bearing SNS payloads while preserving aud
   await fixture.consent('member@example.test');
   await sendMarketingMessages(deliveryCtx(), [{ to: 'member@example.test', memberId: null, campaignId: null, source: 'api', consentDefinitionId: 'consent', subject: 'Updates', bodyHtml: '<p>Updates</p>', data: {} }], fixture.deps);
   const message = JSON.stringify({ eventType: 'Delivery', mail: { messageId: 'provider-id' }, delivery: { timestamp: DELIVERY_NOW, recipients: ['member@example.test'] } });
-  const rawBody = JSON.stringify({ Message: message });
-  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: { type: 'Notification', topicArn: 'topic-a', messageId: 'sns-id', timestamp: DELIVERY_NOW, message, subscribeUrl: null }, rawBody, bodySha256: createContentHash().sha256(rawBody) }, fixture.deps);
+  await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: { type: 'Notification', topicArn: 'topic-a', messageId: 'sns-id', timestamp: DELIVERY_NOW, message, subscribeUrl: null } }, fixture.deps);
   await fixture.db.transaction((tx) => eraseMarketingDeliveryPayloads(tx, 'delivery-b', { email: 'member@example.test', deletedAt: DELIVERY_NOW }));
   expect((await fixture.db.select().from(marketingOutbox))[0]?.payload).not.toBeNull();
   await fixture.db.transaction((tx) => eraseMarketingDeliveryPayloads(tx, 'delivery-a', { email: 'member@example.test', deletedAt: DELIVERY_NOW }));

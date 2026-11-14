@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { salesLinkVariantSelectionSchema } from './sales-link-variants.js';
 import { attributionSchema } from './attribution.js';
 
 import { languageSchema } from './language.js';
@@ -8,6 +9,7 @@ import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
+  locale: languageSchema.optional(),
 });
 
 export const checkoutSessionInputSchema = z.object({
@@ -15,6 +17,7 @@ export const checkoutSessionInputSchema = z.object({
   productId: z.string().min(1),
   salesLinkId: z.string().min(1).optional(),
   salesLinkSlug: z.string().min(1).optional(),
+  variantSelections: z.array(salesLinkVariantSelectionSchema).max(50).default([]),
   priceId: z.string().min(1).optional(),
   email: z.string().email().optional(),
   language: languageSchema.optional(),

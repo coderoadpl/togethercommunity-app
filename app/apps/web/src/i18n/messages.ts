@@ -3,6 +3,7 @@ import type {
   ImportAuditResourceType,
   LessonBlockType,
   MemberEventType,
+  ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StripeAdoptionRefusal,
   TenantAuditEventKind,
@@ -17,6 +18,34 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  metaCapi: {
+    privacyPolicy: string;
+    fieldsToggle: string;
+    fieldsPurchase: string;
+    fieldsIdentity: string;
+    fieldsBrowser: string;
+    fieldsAttribution: string;
+    decisionError: string;
+    granted: string;
+    denied: string;
+    undecided: string;
+    withdrawn: string;
+    withdraw: string;
+    withdrawHint: string;
+    privacyHeading: string;
+    order: (params: { id: string }) => string;
+    settingsHeading: string;
+    enabled: string;
+    settingsHelp: string;
+    testCode: string;
+    copyHelp: string;
+    copyHeading: string;
+    copyBody: string;
+    copyAccept: string;
+    copyDecline: string;
+    token: string;
+    tokenHelp: string;
+  };
   orderVerification: {
     title: string;
     reference: string;
@@ -352,6 +381,8 @@ export interface Messages {
     messageShippingRequired: string;
     messageSoldOut: string;
     messageFulfilmentConflict: string;
+    messageShipxUnavailable: string;
+    messageShipxRejected: string;
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
@@ -673,6 +704,66 @@ export interface Messages {
     memberShipped: (params: { date: string; carrier: string }) => string;
     memberBeingPrepared: string;
   };
+  shipx: {
+    settingsHeading: string;
+    settingsIntro: string;
+    save: string;
+    environment: string;
+    environments: { sandbox: string; production: string };
+    organizationId: string;
+    token: string;
+    credentialSaved: (params: { preview: string }) => string;
+    credentialMissing: string;
+    clearCredentials: string;
+    senderHeading: string;
+    senderName: string;
+    senderCompany: string;
+    senderEmail: string;
+    senderPhone: string;
+    senderStreet: string;
+    senderBuildingNumber: string;
+    senderCity: string;
+    senderPostCode: string;
+    configured: string;
+    notConfigured: string;
+    parcelTemplateLabel: string;
+    parcelTemplateHint: string;
+    parcelTemplates: { small: string; medium: string; large: string };
+    services: { inpost_locker_standard: string; inpost_courier_standard: string };
+    create: string;
+    creating: string;
+    createConfirmTitle: string;
+    createConfirmBody: (params: { service: string; size: string; email: string }) => string;
+    createConfirmBodyTest: (params: { service: string; size: string }) => string;
+    createConfirm: string;
+    printLabel: string;
+    downloadingLabel: string;
+    shipmentStatus: (params: { status: string }) => string;
+    paymentPending: string;
+    attemptUnconfirmed: string;
+    discardAttempt: string;
+    discardConfirmTitle: string;
+    discardConfirmBody: string;
+    discardClaimConfirmTitle: string;
+    discardClaimConfirmBody: string;
+    discardConfirm: string;
+    unavailableReasons: { credentials_missing: string; sender_missing: string; sandbox_environment: string };
+    errorDetail: (params: { detail: string }) => string;
+    failures: {
+      slow: string;
+      unconfirmed: string;
+      unconfirmedNotFound: string;
+      lostLock: string;
+      leaseHeld: string;
+      manualShipped: (params: { trackingNumber: string }) => string;
+      environmentMismatch: (params: { environment: string; settingsEnvironment: string }) => string;
+      organizationMismatch: string;
+      receiverInvalid: { phone: string; name: string; building_number: string; locker_code: string };
+      rejected: Record<ShipxRejectionError, string>;
+      tokenRejected: string;
+      rejectedStatus: (params: { status: number }) => string;
+    };
+  };
   productSafety: {
     heading: string;
     hint: string;
@@ -694,6 +785,8 @@ export interface Messages {
     instructions: string;
   };
   productVariants: {
+    offerLabelFor: (params: { title: string }) => string;
+    inBundle: string;
     heading: string;
     hint: string;
     group: string;

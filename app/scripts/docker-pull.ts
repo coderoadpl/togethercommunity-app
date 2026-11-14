@@ -30,6 +30,18 @@ const runPull = (command: string, args: string[]): Promise<PullResult> =>
     child.once('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });
 
+export const dockerfileBaseImages = (dockerfile: string): string[] => {
+  const images = new Set<string>();
+  const stages = new Set<string>();
+  for (const match of dockerfile.matchAll(/^\s*FROM\s+(?:--\S+\s+)*(?<image>\S+)(?:\s+AS\s+(?<stage>\S+))?/gimu)) {
+    const image = match.groups?.['image'];
+    const stage = match.groups?.['stage'];
+    if (image !== undefined && !stages.has(image.toLowerCase())) images.add(image);
+    if (stage !== undefined) stages.add(stage.toLowerCase());
+  }
+  return [...images];
+};
+
 export const pullImages = async (images: string[], options: PullOptions = {}): Promise<void> => {
   const { runner = runPull, sleep = setTimeout, random = Math.random } = options;
   for (const image of images) {

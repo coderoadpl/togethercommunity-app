@@ -1,5 +1,13 @@
 export type CoalescedRunner = () => void;
 
+export const createDeferredCoalescedRunner = (
+  run: () => Promise<void>,
+  keepAlive?: (task: Promise<unknown>) => void,
+): CoalescedRunner => createCoalescedRunner(async () => {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await run();
+}, keepAlive);
+
 export const createCoalescedRunner = (
   run: () => Promise<void>,
   keepAlive?: (task: Promise<unknown>) => void,

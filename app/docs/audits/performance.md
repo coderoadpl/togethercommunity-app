@@ -1,5 +1,10 @@
 # Performance audit
 
+## Purpose
+
+Establish honest application-performance evidence and its limits, reviewing
+instrument readiness before making any route-level measurement or budget claim.
+
 ## Run contract
 
 - **Cadence:** review instrument selection quarterly and before go-live. After
@@ -47,4 +52,29 @@ exists, and a static documentation-site measurement would not be a substitute.
 5. Record cold-start behavior, seeded-data scale, authenticated setup, browsers,
    geographic coverage, external embeds, and missing field telemetry as blind
    spots.
+
+## Finding criteria
+
+- Once an owner-selected instrument and protocol exist, a reproducible metric
+  misses the applicable existing budget or regresses under comparable
+  conditions. Cite route/state, environment, instrument/version, samples,
+  aggregation, and lab/field classification; investigate before proposing a fix.
+- A performance claim is unsupported by the measured route/state or instrument,
+  such as claiming field INP from a load-only lab run or substituting static-site
+  or correctness evidence for application measurements.
+- Missing measurement evidence is an instrumentation/readiness gap, not proof
+  that a route is fast or slow. Keep the result `unmeasured` until the owner
+  selects the required protocol; this spec creates no instrument or new gate.
+
+## Known blind spots
+
+- Even passing lab measurements do not establish field Core Web Vitals or user
+  experience across devices, networks, regions, sessions, and data scales.
+  Load-only tooling cannot establish INP.
+- A route/state sample cannot prove unmeasured API/worker latency, cold starts,
+  external-provider behavior, or every authenticated journey. Record those
+  exclusions and missing field telemetry.
+- Until instrumentation is selected, correctness and visual evidence cannot
+  support any performance pass claim. This audit does not select new latency
+  SLOs, budgets, release thresholds, or automated fixes.
 

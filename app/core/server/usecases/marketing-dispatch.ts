@@ -24,6 +24,14 @@ export interface MarketingDispatchDeps extends MarketingDeliveryRepos {
   ids: IdGenerator;
 }
 
+interface MarketingOutboxDispatch {
+  sent: number;
+  skipped: number;
+  failed: number;
+  uncertain: number;
+  credentialsError?: AppError;
+}
+
 export const marketingSendBudget = (input: { ratePerSecond: number; sendSeconds: number; dailyRemaining: number; batchCap: number }): number =>
   Math.max(0, Math.min(Math.floor(0.9 * input.ratePerSecond * input.sendSeconds), Math.floor(input.dailyRemaining), input.batchCap));
 
@@ -59,7 +67,7 @@ export const dispatchMarketingOutbox = async (
   ctx: Ctx,
   input: { workerId: string; deadlineAt: string; maxSends: number; errorThreshold?: number },
   deps: MarketingDispatchDeps,
-): Promise<Result<{ sent: number; skipped: number; failed: number; uncertain: number }, AppError>> => {
+): Promise<Result<MarketingOutboxDispatch, AppError>> => {
   const tenantId = authorizeRequiredTenant(ctx, 'marketing:campaign:dispatch');
   if (!tenantId.ok) return tenantId;
   const totals = { sent: 0, skipped: 0, failed: 0, uncertain: 0 };
@@ -91,6 +99,7 @@ export const dispatchMarketingOutbox = async (
     if (settings === null || !tenantSesBroadcastsReady(settings) || !credentials.ok || settings.quotaRefreshedAt === null) {
       const deferred = await finish(tenantId.value, row, send, deps, { status: 'retry', error: 'Tenant SES is not ready' });
       if (!deferred.ok) return deferred;
+      if (!credentials.ok) return ok({ ...totals, credentialsError: credentials.error });
       break;
     }
     if (send.contactId != null) {

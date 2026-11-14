@@ -1,3 +1,4 @@
+import type { Language } from '#core/domain/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
@@ -349,6 +350,7 @@ const bunnyScopes = {
 
 const tenantSettingsScopes = {
   all: () => ['tenant-settings'] as const,
+  member: () => ['tenant-settings', 'member'] as const,
 };
 
 const tenantRoutingScopes = {
@@ -663,10 +665,10 @@ export const publicSpaceEventQuery = (api: ApiClient, input: PublicSpaceEventInp
     call: ({ signal }) => api.publicSpaceEvent(input, signal),
   });
 
-export const publicCheckoutSessionStatusQuery = (api: ApiClient, sessionId: string) =>
+export const publicCheckoutSessionStatusQuery = (api: ApiClient, sessionId: string, locale?: Language) =>
   defineQuery({
-    queryKey: ['checkout-session-status', sessionId] as const,
-    call: ({ signal }) => api.publicCheckoutSessionStatus(sessionId, signal),
+    queryKey: ['checkout-session-status', sessionId, locale ?? 'en'] as const,
+    call: ({ signal }) => api.publicCheckoutSessionStatus(sessionId, signal, locale),
   });
 
 export const publicPaymentConfigQuery = (api: ApiClient) =>
@@ -1773,6 +1775,12 @@ export const testBunnyConnectionMutation = (api: ApiClient) =>
   });
 
 export const tenantSecretsInvalidates = () => ({ queryKey: tenantSecretsScopes.lists() });
+
+export const memberSettingsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantSettingsScopes.member(),
+    call: ({ signal }) => api.getMemberSettings(signal),
+  });
 
 export const tenantSettingsQuery = (api: ApiClient) =>
   defineQuery({

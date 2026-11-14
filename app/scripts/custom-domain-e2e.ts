@@ -4,17 +4,25 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { en } from '../apps/web/src/i18n/en.js';
 
+import { generate } from 'otplib';
 import pg from 'pg';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
 import { z } from 'zod';
 
-import { BETTER_AUTH_MAGIC_LINK_PATH } from '#adapters/auth/create-auth.js';
+import {
+  AUTH_POLICY,
+  BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_SIGN_OUT_PATH,
+  BETTER_AUTH_TWO_FACTOR_TOTP_PATH,
+} from '#adapters/auth/create-auth.js';
+import { AUTH_EMAIL_VERIFICATION_PATH } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
 
 import {
   bootServer,
+  delay,
   ephemeralPort,
   killServer,
   rootDir,
@@ -31,6 +39,7 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const PLATFORM_BASE_DOMAIN = 'platform.localhost';
 const CUSTOM_HOST = `course.acme.${PLATFORM_BASE_DOMAIN}`;
+const CUSTOM_ORIGIN = `https://${CUSTOM_HOST}`;
 const STUDIO_CUSTOM_HOST = `files.studio.${PLATFORM_BASE_DOMAIN}`;
 const TENANT_HOST = `acme.${PLATFORM_BASE_DOMAIN}`;
 const CREATOR_PASSWORD = 'demo-password-15';
@@ -66,6 +75,16 @@ const devMagicLinkSchema = z.object({
 });
 
 const authErrorSchema = z.object({ code: z.string() });
+
+const devEmailSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({ email: z.object({ text: z.string() }).nullable() }),
+});
+
+const verifiedMeSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({ email: z.string(), emailVerified: z.boolean() }),
+});
 
 const meSchema = z.object({
   ok: z.literal(true),
@@ -258,11 +277,6 @@ const followMagicLinkWithHost = async (
   return requestWithHost(connectUrl, `${url.pathname}${url.search}`, CUSTOM_HOST);
 };
 
-const customHttpsOrigin = (connectUrl: string): string => {
-  const port = new URL(connectUrl).port;
-  return port === '' ? `https://${CUSTOM_HOST}` : `https://${CUSTOM_HOST}:${port}`;
-};
-
 const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -407,7 +421,7 @@ const runCustomDomainMagicLink = async (
   connectUrl: string,
   tenantBaseUrl: string,
 ): Promise<void> => {
-  const customOrigin = customHttpsOrigin(connectUrl);
+  const customOrigin = CUSTOM_ORIGIN;
   const callbackURL = `${customOrigin}/login?verification=verified`;
   const request = await postMagicLink(connectUrl, {
     host: CUSTOM_HOST,
@@ -452,7 +466,7 @@ const runCustomDomainMagicLinkCrossOriginRejected = async (
 ): Promise<void> => {
   const response = await postMagicLink(connectUrl, {
     host: CUSTOM_HOST,
-    origin: customHttpsOrigin(connectUrl),
+    origin: CUSTOM_ORIGIN,
     email: SMOKE_TENANT_MEMBER_EMAIL,
     callbackURL: `${tenantBaseUrl}/login?verification=verified`,
   });
@@ -509,6 +523,197 @@ const runCustomDomainReturnTo = async (
       `custom-domain returnTo landed at ${page.url()}`,
     );
     console.log('custom-domain-e2e: custom-domain-return-to OK');
+    await context.close();
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
+const readVerificationLink = async (connectUrl: string, email: string): Promise<URL> => {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const response = await fetch(new URL(`${API_PATHS.devEmail}?to=${encodeURIComponent(email)}`, connectUrl));
+    assert(response.ok, `dev email read failed (HTTP ${response.status})`);
+    const parsed = devEmailSchema.parse(await response.json());
+    const candidate = parsed.data.email?.text.match(/https?:\/\/\S+/gu)
+      ?.map((match) => new URL(match))
+      .find((url) => url.pathname === AUTH_EMAIL_VERIFICATION_PATH);
+    if (candidate !== undefined) return candidate;
+    await delay(100);
+  }
+  throw new E2eFailure(`no verification email arrived for ${email}`);
+};
+
+const currentTotp = async (secret: string): Promise<string> => {
+  const periodMilliseconds = AUTH_POLICY.totpPeriodSeconds * 1000;
+  const remainingMilliseconds = periodMilliseconds - (Date.now() % periodMilliseconds);
+  if (remainingMilliseconds < 5000) await delay(remainingMilliseconds + 100);
+  return generate({ secret, digits: AUTH_POLICY.totpDigits, period: AUTH_POLICY.totpPeriodSeconds });
+};
+
+const readIdentity = async (context: BrowserContext, customBaseUrl: string) => {
+  const response = await context.request.get(`${customBaseUrl}${API_PATHS.me}`);
+  if (response.status() === 401) return null;
+  assert(response.status() === 200, `custom-host /api/me returned HTTP ${response.status()}`);
+  return verifiedMeSchema.parse(await response.json()).data;
+};
+
+const markEmailUnverified = async (databaseUrl: string, email: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const result = await client.query('UPDATE "user" SET email_verified = false WHERE email = $1', [email]);
+    assert(result.rowCount === 1, `could not reset email verification for ${email}`);
+  } finally {
+    await client.end();
+  }
+};
+
+const runCustomDomainVerificationTwoFactor = async (
+  connectUrl: string,
+  customBaseUrl: string,
+  tenantBaseUrl: string,
+): Promise<void> => {
+  const email = 'verification-two-factor-e2e@together.dev';
+  const password = 'verification-password-15';
+  const returnTo = '/account?tab=security';
+  const customHostOrigin = new URL(customBaseUrl).origin;
+  const challengeUrl = new URL(
+    `/login?${new URLSearchParams({ twoFactor: 'required', verification: 'verified', returnTo }).toString()}`,
+    customBaseUrl,
+  ).toString();
+  let browser: Browser | null = null;
+  try {
+    browser = await launchBrowser();
+    const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
+    const page = await context.newPage();
+
+    await page.goto(`${customBaseUrl}/register?${new URLSearchParams({ returnTo }).toString()}`, { waitUntil: 'networkidle' });
+    await page.getByLabel(en.auth.nameLabel, { exact: true }).fill('Verification Two-Factor');
+    await page.getByLabel(en.auth.emailLabel, { exact: true }).fill(email);
+    await page.getByLabel(en.auth.passwordLabel, { exact: true }).fill(password);
+    await page.getByRole('button', { name: en.auth.createAccount, exact: true }).click();
+    await page.getByRole('heading', { name: en.auth.registeredTitle, exact: true }).waitFor({
+      state: 'visible', timeout: 20000,
+    });
+    const registered = await readIdentity(context, customBaseUrl);
+    assert(registered?.email === email, 'custom-host sign-up did not create a session');
+    assert(!registered.emailVerified, 'custom-host sign-up was verified before the link was opened');
+    const link = await readVerificationLink(connectUrl, email);
+    assert(link.origin === CUSTOM_ORIGIN, `verification link origin was ${link.origin}, expected ${CUSTOM_ORIGIN}`);
+    const callback = link.searchParams.get('callbackURL');
+    assert(
+      callback !== null && new URL(callback).origin === customHostOrigin,
+      `verification callback left the custom host: ${String(callback)}`,
+    );
+    const callbackUrl = new URL(callback);
+    assert(
+      callbackUrl.pathname === '/login'
+        && callbackUrl.searchParams.get('verification') === 'verified'
+        && callbackUrl.searchParams.get('returnTo') === returnTo,
+      `verification callback did not carry the sign-up returnTo: ${callback}`,
+    );
+
+    await page.goto(`${customBaseUrl}${returnTo}`, { waitUntil: 'networkidle' });
+    await page.getByTestId('enable-2fa-open').click();
+    await page.getByTestId('enable-2fa-password').fill(password);
+    await page.getByTestId('enable-2fa').click();
+    await page.getByTestId('two-factor-manual-setup').click();
+    const totpUri = await page.getByTestId('totp-uri').textContent();
+    assert(totpUri !== null, 'two-factor enrollment did not return an authenticator URI');
+    const secret = new URL(totpUri).searchParams.get('secret');
+    assert(secret !== null, 'two-factor enrollment did not return an authenticator secret');
+    await page.getByTestId('two-factor-next').click();
+    await page.getByTestId('verify-totp-code').fill(await currentTotp(secret));
+    await page.getByTestId('backup-codes').waitFor({ state: 'visible', timeout: 20000 });
+    await page.getByRole('checkbox', { name: en.security.backupCodesSaved }).check();
+    await page.getByTestId('two-factor-finish').click();
+    await page.getByTestId('two-factor-done-close').click();
+    await page.getByTestId('two-factor-manage').waitFor({ state: 'visible', timeout: 20000 });
+
+    const signOut = async (): Promise<void> => {
+      const signedOut = await context.request.post(`${customBaseUrl}${BETTER_AUTH_SIGN_OUT_PATH}`, {
+        headers: { origin: customHostOrigin },
+        data: {},
+      });
+      assert(signedOut.ok(), `custom-host sign-out failed (HTTP ${signedOut.status()})`);
+      assert((await sessionCookies(context)).length === 0, 'sign-out left a session cookie behind');
+      assert(await readIdentity(context, customBaseUrl) === null, 'sign-out left the session usable');
+    };
+
+    const openLinkToChallenge = async (callbackURL: string): Promise<void> => {
+      const browserLink = new URL(`${link.pathname}${link.search}`, customBaseUrl);
+      browserLink.searchParams.set('callbackURL', callbackURL);
+      const verificationResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === AUTH_EMAIL_VERIFICATION_PATH);
+      await page.goto(browserLink.toString(), { waitUntil: 'networkidle' });
+      const verified = await verificationResponse;
+      assert(verified.status() === 302, `verification link with callback ${callbackURL} returned HTTP ${verified.status()}`);
+      assert(
+        verified.headers()['location'] === challengeUrl,
+        `verification link with callback ${callbackURL} redirected to ${String(verified.headers()['location'])} instead of ${challengeUrl}`,
+      );
+      await page.waitForURL(
+        (url) =>
+          url.origin === customHostOrigin
+          && url.pathname === '/login'
+          && url.searchParams.get('twoFactor') === 'required'
+          && url.searchParams.get('verification') === 'verified'
+          && url.searchParams.get('returnTo') === returnTo,
+        { timeout: 20000 },
+      );
+      await page.getByTestId('two-factor-challenge').waitFor({ state: 'visible', timeout: 20000 });
+
+      assert((await sessionCookies(context)).length === 0, 'verification set a session cookie before the TOTP step');
+      assert(await readIdentity(context, customBaseUrl) === null, 'verification signed in before the TOTP step');
+      const challengeCookies = (await context.cookies()).filter((cookie) => cookie.name.endsWith('two_factor'));
+      assert(
+        challengeCookies.length === 1 && challengeCookies[0]?.domain === CUSTOM_HOST,
+        `the two-factor challenge cookie was not host-only on the custom host: ${JSON.stringify(challengeCookies)}`,
+      );
+    };
+
+    const completeChallenge = async (): Promise<void> => {
+      await page.getByTestId('two-factor-code').fill(await currentTotp(secret));
+      const completion = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === BETTER_AUTH_TWO_FACTOR_TOTP_PATH);
+      await page.getByTestId('verify-login-totp').click();
+      const completed = await completion;
+      assert(completed.status() === 200, `TOTP completion returned HTTP ${completed.status()}`);
+      try {
+        await page.waitForURL(
+          (url) =>
+            url.origin === customHostOrigin
+            && url.pathname === '/account'
+            && url.searchParams.get('tab') === 'security',
+          { timeout: 20000 },
+        );
+      } catch (cause) {
+        throw new E2eFailure(`TOTP completion did not continue to ${returnTo}: landed at ${page.url()}\n${String(cause)}`);
+      }
+      const identity = await readIdentity(context, customBaseUrl);
+      assert(identity?.email === email, 'TOTP completion did not sign the verified account in');
+      assert(identity.emailVerified, 'the session after TOTP completion is not verified');
+      const cookies = await sessionCookies(context);
+      assert(
+        cookies.length === 1 && cookies[0]?.domain === CUSTOM_HOST,
+        `the session cookie after TOTP completion escaped the custom host: ${JSON.stringify(cookies.map((cookie) => cookie.domain))}`,
+      );
+    };
+
+    await signOut();
+    await openLinkToChallenge(callback);
+    await completeChallenge();
+    console.log('custom-domain-e2e: email verification with two-factor challenged on the custom host OK');
+
+    await signOut();
+    // A verification link signs in, and so challenges, only while the account is still unverified.
+    await markEmailUnverified(e2eDatabaseUrl, email);
+    const tenantCallback = new URL(`/login?${new URLSearchParams({ verification: 'verified', returnTo }).toString()}`, tenantBaseUrl);
+    await openLinkToChallenge(tenantCallback.toString());
+    await completeChallenge();
+    console.log('custom-domain-e2e: a workspace-subdomain verification callback stays challenged on the custom host OK');
     await context.close();
   } finally {
     if (browser) await browser.close();
@@ -713,13 +918,13 @@ try {
   await runCustomDomainMagicLink(connectUrl, tenantBaseUrl);
   await runCustomDomainMagicLinkCrossOriginRejected(connectUrl, tenantBaseUrl);
   await runCustomDomainReturnTo(connectUrl, customBaseUrl);
+  await runCustomDomainVerificationTwoFactor(connectUrl, customBaseUrl, tenantBaseUrl);
   const studioBaseUrl = `http://${STUDIO_CUSTOM_HOST}:${port}`;
   const studioOrigin = `https://${STUDIO_CUSTOM_HOST}`;
   await runWelcomePurchases({
     connectUrl,
     webBaseUrl: studioBaseUrl,
     canonicalOrigin: studioOrigin,
-    actionOrigin: `${studioOrigin}:${port}`,
     verify: async (context, link) => {
       const url = new URL(link);
       const verified = await requestWithHost(connectUrl, `${url.pathname}${url.search}`, STUDIO_CUSTOM_HOST);

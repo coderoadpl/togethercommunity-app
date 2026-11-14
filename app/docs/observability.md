@@ -403,6 +403,11 @@ through the gate and, when it may page, sends one SMS through
 `.github/actions/alert-sms` — the credentials `prod-smoke.yml` uses — carrying
 `Together STAGING smoke FAILED: <failing checks>`.
 
+The skip lives in the workflow, not in the script: `pnpm run smoke:staging`
+sends the bypass header only when `VERCEL_AUTOMATION_BYPASS_SECRET` is set, so
+it can also probe a staging deployment that sits behind no deployment
+protection.
+
 ### Repository secret and variables the owner must add
 
 | Name | Kind | Purpose |

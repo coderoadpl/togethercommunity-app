@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   capabilitiesForApiKey,
@@ -552,4 +552,46 @@ it('rejects new progress references to an archived course until restored', async
   expect(await importM2mUsers(ctx, apiKey, 'progress', input, h.deps)).toMatchObject({
     ok: true, value: { summary: { created: 1 } },
   });
+});
+
+
+it('reads modules and repeated references once per progress write call and refreshes the next call', async () => {
+  const h = harness();
+  h.members.set('member-native', {
+    id: 'member-native', tenantId: TENANT_ID, userId: 'user-native',
+    email: 'native@example.test', displayName: 'Native', legacyId: null, createdAt: NOW,
+  });
+  for (const [kind, key] of [
+    ['member', 'member-native'], ['course', 'course-native'],
+    ['lesson', 'lesson-native'], ['module', 'module-native'],
+  ] as const) {
+    h.audits.set(`${kind}:${key}`, {
+      id: `audit-${kind}`, tenantId: TENANT_ID, apiKeyId: apiKey.id, kind,
+      importKey: key, resourceId: key, action: 'created', payloadHash: kind, at: NOW,
+    });
+  }
+  const modules = vi.fn(h.deps.modules.list);
+  const audit = vi.fn(h.deps.importAuditEvents.findLatestByImportKey);
+  const clock = vi.fn(() => NOW);
+  h.deps.modules.list = modules;
+  h.deps.importAuditEvents.findLatestByImportKey = audit;
+  h.deps.clock.nowIso = clock;
+  const record = {
+    importKey: 'progress', memberKey: 'member-native', courseKey: 'course-native',
+    completedLessonKeys: ['lesson-native'], lastViewedLessonKey: 'lesson-native',
+    lastViewedModuleKey: 'module-native', lastViewedChapterId: 'chapter-native', updatedAt: NOW,
+  };
+  expect(await importM2mUsers(ctx, apiKey, 'progress', {
+    datasetVersion: 'together-import/v1', records: Array.from({ length: 20 }, () => record),
+  }, h.deps)).toMatchObject({ ok: true, value: { summary: { created: 1, unchanged: 19, failed: 0 } } });
+  expect(modules).toHaveBeenCalledTimes(1);
+  expect(clock).toHaveBeenCalledTimes(1);
+  for (const kind of ['member', 'course', 'lesson', 'module']) {
+    expect(audit.mock.calls.filter(([, candidate]) => candidate === kind)).toHaveLength(1);
+  }
+  modules.mockResolvedValue([]);
+  expect(await importM2mUsers(ctx, apiKey, 'progress', {
+    datasetVersion: 'together-import/v1', records: [record],
+  }, h.deps)).toMatchObject({ ok: true, value: { summary: { failed: 1 } } });
+  expect(modules).toHaveBeenCalledTimes(2);
 });

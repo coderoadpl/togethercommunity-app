@@ -1052,3 +1052,68 @@ it.each(['succeeds', 'fails'] as const)('expires the session and releases the di
   expect(h.deps.logger.error).toHaveBeenCalledTimes(expiryOutcome === 'fails' ? 1 : 0);
   expect(held.stock.levels.get(tenant.id, 'physical-1')).toMatchObject({ onHand: 1, reserved: 0 });
 });
+
+const variantBundleCheckout = () => {
+  const h = bundleCheckout();
+  const first = h.products[0];
+  if (first === undefined) throw new Error('Missing base product');
+  first.variantGroup = 'courses';
+  const sibling: Product = { ...first, id: 'variant-white', title: 'White edition', priceCents: 6000 };
+  h.products.push(sibling);
+  const stock = createStockRepositoryFake();
+  stock.track(tenant.id, first.id, 0);
+  stock.track(tenant.id, sibling.id, 3);
+  stock.track(tenant.id, 'physical-1', 2);
+  h.deps.stock = stock.repository;
+  const reserve = vi.spyOn(stock.repository, 'reserve');
+  const findById = vi.spyOn(h.deps.products, 'findById');
+  return { ...h, first, sibling, reserve, findById, variantSelections: [{ productId: first.id, variantProductId: sibling.id }] };
+};
+
+it('uses a swapped first line for the payment identity, ordered snapshot, hold, amount and cancel URL', async () => {
+  const h = variantBundleCheckout();
+  const { createCheckoutSession } = await import('./checkout.js');
+  expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+    productId: h.first.id, salesLinkSlug: h.link.slug, variantSelections: h.variantSelections,
+  }, h.deps)).toMatchObject({ ok: true });
+  expect(h.calls[0]).toMatchObject({ productId: h.sibling.id, productName: h.sibling.title, priceCents: 8100,
+    lines: [{ productId: h.sibling.id }, { productId: 'physical-1' }] });
+  expect(h.calls[0]?.cancelUrl).toContain(`&variant=${h.first.id}.${h.sibling.id}`);
+  expect(h.snapshots[0]?.lines.map((line) => line.productId)).toEqual([h.sibling.id, 'physical-1']);
+  expect(h.reserve).toHaveBeenCalledOnce();
+  expect(h.reserve.mock.calls[0]?.[1]).toMatchObject({ productIds: [h.sibling.id, 'physical-1'] });
+  expect(h.findById.mock.calls.every(([tenantId]) => tenantId === tenant.id)).toBe(true);
+});
+
+it.each(['base', 'group', 'no-group', 'unpublished', 'tenant', 'membership', 'type', 'delivery', 'repeated', 'duplicate', 'no-link', 'currency', 'vat', 'ambiguous'])('rejects invalid bundle variant %s before holding stock or capturing a snapshot', async (reason) => {
+  const h = variantBundleCheckout();
+  if (reason === 'base') h.variantSelections[0] = { productId: 'foreign-base', variantProductId: h.sibling.id };
+  if (reason === 'group') h.sibling.variantGroup = 'another';
+  if (reason === 'no-group') h.sibling.variantGroup = null;
+  if (reason === 'unpublished') h.sibling.published = false;
+  if (reason === 'tenant') h.products.splice(2, 1);
+  if (reason === 'membership') h.sibling.type = 'membership';
+  if (reason === 'type') h.sibling.type = 'physical';
+  if (reason === 'delivery') h.sibling.deliveryMethod = 'shipping';
+  if (reason === 'repeated') h.variantSelections.push(...h.variantSelections);
+  if (reason === 'duplicate') {
+    h.link.productIds = [h.first.id, h.sibling.id];
+  }
+  if (reason === 'currency') h.sibling.currency = 'EUR';
+  if (reason === 'vat') h.sibling.vatRate = null;
+  if (reason === 'ambiguous') {
+    const list = h.deps.prices.listActiveByProducts;
+    h.deps.prices.listActiveByProducts = async (tenantId, ids) => {
+      const prices = await list(tenantId, ids);
+      const price = prices.find((item) => item.productId === h.sibling.id);
+      return price === undefined ? prices : [...prices, { ...price, id: 'second-price' }];
+    };
+  }
+  const { createCheckoutSession } = await import('./checkout.js');
+  expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+    productId: h.first.id, ...(reason === 'no-link' ? {} : { salesLinkSlug: h.link.slug }), variantSelections: h.variantSelections,
+  }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid sales link selection' } });
+  expect(h.reserve).not.toHaveBeenCalled();
+  expect(h.snapshots).toHaveLength(0);
+  expect(h.calls).toHaveLength(0);
+});

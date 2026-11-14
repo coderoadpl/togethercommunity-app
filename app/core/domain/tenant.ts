@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { metaCapiSettingsShape } from './meta-capi-settings.js';
 
 import { analyticsTagIdSchema, analyticsMetaPixelIdSchema, analyticsConsentCookieNameSchema, analyticsConsentCookieValueSchema } from './checkout-analytics.js';
 
@@ -155,6 +156,7 @@ export const tenantSettingsSchema = z.object({
   analyticsConsentCookieName: analyticsConsentCookieNameSchema.nullable().optional(),
   analyticsConsentCookieValue: analyticsConsentCookieValueSchema.nullable().optional(),
   analyticsLoadWithoutConsent: z.boolean().optional(),
+  ...metaCapiSettingsShape,
   checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
   name: tenantSchema.shape.name,
@@ -224,6 +226,7 @@ export const updateTenantSettingsInputSchema = z.object({
   analyticsConsentCookieName: analyticsConsentCookieNameSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
   analyticsConsentCookieValue: analyticsConsentCookieValueSchema.nullable().transform((value) => value === '' ? null : value).optional(),
   analyticsLoadWithoutConsent: z.boolean().optional(),
+  ...metaCapiSettingsShape,
   checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.optional(),
   name: tenantSchema.shape.name.optional(),

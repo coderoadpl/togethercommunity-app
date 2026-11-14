@@ -5,7 +5,6 @@ import {
   courseLessonSchema,
   courseModuleSchema,
   courseSchema,
-  importAuditEventSchema,
   productSchema,
 } from '#core/domain/index.js';
 import type { ImportContentMutation, ImportContentRepository } from '#core/server/index.js';
@@ -13,41 +12,15 @@ import type { ImportContentMutation, ImportContentRepository } from '#core/serve
 import type { Db } from './client.js';
 import { createLessonEditionRepository } from './lesson-editions.js';
 import { insertEntityVersion } from './entity-versions.js';
+import { insertImportAuditEvent } from './import-audit.js';
 import { uniqueViolation, uniqueViolationIn } from './pg-errors.js';
 import {
   entityVersions,
   courseLessons,
   courseModules,
   courses,
-  importAuditEvents,
   products,
-  tenantApiKeys,
 } from './schema.js';
-
-const insertAuditEvent = async (
-  executor: Db,
-  tenantId: string,
-  mutation: ImportContentMutation,
-): Promise<void> => {
-  const event = importAuditEventSchema.parse(mutation.event);
-  const [owned] = await executor
-    .select({ id: tenantApiKeys.id })
-    .from(tenantApiKeys)
-    .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.id, event.apiKeyId)))
-    .limit(1);
-  if (owned === undefined) throw new Error('Import audit API key does not belong to tenant');
-  await executor.insert(importAuditEvents).values({
-    id: event.id,
-    tenantId,
-    apiKeyId: event.apiKeyId,
-    kind: event.kind,
-    importKey: event.importKey,
-    resourceId: event.resourceId,
-    action: event.action,
-    payloadHash: event.payloadHash,
-    at: event.at,
-  });
-};
 
 const createResource = async (
   executor: Db,
@@ -190,7 +163,7 @@ export const createImportContentRepository = (db: Db): ImportContentRepository =
             if (marked === 'conflict') throw new EditionConflictError('Concurrent edition marking');
           }
         }
-        await insertAuditEvent(tx, tenantId, mutation);
+        await insertImportAuditEvent(tx, tenantId, mutation.event);
         return 'saved';
       });
     } catch (cause) {

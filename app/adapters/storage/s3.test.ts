@@ -52,12 +52,12 @@ const fakeBucket = (
     dispatcher?: unknown;
     redirect?: 'error';
   }> = [];
-  const objects = new Map<string, string>();
+  const objects = new Map<string, string | Uint8Array>();
   const fetchStorage = async (
     url: string,
     init: {
       method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
-      body?: string;
+      body?: string | Uint8Array;
       headers?: Record<string, string>;
       dispatcher?: unknown;
       redirect?: 'error';
@@ -91,7 +91,7 @@ const fakeBucket = (
       const stored = objects.get(path);
       return stored === undefined
         ? storageResponse(404, '<Error><Code>NoSuchKey</Code></Error>')
-        : storageResponse(200, stored);
+        : storageResponse(200, typeof stored === 'string' ? stored : new TextDecoder().decode(stored));
     }
     if (init.method === 'HEAD') {
       const stored = objects.get(path);
@@ -742,5 +742,61 @@ describe('bounded object reads', () => {
     });
     expect((await storage.getObject(credentials, { maxBytes: 3 })).ok).toBe(size === 3);
     expect(cancel).toHaveBeenCalledTimes(size > 3 ? 1 : 0);
+  });
+});
+
+describe('image publication storage operations', () => {
+  const credentials = { url: 'https://storage.example.test/bucket/candidate', accessKeyId: 'key', secretAccessKey: 'secret', region: 'us-east-1' };
+
+  it.each([
+    ['bytes 0-2/3', 206, true],
+    ['bytes 0-2/30', 206, false],
+    ['bytes 1-3/4', 206, false],
+    [null, 206, false],
+    [null, 200, true],
+  ] as const)('requires a complete bounded response for %s (%s)', async (range, status, accepted) => {
+    let read = false;
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        expect(init.headers?.['Range']).toBe('bytes=0-3');
+        expect(init.headers?.['Accept-Encoding']).toBe('identity');
+        return {
+          ok: true, status,
+          headers: { get: (name) => name === 'content-length' ? '3' : name === 'content-range' ? range : null },
+          body: {
+            cancel: async () => undefined,
+            getReader: () => ({
+              read: async () => {
+                if (read) return { done: true };
+                read = true;
+                return { done: false, value: new Uint8Array([1, 2, 3]) };
+              },
+              cancel: async () => undefined,
+              releaseLock: () => undefined,
+            }),
+          },
+          text: async () => '',
+        };
+      },
+    });
+    expect((await storage.getObject(credentials, { maxBytes: 3, range: true })).ok).toBe(accepted);
+    expect(read).toBe(accepted);
+  });
+
+  it.each([200, 403])('sends exact publication bytes with server content type and handles status %s', async (status) => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (url, init) => {
+        expect(new URL(url).searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/u);
+        expect(init.method).toBe('PUT');
+        expect(init.body).toEqual(bytes);
+        expect(init.headers).toEqual({ 'content-type': 'image/png' });
+        expect(init.redirect).toBe('error');
+        return storageResponse(status, '');
+      },
+    });
+    expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
 });

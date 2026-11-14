@@ -10,7 +10,7 @@ export const marketingContactDeps = (overrides: Partial<MarketingContactDeps> = 
   directoryEvents: { append: unexpected, list: unexpected },
   definitions: { create: unexpected, findById: unexpected, list: unexpected, update: unexpected, appendVersion: unexpected, listVersions: unexpected },
   consents: { record: unexpected, listByEmail: unexpected, latestByEmail: unexpected, findById: unexpected, purgeStalePending: unexpected },
-  suppressions: { record: unexpected, findActive: unexpected, isSuppressed: unexpected, lift: unexpected, findById: unexpected, list: unexpected },
+  suppressions: { isErased: unexpected, record: unexpected, findActive: unexpected, isSuppressed: unexpected, lift: unexpected, findById: unexpected, list: unexpected },
   memberSync: { next: unexpected, complete: unexpected },
   transaction: { run: unexpected }, clock: { nowIso: () => '2026-09-08T10:00:00.000Z' }, ids: { nextId: () => 'generated-id' }, hmac: { compute: unexpected }, contentHash: { sha256: (value) => typeof value === 'string' ? value : new TextDecoder().decode(value) },
   ...overrides,

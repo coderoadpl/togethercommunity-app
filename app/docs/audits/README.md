@@ -36,6 +36,16 @@ The 2026-08-04 email-verification review is recorded in both the
 
 ## Operating doctrine
 
+- Before an audit specification is used, it must state its purpose, reference
+  standard (or explicit repository-owned reference), method, finding criteria,
+  and known blind spots: what even a passing audit cannot establish. Apply this
+  requirement to every new or changed specification.
+- Admit an observation as a finding only when it meets that specification's
+  finding criteria and has evidence within the declared scope. Record missing
+  evidence as unverified, not as a pass or an inferred defect.
+- Add a new audit type only when it answers a question the current roster
+  structurally cannot answer. A new tool or another sample of the same question
+  does not by itself justify a new specification.
 - Run the tool-performed checks named by the spec, preserving their raw output
   or a stable artifact reference. Do not substitute one tool for a manual step.
 - Follow every manual checklist and state which routes, roles, languages, and

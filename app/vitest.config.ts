@@ -34,6 +34,7 @@ export default defineConfig({
         'adapters/db/reseed.ts',
         'adapters/db/reseed-run.ts',
         'adapters/db/migrate.ts',
+        'adapters/db/test-database-setup.ts',
         'scripts/coverage-layers.ts',
         'scripts/coverage-report.ts',
         'scripts/coverage-check.ts',
@@ -45,6 +46,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          globalSetup: ['adapters/db/test-database-setup.ts'],
           hookTimeout: 60000,
           include: [
             'core/**/*.test.ts',

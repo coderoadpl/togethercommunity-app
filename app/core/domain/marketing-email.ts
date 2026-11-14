@@ -9,6 +9,8 @@ import { err, ok, type Result } from './result.js';
 
 export const isoDateTimeSchema = z.string().datetime();
 
+export const TRANSACTIONAL_SES_CONFIGURATION_FAILURE = 'Transactional SES configuration requires repair: ';
+
 export const transactionalSesConfigurationSetName = (
   marketingConfigurationSet: string,
 ): string => `${marketingConfigurationSet.slice(0, 50)}-transactional`;

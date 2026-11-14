@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   ok,
   isShippingLine,
+  orderProviderIdentifiers,
   orderShippingFrom,
   productLines,
   resolveEmailLanguage,
@@ -299,6 +300,7 @@ const providerObjectIdsForCheckout = (
   event: PaymentWebhookEvent,
 ): Record<string, string> => ({
   checkoutSession: event.objectId ?? '',
+  ...(event.checkoutSession?.customerCountry ? { customerCountry: event.checkoutSession.customerCountry } : {}),
   ...(event.checkoutSession?.paymentIntentId == null
     ? {}
     : { paymentIntent: event.checkoutSession.paymentIntentId }),
@@ -965,7 +967,7 @@ const paymentModeMatches = async (
     ...(event.adjustment?.paymentIntentId == null ? {} : { paymentIntent: event.adjustment.paymentIntentId }),
     ...(event.adjustment?.chargeId == null ? {} : { charge: event.adjustment.chargeId }),
   };
-  const correlated = Object.fromEntries(Object.entries(ids).filter(([key]) => key !== 'subscription'));
+  const correlated = Object.fromEntries(Object.entries(orderProviderIdentifiers(ids)).filter(([key]) => key !== 'subscription'));
   const findOrder = async (searched: StripeMode): Promise<Order | null> =>
     Object.keys(correlated).length === 0
       ? null

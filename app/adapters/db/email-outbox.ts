@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 
 import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, REDACTED_AUTH_EMAIL_KINDS, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformAuthSendLog, PlatformTransactionalPool } from '#core/server/index.js';
@@ -149,7 +149,7 @@ export const createEmailOutboxRepository = (
     try {
       const payload = emailOutboxPayloadSchema.parse(input.payload);
       await db.transaction(async (tx) => {
-        await tx.insert(emailOutbox).values({
+        const inserted = await tx.insert(emailOutbox).values({
           id: input.id,
           tenantId: input.tenantId,
           kind: payload.kind,
@@ -159,8 +159,20 @@ export const createEmailOutboxRepository = (
           createdAt: input.now,
           sourceApp: input.sourceApp ?? null,
           tenantTransportRequired: input.tenantTransportRequired ?? false,
-        });
-        if (input.tenantId !== null) {
+        }).onConflictDoNothing({ target: emailOutbox.id }).returning({ id: emailOutbox.id });
+        if (inserted.length === 0) {
+          const [existing] = await tx.select({ id: emailOutbox.id }).from(emailOutbox).where(and(
+            eq(emailOutbox.id, input.id),
+            input.tenantId === null ? isNull(emailOutbox.tenantId) : eq(emailOutbox.tenantId, input.tenantId),
+            input.onConflict === 'keep-existing' ? undefined : and(
+              eq(emailOutbox.kind, payload.kind), eq(emailOutbox.to, input.to), eq(emailOutbox.payload, payload),
+              input.sourceApp == null ? isNull(emailOutbox.sourceApp) : eq(emailOutbox.sourceApp, input.sourceApp),
+              eq(emailOutbox.tenantTransportRequired, input.tenantTransportRequired ?? false),
+            ),
+          )).limit(1);
+          if (existing === undefined) throw new Error('Email id is already used for a different message');
+        }
+        if (inserted.length > 0 && input.tenantId !== null) {
           await tx.insert(emailEvents).values(emailEventSchema.parse({
             id: `${input.id}:queued`,
             tenantId: input.tenantId,

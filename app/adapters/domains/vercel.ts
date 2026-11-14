@@ -36,7 +36,7 @@ const projectDomainSchema = z.object({
 });
 
 const domainConfigSchema = z.object({
-  misconfigured: z.boolean().default(false),
+  misconfigured: z.boolean(),
 });
 
 const errorEnvelopeSchema = z.object({

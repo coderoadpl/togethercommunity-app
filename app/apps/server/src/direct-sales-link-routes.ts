@@ -57,7 +57,8 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       await next();
       return;
     }
-    if (!crawler && offer.value.soldOut) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
+    const variantChoice = offer.value.lines.some((line) => line.variants.length >= 2);
+    if (!crawler && offer.value.soldOut && !(variantChoice && !missingLegal)) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
       status: HTTP_STATUS_BY_ERROR_CODE.sold_out, headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
     });
     const code = c.req.query('code');
@@ -68,7 +69,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       ? await resolveDirectSalesLinkCoupon(tenant.id, { slug, couponCode }, deps) : undefined;
     if (coupon !== undefined && !coupon.ok) deps.logger.warn(`[direct-checkout] Coupon preview unavailable tenant=${tenant.id}: ${coupon.error.message}`);
     const couponDecision = coupon?.ok ? coupon.value : undefined;
-    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'together' || products.some(requiresWorkspaceCheckout))) {
+    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'together' || variantChoice || products.some(requiresWorkspaceCheckout))) {
       const query = new URLSearchParams(new URL(c.req.url).search);
       if (returnUrl === undefined) query.delete('return');
       else query.set('return', returnUrl);

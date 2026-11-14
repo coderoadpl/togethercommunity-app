@@ -64,6 +64,7 @@
     "visual:update": "pnpm run storybook:build && tsx scripts/storybook-capture.ts --update",
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
+    "e2e:meta-capi": "tsx scripts/meta-capi-e2e.ts",
     "e2e:team-admins": "tsx scripts/team-admins-e2e.ts",
     "e2e:two-factor": "tsx scripts/two-factor-e2e.ts",
     "e2e:custom-domain": "tsx scripts/custom-domain-e2e.ts",
@@ -77,6 +78,7 @@
     "e2e:impersonation": "tsx scripts/impersonation-e2e.ts",
     "e2e:image-assets": "tsx scripts/image-assets-e2e.ts",
     "e2e:ksef": "tsx scripts/ksef-e2e.ts",
+    "storage:orphan-report": "tsx --env-file-if-exists=.env scripts/storage-orphan-report.ts",
     "e2e:storage": "tsx scripts/storage-e2e.ts",
     "storybook": "storybook dev -p 9009 --no-open",
     "storybook:build": "APP_BASE_DOMAIN=${APP_BASE_DOMAIN:-localhost} storybook build -o storybook-static",
@@ -85,6 +87,7 @@
     "visual:app": "tsx scripts/visual-screenshots.ts",
     "fixtures:record": "tsx scripts/fixtures-record.ts",
     "fixtures:check": "tsx scripts/fixtures-check.ts",
+    "email:repair-erased-events": "tsx --env-file-if-exists=.env scripts/repair-erased-email-events.ts",
     "worker:marketing": "tsx --env-file-if-exists=.env apps/server/src/marketing-worker.ts"
   },
   "dependencies": {

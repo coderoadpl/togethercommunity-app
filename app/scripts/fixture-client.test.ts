@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { myProductsOutputSchema, publicOfferOutputSchema, publicPaymentConfigOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
+import { memberSettingsOutputSchema, myProductsOutputSchema, publicOfferOutputSchema, publicPaymentConfigOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
 import { tenantSettingsSchema } from '#core/domain/index.js';
 import { z } from 'zod';
 import bootSplash from '../apps/web/src/stories/fixtures/boot-splash.json';
@@ -20,6 +20,11 @@ describe('recorded tenant settings', () => {
       expect(fixture.brand.settings).toEqual(parsed);
       expect(parsed.ksefSubmissionMode).toBe('automatic');
       expect(parsed.checkoutAppearance).toBeNull();
+    }
+    const memberSettings = fixture.calls?.['getMemberSettings:[]'];
+    if (memberSettings !== undefined) {
+      const response = z.object({ ok: z.literal(true), value: z.unknown() }).parse(memberSettings);
+      expect(response.value).toEqual(memberSettingsOutputSchema.parse(response.value));
     }
     const settings = fixture.calls?.['getTenantSettings:[]'];
     if (settings !== undefined) {

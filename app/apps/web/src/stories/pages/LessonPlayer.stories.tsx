@@ -47,13 +47,30 @@ const lightboxFixture = (html: string) => ({
     },
   },
 });
+// The play phase starts before the page has rendered its fixture data, and Storybook only logs a play
+// function that throws, so a findByRole deadline expiring here would leave the capture without a dialog.
+const lessonImageRendered = (canvasElement: HTMLElement, abortSignal: AbortSignal) => new Promise<void>((resolve) => {
+  const rendered = () => canvasElement.querySelector('[data-testid="lesson-html"] img[role="button"]') !== null;
+  if (rendered()) {
+    resolve();
+    return;
+  }
+  const observer = new MutationObserver(() => {
+    if (!rendered()) return;
+    observer.disconnect();
+    resolve();
+  });
+  observer.observe(canvasElement, { childList: true, subtree: true });
+  abortSignal.addEventListener('abort', () => observer.disconnect(), { once: true });
+});
 export const LightboxLightDesktop: Story = {
   parameters: {
     fixture: lightboxFixture('<h3>Image reference</h3><p>Select the figure to inspect it at a larger size.</p><figure><img src="/brand/together-horizontal-light.svg" alt="Together wordmark"><figcaption>A vector image stays sharp when enlarged.</figcaption></figure>'),
     colorScheme: 'light',
   },
   globals: { viewport: { value: 'desktop' } },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, abortSignal }) => {
+    await lessonImageRendered(canvasElement, abortSignal);
     await userEvent.click(await within(canvasElement).findByRole('button', { name: en.lesson.enlargeImage }));
     await within(document.body).findByRole('dialog', { name: en.lesson.enlargeImage });
   },

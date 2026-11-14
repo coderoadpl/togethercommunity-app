@@ -61,20 +61,20 @@ export const importPublicAssetPathSchema = z.string().trim().refine((value) => {
     && importPublicAssetFilePattern.test(file);
 }, 'Must be an absolute http(s) URL or a public asset path');
 
-const importAbsoluteUrlSchema = z.string().trim().url().regex(/^https?:\/\//iu);
+const importAbsoluteUrlSchema = z.string().trim().max(2_048).url().regex(/^https?:\/\//iu);
 
 const importAssetUrlSchema = z.union([importAbsoluteUrlSchema, importPublicAssetPathSchema]);
 
 const importedRecordFields = {
   importKey: importKeySchema,
-  legacyId: z.string().optional(),
+  legacyId: z.string().max(200).optional(),
   createdAt: z.string().datetime().optional(),
 };
 
 const importCourseRecordObjectSchema = z
   .object({
     ...importedRecordFields,
-    name: z.string().trim().min(1),
+    name: z.string().trim().min(1).max(500),
     description: z.string().max(50_000),
     imageUrl: importAssetUrlSchema.nullable(),
     moduleOrder: z.array(importKeySchema),
@@ -93,20 +93,28 @@ export type ImportCourseRecord = z.output<typeof importCourseRecordSchema>;
 
 const importChapterContentSchema = chapterSchema.shape.contents.element
   .omit({ lessonId: true })
-  .extend({ lessonKey: importKeySchema })
+  .extend({
+    id: chapterSchema.shape.contents.element.shape.id.max(200),
+    name: chapterSchema.shape.contents.element.shape.name.max(500),
+    lessonKey: importKeySchema,
+  })
   .strict();
 
 const importChapterSchema = chapterSchema
   .omit({ contents: true })
-  .extend({ contents: z.array(importChapterContentSchema) })
+  .extend({
+    id: chapterSchema.shape.id.max(200),
+    name: chapterSchema.shape.name.max(500),
+    contents: z.array(importChapterContentSchema),
+  })
   .strict();
 
 const importModuleRecordObjectSchema = z
   .object({
     ...importedRecordFields,
     courseKeys: z.array(importKeySchema),
-    title: z.string().trim().min(1),
-    prefix: z.string().nullable(),
+    title: z.string().trim().min(1).max(500),
+    prefix: z.string().max(500).nullable(),
     chapters: z.array(importChapterSchema),
   })
   .strict();
@@ -129,13 +137,36 @@ export const importModuleRecordSchema = importModuleRecordObjectSchema.superRefi
 
 export type ImportModuleRecord = z.output<typeof importModuleRecordSchema>;
 
+const [videoBlock, embedBlock, pdfBlock, linkBlock, htmlBlock] = lessonBlockSchema.options;
+
+const importLessonBlockSchema = z.discriminatedUnion('type', [
+  videoBlock.extend({
+    storageKey: videoBlock.shape.storageKey.max(1_024),
+    streamVideoId: videoBlock.shape.streamVideoId.max(200),
+    streamLibraryId: videoBlock.shape.streamLibraryId.unwrap().max(200).optional(),
+    streamCollectionId: videoBlock.shape.streamCollectionId.unwrap().max(200).optional(),
+  }),
+  embedBlock.extend({
+    embedUrl: z.string().max(2_048).pipe(embedBlock.shape.embedUrl),
+  }),
+  pdfBlock.extend({
+    pdfUrl: z.string().trim().max(2_048).pipe(pdfBlock.shape.pdfUrl),
+    name: pdfBlock.shape.name.unwrap().max(2_000).optional(),
+  }),
+  linkBlock.extend({
+    url: linkBlock.shape.url.max(2_048),
+    description: linkBlock.shape.description.unwrap().max(2_000).optional(),
+  }),
+  htmlBlock.extend({ html: htmlBlock.shape.html.max(1_000_000) }),
+]);
+
 export const importLessonRecordSchema = z
   .object({
     ...importedRecordFields,
-    name: z.string().trim().min(1),
+    name: z.string().trim().min(1).max(500),
     isPreview: z.boolean(),
     durationMinutes: z.number().int().positive().optional(),
-    contents: z.array(lessonBlockSchema),
+    contents: z.array(importLessonBlockSchema),
     edition: lessonEditionInputSchema.optional(),
   })
   .strict();
@@ -184,7 +215,9 @@ export const importProductRecordSchema = z
     priceCents: z.number().int().nonnegative(),
     currency: currencySchema,
     accessItems: z.array(importAccessItemSchema),
-    compliance: productComplianceSchema.nullable().optional(),
+    compliance: productComplianceSchema.extend({
+      instructionsUrl: productComplianceSchema.shape.instructionsUrl.unwrap().unwrap().max(2_048).nullable().optional(),
+    }).nullable().optional(),
     variantGroup: variantGroupSchema.nullable().optional(),
     variantLabel: variantLabelSchema.nullable().optional(),
   })
@@ -195,7 +228,7 @@ export type ImportProductRecord = z.output<typeof importProductRecordSchema>;
 export const importMemberRecordSchema = z
   .object({
     ...importedRecordFields,
-    email: z.string().email().transform(normalizeEmail),
+    email: z.string().max(254).email().transform(normalizeEmail),
     displayName: z.string().trim().min(1).max(200),
   })
   .strict();
@@ -205,7 +238,7 @@ export type ImportMemberRecord = z.output<typeof importMemberRecordSchema>;
 const importGrantRecordObjectSchema = z
   .object({
     importKey: importKeySchema,
-    legacyId: z.string().optional(),
+    legacyId: z.string().max(200).optional(),
     memberKey: importKeySchema,
     productKey: importKeySchema,
     startsAt: z.string().datetime(),
@@ -238,7 +271,7 @@ const importProgressRecordObjectSchema = z
     completedLessonKeys: z.array(importKeySchema),
     lastViewedLessonKey: importKeySchema.optional(),
     lastViewedModuleKey: importKeySchema.optional(),
-    lastViewedChapterId: z.string().min(1).optional(),
+    lastViewedChapterId: z.string().min(1).max(200).optional(),
     updatedAt: z.string().datetime(),
   })
   .strict();

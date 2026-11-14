@@ -54,6 +54,7 @@ import { coursesContainingLesson } from './access.js';
 import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
 
 export interface CourseManagementDeps {
+  logger: { error(message: string): void };
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;

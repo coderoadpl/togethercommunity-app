@@ -14,7 +14,7 @@ const findByIds = vi.fn<SalesLinkDeps['products']['findByIds']>(async () => prod
 const save = vi.fn<SalesLinkDeps['salesLinks']['save']>(async (_, value) => ok(value));
 const deps: SalesLinkDeps = {
   salesLinks: { list: async () => [link], findById: async (tenantId, id) => tenantId === link.tenantId && id === link.id ? link : null, findBySlug, save, delete: async () => ok(undefined) },
-  products: { findByIds },
+  products: { findByIds, listPublishedByTenant: async () => products },
   prices: { listActiveByProducts: async () => products.map((product) => ({ id: `price-${product.id}`, tenantId: 'workspace', productId: product.id, amountCents: product.priceCents, currency: 'PLN', kind: 'one_time', interval: null, active: true, createdAt: now })) },
   tenants: { findSettings: async () => null }, clock: { nowIso: () => now }, ids: { nextId: () => 'new-link' },
 };

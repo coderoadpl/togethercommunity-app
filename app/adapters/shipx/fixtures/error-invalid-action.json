@@ -1,0 +1,6 @@
+{
+  "status": 400,
+  "error": "invalid_action",
+  "description": "Label is available only for paid shipments.",
+  "details": null
+}

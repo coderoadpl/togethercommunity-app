@@ -14,7 +14,6 @@ import {
   importProductRecordSchema,
   resolveProductVat,
   importPublicAssetPathSchema,
-  importRecordSchemaFor,
   importValidateRequestSchema,
   importWriteRequestSchema,
   ok,
@@ -45,6 +44,16 @@ import {
   type TenantApiKey,
 } from '#core/domain/index.js';
 
+import {
+  cacheImportContentReaders,
+  checkImportCreatedAt,
+  emptyImportReferenceMaps,
+  memoizeImportRead,
+  rememberImportReference,
+  resolveImportReference,
+  type ImportReferenceMaps,
+} from './m2m-import-context.js';
+
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import { tenantUrl } from '../tenant-url.js';
@@ -70,7 +79,6 @@ import {
   type M2mImportRedirectReaders,
 } from './m2m-import-redirects.js';
 import {
-  emptyImportReferenceMaps,
   prepareM2mUsersValidationRecord,
   type M2mImportUsersReaders,
 } from './m2m-import-users.js';
@@ -105,13 +113,12 @@ export type M2mImportContentDeps = ImportReaders & ImportAssetUrlDeps & {
 };
 
 export type M2mImportRateLimitDeps = {
+  importHourlyValidationRecordLimit: number;
   importDailyMemberRecordLimit: number;
   importDailyRecordLimit: number;
   rateLimits: ApiKeyRateLimitRepository;
   clock: Clock;
 };
-
-type ReferenceMaps = Record<ImportContentKind, Map<string, string>>;
 
 type PredictedAction = {
   action: 'created' | 'updated' | 'unchanged';
@@ -124,13 +131,6 @@ type PreparedContent =
   | { kind: 'module'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: CourseModule }
   | { kind: 'lesson'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: CourseLesson; edition?: LessonEditionInput }
   | { kind: 'product'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: Product };
-
-const emptyReferenceMaps = (): ReferenceMaps => ({
-  course: new Map(),
-  module: new Map(),
-  lesson: new Map(),
-  product: new Map(),
-});
 
 type PublishedReachability = {
   courseIds: Set<string>;
@@ -198,11 +198,20 @@ const normalizeField = async (
   };
 };
 
+type ContentImportRecord = Extract<ImportRecord, { kind: ImportContentKind }>;
+
+const parseContentRecord = (kind: ImportContentKind, record: unknown) => {
+  if (kind === 'course') return importCourseRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+  if (kind === 'module') return importModuleRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+  if (kind === 'lesson') return importLessonRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+  return importProductRecordSchema.transform((data) => ({ ...data, kind })).safeParse(record);
+};
+
 const normalizeContentAssetUrls = async (
-  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord,
+  record: ContentImportRecord,
   normalizeAssetUrl: ImportAssetUrlNormalizer,
 ): Promise<{
-  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord;
+  record: ContentImportRecord;
   infos: ImportNormalizationInfo[];
 }> => {
   if ('imageUrl' in record) {
@@ -220,20 +229,6 @@ const normalizeContentAssetUrls = async (
     };
   }
   return { record, infos: [] };
-};
-
-const normalizeContentAssetUrlsForKind = async (
-  kind: ImportContentKind,
-  record: unknown,
-  normalizeAssetUrl: ImportAssetUrlNormalizer,
-): Promise<{
-  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord;
-  infos: ImportNormalizationInfo[];
-}> => {
-  if (kind === 'course') return normalizeContentAssetUrls(importCourseRecordSchema.parse(record), normalizeAssetUrl);
-  if (kind === 'module') return normalizeContentAssetUrls(importModuleRecordSchema.parse(record), normalizeAssetUrl);
-  if (kind === 'lesson') return normalizeContentAssetUrls(importLessonRecordSchema.parse(record), normalizeAssetUrl);
-  return normalizeContentAssetUrls(importProductRecordSchema.parse(record), normalizeAssetUrl);
 };
 
 const normalizeImportRecordAssetUrls = async (
@@ -304,41 +299,33 @@ const findTarget = async (
   kind: ImportContentKind,
   id: string,
   deps: ImportReaders,
-): Promise<{ id: string; createdAt: string; published?: boolean } | null> => {
+): Promise<{ id: string; createdAt: string; published?: boolean; archivedAt?: string | null | undefined } | null> => {
   if (kind === 'course') return deps.courses.findById(tenantId, id);
   if (kind === 'module') return deps.modules.findById(tenantId, id);
   if (kind === 'lesson') return deps.lessons.findById(tenantId, id);
   return deps.products.findById(tenantId, id);
 };
 
-const resolveReference = async (
+const resolveReference = (
   tenantId: string,
   kind: ImportContentKind,
   key: string,
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
-): Promise<Result<string, AppError>> => {
-  const inCall = references[kind].get(key);
-  if (inCall !== undefined) {
-    const course = kind === 'course' ? await deps.courses.findById(tenantId, inCall) : null;
-    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
-    return ok(inCall);
-  }
-  const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key);
-  if (audit !== null) {
-    const course = kind === 'course' ? await deps.courses.findById(tenantId, audit.resourceId) : null;
-    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
-    const imported = await findTarget(tenantId, kind, audit.resourceId, deps);
-    if (imported !== null) return ok(imported.id);
-  }
-  return err(appError('conflict', `Referenced ${kind} "${key}" was not created by import`));
-};
+): Promise<Result<string, AppError>> => resolveImportReference(
+  tenantId,
+  kind,
+  key,
+  references,
+  () => deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key),
+  (id) => findTarget(tenantId, kind, id, deps),
+);
 
 const resolveKeys = async (
   tenantId: string,
   kind: ImportContentKind,
   keys: string[],
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
 ): Promise<Result<string[], AppError>> => {
   const ids: string[] = [];
@@ -389,7 +376,7 @@ const prepareCourse = async (
   tenantId: string,
   record: ImportCourseRecord,
   payloadHash: string,
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
   reachable: () => Promise<PublishedReachability>,
   now: string,
@@ -423,7 +410,7 @@ const prepareModule = async (
   tenantId: string,
   record: ImportModuleRecord,
   payloadHash: string,
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
   reachable: () => Promise<PublishedReachability>,
   now: string,
@@ -497,7 +484,7 @@ const prepareLesson = async (
 const resolveAccessItems = async (
   tenantId: string,
   record: ImportProductRecord,
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
 ): Promise<Result<AccessItem[], AppError>> => {
   const accessItems: AccessItem[] = [];
@@ -533,7 +520,7 @@ const prepareProduct = async (
   tenantId: string,
   record: ImportProductRecord,
   payloadHash: string,
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
   reachable: () => Promise<PublishedReachability>,
   now: string,
@@ -587,18 +574,17 @@ const prepareProduct = async (
 
 const prepareRecord = async (
   tenantId: string,
-  kind: ImportContentKind,
-  record: unknown,
+  record: ContentImportRecord,
   payloadHash: string,
-  references: ReferenceMaps,
+  references: ImportReferenceMaps,
   deps: ImportReaders,
   reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
-  if (kind === 'course') return prepareCourse(tenantId, importCourseRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
-  if (kind === 'module') return prepareModule(tenantId, importModuleRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
-  if (kind === 'lesson') return prepareLesson(tenantId, importLessonRecordSchema.parse(record), payloadHash, deps, reachable, now);
-  return prepareProduct(tenantId, importProductRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
+  if (record.kind === 'course') return prepareCourse(tenantId, record, payloadHash, references, deps, reachable, now);
+  if (record.kind === 'module') return prepareModule(tenantId, record, payloadHash, references, deps, reachable, now);
+  if (record.kind === 'lesson') return prepareLesson(tenantId, record, payloadHash, deps, reachable, now);
+  return prepareProduct(tenantId, record, payloadHash, references, deps, reachable, now);
 };
 
 const recordIdentity = (value: unknown, index: number): { kind?: ImportKind; importKey: string } => {
@@ -630,7 +616,8 @@ const ENTITY_KIND_BY_IMPORT_KIND: Record<ImportContentKind, EntityKind> = {
 const versionFor = (
   prepared: PreparedContent,
   apiKey: TenantApiKey,
-  deps: Pick<M2mImportContentDeps, 'ids' | 'clock'>,
+  deps: Pick<M2mImportContentDeps, 'ids'>,
+  now: string,
 ): Result<EntityVersionRecord | undefined, AppError> => {
   if (prepared.action === 'unchanged' && !(prepared.kind === 'lesson' && prepared.edition !== undefined)) return ok(undefined);
   const kind = ENTITY_KIND_BY_IMPORT_KIND[prepared.kind];
@@ -642,7 +629,7 @@ const versionFor = (
     entityId: prepared.resource.id,
     schemaVersion: built.value.schemaVersion,
     payload: built.value.payload,
-    createdAt: deps.clock.nowIso(),
+    createdAt: now,
     createdBy: apiKey.name.trim() === '' ? IMPORT_VERSION_AUTHOR_FALLBACK : apiKey.name.trim(),
   });
 };
@@ -651,7 +638,8 @@ const mutationFor = (
   prepared: PreparedContent,
   apiKey: TenantApiKey,
   version: EntityVersionRecord | undefined,
-  deps: Pick<M2mImportContentDeps, 'ids' | 'clock'>,
+  deps: Pick<M2mImportContentDeps, 'ids'>,
+  now: string,
 ): ImportContentMutation => {
   const event = {
     id: deps.ids.nextId(),
@@ -662,7 +650,7 @@ const mutationFor = (
     resourceId: prepared.resource.id,
     action: prepared.action,
     payloadHash: prepared.payloadHash,
-    at: deps.clock.nowIso(),
+    at: now,
   };
   const versioned = version === undefined ? {} : { version };
   if (prepared.kind === 'course') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
@@ -680,12 +668,16 @@ export const importM2mContent = async (
 ): Promise<Result<ImportBatchResponse, AppError>> => {
   const tenantId = authorizeRequiredTenant(ctx, 'import:content-write');
   if (!tenantId.ok) return tenantId;
+  const cachedReaders = cacheImportContentReaders(deps);
+  const modulesList = memoizeImportRead(deps.modules.list);
+  deps = { ...cachedReaders.deps, modules: { ...cachedReaders.deps.modules, list: modulesList.read } };
+  const now = deps.clock.nowIso();
   const reachable = lazyPublishedReachability(tenantId.value, deps);
   const envelope = importWriteRequestSchema.safeParse(input);
   if (!envelope.success) return err(validation('Invalid import batch', envelope.error.flatten()));
   const results: ImportBatchResult[] = [];
   const seen = new Map<string, string>();
-  const references = emptyReferenceMaps();
+  const references = emptyImportReferenceMaps();
   const normalizeAssetUrl = createImportAssetUrlNormalizer(
     tenantId.value,
     ctx.identity.tenantSlug,
@@ -694,7 +686,7 @@ export const importM2mContent = async (
   for (let index = 0; index < envelope.data.records.length; index += 1) {
     const raw = envelope.data.records[index];
     const identity = recordIdentity(raw, index);
-    const parsed = importRecordSchemaFor(kind).safeParse(raw);
+    const parsed = parseContentRecord(kind, raw);
     if (!parsed.success) {
       results.push({
         importKey: identity.importKey,
@@ -703,8 +695,13 @@ export const importM2mContent = async (
       });
       continue;
     }
-    const normalized = await normalizeContentAssetUrlsForKind(kind, parsed.data, normalizeAssetUrl);
-    const payloadHash = deps.hash.sha256(canonicalImportPayload(normalized.record));
+    const timestamp = checkImportCreatedAt(parsed.data, now);
+    if (!timestamp.ok) {
+      results.push({ importKey: parsed.data.importKey, action: 'error', error: timestamp.error });
+      continue;
+    }
+    const normalized = await normalizeContentAssetUrls(parsed.data, normalizeAssetUrl);
+    const payloadHash = deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(normalized.record)));
     const previousHash = seen.get(normalized.record.importKey);
     if (previousHash !== undefined && previousHash !== payloadHash) {
       results.push({
@@ -717,26 +714,25 @@ export const importM2mContent = async (
     seen.set(normalized.record.importKey, payloadHash);
     const prepared = await prepareRecord(
       tenantId.value,
-      kind,
       normalized.record,
       payloadHash,
       references,
       deps,
       reachable,
-      deps.clock.nowIso(),
+      now,
     );
     if (!prepared.ok) {
       results.push({ importKey: normalized.record.importKey, action: 'error', error: prepared.error });
       continue;
     }
-    const version = versionFor(prepared.value, apiKey, deps);
+    const version = versionFor(prepared.value, apiKey, deps, now);
     if (!version.ok) {
       results.push({ importKey: normalized.record.importKey, action: 'error', error: version.error });
       continue;
     }
     const committed = await deps.importContent.commit(
       tenantId.value,
-      mutationFor(prepared.value, apiKey, version.value, deps),
+      mutationFor(prepared.value, apiKey, version.value, deps, now),
     );
     if (committed !== 'saved') {
       results.push({
@@ -748,6 +744,8 @@ export const importM2mContent = async (
       });
       continue;
     }
+    cachedReaders.invalidate(tenantId.value, kind, prepared.value.resource.id);
+    rememberImportReference(tenantId.value, kind, normalized.record.importKey, prepared.value.resource.id, references);
     results.push({
       importKey: normalized.record.importKey,
       action: prepared.value.action,
@@ -780,6 +778,10 @@ const validateImportForTenant = async (
 ): Promise<Result<ImportValidationResponse, AppError>> => {
   const envelope = importValidateRequestSchema.safeParse(input);
   if (!envelope.success) return err(validation('Invalid import validation request', envelope.error.flatten()));
+  const cachedReaders = cacheImportContentReaders(deps);
+  const modulesList = memoizeImportRead(deps.modules.list);
+  deps = { ...cachedReaders.deps, modules: { ...cachedReaders.deps.modules, list: modulesList.read } };
+  const now = deps.clock.nowIso();
   const reachable = lazyPublishedReachability(tenantId, deps);
   const create = emptyPlanCounts();
   const update = emptyPlanCounts();
@@ -809,6 +811,11 @@ const validateImportForTenant = async (
         importKey: identity.importKey,
         error: validation('Invalid import record', parsed.error.flatten()),
       });
+      continue;
+    }
+    const timestamp = checkImportCreatedAt(parsed.data, now);
+    if (!timestamp.ok) {
+      errors.push({ index, kind: parsed.data.kind, importKey: parsed.data.importKey, error: timestamp.error });
       continue;
     }
     const normalized = await normalizeImportRecordAssetUrls(parsed.data, normalizeAssetUrl);
@@ -862,18 +869,15 @@ const validateImportForTenant = async (
     }
   }
   for (const [index, record] of parsedRecords) {
-    const prepared = importContentKindSchema.safeParse(record.kind).success
+    const prepared = record.kind === 'course' || record.kind === 'module' || record.kind === 'lesson' || record.kind === 'product'
       ? await prepareRecord(
           tenantId,
-          importContentKindSchema.parse(record.kind),
-          payloadWithoutKind(record),
+          record,
           deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(record))),
           references,
           deps,
           reachable,
-          'createdAt' in record && record.createdAt !== undefined
-            ? record.createdAt
-            : deps.clock.nowIso(),
+          now,
         )
       : record.kind === 'redirect'
         ? await prepareM2mRedirectValidationRecord(
@@ -881,7 +885,7 @@ const validateImportForTenant = async (
             record,
             references,
             deps,
-            record.createdAt ?? deps.clock.nowIso(),
+            now,
             recordsByKey,
             claimedRedirectPaths,
           )
@@ -890,7 +894,7 @@ const validateImportForTenant = async (
             record,
             references,
             deps,
-            deps.clock.nowIso(),
+            now,
             recordsByKey,
           );
     if (!prepared.ok) {
@@ -903,7 +907,7 @@ const validateImportForTenant = async (
     if (
       record.kind === 'grant'
       && record.expiresAt !== null
-      && Date.parse(record.expiresAt) < Date.parse(deps.clock.nowIso())
+      && Date.parse(record.expiresAt) < Date.parse(now)
     ) {
       warnings.push({
         index,
@@ -942,7 +946,7 @@ export const claimM2mImportRateLimit = async (
   tenantId: string,
   apiKey: TenantApiKey,
   input:
-    | { mode: 'validate' }
+    | { mode: 'validate'; recordCount: number }
     | { mode: 'content'; recordCount: number }
     | { mode: 'users'; kind: 'member' | 'grant' | 'progress'; recordCount: number },
   deps: M2mImportRateLimitDeps,
@@ -957,12 +961,29 @@ export const claimM2mImportRateLimit = async (
       windowStartedAt: startedAt,
       limit: 30,
     });
-    return claimed
-      ? ok(undefined)
-      : err(appError('rate_limited', 'Import validation rate limit exceeded', {
-          period: 'hour',
-          retryAfterSeconds: retryAfter(now, startedAt, durationMs),
-        }));
+    if (!claimed) {
+      return err(appError('rate_limited', 'Import validation rate limit exceeded', {
+        period: 'hour',
+        retryAfterSeconds: retryAfter(now, startedAt, durationMs),
+      }));
+    }
+    const recordsClaimed = await deps.rateLimits.claim(tenantId, {
+      apiKeyId: apiKey.id,
+      period: 'import-validate-records',
+      windowStartedAt: startedAt,
+      limit: deps.importHourlyValidationRecordLimit,
+      cost: input.recordCount,
+    });
+    if (recordsClaimed) return ok(undefined);
+    await deps.rateLimits.release(tenantId, {
+      apiKeyId: apiKey.id,
+      period: 'hour',
+      windowStartedAt: startedAt,
+    });
+    return err(appError('rate_limited', 'Import validation record limit exceeded', {
+      period: 'hour',
+      retryAfterSeconds: retryAfter(now, startedAt, durationMs),
+    }));
   }
   const minuteDurationMs = 60_000;
   const minuteStartedAt = windowStart(now, minuteDurationMs);

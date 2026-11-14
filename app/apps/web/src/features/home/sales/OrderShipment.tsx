@@ -9,7 +9,7 @@ import {
   type ShippingCarrier,
 } from '#core/domain/index.js';
 
-import { ConfirmDialog } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 

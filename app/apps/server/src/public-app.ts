@@ -1,6 +1,8 @@
+import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/domain/index.js';
 import { createHash } from 'node:crypto';
 import { publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
+import { registerPublicMetaCapiRoutes } from './meta-capi-routes.js';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -38,7 +40,6 @@ import {
   capabilitiesForPrincipal,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
-  forbidden,
   err,
   internal,
   languageSchema,
@@ -288,6 +289,7 @@ const checkoutIdentity = async (c: Context<AppVars>, deps: AppDeps) => {
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   registerDirectSalesLinkRoutes(app, deps);
+  registerPublicMetaCapiRoutes(app, deps);
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);
@@ -297,13 +299,31 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     respond(ok({ status: 'ok' as const, ...attestation })),
   );
 
-  app.get(API_PATHS.healthReady, async () =>
-    respond(
-      (await deps.health.pingDatabase())
-        ? ok({ status: 'ok' as const, database: 'up' as const, ...attestation })
-        : err(unavailable('Database is not reachable')),
-    ),
-  );
+  app.get(API_PATHS.healthReady, async () => {
+    if (!(await deps.health.pingDatabase())) return respond(err(unavailable('Database is not reachable')));
+    const migrations = await deps.health.migrationCounts();
+    if (migrations.applied === null && migrations.journal === 'unreadable') {
+      return respond(err(unavailable(
+        `The migration journal could not be read, so this release's ${String(migrations.expected)} migrations cannot be confirmed`,
+      )));
+    }
+    if (migrations.applied === null) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: no migration journal yet, 0 of ${String(migrations.expected)} applied`,
+      )));
+    }
+    if (migrations.applied < migrations.expected) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: ${String(migrations.applied)} of ${String(migrations.expected)} applied`,
+      )));
+    }
+    if (!migrations.current) {
+      return respond(err(unavailable(
+        `Database migrations are behind this release: the journal holds ${String(migrations.applied)} rows but not this release's newest migration`,
+      )));
+    }
+    return respond(ok({ status: 'ok' as const, database: 'up' as const, ...attestation }));
+  });
 
   app.get(API_PATHS.health, async () =>
     respond(
@@ -530,7 +550,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.ok) return respondPublic(tenant);
     if (tenant.value === null) return respondPublic(err(tenantNotFound()));
     if (deps.salesLinkManagement === undefined) return respondPublic(err(internal('Sales links are unavailable')));
-    const result = await getPublicSalesLink(tenant.value.tenant.id, c.req.param('slug') ?? '', deps.salesLinkManagement);
+    const result = await getPublicSalesLink(tenant.value.tenant.id, c.req.param('slug') ?? '', deps.salesLinkManagement, parseSalesLinkVariantParams(c.req.queries(SALES_LINK_VARIANT_PARAM) ?? []));
     if (!result.ok) return respondPublic(result);
     const workspace = tenant.value.tenant;
     const contexts = await Promise.all(result.value.lines.map(({ productId: productRef }) => getPublicOffer(workspace, {
@@ -552,12 +572,6 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   });
 
   app.post(API_PATHS.submitSurvey, async (c) => {
-    const origin = c.req.header('origin');
-    if (origin !== undefined) {
-      const parsedOrigin = z.string().url().safeParse(origin);
-      const host = c.req.header('host') ?? new URL(c.req.url).host;
-      if (!parsedOrigin.success || new URL(parsedOrigin.data).hostname !== new URL(`https://${host}`).hostname) return respond(err(forbidden('Survey responses must come from this workspace')));
-    }
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respond(tenant);
     if (tenant.value === null) return respond(err(tenantNotFound()));
@@ -635,7 +649,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
     const parsed = publicCheckoutSessionStatusInputSchema.safeParse(c.req.query());
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout session id')));
-    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps));
+    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps, parsed.data.locale));
   });
 
   app.get(API_PATHS.publicPaymentConfig, async (c) => {

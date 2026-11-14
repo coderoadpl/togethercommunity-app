@@ -8,8 +8,4 @@ describe('password policy', () => {
     expect(passwordMeetsMinimumLength('a'.repeat(PASSWORD_MIN_LENGTH - 1))).toBe(false);
     expect(passwordMeetsMinimumLength('a'.repeat(PASSWORD_MIN_LENGTH))).toBe(true);
   });
-
-  it('does not require character classes', () => {
-    expect(passwordMeetsMinimumLength('a'.repeat(PASSWORD_MIN_LENGTH))).toBe(true);
-  });
 });

@@ -47,6 +47,7 @@ export * from './tenant-creation.js';
 export * from './support.js';
 export * from './consent.js';
 export * from './tenant-secret.js';
+export * from './meta-capi.js';
 export * from './onboarding.js';
 export * from './tenant-setup.js';
 export * from './stream-video.js';
@@ -55,6 +56,7 @@ export * from './attribution.js';
 export * from './commerce.js';
 export * from './shipping.js';
 export * from './fulfilment.js';
+export * from './shipx.js';
 export * from './product-compliance.js';
 export * from './order-vat.js';
 export * from './coupon.js';
@@ -101,3 +103,6 @@ export * from './consumer-sales.js';
 
 export * from './tenant-team.js';
 export * from './checkout-analytics.js';
+export * from './storage-report.js';
+
+export * from './sales-link-variants.js';

@@ -295,8 +295,31 @@ A full re-run of a finished import returns an all-`unchanged` summary. That is t
 | Records per request | 1–200 | 1–5000 |
 | Request body | 2 MiB | 10 MiB |
 | Requests | 60 per minute per key | 30 per hour per key |
+| Records per hour | — | 50,000 per key by default |
+
+Validation has two independent hourly ceilings: 30 requests and `IMPORT_HOURLY_VALIDATION_RECORD_LIMIT` records (default: 50,000). The environment setting must be a positive integer. Every record in a parsed envelope consumes one record unit, including records that fail field validation, reference resolution or scope checks. A malformed envelope consumes neither budget. A request refused by the record ceiling does not consume a request unit. Both hourly windows reset at the start of the next UTC hour; validation budgets are separate from write budgets.
 
 All write endpoints on a key share one daily record counter. Member requests use `IMPORT_DAILY_MEMBER_RECORD_LIMIT` (default: 10,000); all other record kinds use `IMPORT_DAILY_RECORD_LIMIT` (default: 20,000). Both server environment settings must be positive integers and apply per day to each API key within its tenant. A request can claim records only while the shared counter remains within its configured ceiling. Use a separate `import:users` key for member batches if other records would exhaust that ceiling. Counters are independent of other tenant keys. Exceeding a limit returns `429` with `error.code: "rate_limited"`; honor the `Retry-After` header.
+
+### Field lengths and creation times
+
+These limits apply to new import inputs in both write and validation requests. Existing stored content, snapshots and native create/update APIs retain their own schemas; import never truncates a field to make it fit. Lengths count string characters as measured by JavaScript string length.
+
+| Import field | Maximum length |
+|---|---:|
+| `importKey`, reference/source keys and `legacyId` | 200 |
+| Course/lesson names, module titles and prefixes, chapter/content names | 500 |
+| Chapter/content ids and progress `lastViewedChapterId` | 200 |
+| Absolute image/cover URLs; lesson embed, PDF and link URLs; compliance `instructionsUrl` | 2,048 |
+| PDF block names and link descriptions | 2,000 |
+| Lesson HTML blocks | 1,000,000 |
+| Video `storageKey` | 1,024 |
+| Video provider ids (`streamVideoId`, `streamLibraryId`, `streamCollectionId`) | 200 |
+| Member email | 254 |
+
+Stricter existing limits remain: product titles and member display names are 200; course/product descriptions are 50,000; product slugs are 100; edition numbers/notes are 12/200; variant groups/labels are 60; redirect paths are 2,000; VAT exemption bases are 256. Compliance fields retain manufacturer name/address/email limits of 200/300/254, model and batch identifiers of 100, and safety warnings of 5,000. Public asset paths still have to match their fixed route shape. URL format and protocol rules still apply as well as length caps.
+
+For course, module, lesson, product, member and redirect records, optional `createdAt` must be a valid datetime no more than five minutes ahead of the server clock. The exact five-minute boundary is accepted. One server-clock reading is used for the whole call, identically in validate and write; an invalid or too-future value produces a per-record `validation` error. Past dates remain valid. Future grant `startsAt`/`expiresAt` and progress `updatedAt` are not subject to this creation-time rule.
 
 ## Errors
 

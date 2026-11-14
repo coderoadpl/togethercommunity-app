@@ -1,3 +1,6 @@
+import { fakeFanoutBatches } from '../testing/fanout-batches.js';
+import { runPostFanoutJob } from './notification-fanout.js';
+import type { NotificationFanoutJob } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -224,7 +227,16 @@ const grantRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRep
 class FakePosts implements PostRepository {
   readonly rows: Post[] = [];
 
-  async createPost(_tenantId: string, post: Post): Promise<Post> {
+  readonly fanoutJobs: NotificationFanoutJob[] = [];
+
+  constructor(private readonly subscriptions = new FakeSubscriptions()) {}
+
+  async createPost(tenantId: string, post: Post, job?: NotificationFanoutJob, subscriberUserIds: string[] = []): Promise<Post> {
+    for (const userId of subscriberUserIds) {
+      const existing = await this.subscriptions.listForUser(tenantId, { userId, rootPostIds: [post.rootPostId] });
+      if (existing.length === 0) await this.subscriptions.upsert(tenantId, { userId, rootPostId: post.rootPostId, createdAt: post.createdAt });
+    }
+    if (job !== undefined) this.fanoutJobs.push(job);
     this.rows.push(post);
     return post;
   }
@@ -320,6 +332,18 @@ class FakePosts implements PostRepository {
       })),
       nextCursor: null,
     };
+  }
+
+  async listRepliesForRoots(tenantId: string, rootPostIds: string[]): Promise<Map<string, Post[]>> {
+    return new Map(await Promise.all(rootPostIds.map(async (rootPostId) => [
+      rootPostId, await this.listReplies(tenantId, rootPostId),
+    ] as const)));
+  }
+
+  async countRepliesIncludingDeleted(tenantId: string, rootPostIds: string[]): Promise<Map<string, number>> {
+    return new Map(await Promise.all(rootPostIds.map(async (rootPostId) => [
+      rootPostId, (await this.listReplies(tenantId, rootPostId)).length,
+    ] as const)));
   }
 
   async listReplies(tenantId: string, rootPostId: string): Promise<Post[]> {
@@ -763,15 +787,17 @@ const deps = (
         .filter((member) => member.tenantId === tenantId && userIds.includes(member.userId))
         .map((member) => ({ userId: member.userId, email: member.email, image: null })),
   };
+  const subscriptions = new FakeSubscriptions();
   return {
-    posts: new FakePosts(),
+    posts: new FakePosts(subscriptions),
     reports: new FakeReports(),
-    threadSubscriptions: new FakeSubscriptions(),
+    threadSubscriptions: subscriptions,
     spaceSubscriptions: new FakeSpaceSubscriptions(),
     memberBlocks: new FakeMemberBlocks(),
     spaces: emptySpacesRepo,
     notifications: new FakeNotifications(),
     notificationChannels: [],
+    dispatchNotificationFanout: () => undefined,
     fanoutJobs: fakeFanoutJobs(),
     courses: coursesRepo,
     modules: modulesRepo,
@@ -797,6 +823,48 @@ const allAccess = product('all', [{ level: 'course', courseId: 'c1' }]);
 const previewAccess = product('preview', [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
 
 describe('community use-cases', () => {
+  it('returns a lesson question with staff subscriptions and an atomic job before channel delivery', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')], ['u2']);
+    const deliver = vi.fn<NotificationChannelPort['deliver']>();
+    d.notificationChannels.push({ deliver });
+    const trigger = vi.fn();
+    d.dispatchNotificationFanout = trigger;
+    const staffRead = vi.spyOn(d.tenantAccess, 'listStaffForTenant');
+
+    const result = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'Queued question' }, d);
+
+    expect(result.ok).toBe(true);
+    expect(deliver).not.toHaveBeenCalled();
+    expect(staffRead).toHaveBeenCalledWith('t1');
+    expect(trigger).toHaveBeenCalledExactlyOnceWith('t1');
+    if (!(d.posts instanceof FakePosts) || !result.ok) throw new Error('Expected a stored post');
+    expect(d.posts.fanoutJobs).toEqual([expect.objectContaining({
+      kind: 'lesson-question', sourceKey: `lesson-question:${result.value.id}`,
+      payload: expect.objectContaining({ postId: result.value.id }),
+    })]);
+    expect(await d.threadSubscriptions.listSubscribersPage('t1', { rootPostId: result.value.id, afterUserId: null, limit: 50 }))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ userId: 'u1' }), expect.objectContaining({ userId: 'u2' })]));
+  });
+
+  it('notifies staff exactly once when a reply job runs before its question job', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')], ['u2', 'u3']);
+    const question = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'Question before delivery' }, d);
+    if (!question.ok || !(d.posts instanceof FakePosts)) throw new Error('Expected a stored question');
+    const reply = await createPost(ctx(), {
+      contextKind: 'lesson', contextId: 'l1', parentPostId: question.value.id, body: 'Additional question details',
+    }, d);
+    expect(reply.ok).toBe(true);
+    const [questionJob, replyJob] = d.posts.fanoutJobs;
+    if (questionJob === undefined || replyJob === undefined) throw new Error('Expected both fan-out jobs');
+    const fanout = { ...d, fanoutBatches: fakeFanoutBatches(() => d) };
+    expect(await runPostFanoutJob(replyJob, fanout)).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(await runPostFanoutJob(questionJob, fanout)).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(await runPostFanoutJob(replyJob, fanout)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+    if (!(d.notifications instanceof FakeNotifications)) throw new Error('Expected recorded notifications');
+    expect(d.notifications.rows.filter((row) => row.kind === 'thread-reply').map((row) => row.recipientUserId).sort())
+      .toEqual(['u2', 'u3']);
+  });
+
   it('resolves a non-empty post author from names, tagged e-mails, or a localized fallback', () => {
     expect(resolveAuthorDisplay({ name: '  Ada Lovelace  ', email: 'ignored@example.com' })).toBe(
       'Ada Lovelace',
@@ -811,7 +879,7 @@ describe('community use-cases', () => {
 
   it('never sends a blank author display across the post write boundary', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx({ name: '', email: 'audit-r3-member+jhkglk@example.com' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'hello' },
       d,
@@ -824,7 +892,7 @@ describe('community use-cases', () => {
 
   it('prefers the member displayName override over the account name', async () => {
     const d = deps([allAccess], [grant('m4', 'all')]);
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx({ userId: 'u4', memberId: 'm4', name: 'John Tester', email: 'u4@example.com' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'hello' },
       d,
@@ -835,13 +903,13 @@ describe('community use-cases', () => {
   it('rate-limits the eleventh member post in ten minutes while exempting staff', async () => {
     const memberDeps = deps([allAccess], [grant('m1', 'all')]);
     for (let index = 0; index < POST_RATE_LIMIT.maxPosts; index += 1) {
-      await expect(createPost(
+      await expect(createPostAndDrain(
         ctx(),
         { contextKind: 'lesson', contextId: 'l1', body: `post ${index}` },
         memberDeps,
       )).resolves.toMatchObject({ ok: true });
     }
-    await expect(createPost(
+    await expect(createPostAndDrain(
       ctx(),
       { contextKind: 'lesson', contextId: 'l1', body: 'one post too many' },
       memberDeps,
@@ -849,7 +917,7 @@ describe('community use-cases', () => {
 
     const staffDeps = deps([allAccess]);
     for (let index = 0; index <= POST_RATE_LIMIT.maxPosts; index += 1) {
-      await expect(createPost(
+      await expect(createPostAndDrain(
         ctx({ staffRole: 'admin', memberId: null }),
         { contextKind: 'lesson', contextId: 'l1', body: `staff post ${index}` },
         staffDeps,
@@ -859,7 +927,7 @@ describe('community use-cases', () => {
 
   it('opens deduplicated heuristic reports for link floods and repeated content', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
-    const linked = await createPost(
+    const linked = await createPostAndDrain(
       ctx(),
       {
         contextKind: 'lesson',
@@ -875,12 +943,12 @@ describe('community use-cases', () => {
     ]);
 
     const repeatedBody = 'This meaningful community message is repeated.';
-    await createPost(
+    await createPostAndDrain(
       ctx(),
       { contextKind: 'lesson', contextId: 'l1', body: repeatedBody },
       d,
     );
-    const duplicate = await createPost(
+    const duplicate = await createPostAndDrain(
       ctx(),
       { contextKind: 'lesson', contextId: 'l1', body: 'This meaningful community message is repeated!' },
       d,
@@ -904,7 +972,7 @@ describe('community use-cases', () => {
       throw new Error('report repository unavailable');
     };
 
-    const created = await createPost(
+    const created = await createPostAndDrain(
       ctx(),
       {
         contextKind: 'lesson',
@@ -922,7 +990,7 @@ describe('community use-cases', () => {
 
   it('projects posts to a public shape: isOwn per viewer, never the raw author id', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
-    const mine = await createPost(
+    const mine = await createPostAndDrain(
       ctx({ userId: 'u1', memberId: 'm1' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'mine' },
       d,
@@ -932,7 +1000,7 @@ describe('community use-cases', () => {
     expect(mine.value.isOwn).toBe(true);
     expect(mine.value).not.toHaveProperty('authorUserId');
 
-    await createPost(
+    await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'theirs' },
       d,
@@ -956,12 +1024,12 @@ describe('community use-cases', () => {
   it('creates a 10-level reply chain with the root post id preserved', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const listReplies = vi.spyOn(d.posts, 'listReplies');
-    const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     expect(root.ok).toBe(true);
     if (!root.ok) return;
     let parent = root.value;
     for (let level = 2; level <= 10; level += 1) {
-      const reply = await createPost(
+      const reply = await createPostAndDrain(
         ctx(),
         { contextKind: 'lesson', contextId: 'l1', parentPostId: parent.id, body: `level ${level}` },
         d,
@@ -976,8 +1044,8 @@ describe('community use-cases', () => {
 
   it('guards lesson access and allows free-preview lesson grants', async () => {
     const d = deps([previewAccess], [grant('m1', 'preview')]);
-    await expect(createPost(ctx(), { contextKind: 'lesson', contextId: 'l2', body: 'preview' }, d)).resolves.toMatchObject({ ok: true });
-    await expect(createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'locked' }, d)).resolves.toMatchObject({
+    await expect(createPostAndDrain(ctx(), { contextKind: 'lesson', contextId: 'l2', body: 'preview' }, d)).resolves.toMatchObject({ ok: true });
+    await expect(createPostAndDrain(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'locked' }, d)).resolves.toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
     });
@@ -993,12 +1061,12 @@ describe('community use-cases', () => {
       },
     };
     d.notificationChannels.push(channel);
-    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1', name: 'One' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(ctx({ userId: 'u1', memberId: 'm1', name: 'One' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
     await subscribeThread(ctx({ userId: 'u2', memberId: 'm2', name: 'Two' }), { rootPostId: root.value.rootPostId }, d);
     await subscribeThread(ctx({ userId: 'u3', memberId: 'm3', name: 'Three' }), { rootPostId: root.value.rootPostId }, d);
     await muteThread(ctx({ userId: 'u3', memberId: 'm3', name: 'Three' }), { rootPostId: root.value.rootPostId }, d);
-    const reply = await createPost(
+    const reply = await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2', name: 'Two' }),
       { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' },
       d,
@@ -1020,7 +1088,7 @@ describe('community use-cases', () => {
       },
     });
 
-    const question = await createPost(
+    const question = await createPostAndDrain(
       ctx({ userId: 'u1', memberId: 'm1', name: 'Asker' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'How does this work?' },
       d,
@@ -1047,7 +1115,7 @@ describe('community use-cases', () => {
     );
 
     d.notifications.rows.splice(0);
-    await createPost(
+    await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2', staffRole: 'admin', name: 'Admin' }),
       {
         contextKind: 'lesson',
@@ -1077,7 +1145,7 @@ describe('community use-cases', () => {
         return { ok: true, value: undefined };
       },
     });
-    const root = await createPost(
+    const root = await createPostAndDrain(
       ctx({ userId: 'u1', memberId: 'm1', name: 'One' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'root' },
       d,
@@ -1096,7 +1164,7 @@ describe('community use-cases', () => {
       createdAt: NOW,
     });
 
-    const reply = await createPost(
+    const reply = await createPostAndDrain(
       ctx({ userId: 'u1', memberId: 'm1', name: 'One' }),
       { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'private reply' },
       d,
@@ -1112,10 +1180,10 @@ describe('community use-cases', () => {
   it.each([false, true])('lists legacy deleted roots with only deleted replies: %s', async (withReply) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
-    const created = await createPost(ctx(), { ...input, body: 'Legacy content' }, d);
+    const created = await createPostAndDrain(ctx(), { ...input, body: 'Legacy content' }, d);
     if (!created.ok) throw new Error('Root failed');
     if (withReply) {
-      const reply = await createPost(ctx(), { ...input, parentPostId: created.value.id, body: 'Reply' }, d);
+      const reply = await createPostAndDrain(ctx(), { ...input, parentPostId: created.value.id, body: 'Reply' }, d);
       if (!reply.ok) throw new Error('Reply failed');
       await deletePost(ctx(), { id: reply.value.id }, d);
     }
@@ -1133,11 +1201,11 @@ describe('community use-cases', () => {
   it('denies author purge and lets staff remove a tombstone and its descendants', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
-    const root = await createPost(ctx(), { ...input, body: 'Root' }, d);
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Root' }, d);
     if (!root.ok) throw new Error('Root failed');
-    const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+    const reply = await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
     if (!reply.ok) throw new Error('Reply failed');
-    await createPost(ctx(), { ...input, parentPostId: reply.value.id, body: 'Nested' }, d);
+    await createPostAndDrain(ctx(), { ...input, parentPostId: reply.value.id, body: 'Nested' }, d);
     await deletePost(ctx(), { id: root.value.id }, d);
     expect(await purgePost(ctx(), { id: root.value.id }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await purgePost(ctx({ staffRole: 'admin' }), { id: root.value.id }, d)).toEqual({ ok: true, value: { id: root.value.id } });
@@ -1147,9 +1215,9 @@ describe('community use-cases', () => {
 
   it('renders soft-deleted posts with replies as placeholders', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
-    const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'secret' }, d);
+    const root = await createPostAndDrain(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'secret' }, d);
     if (!root.ok) throw new Error('root failed');
-    await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'Reply' }, d);
+    await createPostAndDrain(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'Reply' }, d);
     await deletePost(ctx(), { id: root.value.id }, d);
     const listed = await listDiscussion(ctx(), { contextKind: 'lesson', contextId: 'l1' }, d);
     expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]' }] } });
@@ -1164,10 +1232,10 @@ describe('community use-cases', () => {
   ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, deletedBy }) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
-    const root = await createPost(ctx(), { ...input, body: 'Private original' }, d);
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Private original' }, d);
     if (!root.ok) throw new Error('Root failed');
     if (replies) {
-      const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+      const reply = await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
       if (!reply.ok) throw new Error('Reply failed');
     }
     const actor = ctx({ userId: own ? 'u1' : 'staff', staffRole });
@@ -1185,14 +1253,14 @@ describe('community use-cases', () => {
     expect(listed.value.threads).toHaveLength(1);
     expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
     if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
-    expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: true });
+    expect(await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: true });
     expect(await editPost(ctx(), { id: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
   });
 
   it('filters search results by lesson entitlements and tenant', async () => {
     const d = deps([previewAccess], [grant('m1', 'preview')]);
-    await createPost(ctx({ staffRole: 'owner', memberId: null }), { contextKind: 'lesson', contextId: 'l1', body: 'needle locked' }, d);
-    await createPost(ctx({ staffRole: 'owner', memberId: null }), { contextKind: 'lesson', contextId: 'l2', body: 'needle preview' }, d);
+    await createPostAndDrain(ctx({ staffRole: 'owner', memberId: null }), { contextKind: 'lesson', contextId: 'l1', body: 'needle locked' }, d);
+    await createPostAndDrain(ctx({ staffRole: 'owner', memberId: null }), { contextKind: 'lesson', contextId: 'l2', body: 'needle preview' }, d);
     const hits = await searchPosts(ctx(), { query: 'needle', limit: 10 }, d);
     expect(hits).toMatchObject({ ok: true, value: [{ lessonId: 'l2' }] });
     const isolated = await searchPosts(ctx({ tenantId: 't2' }), { query: 'needle', limit: 10 }, d);
@@ -1201,7 +1269,7 @@ describe('community use-cases', () => {
 
   it('uses rendered plain text for Markdown search snippets', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
-    await createPost(
+    await createPostAndDrain(
       ctx(),
       {
         contextKind: 'lesson',
@@ -1221,13 +1289,13 @@ describe('community use-cases', () => {
 
   it('uses rendered plain text in notifications for Markdown posts', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
-    const root = await createPost(
+    const root = await createPostAndDrain(
       ctx({ userId: 'u1', memberId: 'm1' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'root' },
       d,
     );
     if (!root.ok) throw new Error('root failed');
-    await createPost(
+    await createPostAndDrain(
       ctx({ userId: 'u2', memberId: 'm2' }),
       {
         contextKind: 'lesson',
@@ -1248,10 +1316,10 @@ describe('community use-cases', () => {
 
   it('paginates notifications, counts unread and marks reads', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
-    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
-    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'first' }, d);
-    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'second' }, d);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'first' }, d);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'second' }, d);
     expect(await unreadNotificationCount(ctx({ userId: 'u1', memberId: 'm1' }), d)).toEqual({ ok: true, value: { unread: 2 } });
     const listed = await listNotifications(ctx({ userId: 'u1', memberId: 'm1' }), { limit: 1 }, d);
     expect(listed).toMatchObject({ ok: true, value: { notifications: [expect.objectContaining({ readAt: null })] } });
@@ -1263,10 +1331,10 @@ describe('community use-cases', () => {
 
   it('lists only unread notifications when the caller asks for them', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
-    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
-    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'first' }, d);
-    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'second' }, d);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'first' }, d);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'second' }, d);
     const recipient = ctx({ userId: 'u1', memberId: 'm1' });
     const all = await listNotifications(recipient, { limit: 10 }, d);
     if (!all.ok) throw new Error('list failed');
@@ -1281,9 +1349,9 @@ describe('community use-cases', () => {
 
   it('hides direct-message notifications from the list and the unread badge under impersonation', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
-    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
-    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
     await d.notifications.insert('t1', {
       id: 'n-dm',
       tenantId: 't1',
@@ -1333,9 +1401,9 @@ describe('community use-cases', () => {
 
   it('resolves author avatars for threads, replies, search hits and notification payloads', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
-    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'needle root' }, d);
+    const root = await createPostAndDrain(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'needle root' }, d);
     if (!root.ok) throw new Error('root failed');
-    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
 
     const listed = await listDiscussion(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1' }, d);
     expect(listed).toMatchObject({
@@ -1367,7 +1435,7 @@ describe('community guard and error branches', () => {
   const access = () => deps([allAccess], [grant('m1', 'all')]);
 
   const seedPost = async (d: CommunityDeps): Promise<string> => {
-    const created = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'Hello world' }, d);
+    const created = await createPostAndDrain(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'Hello world' }, d);
     if (!created.ok) throw new Error('seed failed');
     return created.value.id;
   };
@@ -1375,7 +1443,7 @@ describe('community guard and error branches', () => {
   it('forbids discussion use by a non-member non-staff identity and needs a tenant', async () => {
     const d = access();
     expect(
-      await createPost(ctx({ memberId: null, staffRole: null }), { contextKind: 'lesson', contextId: 'l1', body: 'x' }, d),
+      await createPostAndDrain(ctx({ memberId: null, staffRole: null }), { contextKind: 'lesson', contextId: 'l1', body: 'x' }, d),
     ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await listNotifications(ctx({ tenantId: null }), {}, d)).toMatchObject({
       ok: false,
@@ -1389,7 +1457,7 @@ describe('community guard and error branches', () => {
 
   it('rejects malformed payloads with validation errors', async () => {
     const d = access();
-    expect(await createPost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createPostAndDrain(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await editPost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await deletePost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await listNotifications(memberCtx, { cursor: 'not-a-cursor' }, d)).toMatchObject({
@@ -1402,7 +1470,7 @@ describe('community guard and error branches', () => {
 
   it('rejects a blank body', async () => {
     const d = access();
-    const result = await createPost(
+    const result = await createPostAndDrain(
       memberCtx,
       { contextKind: 'lesson', contextId: 'l1', body: '   \r\n  ' },
       d,
@@ -1413,7 +1481,7 @@ describe('community guard and error branches', () => {
   it('keeps angle-bracketed text in created and edited bodies', async () => {
     const d = access();
     const markupLike = 'Generic<T> renders <script>alert(1)</script> and <div class="x">';
-    const created = await createPost(
+    const created = await createPostAndDrain(
       memberCtx,
       { contextKind: 'lesson', contextId: 'l1', body: markupLike },
       d,
@@ -1427,7 +1495,7 @@ describe('community guard and error branches', () => {
 
   it('keeps legacy edits plain and renders explicit Markdown writes', async () => {
     const d = access();
-    const created = await createPost(
+    const created = await createPostAndDrain(
       memberCtx,
       { contextKind: 'lesson', contextId: 'l1', body: 'Visit https://example.com' },
       d,
@@ -1472,7 +1540,7 @@ describe('community guard and error branches', () => {
 
   it('counts rendered Markdown destinations for link-flood moderation', async () => {
     const d = access();
-    const created = await createPost(
+    const created = await createPostAndDrain(
       memberCtx,
       {
         contextKind: 'lesson',
@@ -1492,7 +1560,7 @@ describe('community guard and error branches', () => {
   it('rejects a reply whose parent belongs to another discussion', async () => {
     const d = access();
     const rootId = await seedPost(d);
-    const result = await createPost(
+    const result = await createPostAndDrain(
       memberCtx,
       { contextKind: 'lesson', contextId: 'l2', body: 'reply', parentPostId: rootId },
       d,
@@ -1560,7 +1628,7 @@ describe('community guard and error branches', () => {
         return { ok: true, value: undefined };
       },
     });
-    const root = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
     await d.threadSubscriptions.upsert('t1', {
       userId: 'u2',
@@ -1568,7 +1636,7 @@ describe('community guard and error branches', () => {
       createdAt: NOW,
     });
 
-    const reply = await createPost(
+    const reply = await createPostAndDrain(
       memberCtx,
       { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' },
       d,
@@ -1590,7 +1658,7 @@ describe('community guard and error branches', () => {
         return { ok: true, value: undefined };
       },
     });
-    const root = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    const root = await createPostAndDrain(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
     await d.threadSubscriptions.upsert('t1', {
       userId: 'u2',
@@ -1604,7 +1672,7 @@ describe('community guard and error branches', () => {
       createdAt: NOW,
     });
 
-    const reply = await createPost(
+    const reply = await createPostAndDrain(
       memberCtx,
       { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' },
       d,
@@ -1781,3 +1849,15 @@ describe('renderPost', () => {
     expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }).body).toBe('This post was deleted by a moderator.');
   });
 });
+
+const createPostAndDrain = async (...args: Parameters<typeof createPost>): ReturnType<typeof createPost> => {
+  const result = await createPost(...args);
+  const d = args[2];
+  if (d.posts instanceof FakePosts) {
+    for (const job of d.posts.fanoutJobs.splice(0)) {
+      const drained = await runPostFanoutJob(job, { ...d, fanoutBatches: fakeFanoutBatches(() => d) });
+      if (!drained.ok) throw new Error(drained.error.message);
+    }
+  }
+  return result;
+};

@@ -42,7 +42,11 @@ export const createMarketingSnsInboxRepository = (db: Db): MarketingSnsInboxRepo
     return claimed === undefined ? null : parse(claimed);
   }),
   save: async (tenantId, row) => db.transaction(async (tx) => {
-    const [updated] = await tx.update(marketingSnsInbox).set({ ...marketingSnsInboxSchema.parse(row), tenantId }).where(and(eq(marketingSnsInbox.tenantId, tenantId), eq(marketingSnsInbox.id, row.id), eq(marketingSnsInbox.claimVersion, row.claimVersion))).returning();
+    const { bodySha256, ...parsed } = marketingSnsInboxSchema.parse(row);
+    // A changed digest means erasure canonicalised the stored body after this snapshot was claimed;
+    // the snapshot's own erasure scrub never changes the digest.
+    const rawBody = sql`CASE WHEN ${marketingSnsInbox.bodySha256} = ${bodySha256} THEN ${parsed.rawBody} ELSE ${marketingSnsInbox.rawBody} END`;
+    const [updated] = await tx.update(marketingSnsInbox).set({ ...parsed, rawBody, tenantId }).where(and(eq(marketingSnsInbox.tenantId, tenantId), eq(marketingSnsInbox.id, row.id), eq(marketingSnsInbox.claimVersion, row.claimVersion))).returning();
     if (updated === undefined) return false;
     await tx.insert(marketingSnsInboxEvents).values({ id: `${row.id}:${row.status}:${String(row.claimVersion)}`, tenantId, inboxId: row.id, type: row.status, occurredAt: row.processedAt ?? row.nextAttemptAt });
     return true;

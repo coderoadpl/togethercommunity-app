@@ -8,6 +8,7 @@ import { sendMarketingMessages } from '#core/server/usecases/marketing-email.js'
 import { dispatchMarketingOutbox } from '#core/server/usecases/marketing-dispatch.js';
 import { listMarketingSnsInbox, processMarketingSnsInbox, recordVerifiedMarketingSnsEnvelope, retryMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 
+import { repairErasedEmailEvents } from './email-event-erasure.js';
 import { createDeliveryFixture, deliveryCtx, deliveryWebhookCtx, deliveryWorkerCtx, DELIVERY_NOW } from './marketing-delivery-test-fixture.js';
 import { campaignSends, emailEvents, marketingSnsInbox, suppressions } from './schema.js';
 
@@ -111,6 +112,28 @@ describe('durable SNS inbox', () => {
     expect(await recordVerifiedMarketingSnsEnvelope(deliveryWebhookCtx(), { envelope: verified.value }, fixture.deps))
       .toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await fixture.db.select().from(marketingSnsInbox)).toHaveLength(1);
+  }, 60000);
+
+  it('keeps a body canonicalised by erasure after a worker claimed the legacy receipt', async () => {
+    fixture = await createDeliveryFixture();
+    const input = receipt('legacy-claimed');
+    const signed = createSignedSnsNotification(input.envelope);
+    const rawBody = JSON.stringify({ ...signed.envelope, SubscribeURL: { recipient: 'unrelated@example.test' } }, null, 2);
+    await fixture.db.insert(marketingSnsInbox).values({
+      id: 'legacy-claimed', tenantId: 'delivery-a', topicArn: 'topic-a', snsMessageId: input.envelope.messageId,
+      messageType: 'Notification', rawBody, bodySha256: createContentHash().sha256(rawBody),
+      verifiedAt: DELIVERY_NOW, receivedAt: DELIVERY_NOW, status: 'pending', nextAttemptAt: DELIVERY_NOW,
+    });
+    const claimed = await fixture.deps.snsInbox.claim('delivery-a', { workerId: 'worker', now: DELIVERY_NOW, lockedUntil: worker.deadlineAt });
+    if (claimed === null) throw new Error('Expected a claimed receipt');
+    expect((await repairErasedEmailEvents(fixture.db, 'delivery-a', fixture.deps.hmac, true)).inbox).toEqual({ matched: 1, changed: 1 });
+    const [canonical] = await fixture.db.select().from(marketingSnsInbox);
+    expect(canonical?.rawBody).not.toBe(rawBody);
+
+    expect(await fixture.deps.snsInbox.save('delivery-a', { ...claimed, status: 'processed', processedAt: DELIVERY_NOW, lockedBy: null, lockedUntil: null })).toBe(true);
+    const [stored] = await fixture.db.select().from(marketingSnsInbox);
+    expect(stored).toMatchObject({ status: 'processed', rawBody: canonical?.rawBody, bodySha256: canonical?.bodySha256 });
+    expect(stored?.rawBody).not.toContain('unrelated@example.test');
   }, 60000);
 
   it('retries callback-before-correlation and applies duplicate delivery exactly once', async () => {

@@ -25,6 +25,7 @@ import {
   deepHealthOutputSchema,
   envelopeSchema,
   imageAssetUploadOutputSchema,
+  ordersListOutputSchema,
   salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   studentLessonOutputSchema,
@@ -1152,6 +1153,58 @@ const scopedApp = (
     ...options.overrides,
   });
 };
+
+describe('order list payment mode', () => {
+  const harness = () => {
+    const stored = [
+      { id: 'acme-live', tenantId: acme.id, mode: 'live' },
+      { id: 'acme-test', tenantId: acme.id, mode: 'test' },
+      { id: 'studio-live', tenantId: 't-studio', mode: 'live' },
+      { id: 'studio-test', tenantId: 't-studio', mode: 'test' },
+    ].map((row) => orderListItemSchema.parse({
+      ...row,
+      memberId: 'buyer', productId: 'paperback', priceId: 'price', kind: 'one_time', status: 'paid',
+      amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '2026-11-10T12:00:00.000Z', memberEmail: 'buyer@togethercommunity.app', memberName: 'Buyer',
+      productTitle: 'Paperback', couponCode: null,
+    }));
+    const list = vi.fn<AppDeps['orders']['list']>(async (tenantId, filters) => {
+      const orders = stored.filter((row) => row.tenantId === tenantId && (filters.mode === undefined || row.mode === filters.mode));
+      return { orders, total: orders.length };
+    });
+    return { app: scopedApp('staff', { overrides: { orders: { ...deps().orders, list } } }), list };
+  };
+
+  it.each(['live', 'test'] as const)('returns only this tenant and mode=%s', async (mode) => {
+    const h = harness();
+    const response = await h.app.request(`/api/orders?mode=${mode}`, { headers: { host: 'acme.localhost' } });
+    const payload = envelopeSchema(ordersListOutputSchema).parse(await response.json());
+    expect(response.status).toBe(200);
+    if (!payload.ok) throw new Error(payload.error.message);
+    expect(payload.data.orders.map((row) => row.id)).toEqual([`acme-${mode}`]);
+    expect(payload.data.total).toBe(1);
+    expect(h.list).toHaveBeenCalledExactlyOnceWith(acme.id, { mode, page: 1, pageSize: 20 });
+  });
+
+  it('preserves both modes when omitted without returning another tenant', async () => {
+    const h = harness();
+    const response = await h.app.request('/api/orders', { headers: { host: 'acme.localhost' } });
+    const payload = envelopeSchema(ordersListOutputSchema).parse(await response.json());
+    expect(response.status).toBe(200);
+    if (!payload.ok) throw new Error(payload.error.message);
+    expect(payload.data.orders.map((row) => row.id)).toEqual(['acme-live', 'acme-test']);
+    expect(payload.data.total).toBe(2);
+    expect(h.list).toHaveBeenCalledExactlyOnceWith(acme.id, { page: 1, pageSize: 20 });
+  });
+
+  it.each(['staging', ''])('rejects invalid mode=%s before reading orders', async (mode) => {
+    const h = harness();
+    const response = await h.app.request(`/api/orders?mode=${mode}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.list).not.toHaveBeenCalled();
+  });
+});
 
 const marketingDeps = (): MarketingAppDeps => {
  const base: Omit<MarketingAppDeps, 'delivery' | 'marketingOutbox' | 'snsInbox'> = {

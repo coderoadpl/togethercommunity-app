@@ -1,6 +1,9 @@
+import type { Language } from '#core/domain/index.js';
+import { metaCapiActions } from '#core/client/index.js';
 import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
-import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates } from '#core/client/index.js';
+import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates, packingListQuery, shipOrderMutation } from '#core/client/index.js';
+import { configureShipxMutation, createShipxShipmentMutation, discardShipxAttemptMutation, downloadShipxLabelMutation, refreshedShipxShipmentQuery, shipxSettingsInvalidates, shipxSettingsQuery, shipxShipmentInvalidates, shipxShipmentQuery } from '#core/client/index.js';
 import { salesLinkActions } from '#core/client/index.js';
 import { surveyActions } from '#core/client/index.js';
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
@@ -198,6 +201,11 @@ import {
   productsInvalidates,
   productPricesQuery,
   productPricesInvalidates,
+  productStockQuery,
+  productStockInvalidates,
+  enableProductStockMutation,
+  adjustProductStockMutation,
+  setProductStockThresholdMutation,
   uploadProductDownloadMutation,
   uploadCourseCoverMutation,
   uploadProductCoverMutation,
@@ -263,6 +271,7 @@ import {
   tenantSecretsInvalidates,
   testIntegrationMutation,
   tenantSettingsQuery,
+  memberSettingsQuery,
   tenantTeamQuery,
   addTenantAdminMutation,
   removeTenantAdminMutation,
@@ -348,6 +357,7 @@ const authClient = createBetterAuthClientAdapter('');
  * these ready actions and never see a client, a port or an adapter.
  */
 export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClientPort, 'listPasskeys'> = authClient) => ({
+  metaCapi: metaCapiActions(apiClient),
   salesLinks: salesLinkActions(apiClient),
   surveys: surveyActions(apiClient),
   directory: marketingDirectoryActions(apiClient),
@@ -368,7 +378,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   publicSpaceEvents: (input: EventsBySpaceInput) => publicSpaceEventsQuery(apiClient, input),
   publicSpaceEvent: (input: PublicSpaceEventInput) => publicSpaceEventQuery(apiClient, input),
   publicPaymentConfig: publicPaymentConfigQuery(apiClient),
-  publicCheckoutSessionStatus: (sessionId: string) => publicCheckoutSessionStatusQuery(apiClient, sessionId),
+  publicCheckoutSessionStatus: (sessionId: string, locale?: Language) => publicCheckoutSessionStatusQuery(apiClient, sessionId, locale),
   stripeTestSession: stripeTestSessionMutation(apiClient),
   removeStripeTestMode: removeStripeTestModeMutation(apiClient),
   createCheckoutSession: createCheckoutSessionMutation(apiClient),
@@ -384,6 +394,11 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   createProductPrice: createProductPriceMutation(apiClient),
   deactivateProductPrice: deactivateProductPriceMutation(apiClient),
   productPricesInvalidates,
+  productStock: (productId: string) => productStockQuery(apiClient, productId),
+  productStockInvalidates,
+  enableProductStock: enableProductStockMutation(apiClient),
+  adjustProductStock: adjustProductStockMutation(apiClient),
+  setProductStockThreshold: setProductStockThresholdMutation(apiClient),
   downloadCopies: (query: Parameters<typeof apiClient.listDownloadCopies>[0]) => downloadCopiesQuery(apiClient, query),
   productDownloadAssets: (productId: string) => productDownloadAssetsQuery(apiClient, productId),
   productDownloadAssetsInvalidates,
@@ -403,6 +418,17 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   orderReconciliation: orderReconciliationQuery(apiClient),
   orderVerification: (reference: string) => orderVerificationQuery(apiClient, reference),
   issueOrderLine: issueOrderLineMutation(apiClient),
+  shipOrder: shipOrderMutation(apiClient),
+  shipxShipment: (orderId: string) => shipxShipmentQuery(apiClient, orderId),
+  shipxRefreshedShipment: (orderId: string) => refreshedShipxShipmentQuery(apiClient, orderId),
+  shipxCreate: createShipxShipmentMutation(apiClient),
+  shipxDiscard: discardShipxAttemptMutation(apiClient),
+  shipxLabel: downloadShipxLabelMutation(apiClient),
+  shipxShipmentInvalidates,
+  shipxSettings: shipxSettingsQuery(apiClient),
+  shipxConfigure: configureShipxMutation(apiClient),
+  shipxSettingsInvalidates,
+  packingList: (input: Parameters<typeof packingListQuery>[1]) => packingListQuery(apiClient, input),
   ordersInvalidates,
   orderVerificationInvalidates,
   order: (id: string) => orderQuery(apiClient, id),
@@ -572,6 +598,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   testBunnyConnection: testBunnyConnectionMutation(apiClient),
   tenantSecretsInvalidates,
   tenantSettings: tenantSettingsQuery(apiClient),
+  memberSettings: memberSettingsQuery(apiClient),
   tenantTeam: tenantTeamQuery(apiClient),
   addTenantAdmin: addTenantAdminMutation(apiClient),
   removeTenantAdmin: removeTenantAdminMutation(apiClient),

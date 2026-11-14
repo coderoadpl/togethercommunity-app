@@ -17,10 +17,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { Product, ProductAccessIssues, StaffSpace } from '#core/domain/index.js';
+import type { Product, ProductAccessIssues, ProductStock, StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { PanelListRow } from '../../../components/ui/PanelListRow.js';
@@ -31,6 +32,7 @@ import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 import { productTypeLabel } from './product-type.js';
+import { productStockSummary } from './ProductStockSection.js';
 
 const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
   const t = useTranslations();
@@ -67,6 +69,7 @@ const CopyLinkGlyph = () => (
 const ProductRow = ({
   product,
   issue,
+  stock,
   spaces,
   spacesPending,
   spacesError,
@@ -74,6 +77,7 @@ const ProductRow = ({
 }: {
   product: Product;
   issue?: ProductAccessIssues | undefined;
+  stock?: ProductStock | undefined;
   spaces: StaffSpace[];
   spacesPending: boolean;
   spacesError: boolean;
@@ -225,6 +229,7 @@ const ProductRow = ({
           <span>
             {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
             <DataValue>{accessCount}</DataValue> {t.products.accessItemNoun({ count: accessCount })}
+            {stock === undefined ? null : <> · <DataValue data-testid={`product-stock-${product.id}`}>{productStockSummary(stock, t)}</DataValue></>}
           </span>
           <EntryDate component="time" dateTime={product.createdAt}>
             {formatDate(product.createdAt, language)}
@@ -384,6 +389,7 @@ export const ProductsPanel = () => {
                 key={product.id}
                 product={product}
                 issue={accessIssues.data?.issues.find((entry) => entry.productId === product.id)}
+                stock={products.data.stock.find((entry) => entry.productId === product.id)}
                 spaces={spaces.data?.spaces ?? []}
                 spacesPending={spaces.isPending}
                 spacesError={spaces.isError}

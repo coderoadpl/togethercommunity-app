@@ -6,7 +6,36 @@ export const expectedPurchaseConfirmationPl = {
   notInvoice: 'To potwierdzenie zakupu nie jest fakturą. Jeśli potrzebujesz faktury, skontaktuj się z nami.',
 };
 
+export const purchaseDeliveryFixturesPl = {
+  locker: { method: 'Paczkomat InPost', pickupPoint: { code: 'WAW01M', name: 'Paczkomat WAW01M', address: 'ul. Prosta 1, Warszawa' }, address: null },
+  address: { method: 'Kurier', pickupPoint: null, address: { name: 'Jan Kowalski', line1: 'ul. Ogrodowa 5', line2: 'm. 2', postalCode: '00-950', city: 'Warszawa', country: 'PL' } },
+};
+
+export const expectedPurchaseDeliveryPl = {
+  lockerHtml: '<p><strong>Dostawa</strong>: Paczkomat InPost<br>Paczkomat: WAW01M<br>Paczkomat WAW01M<br>ul. Prosta 1, Warszawa</p>',
+  lockerText: '\n\nDostawa: Paczkomat InPost\nPaczkomat: WAW01M\nPaczkomat WAW01M\nul. Prosta 1, Warszawa',
+  addressHtml: '<p><strong>Dostawa</strong>: Kurier<br>Jan Kowalski<br>ul. Ogrodowa 5<br>m. 2<br>00-950 Warszawa<br>PL</p>',
+  addressText: '\n\nDostawa: Kurier\nJan Kowalski\nul. Ogrodowa 5\nm. 2\n00-950 Warszawa\nPL',
+};
+
+export const orderShippedFixturePl = {
+  tenantName: 'Acme Courses',
+  shipment: {
+    orderNumber: 'order-42',
+    items: ['Uchwyt drukowany', 'Podstawka'],
+    delivery: purchaseDeliveryFixturesPl.locker,
+    carrier: 'inpost' as const,
+    trackingNumber: '520000011395200025754311',
+    trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=520000011395200025754311',
+  },
+};
+
 export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
+  orderShipped: {
+    subject: 'Twoje zamówienie order-42 zostało wysłane — Acme Courses',
+    html: '<p>Cześć!</p><p>Twoje zamówienie order-42 w Acme Courses zostało wysłane.</p><p>Wysłane produkty</p><ul><li>Uchwyt drukowany</li><li>Podstawka</li></ul><p><strong>Dostawa</strong>: Paczkomat InPost<br>Paczkomat: WAW01M<br>Paczkomat WAW01M<br>ul. Prosta 1, Warszawa</p><p><strong>Przewoźnik</strong>: InPost<br>Numer przesyłki: 520000011395200025754311<br><a href="https://inpost.pl/sledzenie-przesylek?number=520000011395200025754311">Śledź przesyłkę</a></p>',
+    text: 'Cześć!\n\nTwoje zamówienie order-42 w Acme Courses zostało wysłane.\n\nWysłane produkty:\n- Uchwyt drukowany\n- Podstawka\n\nDostawa: Paczkomat InPost\nPaczkomat: WAW01M\nPaczkomat WAW01M\nul. Prosta 1, Warszawa\n\nPrzewoźnik: InPost\nNumer przesyłki: 520000011395200025754311\nŚledź przesyłkę: https://inpost.pl/sledzenie-przesylek?number=520000011395200025754311',
+  },
   welcomeSignIn: {
     subject: 'Twoje konto na platformie Acme Courses jest gotowe',
     html: '<p>Cześć!</p><p>Twoje konto na platformie Acme Courses jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p><a href="https://acme.localhost/sign-in?token=abc">Zaloguj się i otwórz kurs</a></p>',
@@ -26,6 +55,16 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     subject: '[Acme] Wniosek o usunięcie danych',
     html: '<p>member@example.com złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: 17 sierpnia 1998<br>Termin realizacji: 16 września 1998</p><p><a href="https://acme.example.com/panel/members/member-1">Otwórz wniosek w panelu</a></p>',
     text: 'member@example.com złożył(a) wniosek o usunięcie konta i danych.\nZłożono: 17 sierpnia 1998\nTermin realizacji: 16 września 1998\nhttps://acme.example.com/panel/members/member-1',
+  },
+  stockLowEmail: {
+    subject: '[Acme] Niski stan magazynowy: Printed <poster>',
+    html: '<p>Kończy się zapas produktu Printed &lt;poster&gt;.</p><p>Dostępne: 1<br>Próg niskiego stanu: 2</p><p><a href="https://acme.example.com/panel/products/product-1">Otwórz produkt</a></p>',
+    text: 'Kończy się zapas produktu Printed <poster>.\nDostępne: 1\nPróg niskiego stanu: 2\nhttps://acme.example.com/panel/products/product-1',
+  },
+  stockOversoldEmail: {
+    subject: '[Acme] Sprzedano ponad stan: Printed <poster>',
+    html: '<p>Produkt Printed &lt;poster&gt; został sprzedany po wyczerpaniu zapasu.</p><p>Dostępne: 0<br>Próg niskiego stanu: nie ustawiono</p><p>Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.</p><p><a href="https://acme.example.com/panel/products/product-1">Otwórz produkt</a></p>',
+    text: 'Produkt Printed <poster> został sprzedany po wyczerpaniu zapasu.\nDostępne: 0\nPróg niskiego stanu: nie ustawiono\nOpłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.\nhttps://acme.example.com/panel/products/product-1',
   },
   emailTransportTest: {
     subject: 'Together — wiadomość testowa (resend)',

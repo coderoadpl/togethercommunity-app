@@ -22,6 +22,15 @@ import {
   type TenantRedirect,
 } from '#core/domain/index.js';
 
+import {
+  cacheImportContentReaders,
+  checkImportCreatedAt,
+  emptyImportReferenceMaps,
+  rememberImportReference,
+  resolveImportReference,
+  type ImportReferenceMaps,
+} from './m2m-import-context.js';
+
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type {
@@ -35,7 +44,6 @@ import type {
   ImportRedirectRepository,
   TenantRedirectReader,
 } from '../ports.js';
-import { emptyImportReferenceMaps, type ImportReferenceMaps } from './m2m-import-users.js';
 
 export type M2mImportRedirectReaders = {
   courses: Pick<CourseRepository, 'findById'>;
@@ -72,34 +80,26 @@ const findReferenced = async (
   kind: ReferenceKind,
   id: string,
   deps: M2mImportRedirectReaders,
-): Promise<{ id: string } | null> => {
+): Promise<{ id: string; archivedAt?: string | null | undefined } | null> => {
   if (kind === 'course') return deps.courses.findById(tenantId, id);
   if (kind === 'module') return deps.modules.findById(tenantId, id);
   return deps.lessons.findById(tenantId, id);
 };
 
-const resolveReference = async (
+const resolveReference = (
   tenantId: string,
   kind: ReferenceKind,
   key: string,
   references: ImportReferenceMaps,
   deps: M2mImportRedirectReaders,
-): Promise<Result<string, AppError>> => {
-  const inCall = references[kind].get(key);
-  if (inCall !== undefined) {
-    const course = kind === 'course' ? await deps.courses.findById(tenantId, inCall) : null;
-    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
-    return ok(inCall);
-  }
-  const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key);
-  if (audit !== null) {
-    const course = kind === 'course' ? await deps.courses.findById(tenantId, audit.resourceId) : null;
-    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
-    const referenced = await findReferenced(tenantId, kind, audit.resourceId, deps);
-    if (referenced !== null) return ok(referenced.id);
-  }
-  return err(appError('conflict', `Referenced ${kind} "${key}" was not created by import`));
-};
+): Promise<Result<string, AppError>> => resolveImportReference(
+  tenantId,
+  kind,
+  key,
+  references,
+  () => deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key),
+  (id) => findReferenced(tenantId, kind, id, deps),
+);
 
 const courseOfModule = async (
   tenantId: string,
@@ -269,6 +269,8 @@ export const importM2mRedirects = async (
   const references = emptyImportReferenceMaps();
   const envelope = importWriteRequestSchema.safeParse(input);
   if (!envelope.success) return err(validation('Invalid import batch', envelope.error.flatten()));
+  deps = cacheImportContentReaders(deps).deps;
+  const now = deps.clock.nowIso();
   const results: ImportBatchResult[] = [];
   const seen = new Map<string, string>();
   for (let index = 0; index < envelope.data.records.length; index += 1) {
@@ -281,6 +283,11 @@ export const importM2mRedirects = async (
         action: 'error',
         error: validation('Invalid redirect import record', parsed.error.flatten()),
       });
+      continue;
+    }
+    const timestamp = checkImportCreatedAt(parsed.data, now);
+    if (!timestamp.ok) {
+      results.push({ importKey: parsed.data.importKey, action: 'error', error: timestamp.error });
       continue;
     }
     const record = importRedirectRecordSchema.parse(parsed.data);
@@ -304,7 +311,7 @@ export const importM2mRedirects = async (
       payloadHash,
       references,
       deps,
-      deps.clock.nowIso(),
+      now,
     );
     if (!prepared.ok) {
       results.push({ importKey: record.importKey, action: 'error', error: prepared.error });
@@ -322,7 +329,7 @@ export const importM2mRedirects = async (
         resourceId: prepared.value.resource.id,
         action: prepared.value.action,
         payloadHash: prepared.value.payloadHash,
-        at: deps.clock.nowIso(),
+        at: now,
       },
     });
     if (committed !== 'saved') {
@@ -338,6 +345,7 @@ export const importM2mRedirects = async (
       });
       continue;
     }
+    rememberImportReference(tenantId.value, 'redirect', record.importKey, prepared.value.resource.id, references);
     results.push({
       importKey: record.importKey,
       action: prepared.value.action,

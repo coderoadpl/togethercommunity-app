@@ -25,7 +25,7 @@ Production is promoted through a pull request from `staging` to `main`.
 4. Let the AI promotion review and `promotion-guard` run on the promotion pull
    request.
 
-5. The owner approves the pull request on GitHub. The agent then merges it.
+5. The owner approves the pull request on GitHub. Merge it after that approval.
 
 6. Confirm `prod-smoke` passes after the merge. Then clear the freeze:
 

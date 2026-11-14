@@ -300,6 +300,8 @@ const makeDeps = (
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+      listRepliesForRoots: async () => new Map(),
+      countRepliesIncludingDeleted: async () => new Map(),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async (tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }) => {
@@ -379,6 +381,7 @@ const makeDeps = (
       markDmConversationRead: async () => 0,
     },
     notificationChannels: [],
+    dispatchNotificationFanout: () => undefined,
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     courses: {
       list: async () => [],

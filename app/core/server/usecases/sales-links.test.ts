@@ -14,7 +14,7 @@ const findByIds = vi.fn<SalesLinkDeps['products']['findByIds']>(async () => prod
 const save = vi.fn<SalesLinkDeps['salesLinks']['save']>(async (_, value) => ok(value));
 const deps: SalesLinkDeps = {
   salesLinks: { list: async () => [link], findById: async (tenantId, id) => tenantId === link.tenantId && id === link.id ? link : null, findBySlug, save, delete: async () => ok(undefined) },
-  products: { findByIds },
+  products: { findByIds, listPublishedByTenant: async () => products },
   prices: { listActiveByProducts: async () => products.map((product) => ({ id: `price-${product.id}`, tenantId: 'workspace', productId: product.id, amountCents: product.priceCents, currency: 'PLN', kind: 'one_time', interval: null, active: true, createdAt: now })) },
   tenants: { findSettings: async () => null }, clock: { nowIso: () => now }, ids: { nextId: () => 'new-link' },
 };
@@ -84,4 +84,12 @@ it.each(['missing', 'ambiguous', 'imported', 'inactive', 'currency'])('rejects a
 it('exposes only public sales-link fields', async () => {
   const result = await getPublicSalesLink('workspace', link.slug, deps);
   expect(result.ok && result.value.salesLink).toEqual({ slug: link.slug, heading: link.heading, description: link.description, validFrom: null, validTo: null });
+});
+
+it('carries the product safety information of each line with the warnings rendered', async () => {
+  const compliance = { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1, Warsaw', manufacturerEmail: 'safety@example.com', modelIdentifier: 'PRINT-1', safetyWarnings: 'Keep **dry**.' };
+  findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, compliance } : product));
+  const result = await getPublicSalesLink('workspace', link.slug, deps);
+  if (!result.ok) throw new Error('offer failed');
+  expect(result.value.lines.map((line) => line.compliance)).toEqual([{ ...compliance, safetyWarningsHtml: '<p>Keep <strong>dry</strong>.</p>\n' }, null]);
 });

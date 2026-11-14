@@ -97,11 +97,14 @@
       "ok": true,
       "value": {
         "contentVersion": 1,
+        "inpostGeowidgetToken": null,
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "",
             "id": "product-acme-course",
             "marketingConsents": [],
@@ -116,13 +119,20 @@
               }
             ],
             "slug": "acme-course",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Acme Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }
         ],
         "salesLinks": [],
+        "shippingRates": [],
         "tenant": {
           "branding": {
             "accentColor": null,

@@ -59,6 +59,13 @@ viewport and authentication group. Because a single component is smaller than a
 full page, they use a 4 KiB size floor.
 
 Every capture path uses `createVisualCapture` in `scripts/visual-browser-setup.ts`.
+The harness tracks network idle itself: the page is idle once 500 ms have passed
+with no request in flight, and any new request, attached frame or frame navigation
+ends that state until another 500 ms pass with nothing in flight.
+Requests remain in flight until they finish or fail, and the idle wait fails after
+30 seconds with their URLs if the page cannot settle. The browser library's idle
+bookkeeping can lose its main-frame idle state after a late request and a child
+frame navigation, so capture readiness does not use its network-idle wait.
 It fixes Date to the recording time and sets locale to `pl-PL`,
 timezone to UTC, color scheme to light, scale to 1 and reduced motion. It shares
 the live harness's request policy, stream suppression, font readiness and

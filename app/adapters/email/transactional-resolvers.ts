@@ -1,8 +1,9 @@
-import { transactionalSesConfigurationSetName } from '#core/domain/index.js';
+import { transactionalSesConfigurationSetName, TRANSACTIONAL_SES_CONFIGURATION_FAILURE } from '#core/domain/index.js';
 import type {
   EmailIntegrationTransportResolver,
   EmailPort,
   MarketingSesCredentialResolver,
+  TransactionalSesReadiness,
   TenantSecretResolver,
   TenantSesSettingsRepository,
   TransactionalEmailTransportResolver,
@@ -17,19 +18,29 @@ const fromLine = (name: string, address: string): string => `${name} <${address}
 export const createTenantSesTransactionalResolver = (
   settings: TenantSesSettingsRepository,
   credentials: MarketingSesCredentialResolver,
+  infrastructure: {
+    readiness: TransactionalSesReadiness;
+    logger: { warn(message: string): void };
+  },
   emailFor: (input: {
     from: string;
     replyTo: string;
     region: string;
     credentials: { accessKeyId: string; secretAccessKey: string };
     configurationSet: string | null;
+    configurationRecovery: { tenantId: string; repair: (tenantId: string) => Promise<void> };
   }) => EmailPort = createSesEmailPort,
 ): TransactionalEmailTransportResolver => ({
   resolve: async (tenantId) => {
     const tenantSettings = await settings.findByTenant(tenantId);
-    if (tenantSettings?.identityVerifiedAt === null || tenantSettings === null) return null;
+    if (tenantSettings === null || tenantSettings.identityVerifiedAt === null) return null;
     const resolved = await credentials.resolve(tenantId);
     if (!resolved.ok) return null;
+    if (tenantSettings.identityCheckError?.startsWith(TRANSACTIONAL_SES_CONFIGURATION_FAILURE)) {
+      infrastructure.logger.warn(`[transactional-ses] configuration requires repair tenant=${tenantId} sending=continues`);
+    } else if (tenantSettings.configurationSet === null) {
+      infrastructure.logger.warn(`[transactional-ses] no configuration set tenant=${tenantId} sending=without-set`);
+    }
     return emailFor({
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),
       replyTo: tenantSettings.replyTo ?? tenantSettings.fromAddress,
@@ -41,6 +52,17 @@ export const createTenantSesTransactionalResolver = (
       configurationSet: tenantSettings.configurationSet === null
         ? null
         : transactionalSesConfigurationSetName(tenantSettings.configurationSet),
+      configurationRecovery: {
+        tenantId,
+        repair: async (tenantId) => {
+          const repaired = await infrastructure.readiness.ensure(tenantId, resolved.value, tenantSettings);
+          infrastructure.logger.warn(`[transactional-ses] missing configuration tenant=${tenantId} repair=${repaired.ok ? 'ready' : repaired.error.code} retry=outbox`);
+          if (!repaired.ok) {
+            const current = await settings.findByTenant(tenantId);
+            if (current !== null) await settings.upsert(tenantId, { ...current, identityCheckError: repaired.error.message });
+          }
+        },
+      },
     });
   },
 });

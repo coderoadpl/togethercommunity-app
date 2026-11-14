@@ -264,9 +264,11 @@ export const listAccessibleSpaces = async (
   if (ctx.identity.staffRole) return ok(spaces);
   const member = memberScope(ctx);
   if (!member) return err(forbidden('Only members can list spaces'));
-  const visible: Space[] = [];
-  for (const space of spaces) {
-    if (await spaceVisibleToMemberScope(member, space, deps)) visible.push(space);
-  }
-  return ok(visible);
+  const activeGrants = spaces.some((space) => space.visibility === 'product')
+    ? await deps.grants.listActiveForMember(member.tenantId, member.memberId, deps.clock.nowIso())
+    : [];
+  const productIds = new Set(activeGrants.map((grant) => grant.productId));
+  return ok(spaces.filter((space) =>
+    space.visibility === 'members' || space.productIds.some((productId) => productIds.has(productId)),
+  ));
 };

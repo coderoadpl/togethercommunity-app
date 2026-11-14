@@ -29,7 +29,7 @@ const harness = (published = true) => {
       findByEmail: async (tenantId, email) => tenantId === member.tenantId && email === member.email ? member : null },
     products: { findById: async (tenantId, id) => tenantId === 't1' && id === input.productId ? {
       id, tenantId, type: 'course', slug: 'course', title: 'Course', description: '', coverUrl: null,
-      priceCents: 0, currency: 'EUR', visibility: 'listed', published, accessItems: [], legacyId: null, createdAt: now,
+      priceCents: 0, currency: 'EUR', visibility: 'listed', deliveryMethod: 'pickup', published, accessItems: [], legacyId: null, createdAt: now,
     } : null },
     prices: { listByProduct: async (tenantId, productId) => prices.filter((price) => price.tenantId === tenantId && price.productId === productId),
       findById: async (tenantId, id) => prices.find((price) => price.tenantId === tenantId && price.id === id) ?? null,

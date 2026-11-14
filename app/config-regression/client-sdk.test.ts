@@ -54,6 +54,8 @@ describe('client SDK publish contract', () => {
     expect(adapterFiles.sort()).toEqual([
       'adapters/auth/client-adapter.d.ts',
       'adapters/auth/client-adapter.js',
+      'adapters/auth/two-factor-challenge.d.ts',
+      'adapters/auth/two-factor-challenge.js',
     ]);
   });
 

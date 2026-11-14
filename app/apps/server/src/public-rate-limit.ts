@@ -173,6 +173,7 @@ const emailBodySchema = z.object({ email: z.string().trim().toLowerCase().email(
 
 const isPublicWritePath = (path: string): boolean =>
   /^\/api\/public\/sales-links\/[^/]+\/checkout$/.test(path)
+  || path === API_PATHS.publicMetaCapiConsent
   || path === API_PATHS.checkoutSession
   || path === API_PATHS.couponCheckoutValidation
   || isPublicFormPath(path)

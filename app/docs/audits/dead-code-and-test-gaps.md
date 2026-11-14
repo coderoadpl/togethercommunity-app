@@ -1,5 +1,10 @@
 # Dead-code and test-gap audit
 
+## Purpose
+
+Find obsolete reachable code, unjustified static-analysis suppressions, and
+untested exposed routes or branches hidden by aggregate tool results.
+
 ## Run contract
 
 - **Cadence:** monthly, before a release, and after a substantial feature
@@ -38,4 +43,46 @@
    prioritize gaps by impact rather than line percentage.
 5. Record intentionally retained extension seams and why they remain. An
    unexplained suppression is a finding, not proof that the code is live.
+6. Check the actual external consumers behind each entry-point/public-export
+   suppression. Cite the consumer or supported extension contract; an export
+   label or broad Knip entry alone does not prove use.
+7. Enumerate the mounted identity provider's auth and configured-plugin route
+   table from the installed version and configuration, including subpaths hidden
+   by wildcard registration. Cross-reference every exposed route with a test at
+   some level: unit, contract, integration, or e2e. Record disabled routes
+   separately; the wildcard mount's test does not cover all provider routes.
+8. Inspect per-file branch gaps, including guards, error paths, rollback, and
+   feature-disabled paths, even when layer or aggregate coverage is above its
+   existing floor. Retain integration/e2e evidence that the coverage instrument
+   cannot see and distinguish unmeasured branches from proven zero coverage.
+9. Review temporary stubs and TODO/FIXME markers that survived a release. Require
+   a named tracking entry with rationale, owner, and revisit condition, or record
+   the unexplained survival as a finding rather than silently retaining it.
+
+## Finding criteria
+
+- An obsolete implementation has no supported reachable product or external
+  consumer, or a public/entry suppression has no evidenced justification after
+  tracing its consumers. A static-search miss alone is insufficient.
+- An exposed route, including a configured provider/plugin subroute, has no test
+  at any level after cross-referencing the route/test inventory. Cite the route,
+  registration, and test inventory reviewed.
+- A concrete high-risk branch lacks exercised behavior or negative assertions
+  despite aggregate green coverage. Cite per-file branch evidence and account
+  for integration/e2e coverage before calling a branch untested.
+- A temporary stub or TODO/FIXME survived a release without a named tracking
+  disposition. Accepted extension seams and documented deferrals are not dead
+  code merely because the tool cannot classify them.
+
+## Known blind spots
+
+- Dynamic dispatch, external consumers, and provider-internal routes can escape
+  static analysis. Even an enumerated provider table is bounded by the installed
+  version, enabled plugins, and observed configuration.
+- Coverage measures execution, not correctness; green percentages cannot prove
+  meaningful assertions. Uninstrumented integration/e2e paths are not zero
+  coverage by default.
+- This audit cannot discover every never-implemented capability; use
+  [completeness](completeness.md) for absences. It changes neither coverage floors
+  nor the decision to keep `pnpm run coverage` separate from `pnpm run check`.
 

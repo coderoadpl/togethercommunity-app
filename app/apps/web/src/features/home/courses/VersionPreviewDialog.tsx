@@ -15,7 +15,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { VersionPreview, VersionPreviewFieldName } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { BreakAnywhereText, CoverImageElement, Eyebrow, FinePrint, VersionDiffRow } from '../../../theme.js';

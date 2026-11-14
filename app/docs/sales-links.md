@@ -26,6 +26,35 @@ read or checkout begins. Delete is available only before the first paid order;
 after payment, deactivate instead. Refunded orders still preserve that history.
 Edits use a revision check so one editor cannot silently overwrite another.
 
+## Variant choices
+
+Each line can offer chips for published siblings in its variant group, including
+on one-line sales links. Choices stay on `/offer/<slug>` as repeatable
+`variant=<baseProductId>.<chosenProductId>` query parameters. Eligible siblings
+belong to the same workspace, have the same type and delivery method, are not
+memberships, have exactly one active non-imported one-time price in the link
+currency, and have resolvable VAT. The total is the sum of the chosen prices;
+each product may occur only once in the final bundle. A chip already chosen on
+another line is disabled; a simultaneous exchange remains valid when the final
+product IDs are unique.
+
+The public GET ignores stale or invalid pairs and discards all pairs if they
+would duplicate a product. Checkout session, coupon validation and simulation
+accept `variantSelections: [{ productId, variantProductId }]`, with `productId`
+in each pair identifying the saved line. The request's top-level `productId`
+remains the first saved product. These writes reject invalid selections before
+stock holds or snapshots and resolve prices and VAT on the server. Order lines,
+the order's first-product identity, stock, purchase consents, safety information,
+coupon scope and analytics follow the chosen products, not the saved bases.
+
+An offer with at least one two-variant line always routes to
+`?checkout=together`, including when its saved product is sold out. Chips use
+full navigation, retaining attribution, the coupon code, the Together marker,
+the staff test-purchase flag and other effective line choices. Unsaved form
+fields reset. Cancellation and Retry retain variant parameters. The direct
+handoff POST does not accept selections and continues to sell the saved products;
+public listing cards also retain saved-product totals. See [Product variants](shop.md#product-variants).
+
 ## Product VAT and physical items
 
 Products support 5%, 8%, 23%, or VAT exemption with a legal basis. New products
@@ -37,9 +66,19 @@ Gross prices use integer cents. For a taxable line, net is
 `round(gross × 100 / (100 + rate))`; VAT is the difference. Exempt lines have
 zero VAT and net equal to gross.
 
-Physical products use one-time prices and are collected in person. They have no shipping, course access,
-download or grant. Their purchased record appears in My products with the
-collection note. Each physical order line starts with `issuedCount = 0`.
+Physical products use one-time prices and grant no course access, download or
+access grant. Each has a delivery method. Collected in person (`pickup`, the
+default and the behaviour of every product created before delivery methods)
+keeps the purchased record in My products with the collection note, and each
+such order line starts with `issuedCount = 0` for the **issued N of 1** count.
+Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
+page: the buyer picks a workspace delivery option, and a parcel locker when the
+option needs one, before Stripe collects the address and phone number. A link
+with a shipped product, or with any product that carries product safety
+information, never hands off to Stripe automatically; it keeps the Together
+page at `?checkout=together`, like a link with purchase consent checkboxes. The
+delivery fee is a separate shipping line after the product lines. See
+[Shop](shop.md) for delivery options, the order data and the CLI.
 
 ## Checkout and accounting
 

@@ -62,10 +62,28 @@ export const SizeNoticeLightMobile390: Story = sizeNoticeStory('light', 'mobile'
 export const SizeNoticeDarkDesktop1440: Story = sizeNoticeStory('dark', 'desktop');
 export const SizeNoticeDarkMobile390: Story = sizeNoticeStory('dark', 'mobile');
 
+// The play phase starts before the page has rendered its fixture data, and Storybook only logs a play
+// function that throws, so a findByRole deadline expiring here would leave the capture without the looked-up copy.
+const copyLookupRendered = (canvasElement: HTMLElement, abortSignal: AbortSignal) => new Promise<void>((resolve) => {
+  const rendered = () => canvasElement.querySelector('[data-testid="download-copy-lookup"] input') !== null;
+  if (rendered()) {
+    resolve();
+    return;
+  }
+  const observer = new MutationObserver(() => {
+    if (!rendered()) return;
+    observer.disconnect();
+    resolve();
+  });
+  observer.observe(canvasElement, { childList: true, subtree: true });
+  abortSignal.addEventListener('abort', () => observer.disconnect(), { once: true });
+});
+
 const copyLookupStory = (colorScheme: 'light' | 'dark', viewport: 'desktop' | 'mobile', locale: 'en' | 'pl'): Story => ({
   parameters: { colorScheme, locale },
   globals: { viewport: { value: viewport } },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, abortSignal }) => {
+    await copyLookupRendered(canvasElement, abortSignal);
     const canvas = within(canvasElement);
     const t = locale === 'pl' ? pl : en;
     const identifier = await canvas.findByRole('textbox', { name: t.downloadCopies.identifier });

@@ -24,6 +24,8 @@ import { registerPublicRoutes } from './public-app.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
+import { requestOriginGuard } from './request-origin.js';
+import { assertRequestOriginCoverage } from './request-origin-policy.js';
 import { registerSocialPreviewRoute } from './social-preview.js';
 import { registerTenantRedirects } from './tenant-redirects.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
@@ -31,6 +33,12 @@ import { recordException, telemetryMiddleware } from './telemetry.js';
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
 const isServerRenderedDocument = (path: string): boolean =>
   ['/u/', '/marketing/', '/legal/', '/offer/'].some((prefix) => path.startsWith(prefix));
+const INPOST_GEOWIDGET_ORIGIN = 'https://geowidget.inpost.pl';
+
+const isCheckoutFormDocument = (path: string, query: (key: string) => string | undefined): boolean =>
+  query('status') !== 'success' && (path.startsWith('/checkout/')
+    || (path.startsWith('/offer/') && (query('checkout') === 'together' || query('status') === 'cancelled')));
+
 const isSpaDocument = (path: string): boolean =>
   path !== '/api' && !path.startsWith('/api/') && !isServerRenderedDocument(path);
 
@@ -87,10 +95,15 @@ export const buildApp = (deps: AppDeps) => {
     const redirectOrigin = c.get('signupRedirectOrigin');
     let policy = c.res.headers.get('content-security-policy');
     if (policy === null) return;
-    if (checkoutSuccessPath && c.req.method === 'GET'
-      && c.res.status === 200
-      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html') {
+    const htmlDocument = c.req.method === 'GET' && c.res.status === 200
+      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html';
+    if (checkoutSuccessPath && htmlDocument) {
       policy = policy.replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtag/ https://connect.facebook.net');
+    }
+    if (htmlDocument && isCheckoutFormDocument(c.req.path, (key) => c.req.query(key))) {
+      policy = policy
+        .replace(/script-src [^;]+/, `$& ${INPOST_GEOWIDGET_ORIGIN}`)
+        .replace(/style-src [^;]+/, `$& ${INPOST_GEOWIDGET_ORIGIN}`);
     }
     if (redirectOrigin !== undefined) policy = policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`);
     c.res.headers.set('content-security-policy', policy);
@@ -126,6 +139,7 @@ export const buildApp = (deps: AppDeps) => {
     }
     await next();
   });
+  app.use('/api/*', requestOriginGuard(deps));
   app.use(API_PATHS.operatorTenantProvision, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.operatorTenantReadiness, operatorTenantSecretGuard(deps.operatorSecret));
   app.use('*', impersonationGuard(deps));
@@ -148,6 +162,7 @@ export const buildApp = (deps: AppDeps) => {
   registerTenantRedirects(app, deps);
   registerSocialPreviewRoute(app, deps);
   assertPublicRouteManifest(app.routes.slice(socialRouteStart), PUBLIC_ROUTE_MANIFEST);
+  assertRequestOriginCoverage(app.routes);
 
   return app;
 };

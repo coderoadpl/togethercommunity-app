@@ -22,11 +22,14 @@
       "ok": true,
       "value": {
         "contentVersion": 1,
+        "inpostGeowidgetToken": null,
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "One year of access to Learning to Code on Your Own.",
             "id": "product-akademia-annual",
             "marketingConsents": [],
@@ -41,13 +44,20 @@
               }
             ],
             "slug": "akademia-annual",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Akademia - annual access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }
         ],
         "salesLinks": [],
+        "shippingRates": [],
         "tenant": {
           "branding": {
             "accentColor": "#0E7490",

@@ -1,4 +1,4 @@
-import { err, ok, resolveProductVat, splitProductGross, validation, type AppError, type OrderAttribution, type OrderLine, type Result } from '#core/domain/index.js';
+import { checkoutShippingSnapshotSchema, err, ok, resolveProductVat, SHIPPING_LINE_TYPE, splitProductGross, validation, type AppError, type CheckoutShippingSnapshot, type OrderAttribution, type OrderLine, type Result } from '#core/domain/index.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
 import type { TenantRepository, IdGenerator, Clock } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
@@ -10,11 +10,29 @@ interface CheckoutLineDeps {
   clock?: Clock;
 }
 
+interface CheckoutLines {
+  lines: OrderLine[];
+  totalCents: number;
+  currency: string;
+  shippingCents?: number;
+}
+
+const shippingLine = (shipping: CheckoutShippingSnapshot): OrderLine => ({
+  productId: `shipping:${shipping.rateId}`,
+  name: shipping.label,
+  productType: SHIPPING_LINE_TYPE,
+  ...splitProductGross(shipping.amountCents, shipping.vatRatePercent),
+  vatRate: shipping.vatRatePercent,
+  vatExemptionBasis: null,
+  vatExemptionBasisKind: null,
+  issuedCount: null,
+});
+
 export const buildCheckoutLines = async (
   tenantId: string,
   selection: CheckoutSelection,
   deps: Pick<CheckoutLineDeps, 'tenants'>,
-): Promise<Result<{ lines: OrderLine[]; totalCents: number; currency: string }, AppError>> => {
+): Promise<Result<CheckoutLines, AppError>> => {
   const { product, price } = selection;
   const selectedProducts = selection.products ?? [product];
   const resolvedPrices = selection.products === undefined ? null : resolveSalesLinkPrices(selectedProducts, selection.productPrices ?? []);
@@ -37,7 +55,9 @@ export const buildCheckoutLines = async (
     };
   });
   if (selection.salesLinkId !== undefined && lines.some((line) => line.vatRate === null)) return err(validation('Configure a VAT rate for every sales-link product'));
-  return ok({ lines, totalCents, currency: productPrices?.[0]?.currency ?? price?.currency ?? product.currency });
+  const currency = productPrices?.[0]?.currency ?? price?.currency ?? product.currency;
+  if (selection.shipping === undefined) return ok({ lines, totalCents, currency });
+  return ok({ lines: [...lines, shippingLine(selection.shipping)], totalCents, currency, shippingCents: selection.shipping.amountCents });
 };
 
 export const captureCheckoutSelection = async (
@@ -45,13 +65,18 @@ export const captureCheckoutSelection = async (
   selection: CheckoutSelection,
   deps: CheckoutLineDeps,
   attribution?: OrderAttribution,
-): Promise<Result<{ lines: OrderLine[]; totalCents: number; currency: string; checkoutSnapshotId?: string }, AppError>> => {
+): Promise<Result<CheckoutLines & { checkoutSnapshotId?: string }, AppError>> => {
   const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
   if (deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined) {
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
+  const shipping = selection.shipping === undefined ? undefined : checkoutShippingSnapshotSchema.safeParse(selection.shipping);
+  if (shipping?.success === false) return err(validation('Checkout shipping selection is invalid'));
   const checkoutSnapshotId = deps.ids.nextId();
-  await deps.checkoutSnapshots.create(tenantId, { attribution: attribution ?? null, id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() });
+  await deps.checkoutSnapshots.create(tenantId, {
+    attribution: attribution ?? null, id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null,
+    lines: built.value.lines, ...(shipping === undefined ? {} : { shipping: shipping.data }), currency: built.value.currency, createdAt: deps.clock.nowIso(),
+  });
   return ok({ ...built.value, checkoutSnapshotId });
 };

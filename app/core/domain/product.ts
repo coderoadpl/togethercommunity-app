@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
+import { productComplianceSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 import { productVatFields } from './product-vat.js';
+import { deliveryMethodSchema } from './shipping.js';
+import { DEFAULT_PARCEL_TEMPLATE, parcelTemplateSchema } from './shipx.js';
 
 import { slugify } from './slug.js';
 
@@ -112,6 +115,11 @@ export const productSchema = z.object({
   currency: currencySchema,
   published: z.boolean(),
   visibility: productVisibilitySchema.default('listed'),
+  deliveryMethod: deliveryMethodSchema.default('pickup'),
+  parcelTemplate: parcelTemplateSchema.optional(),
+  compliance: productComplianceSchema.nullable().optional(),
+  variantGroup: variantGroupSchema.nullable().optional(),
+  variantLabel: variantLabelSchema.nullable().optional(),
   accessItems: z.array(accessItemSchema),
   checkoutConsentDefinitionIds: z.array(z.string().min(1)).optional(),
   legacyId: z.string().nullable(),
@@ -124,6 +132,11 @@ export const newProductSchema = z.object({
   ...productVatFields,
   type: productTypeSchema.default('course'),
   visibility: productVisibilitySchema.default('listed'),
+  deliveryMethod: deliveryMethodSchema.default('pickup'),
+  parcelTemplate: parcelTemplateSchema.default(DEFAULT_PARCEL_TEMPLATE),
+  compliance: productComplianceSchema.nullable().optional(),
+  variantGroup: variantGroupSchema.nullable().optional(),
+  variantLabel: variantLabelSchema.nullable().optional(),
   slug: productSlugSchema.optional(),
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long'),
   description: newProductDescriptionSchema.default(''),
@@ -138,6 +151,11 @@ export type NewProductInput = z.input<typeof newProductSchema>;
 export const updateProductInputSchema = z.object({
   ...productVatFields,
   visibility: productVisibilitySchema.optional(),
+  deliveryMethod: deliveryMethodSchema.optional(),
+  parcelTemplate: parcelTemplateSchema.optional(),
+  compliance: productComplianceSchema.nullable().optional(),
+  variantGroup: variantGroupSchema.nullable().optional(),
+  variantLabel: variantLabelSchema.nullable().optional(),
   id: z.string().min(1),
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long').optional(),
   description: newProductDescriptionSchema.optional(),

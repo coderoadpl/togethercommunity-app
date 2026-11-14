@@ -11,6 +11,7 @@ import {
   type Product,
   type ProductAccessIssues,
   type ProductPrice,
+  type ProductStock,
   type ProductDownloadAssetMetadata,
   type StaffSpace,
 } from '#core/domain/index.js';
@@ -35,6 +36,7 @@ const initialProducts: Product[] = [
     priceCents: 2500,
     currency: 'PLN',
     visibility: 'listed',
+    deliveryMethod: 'pickup',
     published: false,
     accessItems: [{ level: 'course', courseId: 'c1' }],
     legacyId: null,
@@ -61,6 +63,7 @@ const renderProductsPanel = async (
   seededPrices = initialPrices,
   seededAssets: ProductDownloadAssetMetadata[] = [],
   seededSpaces: StaffSpace[] = [],
+  seededStock: ProductStock[] = [],
 ) => {
   let products = [...seededProducts];
   let prices = [...seededPrices];
@@ -70,7 +73,7 @@ const renderProductsPanel = async (
   const created: Product[] = [];
 
   server.use(
-    http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products } })),
+    http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products, stock: seededStock } })),
     http.get('/api/products/access-issues', () => HttpResponse.json({ ok: true, data: { issues } })),
     http.post('/api/products', async ({ request }) => {
       const input = newProductSchema.parse(await request.json());
@@ -85,6 +88,7 @@ const renderProductsPanel = async (
         priceCents: input.priceCents,
         currency: input.currency,
         visibility: 'listed',
+        deliveryMethod: 'pickup',
         published: false,
         accessItems: input.accessItems,
         legacyId: null,
@@ -116,6 +120,9 @@ const renderProductsPanel = async (
     }),
     http.get('/api/products/:productId/prices', () =>
       HttpResponse.json({ ok: true, data: { prices } }),
+    ),
+    http.get('/api/products/:productId/stock', () =>
+      HttpResponse.json({ ok: true, data: { stock: null } }),
     ),
     http.get('/api/products/:productId/downloads', () =>
       HttpResponse.json({ ok: true, data: { assets, personalisationMaxBytes: 20 * 1024 * 1024 } }),
@@ -307,11 +314,14 @@ describe('ProductsPanel', () => {
   });
 
   it('opens product creation from the list and continues at the price editor', async () => {
+    const user = userEvent.setup();
     await renderProductsPanel();
-    await userEvent.click(await screen.findByRole('link', { name: `+ ${en.common.add}` }));
-    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'New Workshop');
-    await userEvent.type(screen.getByLabelText(en.common.description), 'Hands-on session');
-    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
+    await user.click(await screen.findByRole('link', { name: `+ ${en.common.add}` }));
+    await user.click(await screen.findByLabelText(en.products.titleLabel));
+    await user.paste('New Workshop');
+    await user.click(screen.getByLabelText(en.common.description));
+    await user.paste('Hands-on session');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByRole('heading', { name: 'New Workshop', level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('prices-section')).toBeInTheDocument();
@@ -343,11 +353,73 @@ describe('ProductsPanel', () => {
     ]);
   });
 
+  it('starts stock tracking right after creating a physical product', async () => {
+    const user = userEvent.setup();
+    const enabled: unknown[] = [];
+    await renderProductsPanel([], '/panel/products/new');
+    server.use(http.post('/api/products/stock/enable', async ({ request }) => {
+      enabled.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { stock: { productId: 'product-2', onHand: 5, reserved: 0, available: 5, lowStockThreshold: null, lowStockNotifiedAt: null, low: false, soldOut: false, updatedAt: '2026-07-12T11:00:00.000Z' } } });
+    }));
+
+    await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel('physical', en) }));
+    await user.click(screen.getByLabelText(en.products.titleLabel));
+    await user.paste('Printed poster');
+    await user.click(screen.getByRole('switch', { name: en.products.stockTrack }));
+    expect(screen.getByRole('button', { name: en.products.create })).toBeDisabled();
+    await user.type(screen.getByTestId('stock-on-hand-input'), '5');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
+
+    expect(await screen.findByRole('heading', { name: 'Printed poster', level: 1 })).toBeInTheDocument();
+    expect(enabled).toEqual([{ productId: 'product-2', onHand: 5, lowStockThreshold: null }]);
+    expect(await screen.findByTestId('product-stock-section')).toBeInTheDocument();
+  });
+
+  it('stays on the create page with an error when stock tracking fails after creating a physical product', async () => {
+    const user = userEvent.setup();
+    const { router, created } = await renderProductsPanel([], '/panel/products/new');
+    server.use(http.post('/api/products/stock/enable', () =>
+      HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Stock storage unavailable' } }, { status: 500 })));
+
+    await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel('physical', en) }));
+    await user.click(screen.getByLabelText(en.products.titleLabel));
+    await user.paste('Printed poster');
+    await user.click(screen.getByRole('switch', { name: en.products.stockTrack }));
+    await user.type(screen.getByTestId('stock-on-hand-input'), '5');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
+
+    const alert = await screen.findByTestId('product-stock-enable-error');
+    expect(alert).toHaveTextContent(en.products.stockEnableAfterCreateFailed);
+    expect(alert).toHaveTextContent(en.errors.messageInternal);
+    expect(router.state.location.pathname).toBe('/panel/products/new');
+    expect(screen.getByRole('button', { name: en.products.create })).toBeDisabled();
+    expect(created).toHaveLength(1);
+
+    await user.click(within(alert).getByRole('button', { name: en.products.stockOpenProduct }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/products/product-2'));
+    expect(await screen.findByText(en.products.stockNotTracked)).toBeInTheDocument();
+  });
+
+  it('shows the stock column only for tracked products in the list', async () => {
+    const poster: Product = {
+      id: 'poster', tenantId: 't1', type: 'physical', deliveryMethod: 'pickup', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', published: true, accessItems: [], legacyId: null, createdAt: '2026-07-12T09:00:00.000Z',
+    };
+    const stock: ProductStock = { productId: 'poster', onHand: 12, reserved: 1, available: 11, lowStockThreshold: null, lowStockNotifiedAt: null, low: false, soldOut: false, updatedAt: '2026-07-12T10:00:00.000Z' };
+    await renderProductsPanel([], '/panel/products', [...initialProducts, poster], initialPrices, [], [], [stock]);
+    expect(await screen.findByTestId('product-stock-poster')).toHaveTextContent('12 · 1 reserved');
+    expect(screen.queryByTestId('product-stock-draft-1')).not.toBeInTheDocument();
+  });
+
   it('continues the onboarding product flow at the price editor', async () => {
+    const user = userEvent.setup();
     const { router } = await renderProductsPanel([], '/panel/products/new#prices');
 
-    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'Priced Workshop');
-    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
+    await user.click(await screen.findByLabelText(en.products.titleLabel));
+    await user.paste('Priced Workshop');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByTestId('prices-section')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/panel/products/product-2');
@@ -603,22 +675,25 @@ describe('ProductsPanel', () => {
   });
 
   it('updates product details while keeping the slug read-only', async () => {
+    const user = userEvent.setup();
     const rendered = await renderProductsPanel([], '/panel/products/draft-1');
 
     const visibility = await screen.findByRole('combobox', { name: en.products.visibilityLabel });
     expect(visibility).toHaveAccessibleDescription(en.products.visibilityHelper);
-    await userEvent.click(visibility);
-    await userEvent.click(screen.getByRole('option', { name: en.products.unlisted }));
+    await user.click(visibility);
+    await user.click(screen.getByRole('option', { name: en.products.unlisted }));
     const title = await screen.findByLabelText(en.products.titleLabel);
-    await userEvent.clear(title);
-    await userEvent.type(title, 'Updated course offer');
-    await userEvent.clear(screen.getByLabelText(en.products.coverUrlLabel));
-    await userEvent.type(screen.getByLabelText(en.products.coverUrlLabel), 'https://cdn.test/new-cover.jpg');
+    await user.clear(title);
+    await user.click(title);
+    await user.paste('Updated course offer');
+    await user.clear(screen.getByLabelText(en.products.coverUrlLabel));
+    await user.click(screen.getByLabelText(en.products.coverUrlLabel));
+    await user.paste('https://cdn.test/new-cover.jpg');
     expect(screen.getByLabelText(en.products.slugLabel)).toHaveAttribute('readonly');
     expect(screen.getByLabelText(en.products.slugLabel)).toHaveAccessibleDescription(
       en.products.slugImmutableHint,
     );
-    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
 
     expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(rendered.updatedProduct()).toMatchObject({
@@ -627,6 +702,93 @@ describe('ProductsPanel', () => {
       slug: 'draft-course',
       coverUrl: 'https://cdn.test/new-cover.jpg',
     });
+  });
+
+  it('saves product safety information and variant fields for a physical product', async () => {
+    const user = userEvent.setup();
+    const physical: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', published: false, accessItems: [],
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [physical]);
+    const bodies: unknown[] = [];
+    server.use(http.post('/api/products/update', async ({ request }) => {
+      const body = await request.json();
+      bodies.push(body);
+      return HttpResponse.json({ ok: true, data: { product: physical } });
+    }));
+    expect(await screen.findByText(en.productVariants.heading)).toBeInTheDocument();
+    await user.click(screen.getByLabelText(en.productVariants.group));
+    await user.paste('printed-stand');
+    await user.type(screen.getByLabelText(en.productVariants.label), 'Black');
+    await user.click(within(screen.getByTestId('product-compliance')).getByRole('button'));
+    await user.click(await screen.findByLabelText(en.productSafety.manufacturerName));
+    await user.paste('Example Workshop');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.productSafety.incomplete);
+    expect(bodies).toEqual([]);
+    await user.click(screen.getByLabelText(en.productSafety.manufacturerAddress));
+    await user.paste('Example Street 1, Warsaw');
+    await user.click(screen.getByLabelText(en.productSafety.manufacturerEmail));
+    await user.paste('safety@example.com');
+    await user.click(screen.getByLabelText(en.productSafety.modelIdentifier));
+    await user.paste('STAND-1');
+    await user.click(screen.getByLabelText(en.productSafety.safetyWarnings));
+    await user.paste('Keep away from open flame.');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(bodies).toEqual([expect.objectContaining({
+      id: 'draft-1',
+      variantGroup: 'printed-stand',
+      variantLabel: 'Black',
+      compliance: {
+        manufacturerName: 'Example Workshop',
+        manufacturerAddress: 'Example Street 1, Warsaw',
+        manufacturerEmail: 'safety@example.com',
+        modelIdentifier: 'STAND-1',
+        batchIdentifier: null,
+        safetyWarnings: 'Keep away from open flame.',
+        instructionsUrl: null,
+      },
+    })]);
+  });
+
+  it('saves the InPost parcel size of a shipped physical product', async () => {
+    const physical: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', parcelTemplate: 'small', published: false, accessItems: [],
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [physical]);
+    const bodies: unknown[] = [];
+    server.use(http.post('/api/products/update', async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { product: { ...physical, parcelTemplate: 'large' } } });
+    }));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.shipx.parcelTemplateLabel }));
+    await userEvent.click(await screen.findByRole('option', { name: en.shipx.parcelTemplates.large }));
+    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(bodies).toEqual([expect.objectContaining({ id: 'draft-1', deliveryMethod: 'shipping', parcelTemplate: 'large' })]);
+  });
+
+  it('hides the parcel size for products collected in person', async () => {
+    const pickup: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'pickup', published: false, accessItems: [],
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [pickup]);
+    expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: en.shipx.parcelTemplateLabel })).not.toBeInTheDocument();
+  });
+
+  it('offers product safety and variant fields only for physical products', async () => {
+    await renderProductsPanel([], '/panel/products/draft-1');
+    expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('product-compliance')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('product-variants')).not.toBeInTheDocument();
   });
 
   it('unpublishes a live product after confirmation', async () => {
@@ -690,6 +852,7 @@ it('keeps unlisted products in Studio with a chip and copyable checkout link', a
 
 
 it('reuses the upload control with replacement details and hides earlier versions initially', async () => {
+  const user = userEvent.setup();
   const base = initialProducts[0];
   if (!base) throw new Error('Missing product fixture');
   const latest: ProductDownloadAssetMetadata = {
@@ -702,7 +865,7 @@ it('reuses the upload control with replacement details and hides earlier version
   ]);
   expect(await screen.findByText('Second edition')).toBeVisible();
   expect(screen.getByText('First edition')).not.toBeVisible();
-  await userEvent.click(screen.getByText(en.products.previousVersions));
+  await user.click(screen.getByText(en.products.previousVersions));
   expect(screen.getByText('First edition')).toBeVisible();
   expect(screen.getByText(en.products.deleteVersion)).toBeVisible();
   let beginBody: unknown;
@@ -720,11 +883,12 @@ it('reuses the upload control with replacement details and hides earlier version
       return HttpResponse.json({ ok: true, data: { asset: { ...latest, id: 'asset-3', versionNumber: 3 } } });
     }),
   );
-  await userEvent.type(screen.getByLabelText(en.products.versionNote), 'Corrected diagram');
+  await user.click(screen.getByLabelText(en.products.versionNote));
+  await user.paste('Corrected diagram');
   const replace = screen.getAllByRole('button', { name: en.products.uploadNewVersion })[0];
   if (!replace) throw new Error('Missing replacement action');
-  await userEvent.click(replace);
-  await userEvent.upload(screen.getByLabelText(en.products.downloadFileInput), new File(['content'], 'corrected.pdf', { type: 'application/pdf' }));
+  await user.click(replace);
+  await user.upload(screen.getByLabelText(en.products.downloadFileInput), new File(['content'], 'corrected.pdf', { type: 'application/pdf' }));
   await waitFor(() => expect(completeBody).toEqual({ replacesAssetId: 'asset-2', versionNote: 'Corrected diagram' }));
   expect(beginBody).toMatchObject({ replacesAssetId: 'asset-2', fileName: 'corrected.pdf' });
 });

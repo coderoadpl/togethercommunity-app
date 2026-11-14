@@ -58,6 +58,10 @@ describe('authorization contract', () => {
   });
 
   it('keeps members, API keys, and public callers distinct', () => {
+    expect(capabilitiesForPrincipal('member')).toContain('member:settings:read');
+    expect(capabilitiesForPrincipal('member')).not.toContain('tenant:settings:read');
+    expect(capabilitiesForPrincipal('owner')).toContain('tenant:settings:read');
+    expect(capabilitiesForPrincipal('admin')).toContain('tenant:settings:read');
     expect(capabilitiesForPrincipal('member')).toContain('member:product:read');
     expect(capabilitiesForPrincipal('member')).not.toContain('member:read');
     expect(capabilitiesForPrincipal('api-key')).toContain('marketing:message:send');

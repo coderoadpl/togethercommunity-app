@@ -7,10 +7,10 @@ import type { MemberErasureRequestWithMember } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import {
-  ConfirmDialog,
   SectionCard,
   StatusView,
 } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 export const ErasureRequestsSection = () => {

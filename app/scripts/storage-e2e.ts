@@ -141,7 +141,7 @@ const expectProbeFailure = async (
 };
 
 const verifyAttachmentRoundtrip = async (): Promise<void> => {
-  const storageKey = `lesson-attachments/lesson-e2e/${randomUUID()}/handout.txt`;
+  const storageKey = `tenant-e2e/lesson-attachments/lesson-e2e/${randomUUID()}/handout.txt`;
   const objectUrl = storage.objectUrl(configuration, storageKey).toString();
   const body = `together lesson attachment ${randomUUID()}`;
 

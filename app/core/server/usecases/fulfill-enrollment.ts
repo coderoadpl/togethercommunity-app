@@ -1,9 +1,10 @@
 import {
-  allocateOrderLineGross,
+  allocatePaidOrderLineGross,
   emailBrandingFrom,
   err,
   notFound,
   ok,
+  orderDeliveryDetails,
   resolveEmailLanguage,
   resolveOrderVat,
   resolveProductVat,
@@ -106,7 +107,7 @@ export const queueEnrollmentWelcome = async (
     ? fallbackVat.treatment.kind === 'rate' ? fallbackVat.treatment.percent : 'exempt'
     : null;
   const productVat = resolveProductVat(product, settings);
-  const amounts = allocateOrderLineGross(order?.lines ?? [], order?.amountCents ?? 0);
+  const amounts = allocatePaidOrderLineGross(order?.lines ?? [], order?.amountCents ?? 0);
   const language = resolveEmailLanguage(
     member.language,
     inputLanguage,
@@ -141,6 +142,7 @@ export const queueEnrollmentWelcome = async (
           : [{ name: product.title, grossCents: order.amountCents, vatRate: productVat === null ? null : productVat.kind === 'rate' ? productVat.percent : 'exempt' }],
         currency: order.currency,
         totalCents: order.amountCents,
+        ...(order.shipping == null ? {} : { delivery: orderDeliveryDetails(order.shipping) }),
       } }),
       ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
     },

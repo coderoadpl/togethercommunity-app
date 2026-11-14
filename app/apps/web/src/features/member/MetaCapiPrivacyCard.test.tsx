@@ -1,0 +1,72 @@
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { expect, it, vi } from 'vitest';
+import { en } from '../../i18n/en.js';
+import { renderWithProviders } from '../../test/render.js';
+import { server } from '../../test/server.js';
+import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
+
+it('lists order decisions and withdraws a grant, then refreshes the account state', async () => {
+  let withdrawnAt: string | null = null;
+  const withdraw = vi.fn();
+  server.use(
+    http.get('/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: [
+      { orderId: 'order-1', consent: 'granted', consentAt: '2026-11-05T10:00:00.000Z', withdrawnAt },
+      { orderId: 'order-2', consent: 'denied', consentAt: '2026-11-05T10:00:00.000Z', withdrawnAt: null },
+    ] } })),
+    http.post('/api/me/meta-capi/withdraw', async ({ request }) => {
+      withdraw(await request.json());
+      withdrawnAt = '2026-11-05T11:00:00.000Z';
+      return HttpResponse.json({ ok: true, data: { consent: 'granted', withdrawnAt } });
+    }),
+  );
+  renderWithProviders(<MetaCapiPrivacyCard />);
+  expect(await screen.findByText(en.metaCapi.order({ id: 'order-1' }))).toBeVisible();
+  expect(screen.getByText(en.metaCapi.denied)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: en.metaCapi.withdraw }));
+  expect(await screen.findByText(en.metaCapi.withdrawn)).toBeVisible();
+  expect(withdraw).toHaveBeenCalledWith({ orderId: 'order-1' });
+  expect(screen.queryByRole('button', { name: en.metaCapi.withdraw })).toBeNull();
+});
+
+it('shows failures without removing the withdrawal action', async () => {
+  server.use(
+    http.get('/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: [
+      { orderId: 'order-1', consent: 'granted', consentAt: null, withdrawnAt: null },
+    ] } })),
+    http.post('/api/me/meta-capi/withdraw', () => HttpResponse.error()),
+  );
+  renderWithProviders(<MetaCapiPrivacyCard />);
+  fireEvent.click(await screen.findByRole('button', { name: en.metaCapi.withdraw }));
+  await screen.findByRole('alert');
+  await waitFor(() => expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toBeEnabled());
+});
+
+it('renders nothing for a member without recorded decisions', async () => {
+  const requested = vi.fn();
+  server.use(http.get('/api/me/meta-capi/consents', () => {
+    requested();
+    return HttpResponse.json({ ok: true, data: { consents: [] } });
+  }));
+  const { queryClient } = renderWithProviders(<MetaCapiPrivacyCard />);
+  expect(screen.queryByText(en.metaCapi.privacyHeading)).toBeNull();
+  await waitFor(() => expect(requested).toHaveBeenCalledOnce());
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  expect(screen.queryByText(en.metaCapi.privacyHeading)).toBeNull();
+});
+
+it('shows the card with an error and a working retry when the decisions request fails', async () => {
+  let failing = true;
+  server.use(http.get('/api/me/meta-capi/consents', () => failing
+    ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })
+    : HttpResponse.json({ ok: true, data: { consents: [
+      { orderId: 'order-1', consent: 'granted', consentAt: null, withdrawnAt: null },
+    ] } })));
+  renderWithProviders(<MetaCapiPrivacyCard />);
+  const retry = await screen.findByRole('button', { name: en.common.retry });
+  expect(screen.getByText(en.metaCapi.privacyHeading)).toBeVisible();
+  failing = false;
+  fireEvent.click(retry);
+  expect(await screen.findByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
+  expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
+});

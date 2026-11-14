@@ -1,6 +1,8 @@
 export * from './context.js';
 export * from './authorize.js';
 export * from './ports.js';
+export * from './meta-capi-ports.js';
+export * from './usecases/meta-capi.js';
 export * from './marketing-retention.js';
 export * from './post-content.js';
 export * from './realtime.js';
@@ -57,6 +59,7 @@ export * from './usecases/coupon-management.js';
 export * from './usecases/coupon-stats.js';
 export * from './usecases/stripe-webhook.js';
 export * from './usecases/product-prices.js';
+export * from './usecases/stock.js';
 export * from './usecases/orders.js';
 export * from './usecases/order-reconciliation.js';
 export * from './usecases/support.js';
@@ -98,6 +101,7 @@ export * from './usecases/email-reputation.js';
 export * from './usecases/scheduler-activity.js';
 export * from './usecases/purge-consent-evidence.js';
 export * from './usecases/marketing-email.js';
+export * from './usecases/marketing-tick-failures.js';
 export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';
 export * from './usecases/ses-webhook-url.js';
@@ -148,7 +152,12 @@ export * from './usecases/sales-links.js';
 
 export { captureCheckoutSelection } from './usecases/checkout-lines.js';
 export * from './order-verification-ports.js';
+export * from './stock-ports.js';
 export * from './usecases/order-verification.js';
+export * from './order-fulfilment-ports.js';
+export * from './usecases/order-fulfilment.js';
+export * from './shipx-ports.js';
+export * from './usecases/shipx.js';
 export * from './usecases/public-order-qr.js';
 
 export * from './consumer-sales-ports.js';
@@ -157,3 +166,4 @@ export * from './usecases/probe-stripe-permissions.js';
 
 export * from './product-draft-ports.js';
 export * from './usecases/product-drafts.js';
+export * from './usecases/storage-orphan-report.js';

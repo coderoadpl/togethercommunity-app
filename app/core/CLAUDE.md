@@ -25,7 +25,9 @@ or I/O implementation.
 - Expected domain and application failures return `Result<T, AppError>`.
 - New error kinds update `ERROR_CODES` and both exhaustive HTTP and CLI
   mappings without renumbering existing exit codes.
-- Every tenant-scoped use-case takes `ctx: { identity }` first.
+- Every authenticated tenant-scoped use-case takes `ctx: Ctx` first and
+  authorizes through `core/server/authorize.ts`. Public checkout, terms-consent
+  helpers, and Stripe webhook processing take explicit tenant inputs instead.
 - Every tenant-scoped repository method requires `tenantId`.
 
 ## Verify this layer

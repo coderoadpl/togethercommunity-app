@@ -116,6 +116,7 @@ const pCourse: Product = {
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'c1' }],
   legacyId: null,
@@ -254,6 +255,8 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
   return {
     calls,
     signer: {
+      putObject: async () => ok(undefined),
+      list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -440,6 +443,8 @@ describe('getPlayableLesson', () => {
 
   it('keeps the original url when the signer fails', async () => {
     const failing: StorageProvider = {
+      putObject: async () => ok(undefined),
+      list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => err(validation('bad url')),

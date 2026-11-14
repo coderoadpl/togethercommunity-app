@@ -47,7 +47,7 @@ export interface TenantOriginDeps extends TenantUrlDeps {
 
 export const resolveTenantOrigin = async (
   tenant: { id: string; slug: string | null },
-  deps: TenantOriginDeps,
+  deps: TenantUrlDeps & { tenantDomains: Pick<TenantDomainRepository, 'listByTenant'> },
 ): Promise<string> => tenantOriginUrl({
   slug: tenant.slug,
   customDomain: canonicalTenantDomain(await deps.tenantDomains.listByTenant(tenant.id))?.domain ?? null,

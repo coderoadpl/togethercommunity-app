@@ -6,6 +6,7 @@ import { createCouponRedemptionRepository } from './coupon-repositories.js';
 import { createCheckoutConsentJobRepository } from './checkout-consent-jobs.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
+import { createStockRepository } from './stock.js';
 import {
   createMemberRepository,
   createCheckoutConsentCaptureRepository,
@@ -69,6 +70,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           confirmations: createConsentConfirmationTokenRepository(tx),
           processedPaymentEvents: createProcessedPaymentEventRepository(tx),
           enrollmentTransaction,
+          stock: createStockRepository(tx),
         });
         if (!result.ok) {
           rejected = result;

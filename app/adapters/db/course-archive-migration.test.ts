@@ -55,7 +55,7 @@ const now = '2026-10-11T00:00:00.000Z';
 const tenantId = 'archive-tenant';
 const makeProduct = (id: string, courseId?: string): Product => ({
   id, tenantId, type: 'course', slug: id, title: `Product ${id}`, description: '', coverUrl: null,
-  priceCents: 100, currency: 'PLN', visibility: 'listed', published: false,
+  priceCents: 100, currency: 'PLN', visibility: 'listed', deliveryMethod: 'pickup', published: false,
   accessItems: courseId === undefined ? [] : [{ level: 'course', courseId }], legacyId: null, createdAt: now,
 });
 const prepareCourse = async (id: string): Promise<EntityVersionRecord> => {
@@ -106,8 +106,9 @@ describe('course archive serialization', () => {
       products: productRepository,
       progress: createMemberCourseProgressRepository(db),
       attachments: createLessonAttachmentRepository(db),
+      logger: { error: unusedStorage },
       storage: {
-        getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
+        putObject: unusedStorage, list: unusedStorage, getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
         presignPut: unusedStorage, presignGet: unusedStorage, delete: unusedStorage, head: unusedStorage,
         healthcheck: unusedStorage, test: unusedStorage,
       },

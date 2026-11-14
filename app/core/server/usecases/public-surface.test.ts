@@ -108,6 +108,7 @@ const product = (id: string, lessonIds: string[], courseId: string): Product => 
   priceCents: 5000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'lessons', courseId, lessonIds }],
   legacyId: null,
@@ -205,8 +206,12 @@ const spaceDeps = (input: {
       nextCursor: null,
     }),
     listPinnedForContext: async () => input.pinned ?? [],
-    listReplies: async (_tenantId, rootPostId) =>
-      (input.replies ?? []).filter((row) => row.rootPostId === rootPostId),
+    listRepliesForRoots: async (_tenantId, rootPostIds) => new Map(rootPostIds.map((rootPostId) => [
+      rootPostId, (input.replies ?? []).filter((row) => row.rootPostId === rootPostId),
+    ])),
+    countRepliesIncludingDeleted: async (_tenantId, rootPostIds) => new Map(rootPostIds.map((rootPostId) => [
+      rootPostId, (input.replies ?? []).filter((row) => row.rootPostId === rootPostId).length,
+    ])),
   },
   reactions: {
     summarize: async (_tenantId, query) =>

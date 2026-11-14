@@ -1,5 +1,11 @@
 # Dependency audit
 
+## Purpose
+
+Review dependency exposure, maintenance drift, resolution, licenses, and
+provenance beyond the filtered CI advisory result, preserving Together's dated
+policy and documented exceptions.
+
 ## Run contract
 
 - **Cadence:** automated checks on every protected-branch change, advisory
@@ -51,6 +57,59 @@ authorizes the Renovate GitHub App.
    absent provenance record as a gap, not Build L1 evidence.
 7. Record advisory-database coverage, private packages, and unbuilt deployment
    paths as blind spots.
+8. Collect production advisories without severity, accepted-advisory, or
+   fix-availability filtering, retaining raw registry advisory evidence before
+   policy suppressions. Use `pnpm audit --prod --json` as a production-tree
+   input, but reconcile configured `auditConfig.ignoreGhsas` entries with the
+   advisory sources so accepted items remain visible in the full inventory.
+   Collect `pnpm audit --dev --json` separately and label development/build/test
+   exposure; retain dependency paths so overlaps with production are explicit.
+   Registry errors are unverified evidence, not a clean audit. Do not edit the
+   repository allowlist to obtain an unfiltered report.
+9. Run `pnpm outdated` from Together's `app/` pnpm root and retain its output.
+   Triage packages more than one major behind, maintenance and EOL status,
+   transitive constraints, and upgrade risk. Give each stale or EOL package an
+   upgrade plan or named tracking disposition with owner and revisit trigger;
+   latest-version output alone does not authorize an upgrade.
+10. Check engine and peer compatibility and run `pnpm install --frozen-lockfile`
+    without regenerating the lockfile. Compare resolution, build-script
+    allow/ignore lists and their explanations, and release-age exclusions and
+    overrides with [foundation decisions](../../../FOUNDATION.md).
+    Preserve the empty build-script allowlist, reviewed peer exception,
+    three-day release-age policy, and the conditions for removing exceptions.
+11. Compare advisory dispositions and observed blocking behavior with the dated
+    policy in [agent instructions](../../CLAUDE.md) and the
+    [security posture](../security.md). Full-inventory collection does not relax
+    the moderate production threshold or turn development exposure into a new
+    gate, and it does not authorize new license exceptions.
+
+## Finding criteria
+
+- A production advisory lacks the disposition required by Together's dated
+  moderate-or-higher policy, or an accepted item lacks its required allowlist
+  entry and written rationale. Include lower-severity and development findings
+  with explicit exposure/triage labels, not an invented blocking threshold.
+- A package more than one major behind or at EOL has no tracking disposition,
+  or an override conceals an unresolved maintenance or exposure problem.
+- An engine/peer mismatch, frozen-lockfile failure, unexplained build-script
+  entry, or release-age bypass contradicts the documented policy after applying
+  the existing foundation exceptions.
+- A dependency violates the permissive-license policy or lacks required notice
+  or provenance evidence. Respect the accepted dynamically linked libvips
+  exception; an advisory score alone is not a license or provenance verdict.
+
+## Known blind spots
+
+- Advisory sources cover known reports at collection time, not undiscovered
+  vulnerabilities. Filtered CI output and accepted suppressions are not a full
+  inventory, and inaccessible sources remain unverified.
+- Version drift and advisory severity cannot alone establish exploitability,
+  safe upgrade behavior, or production exposure; deployment and call-path review
+  remain necessary.
+- This point-in-time dependency review is not a complete SBOM or a continuous
+  provenance guarantee. CI trust boundaries belong to
+  [CI security](ci-security.md), and unbuilt/private deployment paths may remain
+  outside observable evidence.
 
 ## MinIO test-image provenance — 2026-10-02
 

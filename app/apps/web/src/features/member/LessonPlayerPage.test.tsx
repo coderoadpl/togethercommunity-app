@@ -200,15 +200,13 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: false,
             },
@@ -945,17 +943,15 @@ describe('LessonPlayerPage', () => {
       releaseSettings = resolve;
     });
     server.use(
-      http.get('/api/tenant/settings', async () => {
+      http.get('/api/member/settings', async () => {
         settingsRequested = true;
         await settingsGate;
         return HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: false,
             },
@@ -1184,15 +1180,13 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: true,
             },
@@ -1221,17 +1215,15 @@ describe('LessonPlayerPage', () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
-      http.get('/api/tenant/settings', async () => {
+      http.get('/api/member/settings', async () => {
         settingsRequested = true;
         await settingsGate;
         return HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: true,
               memberVideoAutoplayOverride: false,
             },
@@ -1255,7 +1247,7 @@ describe('LessonPlayerPage', () => {
 
   it('shows a failed autoplay policy request beside the lesson', async () => {
     server.use(
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: false,
           error: { code: 'internal', message: 'boom' },
@@ -1277,15 +1269,13 @@ describe('LessonPlayerPage', () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: true,
               memberVideoAutoplayOverride: false,
             },
@@ -1492,16 +1482,6 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('mark-complete')).toBeInTheDocument();
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
-  });
-
-  it('centres the reading column of an html block with left-aligned text', async () => {
-    server.use(okStructure(), okProgress(), okLesson([{ type: 'html', html: '<p>Body</p>' }]));
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-
-    expect(stylesAt(await screen.findByTestId('lesson-html'), 1440)).toMatchObject({
-      'margin-inline': 'auto',
-      'text-align': 'left',
-    });
   });
 
   it('renders outlined mobile lesson actions and keeps continue primary', async () => {

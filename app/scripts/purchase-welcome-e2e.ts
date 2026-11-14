@@ -7,6 +7,7 @@ import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
 import { en } from '../apps/web/src/i18n/en.js';
 import { signInWithPassword } from './login-flow.js';
 import { delay } from './server-harness.js';
+import { createAuthE2eTransport } from './auth-e2e-transport.js';
 
 const purchases = [
   { productId: 'product-download-workbook', path: '/my/course/product-download-workbook' },
@@ -124,9 +125,9 @@ export const runWelcomePurchases = async (input: {
   connectUrl: string;
   webBaseUrl: string;
   canonicalOrigin: string;
-  actionOrigin?: string;
   verify?: (context: BrowserContext, link: string) => Promise<string>;
 }): Promise<void> => {
+  const { request } = createAuthE2eTransport(input.connectUrl, input.webBaseUrl);
   const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
   const browser = await chromium.launch(chromeExecutablePath
     ? { executablePath: chromeExecutablePath, headless: true }
@@ -134,7 +135,7 @@ export const runWelcomePurchases = async (input: {
   try {
     for (const purchase of purchases) {
       const email = `welcome-${purchase.productId}@together.dev`;
-      const response = await fetch(new URL(API_PATHS.checkoutSession, input.connectUrl), {
+      const response = await request(new URL(API_PATHS.checkoutSession, input.connectUrl), {
         method: 'POST',
         headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'studio', origin: input.webBaseUrl },
         body: JSON.stringify({ productId: purchase.productId, email, termsAccepted: true, language: 'en' }),
@@ -151,7 +152,7 @@ export const runWelcomePurchases = async (input: {
       }
       assert(link !== '', `no purchase welcome email arrived for ${purchase.productId}`);
       const actionUrl = new URL(link);
-      assert(actionUrl.origin === (input.actionOrigin ?? input.canonicalOrigin), `welcome link used the wrong origin: ${actionUrl.origin}`);
+      assert(actionUrl.origin === input.canonicalOrigin, `welcome link used the wrong origin: ${actionUrl.origin}`);
       assert(actionUrl.searchParams.get('callbackURL') === `${input.canonicalOrigin}${purchase.path}`,
         `welcome link used the wrong callback for ${purchase.productId}`);
 

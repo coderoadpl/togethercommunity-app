@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 
 import type { Db } from './client.js';
+import { runMigrations } from './migration-runner.js';
 import * as dbSchema from './schema.js';
 
 const POSTGRES_IDENTIFIER_LIMIT = 63;
@@ -17,6 +17,7 @@ export const uniqueTestDatabaseName = (base: string): string => {
 type TestDatabase = {
   db: Db;
   url: string;
+  makeTemplate: () => Promise<string>;
   close: () => Promise<void>;
 };
 
@@ -42,12 +43,14 @@ const dropDatabase = async (baseUrl: string, databaseName: string): Promise<void
 export const createTestDatabase = async (
   base: string,
   baseUrl: string,
+  templateName = process.env['TOGETHER_TEST_DATABASE_TEMPLATE'],
 ): Promise<TestDatabase> => {
   const databaseName = uniqueTestDatabaseName(base);
   const url = new URL(baseUrl);
   url.pathname = `/${databaseName}`;
+  const templateClause = templateName ? ` TEMPLATE ${pg.escapeIdentifier(templateName)}` : '';
   await withAdminClient(baseUrl, async (client) => {
-    await client.query(`CREATE DATABASE ${pg.escapeIdentifier(databaseName)}`);
+    await client.query(`CREATE DATABASE ${pg.escapeIdentifier(databaseName)}${templateClause}`);
   });
 
   const pool = new pg.Pool({ connectionString: url.toString() });
@@ -59,21 +62,34 @@ export const createTestDatabase = async (
   const db = drizzle(pool, { schema: dbSchema });
 
   try {
-    await migrate(db, { migrationsFolder: 'drizzle' });
+    if (!templateName) await runMigrations({ connectionString: url.toString(), migrationsFolder: 'drizzle' });
   } catch (error) {
     await pool.end();
     await dropDatabase(baseUrl, databaseName);
     throw error;
   }
 
+  let poolClosed = false;
+  const closePool = async (): Promise<void> => {
+    if (poolClosed) return;
+    poolClosed = true;
+    await pool.end();
+  };
   let closed = false;
   return {
     db,
     url: url.toString(),
+    makeTemplate: async () => {
+      await closePool();
+      await withAdminClient(baseUrl, async (client) => {
+        await client.query(`ALTER DATABASE ${pg.escapeIdentifier(databaseName)} ALLOW_CONNECTIONS false`);
+      });
+      return databaseName;
+    },
     close: async () => {
       if (closed) return;
       closed = true;
-      await pool.end();
+      await closePool();
       await dropDatabase(baseUrl, databaseName);
       pool.removeListener('error', captureIdleError);
       if (idleError !== null) throw idleError;

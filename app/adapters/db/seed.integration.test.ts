@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { hashPassword, verifyPassword } from 'better-auth/crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   SMOKE_TENANT_CREATOR_EMAIL,
@@ -56,13 +56,13 @@ const rowCounts = async (client: pg.Client): Promise<Record<string, number>> => 
 
 let client: pg.Client;
 
-beforeEach(async () => {
-  const testDatabase = await createTestDatabase('together_seed_integration_test', baseDatabaseUrl);
+const connectTestDatabase = async (templateName?: string): Promise<void> => {
+  const testDatabase = await createTestDatabase('together_seed_integration_test', baseDatabaseUrl, templateName);
   testDatabaseUrl = testDatabase.url;
   closeTestDatabase = testDatabase.close;
   client = new pg.Client({ connectionString: testDatabaseUrl });
   await client.connect();
-}, 60_000);
+};
 
 afterEach(async () => {
   await client.end();
@@ -70,6 +70,10 @@ afterEach(async () => {
 }, 180_000);
 
 describe('demo seed lifecycle', () => {
+  beforeEach(async () => {
+    await connectTestDatabase();
+  }, 60_000);
+
   it('reports no seed markers on an empty migrated database', async () => {
     await expect(seedMarkersPresent(testDatabaseUrl)).resolves.toBe(false);
   }, 180_000);
@@ -154,9 +158,29 @@ describe('demo seed lifecycle', () => {
     expect(publicSpaces.rows.map(({ id }) => id)).toEqual(['space-studio-community']);
     expect(homeSpace.rows).toEqual([{ default_home_space_id: 'space-studio-community' }]);
   }, 180_000);
+});
+
+describe('demo seed rerun on a seeded database', () => {
+  let seededTemplateName: string;
+  let closeSeededTemplate: (() => Promise<void>) | undefined;
+
+  beforeAll(async () => {
+    const template = await createTestDatabase('together_seed_fixture', baseDatabaseUrl);
+    closeSeededTemplate = template.close;
+    testDatabaseUrl = template.url;
+    runDatabaseScript('seed.ts');
+    seededTemplateName = await template.makeTemplate();
+  }, 180_000);
+
+  afterAll(async () => {
+    await closeSeededTemplate?.();
+  }, 180_000);
+
+  beforeEach(async () => {
+    await connectTestDatabase(seededTemplateName);
+  }, 60_000);
 
   it('converges existing creator credentials without adding rows when repeated', async () => {
-    runDatabaseScript('seed.ts');
     const firstCounts = await rowCounts(client);
     const previousHash = await hashPassword(PREVIOUS_DEMO_PASSWORD);
     await client.query(
@@ -189,7 +213,6 @@ describe('demo seed lifecycle', () => {
   }, 180_000);
 
   it('keeps seeding idempotent when an existing creator has only a social account', async () => {
-    runDatabaseScript('seed.ts');
     const firstCounts = await rowCounts(client);
     await client.query(
       `UPDATE account
@@ -210,7 +233,6 @@ describe('demo seed lifecycle', () => {
   }, 180_000);
 
   it('restores the canonical demo state through reseed', async () => {
-    runDatabaseScript('seed.ts');
     await client.query(
       `INSERT INTO courses (id, tenant_id, name, description, created_at)
        VALUES ('AUDIT-course', 'tenant-studio', 'AUDIT course', '', NOW())`,

@@ -153,7 +153,7 @@ describe('schema fingerprint against a freshly migrated database', () => {
 
   it('ignores migration bookkeeping and sequence state', async () => {
     await db.execute(
-      sql`insert into drizzle.__drizzle_migrations (hash, created_at) values ('schema-fingerprint-probe', 1)`,
+      sql`insert into public.__drizzle_migrations (hash, created_at) values ('schema-fingerprint-probe', 1)`,
     );
     await db.execute(sql`select nextval('member_events_sequence_seq')`);
 

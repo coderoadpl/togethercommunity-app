@@ -102,11 +102,35 @@
       ]
     },
     {
-      "source": "/((?!api/|u/|marketing/|legal/|offer/).*)",
+      "source": "/((?!api/|u/|marketing/|legal/|offer/|checkout/).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/checkout/(.*)",
+      "missing": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success"
+        }
+      ],
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://geowidget.inpost.pl; style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         },
         {
           "key": "X-Content-Type-Options",
@@ -127,10 +151,17 @@
           "value": "together"
         }
       ],
+      "missing": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success"
+        }
+      ],
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self' https://geowidget.inpost.pl; style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         },
         {
           "key": "X-Content-Type-Options",
@@ -148,13 +179,20 @@
         {
           "type": "query",
           "key": "status",
-          "value": "success|cancelled"
+          "value": "cancelled"
+        }
+      ],
+      "missing": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success"
         }
       ],
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self' https://geowidget.inpost.pl; style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         },
         {
           "key": "X-Content-Type-Options",

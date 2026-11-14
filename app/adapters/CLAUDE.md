@@ -6,8 +6,9 @@ the one-screen guide for changes under `adapters/`.
 ## What this layer is
 
 Concrete implementations of server and client ports: persistence, authentication,
-cryptography, email, invoicing, notifications, payments, scheduling, storage,
-and video delivery. Vendor SDKs and infrastructure details stay here.
+cryptography, email, invoicing, notifications, payments, scheduling, shipping
+labels (InPost ShipX), storage, and video delivery. Vendor SDKs and
+infrastructure details stay here.
 
 ## What it may import
 

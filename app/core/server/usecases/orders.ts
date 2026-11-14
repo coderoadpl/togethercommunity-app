@@ -56,6 +56,7 @@ export const listOrders = async (
     ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
     ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
+    ...(parsed.data.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: parsed.data.fulfilmentStatus }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
     ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
     ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
@@ -93,6 +94,34 @@ const attributionColumns = (order: OrderListItem) => ({
   gclid: order.attribution?.gclid ?? '',
 });
 
+const shippingColumns = (order: OrderListItem) => {
+  const point = order.shipping?.pickupPoint ?? null;
+  const address = order.shipping?.address ?? null;
+  return {
+    shipping_rate: order.shipping?.label ?? '',
+    shipping_point: point === null ? '' : [point.code, point.name, point.address].filter((value) => value !== null && value !== '').join(', '),
+    shipping_name: address?.name ?? '',
+    shipping_phone: order.shipping?.phone ?? '',
+    shipping_address: address === null ? '' : [address.line1, address.line2].filter((value) => value !== null && value !== '').join(', '),
+    shipping_postal_code: address?.postalCode ?? '',
+    shipping_city: address?.city ?? '',
+    shipping_country: address?.country ?? '',
+    fulfilment_status: order.fulfilmentStatus ?? '',
+  };
+};
+
+const SHIPPING_COLUMN_NAMES = [
+  'shipping_rate',
+  'shipping_point',
+  'shipping_name',
+  'shipping_phone',
+  'shipping_address',
+  'shipping_postal_code',
+  'shipping_city',
+  'shipping_country',
+  'fulfilment_status',
+];
+
 const ordersToCsv = (orders: OrderListItem[]): string =>
   [
     [
@@ -119,6 +148,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'utm_term',
       'fbclid',
       'gclid',
+      ...SHIPPING_COLUMN_NAMES,
     ].join(','),
     ...orders.map((order) =>
       [
@@ -139,6 +169,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         order.billing?.city ?? '',
         order.billing?.country ?? '',
         ...Object.values(attributionColumns(order)),
+        ...Object.values(shippingColumns(order)),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -165,6 +196,7 @@ export const exportOrders = async (
     ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
     ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
+    ...(parsed.data.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: parsed.data.fulfilmentStatus }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
     ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
     ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
@@ -180,6 +212,7 @@ export const exportOrders = async (
         ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
         ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
         ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
+        ...(parsed.data.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: parsed.data.fulfilmentStatus }),
         ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
         ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
         ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
@@ -192,7 +225,7 @@ export const exportOrders = async (
   return ok(
     parsed.data.format === 'csv'
       ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order) }))) },
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order) }))) },
   );
 };
 

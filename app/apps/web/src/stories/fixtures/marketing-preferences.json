@@ -6,6 +6,12 @@
       "analyticsConsentCookieName": null,
       "analyticsConsentCookieValue": null,
       "analyticsLoadWithoutConsent": false,
+      "analyticsMetaCapiConsentAcceptLabel": null,
+      "analyticsMetaCapiConsentBody": null,
+      "analyticsMetaCapiConsentDeclineLabel": null,
+      "analyticsMetaCapiConsentHeading": null,
+      "analyticsMetaCapiEnabled": false,
+      "analyticsMetaCapiTestEventCode": null,
       "analyticsMetaPixelId": null,
       "analyticsTagId": null,
       "autoIssueInvoices": false,
@@ -18,6 +24,7 @@
       "defaultLanguage": "en",
       "directMessagesEnabled": true,
       "faviconUrl": "/assets/akademia-logo.svg",
+      "inpostGeowidgetToken": null,
       "invoiceExemptionBasis": null,
       "invoiceExemptionBasisKind": null,
       "invoiceSellerAddress": null,
@@ -34,6 +41,7 @@
       "ogImageUrl": null,
       "ogTitle": null,
       "privacyUrl": null,
+      "shippingRates": [],
       "signInNotice": {
         "enabled": false,
         "text": ""

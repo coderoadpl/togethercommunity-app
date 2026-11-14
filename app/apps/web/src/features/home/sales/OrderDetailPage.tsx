@@ -2,7 +2,7 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -10,6 +10,17 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { OrderShipment } from './OrderShipment.js';
+import { OrderShipx } from './OrderShipx.js';
+
+const saveLabel = (file: { filename: string; contentType: string; bytes: Uint8Array }) => {
+  const url = URL.createObjectURL(new Blob([Uint8Array.from(file.bytes)], { type: file.contentType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = file.filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
@@ -28,6 +39,34 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     ...actions.sendInvoice,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const shipOrder = useMutation({
+    ...actions.shipOrder,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
+  const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
+  const shipx = useQuery({ ...actions[canShip ? 'shipxRefreshedShipment' : 'shipxShipment'](orderId), enabled: inpostOrder });
+  const createShipment = useMutation({
+    ...actions.shipxCreate,
+    onSettled: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const discardShipment = useMutation({
+    ...actions.shipxDiscard,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.shipxShipmentInvalidates(orderId));
+      createShipment.mutate(orderId);
+    },
+  });
+  const downloadLabel = useMutation({
+    ...actions.shipxLabel,
+    onSuccess: (file) => {
+      saveLabel(file);
     },
   });
   const refreshInvoice = useMutation({
@@ -104,10 +143,67 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+            {order.fulfilmentStatus == null ? null : (
+              <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
+                label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
+            )}
           </Stack>
         </Stack>
       </SectionCard>
       {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
+      {order.shipping == null ? null : (
+        <SectionCard title={t.shipping.orderDeliveryHeading} data-testid="order-delivery">
+          <Stack useFlexGap spacing="0.75rem">
+            {[
+              [t.shipping.orderRate, order.shipping.label],
+              [t.shipping.orderPrice, formatPrice(order.shipping.amountCents, order.currency, language)],
+              ...(order.shipping.pickupPoint === null ? [] : [[t.shipping.orderPickupPoint, [order.shipping.pickupPoint.code, order.shipping.pickupPoint.name, order.shipping.pickupPoint.address].filter((value) => value !== null && value !== '').join(', ')]]),
+              [t.shipping.orderAddress, [
+                order.shipping.address.name,
+                [order.shipping.address.line1, order.shipping.address.line2].filter((value) => value !== null && value !== '').join(', '),
+                `${order.shipping.address.postalCode} ${order.shipping.address.city}`.trim(),
+                order.shipping.address.country,
+              ].filter((value) => value !== '').join(', ')],
+              [t.shipping.orderPhone, order.shipping.phone ?? '—'],
+            ].map(([label, value]) => (
+              <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ justifyContent: 'space-between' }}>
+                <Typography color="text.secondary">{label}</Typography>
+                <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
+              </Stack>
+            ))}
+            <OrderShipx
+              order={order}
+              view={shipx.data}
+              canCreate={canShip}
+              pending={createShipment.isPending}
+              error={createShipment.error ?? discardShipment.error ?? downloadLabel.error}
+              discarding={discardShipment.isPending}
+              downloading={downloadLabel.isPending}
+              onCreate={() => {
+                downloadLabel.reset();
+                discardShipment.reset();
+                createShipment.mutate(order.id);
+              }}
+              onDiscard={() => {
+                createShipment.reset();
+                downloadLabel.reset();
+                discardShipment.mutate(order.id);
+              }}
+              onDownloadLabel={() => {
+                createShipment.reset();
+                downloadLabel.mutate(order.id);
+              }}
+            />
+            <OrderShipment
+              order={order}
+              canShip={canShip}
+              pending={shipOrder.isPending}
+              error={shipOrder.isError ? localizePanelError(shipOrder.error, t) : null}
+              onShip={(input) => shipOrder.mutate({ orderId: order.id, ...input })}
+            />
+          </Stack>
+        </SectionCard>
+      )}
       {attributionRows.length === 0 ? null : (
         <SectionCard title={t.sales.source}>
           <Stack useFlexGap spacing="0.75rem">

@@ -167,6 +167,29 @@ describe('renderEmailOutboxPayload', () => {
     expect(ended.success).toBe(true);
   });
 
+  it('renders an order-shipped payload and rejects one without tracking details', () => {
+    const payload = {
+      kind: 'order-shipped',
+      language: 'en',
+      tenantName: 'Caravan',
+      shipment: {
+        orderNumber: 'order-7',
+        items: ['Printed stand'],
+        delivery: { method: 'Parcel locker', pickupPoint: { code: 'WAW01M', name: null, address: null }, address: null },
+        carrier: 'inpost',
+        trackingNumber: 'ABCD1234',
+        trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234',
+      },
+    };
+    const rendered = renderEmailOutboxPayload(payload);
+    expect(rendered.success).toBe(true);
+    if (rendered.success) {
+      expect(rendered.data.subject).toBe('Your order order-7 has been shipped — Caravan');
+      expect(rendered.data.text).toContain('Tracking number: ABCD1234');
+    }
+    expect(renderEmailOutboxPayload({ ...payload, shipment: { ...payload.shipment, trackingNumber: '' } }).success).toBe(false);
+  });
+
   it('renders a reputation alert with the measured window and rates', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'reputation-alert',

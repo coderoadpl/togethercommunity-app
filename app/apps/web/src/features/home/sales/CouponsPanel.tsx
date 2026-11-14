@@ -35,13 +35,13 @@ import { SUPPORTED_CURRENCIES } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import {
-  ConfirmDialog,
   ListSection,
   PanelPage,
   ResponsiveTable,
   SectionCard,
   StatusView,
 } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';

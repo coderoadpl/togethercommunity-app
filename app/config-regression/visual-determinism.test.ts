@@ -56,7 +56,13 @@ describe('visual regression determinism', () => {
     }
     expect(browserSetup).toContain('await applyChrome(context)');
     expect(browserSetup).toContain("Object.defineProperty(window, 'EventSource'");
-    expect(browserSetup).toContain("page.waitForLoadState('networkidle')");
+    expect(browserSetup).toContain('await tracker.wait()');
+    expect(browserSetup).toContain('networkIdleTrackers.get(page)');
+    expect(browserSetup).toContain('const page = await context.newPage();\n  attachNetworkIdleTracker(page);');
+    const screenInventory = readFileSync(join(import.meta.dirname, '..', 'scripts', 'visual-screen-inventory.ts'), 'utf8');
+    for (const source of [browserSetup, storybookCapture, harness, screenInventory]) {
+      expect(source).not.toMatch(/waitForLoadState\(\s*['"]networkidle['"]/);
+    }
     expect(browserSetup).toContain('document.fonts.ready');
     expect(browserSetup).toContain('animation: none !important');
     expect(browserSetup).toContain('transition: none !important');

@@ -26,6 +26,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 
 import {
+  DEFAULT_PARCEL_TEMPLATE,
   priceMajorSchema,
   productVisibilitySchema,
   productVatRateSchema,
@@ -37,14 +38,20 @@ import {
   type ProductVisibility,
 } from '#core/domain/index.js';
 
+import { DeliveryMethodField } from './DeliveryMethodField.js';
+import { ParcelTemplateField } from './ParcelTemplateField.js';
+import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft } from './ProductComplianceFields.js';
+
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatFileSize, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
+import { ProductStockSection } from './ProductStockSection.js';
 
 const ProductDetailsSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
@@ -55,6 +62,11 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
   const [vatRate, setVatRate] = useState(product.vatRate);
   const [vatExemptionBasis, setVatExemptionBasis] = useState(product.vatExemptionBasis ?? '');
+  const [deliveryMethod, setDeliveryMethod] = useState(product.deliveryMethod);
+  const [parcelTemplate, setParcelTemplate] = useState(product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE);
+  const [compliance, setCompliance] = useState(complianceDraftFrom(product.compliance));
+  const [complianceInvalid, setComplianceInvalid] = useState(false);
+  const [variant, setVariant] = useState({ group: product.variantGroup ?? '', label: product.variantLabel ?? '' });
   const save = useMutation({
     ...actions.updateProduct,
     onSuccess: async () => {
@@ -67,12 +79,22 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const parsedCompliance = complianceFromDraft(compliance);
+    setComplianceInvalid(!parsedCompliance.ok);
+    if (!parsedCompliance.ok) return;
     save.mutate({
       id: product.id,
       title: title.trim(),
       visibility,
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
+      ...(product.type === 'physical' ? {
+        deliveryMethod,
+        parcelTemplate,
+        compliance: parsedCompliance.value,
+        variantGroup: variant.group.trim() === '' ? null : variant.group.trim(),
+        variantLabel: variant.label.trim() === '' ? null : variant.label.trim(),
+      } : {}),
       description,
       coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
     });
@@ -137,6 +159,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         <MenuItem value="exempt">{t.salesLinks.exempt}</MenuItem>
       </TextField>
       {vatRate === 'exempt' ? <TextField label={t.salesLinks.exemptionBasis} value={vatExemptionBasis} required onChange={(event) => { resetFeedback(); setVatExemptionBasis(event.target.value); }} /> : null}
+      {product.type === 'physical' ? <DeliveryMethodField value={deliveryMethod} onChange={(value) => { resetFeedback(); setDeliveryMethod(value); }} /> : null}
+      {product.type === 'physical' && deliveryMethod === 'shipping' ? <ParcelTemplateField value={parcelTemplate} onChange={(value) => { resetFeedback(); setParcelTemplate(value); }} /> : null}
       <HtmlEditor
         id="product-description"
         value={description}
@@ -158,6 +182,12 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         kind="product-cover"
         testId="product-cover"
       />
+      {product.type === 'physical' ? (
+        <>
+          <ProductVariantFields group={variant.group} label={variant.label} onChange={(value) => { resetFeedback(); setVariant(value); }} />
+          <ProductComplianceFields value={compliance} invalid={complianceInvalid} onChange={(value) => { resetFeedback(); setComplianceInvalid(false); setCompliance(value); }} />
+        </>
+      ) : null}
       {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}
       {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
     </SectionCard>
@@ -578,6 +608,7 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
         <PricesSection product={product} />
       </Box>
+      {product.type === 'physical' ? <ProductStockSection productId={product.id} /> : null}
       {product.type === 'digital_download' ? <><DownloadAssetsSection productId={product.id} /><DownloadCopyLookup productId={product.id} /></> : null}
       <CheckoutConsentsSection product={product} />
       {product.type === 'physical' ? null : <SectionCard title={t.access.heading}>

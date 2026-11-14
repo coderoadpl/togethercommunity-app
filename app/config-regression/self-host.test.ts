@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import { SHUTDOWN_WORST_CASE_MS } from '../apps/server/src/node-server-limits.js';
 import { pullImages } from '../scripts/docker-pull.js';
 
 const appRoot = join(import.meta.dirname, '..');
@@ -50,6 +51,7 @@ const composeSchema = z.object({
       env_file: z.array(z.string()),
       environment: z.record(z.string()),
       ports: z.array(portSchema).optional(),
+      stop_grace_period: z.string().regex(/^\d+s$/u),
     }),
     caddy: z.object({
       image: z.string(),
@@ -83,6 +85,16 @@ describe('production self-host stack', () => {
     expect(Object.keys(compose.volumes)).toEqual(['postgres_data', 'caddy_data', 'caddy_config']);
   });
 
+  it('lets the app finish its shutdown before Docker kills it', () => {
+    const compose = composeSchema.parse(parse(read('docker-compose.yml')));
+    const graceSeconds = Number.parseInt(compose.services.app.stop_grace_period, 10);
+
+    expect(graceSeconds * 1000).toBeGreaterThanOrEqual(SHUTDOWN_WORST_CASE_MS);
+    const guide = read('docs/self-host.md').replace(/\s+/gu, ' ');
+    expect(guide).toContain(`at worst after ${String(SHUTDOWN_WORST_CASE_MS / 1000)} seconds`);
+    expect(guide).toContain(`\`stop_grace_period: ${String(graceSeconds)}s\``);
+  });
+
   it('builds a non-root production image and migrates before serving', () => {
     const dockerfile = read('Dockerfile');
     const entrypoint = read('docker-entrypoint.sh');
@@ -93,6 +105,45 @@ describe('production self-host stack', () => {
     expect(dockerfile).toContain('/api/health/ready');
     expect(entrypoint).toContain('node adapters/db/migrate.js');
     expect(entrypoint).toContain('exec node apps/server/src/entry.node.js');
+  });
+
+  it('takes only non-secret release metadata as build arguments and stamps it into one image', () => {
+    const dockerfile = read('Dockerfile');
+    const stages = dockerfile.split(/^FROM /mu).slice(1);
+    const builder = stages.find((stage) => / AS builder$/mu.test(stage.split('\n')[0] ?? '')) ?? '';
+    const runtime = stages.find((stage) => / AS runtime$/mu.test(stage.split('\n')[0] ?? '')) ?? '';
+    const buildArguments = [...dockerfile.matchAll(/^ARG (?<name>[A-Z0-9_]+)=?(?<value>.*)$/gmu)];
+
+    expect([...new Set(buildArguments.map((match) => match.groups?.['name']))].sort()).toEqual([
+      'APP_BASE_DOMAIN',
+      'APP_COMMIT_SHA',
+      'APP_VERSION',
+      'VITE_SENTRY_DSN',
+    ]);
+    expect(buildArguments.every((match) => match.groups?.['value'] === '')).toBe(true);
+    expect(builder).toContain('pnpm exec tsx scripts/stamp-image-version.ts "$APP_VERSION"');
+    expect(builder.indexOf('stamp-image-version')).toBeLessThan(builder.indexOf('pnpm run build:web'));
+    expect(runtime).toContain('COPY --from=builder /build/package.json ./');
+    expect(runtime).toMatch(/^\s+APP_COMMIT_SHA=\$APP_COMMIT_SHA \\$/mu);
+    expect(runtime).toMatch(/^\s+APP_BASE_DOMAIN=\$APP_BASE_DOMAIN$/mu);
+    expect(runtime).not.toContain('VITE_SENTRY_DSN');
+    expect(read('.dockerignore').split('\n')).toEqual(expect.arrayContaining(['.env', '.git']));
+  });
+
+  it('cross-builds by running only the platform-independent builder stage on the build platform', () => {
+    const dockerfile = read('Dockerfile');
+    const stageHeaders = [...dockerfile.matchAll(/^FROM (?<header>.+)$/gmu)].map((match) => match.groups?.['header'] ?? '');
+    const laterStages = dockerfile.split(/^FROM /mu).slice(1).filter((stage) => !/ AS builder$/mu.test(stage.split('\n')[0] ?? ''));
+
+    expect(stageHeaders.find((header) => header.endsWith(' AS builder'))).toMatch(/^--platform=\$BUILDPLATFORM /u);
+    expect(stageHeaders.filter((header) => header.includes('--platform'))).toHaveLength(1);
+    expect(laterStages.join('').match(/COPY --from=builder \S+/gu)).toEqual([
+      'COPY --from=builder /build/dist/server/',
+      'COPY --from=builder /build/dist/web',
+      'COPY --from=builder /build/drizzle',
+      'COPY --from=builder /build/package.json',
+    ]);
+    expect(read('docs/kubernetes.md')).toContain('docker buildx build --platform linux/amd64');
   });
 
   it('keeps certificate issuance behind the private verified-domain check', () => {
@@ -139,7 +190,7 @@ describe('production self-host stack', () => {
     const workflow = workflowSchema.parse(parse(read('../.github/workflows/ci.yml')));
     const probe = read('scripts/quickstart-probe.ts');
 
-    expect(probe).toContain("import { pullImages } from './docker-pull.js'");
+    expect(probe).toMatch(/import \{[^}]*\bpullImages\b[^}]*\} from '\.\/docker-pull\.js'/u);
     expect(workflow.jobs.smoke.steps.some((step) => step.run === 'pnpm run quickstart:probe')).toBe(true);
     expect(probe).toContain("'NODE_ENV=production'");
     expect(probe).toContain("'APP_ENV=self-host'");

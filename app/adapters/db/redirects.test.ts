@@ -6,7 +6,7 @@ import type { ImportRedirectMutation } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { createTenantRedirectRepository } from './redirects.js';
 import { createTestDatabase } from './test-database-name.js';
-import { tenantApiKeys, tenantRedirects, tenants } from './schema.js';
+import { importAuditEvents, tenantApiKeys, tenantRedirects, tenants } from './schema.js';
 
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -96,6 +96,18 @@ describe('tenant redirect repository', () => {
     });
     expect(await repository.commit(TENANT_ID, mutation({ permanent: false }, 'updated'))).toBe('saved');
     expect(await repository.findById(TENANT_ID, 'redirect-course')).toMatchObject({ permanent: false });
+  });
+
+  it('rejects a foreign audit API key and rolls back the redirect and audit', async () => {
+    const repository = createTenantRedirectRepository(db);
+    const attempted = mutation({ id: 'redirect-foreign-key', fromPath: '/foreign-key' });
+    attempted.event.apiKeyId = 'import-key-redirects-other';
+
+    await expect(repository.commit(TENANT_ID, attempted))
+      .rejects.toThrow('Import audit API key does not belong to tenant');
+    expect(await repository.findById(TENANT_ID, attempted.resource.id)).toBeNull();
+    expect(await db.select().from(importAuditEvents).where(eq(importAuditEvents.id, attempted.event.id)))
+      .toEqual([]);
   });
 
   it('refuses a second redirect for the same path but allows it for another tenant', async () => {

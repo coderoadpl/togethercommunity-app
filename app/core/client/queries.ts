@@ -1,3 +1,4 @@
+import type { Language } from '#core/domain/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
@@ -109,6 +110,9 @@ import type {
   ProductsUpdateInput,
   ProductPriceCreateInput,
   ProductPriceDeactivateInput,
+  ProductStockAdjustInput,
+  ProductStockEnableInput,
+  ProductStockThresholdInput,
   OrdersListQueryInput,
   OrdersReconciliationQueryInput,
   OrdersExportQueryInput,
@@ -268,6 +272,11 @@ const productPricesScopes = {
   list: (productId: string) => ['product-prices', 'list', productId] as const,
 };
 
+const productStockScopes = {
+  all: () => ['product-stock'] as const,
+  detail: (productId: string) => ['product-stock', 'detail', productId] as const,
+};
+
 const productDownloadsScopes = {
   all: () => ['product-downloads'] as const,
   list: (productId: string) => ['product-downloads', 'list', productId] as const,
@@ -341,6 +350,7 @@ const bunnyScopes = {
 
 const tenantSettingsScopes = {
   all: () => ['tenant-settings'] as const,
+  member: () => ['tenant-settings', 'member'] as const,
 };
 
 const tenantRoutingScopes = {
@@ -655,10 +665,10 @@ export const publicSpaceEventQuery = (api: ApiClient, input: PublicSpaceEventInp
     call: ({ signal }) => api.publicSpaceEvent(input, signal),
   });
 
-export const publicCheckoutSessionStatusQuery = (api: ApiClient, sessionId: string) =>
+export const publicCheckoutSessionStatusQuery = (api: ApiClient, sessionId: string, locale?: Language) =>
   defineQuery({
-    queryKey: ['checkout-session-status', sessionId] as const,
-    call: ({ signal }) => api.publicCheckoutSessionStatus(sessionId, signal),
+    queryKey: ['checkout-session-status', sessionId, locale ?? 'en'] as const,
+    call: ({ signal }) => api.publicCheckoutSessionStatus(sessionId, signal, locale),
   });
 
 export const publicPaymentConfigQuery = (api: ApiClient) =>
@@ -788,6 +798,34 @@ export const deactivateProductPriceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productPricesScopes.all(), 'deactivate'],
     call: (input: ProductPriceDeactivateInput) => api.deactivateProductPrice(input),
+  });
+
+export const productStockQuery = (api: ApiClient, productId: string) =>
+  defineQuery({
+    queryKey: productStockScopes.detail(productId),
+    call: ({ signal }) => api.getProductStock(productId, signal),
+  });
+
+export const productStockInvalidates = (productId: string) => ({
+  queryKey: productStockScopes.detail(productId),
+});
+
+export const enableProductStockMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productStockScopes.all(), 'enable'],
+    call: (input: ProductStockEnableInput) => api.enableProductStock(input),
+  });
+
+export const adjustProductStockMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productStockScopes.all(), 'adjust'],
+    call: (input: ProductStockAdjustInput) => api.adjustProductStock(input),
+  });
+
+export const setProductStockThresholdMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productStockScopes.all(), 'threshold'],
+    call: (input: ProductStockThresholdInput) => api.setProductStockThreshold(input),
   });
 
 export const productDownloadAssetsQuery = (api: ApiClient, productId: string) =>
@@ -1737,6 +1775,12 @@ export const testBunnyConnectionMutation = (api: ApiClient) =>
   });
 
 export const tenantSecretsInvalidates = () => ({ queryKey: tenantSecretsScopes.lists() });
+
+export const memberSettingsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantSettingsScopes.member(),
+    call: ({ signal }) => api.getMemberSettings(signal),
+  });
 
 export const tenantSettingsQuery = (api: ApiClient) =>
   defineQuery({

@@ -830,6 +830,10 @@ export class InMemorySuppressionRepository implements SuppressionRepository {
     return found === undefined ? null : structuredClone(found);
   }
 
+  async isErased(tenantId: string, input: { email: string; emailHmac: string }): Promise<boolean> {
+    return this.rows.some((row) => sameTenant(tenantId, row) && row.emailHmac === input.emailHmac && row.reason === 'erasure');
+  }
+
   async isSuppressed(tenantId: string, emailHmac: string): Promise<boolean> {
     return (await this.findActive(tenantId, emailHmac)) !== null;
   }

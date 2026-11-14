@@ -1,3 +1,4 @@
+import { lockEmailEventErasure } from './email-event-erasure.js';
 import type { AppError } from '#core/domain/index.js';
 import type { MarketingDeliveryRepos, MarketingDeliveryTransaction } from '#core/server/index.js';
 
@@ -22,6 +23,7 @@ export const createMarketingDeliveryTransaction = (db: Db): MarketingDeliveryTra
     if (tenantId.length === 0) throw new Error('Tenant context is required');
     try {
       return await db.transaction(async (tx) => {
+        await lockEmailEventErasure(tx, tenantId);
         const result = await operation(createMarketingDeliveryRepos(tx));
         if (!result.ok) throw new DeliveryRollback(result.error);
         return result;

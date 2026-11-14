@@ -84,6 +84,8 @@ describe('fake Stripe webhook verification', () => {
           invoiceId: 'in_123',
           amountTotalCents: 2449,
           discountTotalCents: 2451,
+          shipping: null,
+          shippingCostCents: null,
           metadata: {
             attribution: null,
             tenantId: 'tenant-a',
@@ -100,6 +102,28 @@ describe('fake Stripe webhook verification', () => {
         subscription: null,
       },
     });
+  });
+
+  it.each([
+    ['basil and later', { collected_information: { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } } }],
+    ['pre-basil', { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } }],
+  ])('reads the delivery address from a %s checkout session payload', async (_shape, addressFields) => {
+    const shippedPayload = JSON.stringify({
+      id: 'evt_shipped', type: 'checkout.session.completed',
+      data: { object: {
+        id: 'cs_shipped', amount_total: 6399, customer_details: { email: 'buyer@example.com', phone: '+48600100200' },
+        ...addressFields,
+        shipping_cost: { amount_total: 1499 },
+        metadata: { tenantId: 'tenant-a', productId: 'product-1' },
+      } },
+    });
+    const result = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a', mode: 'live', payloadRaw: shippedPayload, signatureHeader: signature(shippedPayload), webhookSecret: secret,
+    });
+    expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+      shippingCostCents: 1499,
+      shipping: { name: 'Jane Buyer', phone: '+48600100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
+    } } });
   });
 
   it('maps refund and dispute provider identifiers', async () => {

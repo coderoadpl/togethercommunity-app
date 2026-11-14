@@ -17,6 +17,7 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: API_PATHS.publicMetaCapiConsent, methods: ['POST'], mutating: true, why: 'Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes' },
   { path: '/offer/:slug', methods: ['GET'], mutating: false, why: 'Sales-link metadata and checkout redirect without creating sessions for crawlers' },
   { path: API_PATHS.directSalesLinkCheckout, methods: ['POST'], mutating: true, why: 'Rate-limited direct sales-link checkout session creation' },
   { path: API_PATHS.publicOrderQr, methods: ['GET'], mutating: false, why: 'Opaque order token QR image without order or buyer details; verification requires staff authorization' },
@@ -34,7 +35,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/sitemap.xml', methods: ['GET'], mutating: false, why: 'Tenant public navigation must be discoverable at its canonical origin' },
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
-  { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },
+  { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database and migration readiness check' },
   { path: API_PATHS.healthDeep, methods: ['GET'], mutating: false, why: 'Aggregated production readiness probe over every tenant' },
   { path: '/api/public/offer', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public offer discovery' },
   { path: API_PATHS.publicNavigation, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Anonymous tenant-home navigation' },
@@ -47,7 +48,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: API_PATHS.studentLessonEditions, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview editions with the current lesson access check' },
   { path: API_PATHS.studentLessonEdition, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview edition with the current lesson access check' },
   { path: API_PATHS.studentLesson, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview' },
-  { path: API_PATHS.publicCheckoutSessionStatus, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Rate-limited checkout payment confirmation with opt-in purchase analytics and no buyer details' },
+  { path: API_PATHS.publicCheckoutSessionStatus, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Rate-limited checkout payment confirmation with opt-in purchase analytics and, for Meta conversions, the order consent state with locale-resolved consent copy; no buyer name, email or address' },
   { path: '/api/public/payment-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Checkout capability discovery' },
   { path: '/api/public/checkout/coupon', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Read-only coupon validation' },
   { path: '/api/public/checkout/session', methods: ['OPTIONS'], mutating: false, why: 'Checkout session start preflight' },

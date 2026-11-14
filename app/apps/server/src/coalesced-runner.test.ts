@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createCoalescedRunner } from './coalesced-runner.js';
+import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesced-runner.js';
 
 const deferred = () => {
   let resolve: () => void = () => undefined;
@@ -11,6 +11,22 @@ const deferred = () => {
 };
 
 describe('createCoalescedRunner', () => {
+  it.each([false, true])('defers channel work beyond the request continuation with keepAlive=%s', async (hosted) => {
+    const run = vi.fn(async () => undefined);
+    const keepAlive = vi.fn<(task: Promise<unknown>) => void>();
+    const trigger = createDeferredCoalescedRunner(run, hosted ? keepAlive : undefined);
+    trigger();
+    await Promise.resolve();
+    expect(run).not.toHaveBeenCalled();
+    if (hosted) {
+      expect(keepAlive).toHaveBeenCalledTimes(1);
+      await keepAlive.mock.calls[0]?.[0];
+    } else {
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps each started loop alive until its follow-up finishes', async () => {
     const gates = [deferred(), deferred(), deferred()];
     const keepAlive = vi.fn<(task: Promise<unknown>) => void>();

@@ -3,7 +3,7 @@ import { Alert, Button, FormControl, FormLabel, MenuItem, OutlinedInput, Select,
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { adoptionRefusalOf, localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 export const AdoptStripeSubscriptionDialog = ({ memberId, onAdopted }: {

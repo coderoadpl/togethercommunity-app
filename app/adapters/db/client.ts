@@ -40,3 +40,7 @@ export const createDb = (
     }
   }
 };
+
+export const closeDb = async (db: Db): Promise<void> => {
+  if ('$client' in db && db.$client instanceof pg.Pool && !db.$client.ended) await db.$client.end();
+};

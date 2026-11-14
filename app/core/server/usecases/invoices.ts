@@ -1,5 +1,5 @@
 import {
-  allocateOrderLineGross,
+  allocatePaidOrderLineGross,
   appError,
   billingDataSchema,
   err,
@@ -51,7 +51,7 @@ import type {
 const invoicePositions = (order: Order, fallback: InvoiceVatTreatment): InvoicePosition[] | undefined => {
   const lines = order.lines;
   if (lines === undefined) return undefined;
-  const amounts = allocateOrderLineGross(lines, order.amountCents);
+  const amounts = allocatePaidOrderLineGross(lines, order.amountCents);
   return lines.map((line, index) => {
     const grossCents = amounts[index] ?? 0;
     const vat: InvoiceVatTreatment = line.vatRate === 'exempt'

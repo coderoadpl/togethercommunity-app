@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { metaCapiSettingsShape } from './meta-capi-settings.js';
 
 import { analyticsTagIdSchema, analyticsMetaPixelIdSchema, analyticsConsentCookieNameSchema, analyticsConsentCookieValueSchema } from './checkout-analytics.js';
 
@@ -13,6 +14,7 @@ import {
 } from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
 import { languageSchema } from './language.js';
+import { inpostGeowidgetTokenSchema, shippingRatesSchema } from './shipping.js';
 import { storageCorsStatusSchema } from './storage.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
@@ -154,6 +156,7 @@ export const tenantSettingsSchema = z.object({
   analyticsConsentCookieName: analyticsConsentCookieNameSchema.nullable().optional(),
   analyticsConsentCookieValue: analyticsConsentCookieValueSchema.nullable().optional(),
   analyticsLoadWithoutConsent: z.boolean().optional(),
+  ...metaCapiSettingsShape,
   checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
   name: tenantSchema.shape.name,
@@ -186,6 +189,8 @@ export const tenantSettingsSchema = z.object({
   invoicingProvider: z.enum(['ifirma', 'ksef']).nullable().optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
+  shippingRates: shippingRatesSchema.optional(),
+  inpostGeowidgetToken: inpostGeowidgetTokenSchema.nullable().optional(),
 }).extend(tenantSocialSchema.shape);
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
@@ -221,6 +226,7 @@ export const updateTenantSettingsInputSchema = z.object({
   analyticsConsentCookieName: analyticsConsentCookieNameSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
   analyticsConsentCookieValue: analyticsConsentCookieValueSchema.nullable().transform((value) => value === '' ? null : value).optional(),
   analyticsLoadWithoutConsent: z.boolean().optional(),
+  ...metaCapiSettingsShape,
   checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.optional(),
   name: tenantSchema.shape.name.optional(),
@@ -282,6 +288,8 @@ export const updateTenantSettingsInputSchema = z.object({
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().trim().min(1).nullable().optional(),
   invoiceSellerAddress: z.string().trim().min(1).nullable().optional(),
+  shippingRates: shippingRatesSchema.optional(),
+  inpostGeowidgetToken: inpostGeowidgetTokenSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

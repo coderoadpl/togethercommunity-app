@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Course, Product, ProductType, Tenant } from '#core/domain/index.js';
 
 import type { ConsentDefinitionRepository, ProductRepository, TenantRepository } from '../ports.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { getPublicOffer } from './public-offer.js';
 
 const tenant: Tenant = {
@@ -30,6 +31,7 @@ const product = (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published,
   accessItems: [],
   legacyId: null,
@@ -116,6 +118,27 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
 });
 
 describe('getPublicOffer', () => {
+  it('exposes sold-out and low flags for tracked products without the exact count', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track('t-acme', 'download', 2, 3);
+    stock.track('t-acme', 'club', 0);
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([product('published', 't-acme', true), product('download', 't-acme', true, 'digital_download'), product('club', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+      stock: stock.repository,
+    });
+    if (!result.ok) throw new Error('offer failed');
+    expect(Object.fromEntries(result.value.products.map((item) => [item.id, item.stock]))).toEqual({
+      published: { tracked: false, soldOut: false, low: false },
+      download: { tracked: true, soldOut: false, low: true },
+      club: { tracked: true, soldOut: true, low: false },
+    });
+    expect(JSON.stringify(result.value)).not.toContain('onHand');
+  });
+
   it('returns only public product fields for published products', async () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([
@@ -150,6 +173,7 @@ describe('getPublicOffer', () => {
           {
             id: 'published',
             type: 'course',
+            deliveryMethod: 'pickup',
             slug: 'course-published',
             title: 'Product published',
             description: '<p>Description published</p>',
@@ -159,11 +183,15 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
+            stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
+            compliance: null,
+            variants: [],
           },
           {
             id: 'download',
             type: 'digital_download',
+            deliveryMethod: 'pickup',
             slug: 'digital-download-download',
             title: 'Product download',
             description: '<p>Description download</p>',
@@ -173,11 +201,15 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
+            stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
+            compliance: null,
+            variants: [],
           },
           {
             id: 'club',
             type: 'membership',
+            deliveryMethod: 'pickup',
             slug: 'membership-club',
             title: 'Product club',
             description: '<p>Description club</p>',
@@ -187,11 +219,87 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
+            stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
+            compliance: null,
+            variants: [],
           },
         ],
+        shippingRates: [],
+        inpostGeowidgetToken: null,
       },
     });
+  });
+
+  it('exposes the product safety information and the published variants of the group', async () => {
+    const compliance = {
+      manufacturerName: 'Example Workshop',
+      manufacturerAddress: 'Example Street 1, Warsaw',
+      manufacturerEmail: 'safety@example.com',
+      modelIdentifier: 'STAND-1',
+      safetyWarnings: 'Keep away from **open flame**.<script>alert(1)</script>',
+    };
+    const variant = (id: string, published: boolean, variantLabel: string): Product => ({
+      ...product(id, 't-acme', published, 'physical'), variantGroup: 'stand', variantLabel,
+    });
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([
+        { ...variant('black', true, 'Black · ASA'), compliance },
+        variant('white', true, 'White · PLA'),
+        variant('red', false, 'Red · PETG'),
+        { ...product('lone', 't-acme', true, 'physical'), variantGroup: 'lone', variantLabel: 'Only one' },
+      ]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    }, 'physical-black');
+    if (!result.ok) throw new Error('offer failed');
+    expect(result.value.products).toHaveLength(1);
+    expect(result.value.products[0]?.compliance).toEqual({ ...compliance, safetyWarningsHtml: '<p>Keep away from <strong>open flame</strong>.&lt;script&gt;alert(1)&lt;/script&gt;</p>\n' });
+    expect(result.value.products[0]?.variants).toEqual([
+      { productId: 'black', slug: 'physical-black', label: 'Black · ASA', soldOut: false },
+      { productId: 'white', slug: 'physical-white', label: 'White · PLA', soldOut: false },
+    ]);
+    const lone = await getPublicOffer(tenant, {
+      products: fakeProducts([{ ...product('lone', 't-acme', true, 'physical'), variantGroup: 'lone', variantLabel: 'Only one' }]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    }, 'lone');
+    expect(lone.ok && lone.value.products[0]?.variants).toEqual([]);
+  });
+
+  it('marks a sold-out sibling chip from one stock read without changing the offered product stock', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track('t-acme', 'white', 0);
+    stock.track('t-acme', 'green', 3);
+    const reads: string[][] = [];
+    const variant = (id: string, variantLabel: string): Product => ({
+      ...product(id, 't-acme', true, 'physical'), variantGroup: 'stand', variantLabel,
+    });
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([variant('black', 'Black'), variant('white', 'White'), variant('green', 'Green'), product('other', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+      stock: {
+        listByProducts: async (tenantId, productIds) => {
+          reads.push([...productIds].sort());
+          return stock.repository.listByProducts(tenantId, productIds);
+        },
+      },
+    }, 'physical-black');
+    if (!result.ok) throw new Error('offer failed');
+    expect(reads).toEqual([['black', 'green', 'white']]);
+    expect(result.value.products[0]?.stock).toEqual({ tracked: false, soldOut: false, low: false });
+    expect(result.value.products[0]?.variants).toEqual([
+      { productId: 'black', slug: 'physical-black', label: 'Black', soldOut: false },
+      { productId: 'white', slug: 'physical-white', label: 'White', soldOut: true },
+      { productId: 'green', slug: 'physical-green', label: 'Green', soldOut: false },
+    ]);
   });
 
   it('exposes only lessons marked as free previews', async () => {

@@ -1,5 +1,10 @@
 # Cross-surface consistency audit
 
+## Purpose
+
+Find unexplained differences in behavior, terminology, and authorization across
+Together's contract, server, client, CLI, web, language, and documented surfaces.
+
 ## Run contract
 
 - **Cadence:** before a release and after any contract, authorization, account,
@@ -46,6 +51,48 @@ Trace authorization decisions back to the authoritative generated inventories;
 do not copy their rows into the audit. Record transport-only, CLI-only, or
 deliberately role-limited features as explained divergences. Anything not
 examined is a blind spot, not implicit parity.
+
+For each capability, compare its full optional-parameter and response space,
+including defaults, omitted/null values where supported, pagination/filtering,
+error variants, and state transitions. A matching TypeScript shape or one happy
+path does not establish semantic parity.
+
+For CRUD-shaped capabilities, build a create/read/update/delete/list matrix
+across the relevant surfaces. Mark each cell implemented, intentionally absent,
+reduced, or unverified; cite the owner decision or explicit scope statement for
+every intentional missing surface or reduced capability. This matrix records
+discrepancies and does not require adding operations the product never promised.
+
+Compare terminology for the same concept across contract, CLI, UI, translations,
+and docs. For each audited role and state, compare offered UI actions with the
+server's capability verdict in both directions: a denied action must not be
+offered as available, and an allowed action must not be inexplicably withheld
+from a surface intended to offer it. Cite intentional reductions. Hidden UI is
+never a substitute for server authorization; inspect denial behavior separately.
+
+## Finding criteria
+
+- A contract/server operation or CRUD/list cell has an unexplained missing or
+  reduced counterpart on an intended surface. Cite the operation and affected
+  cells rather than inferring that every surface must expose everything.
+- A CLI/UI surface loses optional inputs, defaults, response states, errors, or
+  behavior from the contract space without a cited intentional reduction.
+- The same concept has conflicting terminology or documented behavior across
+  contract, CLI, UI, locales, or docs, with concrete examples and their impact.
+- Offered UI actions disagree with the server capability verdict for the same
+  role, tenant, and state without a cited intentional reduction, or server
+  enforcement is missing. Record each direction of disagreement separately.
+
+## Known blind spots
+
+- This audit tests explained parity, not whether an accepted asymmetry is the
+  right product choice; [completeness](completeness.md) owns absence questions.
+- Type checks, inventories, and code comparison cannot establish runtime parity
+  on unexercised roles, states, providers, or combinations of optional inputs.
+  Record those limits even when all reviewed cells agree.
+- Literal-name comparison may miss conflicting prose or user interpretation;
+  record the extent of the terminology/prose pass rather than implying universal
+  consistency or OWASP conformance.
 
 ## Email-verification evidence — 2026-08-04
 

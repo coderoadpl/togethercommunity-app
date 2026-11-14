@@ -1,5 +1,5 @@
 import { jsonb, pgTable, text } from 'drizzle-orm/pg-core';
-import type { OrderAttribution, OrderLine } from '#core/domain/index.js';
+import type { CheckoutShippingSnapshot, OrderAttribution, OrderLine } from '#core/domain/index.js';
 import { tenants } from './app-schema.js';
 
 export const checkoutSnapshots = pgTable('checkout_snapshots', {
@@ -10,6 +10,7 @@ export const checkoutSnapshots = pgTable('checkout_snapshots', {
   tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   salesLinkId: text('sales_link_id'),
   lines: jsonb('lines').$type<OrderLine[]>().notNull(),
+  shipping: jsonb('shipping').$type<CheckoutShippingSnapshot>(),
   currency: text('currency').notNull(),
   createdAt: text('created_at').notNull(),
 });

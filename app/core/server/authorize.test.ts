@@ -215,7 +215,7 @@ describe('authorizeRequiredTenant', () => {
 
 describe('member self-service authorization matrix', () => {
   const allowedInView = new Set([
-    'tenant:settings:read', 'member:billing:read', 'member:erasure:self-request',
+    'member:settings:read', 'member:billing:read', 'member:erasure:self-request',
     'member:product:read', 'member:progress:read', 'lesson:play', 'community:read',
     'space:read', 'notification:read', 'event:read', 'invoice:member-read',
     'marketing:consent:read', 'marketing:message:read',

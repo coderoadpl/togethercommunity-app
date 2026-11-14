@@ -109,6 +109,43 @@ describe('CheckoutPage', () => {
     expect(screen.getByText(en.checkout.productionNote)).toBeInTheDocument();
   });
 
+  it('disables the pay button with a sold-out label when the tracked product is sold out', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({
+        ok: true,
+        data: { ...offerBody, products: [{ ...offerBody.products[0], type: 'physical', stock: { tracked: true, soldOut: true, low: true } }] },
+      })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+
+    renderCheckout('course-1');
+
+    const pay = await screen.findByTestId('checkout-pay-cta');
+    expect(pay).toHaveTextContent(en.checkout.soldOut);
+    expect(pay).toBeDisabled();
+    expect(screen.getByRole('button', { name: textPattern(en.checkout.submitIdle({ price: pln(4900) })) })).toBeDisabled();
+  });
+
+  it('keeps the pay button available for an in-stock tracked product', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({
+        ok: true,
+        data: { ...offerBody, products: [{ ...offerBody.products[0], type: 'physical', stock: { tracked: true, soldOut: false, low: true } }] },
+      })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } }),
+      ),
+    );
+
+    renderCheckout('course-1');
+
+    const pay = await screen.findByTestId('checkout-pay-cta');
+    await waitFor(() => expect(pay).toHaveTextContent(textPattern(en.checkout.payIdle({ price: pln(4900) }))));
+    expect(pay).toBeEnabled();
+  });
+
   it('leaves out the cover block entirely for a product without a cover', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),

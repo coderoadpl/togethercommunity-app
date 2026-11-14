@@ -94,6 +94,7 @@ const product = (id: string, tenantId: string): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
   legacyId: null,

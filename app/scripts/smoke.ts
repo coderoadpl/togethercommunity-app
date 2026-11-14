@@ -214,6 +214,7 @@ const simulatePurchaseSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
   alreadyOwned: z.boolean(),
+  orderId: z.string().nullable().optional(),
   magicLink: magicLinkSchema.nullable(),
 });
 const myProductsSchema = z.object({
@@ -407,6 +408,18 @@ const expectError = (result: Run, label: string, exitCode: number, errorCode: st
     `${label}: expected error code "${errorCode}", got "${parsed.error.code}".`,
   );
 };
+
+const shippedOrdersSchema = z.object({
+  orders: z.array(z.object({
+    id: z.string(),
+    amountCents: z.number(),
+    fulfilmentStatus: z.string().nullable().optional(),
+    shipping: z.object({
+      pickupPoint: z.object({ code: z.string() }).nullable(),
+      address: z.object({ country: z.string() }),
+    }).nullable().optional(),
+  })),
+});
 
 const driveCli = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
@@ -737,6 +750,51 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   assert(
     mine.products.some((product) => product.id === created.product.id),
     'the granted product did not appear in the buyer\'s "my products" list',
+  );
+
+  const shippingRates = JSON.stringify([{ id: 'smoke-locker', label: 'Smoke parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true }]);
+  expectOk(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'tenant', 'settings-set', '--shipping-rates', shippingRates], authedHome),
+    'shipping: configure delivery options',
+  );
+  const shippedProduct = createSchema.parse(expectOk(
+    await cli([
+      '--json', '--api-url', url, '--tenant', 'acme', 'product', 'create', '--title', `Smoke shipped ${randomUUID()}`,
+      '--type', 'physical', '--delivery-method', 'shipping', '--price-cents', '4900', '--visibility', 'unlisted',
+    ], authedHome),
+    'shipping: create shipped product',
+  ));
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'price', 'add', '--product', shippedProduct.product.id,
+    '--kind', 'one_time', '--price-cents', '4900', '--currency', 'PLN',
+  ], authedHome), 'shipping: add shipped product price');
+  expectOk(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'publish', shippedProduct.product.id], authedHome),
+    'shipping: publish shipped product',
+  );
+  const shippedBuyer = 'shipped+smoke@together.dev';
+  expectError(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'simulate-purchase', '--email', shippedBuyer, '--product', shippedProduct.product.id], anonHome),
+    'shipping: purchase without a delivery choice',
+    EXIT_CODE_BY_ERROR_CODE.shipping_required,
+    'shipping_required',
+  );
+  const shippedPurchase = simulatePurchaseSchema.parse(expectOk(
+    await cli([
+      '--json', '--api-url', url, '--tenant', 'acme', 'simulate-purchase', '--email', shippedBuyer, '--product', shippedProduct.product.id,
+      '--shipping-rate', 'smoke-locker', '--pickup-point', 'waw01m',
+    ], anonHome),
+    'shipping: simulated shipped purchase',
+  ));
+  const toPack = shippedOrdersSchema.parse(expectOk(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'orders', 'list', '--fulfilment', 'to_pack'], authedHome),
+    'shipping: orders to pack',
+  ));
+  const shippedOrder = toPack.orders.find((order) => order.id === shippedPurchase.orderId);
+  assert(
+    shippedOrder?.fulfilmentStatus === 'to_pack' && shippedOrder.shipping?.pickupPoint?.code === 'WAW01M'
+      && shippedOrder.shipping.address.country === 'PL' && shippedOrder.amountCents === 6399,
+    `shipping: the simulated shipped order is missing from the orders to pack: ${JSON.stringify(shippedOrder)}`,
   );
 };
 

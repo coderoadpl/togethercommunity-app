@@ -1,11 +1,12 @@
-import { marketingSnsJsonValue, parseMarketingSesEvents, storedSnsEnvelopeSchema, marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
+import { readStoredMarketingSesCorrelations, readStoredMarketingSesEvents, scrubErasedMarketingSnsBody } from '#core/domain/marketing-sns-erasure.js';
+import { marketingSnsJsonValue, parseMarketingSesEvents, storedCanonicalSnsEnvelopeSchema, storedSnsSubscriptionSchema, marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { appError, err, forbidden, notFound, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { MarketingSnsInbox, SesEventApplication } from '#core/domain/marketing-sns-inbox.js';
 
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { MarketingDeliveryRepos, MarketingDeliveryTransaction } from '../marketing-delivery-ports.js';
-import type { Clock, EmailHmac, IdGenerator, MarketingSesCredentialResolver, SnsVerifier, VerifiedSnsEnvelope } from '../ports.js';
+import type { Clock, ContentHash, EmailHmac, IdGenerator, MarketingSesCredentialResolver, SnsVerifier, VerifiedSnsEnvelope } from '../ports.js';
 import { applyVerifiedSesEvent } from './marketing-email.js';
 
 interface InboxDeps extends MarketingDeliveryRepos {
@@ -17,30 +18,53 @@ interface InboxDeps extends MarketingDeliveryRepos {
   credentials: MarketingSesCredentialResolver;
 }
 
+const scrubErasedReceipt = async (row: MarketingSnsInbox, repos: MarketingDeliveryRepos, hmac: EmailHmac): Promise<MarketingSnsInbox> => {
+  if (row.messageType !== 'Notification') return row;
+  const addressErased = (email: string) => repos.suppressions.isErased(row.tenantId, { email, emailHmac: hmac.compute(row.tenantId, email) });
+  for (const event of readStoredMarketingSesCorrelations(row.rawBody, row.topicArn)) {
+    let send = await repos.sends.correlateBySesMessageId(row.tenantId, event.messageId);
+    if (send === null && event.campaignSendId !== undefined) send = await repos.sends.findById(row.tenantId, event.campaignSendId);
+    const outbox = await repos.outbox.correlateBySesMessageId?.(row.tenantId, event.messageId);
+    const erasedAddresses = await Promise.all(event.recipients.map(addressErased));
+    if ((send !== null && await repos.suppressions.isErased(row.tenantId, {
+      email: send.email, emailHmac: hmac.compute(row.tenantId, send.email), memberId: send.memberId, contactId: send.contactId ?? null,
+    })) || (outbox != null && await addressErased(outbox.to)) || erasedAddresses.some(Boolean)) {
+      return { ...row, rawBody: scrubErasedMarketingSnsBody(row.rawBody, row.topicArn, (email) => hmac.compute(row.tenantId, email)) };
+    }
+  }
+  return row;
+};
+
 export const recordVerifiedMarketingSnsEnvelope = async (
   ctx: Ctx,
-  input: { envelope: VerifiedSnsEnvelope; rawBody: string; bodySha256: string },
-  deps: Pick<InboxDeps, 'snsInbox' | 'sesSettings' | 'clock' | 'ids'>,
+  input: { envelope: VerifiedSnsEnvelope },
+  deps: Pick<InboxDeps, 'delivery' | 'hmac' | 'clock' | 'ids'> & { hash: ContentHash },
 ): Promise<Result<MarketingSnsInbox, AppError>> => {
   const tenantId = authorizeRequiredTenant(ctx, 'webhook:process');
   if (!tenantId.ok) return tenantId;
-  const settings = await deps.sesSettings.findByTenant(tenantId.value);
-  if (settings?.snsTopicArn !== input.envelope.topicArn) return err(forbidden('SNS topic does not match this tenant'));
-  const now = deps.clock.nowIso();
-  const envelope = storedSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(input.rawBody));
-  const unsupported = !envelope.success || (input.envelope.type === 'SubscriptionConfirmation' && envelope.data.SubscribeURL === undefined) || (input.envelope.type === 'Notification' && parseMarketingSesEvents(marketingSnsJsonValue(envelope.data.Message), input.envelope.topicArn).length === 0);
-  return deps.snsInbox.record(tenantId.value, {
-    id: deps.ids.nextId(), tenantId: tenantId.value, topicArn: input.envelope.topicArn, snsMessageId: input.envelope.messageId,
-    messageType: input.envelope.type, rawBody: input.rawBody, bodySha256: input.bodySha256,
-    verifiedAt: now, receivedAt: now, status: unsupported ? 'ignored' : 'pending', attempts: 0, nextAttemptAt: now,
-    lockedBy: null, lockedUntil: null, claimVersion: 0, processedAt: unsupported ? now : null, lastError: null, ignoreReason: unsupported ? 'Unsupported verified payload' : null,
+  return deps.delivery.run(tenantId.value, async (repos) => {
+    const settings = await repos.sesSettings.findByTenant(tenantId.value);
+    if (settings?.snsTopicArn !== input.envelope.topicArn) return err(forbidden('SNS topic does not match this tenant'));
+    const now = deps.clock.nowIso();
+    const rawBody = JSON.stringify(storedCanonicalSnsEnvelopeSchema.parse({ Type: input.envelope.type, MessageId: input.envelope.messageId,
+      TopicArn: input.envelope.topicArn, Timestamp: input.envelope.timestamp, Message: input.envelope.message,
+      ...(input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl !== null ? { SubscribeURL: input.envelope.subscribeUrl } : {}) }));
+    const unsupported = (input.envelope.type === 'SubscriptionConfirmation' && input.envelope.subscribeUrl === null)
+      || (input.envelope.type === 'Notification' && parseMarketingSesEvents(marketingSnsJsonValue(input.envelope.message), input.envelope.topicArn).length === 0);
+    const row = await scrubErasedReceipt({
+      id: deps.ids.nextId(), tenantId: tenantId.value, topicArn: input.envelope.topicArn, snsMessageId: input.envelope.messageId,
+      messageType: input.envelope.type, rawBody, bodySha256: deps.hash.sha256(rawBody),
+      verifiedAt: now, receivedAt: now, status: unsupported ? 'ignored' : 'pending', attempts: 0, nextAttemptAt: now,
+      lockedBy: null, lockedUntil: null, claimVersion: 0, processedAt: unsupported ? now : null, lastError: null, ignoreReason: unsupported ? 'Unsupported verified payload' : null,
+    }, repos, deps.hmac);
+    return repos.snsInbox.record(tenantId.value, row);
   });
 };
 
 const processReceipt = async (ctx: Ctx, row: MarketingSnsInbox, deps: InboxDeps, repos: MarketingDeliveryRepos): Promise<Result<SesEventApplication, AppError>> => {
-  const envelope = storedSnsEnvelopeSchema.safeParse(marketingSnsJsonValue(row.rawBody ?? ''));
-  if (!envelope.success) return ok({ kind: 'ignored', reason: 'Unsupported verified envelope' });
   if (row.messageType === 'SubscriptionConfirmation') {
+    const envelope = storedSnsSubscriptionSchema.safeParse(marketingSnsJsonValue(row.rawBody ?? ''));
+    if (!envelope.success) return ok({ kind: 'ignored', reason: 'Unsupported verified envelope' });
     if (envelope.data.SubscribeURL === undefined) return ok({ kind: 'ignored', reason: 'Missing subscription URL' });
     const credentials = await deps.credentials.resolve(row.tenantId);
     if (!credentials.ok) return credentials;
@@ -50,7 +74,7 @@ const processReceipt = async (ctx: Ctx, row: MarketingSnsInbox, deps: InboxDeps,
     if (settings !== null) await repos.sesSettings.upsert(row.tenantId, { ...settings, snsSubscriptionConfirmedAt: deps.clock.nowIso() });
     return ok({ kind: 'applied' });
   }
-  const events = parseMarketingSesEvents(marketingSnsJsonValue(envelope.data.Message), row.topicArn);
+  const events = readStoredMarketingSesEvents(row.rawBody, row.topicArn);
   if (events.length === 0) return ok({ kind: 'ignored', reason: 'Unsupported SES event' });
   let result: SesEventApplication = { kind: 'ignored', reason: 'No applicable recipients' };
   for (const event of events) {
@@ -86,7 +110,8 @@ export const processMarketingSnsInbox = async (
       const result = await deps.delivery.run(tenantId.value, async (repos) => {
         const applied = await processReceipt(ctx, row, deps, repos);
         if (!applied.ok) return applied;
-        const saved = await repos.snsInbox.save(tenantId.value, { ...row,
+        const scrubbed = await scrubErasedReceipt(row, repos, deps.hmac);
+        const saved = await repos.snsInbox.save(tenantId.value, { ...scrubbed,
           status: applied.value.kind === 'ignored' ? 'ignored' : 'processed', processedAt: deps.clock.nowIso(),
           lockedBy: null, lockedUntil: null, lastError: null, ignoreReason: applied.value.kind === 'ignored' ? applied.value.reason : null,
         });
@@ -99,11 +124,16 @@ export const processMarketingSnsInbox = async (
     if (failure === null) totals.processed += 1;
     else {
       const now = deps.clock.nowIso();
-      const saved = await deps.snsInbox.save(tenantId.value, { ...row, status: Date.parse(now) - Date.parse(row.receivedAt) >= 86_400_000 ? 'dead_letter' : 'retry',
-        lockedBy: null, lockedUntil: null, lastError: failure.message,
-        nextAttemptAt: new Date(Date.parse(now) + Math.min(900_000, 1000 * 2 ** Math.min(row.attempts, 20))).toISOString(),
+      const lastError = failure.message;
+      const saved = await deps.delivery.run(tenantId.value, async (repos) => {
+        const scrubbed = await scrubErasedReceipt(row, repos, deps.hmac);
+        return ok(await repos.snsInbox.save(tenantId.value, { ...scrubbed, status: Date.parse(now) - Date.parse(row.receivedAt) >= 86_400_000 ? 'dead_letter' : 'retry',
+          lockedBy: null, lockedUntil: null, lastError,
+          nextAttemptAt: new Date(Date.parse(now) + Math.min(900_000, 1000 * 2 ** Math.min(row.attempts, 20))).toISOString(),
+        }));
       });
-      if (!saved) return err(appError('conflict', 'SNS inbox lease was replaced'));
+      if (!saved.ok) return saved;
+      if (!saved.value) return err(appError('conflict', 'SNS inbox lease was replaced'));
       if (failure.code === 'internal') return err(failure);
       totals.retried += 1;
     }

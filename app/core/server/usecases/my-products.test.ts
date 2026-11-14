@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, MemberGrant, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
+import type { Identity, MemberGrant, Order, OrderShipping, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
 
 import type { Clock } from '../ports.js';
 import type { ProductGrantRepository, ProductPriceRepository } from '../ports.js';
@@ -36,6 +36,7 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   visibility: 'unlisted',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,
@@ -122,6 +123,101 @@ describe('listMyProducts', () => {
     })).toMatchObject({ ok: true, value: [{ type: 'physical', downloads: [], subscription: null }] });
     expect(orders.listForMember).toHaveBeenCalledWith('t-acme', 'm1');
     expect(products.findByIds).toHaveBeenCalledWith('t-acme', [physical.id]);
+  });
+
+  it('names the parcel locker or city for physical lines of a shipped order', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const pickedUp: Product = { ...physical, id: 'collected-item' };
+    const line = (product: Product) => ({ productId: product.id, name: product.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 });
+    const order = (id: string, lines: ReturnType<typeof line>[], shipping: OrderShipping | null) => ({
+      mode: 'live' as const, id, tenantId: 't-acme', memberId: 'm1', productId: lines[0]?.productId ?? physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null, lines, shipping,
+    });
+    const shipping: OrderShipping = {
+      rateId: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23, carrier: 'other', pickupPoint: null,
+      address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: null,
+    };
+    const run = async (shipped: OrderShipping) => listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => [order('order-shipped', [line(physical)], shipped), order('order-collected', [line(pickedUp)], null)] },
+      products: { findByIds: async () => [physical, pickedUp] },
+    });
+    expect(await run(shipping)).toMatchObject({ ok: true, value: [{ id: physical.id, shippedTo: 'Warsaw' }, { id: pickedUp.id, shippedTo: null }] });
+    expect(await run({ ...shipping, pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null } }))
+      .toMatchObject({ ok: true, value: [{ id: physical.id, shippedTo: 'WAW01M' }, { id: pickedUp.id, shippedTo: null }] });
+  });
+
+  it('reports the fulfilment status and tracking link of shipped physical lines', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const shipping: OrderShipping = {
+      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
+      pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+      address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: null,
+    };
+    const order = (fulfilment: Pick<Order, 'fulfilmentStatus' | 'shipment'>) => ({
+      mode: 'live' as const, id: 'order-1', tenantId: 't-acme', memberId: 'm1', productId: physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null, shipping, ...fulfilment,
+      lines: [{ productId: physical.id, name: physical.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 }],
+    });
+    const run = async (fulfilment: Pick<Order, 'fulfilmentStatus' | 'shipment'>) => listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => [order(fulfilment)] },
+      products: { findByIds: async () => [physical] },
+    });
+    expect(await run({ fulfilmentStatus: 'to_pack', shipment: null })).toMatchObject({ ok: true, value: [{ fulfilment: {
+      status: 'to_pack', shippedAt: null, carrier: null, trackingNumber: null, trackingUrl: null,
+    } }] });
+    expect(await run({ fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234', shippedAt: '2026-11-05T10:00:00.000Z', shippedBy: 'staff' } }))
+      .toMatchObject({ ok: true, value: [{ fulfilment: {
+        status: 'shipped', shippedAt: '2026-11-05T10:00:00.000Z', carrier: 'inpost', trackingNumber: 'ABCD1234',
+        trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234',
+      } }] });
+    expect(await run({ fulfilmentStatus: null, shipment: null })).toMatchObject({ ok: true, value: [{ fulfilment: null }] });
+    const newest = { ...order({ fulfilmentStatus: 'to_pack', shipment: null }), id: 'order-2', createdAt: '2026-11-01T10:00:00.000Z', shipping: { ...shipping, pickupPoint: { provider: 'inpost' as const, code: 'KRK02M', name: null, address: null } } };
+    const oldest = { ...order({ fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234', shippedAt: '2026-11-05T10:00:00.000Z', shippedBy: 'staff' } }), createdAt: '2026-10-01T10:00:00.000Z' };
+    const repeated = await listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => [newest, oldest] },
+      products: { findByIds: async () => [physical] },
+    });
+    expect(repeated).toMatchObject({ ok: true, value: [{ shippedTo: 'KRK02M', fulfilment: { status: 'to_pack', trackingNumber: null } }] });
+  });
+
+  it.each([
+    ['oldest first', false],
+    ['newest first', true],
+  ])('takes the purchase date, fulfilment and destination of a product bought twice from the newest order (%s)', async (_case, newestFirst) => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const shipping = (code: string): OrderShipping => ({
+      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
+      pickupPoint: { provider: 'inpost', code, name: null, address: null },
+      address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: null,
+    });
+    const order = (id: string, createdAt: string, change: Pick<Order, 'fulfilmentStatus' | 'shipment' | 'shipping'>) => ({
+      mode: 'live' as const, id, tenantId: 't-acme', memberId: 'm1', productId: physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt,
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null, ...change,
+      lines: [{ productId: physical.id, name: physical.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 }],
+    });
+    const older = order('order-older', '2026-10-01T10:00:00.000Z', {
+      shipping: shipping('WAW01M'), fulfilmentStatus: 'shipped',
+      shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234', shippedAt: '2026-10-02T10:00:00.000Z', shippedBy: 'staff' },
+    });
+    const newer = order('order-newer', '2026-11-01T10:00:00.000Z', { shipping: shipping('KRK02M'), fulfilmentStatus: 'to_pack', shipment: null });
+    const result = await listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => newestFirst ? [newer, older] : [older, newer] },
+      products: { findByIds: async () => [physical] },
+    });
+    expect(result).toMatchObject({ ok: true, value: [{
+      id: physical.id, grantStartsAt: '2026-11-01T10:00:00.000Z', shippedTo: 'KRK02M',
+      fulfilment: { status: 'to_pack', shippedAt: null, trackingNumber: null },
+    }] });
   });
 
   it('returns the granted products for a member with an active window', async () => {

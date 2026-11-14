@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,17 +21,24 @@ import {
   memberRemoveOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
+  orderFulfilmentContracts,
+  shipxContracts,
+  ordersExportOutputSchema,
+  ordersListOutputSchema,
   ordersReconciliationOutputSchema,
   productPriceCreateOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
+  productStockOutputSchema,
+  productStockWriteOutputSchema,
   publicOfferOutputSchema,
   simulatePurchaseOutputSchema,
   spaceOutputSchema,
   supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
+  tenantSettingsOutputSchema,
 } from '#core/contract/index.js';
 import { memberDataExportSchema } from '#core/domain/index.js';
 
@@ -606,6 +613,193 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
         request.status === 'completed',
     ),
     'member erasure request should be completed',
+  );
+  steps += 1;
+
+  const shippingRates = [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true }];
+  const shippingSettings = expectOk(
+    await cli(['--tenant', 'alfa', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(shippingRates)], alfaHome),
+    'shipping rates set',
+    tenantSettingsOutputSchema,
+  );
+  assert(shippingSettings.settings.shippingRates?.[0]?.vatRatePercent === 23, 'shipping rate should default to 23 percent VAT');
+  const shippedProduct = expectOk(
+    await cli(
+      [
+        '--tenant', 'alfa', 'product', 'create', '--title', 'Printed accessory', '--type', 'physical',
+        '--delivery-method', 'shipping', '--price-cents', '4900', '--currency', 'PLN', '--vat-rate', '23',
+      ],
+      alfaHome,
+    ),
+    'shipped product create',
+    productsCreateOutputSchema,
+  ).product;
+  assert(shippedProduct.deliveryMethod === 'shipping', 'shipped product should keep its delivery method');
+  expectOk(
+    await cli(['--tenant', 'alfa', 'price', 'add', '--product', shippedProduct.id, '--kind', 'one_time', '--price-cents', '4900'], alfaHome),
+    'shipped price add',
+    productPriceCreateOutputSchema,
+  );
+  expectOk(await cli(['--tenant', 'alfa', 'product', 'publish', shippedProduct.id], alfaHome), 'shipped publish', productsPublishOutputSchema);
+  expectError(
+    await cli(['--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id], buyerHome),
+    'shipped purchase without delivery',
+    EXIT_CODE_BY_ERROR_CODE.shipping_required,
+    'shipping_required',
+  );
+  expectError(
+    await cli([
+      '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
+      '--shipping-rate', 'locker', '--pickup-point', 'not-a-locker',
+    ], buyerHome),
+    'shipped purchase with a malformed locker code',
+    EXIT_CODE_BY_ERROR_CODE.validation,
+    'validation',
+  );
+  const shippedPurchase = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
+      '--shipping-rate', 'locker', '--pickup-point', 'waw01m',
+    ], buyerHome),
+    'shipped purchase',
+    simulatePurchaseOutputSchema,
+  );
+  const toPack = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'list', '--fulfilment', 'to_pack'], alfaHome),
+    'orders to pack',
+    ordersListOutputSchema,
+  );
+  const shippedOrder = toPack.orders.find((order) => order.id === shippedPurchase.orderId);
+  assert(
+    toPack.orders.length === 1 && shippedOrder?.fulfilmentStatus === 'to_pack' && shippedOrder.amountCents === 6399
+      && shippedOrder.shipping?.pickupPoint?.code === 'WAW01M' && shippedOrder.shipping.address.country === 'PL'
+      && shippedOrder.lines?.at(-1)?.productType === 'shipping',
+    `shipped order should be the only order to pack: ${JSON.stringify(toPack.orders)}`,
+  );
+  const poster = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'product', 'create', '--type', 'physical', '--title', 'Printed Poster', '--price-cents', '4900', '--currency', 'PLN', '--visibility', 'unlisted'],
+      alfaHome,
+    ),
+    'physical product create',
+    productsCreateOutputSchema,
+  ).product;
+  expectOk(
+    await cli(['--tenant', 'alfa', 'price', 'add', '--product', poster.id, '--kind', 'one_time', '--price-cents', '4900'], alfaHome),
+    'physical price add',
+    productPriceCreateOutputSchema,
+  );
+  expectOk(await cli(['--tenant', 'alfa', 'product', 'publish', poster.id], alfaHome), 'physical publish', productsPublishOutputSchema);
+  const tracked = expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'stock', 'enable', poster.id, '--on-hand', '1'], alfaHome),
+    'stock enable',
+    productStockWriteOutputSchema,
+  );
+  assert(tracked.stock.onHand === 1 && tracked.stock.available === 1, 'stock tracking should start with one piece');
+  const buyPoster = (email: string) =>
+    cli(['--tenant', 'alfa', 'simulate-purchase', '--email', email, '--product', poster.id], buyerHome);
+  expectOk(await buyPoster('poster-first@together.dev'), 'last piece purchase', simulatePurchaseOutputSchema);
+  expectError(await buyPoster('poster-second@together.dev'), 'sold-out purchase', EXIT_CODE_BY_ERROR_CODE.sold_out, 'sold_out');
+  expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'stock', 'adjust', poster.id, '--delta', '1', '--reason', 'restock'], alfaHome),
+    'stock adjust',
+    productStockWriteOutputSchema,
+  );
+  expectOk(await buyPoster('poster-second@together.dev'), 'restocked purchase', simulatePurchaseOutputSchema);
+  const finalStock = expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'stock', 'show', poster.id], alfaHome),
+    'stock show',
+    productStockOutputSchema,
+  ).stock;
+  assert(finalStock !== null && finalStock.onHand === 0 && finalStock.reserved === 0 && finalStock.soldOut, 'both pieces should be sold with no reservation left');
+  const shippedOrderId = shippedPurchase.orderId;
+  assert(shippedOrderId !== null, 'shipped purchase should return its order id');
+  const packingList = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'packing-list', '--format', 'csv'], alfaHome),
+    'packing list',
+    ordersExportOutputSchema,
+  );
+  const packingRows = packingList.content.split('\n');
+  assert(
+    packingRows.length === 2 && packingRows[1]?.startsWith(`"${shippedOrderId}",`) === true
+      && packingRows[1].includes('"WAW01M"') && packingRows[1].includes('"Printed accessory × 1"'),
+    `packing list should hold the order to pack: ${packingList.content}`,
+  );
+  const shipped = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'ship', shippedOrderId, '--carrier', 'inpost', '--tracking', '520000011395200025754311'], alfaHome),
+    'order ship',
+    orderFulfilmentContracts.shipOrder.output,
+  ).order;
+  assert(
+    shipped.fulfilmentStatus === 'shipped' && shipped.shipment?.carrier === 'inpost'
+      && shipped.shipment.trackingNumber === '520000011395200025754311',
+    `order should be shipped with the tracking number: ${JSON.stringify(shipped)}`,
+  );
+  expectError(
+    await cli(['--tenant', 'alfa', 'orders', 'ship', shippedOrderId, '--carrier', 'inpost', '--tracking', 'SECOND01'], alfaHome),
+    'second shipment',
+    EXIT_CODE_BY_ERROR_CODE.fulfilment_conflict,
+    'fulfilment_conflict',
+  );
+  const shippedList = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'list', '--fulfilment', 'shipped'], alfaHome),
+    'shipped orders',
+    ordersListOutputSchema,
+  );
+  assert(
+    shippedList.orders.map((order) => order.id).join(',') === shippedOrderId,
+    `the shipped order should be listed as shipped: ${JSON.stringify(shippedList.orders)}`,
+  );
+  const shipxPurchase = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx@together.dev', '--product', shippedProduct.id,
+      '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
+    ], buyerHome),
+    'InPost purchase',
+    simulatePurchaseOutputSchema,
+  );
+  const shipxOrderId = shipxPurchase.orderId;
+  assert(shipxOrderId !== null, 'InPost purchase should return its order id');
+  const unconfigured = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'show', shipxOrderId], alfaHome), 'InPost readiness before setup', shipxContracts.shipxShipment.output);
+  assert(!unconfigured.available && unconfigured.reason === 'credentials_missing' && unconfigured.service === 'inpost_locker_standard', `InPost should wait for credentials: ${JSON.stringify(unconfigured)}`);
+  expectError(
+    await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome),
+    'InPost shipment without credentials',
+    EXIT_CODE_BY_ERROR_CODE.integration_not_configured,
+    'integration_not_configured',
+  );
+  const shipxSettings = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'tenant', 'shipx-set', '--environment', 'sandbox', '--organization-id', '1234', '--token', 'smoke-shipx-token',
+      '--sender', JSON.stringify({ name: 'Smoke Sender', email: 'sender@together.dev', phone: '500600700', street: 'Example Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' }),
+    ], alfaHome),
+    'InPost settings',
+    shipxContracts.shipxConfigure.output,
+  );
+  assert(shipxSettings.configured && !JSON.stringify(shipxSettings).includes('smoke-shipx-token'), `InPost settings should be configured and masked: ${JSON.stringify(shipxSettings)}`);
+  const shipxCreated = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome), 'InPost shipment', shipxContracts.shipxCreate.output);
+  assert(
+    shipxCreated.order.fulfilmentStatus === 'shipped' && shipxCreated.order.shipment?.carrier === 'inpost'
+      && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.shipment.trackingNumber === shipxCreated.shipment.trackingNumber,
+    `InPost shipment should ship the order with its tracking number: ${JSON.stringify(shipxCreated)}`,
+  );
+  const shipxRefreshed = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'refresh', shipxOrderId], alfaHome), 'InPost refresh', shipxContracts.shipxRefresh.output);
+  assert(
+    shipxRefreshed.reason === 'not_to_pack' && shipxRefreshed.shipment?.trackingNumber === shipxCreated.shipment.trackingNumber,
+    `InPost refresh should return the bought shipment of the shipped order: ${JSON.stringify(shipxRefreshed)}`,
+  );
+  const labelPath = join(alfaHome, 'inpost-label.pdf');
+  expectOk(
+    await cli(['--tenant', 'alfa', 'order', 'shipx', 'label', shipxOrderId, '--out', labelPath], alfaHome),
+    'InPost label',
+    z.object({ filename: z.string().startsWith('inpost-'), contentType: z.literal('application/pdf'), bytes: z.number().int().positive() }),
+  );
+  assert(readFileSync(labelPath).subarray(0, 5).toString('latin1') === '%PDF-', 'InPost label should be a PDF');
+  expectError(
+    await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome),
+    'second InPost shipment',
+    EXIT_CODE_BY_ERROR_CODE.fulfilment_conflict,
+    'fulfilment_conflict',
   );
   steps += 1;
 

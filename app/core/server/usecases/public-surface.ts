@@ -65,7 +65,7 @@ export interface PublicSpaceDeps {
   spaces: Pick<SpaceRepository, 'findById'>;
   posts: Pick<
     PostRepository,
-    'findById' | 'listThreadsForContext' | 'listPinnedForContext' | 'listReplies'
+    'findById' | 'listThreadsForContext' | 'listPinnedForContext' | 'listRepliesForRoots' | 'countRepliesIncludingDeleted'
   >;
   reactions: Pick<PostReactionRepository, 'summarize'>;
 }
@@ -245,14 +245,15 @@ export const getPublicSpaceFeed = async (
     postIds: [...listed.threads.map((thread) => thread.post.id), ...pinnedIds],
     viewerUserId: NO_VIEWER,
   });
-  const pinnedReplies = await Promise.all(
-    pinnedPosts.map((post) => deps.posts.listReplies(tenant.id, post.rootPostId)),
+  const pinnedReplyCounts = await deps.posts.countRepliesIncludingDeleted(
+    tenant.id,
+    pinnedPosts.map((post) => post.rootPostId),
   );
   return ok({
     spaceId: space.value.id,
-    pinned: pinnedPosts.map((post, index) => ({
+    pinned: pinnedPosts.map((post) => ({
       ...toRenderedPublicPost(post, NO_VIEWER),
-      replyCount: pinnedReplies[index]?.length ?? 0,
+      replyCount: pinnedReplyCounts.get(post.rootPostId) ?? 0,
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads
@@ -345,7 +346,8 @@ export const getPublicSpaceThread = async (
   ) {
     return err(notFound('Thread not found'));
   }
-  const replies = await deps.posts.listReplies(tenant.id, root.rootPostId);
+  const repliesByThread = await deps.posts.listRepliesForRoots(tenant.id, [root.rootPostId]);
+  const replies = repliesByThread.get(root.rootPostId) ?? [];
   return ok({
     threads: [
       {

@@ -23,6 +23,7 @@ import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 import { en } from '../apps/web/src/i18n/en.js';
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { signInWithPassword } from './login-flow.js';
+import { createAuthE2eTransport } from './auth-e2e-transport.js';
 import {
   bootServer, delay, ephemeralPort, killServer, rootDir, run, tsxBin,
 } from './server-harness.js';
@@ -219,11 +220,7 @@ const runInvitationJourney = async (
     const pending = envelopeSchema(meOutputSchema).parse(await pendingResponse.json());
     assert(pending.ok && pending.data.tenant?.staffRole !== 'admin', 'Unverified invitation activated early');
 
-    const passwordAuth = createAuthE2eClient({
-      connectUrl,
-      origin: webBaseUrl,
-      headers: { host: new URL(webBaseUrl).host },
-    });
+    const passwordAuth = createAuthE2eClient(createAuthE2eTransport(connectUrl, webBaseUrl));
     const passwordCredentials = { email, password: 'verification-password-15' };
     const passwordBeforeVerification = await passwordAuth.signInEmail(passwordCredentials);
     assert(passwordBeforeVerification.status === 200, 'Pre-verification password sign-in failed');

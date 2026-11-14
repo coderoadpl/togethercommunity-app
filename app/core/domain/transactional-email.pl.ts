@@ -21,6 +21,20 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     subject: (orderNumber, tenantName) => `Potwierdzenie zakupu ${orderNumber} — ${tenantName}`,
     verification: 'Kod weryfikacyjny zamówienia dla sprzedawcy',
     qrAlt: 'Kod QR zamówienia',
+    delivery: 'Dostawa',
+    pickupPoint: 'Paczkomat',
+  },
+  orderShipped: {
+    items: 'Wysłane produkty',
+    carrier: 'Przewoźnik',
+    trackingNumber: 'Numer przesyłki',
+    trackLabel: 'Śledź przesyłkę',
+    carriers: { inpost: 'InPost', other: 'Inny przewoźnik' },
+    render: ({ header, tenantName, tenantNameHtml, orderNumber, orderNumberHtml, items, delivery, tracking, socialLinks }) => ({
+      subject: `Twoje zamówienie ${orderNumber} zostało wysłane — ${tenantName}`,
+      html: `${header}<p>Cześć!</p><p>Twoje zamówienie ${orderNumberHtml} w ${tenantNameHtml} zostało wysłane.</p>${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
+      text: `Cześć!\n\nTwoje zamówienie ${orderNumber} w ${tenantName} zostało wysłane.${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
+    }),
   },
   welcomeSignIn: {
     actionLabels: {
@@ -144,6 +158,14 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       subject: `[${tenantName}] Reputacja nadawcy: ${status}`,
       html: `<p>Reputacja nadawcy e-mail platformy ${tenantNameHtml}: <strong>${status}</strong>.</p><p>Odsetek twardych odbić (hard bounce): ${hardBounceRate}<br>Odsetek zgłoszeń spamu: ${complaintRate}<br>Okres: ${windowStartHtml} – ${windowEndHtml}</p><p><a href="${dashboardUrlHtml}">Sprawdź reputację</a></p>`,
       text: `Reputacja nadawcy e-mail platformy ${tenantName}: ${status}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRate}\nOdsetek zgłoszeń spamu: ${complaintRate}\nOkres: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
+    }),
+  },
+  stockLowEmail: {
+    noThreshold: 'nie ustawiono',
+    render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({
+      subject: oversold ? `[${tenantName}] Sprzedano ponad stan: ${productTitle}` : `[${tenantName}] Niski stan magazynowy: ${productTitle}`,
+      html: `<p>${oversold ? `Produkt ${productTitleHtml} został sprzedany po wyczerpaniu zapasu.` : `Kończy się zapas produktu ${productTitleHtml}.`}</p><p>Dostępne: ${available}<br>Próg niskiego stanu: ${threshold}</p>${oversold ? '<p>Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.</p>' : ''}<p><a href="${studioUrlHtml}">Otwórz produkt</a></p>`,
+      text: `${oversold ? `Produkt ${productTitle} został sprzedany po wyczerpaniu zapasu.` : `Kończy się zapas produktu ${productTitle}.`}\nDostępne: ${available}\nPróg niskiego stanu: ${threshold}\n${oversold ? 'Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.\n' : ''}${studioUrl}`,
     }),
   },
 };

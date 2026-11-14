@@ -1,6 +1,7 @@
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core';
 
 import {
+  metaCapiOutbox, metaCapiEvents, metaCapiConsentEvidence,
   telemetryOutbox, telemetryConnections, telemetryAccounting,
   marketingCampaignAudienceContacts,
   marketingCampaignAudienceSnapshots,
@@ -26,6 +27,12 @@ import {
   checkoutConsentJobs,
   checkoutSnapshots,
   orderIssueEvents,
+  productStock,
+  stockEvents,
+  stockReservations,
+  orderFulfilmentEvents,
+  orderShipmentEvents,
+  orderShipments,
   consentConfirmationTokens,
   consentDefinitionVersions,
   consentDefinitions,
@@ -111,6 +118,7 @@ export type DemoTenantWipeTable = AnyPgTable & { tenantId: AnyPgColumn };
 
 // Order is load-bearing: children before parents, so the wipe holds even for FKs without ON DELETE CASCADE.
 export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
+  metaCapiOutbox, metaCapiEvents, metaCapiConsentEvidence,
   telemetryOutbox, telemetryConnections, telemetryAccounting,
   marketingOutbox,
   marketingSignupSubmissions,
@@ -131,6 +139,12 @@ export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
   checkoutConsentJobs,
   checkoutSnapshots,
   orderIssueEvents,
+  stockEvents,
+  stockReservations,
+  productStock,
+  orderFulfilmentEvents,
+  orderShipmentEvents,
+  orderShipments,
   productDownloadAssets,
   downloadCopies,
   consentConfirmationTokens,

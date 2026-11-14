@@ -1,9 +1,18 @@
 import {
   EMPTY_LEGAL_URLS,
   defaultProductVat,
+  productVariants,
+  publicShippingRates,
+  type DeliveryMethod,
+  type ProductCompliance,
+  type PublicProductCompliance,
+  type PublicProductVariant,
+  type PublicShippingRate,
   type ProductVatRate,
   EMPTY_TENANT_BRANDING,
   ok,
+  publicProductStock,
+  type PublicProductStock,
   type AppError,
   type LegalUrls,
   type Language,
@@ -29,6 +38,8 @@ import type {
   TenantDocumentRepository,
   TenantRepository,
 } from '../ports.js';
+import { renderPostContent } from '../post-content.js';
+import type { StockRepository } from '../stock-ports.js';
 
 export interface PublicOffer {
   tenant: {
@@ -44,6 +55,8 @@ export interface PublicOffer {
   contentVersion: number;
   previewLessons: CourseLessonPreview[];
   products: PublicOfferProduct[];
+  shippingRates: PublicShippingRate[];
+  inpostGeowidgetToken: string | null;
 }
 
 interface PublicOfferPrice {
@@ -59,6 +72,9 @@ interface PublicOfferProduct {
   vatExemptionBasis?: string | null | undefined;
   id: string;
   type: ProductType;
+  deliveryMethod: DeliveryMethod;
+  compliance: PublicProductCompliance | null;
+  variants: PublicProductVariant[];
   slug: string;
   title: string;
   description: string;
@@ -66,6 +82,7 @@ interface PublicOfferProduct {
   priceCents: number;
   currency: string;
   prices: PublicOfferPrice[];
+  stock: PublicProductStock;
   marketingConsents: Array<{
     definitionId: string;
     label: string;
@@ -82,6 +99,7 @@ export interface PublicOfferDeps {
   tenants: TenantRepository;
   definitions?: ConsentDefinitionRepository | undefined;
   documents?: Pick<TenantDocumentRepository, 'findPublishedVersionById'> | undefined;
+  stock?: Pick<StockRepository, 'listByProducts'> | undefined;
 }
 
 export const getPublicOffer = async (
@@ -111,6 +129,13 @@ export const getPublicOffer = async (
     pricesByProduct.set(price.productId, bucket);
   }
   const settings = await deps.tenants.findSettings(tenant.id);
+  const variantGroups = new Set(products.flatMap((product) => product.variantGroup == null ? [] : [product.variantGroup]));
+  const stockProductIds = new Set([
+    ...products.map((product) => product.id),
+    ...publishedProducts.filter((product) => product.published && product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
+  ]);
+  const stock = await deps.stock?.listByProducts(tenant.id, [...stockProductIds]) ?? [];
+  const soldOutProductIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
   return ok({
     tenant: {
       slug: tenant.slug,
@@ -139,10 +164,17 @@ export const getPublicOffer = async (
     products: await Promise.all(products.map(async (product) => ({
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
+      variants: productVariants(product, publishedProducts, soldOutProductIds),
+      stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
+    shippingRates: publicShippingRates(settings?.shippingRates),
+    inpostGeowidgetToken: settings?.inpostGeowidgetToken ?? null,
   });
 };
+
+export const toPublicCompliance = (compliance: ProductCompliance | null | undefined): PublicProductCompliance | null =>
+  compliance == null ? null : { ...compliance, safetyWarningsHtml: renderPostContent(compliance.safetyWarnings, 'markdown').html };
 
 const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
   id: price.id,
@@ -155,6 +187,9 @@ const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
 const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOfferProduct => ({
   id: product.id,
   type: product.type,
+  deliveryMethod: product.deliveryMethod,
+  compliance: toPublicCompliance(product.compliance),
+  variants: [],
   slug: product.slug,
   title: product.title,
   description: product.description,
@@ -162,6 +197,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   priceCents: product.priceCents,
   currency: product.currency,
   prices,
+  stock: publicProductStock(null),
   marketingConsents: [],
 });
 

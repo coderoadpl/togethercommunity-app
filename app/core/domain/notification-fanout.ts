@@ -6,7 +6,7 @@ const NOTIFICATION_FANOUT_BACKOFF_BASE_MS = 60_000;
 const NOTIFICATION_FANOUT_BACKOFF_CAP_MS = 30 * 60_000;
 export const NOTIFICATION_FANOUT_LEASE_MS = 5 * 60_000;
 
-const notificationFanoutKindSchema = z.enum(['space-post', 'thread-reply', 'space-event']);
+const notificationFanoutKindSchema = z.enum(['space-post', 'thread-reply', 'space-event', 'lesson-question']);
 
 export type NotificationFanoutKind = z.output<typeof notificationFanoutKindSchema>;
 

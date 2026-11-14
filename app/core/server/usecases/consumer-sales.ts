@@ -1,5 +1,5 @@
 import {
-  consumerSalesQuerySchema, err, ok, SALES_LINK_TIME_ZONE, splitProductGross, validation,
+  allocatePaidOrderLineGross, consumerSalesQuerySchema, err, ok, SALES_LINK_TIME_ZONE, splitProductGross, validation,
   type AppError, type ConsumerSalesRate, type ConsumerSalesSummary, type OrderLine, type Result,
 } from '#core/domain/index.js';
 
@@ -27,16 +27,8 @@ const sumLines = (lines: OrderLine[]): ConsumerSalesRate[] => emptyRates().map((
 });
 
 const allocateLines = (lines: OrderLine[], amountCents: number): OrderLine[] => {
-  const total = lines.reduce((sum, line) => sum + line.grossCents, 0);
-  let cumulative = 0;
-  let allocated = 0;
-  return lines.map((line) => {
-    cumulative += line.grossCents;
-    const next = total === 0 ? 0 : Math.round(cumulative * amountCents / total);
-    const grossCents = next - allocated;
-    allocated = next;
-    return { ...line, ...splitProductGross(grossCents, line.vatRate ?? 'exempt') };
-  });
+  const amounts = allocatePaidOrderLineGross(lines, amountCents);
+  return lines.map((line, index) => ({ ...line, ...splitProductGross(amounts[index] ?? 0, line.vatRate ?? 'exempt') }));
 };
 
 export const summarizeUninvoicedConsumerSales = async (

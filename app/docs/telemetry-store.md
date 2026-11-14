@@ -181,3 +181,7 @@ static gate remains free of any MongoDB download or test-process server startup;
 no provider CLI or deployed environment is required.
 The CI image is pinned to the current MongoDB 8.0 patch line because 8.0 is the
 long-supported series for the adapter compatibility check.
+The service container sets `GLIBC_TUNABLES=glibc.pthread.rseq=1` because MongoDB
+8.0.30 and later refuse to start on Linux kernels 6.19 through 7.0.13 (MongoDB
+issue SERVER-121912); with glibc owning rseq the startup guard passes. Drop the
+setting once the `ubuntu-24.04` runner kernel reaches 7.0.14 or later.

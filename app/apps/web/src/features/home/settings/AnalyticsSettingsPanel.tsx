@@ -1,3 +1,5 @@
+import { MetaCapiSettingsFields, type MetaCapiDraft } from './MetaCapiSettingsFields.js';
+import { MetaCapiTokenSettings } from './MetaCapiTokenSettings.js';
 import { useState } from 'react';
 import {
   Button,
@@ -15,7 +17,7 @@ import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { useToastOutcome } from '../../../components/ui/Toast.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
-type AnalyticsDraft = {
+type AnalyticsDraft = MetaCapiDraft & {
   analyticsTagId: string;
   analyticsMetaPixelId: string;
   analyticsConsentCookieName: string;
@@ -29,6 +31,13 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const settings = useQuery(actions.tenantSettings);
   const [draft, setDraft] = useState<AnalyticsDraft | null>(null);
   const value = draft ?? {
+    analyticsMetaCapiEnabled: settings.data?.settings.analyticsMetaCapiEnabled ?? false,
+    analyticsMetaCapiTestEventCode: settings.data?.settings.analyticsMetaCapiTestEventCode ?? '',
+    analyticsMetaCapiConsentHeading: settings.data?.settings.analyticsMetaCapiConsentHeading ?? '',
+    analyticsMetaCapiConsentBody: settings.data?.settings.analyticsMetaCapiConsentBody ?? '',
+    analyticsMetaCapiConsentAcceptLabel: settings.data?.settings.analyticsMetaCapiConsentAcceptLabel ?? '',
+    analyticsMetaCapiConsentDeclineLabel: settings.data?.settings.analyticsMetaCapiConsentDeclineLabel ?? '',
+
     analyticsTagId: settings.data?.settings.analyticsTagId ?? '',
     analyticsMetaPixelId: settings.data?.settings.analyticsMetaPixelId ?? '',
     analyticsConsentCookieName: settings.data?.settings.analyticsConsentCookieName ?? '',
@@ -47,13 +56,22 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   useToastOutcome(update.isSuccess, t.common.saved, update.error === null ? null : localizePanelError(update.error, t));
 
   return (
+    <>
     <SectionCard
+      data-testid="analytics-settings"
       title={t.analyticsSettings.heading}
       description={t.analyticsSettings.intro}
       actions={canEdit ? <Button type="submit" variant="contained" disabled={unavailable}>{t.common.save}</Button> : undefined}
       onSubmit={(event) => {
         event.preventDefault();
         update.mutate({
+          analyticsMetaCapiEnabled: value.analyticsMetaCapiEnabled,
+          analyticsMetaCapiTestEventCode: value.analyticsMetaCapiTestEventCode.trim() || null,
+          analyticsMetaCapiConsentHeading: value.analyticsMetaCapiConsentHeading.trim() || null,
+          analyticsMetaCapiConsentBody: value.analyticsMetaCapiConsentBody.trim() || null,
+          analyticsMetaCapiConsentAcceptLabel: value.analyticsMetaCapiConsentAcceptLabel.trim() || null,
+          analyticsMetaCapiConsentDeclineLabel: value.analyticsMetaCapiConsentDeclineLabel.trim() || null,
+
           analyticsTagId: value.analyticsTagId || null,
           analyticsMetaPixelId: value.analyticsMetaPixelId || null,
           analyticsConsentCookieName: value.analyticsConsentCookieName || null,
@@ -84,6 +102,7 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         />
         <FormHelperText id="analytics-meta-pixel-id-hint">{t.analyticsSettings.metaPixelIdHint}</FormHelperText>
       </FormControl>
+      <MetaCapiSettingsFields value={value} disabled={!canEdit || unavailable} onChange={(capi) => setDraft({ ...value, ...capi })} />
       <FormControl fullWidth>
         <FormLabel htmlFor="analytics-consent-cookie-name">{t.analyticsSettings.consentCookieName}</FormLabel>
         <OutlinedInput
@@ -124,5 +143,7 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
     </SectionCard>
+    {canEdit ? <MetaCapiTokenSettings /> : null}
+    </>
   );
 };

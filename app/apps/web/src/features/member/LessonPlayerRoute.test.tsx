@@ -98,15 +98,13 @@ describe('lesson edition routes', () => {
           },
         }),
       ),
-      http.get('/api/tenant/settings', () =>
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
             settings: {
-              name: 'Acme',
-              socialLinks: [],
               billingPortalUrl: null,
-              bunnyStreamLibraryId: null,
+              supportUrl: null, supportConfigured: false,
               videoAutoplayDefault: false,
               memberVideoAutoplayOverride: false,
             },

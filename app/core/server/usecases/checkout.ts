@@ -1,12 +1,18 @@
 import {
+  SALES_LINK_VARIANT_PARAM,
+  formatSalesLinkVariantParam,
   attributionSchema,
   attributionToSearchParams,
   checkoutSessionInputSchema,
+  checkoutShippingInputSchema,
   err,
+  FREE_ORDER_DELIVERY_UNAVAILABLE,
   normalizeCouponCode,
   notFound,
   ok,
+  productLines,
   resolveCheckoutBranding,
+  resolveCheckoutShipping,
   stripeKeyModeConflicts,
   validation,
   type AppError,
@@ -35,9 +41,11 @@ import type {
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
+import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
-import { captureCheckoutSelection } from './checkout-lines.js';
+import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, type CheckoutSelection } from './checkout-selection.js';
+import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
+import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
 export interface CheckoutDeps {
   salesLinks?: SalesLinkRepository;
@@ -55,6 +63,8 @@ export interface CheckoutDeps {
   secretCrypto?: SecretCrypto;
   ids?: IdGenerator;
   clock?: Clock;
+  stock?: StockRepository;
+  logger?: CheckoutStockDeps['logger'];
 }
 
 export type { CheckoutSelection } from './checkout-selection.js';
@@ -83,11 +93,13 @@ export const testCheckoutRejection = (
     ? validation('Test checkout requires a paid price without a coupon')
     : null;
 
-export const validateCheckoutSelection = async (
+const selectCheckoutProducts = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug'>,
-  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'stock' | 'tenants'>,
 ): Promise<Result<CheckoutSelection, AppError>> => {
+  const selections = input.variantSelections ?? [];
+  if (selections.length > 0 && input.salesLinkId === undefined && input.salesLinkSlug === undefined) return err(validation('Invalid sales link selection'));
   if (input.salesLinkId !== undefined || input.salesLinkSlug !== undefined) {
     if (input.salesLinkId !== undefined && input.salesLinkSlug !== undefined) return err(validation('Invalid sales link selection'));
     const link = input.salesLinkSlug === undefined
@@ -99,19 +111,34 @@ export const validateCheckoutSelection = async (
       return err(notFound('Sales link not found'));
     }
     if (input.priceId !== undefined || link.productIds[0] !== input.productId) return err(validation('Invalid sales link selection'));
-    const products: Product[] = [];
+    const bases: Product[] = [];
     for (const productId of link.productIds) {
       const item = await deps.products.findById(tenantId, productId);
       if (item === null || !item.published) return err(notFound('Sales link not found'));
       if (item.type === 'membership') return err(validation('Subscriptions cannot be included in a sales link'));
-      products.push(item);
+      bases.push(item);
     }
-    const activePrices = await deps.prices.listActiveByProducts(tenantId, link.productIds);
+    const candidates: Product[] = [];
+    for (const selection of selections) {
+      const candidate = await deps.products.findById(tenantId, selection.variantProductId);
+      if (candidate === null) return err(validation('Invalid sales link selection'));
+      candidates.push(candidate);
+    }
+    const activePrices = await deps.prices.listActiveByProducts(tenantId, [...new Set([...link.productIds, ...candidates.map((product) => product.id)])]);
+    const basePrices = resolveSalesLinkPrices(bases, activePrices);
+    if (!basePrices.ok) return basePrices;
+    const settings = selections.length === 0 ? null : await deps.tenants?.findSettings(tenantId) ?? null;
+    const selected = selectSalesLinkVariants(bases, selections, (base, id) => candidates.find((candidate) =>
+      candidate.id === id && salesLinkVariantEligible(base, candidate, activePrices, basePrices.value[0]?.currency ?? '', settings)), true);
+    if (!selected.ok) return selected;
+    const products = selected.value;
     const resolvedPrices = resolveSalesLinkPrices(products, activePrices);
     if (!resolvedPrices.ok) return resolvedPrices;
     const product = products[0];
     if (product === undefined) return err(notFound('Sales link not found'));
-    return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug });
+    const inStock = await ensureProductsInStock(tenantId, products, deps);
+    if (!inStock.ok) return inStock;
+    return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug, variantSelections: selections.filter((selection) => selection.productId !== selection.variantProductId) });
   }
   const product = await deps.products.findById(tenantId, input.productId);
   if (!product || !product.published) {
@@ -126,14 +153,52 @@ export const validateCheckoutSelection = async (
     }
   }
 
-  if (product.type === 'physical' && price?.kind === 'recurring') {
+  if ((product.type === 'physical' || product.deliveryMethod === 'shipping') && price?.kind === 'recurring') {
     return err(validation('Physical products require a one-time price'));
   }
   if (product.type === 'membership' && price?.kind !== 'recurring') {
     return err(validation('Membership products require a recurring price'));
   }
+  const inStock = await ensureProductsInStock(tenantId, [product], deps);
+  if (!inStock.ok) return inStock;
 
   return ok({ product, price });
+};
+
+export const validateCheckoutSelection = async (
+  tenantId: string,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants'>,
+  options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
+): Promise<Result<CheckoutSelection, AppError>> => {
+  const selection = await selectCheckoutProducts(tenantId, input, deps);
+  if (!selection.ok || options.shipping === 'ignore') return selection;
+  const shippingInput = input.shipping === undefined ? undefined : checkoutShippingInputSchema.safeParse(input.shipping);
+  if (shippingInput !== undefined && !shippingInput.success) return err(validation('Invalid delivery selection', shippingInput.error.flatten()));
+  const products = selection.value.products ?? [selection.value.product];
+  const settings = products.some((product) => product.deliveryMethod === 'shipping') ? await deps.tenants?.findSettings(tenantId) : null;
+  const shipping = resolveCheckoutShipping(products, settings?.shippingRates, shippingInput?.data);
+  if (!shipping.ok) return shipping;
+  return ok(shipping.value === null ? selection.value : { ...selection.value, shipping: shipping.value });
+};
+
+const freeShippedOrder = async (
+  tenantId: string,
+  input: Pick<CheckoutSessionInput, 'couponCode' | 'email'>,
+  selection: CheckoutSelection,
+  deps: CheckoutDeps,
+): Promise<boolean> => {
+  if (selection.shipping === undefined || selection.shipping.amountCents > 0 || selection.price?.kind === 'recurring') return false;
+  const built = await buildCheckoutLines(tenantId, selection, deps);
+  if (!built.ok) return false;
+  if (built.value.totalCents === 0) return true;
+  if (input.couponCode === undefined) return false;
+  const coupon = await validateSelectionCoupon(tenantId, {
+    code: input.couponCode,
+    ...(input.email === undefined ? {} : { email: input.email }),
+    amountCents: built.value.totalCents, currency: built.value.currency,
+  }, selection, deps);
+  return coupon.ok && coupon.value.breakdown.finalCents === 0;
 };
 
 export const startCheckoutSession = async (
@@ -155,9 +220,12 @@ export const startCheckoutSession = async (
   const fields = attributionSchema.parse(input.attribution);
   if (fields !== undefined && deps.clock === undefined) return err(validation('Checkout clock is not configured'));
   const attribution = fields === undefined || deps.clock === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
+  if (await freeShippedOrder(tenant.id, input, selection, deps)) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
   const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
+  const shippingCents = captured.value.shippingCents ?? 0;
+  const shipping = selection.shipping;
   const mode = testSession?.mode ?? 'live';
   if (mode === 'test') {
     const rejected = testCheckoutRejection(input, selection);
@@ -169,7 +237,9 @@ export const startCheckoutSession = async (
   const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const campaignQuery = attributionToSearchParams(fields).toString();
+  const variantQuery = new URLSearchParams((selection.variantSelections ?? []).map((item) => [SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam(item)])).toString();
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
+  const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product] }, deps);
   let applied:
     | {
         breakdown: CouponCheckoutBreakdown;
@@ -198,7 +268,10 @@ export const startCheckoutSession = async (
     const capturedCoupon = await captureCouponCheckout(tenant.id, { ...validated.value, memberEmail: input.email }, selection, deps);
     if (!capturedCoupon.ok) return capturedCoupon;
     const checkoutSessionId = capturedCoupon.value;
-    if (validated.value.breakdown.finalCents === 0 && price?.kind !== 'recurring') {
+    if (validated.value.breakdown.finalCents === 0 && shippingCents === 0 && price?.kind !== 'recurring') {
+      if (shipping !== undefined) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
+      const freeHold = await reserveStock();
+      if (!freeHold.ok) return freeHold;
       return ok({
         url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
         coupon: validated.value.breakdown,
@@ -215,8 +288,11 @@ export const startCheckoutSession = async (
       checkoutSessionId,
     };
   }
-  if (totalCents === 0 && price?.kind !== 'recurring') {
+  if (totalCents === 0 && shippingCents === 0 && price?.kind !== 'recurring') {
+    if (shipping !== undefined) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
     if (input.email === undefined) return err(validation('An email is required for free checkout'));
+    const freeHold = await reserveStock();
+    if (!freeHold.ok) return freeHold;
     return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true, ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }) });
   }
   if (input.couponCode === undefined) {
@@ -227,7 +303,9 @@ export const startCheckoutSession = async (
   const tenantSettings = await deps.tenants?.findSettings(tenant.id);
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
   const couponQuery = applied === undefined || input.couponCode === undefined ? '' : `&code=${encodeURIComponent(normalizeCouponCode(input.couponCode))}`;
-  const created = await deps.payment.createCheckoutSession({
+  const hold = await reserveStock();
+  if (!hold.ok) return hold;
+  const created = await withCheckoutStockHold(tenant.id, hold.value, deps, () => deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     ...(attribution === undefined ? {} : { attribution }),
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
@@ -236,11 +314,23 @@ export const startCheckoutSession = async (
     productName: product.title,
     ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }),
     ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }),
-    ...(selection.products === undefined ? {} : { lines }),
+    ...(selection.products === undefined ? {} : { lines: productLines(lines) }),
+    ...(shipping === undefined ? {} : {
+      shipping: {
+        allowedCountries: shipping.allowedCountries,
+        phone: true,
+        option: {
+          label: shipping.label,
+          amountCents: shipping.amountCents,
+          currency,
+          ...(shipping.deliveryEstimateDays === undefined ? {} : { deliveryEstimateDays: shipping.deliveryEstimateDays }),
+        },
+      },
+    }),
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -254,13 +344,17 @@ export const startCheckoutSession = async (
           promotionCodeId: applied.promotionCodeId,
           couponCheckoutSessionId: applied.checkoutSessionId,
         }),
-  });
+    ...(hold.value === null ? {} : { expiresAt: hold.value.sessionExpiresAt }),
+  }));
   if (!created.ok) return created;
   if (checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined) {
     try {
       await deps.checkoutSnapshots.attachProviderSession(tenant.id, checkoutSnapshotId, created.value.sessionId);
     } catch (cause) {
-      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+      await cleanUpFailedCheckout([
+        () => deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode }),
+        () => releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps),
+      ], deps.logger);
       throw cause;
     }
   }
@@ -270,7 +364,7 @@ export const startCheckoutSession = async (
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
         productId: product.id, priceId: price?.id ?? null, mode: 'test',
         kind: price?.kind ?? 'one_time', status: 'pending', attribution: attribution ?? null,
-        amountCents: totalCents, currency,
+        amountCents: totalCents + shippingCents, currency,
         provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
         couponId: null, discountCents: 0, billing: null, lines, salesLinkId: selection.salesLinkId ?? null, createdAt: deps.clock.nowIso(),
       });
@@ -280,11 +374,16 @@ export const startCheckoutSession = async (
     }
   }
   if (applied !== undefined && deps.couponCheckoutSessions !== undefined) {
-    await deps.couponCheckoutSessions.attachProviderSession(
-      tenant.id,
-      applied.checkoutSessionId,
-      created.value.sessionId,
-    );
+    try {
+      await deps.couponCheckoutSessions.attachProviderSession(
+        tenant.id,
+        applied.checkoutSessionId,
+        created.value.sessionId,
+      );
+    } catch (cause) {
+      await cleanUpFailedCheckout([() => releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps)], deps.logger);
+      throw cause;
+    }
   }
   return ok({
     url: created.value.url,

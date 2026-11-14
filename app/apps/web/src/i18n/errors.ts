@@ -21,11 +21,15 @@ export const serverMessageOf = (error: unknown): string | null => {
   return typeof message === 'string' && message.trim() !== '' ? message : null;
 };
 
-const errorDetailOf = (error: unknown, key: string): unknown => {
+export const errorDetailsOf = (error: unknown): unknown => {
   if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
   const { appError } = error;
   if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
-  const { details } = appError;
+  return appError.details;
+};
+
+const errorDetailOf = (error: unknown, key: string): unknown => {
+  const details = errorDetailsOf(error);
   if (typeof details !== 'object' || details === null || !(key in details)) return null;
   return Reflect.get(details, key);
 };
@@ -91,6 +95,16 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageSlugReservedGeneric;
     case 'invoice_exemption_basis_missing':
       return t.errors.messageInvoiceExemptionBasisMissing;
+    case 'shipping_required':
+      return t.errors.messageShippingRequired;
+    case 'sold_out':
+      return t.errors.messageSoldOut;
+    case 'fulfilment_conflict':
+      return t.errors.messageFulfilmentConflict;
+    case 'shipx_unavailable':
+      return t.errors.messageShipxUnavailable;
+    case 'shipx_rejected':
+      return t.errors.messageShipxRejected;
     case 'internal':
       return t.errors.messageInternal;
   }
@@ -126,6 +140,11 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'pending_confirmation':
     case 'slug_reserved':
     case 'impersonation_read_only':
+    case 'shipping_required':
+    case 'sold_out':
+    case 'fulfilment_conflict':
+    case 'shipx_unavailable':
+    case 'shipx_rejected':
     case 'internal':
       return null;
   }

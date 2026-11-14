@@ -14,7 +14,7 @@ development rejects `true` (`apps/server/src/env.ts:219-234`). Local development
 means `NODE_ENV` other than `production` with `APP_ENV` unset or `development`
 (`apps/server/src/env.ts:34-39`), so staging and preview refuse to boot with the
 flag on. In local development the auth adapter writes issued links to `dev_magic_links`
-(`adapters/auth/create-auth.ts:792-801`), the dev magic-link endpoint returns
+(`adapters/auth/create-auth.ts:928-937`), the dev magic-link endpoint returns
 them (`apps/server/src/internal-app.ts:1124-1128`), and the simulated-purchase
 response includes the issued link (`apps/server/src/internal-app.ts:1120-1121`).
 
@@ -256,9 +256,14 @@ deployments use the platform-written `x-vercel-forwarded-for` header.
 Unauthenticated write routes carry a second application limiter: fixed windows
 in `rate_limit_buckets`, keyed by scope and subject and claimed with one upsert
 per request (`core/server/usecases/public-rate-limit.ts`,
-`apps/server/src/public-rate-limit.ts`). Checkout session creation, coupon
-validation and the marketing consent forms allow 30 requests per minute per
-client address and 300 per minute per resolved tenant; magic-link,
+`apps/server/src/public-rate-limit.ts`). Checkout session creation, sales-link
+checkout (`POST /api/public/sales-links/:slug/checkout`), coupon validation,
+survey submissions (`POST /api/public/surveys/:slug/submit`), the marketing
+unsubscribe, preference and double opt-in confirmation forms and Meta
+conversion consent decisions (`POST /api/public/meta-capi/consent`) spend the
+`public-write:ip` and
+`public-write:tenant` windows: 30 requests per minute per client address and
+300 per minute per resolved tenant; magic-link,
 password-reset, sign-up and verification requests share that per-address budget
 and allow 5 per ten minutes per e-mail address. The direct offer page's coupon
 preview spends its own `coupon-preview:ip` and `coupon-preview:tenant` windows
@@ -623,8 +628,12 @@ launch record.
 
 **STATUS:** pre-launch-verify
 
-`smoke:remote` is a manual command, no workflow invokes it, and its SHA
-comparison is silently skipped when `EXPECTED_SHA` is absent. For launch,
+`smoke:remote` silently skips its SHA comparison when `EXPECTED_SHA` is absent.
+The `prod-smoke` workflow runs it after each successful Production deployment
+status with the deployment SHA, and on manual dispatch with an optional SHA;
+the `staging-smoke` workflow runs the same script as `smoke:staging` on
+`staging` pushes, daily, and on manual dispatch. Those runs are post-deployment
+monitors that do not block a deployment, not this attestation. For launch,
 `EXPECTED_SHA` is mandatory. Fetch the promoted branch, resolve its exact head,
 and run the command against the deployed production URL:
 
@@ -648,7 +657,9 @@ by recording the already-rescued `0080_next_martin_li` row with its original
 hash and timestamp when that row is absent. It is a migration because the
 registry is production database state owned by the migrator, and applying the
 repair through the same ordered path makes health counts converge without a
-special-case offset.
+special-case offset. The file names `drizzle.__drizzle_migrations`; the
+migration runner executes it against `public.__drizzle_migrations`, where the
+journal now lives (see [migration journal](deployment-environments.md#migration-journal)).
 
 ### 19. Realtime listener connection
 

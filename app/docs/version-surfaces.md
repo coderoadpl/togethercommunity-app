@@ -5,8 +5,11 @@ stamp the version derived from Git history into their own copy of that manifest;
 [Versioning](versioning.md) describes the derivation, fallback, tags, and release
 notes. The committed manifest value is
 <!--release-version-->`0.1.0`<!--/release-version-->.
-Local runs, tests, and Docker builds retain that value. A deployment build that
-cannot read sufficient history adds `+unknown` build metadata.
+Local runs and tests retain that value. A Docker build retains it too unless the
+`APP_VERSION` build argument carries a derived version, which is stamped into the
+image's manifest before the server and the browser bundle are built (see
+[Running on Kubernetes](kubernetes.md#image)). A deployment build that cannot
+read sufficient history adds `+unknown` build metadata.
 
 ## Build identity
 
@@ -25,7 +28,9 @@ promise or version-prefix policy.
 
 The browser stamp makes no network request. Vite reads `APP_COMMIT_SHA`, falls
 back to Vercel's build-time SHA, and otherwise records `unknown`; the login
-stamp omits an unknown SHA. Settings warn when browser and server identities
+stamp omits an unknown SHA. A Docker image built with the `APP_COMMIT_SHA` build
+argument also carries it as the runtime default, so its server and its browser
+bundle report the same commit. Settings warn when browser and server identities
 differ, but treat an unknown SHA on either side as unverifiable rather than
 stale.
 

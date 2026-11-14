@@ -6,7 +6,8 @@ import { Link } from '@tanstack/react-router';
 import type { PublicSpaceEvent } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { DataValue } from '../../../theme.js';

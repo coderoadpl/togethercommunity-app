@@ -34,6 +34,7 @@ import type {
   MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
+  NotificationFanoutBatchRepository,
   NotificationRepository,
   PostRepository,
   ProductGrantRepository,
@@ -66,6 +67,7 @@ export interface EventsDeps {
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
+  fanoutBatches: NotificationFanoutBatchRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
   tenants: Pick<TenantRepository, 'findSettings'>;

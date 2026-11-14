@@ -378,10 +378,11 @@ order id (cut to 100 characters).
    number in the message and in `details`, so staff can reconcile the two in
    Manager Paczek.
 
-The request has one deadline, 20 seconds from its start, checked before every
-ShipX call (the reconciliation lookup, the create, each read and the purchase;
-the label download is a separate request). When the deadline has passed, the
-request makes no further call and answers `shipx_unavailable` with
+The request has one deadline, 20 seconds from its start, checked before the
+create, before each read and before the purchase, and once before the
+reconciliation lookup as a whole, whose page reads (up to 5) run without a
+further check; the label download is a separate request. When the deadline
+has passed, the request makes no further call and answers `shipx_unavailable` with
 `details.state: 'pending'`; the row keeps the ShipX id, or the unconfirmed
 attempt, and the last status, and the order stays to pack. A row that holds
 neither yet (the deadline passed before the create was recorded) is deleted,

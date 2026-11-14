@@ -25,7 +25,7 @@ const scrubInbox = async (
   const totals = { matched: 0, changed: 0 };
   let cursor: string | undefined;
   while (true) {
-    const rows = await db.select().from(marketingSnsInbox).where(and(eq(marketingSnsInbox.tenantId, tenantId),
+    const rows = await db.select().from(marketingSnsInbox).where(and(eq(marketingSnsInbox.tenantId, tenantId), isNotNull(marketingSnsInbox.rawBody),
       cursor === undefined ? undefined : gt(marketingSnsInbox.id, cursor))).orderBy(asc(marketingSnsInbox.id)).limit(500);
     if (rows.length === 0) break;
     for (const row of rows) {

@@ -1,4 +1,6 @@
 import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { DELETED_MEMBER_DISPLAY, emailEventSchema, memberTombstone, ok } from '#core/domain/index.js';
@@ -14,6 +16,7 @@ import { repairErasedEmailEvents, lockEmailEventErasure } from './email-event-er
 import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from './marketing-delivery-transactions.js';
 import { createMemberErasureRepository } from './repositories.js';
 import { deliveryCtx, deliveryWebhookCtx } from './marketing-delivery-test-fixture.js';
+import * as dbSchema from './schema.js';
 import { campaignSends, emailEvents, emailOutbox, marketingContacts, marketingOutbox, marketingSnsInbox, members, suppressions, tenants, tenantSesSettings, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -488,4 +491,28 @@ it.each((['erase', 'repair'] as const).flatMap((stage) =>
   expect(await processMarketingSnsInbox(deliveryWebhookCtx(tenantId), worker, deps)).toEqual(ok({ processed: 1, retried: 0 }));
   expect((await inboxRows(tenantId))[0]).toMatchObject({ status: 'processed', rawBody: canonicalBody });
   expect((await rows(tenantId)).filter((event) => event.refId === sendId)).toMatchObject([{ type: 'delivered', meta: { rawProviderPayload: marketingSnsJsonValue(message) } }]);
+});
+
+it('pages only receipts that still hold a body while the delivery lock is held', async () => {
+  const tenantId = 'purged-scan';
+  await seed(tenantId);
+  const input = receipt(tenantId, 'marketing', 'delivery');
+  for (const [id, rawBody] of [['purged', null], ['held', input.rawBody]] as const) {
+    await database.db.insert(marketingSnsInbox).values({ id: `${tenantId}-${id}`, tenantId, topicArn: 'topic', snsMessageId: id,
+      messageType: 'Notification', rawBody, bodySha256: `${tenantId}-${id}`, verifiedAt: now, receivedAt: now,
+      status: 'processed', nextAttemptAt: now, processedAt: now });
+  }
+  const before = await inboxRows(tenantId);
+  const queries: string[] = [];
+  const pool = new pg.Pool({ connectionString: database.url });
+  try {
+    const logged = drizzle(pool, { schema: dbSchema, logger: { logQuery: (query) => { queries.push(query); } } });
+    expect((await repairErasedEmailEvents(logged, tenantId, hmac, true)).inbox).toEqual({ matched: 0, changed: 0 });
+  } finally {
+    await pool.end();
+  }
+  const scans = queries.filter((query) => query.includes('from "marketing_sns_inbox"'));
+  expect(scans.length).toBeGreaterThan(0);
+  for (const scan of scans) expect(scan).toContain('"marketing_sns_inbox"."raw_body" is not null');
+  expect(await inboxRows(tenantId)).toEqual(before);
 });

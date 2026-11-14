@@ -441,7 +441,8 @@ describe('create InPost shipment', () => {
       error: { code: 'shipx_unavailable', details: { state: 'pending', shipmentId: null } },
     });
     expect(h.real.calls).toEqual(noCalls);
-    expect(h.row()).toMatchObject({ status: 'creating', createAttemptedAt: null, operationStartedAt: null });
+    expect(h.row()).toBeUndefined();
+    expect(await h.eventTypes()).toEqual(['attempt_claimed', 'attempt_released']);
 
     const unconfirmed = harness();
     unconfirmed.seed({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' });
@@ -720,6 +721,25 @@ describe('discard an unconfirmed InPost attempt', () => {
     }]);
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(h.real.calls.create).toHaveLength(1);
+  });
+
+  it('resets a claim left before any ShipX call so a changed environment or organization cannot block the order', async () => {
+    const h = harness({ environment: 'production' });
+    const expired = new Date(Date.parse(NOW) - SHIPX_OPERATION_LEASE_MS - 1).toISOString();
+    h.seed({ status: 'creating', environment: 'sandbox', operationToken: 'crashed', operationStartedAt: expired });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict', details: { state: 'environment_mismatch' } } });
+    expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toEqual({ ok: true, value: { discarded: true } });
+    expect(h.row()).toBeUndefined();
+    expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({
+      type: 'attempt_discarded', details: { status: 'creating', createAttemptedAt: null },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true, value: { shipment: { environment: 'production' } } });
+    expect(h.real.calls.create).toHaveLength(1);
+
+    const running = harness();
+    running.seed({ status: 'creating', operationToken: 'other', operationStartedAt: '2026-11-08T09:59:55.000Z' });
+    expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, running.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict', details: { state: 'lease_held' } } });
+    expect(running.row()).toBeDefined();
   });
 
   it('refuses rows without an unconfirmed attempt, running operations and staff without order:write', async () => {

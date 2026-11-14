@@ -226,6 +226,21 @@ describe('ShipX shipment repository', () => {
     expect(await repository.findByOrder('workspace', 'order-unknown')).toBeNull();
   });
 
+  it('discards a claim left before any ShipX call once its lease expired, but never a row with a ShipX id', async () => {
+    const repository = createShipxShipmentRepository(database.db);
+    await repository.acquire('workspace', { id: 'stuck-1', orderId: 'order-stuck', token: 'stuck', ...context, now, leaseExpiredBefore });
+    expect(await repository.discardUnconfirmed('workspace', 'order-stuck', leaseExpiredBefore, audit)).toBe(false);
+    const later = '2026-11-08T10:05:00.000Z';
+    expect(await repository.discardUnconfirmed('workspace', 'order-stuck', '2026-11-08T10:03:30.000Z', { actorUserId: 'manager', at: later })).toBe(true);
+    expect(await repository.findByOrder('workspace', 'order-stuck')).toBeNull();
+    expect((await repository.listEvents('workspace', 'order-stuck')).at(-1)).toEqual({
+      orderId: 'order-stuck', shipxShipmentId: null, type: 'attempt_discarded', actorUserId: 'manager', operationToken: null,
+      details: { status: 'creating', createAttemptedAt: null }, createdAt: later,
+    });
+    await seedShipment(repository, 'order-stuck-created', '8001');
+    expect(await repository.discardUnconfirmed('workspace', 'order-stuck-created', leaseExpiredBefore, audit)).toBe(false);
+  });
+
   it('keeps the discarded attempt in the event history with the staff user who discarded it', async () => {
     const repository = createShipxShipmentRepository(database.db);
     await repository.acquire('workspace', { id: 'discard-1', orderId: 'order-discard', token: 'attempt', ...context, actorUserId: 'packer', now, leaseExpiredBefore });

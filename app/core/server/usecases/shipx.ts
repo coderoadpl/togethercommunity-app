@@ -395,7 +395,7 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
     parcelTemplate: await orderParcelTemplate(run.tenantId, run.order, deps),
   });
   if (!request.ok) return releaseAttempt(run, request, deps);
-  if (pastDeadline(run, deps)) return err(pendingShipment(run.shipment.status));
+  if (pastDeadline(run, deps)) return releaseAttempt(run, err(pendingShipment(run.shipment.status)), deps);
   const attemptedAt = deps.clock.nowIso();
   const marked = await save(
     run,
@@ -575,7 +575,7 @@ export const discardInpostShipmentAttempt = async (
   const order = await loadOrder(tenant.value, parsed.data.orderId, deps);
   if (!order.ok) return order;
   const shipment = await deps.shipxShipments.findByOrder(tenant.value, order.value.id);
-  if (shipment === null || !shipxAttemptUnconfirmed(shipment)) return err(validation('The order has no unconfirmed InPost attempt to discard'));
+  if (shipment?.shipxShipmentId !== null) return err(validation('The order has no unconfirmed InPost attempt to discard'));
   const now = deps.clock.nowIso();
   const discarded = await deps.shipxShipments.discardUnconfirmed(tenant.value, order.value.id, leaseExpiredBefore(now), { actorUserId: ctx.identity.userId, at: now });
   if (!discarded) {

@@ -151,7 +151,7 @@ export const createShipxShipmentRepositoryFake = () => {
     },
     discardUnconfirmed: async (tenantId, orderId, leaseExpiredBefore, audit) => {
       const existing = rows.get(key(tenantId, orderId));
-      if (existing?.shipxShipmentId !== null || existing.createAttemptedAt === null || !free(existing, leaseExpiredBefore)) return false;
+      if (existing?.shipxShipmentId !== null || !free(existing, leaseExpiredBefore)) return false;
       rows.delete(key(tenantId, orderId));
       record(tenantId, orderId, existing, {
         type: 'attempt_discarded', actorUserId: audit.actorUserId, operationToken: null, details: attemptDetails(existing), createdAt: audit.at,

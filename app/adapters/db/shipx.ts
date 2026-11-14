@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { SHIPX_STATUS_CREATING, shipxEnvironmentSchema, shipxSenderSchema, shipxShipmentSchema } from '#core/domain/index.js';
 import type {
@@ -220,7 +220,6 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       const [removed] = await tx.delete(orderShipments).where(and(
         byOrder(tenantId, orderId),
         isNull(orderShipments.providerShipmentId),
-        isNotNull(orderShipments.createAttemptedAt),
         operationFree(leaseExpiredBefore),
       )).returning();
       if (removed === undefined) return false;

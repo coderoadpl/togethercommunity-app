@@ -383,7 +383,9 @@ ShipX call (the reconciliation lookup, the create, each read and the purchase;
 the label download is a separate request). When the deadline has passed, the
 request makes no further call and answers `shipx_unavailable` with
 `details.state: 'pending'`; the row keeps the ShipX id, or the unconfirmed
-attempt, and the last status, and the order stays to pack. Opening the order reads the live ShipX status once
+attempt, and the last status, and the order stays to pack. A row that holds
+neither yet (the deadline passed before the create was recorded) is deleted,
+so the next click starts over with the current settings. Opening the order reads the live ShipX status once
 for a shipment that is not bought yet and stores it; clicking **Create InPost
 shipment** again continues from that status and never creates a second
 shipment.
@@ -407,9 +409,11 @@ flow continues with step 3. Without a match the request answers `conflict`
 ("ShipX did not confirm the previous attempt; check Manager Paczek") and the
 order page shows that warning with **Discard the attempt and create again**.
 That action (`POST /api/orders/<orderId>/shipx/discard`, `order:write`, CLI
-`order shipx discard <orderId>`) deletes only a row that has no ShipX id, holds
-an attempt and is not in use by another request; the page then creates the
-shipment again. Staff check Manager Paczek first, because a shipment that ShipX
+`order shipx discard <orderId>`) deletes only a row that has no ShipX id and is
+not in use by another request; the page then creates the shipment again. It
+also clears a claim that a crashed request left before recording any create
+attempt, which could otherwise block the order with an environment or
+organization mismatch after the ShipX settings changed. Staff check Manager Paczek first, because a shipment that ShipX
 created but did not list yet would be paid twice.
 
 ### Concurrency
@@ -430,9 +434,10 @@ another request holds the row by then, the write changes nothing, and the
 request stops without calling ShipX again and answers `fulfilment_conflict`
 with `details.state: 'lost_lock'`. A request that ends therefore never clears
 or deletes the claim of the next one. A crashed or stuck request keeps the
-lease until it expires after 90 seconds; its row then shows either a ShipX id
-(the next click continues) or an unconfirmed attempt (the next click
-reconciles). Opening the order stores the live ShipX status only while no
+lease until it expires after 90 seconds; its row then shows a ShipX id (the
+next click continues), an unconfirmed attempt (the next click reconciles) or,
+when it crashed before recording the attempt, neither (the next click creates,
+and **discard** clears it when the settings changed meanwhile). Opening the order stores the live ShipX status only while no
 request holds the claim and only when the row is unchanged since it was read
 before the ShipX call; it never clears a stored tracking number and never
 changes a bought row, so a slow read cannot overwrite a purchase that a
@@ -457,8 +462,8 @@ ShipX shipment id known at that moment, the staff user, the request's
 | `shipment_adopted` | the reconciliation lookup finds the shipment and stores its id | `status` |
 | `offer_bought` | the purchase time is stored for the first time (by the request or by opening the order) | `status`, `trackingNumber` |
 | `payment_failed` | ShipX reports a failed payment or a dead offer, or refuses the purchase | `status`, `reason` |
-| `attempt_released` | a rejected attempt without a ShipX id is deleted | `status`, `createAttemptedAt` |
-| `attempt_discarded` | staff discard an unconfirmed attempt | `status`, `createAttemptedAt` |
+| `attempt_released` | a rejected attempt, or a claim whose deadline passed before the create was recorded, is deleted without a ShipX id | `status`, `createAttemptedAt` |
+| `attempt_discarded` | staff discard an unconfirmed attempt or a claim left before any create attempt | `status`, `createAttemptedAt` |
 | `label_fetched` | a label is downloaded | none |
 | `status_refreshed` | a ShipX read (a request's poll or opening the order) changes the stored status or tracking number | `from`, `to` (statuses), `trackingNumber` |
 | `operation_finished` | a request clears its own claim at the end | `outcome`: `bought`, `pending`, `unconfirmed`, `released`, `lost_lock` or `failed` |

@@ -1,4 +1,5 @@
-import { probeStripePermissions } from '#core/server/index.js';
+import { configureStripe, probeStripePermissions } from '#core/server/index.js';
+import { createTenantSecretRepositoryFake } from '#core/server/testing/tenant-secret-fake.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -240,19 +241,40 @@ describe('configureWebhook', () => {
         });
       },
     });
+    const secrets = createTenantSecretRepositoryFake();
     const configure = async (tenantId: string, slot: 'live' | 'test') => {
-      if (payment.configureWebhook === undefined) throw new Error('configureWebhook missing');
-      const result = await payment.configureWebhook({
-        tenantId, restrictedKey: `rk_${slot}_shared_account`,
-        webhookUrl: `https://${tenantId}.togethercommunity.app/api/webhooks/stripe/${tenantId}${slot === 'test' ? '?mode=test' : ''}`,
+      const result = await configureStripe({ identity: {
+        userId: 'owner-1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true,
+        tenantAccess: 'staff', tenantId, tenantSlug: tenantId, tenantName: tenantId, staffRole: 'owner',
+        memberId: null, image: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null,
+        memberLanguage: null, memberVideoAutoplay: false,
+      } }, { restrictedKey: `rk_${slot}_shared_account`, mode: slot }, {
+        payment, tenantSecrets: secrets.repository,
+        secretCrypto: {
+          encrypt: (plaintext) => ({ ciphertext: `encrypted:${plaintext}`, iv: 'iv', authTag: 'tag' }),
+          decrypt: () => { throw new Error('Unexpected decryption'); },
+        },
+        ids: { nextId: () => `secret-${++sequence}` },
+        clock: { nowIso: () => '2026-10-01T12:00:00.000Z' },
+        appBaseUrl: 'https://togethercommunity.app', baseDomain: 'togethercommunity.app', singleTenantMode: false,
+        tenantDomains: tenantDomainRepositoryStub({}),
       });
       if (!result.ok) throw new Error(result.error.message);
-      return result.value;
+      const endpoint = endpointSchema.parse(registered.find((candidate) => candidate.url === result.value.webhookUrl));
+      const stored = (await secrets.repository.listByTenant(tenantId)).filter((row) => row.key.startsWith(slot === 'test' ? 'stripe.test' : 'stripe.') &&
+        (slot === 'test' || !row.key.startsWith('stripe.test')));
+      expect(stored.map(({ key, ciphertext }) => ({ key, ciphertext }))).toEqual([
+        { key: slot === 'test' ? 'stripe.testWebhookSecret' : 'stripe.webhookSecret', ciphertext: `encrypted:${endpoint.secret}` },
+        { key: slot === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey', ciphertext: `encrypted:rk_${slot}_shared_account` },
+        { key: slot === 'test' ? 'stripe.testWebhookEndpointId' : 'stripe.webhookEndpointId', ciphertext: `encrypted:${endpoint.id}` },
+      ]);
+      return { webhookEndpointId: endpoint.id, webhookSecret: endpoint.secret };
     };
 
     const acmeLive = await configure('acme', 'live');
     const acmeTest = await configure('acme', 'test');
     const firstWorkspace = structuredClone(registered);
+    const firstWorkspaceSecrets = structuredClone(await secrets.repository.listByTenant('acme'));
     const studioLive = await configure('studio', 'live');
     const studioTest = await configure('studio', 'test');
     expect(deleted).toEqual([]);
@@ -260,7 +282,12 @@ describe('configureWebhook', () => {
     const otherSlot = structuredClone(registered.find((endpoint) => endpoint.id ===
       (mode === 'live' ? studioTest.webhookEndpointId : studioLive.webhookEndpointId)));
 
+    const otherSlotSecrets = structuredClone(secrets.rows.filter((row) => row.tenantId === 'studio' &&
+      row.key.startsWith('stripe.test') === (mode === 'live')));
     const replacement = await configure('studio', mode);
+    expect(await secrets.repository.listByTenant('acme')).toEqual(firstWorkspaceSecrets);
+    expect(secrets.rows).toHaveLength(12);
+    for (const secret of otherSlotSecrets) expect(secrets.rows).toContainEqual(secret);
     expect(deleted).toEqual([mode === 'live' ? studioLive.webhookEndpointId : studioTest.webhookEndpointId]);
     expect(registered).toHaveLength(4);
     expect(registered.filter((endpoint) => endpoint.metadata.tenantId === 'acme')).toEqual(firstWorkspace);

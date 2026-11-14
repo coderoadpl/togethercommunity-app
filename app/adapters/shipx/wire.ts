@@ -32,6 +32,8 @@ export const wireShipmentSchema = z.object({
 
 export const wireShipmentListSchema = z.object({ items: z.array(z.unknown()) }).passthrough();
 
+export const wireListedAtSchema = z.object({ created_at: z.string() }).passthrough();
+
 const reasonTextSchema = z.union([
   z.string(),
   z.object({ description: z.string() }).passthrough().transform((reason) => reason.description),

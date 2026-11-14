@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { shipxSenderSchema, type ShipxShipmentRequest } from '#core/domain/index.js';
+import { SHIPX_RECONCILE_MAX_PAGES, shipxSenderSchema, type ShipxShipmentRequest } from '#core/domain/index.js';
 import type { ShipxCredentials } from '#core/server/index.js';
 
 import { createShipxHttpClient } from './http.js';
 
 const fixture = (name: string): string => readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8');
+
+const ATTEMPTED_AT = '2026-11-08T10:00:00.000Z';
 
 const credentials: ShipxCredentials = { organizationId: '1234', token: 'sandbox-secret-token', environment: 'sandbox' };
 
@@ -221,7 +223,7 @@ describe('ShipX HTTP client', () => {
     const [template] = list.items;
     const page = json(JSON.stringify({ ...list, items: ['order-9', 'order-1'].map((reference, index) => ({ ...template, id: 5000 - index, reference })) }));
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(page);
-    const found = await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1');
+    const found = await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT);
     expect(found).toMatchObject({ ok: true, value: { id: '4999', reference: 'order-1', status: 'confirmed', trackingNumber: '523000015611700083038270' } });
     expect(requestOf(fetchImpl, 0)).toMatchObject({
       url: 'https://sandbox-api-shipx-pl.easypack24.net/v1/organizations/1234/shipments?page=1&per_page=50&sort_by=created_at&sort_order=desc',
@@ -230,17 +232,51 @@ describe('ShipX HTTP client', () => {
     });
   });
 
-  it('reads one page per lookup and never retries it', async () => {
+  it('pages past a busy first page to the shipment created by the unconfirmed attempt', async () => {
+    const list = listFixture();
+    const [template] = list.items;
+    const recent = (from: number) => Array.from({ length: 50 }, (_value, index) => ({
+      ...template, id: from - index, reference: `other-${String(from - index)}`, created_at: '2026-11-08T11:05:00.000+01:00',
+    }));
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json(JSON.stringify({ ...list, items: recent(9000) })))
+      .mockResolvedValueOnce(json(JSON.stringify({ ...list, page: 2, items: [...recent(8950).slice(0, 10), { ...template, id: 4242, reference: 'order-1', created_at: '2026-11-08T11:00:01.000+01:00' }] })));
+    expect(await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT)).toMatchObject({
+      ok: true,
+      value: { id: '4242', reference: 'order-1' },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(requestOf(fetchImpl, 1).url).toBe('https://sandbox-api-shipx-pl.easypack24.net/v1/organizations/1234/shipments?page=2&per_page=50&sort_by=created_at&sort_order=desc');
+  });
+
+  it('stops paging at the end of the list and after a bounded number of pages', async () => {
+    const list = listFixture();
+    const [template] = list.items;
+    const short = vi.fn<typeof fetch>(async () => json(JSON.stringify({
+      ...list, items: [{ ...template, id: 1, reference: 'other', created_at: '2026-11-08T11:30:00.000+01:00' }],
+    })));
+    expect(await createShipxHttpClient({ fetchImpl: short }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT)).toEqual({ ok: true, value: null });
+    expect(short).toHaveBeenCalledTimes(1);
+    const endless = vi.fn<typeof fetch>(async () => json(JSON.stringify({
+      ...list,
+      items: Array.from({ length: 50 }, (_value, index) => ({ ...template, id: 9000 - index, reference: 'other', created_at: '2026-11-08T11:30:00.000+01:00' })),
+    })));
+    expect(await createShipxHttpClient({ fetchImpl: endless }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT)).toEqual({ ok: true, value: null });
+    expect(endless).toHaveBeenCalledTimes(SHIPX_RECONCILE_MAX_PAGES);
+    expect(requestOf(endless, SHIPX_RECONCILE_MAX_PAGES - 1).url).toContain(`page=${String(SHIPX_RECONCILE_MAX_PAGES)}&`);
+  });
+
+  it('stops at the first page whose entries are older than the attempt and never retries a page', async () => {
     const list = listFixture();
     const [template] = list.items;
     const full = vi.fn<typeof fetch>(async () => json(JSON.stringify({
       ...list,
       items: Array.from({ length: 50 }, (_value, index) => ({ ...template, id: 9000 - index, reference: `other-${String(index)}` })),
     })));
-    expect(await createShipxHttpClient({ fetchImpl: full }).findShipmentByReference(credentials, 'order-1')).toEqual({ ok: true, value: null });
+    expect(await createShipxHttpClient({ fetchImpl: full }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT)).toEqual({ ok: true, value: null });
     expect(full).toHaveBeenCalledTimes(1);
     const failing = vi.fn<typeof fetch>(async () => new Response('', { status: 503 }));
-    expect(await createShipxHttpClient({ fetchImpl: failing }).findShipmentByReference(credentials, 'order-1')).toMatchObject({
+    expect(await createShipxHttpClient({ fetchImpl: failing }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT)).toMatchObject({
       ok: false,
       error: { code: 'shipx_unavailable' },
     });
@@ -249,7 +285,7 @@ describe('ShipX HTTP client', () => {
 
   it('reports an unreadable shipment list as unavailable', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => json('{"unexpected":true}'));
-    expect(await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1')).toMatchObject({
+    expect(await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1', ATTEMPTED_AT)).toMatchObject({
       ok: false,
       error: { code: 'shipx_unavailable', message: 'InPost ShipX returned an unexpected shipment list' },
     });

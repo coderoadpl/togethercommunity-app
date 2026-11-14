@@ -20,7 +20,7 @@ export interface ShipxCredentials {
 export interface ShipxClient {
   createShipment(credentials: ShipxCredentials, request: ShipxShipmentRequest): Promise<Result<ShipxRemoteShipment, AppError>>;
   getShipment(credentials: ShipxCredentials, shipmentId: string): Promise<Result<ShipxRemoteShipment, AppError>>;
-  findShipmentByReference(credentials: ShipxCredentials, reference: string): Promise<Result<ShipxRemoteShipment | null, AppError>>;
+  findShipmentByReference(credentials: ShipxCredentials, reference: string, attemptedAt: string): Promise<Result<ShipxRemoteShipment | null, AppError>>;
   buyOffer(credentials: ShipxCredentials, shipmentId: string, offerId: string): Promise<Result<ShipxRemoteShipment, AppError>>;
   fetchLabel(credentials: ShipxCredentials, shipmentId: string): Promise<Result<ShipxLabel, AppError>>;
 }

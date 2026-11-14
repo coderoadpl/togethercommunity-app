@@ -53,6 +53,7 @@ export const SHIPX_REQUEST_TIMEOUT_MS = 5000;
 export const SHIPX_OPERATION_DEADLINE_MS = 20_000;
 export const SHIPX_OPERATION_LEASE_MS = 90_000;
 export const SHIPX_RECONCILE_PAGE_SIZE = 50;
+export const SHIPX_RECONCILE_MAX_PAGES = 5;
 export const SHIPX_COURIER_PARCEL_WEIGHT_KG = 5;
 
 export const SHIPX_PARCEL_DIMENSIONS_MM: Record<ParcelTemplate, { length: number; width: number; height: number }> = {

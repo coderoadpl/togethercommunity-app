@@ -402,10 +402,12 @@ the request answers `shipx_unavailable` with `details.state: 'unconfirmed'`.
 The next click reconciles before creating anything. The ShipX documentation
 lists the organization's shipments (`GET /v1/organizations/<id>/shipments`)
 with `page` and `per_page` but documents no filter by `reference`, so the
-client reads one page of the 50 newest shipments (`page=1`, `per_page=50`,
-`sort_by=created_at`, `sort_order=desc`) per click, without a retry, and
-matches `reference` with the order id. A match is adopted: its id and status are stored and the
-flow continues with step 3. Without a match the request answers `conflict`
+client pages through the newest shipments (`per_page=50`,
+`sort_by=created_at`, `sort_order=desc`, `page` from 1), without a retry, and
+matches `reference` with the order id. It stops at the first match, at the end
+of the list, at a page whose last shipment was created more than 10 minutes
+(a clock margin) before the recorded attempt, or after 5 pages. A match is
+adopted: its id and status are stored and the flow continues with step 3. Without a match the request answers `conflict`
 ("ShipX did not confirm the previous attempt; check Manager Paczek") and the
 order page shows that warning with **Discard the attempt and create again**.
 That action (`POST /api/orders/<orderId>/shipx/discard`, `order:write`, CLI
@@ -413,8 +415,9 @@ That action (`POST /api/orders/<orderId>/shipx/discard`, `order:write`, CLI
 not in use by another request; the page then creates the shipment again. It
 also clears a claim that a crashed request left before recording any create
 attempt, which could otherwise block the order with an environment or
-organization mismatch after the ShipX settings changed. Staff check Manager Paczek first, because a shipment that ShipX
-created but did not list yet would be paid twice.
+organization mismatch after the ShipX settings changed. Staff check Manager
+Paczek first, because a shipment that ShipX created but did not list yet would
+be paid twice.
 
 ### Concurrency
 
@@ -425,7 +428,9 @@ one conditional `UPDATE` that succeeds only when `operation_started_at` is
 held answers `fulfilment_conflict` ("Another request is creating the InPost
 shipment for this order; refresh the order in a moment") without calling
 ShipX. The lease is longer than the slowest request: the 20-second deadline
-plus one last call of at most 5 seconds, since no call in this flow is retried.
+plus the last ShipX step: one call of at most 5 seconds, since no call in this
+flow is retried, or the reconciliation lookup of at most 5 pages of 5 seconds
+each.
 
 Every later write of the request (the attempt, each ShipX state, the release
 of a rejected attempt, and the final clearing of the claim) is a conditional
@@ -537,8 +542,8 @@ account, with a test-mode order and the environment set to `sandbox`:
   weight of 5 kg;
 - the organization shipments list accepts `sort_by=created_at&sort_order=desc`
   with `per_page=50`, returns the newest shipments first and carries
-  `reference` on each item, which the reconciliation of an unconfirmed attempt
-  relies on;
+  `reference` and `created_at` on each item, which the reconciliation of an
+  unconfirmed attempt relies on;
 - a transaction `failure` (for example an empty sandbox balance) is reported
   with the ShipX reason.
 

@@ -424,7 +424,7 @@ const reconcileRemote = async (
   deps: CreateInpostShipmentDeps,
 ): Promise<Result<ShipxRemoteShipment, AppError>> => {
   if (pastDeadline(run, deps)) return err(pendingShipment(run.shipment.status));
-  const found = await client.findShipmentByReference(run.credentials, shipxReference(run.order.id));
+  const found = await client.findShipmentByReference(run.credentials, shipxReference(run.order.id), attemptedAt);
   if (!found.ok) return found;
   if (found.value === null) {
     return err(shipxStateError('conflict', 'ShipX did not confirm the previous attempt; check Manager Paczek', { state: 'unconfirmed', attemptedAt }));

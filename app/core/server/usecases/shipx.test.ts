@@ -10,6 +10,7 @@ import {
   productSchema,
   SHIPX_OPERATION_DEADLINE_MS,
   SHIPX_OPERATION_LEASE_MS,
+  SHIPX_RECONCILE_MAX_PAGES,
   SHIPX_REQUEST_TIMEOUT_MS,
   shipxRejected,
   shipxUnavailable,
@@ -466,6 +467,7 @@ describe('create InPost shipment', () => {
   it('holds the lease well past the deadline and the slowest last call', async () => {
     expect(SHIPX_OPERATION_LEASE_MS).toBe(90_000);
     expect(SHIPX_OPERATION_LEASE_MS).toBeGreaterThan(SHIPX_OPERATION_DEADLINE_MS + SHIPX_REQUEST_TIMEOUT_MS);
+    expect(SHIPX_OPERATION_LEASE_MS).toBeGreaterThan(SHIPX_OPERATION_DEADLINE_MS + SHIPX_RECONCILE_MAX_PAGES * SHIPX_REQUEST_TIMEOUT_MS);
     const running = harness();
     const startedAt = new Date(Date.parse(NOW) - SHIPX_OPERATION_DEADLINE_MS - SHIPX_REQUEST_TIMEOUT_MS).toISOString();
     running.seed({ shipxShipmentId: '1001', status: 'offers_prepared', operationToken: 'other', operationStartedAt: startedAt });

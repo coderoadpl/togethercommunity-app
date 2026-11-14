@@ -2,6 +2,7 @@ import {
   err,
   ok,
   sanitizeShipxError,
+  SHIPX_RECONCILE_MAX_PAGES,
   SHIPX_RECONCILE_PAGE_SIZE,
   SHIPX_REQUEST_TIMEOUT_MS,
   shipxRejected,
@@ -14,12 +15,14 @@ import {
 } from '#core/domain/index.js';
 import type { ShipxClient, ShipxCredentials } from '#core/server/index.js';
 
-import { toRemoteShipment, toWireShipmentRequest, wireShipmentListSchema, wireShipmentSchema } from './wire.js';
+import { toRemoteShipment, toWireShipmentRequest, wireListedAtSchema, wireShipmentListSchema, wireShipmentSchema } from './wire.js';
 
 const SHIPX_BASE_URLS: Record<ShipxEnvironment, string> = {
   production: 'https://api-shipx-pl.easypack24.net/v1',
   sandbox: 'https://sandbox-api-shipx-pl.easypack24.net/v1',
 };
+
+const RECONCILE_CLOCK_MARGIN_MS = 10 * 60 * 1000;
 
 const LABEL_MAX_BYTES = 5 * 1024 * 1024;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46];
@@ -54,13 +57,24 @@ const readShipment: Reader<ShipxRemoteShipment> = async (response) => {
   return parsed.success ? ok(toRemoteShipment(parsed.data)) : err(shipxUnavailable('InPost ShipX returned an unexpected shipment'));
 };
 
-const readShipmentList: Reader<ShipxRemoteShipment[]> = async (response) => {
+interface ShipmentPage {
+  shipments: ShipxRemoteShipment[];
+  size: number;
+  lastCreatedAt: number;
+}
+
+const readShipmentList: Reader<ShipmentPage> = async (response) => {
   const parsed = wireShipmentListSchema.safeParse(await response.json());
   if (!parsed.success) return err(shipxUnavailable('InPost ShipX returned an unexpected shipment list'));
-  return ok(parsed.data.items.flatMap((item) => {
-    const shipment = wireShipmentSchema.safeParse(item);
-    return shipment.success ? [toRemoteShipment(shipment.data)] : [];
-  }));
+  const last = wireListedAtSchema.safeParse(parsed.data.items.at(-1));
+  return ok({
+    shipments: parsed.data.items.flatMap((item) => {
+      const shipment = wireShipmentSchema.safeParse(item);
+      return shipment.success ? [toRemoteShipment(shipment.data)] : [];
+    }),
+    size: parsed.data.items.length,
+    lastCreatedAt: last.success ? Date.parse(last.data.created_at) : Number.NaN,
+  });
 };
 
 const readLabel: Reader<ShipxLabel> = async (response) => {
@@ -146,16 +160,22 @@ export const createShipxHttpClient = (options: ShipxHttpClientOptions = {}): Shi
       accept: 'application/json',
       retry: false,
     }, readShipment),
-    findShipmentByReference: async (credentials, reference) => {
-      const query = new URLSearchParams({ page: '1', per_page: String(SHIPX_RECONCILE_PAGE_SIZE), sort_by: 'created_at', sort_order: 'desc' });
-      const listed = await call(credentials, {
-        method: 'GET',
-        path: `/organizations/${segment(credentials.organizationId)}/shipments?${query.toString()}`,
-        accept: 'application/json',
-        retry: false,
-      }, readShipmentList);
-      if (!listed.ok) return listed;
-      return ok(listed.value.find((shipment) => shipment.reference === reference) ?? null);
+    findShipmentByReference: async (credentials, reference, attemptedAt) => {
+      const cutoff = Date.parse(attemptedAt) - RECONCILE_CLOCK_MARGIN_MS;
+      for (let page = 1; page <= SHIPX_RECONCILE_MAX_PAGES; page += 1) {
+        const query = new URLSearchParams({ page: String(page), per_page: String(SHIPX_RECONCILE_PAGE_SIZE), sort_by: 'created_at', sort_order: 'desc' });
+        const listed = await call(credentials, {
+          method: 'GET',
+          path: `/organizations/${segment(credentials.organizationId)}/shipments?${query.toString()}`,
+          accept: 'application/json',
+          retry: false,
+        }, readShipmentList);
+        if (!listed.ok) return listed;
+        const match = listed.value.shipments.find((shipment) => shipment.reference === reference);
+        if (match !== undefined) return ok(match);
+        if (listed.value.size < SHIPX_RECONCILE_PAGE_SIZE || listed.value.lastCreatedAt < cutoff) break;
+      }
+      return ok(null);
     },
     buyOffer: async (credentials, shipmentId, offerId) => call(credentials, {
       method: 'POST',

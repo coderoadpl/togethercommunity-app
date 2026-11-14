@@ -83,6 +83,14 @@ pnpm run dev:server      # port 48730
 pnpm run dev:web         # port 48731
 ```
 
+The seeded `acme.localhost` host resolves through its `tenant_domains` row, which
+hides Google there (see above). Remove the row from the development database
+first, as the two-factor suite does; seeding again restores it:
+
+```sql
+DELETE FROM tenant_domains WHERE tenant_id = 'tenant-acme' AND kind = 'subdomain';
+```
+
 1. Open `http://acme.localhost:48731/login`.
 2. Confirm **Continue with Google** is now visible (it is hidden without the env pair).
 3. Click it, complete Google consent, and confirm you land in the authenticated

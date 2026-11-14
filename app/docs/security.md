@@ -484,3 +484,41 @@ fake client for every order and never call InPost; with `PAYMENT_PROVIDER=stripe
 the workspace's ShipX environment decides: the sandbox serves test-mode orders
 only and refuses paid orders, production serves paid orders and leaves test-mode
 orders to the fake client. See [Which ShipX client answers](shop.md#which-shipx-client-answers).
+
+## Meta conversions credentials
+
+The Meta Conversions API access token is the tenant secret
+`analyticsMetaCapiAccessToken`, not a tenant setting. It is encrypted at rest
+with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
+the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
+`DELETE /api/tenant-secrets/:key`). Reads return only the key, the update time
+and the literal `configured`, never a token fragment. The server decrypts it
+when the checkout status decides whether to offer the consent prompt and when a
+dispatch builds a request. It is sent only to
+`https://graph.facebook.com/<version>/<pixel id>/events`, in the `Authorization`
+header and never in the URL; the request refuses redirects and times out after
+5 seconds.
+
+Capturing a decision makes no Meta request. The dispatch tick calls Meta only
+for an order whose buyer granted consent for that order and has not withdrawn
+it. Before every attempt it rechecks that the workspace still has the feature
+enabled with a pixel id and a stored token; that the order is a live-mode
+Stripe order from a `cs_live_` checkout session with status paid, partially
+refunded or refunded and a paid time in the past and less than seven days ago;
+and that the buyer's member record exists, has not been erased and has an
+email address. The request carries one `Purchase` event with the order id, the
+paid time, the workspace's offer or checkout URL without a query string, the
+SHA-256 of the trimmed, lower-case buyer email and, when available, the IP
+address, user agent and `_fbp` value captured with the consent request, an
+`fbc` value built from the stored `fbclid`, the SHA-256 of the customer country
+captured from Stripe, and the order's amount, currency and product ids; the
+workspace's test event code is added when configured. The
+[field table](integrations/meta-capi.md#delivery-and-fields) lists the sources.
+
+Meta's response body is never stored. A receipt keeps the status, the field
+names sent, Meta's trace id only when it is at most 100 letters, digits, `_` or
+`-` and does not contain the access token, and a fixed error label
+(`http_<status>`, `invalid_response`, `network_or_timeout`, `invalid_pixel_id`
+or `invalid_tenant`); dispatch failures log a fixed message without request or
+response data. Consent, retention and
+retry rules are described in [Meta Conversions API](integrations/meta-capi.md).

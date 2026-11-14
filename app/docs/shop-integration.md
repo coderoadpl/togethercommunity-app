@@ -485,3 +485,109 @@ The corresponding session handlers are in
 in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI flags in
 [`main.ts`](../apps/cli/src/main.ts). Follow those schemas instead of guessing
 uniform body IDs or undocumented checkout fields.
+
+## Several workspaces of one company
+
+Treat each shop as an independent workspace, even when the legal seller and
+Stripe account are the same. The same verified global account may own several
+workspaces, but each needs its own owner grant, configuration and operational
+records. This setup does not introduce a company entity, shared permissions or
+live inheritance of settings.
+
+### Create the further workspace through the trusted operator route
+
+Production uses first-workspace bootstrap policy: once a workspace exists,
+ordinary session `POST /api/tenants` cannot create the next one, even when
+`TENANT_CREATION=open`. Do not change that policy or give a merchant an operator
+credential to work around it.
+
+An instance operator can provision a further workspace from a protected backend
+using the existing route below. The owner must already have a verified global
+account; provisioning does not create or verify that account. The example uses
+fixture values and a placeholder secret, not production credentials:
+
+```http
+POST /api/internal/tenants/provision
+x-scheduler-operator-secret: <instance-operator-secret>
+Content-Type: application/json
+
+{
+  "slug": "studio",
+  "name": "Studio",
+  "ownerEmail": "owner@togethercommunity.app",
+  "defaultLanguage": "en"
+}
+```
+
+Send this to the intended instance origin using a protected HTTP client's secret
+facility. Never put the operator secret in a browser, shop manifest, URL, saved
+command arguments or logs. This route uses the instance operator secret, not an
+owner session or a shop management key.
+
+Success returns the normal envelope with `data.tenant` (`id`, `slug`, `name`),
+`created`, `ownerUserId` and `readiness`. Save the returned workspace ID. Retrying
+the same normalized slug for the same verified owner returns the existing
+workspace with `created: false`, without changing its name/language, duplicating
+the owner grant or recording another provisioning audit event. A slug owned by
+someone else is a conflict; an unknown or unverified owner is refused.
+`GET /api/internal/tenants/studio/readiness`, authenticated with the same header,
+returns configuration facts, not credentials or proof of a real payment.
+
+After provisioning, use the owner's session against the new workspace origin
+and verify its workspace identity before applying settings. The protected operator
+route is for workspace creation/readiness; normal shop administration continues
+through the workspace's existing owner/staff interfaces.
+
+### Register independent Stripe endpoints and slots
+
+With separate operational approval for provider changes, run owner-session
+`POST /api/integrations/stripe/configure` separately in each workspace. Its body
+is `{ "restrictedKey": "<live-restricted-key>", "mode": "live" }`; use a
+matching test restricted key and `"mode": "test"` for the sandbox slot. A company
+may supply credentials for the same Stripe account to several workspaces from
+its protected backend, but must not copy another workspace's webhook setup.
+
+Configuration registers that workspace's endpoint and stores its returned
+endpoint ID and signing secret with its restricted key. The live endpoint is
+`https://studio.togethercommunity.app/api/webhooks/stripe/<workspace-id>`; the test
+endpoint appends `?mode=test`. Each workspace and each live/test slot needs its
+own endpoint and signing secret, even with one Stripe account. Reconfiguring a
+slot replaces that workspace's matching endpoint, not another workspace's
+endpoint or the other slot. The configuration response contains `mode` and
+`webhookUrl`, not the signing secret. Check provider endpoint capacity and the
+restricted key's required permissions as external preflight items; source tests
+are not a guarantee that a particular Stripe account can accept another endpoint.
+
+A correctly signed event for one workspace is ignored by the other workspace's
+endpoint when its ownership does not match. A signature made with the first
+endpoint's secret is not valid for the second endpoint. Duplicate local delivery
+does not create another paid order. Do not bypass ownership validation or route
+all events through a shared signing secret to make setup appear simpler.
+
+### Keep workspace-owned data separate
+
+Never copy these between workspaces:
+
+- Webhook URLs, endpoint IDs or signing secrets, including across live/test slots.
+- Stripe Customer or Subscription objects/IDs. Sharing a Stripe account does not
+  authorize sharing those objects. The same buyer email or global user account
+  does not override workspace ownership; use workspace-local payment objects.
+- Orders, payment-event ledgers, stock/reservations, grants, memberships or role
+  rows. Provision the owner grant through the trusted route rather than cloning
+  it, and configure any additional staff access deliberately.
+- Invoice/order numbering counters or number allocations. Copying a counter is
+  not a safe way to coordinate a seller's numbering.
+
+Seller/legal/delivery values may be applied deliberately as independent settings
+copies. For a reviewed declarative settings/catalogue plan and application flow,
+use the [shop manifest tool](shop-manifest.md) after provisioning and configuring
+integrations. It does not provision workspaces, carry credentials or turn company
+settings into server-side inheritance.
+
+**Invoice numbering requires a separate decision.** KSeF sequences are scoped to
+the workspace, invoice type and year, but the printed number is
+`FV/<year>/<six-digit-sequence>` without a workspace prefix. Two workspaces for
+one legal seller can therefore allocate the same printed number. Keep automatic
+multi-workspace issuance disabled until a legally reviewed unique seller
+series/counter is implemented. Sharing invoice credentials, copying counters or
+using one Stripe account does not solve that collision.

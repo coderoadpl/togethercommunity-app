@@ -463,7 +463,7 @@ describe('notification fan-out', () => {
     const modulesRead = vi.spyOn(f.deps.modules, 'list');
 
     expect((await runPostFanoutJob(question, f.deps, { batchSize: 2 })).ok).toBe(true);
-    expect(subscribed).toEqual([]);
+    expect(subscribed).toEqual(followerIds(3));
     expect(f.notifications.rows).toHaveLength(3);
     expect(coursesRead).toHaveBeenCalledTimes(1);
     expect(modulesRead).toHaveBeenCalledTimes(1);
@@ -472,6 +472,30 @@ describe('notification fan-out', () => {
     expect(f.notifications.rows).toHaveLength(3);
     coursesRead.mockRestore();
     modulesRead.mockRestore();
+  });
+
+  it('subscribes staff added after a lesson question was posted before notifying them', async () => {
+    const f = fixture({ followers: [] });
+    f.deps.posts.findById = async () => ({ ...post, id: 'reply-root', rootPostId: 'reply-root', contextKind: 'lesson', contextId: 'lesson-1' });
+    f.deps.tenantAccess.listStaffForTenant = async () => [AUTHOR, 'late-staff'].map((userId) => ({
+      userId, email: `${userId}@example.com`, staffRole: 'admin', language: null,
+    }));
+    const order: string[] = [];
+    const subscriptions: Array<{ rootPostId: string; userIds: string[] }> = [];
+    f.deps.fanoutBatches.subscribeStaff = async (_tenantId, input) => {
+      order.push('subscribe');
+      subscriptions.push({ rootPostId: input.rootPostId, userIds: input.userIds });
+    };
+    const insertMany = f.deps.notifications.insertMany.bind(f.deps.notifications);
+    f.deps.notifications.insertMany = async (tenantId, rows) => {
+      order.push('notify');
+      return insertMany(tenantId, rows);
+    };
+    const question = { ...job, kind: 'lesson-question' as const, sourceKey: 'lesson-question:reply-root' };
+
+    expect((await runPostFanoutJob(question, f.deps)).ok).toBe(true);
+    expect(subscriptions).toEqual([{ rootPostId: 'reply-root', userIds: ['late-staff'] }]);
+    expect(order).toEqual(['subscribe', 'notify']);
   });
 
   it.each([1, 49, 120])('reads eligibility once per batch and the lesson catalogue once for %i subscribers', async (count) => {

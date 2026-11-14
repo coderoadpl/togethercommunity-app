@@ -254,6 +254,11 @@ const postPlan = async (
       if (job.kind === 'lesson-question') {
         const staff = await deps.fanoutBatches.listStaffPage(job.tenantId, { afterUserId, limit });
         const recipients = staff.filter((recipient) => recipient.userId !== post.authorUserId);
+        await deps.fanoutBatches.subscribeStaff(job.tenantId, {
+          rootPostId: post.rootPostId,
+          userIds: recipients.map((recipient) => recipient.userId),
+          createdAt: deps.clock.nowIso(),
+        });
         return {
           recipients: recipients.map((recipient) => ({ ...recipient, language: recipient.language ?? null })),
           nextCursorUserId: staff.at(-1)?.userId ?? null,

@@ -4,18 +4,31 @@ import { join } from 'node:path';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type Locator, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
+import { z } from 'zod';
 
-import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
+import { AUTH_POLICY, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
+import { AUTH_GOOGLE_CALLBACK_PATH, AUTH_ONE_TAP_CALLBACK_PATH } from '#adapters/auth/e2e-http.js';
+import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
+import {
+  createGoogleSigner,
+  GOOGLE_FAKE_FAILURE_MARKER,
+  GOOGLE_FAKE_SERVER_ENTRY,
+  GOOGLE_IDENTITY_SCRIPT_URL,
+  googleFakeEnv,
+  installGoogleBrowserFake,
+  type GoogleBrowserFake,
+} from './google-fake.js';
 import { signInWithPassword } from './login-flow.js';
 import {
   bootServer,
   delay,
   ephemeralPort,
   killServer,
+  readServerOutput,
   rootDir,
   run,
   tsxBin,
@@ -37,6 +50,14 @@ const account = {
 };
 const visible = { state: 'visible', timeout: 15000 } as const;
 const twoFactorRateLimitResetMilliseconds = 10_100;
+const google = {
+  clientId: 'two-factor-e2e-client-id',
+  clientSecret: 'two-factor-e2e-client-secret',
+  subject: 'two-factor-e2e-google-subject',
+  authorizationCode: 'two-factor-e2e-authorization-code',
+} as const;
+const GOOGLE_RETURN_TO = '/account?tab=security';
+const meSchema = z.object({ ok: z.literal(true), data: z.object({ email: z.string() }) });
 
 class E2eFailure extends Error {}
 
@@ -74,6 +95,21 @@ const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
   assert(migrate.code === 0, `Migration failed:\n${migrate.stdout}${migrate.stderr}`);
   const seed = await run(tsxBin, ['adapters/db/seed.ts'], { DATABASE_URL: databaseUrl });
   assert(seed.code === 0, `Seed failed:\n${seed.stdout}${seed.stderr}`);
+};
+
+// The seed stores a subdomain row for acme, which the auth config answers like a custom domain and so hides
+// Google; a workspace created in the product has no such row and resolves through the subdomain alone.
+const resolveAcmeBySubdomainOnly = async (databaseUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const removed = await client.query(
+      `DELETE FROM tenant_domains WHERE tenant_id = 'tenant-acme' AND kind = 'subdomain'`,
+    );
+    assert(removed.rowCount === 1, `Expected one seeded acme subdomain row, removed ${String(removed.rowCount)}`);
+  } finally {
+    await client.end();
+  }
 };
 
 const buildWeb = async (): Promise<void> => {
@@ -269,6 +305,167 @@ const runBackupCodeJourney = async (
   console.log('two-factor-e2e: backup-code regeneration, invalidation, one-time use, and replay rejection OK');
 };
 
+const readSignedInEmail = async (context: BrowserContext, baseUrl: string): Promise<string | null> => {
+  const response = await context.request.get(`${baseUrl}${API_PATHS.me}`);
+  if (response.status() === 401) return null;
+  assert(response.status() === 200, `${API_PATHS.me} returned HTTP ${String(response.status())}`);
+  return meSchema.parse(await response.json()).data.email;
+};
+
+const expectSignedOutBeforeCode = async (context: BrowserContext, baseUrl: string, label: string): Promise<void> => {
+  const cookies = await context.cookies();
+  const sessionCookies = cookies.filter((cookie) => cookie.name.endsWith('session_token'));
+  assert(
+    sessionCookies.length === 0,
+    `${label}: a session cookie existed before the TOTP step: ${sessionCookies.map((cookie) => `${cookie.name}@${cookie.domain}`).join(', ')}`,
+  );
+  const email = await readSignedInEmail(context, baseUrl);
+  assert(email === null, `${label}: ${API_PATHS.me} answered as ${String(email)} before the TOTP step`);
+  assert(
+    cookies.some((cookie) => cookie.name.endsWith('two_factor')),
+    `${label}: no two-factor challenge cookie was issued`,
+  );
+};
+
+const isTwoFactorChallenge = (url: URL): boolean =>
+  url.pathname === '/login' && url.searchParams.get('twoFactor') === 'required';
+
+const waitForSignInToSettle = async (page: Page, baseUrl: string, label: string): Promise<void> => {
+  const origin = new URL(baseUrl).origin;
+  try {
+    await page.waitForURL(
+      (url) => isTwoFactorChallenge(url) || (url.origin === origin && url.pathname !== '/login'),
+      { timeout: 20000 },
+    );
+  } catch (cause) {
+    throw new E2eFailure(`${label}: the browser neither reached the two-factor challenge nor left the login page; it is at ${page.url()}\n${String(cause)}`);
+  }
+};
+
+const expectChallengeOnOrigin = async (page: Page, baseUrl: string, label: string): Promise<void> => {
+  const origin = new URL(baseUrl).origin;
+  const challenge = new URL(page.url());
+  assert(isTwoFactorChallenge(challenge), `${label}: the browser left the login page without the two-factor challenge: ${page.url()}`);
+  assert(challenge.origin === origin, `${label}: the challenge opened on ${challenge.origin} instead of ${origin} (${page.url()})`);
+  assert(
+    challenge.searchParams.get('returnTo') === GOOGLE_RETURN_TO,
+    `${label}: the challenge URL lost the return target ${GOOGLE_RETURN_TO}: ${page.url()}`,
+  );
+  await page.getByTestId('two-factor-challenge').waitFor(visible);
+};
+
+const completeChallengeToReturnTarget = async (
+  page: Page,
+  context: BrowserContext,
+  baseUrl: string,
+  secret: string,
+  label: string,
+): Promise<void> => {
+  const origin = new URL(baseUrl).origin;
+  await page.getByTestId('two-factor-code').fill(await currentTotp(secret));
+  const completion = page.waitForResponse((response) => new URL(response.url()).pathname === BETTER_AUTH_TWO_FACTOR_TOTP_PATH);
+  await page.getByTestId('verify-login-totp').click();
+  const completed = await completion;
+  assert(completed.status() === 200, `${label}: TOTP completion returned HTTP ${String(completed.status())}`);
+  const target = new URL(GOOGLE_RETURN_TO, origin);
+  try {
+    await page.waitForURL(
+      (url) => url.origin === origin && url.pathname === target.pathname && url.search === target.search,
+      { timeout: 20000 },
+    );
+  } catch (cause) {
+    throw new E2eFailure(`${label}: TOTP completion did not land on ${target.toString()}; it is at ${page.url()}\n${String(cause)}`);
+  }
+  const email = await readSignedInEmail(context, baseUrl);
+  assert(email === account.email, `${label}: after TOTP the session belongs to ${String(email)} instead of ${account.email}`);
+};
+
+const expectCleanGoogleFake = (fake: GoogleBrowserFake, server: ChildProcess, label: string): void => {
+  assert(fake.failures().length === 0, `${label}: the Google browser fake saw unexpected traffic:\n${fake.failures().join('\n')}`);
+  const serverFailures = readServerOutput(server).split('\n').filter((line) => line.includes(GOOGLE_FAKE_FAILURE_MARKER));
+  assert(serverFailures.length === 0, `${label}: the server-side Google fake saw unexpected traffic:\n${serverFailures.join('\n')}`);
+};
+
+const openGoogleContext = async (browser: Browser, baseUrl: string, { bypassCSP = false } = {}) => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, bypassCSP });
+  const fake = await installGoogleBrowserFake(context, {
+    clientId: google.clientId,
+    redirectUri: `${baseUrl}${AUTH_GOOGLE_CALLBACK_PATH}`,
+    authorizationCode: google.authorizationCode,
+  });
+  const page = await context.newPage();
+  page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
+  return { context, fake, page };
+};
+
+const loginUrlWithReturnTarget = (baseUrl: string): string =>
+  `${baseUrl}/login?${new URLSearchParams({ returnTo: GOOGLE_RETURN_TO }).toString()}`;
+
+const runOneTapChallengeJourney = async (
+  browser: Browser,
+  server: ChildProcess,
+  baseUrl: string,
+  secret: string,
+  oneTapCredential: string,
+): Promise<void> => {
+  const label = 'One Tap';
+  // The login document's script-src blocks Google's script; bypassing it keeps the page branch and the
+  // server path covered until the owner decides on that policy (docs/social-google-smoke.md).
+  const { context, fake, page } = await openGoogleContext(browser, baseUrl, { bypassCSP: true });
+  try {
+    fake.armOneTapCredential(oneTapCredential);
+    const callback = page.waitForResponse((response) => new URL(response.url()).pathname === AUTH_ONE_TAP_CALLBACK_PATH);
+    callback.catch(() => undefined);
+    const identityScriptBlocked = new Promise<never>((_resolve, reject) => {
+      page.on('requestfailed', (request) => {
+        if (request.url() !== GOOGLE_IDENTITY_SCRIPT_URL) return;
+        reject(new E2eFailure(
+          `${label}: the login page could not load ${GOOGLE_IDENTITY_SCRIPT_URL} (${String(request.failure()?.errorText)}), so the One Tap prompt never ran`,
+        ));
+      });
+    });
+    identityScriptBlocked.catch(() => undefined);
+    await page.goto(loginUrlWithReturnTarget(baseUrl), { waitUntil: 'domcontentloaded' });
+    const answered = await Promise.race([callback, identityScriptBlocked]);
+    assert(answered.status() === 200, `${label}: ${AUTH_ONE_TAP_CALLBACK_PATH} returned HTTP ${String(answered.status())}`);
+    await waitForSignInToSettle(page, baseUrl, label);
+    await expectSignedOutBeforeCode(context, baseUrl, label);
+    await expectChallengeOnOrigin(page, baseUrl, label);
+    await completeChallengeToReturnTarget(page, context, baseUrl, secret, label);
+    assert(fake.served().identityScripts >= 1, `${label}: the page never loaded the Google Identity script`);
+    expectCleanGoogleFake(fake, server, label);
+    console.log('two-factor-e2e: One Tap sign-in stopped at the challenge on the request origin and continued to the return target OK');
+  } finally {
+    await context.close();
+  }
+};
+
+const runGoogleOAuthChallengeJourney = async (
+  browser: Browser,
+  server: ChildProcess,
+  baseUrl: string,
+  secret: string,
+): Promise<void> => {
+  const label = 'Google OAuth';
+  const { context, fake, page } = await openGoogleContext(browser, baseUrl);
+  try {
+    await page.goto(loginUrlWithReturnTarget(baseUrl), { waitUntil: 'domcontentloaded' });
+    const callback = page.waitForResponse((response) => new URL(response.url()).pathname === AUTH_GOOGLE_CALLBACK_PATH);
+    await page.getByTestId('continue-google').click();
+    const answered = await callback;
+    assert(answered.status() === 302, `${label}: ${AUTH_GOOGLE_CALLBACK_PATH} returned HTTP ${String(answered.status())}`);
+    assert(fake.served().authorizations === 1, `${label}: the authorization endpoint was reached ${String(fake.served().authorizations)} times`);
+    await waitForSignInToSettle(page, baseUrl, label);
+    await expectSignedOutBeforeCode(context, baseUrl, label);
+    await expectChallengeOnOrigin(page, baseUrl, label);
+    await completeChallengeToReturnTarget(page, context, baseUrl, secret, label);
+    expectCleanGoogleFake(fake, server, label);
+    console.log('two-factor-e2e: Google OAuth callback stopped at the challenge on the request origin and continued to the return target OK');
+  } finally {
+    await context.close();
+  }
+};
+
 const runDisableJourney = async (page: Page, baseUrl: string): Promise<void> => {
   await openSecuritySettings(page, baseUrl);
   await page.getByTestId('enable-2fa-password').fill(account.password);
@@ -294,16 +491,20 @@ try {
   console.log('two-factor-e2e: preparing isolated database...');
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(e2eDatabaseUrl);
+  await resolveAcmeBySubdomainOnly(e2eDatabaseUrl);
   console.log('two-factor-e2e: building the web SPA...');
   await buildWeb();
 
   const port = await ephemeralPort();
   const connectUrl = `http://127.0.0.1:${String(port)}`;
   const acmeBaseUrl = `http://acme.localhost:${String(port)}`;
+  const googleSigner = createGoogleSigner(google.clientId);
+  const googleIdentity = { subject: google.subject, email: account.email, name: 'Acme Creator' };
   console.log(`two-factor-e2e: booting server on port ${String(port)}...`);
   server = await bootServer({
     port,
     healthUrl: `${connectUrl}/api/health`,
+    entry: GOOGLE_FAKE_SERVER_ENTRY,
     env: {
       DATABASE_URL: e2eDatabaseUrl,
       APP_BASE_URL: acmeBaseUrl,
@@ -312,6 +513,15 @@ try {
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
       EMAIL_PROVIDER: 'dev',
       SIMULATED_PAYMENTS: 'true',
+      GOOGLE_CLIENT_ID: google.clientId,
+      GOOGLE_CLIENT_SECRET: google.clientSecret,
+      ...googleFakeEnv({
+        clientId: google.clientId,
+        clientSecret: google.clientSecret,
+        redirectUri: `${acmeBaseUrl}${AUTH_GOOGLE_CALLBACK_PATH}`,
+        jwk: googleSigner.jwk,
+        idTokensByCode: { [google.authorizationCode]: googleSigner.idToken(googleIdentity) },
+      }),
     },
   });
 
@@ -320,14 +530,15 @@ try {
       ? { executablePath: chromeExecutablePath, headless: true }
       : { channel: 'chrome', headless: true },
   );
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = await context.newPage();
-  page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
+  const { context, fake: passwordJourneyGoogleFake, page } = await openGoogleContext(browser, acmeBaseUrl);
 
   const enrollment = await runEnrollmentJourney(page, acmeBaseUrl);
   await runProvisionalChallengeJourney(page, acmeBaseUrl, enrollment.secret);
   await runBackupCodeJourney(page, acmeBaseUrl, enrollment.secret, enrollment.oldBackupCode);
+  await runOneTapChallengeJourney(browser, server, acmeBaseUrl, enrollment.secret, googleSigner.idToken(googleIdentity));
+  await runGoogleOAuthChallengeJourney(browser, server, acmeBaseUrl, enrollment.secret);
   await runDisableJourney(page, acmeBaseUrl);
+  expectCleanGoogleFake(passwordJourneyGoogleFake, server, 'password journeys');
   await context.close();
   console.log(`\ntwo-factor-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {

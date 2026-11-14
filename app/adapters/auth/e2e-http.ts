@@ -2,6 +2,8 @@ export const AUTH_MAGIC_LINK_VERIFICATION_PATH = '/api/auth/magic-link/verify';
 export const AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/verify-email';
 export const AUTH_TOTP_VERIFICATION_PATH = '/api/auth/two-factor/verify-totp';
 export const AUTH_PASSKEY_AUTHENTICATION_PATH = '/api/auth/passkey/verify-authentication';
+export const AUTH_ONE_TAP_CALLBACK_PATH = '/api/auth/one-tap/callback';
+export const AUTH_GOOGLE_CALLBACK_PATH = '/api/auth/callback/google';
 
 /**
  * Headless HTTP driver for the Better Auth routes that scripts/auth-e2e.ts

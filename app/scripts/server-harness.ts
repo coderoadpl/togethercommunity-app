@@ -78,6 +78,7 @@ export interface BootServerOptions {
   healthUrl: string;
   env: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  entry?: string;
 }
 
 interface ServerLogCapture {
@@ -94,9 +95,10 @@ export const bootServer = async ({
   healthUrl,
   env,
   timeoutMs = 20_000,
+  entry = 'apps/server/src/entry.node.ts',
 }: BootServerOptions): Promise<ChildProcess> => {
   if (!(await portIsFree(port))) throw new Error(`Port ${String(port)} is already occupied`);
-  const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
+  const child = spawn(tsxBin, [entry], {
     cwd: rootDir,
     detached: true,
     env: { ...process.env, ...env, PORT: String(port) },

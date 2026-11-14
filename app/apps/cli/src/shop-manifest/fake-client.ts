@@ -24,11 +24,11 @@ export const existingStock = (onHand: number): ProductStock => productStockSchem
 
 export const createManifestFake = (workspace = 'acme') => {
   const state: {
-    settings: TenantSettings; products: Product[]; prices: ProductPrice[]; stock: ProductStock | null;
+    exists: boolean; settings: TenantSettings; products: Product[]; prices: ProductPrice[]; stock: ProductStock | null;
     requests: string[]; failure: { path: string; method?: string; error: AppError } | null;
   } = {
     settings: tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null }),
-    products: [], prices: [], stock: null, requests: [], failure: null,
+    exists: true, products: [], prices: [], stock: null, requests: [], failure: null,
   };
   const api = createApiClient({
     baseUrl: 'https://togethercommunity.app',
@@ -37,6 +37,7 @@ export const createManifestFake = (workspace = 'acme') => {
       state.requests.push(`${init?.method ?? 'GET'} ${path}`);
       const send = (data: unknown) => new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
       if (state.failure?.path === path && (state.failure.method === undefined || state.failure.method === init?.method)) return new Response(JSON.stringify({ ok: false, error: state.failure.error }), { status: 403, headers: { 'content-type': 'application/json' } });
+      if (!state.exists) return Response.json({ ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } }, { status: 404 });
       if (init?.method === 'POST') {
         const body: unknown = JSON.parse(z.string().parse(init.body));
         if (path === '/api/tenant/settings') {

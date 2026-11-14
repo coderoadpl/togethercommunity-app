@@ -1,5 +1,5 @@
 import type { ApiClient } from '#core/client/index.js';
-import { err, internal, ok, updateProductInputSchema, type AppError, type Result } from '#core/domain/index.js';
+import { err, internal, ok, validation, updateProductInputSchema, type AppError, type Result } from '#core/domain/index.js';
 import { productMetadata } from '#core/domain/shop-manifest.js';
 import {
   manifestOperationError, manifestPlanReport, prepareManifest,
@@ -11,15 +11,38 @@ type ManifestWriteClient = ManifestReadClient & Pick<ApiClient,
   'enableProductStock' | 'adjustProductStock' | 'publishProduct' | 'unpublishProduct'>;
 type AppliedOperation = { workspace: string; operation: string; slug?: string };
 
-export const applyManifest = async (input: unknown, clientFor: ManifestClientFactory<ManifestWriteClient>, workspace?: string) => {
+export const SHOP_OPERATOR_SECRET_ENV = 'TOGETHER_SHOP_OPERATOR_SECRET';
+export type ManifestApplyOptions = {
+  environment?: Readonly<Record<string, string | undefined>>;
+  operator?: Pick<ApiClient, 'provisionOperatorTenant'>;
+};
+
+export const applyManifest = async (
+  input: unknown, clientFor: ManifestClientFactory<ManifestWriteClient>, workspace?: string, options: ManifestApplyOptions = {},
+) => {
   const applied: AppliedOperation[] = [];
   const fail = (error: AppError) => err({
     ...error,
     message: `${error.message}. Applied: ${applied.length === 0 ? 'nothing' : applied.map((entry) => `${entry.workspace}/${entry.slug ?? 'settings'} ${entry.operation}`).join(', ')}`,
     details: { failure: error.details, applied: [...applied] },
   });
-  const prepared = await prepareManifest(input, clientFor, workspace);
+  let prepared = await prepareManifest(input, clientFor, workspace);
   if (!prepared.ok) return fail(prepared.error);
+  const missing = prepared.value.filter((shop) => shop.provision !== null);
+  if (missing.length > 0) {
+    const secret = options.environment?.[SHOP_OPERATOR_SECRET_ENV];
+    if (!secret?.trim()) return fail(validation(`Missing environment variable ${SHOP_OPERATOR_SECRET_ENV}`));
+    if (options.operator === undefined) return fail(validation('Operator provisioning client is required'));
+    for (const shop of missing) {
+      if (shop.provision === null) continue;
+      const result = await options.operator.provisionOperatorTenant(shop.provision, secret);
+      if (!result.ok) return fail(manifestOperationError(result.error, shop.workspace, 'workspace:provision'));
+      applied.push({ workspace: shop.workspace, operation: 'workspace:provision' });
+    }
+    prepared = await prepareManifest(input, clientFor, workspace);
+    if (!prepared.ok) return fail(prepared.error);
+    if (prepared.value.some((shop) => shop.provision !== null)) return fail(validation('Provisioned workspace is not accessible to the current session'));
+  }
   for (const shop of prepared.value) {
     const write = async <T>(operation: string, action: () => Promise<Result<T, AppError>>, slug?: string): Promise<Result<T, AppError>> => {
       const result = await action();

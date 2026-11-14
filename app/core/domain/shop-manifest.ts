@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
+import { provisionTenantInputSchema } from './operator-tenant.js';
 import type { ProductPrice } from './commerce.js';
 import { newProductSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
@@ -38,8 +39,19 @@ export const shopManifestProductSchema = newProductSchema.omit({
   published: z.boolean(),
 }).strict();
 
+const workspaceSchema = z.union([
+  productSlugSchema,
+  z.object({
+    slug: provisionTenantInputSchema.shape.slug,
+    provision: provisionTenantInputSchema.omit({ slug: true }),
+  }).strict(),
+]);
+
+export const manifestWorkspaceSlug = (workspace: z.output<typeof workspaceSchema>): string =>
+  typeof workspace === 'string' ? workspace : workspace.slug;
+
 const shopSchema = z.object({
-  workspace: productSlugSchema,
+  workspace: workspaceSchema,
   settings: shopManifestSettingsSchema.optional(),
   products: z.array(shopManifestProductSchema),
 }).strict().refine((shop) => new Set(shop.products.map((product) => product.slug)).size === shop.products.length,
@@ -49,7 +61,7 @@ export const shopManifestSchema = z.object({
   version: z.literal(1),
   company: z.object({ settings: shopManifestSettingsSchema }).strict().optional(),
   shops: z.array(shopSchema).min(1),
-}).strict().refine((manifest) => new Set(manifest.shops.map((shop) => shop.workspace)).size === manifest.shops.length,
+}).strict().refine((manifest) => new Set(manifest.shops.map((shop) => manifestWorkspaceSlug(shop.workspace))).size === manifest.shops.length,
   'Shop workspaces must be unique');
 
 export type ShopManifest = z.output<typeof shopManifestSchema>;

@@ -47,14 +47,18 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       if (!options.success) { emit(err(validation('Invalid shop command options')), ctx.value.json, () => ''); return; }
       const input = await readManifestFile(options.data.manifest);
       if (!input.ok) { emit(input, ctx.value.json, () => ''); return; }
-      const run = command === 'plan' ? planManifest : applyManifest;
-      const result = await run(input.value, (workspace) => createApiClient({
+      const clientFor = (workspace: string) => createApiClient({
         baseUrl: manifestApiUrl(ctx.value.apiUrl, workspace),
         headers: () => ({
           ...(ctx.value.profile.token ? { authorization: `Bearer ${ctx.value.profile.token}` } : {}),
           [TENANT_HEADER]: workspace,
         }),
-      }), options.data.shop);
+      });
+      const result = command === 'plan'
+        ? await planManifest(input.value, clientFor, options.data.shop)
+        : await applyManifest(input.value, clientFor, options.data.shop, {
+          environment: process.env, operator: createApiClient({ baseUrl: ctx.value.apiUrl }),
+        });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
     });
 };

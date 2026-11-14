@@ -37,6 +37,15 @@ describe('shop manifest v1', () => {
     expect(shopManifestSchema.safeParse({ ...manifest, shops: [{ workspace: 'acme', products: [productInput, productInput] }] }).success).toBe(false);
   });
 
+  it('accepts provisioning only inside a strict workspace object and deduplicates its slug', () => {
+    const workspace = { slug: 'acme', provision: { name: 'Acme', ownerEmail: 'owner@togethercommunity.app' } };
+    expect(shopManifestSchema.safeParse({ version: 1, shops: [{ workspace, products: [] }] }).success).toBe(true);
+    expect(shopManifestSchema.safeParse({ version: 1, shops: [{ workspace, products: [] }, { workspace: 'acme', products: [] }] }).success).toBe(false);
+    for (const provision of [{ name: 'Acme', ownerEmail: 'invalid' }, { ...workspace.provision, secret: 'forbidden' }]) {
+      expect(shopManifestSchema.safeParse({ version: 1, shops: [{ workspace: { ...workspace, provision }, products: [] }] }).success).toBe(false);
+    }
+  });
+
   it.each([-1, 1.5, 1_000_001])('rejects invalid stock %s', (onHand) => {
     expect(shopManifestProductSchema.safeParse({ ...productInput, stock: { onHand } }).success).toBe(false);
   });

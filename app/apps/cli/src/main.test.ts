@@ -28,6 +28,7 @@ interface Hoisted {
   shipOrder: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
+  shipxRefresh: ReturnType<typeof vi.fn>;
   shipxCreate: ReturnType<typeof vi.fn>;
   shipxDiscard: ReturnType<typeof vi.fn>;
   shipxLabel: ReturnType<typeof vi.fn>;
@@ -103,6 +104,7 @@ const h = vi.hoisted(
     shipOrder: vi.fn(),
     ordersPackingList: vi.fn(),
     shipxShipment: vi.fn(),
+    shipxRefresh: vi.fn(),
     shipxCreate: vi.fn(),
     shipxDiscard: vi.fn(),
     shipxLabel: vi.fn(),
@@ -226,6 +228,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     shipOrder: h.shipOrder,
     ordersPackingList: h.ordersPackingList,
     shipxShipment: h.shipxShipment,
+    shipxRefresh: h.shipxRefresh,
     shipxCreate: h.shipxCreate,
     shipxDiscard: h.shipxDiscard,
     shipxLabel: h.shipxLabel,
@@ -333,6 +336,7 @@ beforeEach(() => {
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
+  h.shipxRefresh.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
   h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
@@ -1858,6 +1862,18 @@ describe('InPost ShipX CLI', () => {
     expect(h.shipxLabel).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
     expect(await readFile(out, 'utf8')).toBe('%PDF-1.4');
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it('shows the stored order readiness through the read route and refreshes it only on request', async () => {
+    await run('order', 'shipx', 'show', 'order-number');
+    expect(h.shipxShipment).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(h.shipxRefresh).not.toHaveBeenCalled();
+    await run('--json', 'order', 'shipx', 'refresh', 'order-number');
+    expect(h.shipxRefresh).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(h.shipxShipment).toHaveBeenCalledTimes(1);
+    h.shipxRefresh.mockResolvedValue(err(appError('forbidden', 'order:write is not permitted')));
+    await run('--json', 'order', 'shipx', 'refresh', 'order-number');
+    expect(process.exitCode).toBe(4);
   });
 
   it('shows the order readiness and configures the integration with a parsed sender', async () => {

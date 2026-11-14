@@ -1767,6 +1767,11 @@ ordersShipx.command('show <orderId>').description('Show whether the order can us
     emit(await ctx.api.shipxShipment({ orderId }), ctx.json, shipxOrderLines);
   }),
 );
+ordersShipx.command('refresh <orderId>').description('Read the live ShipX status of a shipment not yet paid, store it and show the order').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
+    emit(await ctx.api.shipxRefresh({ orderId }), ctx.json, shipxOrderLines);
+  }),
+);
 ordersShipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
     emit(await ctx.api.shipxCreate({ orderId }), ctx.json, (data) =>

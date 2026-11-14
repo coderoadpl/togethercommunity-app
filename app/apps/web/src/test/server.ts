@@ -39,6 +39,9 @@ export const server = setupServer(
   http.get('*/api/orders/:orderId/shipx', () =>
     HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', service: null, parcelTemplate: 'medium', shipment: null } }),
   ),
+  http.post('*/api/orders/:orderId/shipx/refresh', () =>
+    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', service: null, parcelTemplate: 'medium', shipment: null } }),
+  ),
   http.get('*/api/public/payment-config', () =>
     HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: false } }),
   ),

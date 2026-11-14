@@ -49,7 +49,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   });
   const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
   const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
-  const shipx = useQuery({ ...actions.shipxShipment(orderId), enabled: inpostOrder });
+  const shipx = useQuery({ ...actions[canShip ? 'shipxRefreshedShipment' : 'shipxShipment'](orderId), enabled: inpostOrder });
   const createShipment = useMutation({
     ...actions.shipxCreate,
     onSettled: async () => {

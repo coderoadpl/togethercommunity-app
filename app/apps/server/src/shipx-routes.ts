@@ -9,6 +9,7 @@ import {
   getInpostShipment,
   getShipxSettings,
   inpostShipmentLabel,
+  refreshInpostShipment,
   type ProductBatchReader,
   type ShipOrderDeps,
 } from '#core/server/index.js';
@@ -63,6 +64,11 @@ export const registerShipxRoutes = (
     if (shipxDeps === null) return unavailable();
     return respond(await getInpostShipment(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, shipxDeps));
   });
+  app.post(API_PATHS.shipxRefresh, async (c) => {
+    const shipxDeps = orderDeps();
+    if (shipxDeps === null) return unavailable();
+    return respond(await refreshInpostShipment(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, shipxDeps));
+  });
   app.post(API_PATHS.shipxCreate, async (c) => {
     const shipxDeps = orderDeps();
     if (shipxDeps === null || deps.orderFulfilment === undefined || deps.shipxIntegration === undefined) return unavailable();
@@ -78,7 +84,7 @@ export const registerShipxRoutes = (
     if (shipxDeps === null) return unavailable();
     return respond(await discardInpostShipmentAttempt(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, shipxDeps));
   });
-  app.get(API_PATHS.shipxLabel, async (c) => {
+  app.post(API_PATHS.shipxLabel, async (c) => {
     const shipxDeps = orderDeps();
     if (shipxDeps === null) return unavailable();
     const result = await inpostShipmentLabel(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, shipxDeps);

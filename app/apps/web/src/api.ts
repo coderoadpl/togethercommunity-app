@@ -3,7 +3,7 @@ import { metaCapiActions } from '#core/client/index.js';
 import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates, packingListQuery, shipOrderMutation } from '#core/client/index.js';
-import { configureShipxMutation, createShipxShipmentMutation, discardShipxAttemptMutation, downloadShipxLabelMutation, shipxSettingsInvalidates, shipxSettingsQuery, shipxShipmentInvalidates, shipxShipmentQuery } from '#core/client/index.js';
+import { configureShipxMutation, createShipxShipmentMutation, discardShipxAttemptMutation, downloadShipxLabelMutation, refreshedShipxShipmentQuery, shipxSettingsInvalidates, shipxSettingsQuery, shipxShipmentInvalidates, shipxShipmentQuery } from '#core/client/index.js';
 import { salesLinkActions } from '#core/client/index.js';
 import { surveyActions } from '#core/client/index.js';
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
@@ -420,6 +420,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   issueOrderLine: issueOrderLineMutation(apiClient),
   shipOrder: shipOrderMutation(apiClient),
   shipxShipment: (orderId: string) => shipxShipmentQuery(apiClient, orderId),
+  shipxRefreshedShipment: (orderId: string) => refreshedShipxShipmentQuery(apiClient, orderId),
   shipxCreate: createShipxShipmentMutation(apiClient),
   shipxDiscard: discardShipxAttemptMutation(apiClient),
   shipxLabel: downloadShipxLabelMutation(apiClient),

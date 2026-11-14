@@ -11,6 +11,11 @@ export const shipxShipmentQuery = (api: ApiClient, orderId: string) => ({
   queryFn: async ({ signal }: QueryFunctionContext) => unwrap(await api.shipxShipment({ orderId }, signal)),
 });
 
+export const refreshedShipxShipmentQuery = (api: ApiClient, orderId: string) => ({
+  queryKey: shipxScopes.order(orderId),
+  queryFn: async ({ signal }: QueryFunctionContext) => unwrap(await api.shipxRefresh({ orderId }, signal)),
+});
+
 export const createShipxShipmentMutation = (api: ApiClient) => ({
   mutationFn: async (orderId: string) => unwrap(await api.shipxCreate({ orderId })),
 });

@@ -783,6 +783,11 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
       && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.shipment.trackingNumber === shipxCreated.shipment.trackingNumber,
     `InPost shipment should ship the order with its tracking number: ${JSON.stringify(shipxCreated)}`,
   );
+  const shipxRefreshed = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'refresh', shipxOrderId], alfaHome), 'InPost refresh', shipxContracts.shipxRefresh.output);
+  assert(
+    shipxRefreshed.reason === 'not_to_pack' && shipxRefreshed.shipment?.trackingNumber === shipxCreated.shipment.trackingNumber,
+    `InPost refresh should return the bought shipment of the shipped order: ${JSON.stringify(shipxRefreshed)}`,
+  );
   const labelPath = join(alfaHome, 'inpost-label.pdf');
   expectOk(
     await cli(['--tenant', 'alfa', 'order', 'shipx', 'label', shipxOrderId, '--out', labelPath], alfaHome),

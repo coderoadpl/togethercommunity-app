@@ -258,23 +258,27 @@ const refreshedShipment = async (
   return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), shipment, remotePatch(remote.value, now), actorUserId) ?? shipment;
 };
 
-export const getInpostShipment = async (
-  ctx: Ctx,
-  input: unknown,
-  deps: ShipxOrderDeps,
-): Promise<Result<ShipxOrderView, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'order:read');
-  if (!tenant.ok) return tenant;
+type ShipxViewDeps = Pick<ShipxOrderDeps, 'orderDetails' | 'products' | 'shipxShipments' | 'shipxSettings' | 'tenantSecrets' | 'shipx'>;
+
+interface OrderShipmentState {
+  order: OrderListItem;
+  view: Omit<ShipxOrderView, 'shipment'>;
+  stored: ShipxShipmentRecord | null;
+  settings: ShipxSettings;
+  credentials: boolean;
+}
+
+const orderShipmentState = async (tenantId: string, input: unknown, deps: ShipxViewDeps): Promise<Result<OrderShipmentState, AppError>> => {
   const parsed = shipxOrderInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid order', parsed.error.flatten()));
-  const order = await loadOrder(tenant.value, parsed.data.orderId, deps);
+  const order = await loadOrder(tenantId, parsed.data.orderId, deps);
   if (!order.ok) return order;
   const service = order.value.shipping == null ? null : shipxServiceFor(order.value.shipping);
   const [stored, parcelTemplate, settings, credentials] = await Promise.all([
-    deps.shipxShipments.findByOrder(tenant.value, order.value.id),
-    orderParcelTemplate(tenant.value, order.value, deps),
-    settingsOf(tenant.value, deps),
-    credentialsPresent(tenant.value, deps),
+    deps.shipxShipments.findByOrder(tenantId, order.value.id),
+    orderParcelTemplate(tenantId, order.value, deps),
+    settingsOf(tenantId, deps),
+    credentialsPresent(tenantId, deps),
   ]);
   const reason = service === null
     ? 'not_inpost'
@@ -285,8 +289,36 @@ export const getInpostShipment = async (
         : settings.sender === null
           ? 'sender_missing'
           : clientFor(settings.environment, order.value, deps.shipx).ok ? null : 'sandbox_environment';
-  const shipment = stored === null || !credentials ? stored : await refreshedShipment(tenant.value, ctx.identity.userId, order.value, stored, settings, deps);
-  return ok({ available: reason === null, reason, service, parcelTemplate, shipment: shipment === null ? null : publicShipment(shipment) });
+  return ok({ order: order.value, view: { available: reason === null, reason, service, parcelTemplate }, stored, settings, credentials });
+};
+
+const orderShipmentView = (state: OrderShipmentState, shipment: ShipxShipmentRecord | null): ShipxOrderView =>
+  ({ ...state.view, shipment: shipment === null ? null : publicShipment(shipment) });
+
+export const getInpostShipment = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: ShipxViewDeps,
+): Promise<Result<ShipxOrderView, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'order:read');
+  if (!tenant.ok) return tenant;
+  const state = await orderShipmentState(tenant.value, input, deps);
+  if (!state.ok) return state;
+  return ok(orderShipmentView(state.value, state.value.stored));
+};
+
+export const refreshInpostShipment = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: ShipxOrderDeps,
+): Promise<Result<ShipxOrderView, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'order:write');
+  if (!tenant.ok) return tenant;
+  const state = await orderShipmentState(tenant.value, input, deps);
+  if (!state.ok) return state;
+  const { order, stored, settings, credentials } = state.value;
+  const shipment = stored === null || !credentials ? stored : await refreshedShipment(tenant.value, ctx.identity.userId, order, stored, settings, deps);
+  return ok(orderShipmentView(state.value, shipment));
 };
 
 const pendingPayment = (shipmentId: string, status: string | null): AppError =>
@@ -597,7 +629,7 @@ export const inpostShipmentLabel = async (
   input: unknown,
   deps: ShipxOrderDeps,
 ): Promise<Result<InpostLabelFile, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'order:read');
+  const tenant = authorizeTenant(ctx, 'order:write');
   if (!tenant.ok) return tenant;
   const parsed = shipxOrderInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid order', parsed.error.flatten()));

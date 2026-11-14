@@ -17,6 +17,7 @@ const shipxLabelFileSchema = z.object({
 
 export const shipxContracts = {
   shipxShipment: { input: shipxOrderInputSchema, output: shipxOrderViewSchema },
+  shipxRefresh: { input: shipxOrderInputSchema, output: shipxOrderViewSchema },
   shipxCreate: { input: shipxOrderInputSchema, output: z.object({ order: orderListItemSchema, shipment: shipxShipmentSchema }) },
   shipxDiscard: { input: shipxOrderInputSchema, output: shipxDiscardOutputSchema },
   shipxLabel: { input: shipxOrderInputSchema, output: shipxLabelFileSchema },
@@ -26,9 +27,10 @@ export const shipxContracts = {
 
 export const SHIPX_ROUTES = {
   shipxShipment: { method: 'GET', path: '/api/orders/:orderId/shipx' },
+  shipxRefresh: { method: 'POST', path: '/api/orders/:orderId/shipx/refresh' },
   shipxCreate: { method: 'POST', path: '/api/orders/:orderId/shipx' },
   shipxDiscard: { method: 'POST', path: '/api/orders/:orderId/shipx/discard' },
-  shipxLabel: { method: 'GET', path: '/api/orders/:orderId/shipx/label' },
+  shipxLabel: { method: 'POST', path: '/api/orders/:orderId/shipx/label' },
   shipxSettings: { method: 'GET', path: '/api/integrations/shipx' },
   shipxConfigure: { method: 'POST', path: '/api/integrations/shipx/configure' },
 } as const;

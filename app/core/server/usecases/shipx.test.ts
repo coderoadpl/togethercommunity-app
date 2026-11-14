@@ -45,6 +45,7 @@ import {
   getInpostShipment,
   getShipxSettings,
   inpostShipmentLabel,
+  refreshInpostShipment,
   type CreateInpostShipmentDeps,
 } from './shipx.js';
 
@@ -700,7 +701,7 @@ describe('ShipX client selection', () => {
       ok: false,
       error: { code: 'conflict', message: expect.stringContaining('ShipX sandbox environment'), details: { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' } },
     });
-    expect(await inpostShipmentLabel(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await inpostShipmentLabel(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
     h.seed({ shipxShipmentId: '1001', status: 'offer_selected', organizationId: '9999' });
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
       ok: false,
@@ -807,16 +808,35 @@ describe('InPost shipment view and label', () => {
     expect(await sizedParcel(lines, [ebook, course])).toEqual({ view: 'large', created: 'large' });
   });
 
-  it('reads the live ShipX status of a shipment waiting for payment when the order is opened', async () => {
+  it('returns the stored view of a shipment waiting for payment without calling ShipX or writing', async () => {
     const h = harness();
     h.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
+    const repository = h.shipments.repository;
+    const writes = [
+      vi.spyOn(repository, 'acquire'), vi.spyOn(repository, 'update'), vi.spyOn(repository, 'finishOperation'), vi.spyOn(repository, 'release'),
+      vi.spyOn(repository, 'refreshUnclaimed'), vi.spyOn(repository, 'markLabelFetched'), vi.spyOn(repository, 'discardUnconfirmed'),
+    ];
     expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true,
+      value: { available: true, reason: null, shipment: { shipxShipmentId: '1001', status: 'offer_selected', trackingNumber: null } },
+    });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.fake.calls).toEqual(noCalls);
+    expect(h.resolve).not.toHaveBeenCalled();
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    expect(await h.eventTypes()).toEqual([]);
+  });
+
+  it('refreshes a shipment waiting for payment with its live ShipX status', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
       ok: true,
       value: { shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: TRACKING } },
     });
     expect(h.real.calls.get).toEqual(['1001']);
     expect(h.row()).toMatchObject({ status: 'confirmed', trackingNumber: TRACKING });
-    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(h.real.calls.get).toEqual(['1001']);
     expect(await h.eventTypes()).toEqual(['status_refreshed', 'offer_bought']);
   });
@@ -832,10 +852,10 @@ describe('InPost shipment view and label', () => {
     });
     h.seed({ shipxShipmentId: '1001', status: 'offers_prepared' });
     h.advance(60_000);
-    await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps);
+    await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps);
     expect(h.row()).toMatchObject({ status: 'offers_prepared', updatedAt: '2026-11-08T09:00:00.000Z' });
     expect(await h.eventTypes()).toEqual([]);
-    await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps);
+    await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps);
     expect(h.row()).toMatchObject({ status: 'offer_selected' });
     expect(await h.shipments.repository.listEvents('workspace', 'order-1')).toEqual([{
       orderId: 'order-1', shipxShipmentId: '1001', type: 'status_refreshed', actorUserId: 'staff', operationToken: null,
@@ -858,7 +878,7 @@ describe('InPost shipment view and label', () => {
       }],
     });
     h.deps.shipx.real = slow.client;
-    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
       ok: true,
       value: { shipment: { status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW } },
     });
@@ -869,17 +889,17 @@ describe('InPost shipment view and label', () => {
   it('keeps the stored status when the live read fails or the settings changed', async () => {
     const failing = harness({ real: createScriptedShipxClient({ polls: [() => err(shipxUnavailable())] }) });
     failing.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
-    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, failing.deps)).toMatchObject({ ok: true, value: { shipment: { status: 'offer_selected' } } });
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, failing.deps)).toMatchObject({ ok: true, value: { shipment: { status: 'offer_selected' } } });
     const moved = harness();
     moved.seed({ shipxShipmentId: '1001', status: 'offer_selected', environment: 'sandbox' });
-    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, moved.deps)).toMatchObject({ ok: true, value: { shipment: { status: 'offer_selected', environment: 'sandbox' } } });
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, moved.deps)).toMatchObject({ ok: true, value: { shipment: { status: 'offer_selected', environment: 'sandbox' } } });
     expect(moved.real.calls).toEqual(noCalls);
   });
 
   it('downloads the label of a bought shipment and records the download', async () => {
     const h = harness();
     await createInpostShipment(write, { orderId: 'order-1' }, h.deps);
-    const label = await inpostShipmentLabel(ctx(['order:read']), { orderId: 'order-1' }, h.deps);
+    const label = await inpostShipmentLabel(write, { orderId: 'order-1' }, h.deps);
     expect(label).toMatchObject({ ok: true, value: { filename: `inpost-${TRACKING}.pdf`, contentType: 'application/pdf' } });
     expect(h.real.calls.label).toEqual(['1001']);
     expect(h.row()?.labelFetchedAt).toBe(NOW);
@@ -902,19 +922,48 @@ describe('InPost shipment view and label', () => {
     });
     const h = harness({ real });
     h.seed({ shipxShipmentId: '1001', status: 'created' });
-    expect(await inpostShipmentLabel(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+    expect(await inpostShipmentLabel(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
       ok: false,
       error: { code: 'shipx_rejected', message: 'The InPost label is available only after the shipment is paid', details: { error: 'invalid_action' } },
     });
     expect(h.row()?.labelFetchedAt).toBeNull();
   });
 
-  it('returns not found without a shipment, for other workspaces and requires order:read', async () => {
+  it('returns not found without a shipment, for other workspaces and requires order:write', async () => {
     const h = harness();
-    expect(await inpostShipmentLabel(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await inpostShipmentLabel(ctx(['order:read'], 'other-workspace'), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await inpostShipmentLabel(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await inpostShipmentLabel(ctx(['order:write', 'order:read'], 'other-workspace'), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await inpostShipmentLabel(ctx([]), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(h.real.calls.label).toEqual([]);
+    h.seed({ shipxShipmentId: '1001', status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW });
+    expect(await inpostShipmentLabel(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await inpostShipmentLabel(ctx(['order:write', 'order:read'], 'other-workspace'), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.row()?.labelFetchedAt).toBeNull();
+    expect(await h.eventTypes()).toEqual([]);
+  });
+
+  it('refuses the refresh to staff without order:write and to other workspaces, without calling ShipX or writing', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
+    expect(await refreshInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await refreshInpostShipment(ctx(['order:write', 'order:read'], 'other-workspace'), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await refreshInpostShipment(write, { orderId: '' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.fake.calls).toEqual(noCalls);
+    expect(h.row()).toMatchObject({ status: 'offer_selected', trackingNumber: null });
+    expect(await h.eventTypes()).toEqual([]);
+  });
+
+  it('answers the refresh with the readiness of the view and leaves rows without a ShipX id or credentials untouched', async () => {
+    const h = harness();
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps)).toEqual(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps));
+    h.seed({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' });
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true, value: { shipment: { shipxShipmentId: null, status: 'unknown' } } });
+    const missing = harness({ secrets: { 'shipx.token': 'only-token' } });
+    missing.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
+    expect(await refreshInpostShipment(write, { orderId: 'order-1' }, missing.deps)).toMatchObject({ ok: true, value: { reason: 'credentials_missing', shipment: { status: 'offer_selected' } } });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(missing.real.calls).toEqual(noCalls);
   });
 });
 

@@ -2266,6 +2266,7 @@ export const API_PATHS = {
   shipOrder: API_ROUTES.shipOrder.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
   shipxShipment: API_ROUTES.shipxShipment.path,
+  shipxRefresh: API_ROUTES.shipxRefresh.path,
   shipxCreate: API_ROUTES.shipxCreate.path,
   shipxDiscard: API_ROUTES.shipxDiscard.path,
   shipxLabel: API_ROUTES.shipxLabel.path,

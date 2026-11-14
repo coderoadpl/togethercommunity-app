@@ -478,7 +478,20 @@ characters removed and the field keys of the validation details, never the raw
 body or the token. The adapter refuses redirects, so the bearer token is only
 sent to the configured ShipX host.
 
-Labels are proxied: `GET /api/orders/<orderId>/shipx/label` returns the PDF with
+Only POST routes call ShipX or write shipment state: creating the shipment
+(`POST /api/orders/<orderId>/shipx`), refreshing a stored shipment that is not
+bought yet (`POST /api/orders/<orderId>/shipx/refresh`), fetching the label
+(`POST /api/orders/<orderId>/shipx/label`) and discarding an unconfirmed attempt
+(`POST /api/orders/<orderId>/shipx/discard`). Each requires `order:write`, records
+an `order_shipment_events` row with the staff user for every change it stores,
+and is classified `session` in `apps/server/src/request-origin-policy.ts`, so a
+cookie-authenticated request from a foreign origin is refused before the handler
+runs. `GET /api/orders/<orderId>/shipx` (`order:read`) is read-only: it returns
+the readiness and the stored shipment without calling ShipX, decrypting the
+credentials or writing anything, so a cross-site GET, which the origin guard
+does not inspect, cannot cause a carrier call or an event.
+
+Labels are proxied: `POST /api/orders/<orderId>/shipx/label` returns the PDF with
 `Content-Disposition: attachment` and `Cache-Control: private, no-store`, so no
 ShipX origin is added to any content security policy and the browser never
 contacts ShipX. Deployments with `PAYMENT_PROVIDER=fake` use the in-process

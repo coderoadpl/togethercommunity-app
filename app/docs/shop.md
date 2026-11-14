@@ -386,10 +386,14 @@ has passed, the request makes no further call and answers `shipx_unavailable` wi
 `details.state: 'pending'`; the row keeps the ShipX id, or the unconfirmed
 attempt, and the last status, and the order stays to pack. A row that holds
 neither yet (the deadline passed before the create was recorded) is deleted,
-so the next click starts over with the current settings. Opening the order reads the live ShipX status once
-for a shipment that is not bought yet and stores it; clicking **Create InPost
-shipment** again continues from that status and never creates a second
-shipment.
+so the next click starts over with the current settings. `GET /api/orders/<orderId>/shipx`
+(`order:read`) returns the readiness and the stored shipment without calling
+ShipX or writing. `POST /api/orders/<orderId>/shipx/refresh` (`order:write`, CLI
+`order shipx refresh <orderId>`) returns the same view after reading the live
+ShipX status once for a stored shipment that is not bought yet and storing it.
+When staff who may ship open the order, Studio loads the view through the
+refresh; clicking **Create InPost shipment** again continues from that status
+and never creates a second shipment.
 
 ### Indeterminate outcomes
 
@@ -448,7 +452,7 @@ lease until it expires after 90 seconds; its row then shows a ShipX id (the
 next click continues), an unconfirmed attempt (the next click reconciles) or,
 when it crashed before recording the attempt, neither (the next click creates;
 the page also offers **discard** for it, which clears it when the settings
-changed meanwhile). Opening the order stores the live ShipX status only while no
+changed meanwhile). The refresh stores the live ShipX status only while no
 request holds the claim and only when the row is unchanged since it was read
 before the ShipX call; it never clears a stored tracking number and never
 changes a bought row, so a slow read cannot overwrite a purchase that a
@@ -471,12 +475,12 @@ ShipX shipment id known at that moment, the staff user, the request's
 | `attempt_marked` | the attempt is recorded before the create call | `createAttemptedAt` |
 | `shipment_created` | the create call answers and its ShipX id is stored | `status` |
 | `shipment_adopted` | the reconciliation lookup finds the shipment and stores its id | `status` |
-| `offer_bought` | the purchase time is stored for the first time (by the request or by opening the order) | `status`, `trackingNumber` |
+| `offer_bought` | the purchase time is stored for the first time (by the request or by the refresh) | `status`, `trackingNumber` |
 | `payment_failed` | ShipX reports a failed payment or a dead offer, or refuses the purchase | `status`, `reason` |
 | `attempt_released` | a rejected attempt, or a claim whose deadline passed before the create was recorded, is deleted without a ShipX id | `status`, `createAttemptedAt` |
 | `attempt_discarded` | staff discard an unconfirmed attempt or a claim left before any create attempt | `status`, `createAttemptedAt` |
 | `label_fetched` | a label is downloaded | none |
-| `status_refreshed` | a ShipX read (a request's poll or opening the order) changes the stored status or tracking number | `from`, `to` (statuses), `trackingNumber` |
+| `status_refreshed` | a ShipX read (a request's poll or the refresh) changes the stored status or tracking number | `from`, `to` (statuses), `trackingNumber` |
 | `operation_finished` | a request clears its own claim at the end | `outcome`: `bought`, `pending`, `unconfirmed`, `released`, `lost_lock` or `failed` |
 
 Every `order_shipments` change writes at least one event in the same
@@ -495,8 +499,8 @@ ShipX webhooks.
 
 ### Label
 
-**Print label** appears once the shipment has a tracking number. Studio fetches
-`GET /api/orders/<orderId>/shipx/label` (`order:read`) with the API client,
+**Print label** appears once the shipment has a tracking number. Studio calls
+`POST /api/orders/<orderId>/shipx/label` (`order:write`) with the API client,
 checks that the answer is `application/pdf` and saves it as a file; an error
 answer is shown under the button instead of being saved. The route asks ShipX
 for the A6 PDF (`POST /v1/organizations/<id>/shipments/labels` with
@@ -703,6 +707,7 @@ pnpm --silent run cli --tenant acme tenant shipx-set --environment sandbox \
 pnpm --silent run cli --tenant acme tenant shipx
 pnpm --silent run cli --tenant acme product update <id> --parcel-template large
 pnpm --silent run cli --tenant acme --json order shipx show <orderId>
+pnpm --silent run cli --tenant acme --json order shipx refresh <orderId>
 pnpm --silent run cli --tenant acme --json order shipx create <orderId>
 pnpm --silent run cli --tenant acme order shipx label <orderId> --out label.pdf
 pnpm --silent run cli --tenant acme order shipx discard <orderId>

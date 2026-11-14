@@ -282,6 +282,19 @@ describe('request origin guard', () => {
     expect(requestOriginPolicy('DELETE', '/api/m2m/enroll')).toBe('session');
   });
 
+  it.each([API_ROUTES.shipxRefresh, API_ROUTES.shipxLabel])('classifies the InPost side effect $path as a session POST and refuses foreign cookie requests', async (route) => {
+    expect(route.method).toBe('POST');
+    expect(() => assertRequestOriginCoverage([route])).not.toThrow();
+    const path = route.path.replace(':orderId', 'order-1');
+    expect(requestOriginPolicy(route.method, path)).toBe('session');
+    const { send, mutation } = harness();
+    const rejected = await send(path, { cookie: 'session=valid', origin: 'https://external.test', 'sec-fetch-site': 'cross-site' });
+    expect(rejected.status).toBe(403);
+    expect(mutation).not.toHaveBeenCalled();
+    expect((await send(path, { cookie: 'session=valid', origin: 'https://acme.together.test' })).status).toBe(204);
+    expect(mutation).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps development automation headerless but refuses foreign browser calls', async () => {
     const { send } = harness();
     expect((await send('/api/dev/grant')).status).toBe(204);

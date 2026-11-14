@@ -231,8 +231,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
-  if (path === '/api/orders/:orderId/shipx' || path === '/api/orders/:orderId/shipx/label') return method === 'GET' ? 'order:read' : 'order:write';
-  if (path === '/api/orders/:orderId/shipx/discard') return 'order:write';
+  if (path === '/api/orders/:orderId/shipx') return method === 'GET' ? 'order:read' : 'order:write';
+  if (['/api/orders/:orderId/shipx/refresh', '/api/orders/:orderId/shipx/label', '/api/orders/:orderId/shipx/discard'].includes(path)) return 'order:write';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/consumer-sales-summary') return 'order:export';

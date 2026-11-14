@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(451);
-    expect(inventory.useCases).toHaveLength(354);
+    expect(inventory.routes).toHaveLength(452);
+    expect(inventory.useCases).toHaveLength(355);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),
@@ -55,9 +55,7 @@ describe('permission inventory', () => {
       inventory.useCases.find((entry) => entry.subject === 'order-verification.ts#verifyOrder'),
       inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),
       inventory.routes.find((entry) => entry.subject === 'GET /api/orders/:orderId/shipx'),
-      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/:orderId/shipx/label'),
       inventory.useCases.find((entry) => entry.subject === 'shipx.ts#getInpostShipment'),
-      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#inpostShipmentLabel'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
@@ -70,9 +68,14 @@ describe('permission inventory', () => {
       inventory.useCases.find((entry) => entry.subject === 'shipx.ts#createInpostShipment'),
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/shipx/discard'),
       inventory.useCases.find((entry) => entry.subject === 'shipx.ts#discardInpostShipmentAttempt'),
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/shipx/refresh'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#refreshInpostShipment'),
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/shipx/label'),
+      inventory.useCases.find((entry) => entry.subject === 'shipx.ts#inpostShipmentLabel'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
+    expect(inventory.routes.find((entry) => entry.subject === 'GET /api/orders/:orderId/shipx/label')).toBeUndefined();
     expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/orders/qr/:token'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [

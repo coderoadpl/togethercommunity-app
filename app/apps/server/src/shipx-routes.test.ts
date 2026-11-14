@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { createFakeShipxClient, fakeShipxShipmentId, fakeShipxTrackingNumber } from '#adapters/shipx/fake.js';
-import { ok, orderListItemSchema, shipxOrderViewSchema, shipxSettingsViewSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
+import { ok, orderListItemSchema, shipxOrderViewSchema, shipxSettingsViewSchema, type Identity, type OrderListItem, type Tenant } from '#core/domain/index.js';
 import type { OrderFulfilmentRepository, ShipxClient } from '#core/server/index.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
 import { createTenantSecretRepositoryFake } from '#core/server/testing/tenant-secret-fake.js';
-import { createShipxSettingsRepositoryFake, createShipxShipmentRepositoryFake } from '#core/server/testing/shipx-fakes.js';
+import { createShipxSettingsRepositoryFake, createShipxShipmentRepositoryFake, shipmentRecord } from '#core/server/testing/shipx-fakes.js';
 
 import type { AppVars } from './app-vars.js';
+import { requestOriginGuard } from './request-origin.js';
 import { registerShipxRoutes } from './shipx-routes.js';
 
 const identity = (staffRole: 'owner' | 'admin' | null): Identity => ({
@@ -36,7 +37,28 @@ const secretCrypto = {
   decrypt: (input: { ciphertext: string }) => ok(input.ciphertext),
 };
 
-const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' | 'test' } = {}) => {
+const workspace: Tenant = { id: 'workspace', slug: 'workspace', name: 'Workspace', status: 'active', plan: 'hosted', contentVersion: 1 };
+
+const originGuard = () => requestOriginGuard({
+  appBaseUrl: 'https://app.together.test',
+  deploymentAuthOrigins: [],
+  baseDomain: 'together.test',
+  platformHost: null,
+  singleTenantMode: false,
+  tenants: {
+    findById: async (id) => (id === workspace.id ? workspace : null),
+    findBySlug: async (slug) => (slug === workspace.slug ? workspace : null),
+    findSole: async () => workspace,
+    findSettings: async () => null,
+    updateSettings: async (_id, settings) => settings,
+    createTenantWithOwnerGrant: async () => null,
+    hasAny: async () => true,
+  },
+  tenantDomains: createInMemoryTenantDomainRepository(),
+  authPort: { getAuthenticatedUser: async (headers) => (headers.get('cookie')?.includes('session=valid') === true ? { sessionId: 'session', userId: 'staff', email: 'staff@example.org', name: 'Staff', emailVerified: true, image: null } : null) },
+});
+
+const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' | 'test'; guarded?: boolean } = {}) => {
   const secrets = createTenantSecretRepositoryFake();
   const stored = order(options.mode ?? 'test');
   const live: ShipxClient = {
@@ -46,8 +68,19 @@ const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' 
     buyOffer: vi.fn(),
     fetchLabel: vi.fn(),
   };
+  const fake = createFakeShipxClient();
+  const carrier = {
+    getShipment: vi.spyOn(fake, 'getShipment'),
+    fetchLabel: vi.spyOn(fake, 'fetchLabel'),
+  };
+  const shipments = createShipxShipmentRepositoryFake();
+  const writes = {
+    refreshUnclaimed: vi.spyOn(shipments.repository, 'refreshUnclaimed'),
+    markLabelFetched: vi.spyOn(shipments.repository, 'markLabelFetched'),
+  };
   const ship = vi.fn<OrderFulfilmentRepository['ship']>(async (_tenantId, input) => ok({ ...stored, fulfilmentStatus: 'shipped', shipment: input.shipment }));
   const app = new Hono<AppVars>();
+  if (options.guarded === true) app.use('/api/*', originGuard());
   app.use('*', async (c, next) => { c.set('identity', identity(options.staffRole === undefined ? 'owner' : options.staffRole)); await next(); });
   registerShipxRoutes(app, {
     orderDetails: { findById: async (tenantId, id) => (tenantId === 'workspace' && id === stored.id ? stored : null) },
@@ -62,8 +95,8 @@ const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' 
       },
     },
     shipxIntegration: {
-      shipx: { real: live, fake: createFakeShipxClient() },
-      shipxShipments: createShipxShipmentRepositoryFake().repository,
+      shipx: { real: live, fake },
+      shipxShipments: shipments.repository,
       shipxSettings: createShipxSettingsRepositoryFake().repository,
       wait: async () => undefined,
     },
@@ -77,7 +110,9 @@ const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' 
     baseDomain: 'together.test',
     singleTenantMode: false,
   });
-  return { app, live, ship };
+  const seed = () => shipments.rows.set(shipments.key('workspace', 'order-1'), shipmentRecord({ shipxShipmentId: '1001', status: 'offer_selected', environment: 'production' }));
+  const events = async () => shipments.repository.listEvents('workspace', 'order-1');
+  return { app, live, ship, carrier, writes, seed, events, shipments };
 };
 
 const envelope = <S extends z.ZodTypeAny>(data: S) => z.object({ ok: z.literal(true), data });
@@ -119,7 +154,7 @@ describe('InPost ShipX HTTP routes', () => {
     expect(h.ship.mock.calls[0]?.[1].shipment).toMatchObject({ carrier: 'inpost', trackingNumber: tracking });
     expect(h.live.createShipment).not.toHaveBeenCalled();
 
-    const label = await h.app.request('/api/orders/order-1/shipx/label');
+    const label = await h.app.request('/api/orders/order-1/shipx/label', { method: 'POST' });
     expect(label.status).toBe(200);
     expect(label.headers.get('content-type')).toBe('application/pdf');
     expect(label.headers.get('content-disposition')).toBe(`attachment; filename="inpost-${tracking}.pdf"`);
@@ -153,7 +188,8 @@ describe('InPost ShipX HTTP routes', () => {
     expect(missing.status).toBe(412);
     expect(h.ship).not.toHaveBeenCalled();
     const member = harness({ staffRole: null });
-    expect((await member.app.request('/api/orders/order-1/shipx/label')).status).toBe(403);
+    expect((await member.app.request('/api/orders/order-1/shipx/label', { method: 'POST' })).status).toBe(403);
+    expect((await member.app.request('/api/orders/order-1/shipx/refresh', { method: 'POST' })).status).toBe(403);
     expect((await member.app.request('/api/integrations/shipx')).status).toBe(403);
   });
 
@@ -165,8 +201,69 @@ describe('InPost ShipX HTTP routes', () => {
 
   it('returns not found for a label before any shipment exists', async () => {
     const h = harness();
-    const response = await h.app.request('/api/orders/order-1/shipx/label');
+    const response = await h.app.request('/api/orders/order-1/shipx/label', { method: 'POST' });
     expect(response.status).toBe(404);
     expect(response.headers.get('content-type')).toBe('application/json');
+  });
+});
+
+describe('InPost ShipX side effects stay behind POST and the request origin', () => {
+  const crossSite = { cookie: 'session=valid', origin: 'https://evil.test', 'sec-fetch-site': 'cross-site' };
+  const sameOrigin = { cookie: 'session=valid', origin: 'https://workspace.together.test', 'sec-fetch-site': 'same-origin' };
+  const at = (path: string) => `https://workspace.together.test/api/orders/order-1/shipx${path}`;
+
+  const untouched = async (h: ReturnType<typeof harness>) => {
+    expect(h.carrier.getShipment).not.toHaveBeenCalled();
+    expect(h.carrier.fetchLabel).not.toHaveBeenCalled();
+    expect(h.writes.refreshUnclaimed).not.toHaveBeenCalled();
+    expect(h.writes.markLabelFetched).not.toHaveBeenCalled();
+    expect(await h.events()).toEqual([]);
+    expect(h.shipments.rows.get(h.shipments.key('workspace', 'order-1'))).toMatchObject({ status: 'offer_selected', trackingNumber: null, labelFetchedAt: null });
+  };
+
+  it('serves the stored view of a shipment waiting for payment on GET without calling ShipX or writing', async () => {
+    const h = harness();
+    await configure(h.app, 'production');
+    h.seed();
+    const view = await h.app.request('/api/orders/order-1/shipx');
+    expect(view.status).toBe(200);
+    expect(envelope(shipxOrderViewSchema).parse(await view.json()).data.shipment).toMatchObject({ shipxShipmentId: '1001', status: 'offer_selected', trackingNumber: null });
+    await untouched(h);
+  });
+
+  it('lets a cross-site cookie GET through the guard but reaches neither ShipX nor a write, and has no GET label route', async () => {
+    const h = harness({ guarded: true });
+    await configure(h.app, 'production');
+    h.seed();
+    expect((await h.app.request(at(''), { headers: crossSite })).status).toBe(200);
+    expect((await h.app.request(at('/label'), { headers: crossSite })).status).toBe(404);
+    await untouched(h);
+  });
+
+  it.each(['/refresh', '/label'])('rejects a cross-site cookie POST to %s before ShipX or the repository is reached', async (path) => {
+    const h = harness({ guarded: true });
+    await configure(h.app, 'production');
+    h.seed();
+    const response = await h.app.request(at(path), { method: 'POST', headers: crossSite });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'forbidden', message: 'Request origin is not allowed' } });
+    await untouched(h);
+  });
+
+  it('refreshes the shipment and serves the label for a cookie POST from the workspace origin', async () => {
+    const h = harness({ guarded: true });
+    await configure(h.app, 'production');
+    h.seed();
+    const tracking = fakeShipxTrackingNumber('1001');
+    const refreshed = await h.app.request(at('/refresh'), { method: 'POST', headers: sameOrigin });
+    expect(refreshed.status).toBe(200);
+    expect(envelope(shipxOrderViewSchema).parse(await refreshed.json()).data).toMatchObject({ available: true, shipment: { status: 'confirmed', trackingNumber: tracking } });
+    expect(h.carrier.getShipment).toHaveBeenCalledTimes(1);
+    const label = await h.app.request(at('/label'), { method: 'POST', headers: sameOrigin });
+    expect(label.status).toBe(200);
+    expect(label.headers.get('content-type')).toBe('application/pdf');
+    expect(label.headers.get('content-disposition')).toBe(`attachment; filename="inpost-${tracking}.pdf"`);
+    expect(label.headers.get('cache-control')).toBe('private, no-store');
+    expect((await h.events()).map((event) => event.type)).toEqual(['status_refreshed', 'offer_bought', 'label_fetched']);
   });
 });

@@ -257,8 +257,10 @@ Unauthenticated write routes carry a second application limiter: fixed windows
 in `rate_limit_buckets`, keyed by scope and subject and claimed with one upsert
 per request (`core/server/usecases/public-rate-limit.ts`,
 `apps/server/src/public-rate-limit.ts`). Checkout session creation, coupon
-validation and the marketing consent forms allow 30 requests per minute per
-client address and 300 per minute per resolved tenant; magic-link,
+validation, the marketing consent forms and Meta conversion consent decisions
+(`POST /api/public/meta-capi/consent`) spend the `public-write:ip` and
+`public-write:tenant` windows: 30 requests per minute per client address and
+300 per minute per resolved tenant; magic-link,
 password-reset, sign-up and verification requests share that per-address budget
 and allow 5 per ten minutes per e-mail address. The direct offer page's coupon
 preview spends its own `coupon-preview:ip` and `coupon-preview:tenant` windows

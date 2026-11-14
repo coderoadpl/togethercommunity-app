@@ -161,13 +161,17 @@ copy and version in the same transaction that removes the pending identifiers.
 The tenant/order/decision key preserves the grant and any earlier withdrawal
 when erasure is repeated.
 These are proof of consent and prior disclosure, not permission for future sends.
-Their retention horizon follows the six-year/end-of-calendar-year policy above,
-starting at the order's `meta_capi_consent_withdrawn_at` (set on withdrawal or
-member erasure). The existing scheduled consent-evidence purge currently handles
-terms and marketing consent, not these CAPI tables; CAPI expiry requires an
-operator retention purge until that scheduler is extended. Erasure does not
-rewrite or delete the historical evidence and cannot retract data already sent
-to Meta.
+No automatic retention period applies to these CAPI tables: the six-year policy
+above and its scheduled `consent_evidence_purge` job cover terms and marketing
+consent evidence, not `meta_capi_consent_evidence` or `meta_capi_events`. Their
+rows remain until the order or workspace row is deleted (both foreign keys
+cascade) or an operator purge removes them. The order's
+`meta_capi_consent_withdrawn_at`, set on withdrawal or member erasure, records
+when the withdrawal took effect. The controller documents a retention period for
+this evidence before enabling the feature, as
+[the Meta Conversions API guide](integrations/meta-capi.md#evidence-and-concurrency)
+requires. Erasure does not rewrite or delete the historical evidence and cannot
+retract data already sent to Meta.
 
 ## Authored content keeps member-typed personal data
 

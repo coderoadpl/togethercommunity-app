@@ -199,9 +199,13 @@ after Meta accepted a request but before the database commit can cause another
 attempt; the same `event_id` is preserved for Meta deduplication. This is not an
 exactly-once network guarantee.
 
-Pending request identifiers are removed on completion, expiry, blocking or
-withdrawal. Consent/evidence retention follows workspace data-retention policy;
-this feature does not invent an automatic retention period. Before enabling it,
+Pending request identifiers are removed on completion, expiry, blocking,
+withdrawal or member erasure. No automatic retention period applies to
+`meta_capi_consent_evidence` or `meta_capi_events`: the scheduled consent-evidence
+purge covers terms and marketing consent only, so these rows remain until their
+order or workspace row is deleted or an operator purge removes them, and member
+erasure retains them (see
+[member erasure](../member-erasure.md#meta-purchase-sharing-evidence)). Before enabling it,
 the controller must document specific evidence-retention periods, recipient
 agreements, international transfers and the procedure for data-subject requests.
 

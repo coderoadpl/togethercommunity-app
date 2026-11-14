@@ -1321,6 +1321,7 @@ const campaignTickExecution = async (
       if (!scheduled.ok) return scheduled;
     }
   }
+  if (dispatched.value.credentialsError !== undefined) return err(dispatched.value.credentialsError);
   return ok({ leased: true, yieldedToTransactional: transactionalPending, sent: metrics.sent, failed: metrics.failed, skipped: metrics.skipped });
 };
 

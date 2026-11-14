@@ -31,6 +31,8 @@ import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/ser
 import type { Db } from '#adapters/db/client.js';
 import { account, devMagicLinks, passkey as passkeyTable, session, twoFactor as twoFactorTable, user, verification } from '#adapters/db/schema.js';
 
+import { twoFactorChallengeUrl } from './two-factor-challenge.js';
+
 export interface AuthSettings {
   secret: string;
   /** Public URL of the API, e.g. http://localhost:48730 */
@@ -316,6 +318,12 @@ const withoutSharedCookieDomain = (options: AuthOptions): AuthOptions => {
  * each dispatch its own copy of the auth context, so replacing these fields in a
  * before hook stays confined to the request being served.
  */
+const verifiedCustomHost = async (settings: AuthSettings, host: string | null): Promise<string | null> => {
+  if (host === null || settings.isVerifiedCustomHost === undefined) return null;
+  if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
+  return (await settings.isVerifiedCustomHost(host)) ? host : null;
+};
+
 const hostScopedCredentials = (settings: AuthSettings) => {
   const routing = {
     baseUrl: settings.baseUrl,
@@ -323,18 +331,13 @@ const hostScopedCredentials = (settings: AuthSettings) => {
     singleTenantMode: settings.singleTenantMode,
   };
   const fallbackRelyingParty = baseRelyingPartyId(routing);
-  const verifiedCustomHost = async (host: string | null): Promise<string | null> => {
-    if (host === null || settings.isVerifiedCustomHost === undefined) return null;
-    if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
-    return (await settings.isVerifiedCustomHost(host)) ? host : null;
-  };
   return {
     id: 'host-scoped-credentials',
     hooks: {
       before: [{
         matcher: () => true,
         handler: createAuthMiddleware(async (ctx) => {
-          const customHost = await verifiedCustomHost(authRequestHost(ctx));
+          const customHost = await verifiedCustomHost(settings, authRequestHost(ctx));
           const ceremony = isPasskeyCeremonyPath(ctx.path);
           if (customHost === null && !ceremony) return;
           const scoped = customHost === null
@@ -490,16 +493,16 @@ const twoFactorForEverySignIn = () => {
 
 const twoFactorRedirectSchema = z.object({ twoFactorRedirect: z.literal(true) });
 
-const redirectOrigin = (location: string | null, fallback: string): string => {
-  if (location === null) return fallback;
+const redirectTarget = (location: string | null, fallback: string): URL | null => {
+  if (location === null) return null;
   try {
-    return new URL(location, fallback).origin;
+    return new URL(location, fallback);
   } catch {
-    return fallback;
+    return null;
   }
 };
 
-const redirectTwoFactorNavigation = (baseUrl: string) => ({
+const redirectTwoFactorNavigation = (settings: AuthSettings) => ({
   id: 'two-factor-navigation',
   hooks: {
     after: [{
@@ -510,15 +513,20 @@ const redirectTwoFactorNavigation = (baseUrl: string) => ({
       handler: createAuthMiddleware(async (ctx) => {
         if (!twoFactorRedirectSchema.safeParse(ctx.context.returned).success) return;
         const location = ctx.context.responseHeaders?.get('location');
-        const deploymentUrl = new URL(baseUrl);
+        const deploymentUrl = new URL(settings.baseUrl);
         const requestOrigin = ctx.request === undefined
           ? null
           : new URL(`${deploymentUrl.protocol}//${new URL(ctx.request.url).host}`).origin;
         const fallbackOrigin = requestOrigin !== null && ctx.context.isTrustedOrigin(requestOrigin)
           ? requestOrigin
           : deploymentUrl.origin;
-        const origin = redirectOrigin(location ?? null, fallbackOrigin);
-        throw ctx.redirect(new URL('/login?twoFactor=required', origin).toString());
+        const target = redirectTarget(location ?? null, fallbackOrigin);
+        // The challenge cookie is host-only on a verified custom host, so the challenge must stay there.
+        const customHostOrigin = requestOrigin !== null && await verifiedCustomHost(settings, authRequestHost(ctx)) !== null
+          ? requestOrigin
+          : null;
+        const origin = customHostOrigin ?? target?.origin ?? fallbackOrigin;
+        throw ctx.redirect(twoFactorChallengeUrl(origin, target?.searchParams ?? new URLSearchParams()));
       }),
     }],
   },
@@ -926,7 +934,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       }),
       twoFactorForEverySignIn(),
       sensitivePasskeyManagement(),
-      redirectTwoFactorNavigation(settings.baseUrl),
+      redirectTwoFactorNavigation(settings),
       passkeyWithSensitiveManagement(),
       {
         id: 'tenant-sign-in-events',

@@ -263,7 +263,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     const challengeCookie = verified.headers.getSetCookie()
       .find((entry) => entry.startsWith('better-auth.two_factor='))?.split(';')[0] ?? '';
     if (twoFactorEnabled && !useExistingSession) {
-      expect(verified.headers.get('location')).toBe('http://studio.localhost:48730/login?twoFactor=required');
+      expect(verified.headers.get('location')).toBe('http://studio.localhost:48730/login?twoFactor=required&verification=verified');
       expect(challengeCookie).not.toBe('');
       expect(await authPort.getAuthenticatedUser(new Headers({
         authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
@@ -1317,12 +1317,30 @@ describe('host-scoped credentials', () => {
     { host: customHost, callbackURL: '/my', redirectHost: customHost },
     { host: customHost, callbackURL: null, redirectHost: customHost },
     { host: customHost, callbackURL: `https://${customHost}/my`, redirectHost: customHost },
-    { host: customHost, callbackURL: `https://${tenantHost}/my`, redirectHost: tenantHost },
+    { host: customHost, callbackURL: `https://${tenantHost}/my`, redirectHost: customHost },
+    {
+      host: customHost,
+      callbackURL: `https://${tenantHost}/login?verification=verified&returnTo=%2Fmy%2Fcourse%3Ftab%3D1`,
+      redirectHost: customHost,
+      challenge: '?twoFactor=required&verification=verified&returnTo=%2Fmy%2Fcourse%3Ftab%3D1',
+    },
     { host: tenantHost, callbackURL: '/my', redirectHost: tenantHost },
+    {
+      host: tenantHost,
+      callbackURL: '/login?verification=verified&returnTo=%2Fmy',
+      redirectHost: tenantHost,
+      challenge: '?twoFactor=required&verification=verified&returnTo=%2Fmy',
+    },
+    {
+      host: tenantHost,
+      callbackURL: '/login?verification=verified&returnTo=%2F%2Fevil.example%2Fmy',
+      redirectHost: tenantHost,
+      challenge: '?twoFactor=required&verification=verified',
+    },
     { host: 'localhost:48730', callbackURL: '/my', redirectHost: 'localhost:48730' },
     { host: 'untrusted.example', callbackURL: '/my', redirectHost: baseDomain },
     { host: 'untrusted.example', callbackURL: null, redirectHost: baseDomain },
-  ])('keeps email-verification challenges on the trusted request or callback host behind a TLS proxy ($host, $callbackURL)', async ({ host, callbackURL, redirectHost }) => {
+  ])('keeps email-verification challenges on the trusted request or callback host behind a TLS proxy ($host, $callbackURL)', async ({ host, callbackURL, redirectHost, challenge = '?twoFactor=required' }) => {
     const { auth, authPort, emails, flushEmails } = host === 'localhost:48730' ? buildAuth() : buildHostAuth();
     const signUpHost = host === 'localhost:48730' ? host : customHost;
     const email = `verification-host-${crypto.randomUUID()}@together.dev`;
@@ -1351,7 +1369,7 @@ describe('host-scoped credentials', () => {
     const message = await emails.findByRecipient(normalizeEmail(email));
     const verificationUrl = new URL(message?.text.match(/https?:\/\/\S+/)?.[0] ?? '');
     expect(verificationUrl.origin).toBe(browserOrigin(host));
-    const redirectUrl = new URL('/login?twoFactor=required', browserOrigin(redirectHost));
+    const redirectUrl = new URL(`/login${challenge}`, browserOrigin(redirectHost));
     if (callbackURL === null) verificationUrl.searchParams.delete('callbackURL');
     else verificationUrl.searchParams.set('callbackURL', callbackURL);
     verificationUrl.protocol = 'http:';
@@ -1368,8 +1386,19 @@ describe('host-scoped credentials', () => {
     }))).toBeNull();
     if (host === customHost) expect(challengeCookie).not.toContain('Domain=');
     if (host !== redirectHost) return;
+    const browserCookies = challenged.headers.getSetCookie()
+      .filter((entry) => !/;\s*Max-Age=0/iu.test(entry))
+      .filter((entry) => {
+        const domain = /;\s*Domain=\.?([^;]+)/iu.exec(entry)?.[1]?.toLowerCase();
+        const target = redirectUrl.hostname;
+        return domain === undefined
+          ? redirectUrl.host === verificationUrl.host
+          : target === domain || target.endsWith(`.${domain}`);
+      })
+      .map((entry) => entry.split(';')[0] ?? '');
+    expect(browserCookies).toContain(challengeCookie.split(';')[0]);
     const completed = await call(auth, redirectUrl.host, '/two-factor/verify-totp', {
-      body: { code: totpCode(secret) }, cookie: challengeCookie.split(';')[0] ?? '',
+      body: { code: totpCode(secret) }, cookie: browserCookies.join('; '),
     });
     expect(completed.status).toBe(200);
     expect(sessionCookie(completed)).not.toBe('');

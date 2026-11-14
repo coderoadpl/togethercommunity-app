@@ -617,7 +617,7 @@ const runCustomDomainVerificationTwoFactor = async (
     assert(await readIdentity(context, customBaseUrl) === null, 'sign-out left the session usable');
 
     const browserLink = new URL(`${link.pathname}${link.search}`, customBaseUrl).toString();
-    const challengeUrl = new URL('/login?twoFactor=required', customBaseUrl).toString();
+    const challengeUrl = new URL('/login?twoFactor=required&verification=verified', customBaseUrl).toString();
     const verificationResponse = page.waitForResponse((response) => response.url() === browserLink);
     await page.goto(browserLink, { waitUntil: 'networkidle' });
     const verified = await verificationResponse;

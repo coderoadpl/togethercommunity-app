@@ -386,9 +386,24 @@ describe('CLI password change', () => {
 
 describe('two-factor and passkey client semantics', () => {
   it.each([
-    { payload: { twoFactorRedirect: true }, target: 'https://studio.example/login?twoFactor=required' },
-    { payload: { token: 'session-token' }, target: 'https://studio.example/my/courses' },
-  ])('navigates Google One Tap to $target', async ({ payload, target }) => {
+    { payload: { twoFactorRedirect: true }, search: '', target: 'https://studio.example/login?twoFactor=required' },
+    {
+      payload: { twoFactorRedirect: true },
+      search: '?returnTo=%2Fmy%2Fcourses%3Ftab%3D1&verification=verified&error=x',
+      target: 'https://studio.example/login?twoFactor=required&verification=verified&returnTo=%2Fmy%2Fcourses%3Ftab%3D1',
+    },
+    {
+      payload: { twoFactorRedirect: true },
+      search: '?returnTo=%2F%2Fevil.example%2Fmy&verification=other',
+      target: 'https://studio.example/login?twoFactor=required',
+    },
+    {
+      payload: { twoFactorRedirect: true },
+      search: '?returnTo=https%3A%2F%2Fevil.example%2Fmy',
+      target: 'https://studio.example/login?twoFactor=required',
+    },
+    { payload: { token: 'session-token' }, search: '?returnTo=%2Fmy', target: 'https://studio.example/my/courses' },
+  ])('navigates Google One Tap from login$search to $target', async ({ payload, search, target }) => {
     const assign = vi.fn();
     const prompt = vi.fn();
     const initialize = vi.fn<(input: {
@@ -396,7 +411,7 @@ describe('two-factor and passkey client semantics', () => {
       callback(response: { credential: string }): void;
     }) => void>();
     vi.stubGlobal('window', {
-      location: { origin: 'https://studio.example', assign },
+      location: { origin: 'https://studio.example', search, assign },
       google: { accounts: { id: { initialize, prompt } } },
     });
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {

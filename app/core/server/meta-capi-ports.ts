@@ -29,6 +29,7 @@ export type MetaCapiJobOutcome = { event: MetaCapiEvent } | { retryAt: string };
 export interface MetaCapiRepository {
   findOrder(tenantId: string, access: MetaCapiOrderAccess): Promise<MetaCapiOrder | null>;
   decide(tenantId: string, access: MetaCapiOrderAccess, decide: (current: MetaCapiOrder) => Promise<Result<MetaCapiDecisionWrite, AppError>>): Promise<Result<MetaCapiState, AppError>>;
+  listDueTenantIds(now: string): Promise<string[]>;
   processNext(tenantId: string, now: string, process: (job: MetaCapiJob) => Promise<MetaCapiJobOutcome>): Promise<boolean>;
   listEvents(tenantId: string): Promise<MetaCapiEvent[]>;
   listMemberConsents(tenantId: string, memberId: string): Promise<(MetaCapiState & { orderId: string; consentAt: string | null })[]>;

@@ -10,7 +10,7 @@ const setup = () => {
     clock: { nowIso: () => '2026-11-01T10:00:00.000Z' }, hash: { sha256: () => 'hash' },
     tenants: { findSettings: async () => null }, directory: { listAll },
     secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
-    repository: { findOrder: async () => null, decide: async () => err(notFound()), processNext: async () => false,
+    repository: { findOrder: async () => null, decide: async () => err(notFound()), listDueTenantIds: async () => ['workspace'], processNext: async () => false,
       listEvents: async () => [], listMemberConsents: async () => [] },
   };
   return { deps, listAll, logger: { warn } };

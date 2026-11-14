@@ -240,7 +240,7 @@ const capiDeps = (deps: ReturnType<typeof harness>) => {
     if (typeof text !== 'string') throw new Error('Consent snapshots must be text');
     return text;
   } },
-    repository: { findOrder, decide: async () => err(notFound()), processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };
+    repository: { findOrder, decide: async () => err(notFound()), listDueTenantIds: async () => [], processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };
   return { metaCapi, findOrder };
 };
 

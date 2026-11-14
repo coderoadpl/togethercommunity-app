@@ -36,6 +36,7 @@ const harness = () => {
       }
       return ok(job.consent);
     },
+    listDueTenantIds: async () => (await deps.directory.listAll()).map(({ id }) => id),
     processNext: async (_tenantId, at, process) => {
       if (!pending || due > at) return false;
       const result = await process(job);
@@ -222,6 +223,45 @@ describe('Meta CAPI use cases', () => {
     h.setTime('2026-11-01T10:01:00.000Z');
     expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 1 });
     expect(processNext.mock.calls.map(([id]) => id)).toEqual(['workspace', 'later']);
+  });
+  it('costs one query and opens no tenant transaction when nothing is due', async () => {
+    const h = harness();
+    const listDue = vi.fn<MetaCapiRepository['listDueTenantIds']>(async () => []);
+    const listAll = vi.spyOn(h.deps.directory, 'listAll');
+    const processNext = vi.spyOn(h.deps.repository, 'processNext');
+    h.deps.repository.listDueTenantIds = listDue;
+    expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 0 });
+    expect(listDue).toHaveBeenCalledExactlyOnceWith(now);
+    expect(listAll).not.toHaveBeenCalled();
+    expect(processNext).not.toHaveBeenCalled();
+  });
+  it('visits only tenants with due jobs in the rotated tenant order', async () => {
+    const h = harness();
+    const [tenant] = await h.deps.directory.listAll();
+    if (!tenant) throw new Error('Missing test tenant');
+    const tenants = ['a', 'b', 'c', 'd'].map((id) => ({ ...tenant, id }));
+    h.deps.directory.listAll = async () => tenants;
+    h.deps.repository.listDueTenantIds = async () => ['d', 'b'];
+    const processNext = vi.fn<MetaCapiRepository['processNext']>(async () => false);
+    h.deps.repository.processNext = processNext;
+    expect(await dispatchMetaCapi(h.deps)).toEqual({ processed: 0 });
+    expect(processNext.mock.calls.map(([id]) => id)).toEqual(['b', 'd']);
+    h.setTime(new Date(Date.parse(now) + 3 * 60_000).toISOString());
+    processNext.mockClear();
+    await dispatchMetaCapi(h.deps);
+    expect(processNext.mock.calls.map(([id]) => id)).toEqual(['d', 'b']);
+  });
+  it('starts no job unless the time left before the deadline covers the gateway timeout', async () => {
+    for (const [elapsed, processed] of [[15_000, 2], [15_001, 1]] as const) {
+      const h = harness();
+      let started = 0;
+      h.deps.repository.processNext = vi.fn<MetaCapiRepository['processNext']>(async () => {
+        started += 1;
+        if (started === 1) h.setTime(new Date(Date.parse(now) + elapsed).toISOString());
+        return started <= 2;
+      });
+      expect(await dispatchMetaCapi(h.deps)).toEqual({ processed });
+    }
   });
   it('rejects new consent and blocks dispatch for a deleted member', async () => {
     const h = harness();

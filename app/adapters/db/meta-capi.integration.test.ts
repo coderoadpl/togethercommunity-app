@@ -266,6 +266,21 @@ it('normalizes offset timestamps and applies stable bounded event and consent or
   expect(events[0]?.recordedAt).toBe('2026-11-02T10:00:00.000Z');
 });
 
+it('lists each tenant with a due outbox row once and skips tenants whose rows are not due yet', async () => {
+  const early = '2026-10-30T00:00:00.000Z';
+  await memberOrder('dueother', 'other');
+  for (const id of ['duefirst', 'duesecond']) await makeOrder(id);
+  const rows = [['workspace', 'duefirst', early], ['workspace', 'duesecond', early], ['other', 'dueother', '2026-10-30T12:00:00.000Z']] as const;
+  await database.db.insert(metaCapiOutbox).values(rows.map(([tenantId, orderId, availableAt]) => ({ tenantId, orderId, availableAt, consentAt: early, textVersion: 'version', textSnapshot: '{}' })));
+  try {
+    expect(await repository().listDueTenantIds('2026-10-30T06:00:00.000Z')).toEqual(['workspace']);
+    expect((await repository().listDueTenantIds('2026-10-30T12:00:00.000Z')).sort()).toEqual(['other', 'workspace']);
+    expect(await repository().listDueTenantIds('2026-10-29T23:59:59.000Z')).toEqual([]);
+  } finally {
+    await database.db.delete(metaCapiOutbox).where(sql`${metaCapiOutbox.orderId} in ('duefirst', 'duesecond', 'dueother')`);
+  }
+});
+
 it('looks up a return-page session through the checkout-session index', async () => {
   const access = await makeOrder('indexed');
   const pool = new pg.Pool({ connectionString: database.url });

@@ -75,6 +75,8 @@ export const createMetaCapiRepository = (
       }
       return ok(updated ? stateOf(updated) : stateOf(row));
     })),
+    listDueTenantIds: async (now) => protectIdentifiers(async () => (await db.selectDistinct({ tenantId: metaCapiOutbox.tenantId })
+      .from(metaCapiOutbox).where(lte(metaCapiOutbox.availableAt, now))).map(({ tenantId }) => tenantId)),
     processNext: async (tenantId, now, process) => protectIdentifiers(async () => db.transaction(async (tx) => {
       const found = (await tx.select({ order: orders, job: metaCapiOutbox }).from(orders)
         .innerJoin(metaCapiOutbox, and(eq(metaCapiOutbox.orderId, orders.id), eq(metaCapiOutbox.tenantId, orders.tenantId)))

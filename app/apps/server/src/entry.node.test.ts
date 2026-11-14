@@ -186,7 +186,7 @@ describe('entry.node composition', () => {
       tenants: { findSettings: async () => tenantSettingsSchema.parse({ name: 'Workspace', billingPortalUrl: null,
         bunnyStreamLibraryId: null, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890' }) },
       secrets: { resolve: async () => ok('test-token') }, gateway: { send },
-      repository: { findOrder: async () => job, decide: async () => err(notFound()), listMemberConsents: async () => [],
+      repository: { findOrder: async () => job, decide: async () => err(notFound()), listMemberConsents: async () => [], listDueTenantIds: async () => ['workspace'],
         listEvents: async () => events, processNext: async (_tenantId, _at, process) => {
           if (!pending) return false;
           const outcome = await process(job);
@@ -263,7 +263,7 @@ describe('entry.node composition', () => {
       directory: { listAll },
       tenants: { findSettings: async () => null },
       secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
-      repository: { findOrder: async () => null, decide: async () => err(notFound()), listMemberConsents: async () => [],
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listMemberConsents: async () => [], listDueTenantIds: async () => ['workspace'],
         listEvents: async () => [], processNext: async () => false },
     };
     harness.deps.dispatchEmails.mockResolvedValue({ ok: true, value: undefined });

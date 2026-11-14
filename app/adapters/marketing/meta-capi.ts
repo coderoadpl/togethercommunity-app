@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { META_CAPI_GATEWAY_TIMEOUT_MS } from '#core/domain/index.js';
 import type { MetaCapiGateway } from '#core/server/meta-capi-ports.js';
 
 export const META_GRAPH_API_VERSION = 'v27.0';
@@ -10,7 +11,7 @@ export const createMetaCapiGateway = (fetcher: typeof fetch = fetch): MetaCapiGa
     if (!/^[0-9]{8,20}$/.test(pixelId)) return { ok: false, retryable: false, error: 'invalid_pixel_id' };
     try {
       const response = await fetcher(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${pixelId}/events`, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(META_CAPI_GATEWAY_TIMEOUT_MS),
         headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
         body: JSON.stringify({ data: [payload], ...(testEventCode === undefined ? {} : { test_event_code: testEventCode }) }),
       });

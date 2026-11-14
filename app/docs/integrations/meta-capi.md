@@ -132,6 +132,9 @@ check. Self-hosted Node servers also invoke the same isolated runner from the
 email ticker; CAPI cycles for the same runtime dependencies cannot overlap in
 one process, including a concurrent cron request. A tick handles at most 20 jobs
 within a 20-second dispatch budget, taking one due job per tenant per pass.
+A tick first lists the tenants that have due jobs and visits only those, so an
+empty outbox costs one query. No job starts unless the remaining budget covers
+the 5-second request timeout.
 The starting tenant rotates every minute, so tenants beyond a tick's budget
 get a turn on subsequent minutes even when earlier tenants stay busy. Each
 request has a 5-second timeout. Consent capture performs no Meta HTTP request.

@@ -32,6 +32,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TelemetryTenantDirectory.listTenantIds': 'The platform telemetry worker discovers connected tenants before tenant-scoped outbox delivery.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
+  'MetaCapiRepository.listDueTenantIds': 'The platform Meta conversions worker discovers tenants with due outbox rows before tenant-scoped dispatch.',
   'AccountAvatarTenantReader.listTenantIdsForUser': "Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary, and GET /api/tenants via tenants.ts lists the caller's member communities.",
   'AutoInvoiceJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',

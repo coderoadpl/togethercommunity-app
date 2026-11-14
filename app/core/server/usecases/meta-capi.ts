@@ -1,6 +1,6 @@
 import {
   buildMetaCapiPayload, err, forbidden, metaCapiBlockReason, metaCapiCopy, metaCapiDecisionSchema,
-  metaCapiRetryAt, metaCapiWithdrawSchema, ok, tenantNotFound, validation,
+  metaCapiRetryAt, metaCapiWithdrawSchema, ok, tenantNotFound, validation, META_CAPI_GATEWAY_TIMEOUT_MS,
   DEFAULT_LANGUAGE, type Language, type AppError, type MetaCapiConfig, type MetaCapiDecisionInput, type MetaCapiEvent, type MetaCapiState, type Result,
 } from '#core/domain/index.js';
 import { authorizeTenant } from '../authorize.js';
@@ -114,13 +114,15 @@ export const dispatchMetaCapi = async (deps: MetaCapiDispatchDeps): Promise<{ pr
   let processed = 0;
   const startedAt = Date.parse(deps.clock.nowIso());
   const deadline = startedAt + 20_000;
+  const due = new Set(await deps.repository.listDueTenantIds(deps.clock.nowIso()));
+  if (due.size === 0) return { processed };
   const tenants = await deps.directory.listAll();
   const offset = tenants.length === 0 ? 0 : Math.floor(startedAt / 60_000) % tenants.length;
-  let active = [...tenants.slice(offset), ...tenants.slice(0, offset)];
+  let active = [...tenants.slice(offset), ...tenants.slice(0, offset)].filter((tenant) => due.has(tenant.id));
   while (active.length > 0) {
     const nextPass: typeof tenants = [];
     for (const tenant of active) {
-      if (processed >= 20 || Date.parse(deps.clock.nowIso()) >= deadline) return { processed };
+      if (processed >= 20 || Date.parse(deps.clock.nowIso()) + META_CAPI_GATEWAY_TIMEOUT_MS > deadline) return { processed };
       try {
         const found = await deps.repository.processNext(tenant.id, deps.clock.nowIso(), (job) => dispatchJob(tenant.id, job, deps));
         if (found) {

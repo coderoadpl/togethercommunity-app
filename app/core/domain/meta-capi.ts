@@ -54,6 +54,7 @@ export const metaCapiBlockReason = (order: Order, state: MetaCapiState, enabled:
   if (!order.paidAt || !Number.isFinite(Date.parse(order.paidAt)) || Date.parse(order.paidAt) > Date.parse(now)) return 'blocked';
   return Date.parse(now) - Date.parse(order.paidAt) >= 7 * 24 * 60 * 60 * 1000 ? 'expired' : null;
 };
+export const META_CAPI_GATEWAY_TIMEOUT_MS = 5_000;
 export const metaCapiRetryAt = (attempt: number, retryable: boolean, now: string): string | null =>
   retryable && attempt >= 1 && attempt <= 3 ? new Date(Date.parse(now) + 60_000 * 2 ** (attempt - 1)).toISOString() : null;
 

@@ -3267,7 +3267,7 @@ describe('email dispatch route', () => {
       tenants: base.tenants, clock: base.clock, hash: base.contentHash, logger,
       directory: { listAll: async () => { throw new Error('buyer@example.org secret-token'); } },
       secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
-      repository: { findOrder: async () => null, decide: async () => err(notFound()), processNext: async () => false,
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listDueTenantIds: async () => ['workspace'], processNext: async () => false,
         listEvents: async () => [], listMemberConsents: async () => [] },
     };
     const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });

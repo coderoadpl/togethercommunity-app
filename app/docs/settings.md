@@ -40,8 +40,8 @@ The owner-only CLI commands are `team list`, `team add <email>` and
 ## Meta server-side conversions
 
 The owner configures Meta CAPI beside the checkout analytics pixel settings.
-`analyticsMetaCapiEnabled` defaults to false. A configured pixel and privacy URL
-are required before a buyer can grant consent. The optional test event code and
+`analyticsMetaCapiEnabled` defaults to false. A configured pixel, privacy URL
+and stored access token are required before a buyer can grant consent. The optional test event code and
 plain-text consent heading, body and button labels are ordinary tenant settings;
 the `analyticsMetaCapiAccessToken` is stored separately through the encrypted,
 owner-only tenant-secret API and is never returned, even partially.

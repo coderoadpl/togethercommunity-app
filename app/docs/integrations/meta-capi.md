@@ -112,8 +112,9 @@ The contract and use-case both reject QR-token grants before repository access.
 Its JSON body contains `decision`
 (`granted`, `denied` or `withdrawn`), `textVersion` for a new decision, and
 optional `fbp`. An invalid browser identifier is discarded, never used as
-consent. Both decisions require the current text version, so stale pages must
-reload rather than attest to copy they did not display. Browser IP comes from
+consent. Both decisions require a stored access token and the current text
+version, so stale pages must reload rather than attest to copy they did not
+display; a withdrawal needs neither. Browser IP comes from
 the server's trusted proxy policy, not from the JSON body. User agent is bounded
 to 1024 characters. The route is rate-limited with the public-write buckets,
 requires JSON, rejects foreign Origin headers and offers no cross-origin

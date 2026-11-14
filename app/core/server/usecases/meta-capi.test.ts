@@ -274,6 +274,32 @@ describe('Meta CAPI use cases', () => {
     expect(config).toMatchObject({ enabled: true });
     expect(JSON.stringify(config)).not.toContain('secret-token');
   });
+  it.each(['granted', 'denied'] as const)('rejects a %s decision without recording it while the access token is missing', async (decision) => {
+    const h = harness();
+    h.deps.secrets = { resolve: vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound())) };
+    expect(await h.decide(decision)).toMatchObject({ ok: false, error: { code: 'validation', message: 'Meta conversion consent is unavailable' } });
+    expect(h.job.consent).toEqual({ consent: 'undecided', withdrawnAt: null });
+    expect(h.job.consentAt).toBeNull();
+    await dispatchMetaCapi(h.deps);
+    expect(h.events).toEqual([]);
+  });
+  it('withdraws a recorded grant without resolving the access token', async () => {
+    const h = harness();
+    await h.decide('granted');
+    const resolve = vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound()));
+    h.deps.secrets = { resolve };
+    expect(await h.decide('withdrawn')).toMatchObject({ ok: true, value: { consent: 'granted', withdrawnAt: now } });
+    expect(await withdrawMetaCapiConsent({ identity }, { orderId: 'purchase' }, h.deps)).toMatchObject({ ok: true, value: { withdrawnAt: now } });
+    expect(resolve).not.toHaveBeenCalled();
+  });
+  it('does not resolve the access token for a repeated decision on a decided order', async () => {
+    const h = harness();
+    await h.decide('denied');
+    const resolve = vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound()));
+    h.deps.secrets = { resolve };
+    expect(await h.decide('granted')).toMatchObject({ ok: true, value: { consent: 'denied' } });
+    expect(resolve).not.toHaveBeenCalled();
+  });
   it('rejects new consent and blocks dispatch for a deleted member', async () => {
     const h = harness();
     h.job.memberDeleted = true;

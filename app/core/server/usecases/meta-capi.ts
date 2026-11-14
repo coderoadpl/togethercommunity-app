@@ -39,6 +39,7 @@ const recordDecision = async (
   const textVersion = deps.hash.sha256(textSnapshot);
   if (decision !== 'withdrawn' && current.consent.consent === 'undecided' && current.consent.withdrawnAt === null) {
     if (!settings.analyticsMetaCapiEnabled || !settings.analyticsMetaPixelId || !copy.privacyUrl) return err(validation('Meta conversion consent is unavailable'));
+    if (!(await deps.secrets.resolve(tenantId, 'analyticsMetaCapiAccessToken')).ok) return err(validation('Meta conversion consent is unavailable'));
     if (request.textVersion !== textVersion) return err(validation('The consent text changed; reload before deciding'));
     const reason = metaCapiBlockReason(current.order, { consent: 'granted', withdrawnAt: null }, true, deps.clock.nowIso());
     if (reason === 'blocked') return err(validation('This order is not eligible for Meta conversions'));

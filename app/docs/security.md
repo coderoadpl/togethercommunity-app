@@ -493,8 +493,8 @@ with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
 the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
 `DELETE /api/tenant-secrets/:key`). Reads return only the key, the update time
 and the literal `configured`, never a token fragment. The server decrypts it
-when the checkout status decides whether to offer the consent prompt and when a
-dispatch builds a request. It is sent only to
+when the checkout status decides whether to offer the consent prompt, when a
+new consent decision is recorded and when a dispatch builds a request. It is sent only to
 `https://graph.facebook.com/<version>/<pixel id>/events`, in the `Authorization`
 header and never in the URL; the request refuses redirects and times out after
 5 seconds.

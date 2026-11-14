@@ -30,6 +30,8 @@ const adapterDomainsTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterStorageTestExternal = 'node_modules/(sharp|vitest)(/|$)';
 const adapterShipxExternal = 'node_modules/zod(/|$)';
 const adapterShipxTestExternal = 'node_modules/(vitest|zod)(/|$)';
+const adapterMarketingExternal = 'node_modules/zod(/|$)';
+const adapterMarketingTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appCliTestExternal = 'node_modules/vitest(/|$)';
@@ -379,6 +381,18 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/shipx/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterShipxTestExternal },
+    },
+    {
+      name: 'adapter-marketing-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/marketing', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterMarketingExternal },
+    },
+    {
+      name: 'adapter-marketing-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/marketing/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterMarketingTestExternal },
     },
     {
       name: 'app-server-external-allowlist',

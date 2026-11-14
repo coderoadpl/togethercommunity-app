@@ -54,3 +54,19 @@ it('renders nothing for a member without recorded decisions', async () => {
   await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   expect(screen.queryByText(en.metaCapi.privacyHeading)).toBeNull();
 });
+
+it('shows the card with an error and a working retry when the decisions request fails', async () => {
+  let failing = true;
+  server.use(http.get('/api/me/meta-capi/consents', () => failing
+    ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })
+    : HttpResponse.json({ ok: true, data: { consents: [
+      { orderId: 'order-1', consent: 'granted', consentAt: null, withdrawnAt: null },
+    ] } })));
+  renderWithProviders(<MetaCapiPrivacyCard />);
+  const retry = await screen.findByRole('button', { name: en.common.retry });
+  expect(screen.getByText(en.metaCapi.privacyHeading)).toBeVisible();
+  failing = false;
+  fireEvent.click(retry);
+  expect(await screen.findByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
+  expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
+});

@@ -3,6 +3,7 @@ import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-f
 import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
+import { z } from 'zod';
 
 import {
   STRIPE_WEBHOOK_EVENTS,
@@ -196,6 +197,76 @@ describe('configureWebhook', () => {
         'DELETE /v1/webhook_endpoints/we_renamed',
         'POST /v1/webhook_endpoints',
       ]);
+  });
+
+  it.each(['live', 'test'] as const)('preserves the neighboring workspace and other slot when reconfiguring %s on a shared account', async (mode) => {
+    const endpointSchema = z.object({
+      id: z.string(), object: z.literal('webhook_endpoint'), url: z.string().url(),
+      metadata: z.object({ tenantId: z.string() }), status: z.literal('enabled'),
+      secret: z.string(),
+    });
+    const registered: Array<z.infer<typeof endpointSchema>> = [];
+    const deleted: string[] = [];
+    const keys: string[] = [];
+    let sequence = 0;
+    const payment = createStripePaymentProvider({
+      resolver: { resolve: async () => { throw new Error('Unexpected secret lookup'); } },
+      clientFactory: (key) => {
+        keys.push(key);
+        return new Stripe(key, {
+          maxNetworkRetries: 0,
+          httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit) => {
+            const request = new Request(input, init);
+            if (request.method === 'GET') return stripeJson({ object: 'list', data: registered, has_more: false });
+            if (request.method === 'DELETE') {
+              const id = new URL(request.url).pathname.split('/').at(-1);
+              if (id === undefined) throw new Error('Missing endpoint ID');
+              deleted.push(id);
+              const index = registered.findIndex((endpoint) => endpoint.id === id);
+              if (index < 0) throw new Error('Unknown endpoint');
+              registered.splice(index, 1);
+              return stripeJson({ id, object: 'webhook_endpoint', deleted: true });
+            }
+            const body = new URLSearchParams(await request.text());
+            sequence += 1;
+            const endpoint = endpointSchema.parse({
+              id: `we_${sequence}`, object: 'webhook_endpoint', url: body.get('url'),
+              metadata: { tenantId: body.get('metadata[tenantId]') }, status: 'enabled',
+              secret: `whsec_${sequence}`,
+            });
+            registered.push(endpoint);
+            return stripeJson(endpoint);
+          }),
+        });
+      },
+    });
+    const configure = async (tenantId: string, slot: 'live' | 'test') => {
+      if (payment.configureWebhook === undefined) throw new Error('configureWebhook missing');
+      const result = await payment.configureWebhook({
+        tenantId, restrictedKey: `rk_${slot}_shared_account`,
+        webhookUrl: `https://${tenantId}.togethercommunity.app/api/webhooks/stripe/${tenantId}${slot === 'test' ? '?mode=test' : ''}`,
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
+    };
+
+    const acmeLive = await configure('acme', 'live');
+    const acmeTest = await configure('acme', 'test');
+    const firstWorkspace = structuredClone(registered);
+    const studioLive = await configure('studio', 'live');
+    const studioTest = await configure('studio', 'test');
+    expect(deleted).toEqual([]);
+    expect(registered.filter((endpoint) => endpoint.metadata.tenantId === 'acme')).toEqual(firstWorkspace);
+    const otherSlot = structuredClone(registered.find((endpoint) => endpoint.id ===
+      (mode === 'live' ? studioTest.webhookEndpointId : studioLive.webhookEndpointId)));
+
+    const replacement = await configure('studio', mode);
+    expect(deleted).toEqual([mode === 'live' ? studioLive.webhookEndpointId : studioTest.webhookEndpointId]);
+    expect(registered).toHaveLength(4);
+    expect(registered.filter((endpoint) => endpoint.metadata.tenantId === 'acme')).toEqual(firstWorkspace);
+    expect(registered).toContainEqual(otherSlot);
+    expect(new Set([acmeLive.webhookSecret, acmeTest.webhookSecret, studioLive.webhookSecret, studioTest.webhookSecret, replacement.webhookSecret]).size).toBe(5);
+    expect(keys).toEqual(['live', 'test', 'live', 'test', mode].map((slot) => `rk_${slot}_shared_account`));
   });
 
   it('keeps the registered event list equal to the fulfillment handler set', () => {

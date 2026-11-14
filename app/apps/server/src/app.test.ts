@@ -8293,6 +8293,83 @@ describe('checkout consent ordering', () => {
     );
   });
 
+  it.each([false, true])('records a signed shared-account checkout only in its workspace and once (foreign endpoint first: %s)', async (foreignFirst) => {
+    const studio: Tenant = { ...acme, id: 't-studio', slug: 'studio', name: 'Studio' };
+    const members: Member[] = [];
+    const orders: Order[] = [];
+    const ledger = new Map<string, Parameters<AppDeps['processedPaymentEvents']['claim']>[1]>();
+    const finalized = new Set<string>();
+    const base = deps({ tenants: [acme, studio], members });
+    const secrets = new Map([
+      [acme.id, 'whsec_acme_endpoint'], [studio.id, 'whsec_studio_endpoint'],
+    ]);
+    base.secretResolver.resolve = async (tenantId, key) => {
+      if (key !== 'stripe.webhookSecret') throw new Error('Unexpected secret slot');
+      const secret = secrets.get(tenantId);
+      if (secret === undefined) throw new Error('Unknown workspace');
+      return ok(secret);
+    };
+    base.payment = createStripePaymentProvider({
+      resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
+      clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
+    });
+    base.orders.create = async (_tenantId, order) => { orders.push(order); };
+    base.processedPaymentEvents = {
+      claim: async (tenantId, event) => {
+        const key = `${tenantId}:${event.id}`;
+        if (finalized.has(key)) return 'processed';
+        if (ledger.has(key)) return 'in_progress';
+        ledger.set(key, event);
+        return 'claimed';
+      },
+      finalize: async (tenantId, eventId) => { finalized.add(`${tenantId}:${eventId}`); },
+      release: async (tenantId, eventId) => { ledger.delete(`${tenantId}:${eventId}`); },
+    };
+    const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
+    const app = buildApp(base);
+    const payload = JSON.stringify({
+      id: 'evt_shared_account_acme', type: 'checkout.session.completed', livemode: true,
+      data: { object: {
+        id: 'cs_acme', customer: 'cus_acme', payment_intent: 'pi_acme', payment_status: 'paid',
+        amount_total: 1000, currency: 'pln', customer_details: { email: 'buyer@togethercommunity.app' },
+        metadata: { tenantId: acme.id, productId: 'acme-published' },
+      } },
+    });
+    const deliver = (tenantId: string, secret: string) => {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const digest = createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex');
+      return app.request(`/api/webhooks/stripe/${tenantId}`, {
+        method: 'POST', headers: { 'stripe-signature': `t=${timestamp},v1=${digest}` }, body: payload,
+      });
+    };
+    const expectIgnoredByStudio = async () => {
+      const response = await deliver(studio.id, 'whsec_studio_endpoint');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+    };
+
+    const wrongSecret = await deliver(studio.id, 'whsec_acme_endpoint');
+    expect(wrongSecret.status).toBe(400);
+    expect(await wrongSecret.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    if (foreignFirst) await expectIgnoredByStudio();
+    const accepted = await deliver(acme.id, 'whsec_acme_endpoint');
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ ok: true, data: { received: true, processed: true } });
+    await expectIgnoredByStudio();
+    const duplicate = await deliver(acme.id, 'whsec_acme_endpoint');
+    expect(duplicate.status).toBe(200);
+    expect(await duplicate.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+    expect(orders).toMatchObject([{ tenantId: acme.id, status: 'paid', providerObjectIds: { checkoutSession: 'cs_acme', paymentIntent: 'pi_acme' } }]);
+    expect(orders).toHaveLength(1);
+    expect(members).toMatchObject([{ tenantId: acme.id, email: 'buyer@togethercommunity.app' }]);
+    expect(members).toHaveLength(1);
+    expect([...ledger.values()]).toMatchObject([{ id: 'evt_shared_account_acme', tenantId: acme.id }]);
+    expect(ledger.size).toBe(1);
+    expect([...finalized]).toEqual([`${acme.id}:evt_shared_account_acme`]);
+    expect(claim).toHaveBeenCalledTimes(2);
+    for (const [tenantId] of claim.mock.calls) expect(tenantId).toBe(acme.id);
+  });
+
   it('acknowledges an invoice naming another tenant without opening a transaction', async () => {
     const base = deps({ tenants: [acme] });
     const initialize = vi.spyOn(base.authPort, 'initialize');

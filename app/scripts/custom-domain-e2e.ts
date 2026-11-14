@@ -659,6 +659,7 @@ const runCustomDomainVerificationTwoFactor = async (
           url.origin === customHostOrigin
           && url.pathname === '/login'
           && url.searchParams.get('twoFactor') === 'required'
+          && url.searchParams.get('verification') === 'verified'
           && url.searchParams.get('returnTo') === returnTo,
         { timeout: 20000 },
       );
@@ -707,7 +708,7 @@ const runCustomDomainVerificationTwoFactor = async (
     console.log('custom-domain-e2e: email verification with two-factor challenged on the custom host OK');
 
     await signOut();
-    // Better Auth issues the two-factor challenge only while the account is still unverified.
+    // A verification link signs in, and so challenges, only while the account is still unverified.
     await markEmailUnverified(e2eDatabaseUrl, email);
     const tenantCallback = new URL(`/login?${new URLSearchParams({ verification: 'verified', returnTo }).toString()}`, tenantBaseUrl);
     await openLinkToChallenge(tenantCallback.toString());

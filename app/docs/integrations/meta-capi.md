@@ -75,7 +75,8 @@ A failed write shows an error and clears the session dismissal marker so that
 reloading can retry with fresh consent text. Browser pixel behavior is unchanged.
 
 Members can review decisions per order and withdraw under **Account →
-Notifications → Purchase sharing with Meta**. Guests return to the original
+Notifications → Purchase sharing with Meta**; the card appears only once the
+member has at least one recorded decision. Guests return to the original
 purchase-success link containing `session_id` to withdraw: while the workspace
 has CAPI enabled with a pixel ID, the return page shows granted consent and a
 withdrawal action. This uses the existing session credential, not the staff

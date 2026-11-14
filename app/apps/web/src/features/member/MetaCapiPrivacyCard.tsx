@@ -1,7 +1,6 @@
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { AccountCard } from './AccountCard.js';
 
@@ -12,12 +11,10 @@ export const MetaCapiPrivacyCard = () => {
     ...actions.metaCapi.withdraw,
     onSuccess: async () => { await consents.refetch(); },
   });
+  if (!consents.data || consents.data.consents.length === 0) return null;
   return (
     <AccountCard title={t.metaCapi.privacyHeading} description={t.metaCapi.withdrawHint}>
-      {consents.isPending ? <StatusView state={{ kind: 'loading', label: t.common.loading }} /> : null}
-      {consents.isError ? <StatusView state={{ kind: 'error', message: localizeError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : null}
-      {consents.data?.consents.length === 0 ? <Typography variant="body2">{t.metaCapi.noDecisions}</Typography> : null}
-      {consents.data?.consents.map((consent) => (
+      {consents.data.consents.map((consent) => (
         <Stack key={consent.orderId} spacing={1}>
           <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{t.metaCapi.order({ id: consent.orderId })}</Typography>
           <Typography variant="body2">{consent.withdrawnAt !== null ? t.metaCapi.withdrawn : t.metaCapi[consent.consent]}</Typography>

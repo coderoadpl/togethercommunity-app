@@ -33,7 +33,6 @@ export interface Messages {
     withdraw: string;
     withdrawHint: string;
     privacyHeading: string;
-    noDecisions: string;
     order: (params: { id: string }) => string;
     settingsHeading: string;
     enabled: string;

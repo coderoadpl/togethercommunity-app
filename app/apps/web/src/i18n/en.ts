@@ -18,7 +18,6 @@ export const en: Messages = {
     withdraw: 'Withdraw consent',
     withdrawHint: 'Withdrawal stops future sends for this order. It does not undo data already sent to Meta. You can also withdraw on the purchase confirmation page.',
     privacyHeading: 'Purchase sharing with Meta',
-    noDecisions: 'No purchase-sharing decisions yet.',
     order: ({ id }) => format('Order {id}', { id }),
     settingsHeading: 'Meta Conversions API',
     enabled: 'Ask buyers for Meta purchase-sharing consent',

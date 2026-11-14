@@ -24,7 +24,6 @@ export const pl: Messages = {
     withdraw: 'Wycofaj zgodę',
     withdrawHint: 'Wycofanie zgody zatrzymuje przyszłe wysyłki dla tego zamówienia. Nie cofa danych już przekazanych do Meta. Zgodę możesz też wycofać na stronie potwierdzenia zakupu.',
     privacyHeading: 'Przekazywanie zakupów do Meta',
-    noDecisions: 'Nie masz jeszcze decyzji dotyczących przekazywania zakupów.',
     order: ({ id }) => format('Zamówienie {id}', { id }),
     settingsHeading: 'Meta Conversions API',
     enabled: 'Pytaj kupujących o zgodę na przekazanie zakupu do Meta',

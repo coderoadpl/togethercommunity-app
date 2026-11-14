@@ -41,3 +41,16 @@ it('shows failures without removing the withdrawal action', async () => {
   await screen.findByRole('alert');
   await waitFor(() => expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toBeEnabled());
 });
+
+it('renders nothing for a member without recorded decisions', async () => {
+  const requested = vi.fn();
+  server.use(http.get('/api/me/meta-capi/consents', () => {
+    requested();
+    return HttpResponse.json({ ok: true, data: { consents: [] } });
+  }));
+  const { queryClient } = renderWithProviders(<MetaCapiPrivacyCard />);
+  expect(screen.queryByText(en.metaCapi.privacyHeading)).toBeNull();
+  await waitFor(() => expect(requested).toHaveBeenCalledOnce());
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  expect(screen.queryByText(en.metaCapi.privacyHeading)).toBeNull();
+});

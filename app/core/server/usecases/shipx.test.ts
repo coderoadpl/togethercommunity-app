@@ -775,17 +775,36 @@ describe('InPost shipment view and label', () => {
     expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, sandboxTest.deps)).toMatchObject({ ok: true, value: { available: true } });
   });
 
-  it('sizes the parcel from the shipped products of a bundle and from every product when none is shipped', async () => {
-    const ebook = productSchema.parse({ ...product('ebook', 'small'), type: 'digital_download', deliveryMethod: 'pickup', parcelTemplate: undefined });
-    const bundle = orderListItemSchema.parse({ ...baseOrder, lines: [line('stand', 'physical'), line('ebook', 'digital_download'), line('shipping:locker', 'shipping')] });
-    const parcelTemplate = async (stand: ReturnType<typeof product>) => {
-      const h = harness({ order: bundle });
-      h.deps.products = { findByIds: async (_tenantId, productIds) => [stand, ebook].filter((row) => productIds.includes(row.id)) };
-      const view = await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps);
-      return view.ok ? view.value.parcelTemplate : view.error.code;
+  const ebook = productSchema.parse({ ...product('ebook', 'small'), type: 'digital_download', deliveryMethod: 'pickup', parcelTemplate: undefined });
+  const course = productSchema.parse({ ...product('course', 'large'), type: 'course', deliveryMethod: 'pickup' });
+
+  const sizedParcel = async (lines: OrderLine[] | undefined, catalog: ReturnType<typeof product>[]) => {
+    const h = harness({ order: orderListItemSchema.parse({ ...baseOrder, lines }) });
+    h.deps.products = { findByIds: async (_tenantId, productIds) => catalog.filter((row) => productIds.includes(row.id)) };
+    const view = await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps);
+    const created = await createInpostShipment(write, { orderId: 'order-1' }, h.deps);
+    return {
+      view: view.ok ? view.value.parcelTemplate : view.error.code,
+      created: created.ok ? h.real.calls.create[0]?.parcelTemplate : created.error.code,
     };
-    expect(await parcelTemplate(product('stand', 'small'))).toBe('small');
-    expect(await parcelTemplate(productSchema.parse({ ...product('stand', 'small'), deliveryMethod: 'pickup' }))).toBe('medium');
+  };
+
+  it('sizes the parcel from the physical lines of the order, whatever delivery the catalog now shows for their products', async () => {
+    const bundle = [line('stand', 'physical'), line('ebook', 'digital_download'), line('shipping:locker', 'shipping')];
+    expect(await sizedParcel(bundle, [product('stand', 'small'), ebook])).toEqual({ view: 'small', created: 'small' });
+    expect(await sizedParcel(bundle, [productSchema.parse({ ...product('stand', 'small'), deliveryMethod: 'pickup' }), ebook])).toEqual({ view: 'small', created: 'small' });
+  });
+
+  it('buys the label for a physical line whose product was switched to pickup after the purchase', async () => {
+    const lines = [line('lamp', 'physical'), line('stand', 'physical'), line('shipping:locker', 'shipping')];
+    const lamp = productSchema.parse({ ...product('lamp', 'large'), deliveryMethod: 'pickup' });
+    expect(await sizedParcel(lines, [lamp, product('stand', 'small')])).toEqual({ view: 'large', created: 'large' });
+  });
+
+  it('sizes the parcel from every product of an order without a physical line', async () => {
+    expect(await sizedParcel(undefined, [product('stand', 'small')])).toEqual({ view: 'small', created: 'small' });
+    const lines = [line('ebook', 'digital_download'), line('course', 'course'), line('shipping:locker', 'shipping')];
+    expect(await sizedParcel(lines, [ebook, course])).toEqual({ view: 'large', created: 'large' });
   });
 
   it('reads the live ShipX status of a shipment waiting for payment when the order is opened', async () => {

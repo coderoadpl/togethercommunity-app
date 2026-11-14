@@ -217,10 +217,11 @@ const publicShipment = (record: ShipxShipmentRecord): ShipxShipment => ({
 
 const orderParcelTemplate = async (tenantId: string, order: OrderListItem, deps: Pick<ShipxOrderDeps, 'products'>): Promise<ParcelTemplate> => {
   const lines = productLines(order.lines ?? []);
-  const productIds = [...new Set(lines.length === 0 ? [order.productId] : lines.map((line) => line.productId))];
+  const physical = lines.filter((line) => line.productType === 'physical');
+  const sized = physical.length === 0 ? lines : physical;
+  const productIds = [...new Set(sized.length === 0 ? [order.productId] : sized.map((line) => line.productId))];
   const products = await deps.products.findByIds(tenantId, productIds);
-  const shipped = products.filter((product) => product.deliveryMethod === 'shipping');
-  return largestParcelTemplate((shipped.length === 0 ? products : shipped).map((product) => product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE));
+  return largestParcelTemplate(products.map((product) => product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE));
 };
 
 const loadOrder = async (tenantId: string, orderId: string, deps: Pick<ShipxOrderDeps, 'orderDetails'>): Promise<Result<OrderListItem, AppError>> => {

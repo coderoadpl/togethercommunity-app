@@ -34,8 +34,12 @@ domains, including canonical and noncanonical aliases. Scheme and effective port
 matter. Domain verification is read on each decision, without a stale allowlist
 cache. Host routing takes precedence over `X-Tenant`; an unknown host cannot
 become trusted by supplying that header. Account/authentication endpoints on the
-platform host do not expand their trust set using a tenant header. A sibling
-tenant's origin is never implicitly trusted.
+platform host do not expand their trust set using a tenant header. A configured
+application, platform or deployment authentication host that does not resolve to
+a tenant (for example an `APP_BASE_URL` host shaped like a subdomain of the base
+domain) is treated as tenantless and trusts only the configured origins; any
+other host whose tenant resolution fails is rejected. A sibling tenant's origin
+is never implicitly trusted.
 
 The request authority must itself match one of those configured/verified origins.
 The scheme and port come from `APP_BASE_URL` (custom domains use HTTPS), not

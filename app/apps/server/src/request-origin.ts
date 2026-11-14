@@ -71,10 +71,10 @@ const allowedRequestOrigins = async (request: Request, deps: OriginDeps): Promis
   const tenantHeader = isAccountPath(new URL(request.url).pathname) && platformHosts.includes(hostname)
     ? null : request.headers.get(TENANT_HEADER);
   const resolved = await resolveTenant(host.data, tenantHeader, deps);
-  if (!resolved.ok) return null;
+  if (!resolved.ok && ![...configured].some((origin) => matchesRequestHost(origin, host.data))) return null;
   const allowed = new Set(configured);
   const tenantOrigins = new Set<string>();
-  if (resolved.value !== null) {
+  if (resolved.ok && resolved.value !== null) {
     const tenant = resolved.value.tenant;
     tenantOrigins.add(new URL(tenantUrl(tenant.slug, '/', deps)).origin);
     const domains = await deps.tenantDomains.listByTenant(tenant.id);

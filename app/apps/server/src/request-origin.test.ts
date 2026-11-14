@@ -171,6 +171,18 @@ describe('exact tenant request origins', () => {
     expect(await allowed({ origin: 'http://acme.localhost:48730', 'x-tenant': 'acme' }, config, url)).toBe(false);
   });
 
+  it('keeps a configured app host that looks like a non-tenant subdomain of the base domain tenantless', async () => {
+    const config = deps({ appBaseUrl: 'https://staging.example.test', baseDomain: 'example.test', platformHost: null });
+    const url = `${config.appBaseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`;
+    expect(await allowed({ origin: config.appBaseUrl, 'sec-fetch-site': 'same-origin' }, config, url)).toBe(true);
+    expect(await allowed({ 'sec-fetch-site': 'same-origin' }, config, `${config.appBaseUrl}/api/me/profile`)).toBe(true);
+    expect(await allowed({ origin: 'https://evil.test', 'sec-fetch-site': 'cross-site' }, config, url)).toBe(false);
+    expect(await allowed({ origin: 'https://acme.example.test', 'sec-fetch-site': 'same-site' }, config, url)).toBe(false);
+    const unknown = 'https://missing.example.test';
+    expect(await allowed({ origin: unknown, 'sec-fetch-site': 'same-origin' }, config, `${unknown}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`)).toBe(false);
+    expect(await allowed({ origin: config.appBaseUrl }, config, `${unknown}/api/products`)).toBe(false);
+  });
+
   it.each([
     '[::1]:99999', '[::1]:invalid', '[::1]:', '::1:48730', '[:::1]:48730',
     'user@[::1]:48730', '[::1]:48730/path', '[::1]:48730?query', '[::1]:48730#fragment',

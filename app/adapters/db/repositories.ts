@@ -372,6 +372,19 @@ const parseNotificationCursor = (cursor: string): { createdAt: string; id: strin
 
 const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
 
+const apiKeyRow = (tenantId: string, apiKey: TenantApiKey): typeof tenantApiKeys.$inferInsert => ({
+  id: apiKey.id,
+  tenantId,
+  name: apiKey.name,
+  keyHash: apiKey.keyHash,
+  kind: apiKey.kind,
+  scopes: apiKey.scopes,
+  issuedByUserId: apiKey.issuedByUserId,
+  createdAt: apiKey.createdAt,
+  expiresAt: apiKey.expiresAt,
+  revokedAt: apiKey.revokedAt,
+});
+
 const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
   tenantSecretSchema.parse(row);
 
@@ -3923,15 +3936,14 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
         .orderBy(asc(tenantApiKeys.createdAt))
     ).map(parseApiKey),
   create: async (tenantId, apiKey) => {
-    await db.insert(tenantApiKeys).values({
-      id: apiKey.id,
-      tenantId,
-      name: apiKey.name,
-      keyHash: apiKey.keyHash,
-      scopes: apiKey.scopes,
-      createdAt: apiKey.createdAt,
-      expiresAt: apiKey.expiresAt,
-      revokedAt: apiKey.revokedAt,
+    if (apiKey.kind !== 'legacy') throw new Error('Only legacy API keys are created without a lifecycle audit event');
+    await db.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
+  },
+  createShopManagement: async (tenantId, apiKey, audit) => {
+    if (apiKey.kind !== 'shop_management') throw new Error('Expected a shop management API key');
+    await db.transaction(async (tx) => {
+      await tx.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
+      await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
     });
   },
   findActiveByHash: async (tenantId, keyHash) => {
@@ -3957,6 +3969,7 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
         and(
           eq(tenantApiKeys.tenantId, tenantId),
           eq(tenantApiKeys.id, id),
+          eq(tenantApiKeys.kind, 'legacy'),
           sql`${tenantApiKeys.revokedAt} is null`,
         ),
       )
@@ -3964,6 +3977,24 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },
+  revokeShopManagement: async (tenantId, id, revokedAt, audit) => db.transaction(async (tx) => {
+    const rows = await tx
+      .update(tenantApiKeys)
+      .set({ revokedAt })
+      .where(
+        and(
+          eq(tenantApiKeys.tenantId, tenantId),
+          eq(tenantApiKeys.id, id),
+          eq(tenantApiKeys.kind, 'shop_management'),
+          sql`${tenantApiKeys.revokedAt} is null`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    if (!row) return null;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return parseApiKey(row);
+  }),
 });
 
 export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitRepository => ({

@@ -2051,6 +2051,8 @@ export const pl: Messages = {
       tenant_provisioned: "Operator utworzył obszar roboczy",
       post_purged: 'Trwałe usunięcie wpisu',
       redirect_deleted: 'Usunięcie przekierowania',
+      'api_key.shop_management_created': 'Utworzenie klucza zarządzania sklepem',
+      'api_key.shop_management_revoked': 'Unieważnienie klucza zarządzania sklepem',
     },
     auditLogEntry: ({ actor, subject }) => format('{actor} → {subject}', { actor, subject }),
     erasureRequestsEmpty: 'Brak wniosków o usunięcie danych.',

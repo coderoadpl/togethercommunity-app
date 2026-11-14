@@ -338,6 +338,8 @@ const deps = (input: {
       create: async () => undefined,
       findActiveByHash: async () => null,
       revoke: async () => null,
+      createShopManagement: async () => undefined,
+      revokeShopManagement: async () => null,
     },
     importAuditEvents: {
       append: async () => undefined,
@@ -1227,11 +1229,13 @@ const marketingApp = (
     listByTenant: async () => [],
     create: async () => undefined,
     findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
-      id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+      id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash, kind: 'legacy', issuedByUserId: null,
       scopes,
       createdAt: '1998-07-22T00:00:00.000Z', expiresAt: null, revokedAt: null,
     } : null,
     revoke: async () => null,
+    createShopManagement: async () => undefined,
+    revokeShopManagement: async () => null,
   };
   return buildApp(configured);
 };
@@ -1259,6 +1263,8 @@ const transactionalM2mApp = (options: {
         tenantId,
         name: hash === 'hash:transactional-key' ? 'orders-app' : 'billing-app',
         keyHash: hash,
+        kind: 'legacy',
+        issuedByUserId: null,
         scopes: [...(options.scopes ?? ['transactional'])],
         createdAt: '1998-08-10T00:00:00.000Z',
         expiresAt: null,
@@ -1266,6 +1272,8 @@ const transactionalM2mApp = (options: {
       };
     },
     revoke: async () => null,
+    createShopManagement: async () => undefined,
+    revokeShopManagement: async () => null,
   };
   configured.emailTransports = {
     resolve: async () => options.transport === false ? null : configured.email,
@@ -1302,12 +1310,16 @@ const importM2mApp = (options: {
       tenantId,
       name: 'Migration',
       keyHash: hash,
+      kind: 'legacy',
+      issuedByUserId: null,
       scopes: options.scopes === null ? null : [...(options.scopes ?? ['import:content'])],
       createdAt: '1998-08-10T00:00:00.000Z',
       expiresAt: '1998-08-20T00:00:00.000Z',
       revokedAt: null,
     } : null,
     revoke: async () => null,
+    createShopManagement: async () => undefined,
+    revokeShopManagement: async () => null,
   };
   configured.importContent = {
     commit: async (_tenantId, mutation) => {
@@ -1936,11 +1948,13 @@ describe('marketing HTTP surfaces', () => {
       listByTenant: async () => [],
       create: async () => undefined,
       findActiveByHash: async (tenantId, hash) => tenantId === acme.id && hash === 'hash:marketing-key' ? {
-        id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+        id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash, kind: 'legacy', issuedByUserId: null,
         scopes: null,
         createdAt: '1998-07-22T00:00:00.000Z', expiresAt: null, revokedAt: null,
       } : null,
       revoke: async () => null,
+      createShopManagement: async () => undefined,
+      revokeShopManagement: async () => null,
     };
     const authenticated = await authenticateMarketingApiKey(new Headers({
       host: 'acme.localhost:48730',
@@ -4782,7 +4796,7 @@ describe('new route authorization', () => {
   it('serves a tenant-scoped import audit only to the owner', async () => {
     const base = deps();
     const key: TenantApiKey = {
-      id: 'audit-key', tenantId: 't-acme', name: 'Migration', keyHash: 'hash:audit',
+      id: 'audit-key', tenantId: 't-acme', name: 'Migration', keyHash: 'hash:audit', kind: 'legacy', issuedByUserId: null,
       scopes: ['import:users'], createdAt: '1998-08-01T00:00:00.000Z',
       expiresAt: '1998-08-20T00:00:00.000Z', revokedAt: null,
     };
@@ -9749,7 +9763,7 @@ describe('API-key activity reports', () => {
     const member = vi.fn(configured.activityReports.memberActivity);
     configured.activityReports = { activitySummary: summary, memberActivity: member };
     configured.tenantApiKeys.findActiveByHash = async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:report-key' && !options.revoked ? {
-      id: 'report-key', tenantId, name: 'Reporting', keyHash: hash, scopes: options.scopes === undefined ? ['report:read'] : options.scopes,
+      id: 'report-key', tenantId, name: 'Reporting', keyHash: hash, kind: 'legacy', issuedByUserId: null, scopes: options.scopes === undefined ? ['report:read'] : options.scopes,
       createdAt: '1998-07-01T00:00:00.000Z', expiresAt: options.expired ? '1998-07-02T00:00:00.000Z' : null, revokedAt: null,
     } : null;
     const claim = vi.fn(async () => !options.limited);
@@ -9958,7 +9972,7 @@ describe('Stripe subscription adoption authorization', () => {
     'requires an explicit subscription scope: %s', async (scope) => {
       const base = deps();
       base.tenantApiKeys.findActiveByHash = async (tenantId, hash) => tenantId === acme.id && hash === 'hash:adoption-key' ? {
-        id: 'key-1', tenantId, name: 'Migration', keyHash: hash, scopes: scope === null ? null : [scope],
+        id: 'key-1', tenantId, name: 'Migration', keyHash: hash, kind: 'legacy', issuedByUserId: null, scopes: scope === null ? null : [scope],
         createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
       } : null;
       base.members.findById = async () => memberSchema.parse({
@@ -10009,7 +10023,7 @@ describe('Stripe subscription adoption authorization', () => {
     const request = { method: 'POST', headers, body: JSON.stringify(payload) };
     expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, request)).status).toBe(401);
     base.tenantApiKeys.findActiveByHash = async (tenantId) => tenantId === acme.id ? {
-      id: 'key-1', tenantId, name: 'Migration', keyHash: 'hash:adoption-key', scopes: ['subscriptions:adopt'],
+      id: 'key-1', tenantId, name: 'Migration', keyHash: 'hash:adoption-key', kind: 'legacy', issuedByUserId: null, scopes: ['subscriptions:adopt'],
       createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
     } : null;
     base.apiKeyRateLimits.claim = async () => false;

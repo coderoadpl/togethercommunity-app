@@ -1601,6 +1601,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       tenantId: ACME,
       name: 'CI',
       keyHash: 'hash-abc',
+      kind: 'legacy',
+      issuedByUserId: null,
       scopes: null,
       createdAt: NOW,
       expiresAt: null,
@@ -1621,7 +1623,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
   it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('round-trips explicit %s API key scopes within the tenant', async (scope) => {
     const repo = createTenantApiKeyRepository(db);
     const apiKey: TenantApiKey = {
-      id: `key-${scope}`, tenantId: ACME, name: 'Subscriptions', keyHash: `hash-${scope}`,
+      id: `key-${scope}`, tenantId: ACME, name: 'Subscriptions', keyHash: `hash-${scope}`, kind: 'legacy', issuedByUserId: null,
       scopes: [scope], createdAt: NOW, expiresAt: null, revokedAt: null,
     };
     await repo.create(ACME, apiKey);
@@ -1665,6 +1667,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       tenantId: ACME,
       name: 'Migration',
       keyHash: 'hash-import-acme',
+      kind: 'legacy',
+      issuedByUserId: null,
       scopes: ['import:content'],
       createdAt: NOW,
       expiresAt: FUTURE,

@@ -901,10 +901,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:42` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/meta-capi.ts:64` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
-| member-scope | `core/server/usecases/meta-capi.ts:67` | `return recordDecision(tenant.value, { orderId: parsed.data.orderId, memberId: ctx.identity.memberId }, 'withdrawn',` |
-| member-scope | `core/server/usecases/meta-capi.ts:74` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
-| member-scope | `core/server/usecases/meta-capi.ts:75` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
+| member-scope | `core/server/usecases/meta-capi.ts:67` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
+| member-scope | `core/server/usecases/meta-capi.ts:70` | `return recordDecision(tenant.value, { orderId: parsed.data.orderId, memberId: ctx.identity.memberId }, 'withdrawn',` |
+| member-scope | `core/server/usecases/meta-capi.ts:77` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
+| member-scope | `core/server/usecases/meta-capi.ts:78` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
 | member-scope | `core/server/usecases/my-products.ts:75` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

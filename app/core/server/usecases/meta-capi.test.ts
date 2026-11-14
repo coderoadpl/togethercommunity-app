@@ -292,13 +292,32 @@ describe('Meta CAPI use cases', () => {
     expect(await withdrawMetaCapiConsent({ identity }, { orderId: 'purchase' }, h.deps)).toMatchObject({ ok: true, value: { withdrawnAt: now } });
     expect(resolve).not.toHaveBeenCalled();
   });
-  it('does not resolve the access token for a repeated decision on a decided order', async () => {
+  it('answers a repeated decision on a decided order with the recorded state while the access token is missing', async () => {
     const h = harness();
     await h.decide('denied');
-    const resolve = vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound()));
-    h.deps.secrets = { resolve };
-    expect(await h.decide('granted')).toMatchObject({ ok: true, value: { consent: 'denied' } });
-    expect(resolve).not.toHaveBeenCalled();
+    const recorded = structuredClone(h.job.capture);
+    h.deps.secrets = { resolve: vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound())) };
+    expect(await h.decide('granted')).toMatchObject({ ok: true, value: { consent: 'denied', withdrawnAt: null } });
+    expect(h.job.capture).toEqual(recorded);
+  });
+  it('reads the workspace settings and the access token before the repository locks the order', async () => {
+    const h = harness();
+    let locked = false;
+    const underLock = async <T>(run: () => Promise<T>): Promise<T> => {
+      locked = true;
+      try { return await run(); } finally { locked = false; }
+    };
+    const { decide, processNext } = h.deps.repository;
+    h.deps.repository.decide = async (tenantId, access, callback) => decide(tenantId, access, async (current) => underLock(async () => callback(current)));
+    h.deps.repository.processNext = async (tenantId, at, process) => processNext(tenantId, at, async (job) => underLock(async () => process(job)));
+    const readsUnderLock: boolean[] = [];
+    h.deps.tenants = { findSettings: async () => { readsUnderLock.push(locked); return h.settings; } };
+    h.deps.secrets = { resolve: async () => { readsUnderLock.push(locked); return ok('secret-token'); } };
+    expect(await h.decide('granted')).toMatchObject({ ok: true, value: { consent: 'granted' } });
+    await dispatchMetaCapi(h.deps);
+    expect(h.send).toHaveBeenCalledOnce();
+    expect(readsUnderLock.length).toBeGreaterThanOrEqual(4);
+    expect(readsUnderLock).not.toContain(true);
   });
   it('rejects new consent and blocks dispatch for a deleted member', async () => {
     const h = harness();

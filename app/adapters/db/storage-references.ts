@@ -39,6 +39,7 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
       logoDarkUrl: tenants.logoDarkUrl,
       faviconUrl: tenants.faviconUrl,
       ogImageUrl: tenants.ogImageUrl,
+      checkoutAppearance: tenants.checkoutAppearance,
     }).from(tenants).where(eq(tenants.id, tenantId));
     const avatars = await tx.select({ avatarUrl: members.avatarUrl })
       .from(members).where(eq(members.tenantId, tenantId));

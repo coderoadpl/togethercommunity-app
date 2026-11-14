@@ -15,7 +15,10 @@ describe('storage reference inventory', () => {
   beforeAll(async () => {
     ({ db, close } = await createTestDatabase('together_storage_references', databaseUrl));
     for (const tenantId of ['tenant-a', 'tenant-b']) {
-      await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: tenantId, createdAt: NOW, logoUrl: `${tenantId}-logo` });
+      await db.insert(tenants).values({
+        id: tenantId, slug: tenantId, name: tenantId, createdAt: NOW, logoUrl: `${tenantId}-logo`,
+        checkoutAppearance: { logoUrl: `https://${tenantId}.example.test/checkout-logo.png`, iconUrl: `https://${tenantId}.example.test/checkout-icon.png` },
+      });
       await db.insert(courseLessons).values({ id: 'same-lesson', tenantId, name: 'Lesson', contents: [], createdAt: NOW });
       await db.insert(courses).values({ id: 'same-course', tenantId, name: 'Course', description: '', imageUrl: `${tenantId}-cover`, createdAt: NOW });
       await db.insert(products).values({ id: 'same-product', tenantId, slug: 'product', title: 'Product', description: '', priceCents: 100, currency: 'USD', createdAt: NOW });
@@ -49,6 +52,8 @@ describe('storage reference inventory', () => {
     expect(inventory.historyDocuments).toEqual([{ imageUrl: 'tenant-a-historical-cover' }]);
     expect(JSON.stringify(inventory.currentDocuments)).toContain('tenant-a-logo');
     expect(JSON.stringify(inventory.currentDocuments)).toContain('tenant-a-cover');
+    expect(JSON.stringify(inventory.currentDocuments)).toContain('https://tenant-a.example.test/checkout-logo.png');
+    expect(JSON.stringify(inventory.currentDocuments)).toContain('https://tenant-a.example.test/checkout-icon.png');
     expect(JSON.stringify(inventory)).not.toContain('tenant-b');
     expect(await repository.readInventory('tenant-a')).toEqual(inventory);
     expect(await repository.readInventory('missing')).toEqual({

@@ -773,6 +773,8 @@ export const en: Messages = {
     discardAttempt: 'Discard the attempt and create again',
     discardConfirmTitle: 'Discard the unconfirmed attempt?',
     discardConfirmBody: 'Check Manager Paczek first. If the shipment for this order exists there, creating again makes a second paid shipment.',
+    discardClaimConfirmTitle: 'Discard the interrupted attempt?',
+    discardClaimConfirmBody: 'The earlier attempt for this order stopped before it was sent to InPost, so InPost has no shipment for it. Discard it to create the shipment again.',
     discardConfirm: 'Discard and create again',
     unavailableReasons: {
       credentials_missing: 'Save the InPost ShipX credentials in Settings → Shipping to create the shipment here.',

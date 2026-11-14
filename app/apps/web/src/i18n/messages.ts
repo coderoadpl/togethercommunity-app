@@ -744,6 +744,8 @@ export interface Messages {
     discardAttempt: string;
     discardConfirmTitle: string;
     discardConfirmBody: string;
+    discardClaimConfirmTitle: string;
+    discardClaimConfirmBody: string;
     discardConfirm: string;
     unavailableReasons: { credentials_missing: string; sender_missing: string; sandbox_environment: string };
     errorDetail: (params: { detail: string }) => string;

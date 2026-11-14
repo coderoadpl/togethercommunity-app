@@ -780,6 +780,8 @@ export const pl: Messages = {
     discardAttempt: 'Odrzuć próbę i utwórz ponownie',
     discardConfirmTitle: 'Odrzucić niepotwierdzoną próbę?',
     discardConfirmBody: 'Najpierw sprawdź Manager Paczek. Jeśli przesyłka tego zamówienia już tam jest, ponowne utworzenie da drugą, opłaconą przesyłkę.',
+    discardClaimConfirmTitle: 'Odrzucić przerwaną próbę?',
+    discardClaimConfirmBody: 'Wcześniejsza próba dla tego zamówienia przerwała się, zanim została wysłana do InPost, więc InPost nie ma dla niego przesyłki. Odrzuć ją, aby ponownie utworzyć przesyłkę.',
     discardConfirm: 'Odrzuć i utwórz ponownie',
     unavailableReasons: {
       credentials_missing: 'Zapisz dane dostępowe InPost ShipX w Ustawieniach → Wysyłka, aby utworzyć tu przesyłkę.',

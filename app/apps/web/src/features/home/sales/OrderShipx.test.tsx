@@ -73,7 +73,26 @@ describe('OrderShipx', () => {
     expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Discard the attempt and create again' }));
     const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Discard the unconfirmed attempt?')).toBeVisible();
     expect(within(dialog).getByText(/second paid shipment/)).toBeVisible();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Discard and create again' }));
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a claim left before any create attempt without sending staff to Manager Paczek', async () => {
+    const onDiscard = vi.fn();
+    renderWithProviders(<OrderShipx
+      {...props}
+      onDiscard={onDiscard}
+      view={{ ...ready, shipment: shipment({ shipxShipmentId: null, status: 'creating', trackingNumber: null, boughtAt: null, createAttemptedAt: null }) }}
+    />);
+    expect(screen.queryByTestId('order-shipx-unconfirmed')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Discard the attempt and create again' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Discard the interrupted attempt?')).toBeVisible();
+    expect(within(dialog).getByText(/stopped before it was sent to InPost/)).toBeVisible();
+    expect(dialog).not.toHaveTextContent(/Manager Paczek/);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Discard and create again' }));
     expect(onDiscard).toHaveBeenCalledTimes(1);
   });

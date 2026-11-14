@@ -28,6 +28,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const shipment = view.shipment;
   const labelReady = shipment?.shipxShipmentId != null && shipment.trackingNumber !== null;
   const unconfirmed = shipment !== null && shipxAttemptUnconfirmed(shipment);
+  const discardable = shipment !== null && shipment.shipxShipmentId === null;
   const awaitingPayment = shipment?.shipxShipmentId != null && shipment.trackingNumber === null && view.reason === null;
   const failure = error === null ? null : localizeShipxError(error, t);
   const service = t.shipx.services[view.service];
@@ -51,7 +52,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
             {pending ? t.shipx.creating : t.shipx.create}
           </Button>
         ) : null}
-        {showCreate && unconfirmed ? (
+        {showCreate && discardable ? (
           <Button variant="outlined" color="warning" disabled={busy} onClick={() => setConfirming('discard')} data-testid="order-shipx-discard">
             {t.shipx.discardAttempt}
           </Button>
@@ -88,8 +89,8 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       />
       <ConfirmDialog
         open={confirming === 'discard'}
-        title={t.shipx.discardConfirmTitle}
-        body={<Typography>{t.shipx.discardConfirmBody}</Typography>}
+        title={unconfirmed ? t.shipx.discardConfirmTitle : t.shipx.discardClaimConfirmTitle}
+        body={<Typography>{unconfirmed ? t.shipx.discardConfirmBody : t.shipx.discardClaimConfirmBody}</Typography>}
         confirmLabel={t.shipx.discardConfirm}
         cancelLabel={t.common.cancel}
         confirmColor="warning"

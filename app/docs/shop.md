@@ -415,9 +415,13 @@ That action (`POST /api/orders/<orderId>/shipx/discard`, `order:write`, CLI
 not in use by another request; the page then creates the shipment again. It
 also clears a claim that a crashed request left before recording any create
 attempt, which could otherwise block the order with an environment or
-organization mismatch after the ShipX settings changed. Staff check Manager
-Paczek first, because a shipment that ShipX created but did not list yet would
-be paid twice.
+organization mismatch after the ShipX settings changed. The page offers the
+action for every stored row without a ShipX id to staff who can create the
+shipment. For an unconfirmed attempt the confirmation tells staff to check
+Manager Paczek first, because a shipment that ShipX created but did not list
+yet would be paid twice. For a claim without a recorded attempt no create
+request was sent, so the confirmation says that InPost has no shipment for the
+order.
 
 ### Concurrency
 
@@ -441,8 +445,9 @@ with `details.state: 'lost_lock'`. A request that ends therefore never clears
 or deletes the claim of the next one. A crashed or stuck request keeps the
 lease until it expires after 90 seconds; its row then shows a ShipX id (the
 next click continues), an unconfirmed attempt (the next click reconciles) or,
-when it crashed before recording the attempt, neither (the next click creates,
-and **discard** clears it when the settings changed meanwhile). Opening the order stores the live ShipX status only while no
+when it crashed before recording the attempt, neither (the next click creates;
+the page also offers **discard** for it, which clears it when the settings
+changed meanwhile). Opening the order stores the live ShipX status only while no
 request holds the claim and only when the row is unchanged since it was read
 before the ShipX call; it never clears a stored tracking number and never
 changes a bought row, so a slow read cannot overwrite a purchase that a

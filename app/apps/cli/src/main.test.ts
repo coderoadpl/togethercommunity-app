@@ -1288,6 +1288,22 @@ describe('activity report CLI parsing', () => {
     await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
     expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
   });
+  it('creates a shop management key with explicit kind, scopes and expiry', async () => {
+    h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Shop' }, secret: 'shop-secret' }));
+    await run(
+      'api-keys', 'create', 'Shop', '--kind', 'shop_management', '--scope', 'shop:catalog:read', 'shop:orders:read',
+      '--expires-at', '1998-08-08T00:00:00.000Z', '--json',
+    );
+    expect(h.createApiKey).toHaveBeenCalledWith({
+      name: 'Shop', kind: 'shop_management', scopes: ['shop:catalog:read', 'shop:orders:read'], expiresAt: '1998-08-08T00:00:00.000Z',
+    });
+  });
+  it('rejects an unknown api-keys create --kind before calling the API', async () => {
+    h.createApiKey.mockReset();
+    await run('api-keys', 'create', 'Shop', '--kind', 'root', '--json');
+    expect(h.createApiKey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });
 
 describe('marketing signup form commands', () => {

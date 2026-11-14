@@ -92,6 +92,10 @@ pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:r
 scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `api-keys revoke <id>`. Studio integrations also supports report keys.
 
+`api-keys create --kind shop_management` creates a
+[shop management key](shop-management-keys.md); it requires `shop:*` scopes and
+`--expires-at` at most 30 days ahead. `api-keys list` prints each key's kind.
+
 Supply the secret through an environment variable, using the same
 `--api-key-env <name>` mechanism as marketing commands. Reports default to
 `TOGETHER_API_KEY`. The selected tenant and API origin follow the usual CLI

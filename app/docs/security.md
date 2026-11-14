@@ -129,8 +129,10 @@ proxies must overwrite the selected header. Vercel uses the platform-written
 values are not treated as client addresses and emit one diagnostic per process.
 
 Unauthenticated write routes carry their own PostgreSQL fixed-window limiter in
-`rate_limit_buckets`: checkout session creation, coupon validation and the
-marketing consent forms are limited per client address and per resolved tenant,
+`rate_limit_buckets`: checkout session creation, sales-link checkout, coupon
+validation, survey submissions, the marketing unsubscribe, preference and double
+opt-in confirmation forms and Meta conversion consent decisions are limited per
+client address and per resolved tenant,
 and magic-link, password-reset, sign-up and verification requests are limited
 per client address and per e-mail address. The client address comes from the
 same trusted forwarding resolution as authentication, never from a raw

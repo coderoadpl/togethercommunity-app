@@ -22,6 +22,12 @@ export const createVisualNetworkIdle = () => {
     }, networkIdleQuietWindowMs);
   };
 
+  const restartQuietWindow = (): void => {
+    idle = false;
+    cancelQuietTimer();
+    armQuietTimer();
+  };
+
   armQuietTimer();
 
   return {
@@ -34,11 +40,8 @@ export const createVisualNetworkIdle = () => {
       requests.delete(request);
       armQuietTimer();
     },
-    frameNavigated: (): void => {
-      idle = false;
-      cancelQuietTimer();
-      armQuietTimer();
-    },
+    frameAttached: restartQuietWindow,
+    frameNavigated: restartQuietWindow,
     wait: (): Promise<void> => {
       if (idle) return Promise.resolve();
       return new Promise<void>((resolve, reject) => {

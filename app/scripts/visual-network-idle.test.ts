@@ -73,6 +73,21 @@ describe('visual network idle', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('leaves idle when a frame attaches and returns to it after 500 quiet milliseconds', async () => {
+    const tracker = createVisualNetworkIdle();
+    await vi.advanceTimersByTimeAsync(500);
+    await tracker.wait();
+    tracker.frameAttached();
+    const resolved = vi.fn();
+    const waiting = tracker.wait().then(resolved);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(resolved).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await waiting;
+    expect(resolved).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('rejects at 30000 milliseconds and names only requests still in flight', async () => {
     const tracker = createVisualNetworkIdle();
     const finished = {};

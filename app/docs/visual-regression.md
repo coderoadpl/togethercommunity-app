@@ -60,8 +60,8 @@ full page, they use a 4 KiB size floor.
 
 Every capture path uses `createVisualCapture` in `scripts/visual-browser-setup.ts`.
 The harness tracks network idle itself: the page is idle once 500 ms have passed
-with no request in flight, and any new request or any frame navigation ends that
-state until another 500 ms pass with nothing in flight.
+with no request in flight, and any new request, attached frame or frame navigation
+ends that state until another 500 ms pass with nothing in flight.
 Requests remain in flight until they finish or fail, and the idle wait fails after
 30 seconds with their URLs if the page cannot settle. The browser library's idle
 bookkeeping can lose its main-frame idle state after a late request and a child

@@ -15,6 +15,7 @@ const attachNetworkIdleTracker = (page: Page): void => {
   page.on('request', (request) => tracker.requestStarted(request, request.url()));
   page.on('requestfinished', tracker.requestEnded);
   page.on('requestfailed', tracker.requestEnded);
+  page.on('frameattached', tracker.frameAttached);
   page.on('framenavigated', tracker.frameNavigated);
 };
 

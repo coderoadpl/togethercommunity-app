@@ -28,7 +28,8 @@ export const getCheckoutSessionStatus = async (
     ['paid', 'partially_refunded', 'refunded'].includes(order.status);
   if (!paid || order === null) return ok({ status: 'pending' });
   const settings = await deps.tenants.findSettings(tenantId);
-  const metaCapi = deps.metaCapi ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi, locale) : undefined;
+  const metaCapiEnabled = settings?.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId;
+  const metaCapi = deps.metaCapi && metaCapiEnabled ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi, locale) : undefined;
   const capi = metaCapi === undefined ? {} : { metaCapi };
   if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid', ...capi });
   const lines = productLines(order.lines ?? []);

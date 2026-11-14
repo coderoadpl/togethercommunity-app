@@ -76,11 +76,13 @@ reloading can retry with fresh consent text. Browser pixel behavior is unchanged
 
 Members can review decisions per order and withdraw under **Account →
 Notifications → Purchase sharing with Meta**. Guests return to the original
-purchase-success link containing `session_id` to withdraw: the return page
-shows granted consent and a withdrawal action, including when CAPI has since
-been disabled. This uses the existing session credential, not the staff order
-verification page. Preserve that success link; there is no separate guest
-order page. Withdrawal stops future sends, not data already delivered to Meta.
+purchase-success link containing `session_id` to withdraw: while the workspace
+has CAPI enabled with a pixel ID, the return page shows granted consent and a
+withdrawal action. This uses the existing session credential, not the staff
+order verification page. Preserve that success link; there is no separate guest
+order page. Once CAPI is disabled the return page no longer shows CAPI state,
+dispatch blocks every pending job, and members still withdraw from their
+account. Withdrawal stops future sends, not data already delivered to Meta.
 
 The account list returns at most 100 decisions, with granted, not-withdrawn
 consents first. Within each group, orders sort by creation time descending,
@@ -92,7 +94,8 @@ and use recorded time plus transaction ID for stable ordering.
 
 ## Consent and access
 
-The paid checkout status response can contain `metaCapi`: enabled, the current
+For a workspace with `analyticsMetaCapiEnabled` and a Meta pixel ID, the paid
+checkout status response contains `metaCapi`: enabled, the current
 consent and withdrawal time, copy fields, privacy URL, and a SHA-256 `textVersion`
 over the exact copy and privacy URL. The prompt is disabled for test purchases,
 test sessions, an unconfigured pixel, or a missing privacy URL.
@@ -201,8 +204,8 @@ The focused browser specification runs with `pnpm run e2e:meta-capi`.
 It creates and removes its own local PostgreSQL database, builds and starts the
 real SPA/API, blocks non-local browser requests, and dispatches through a fake
 Meta gateway. It covers decline without an outbox job, acceptance with one job
-and a sent receipt, Escape without a decision, a disabled tenant, and guest
-withdrawal after disabling CAPI. English and Polish default-copy cases assert
+and a sent receipt, Escape without a decision, a disabled tenant without CAPI
+state on the return page, and guest withdrawal. English and Polish default-copy cases assert
 the complete stored snapshot and its SHA-256 version; QR grants/denials and a
 stale version after switching locale are rejected. No Meta access token or
 external API is used.

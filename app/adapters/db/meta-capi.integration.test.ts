@@ -5,7 +5,10 @@ import type { MetaCapiJobOutcome } from '#core/server/meta-capi-ports.js';
 import { dispatchMetaCapi } from '#core/server/usecases/meta-capi.js';
 import { createMemberErasureRepository, createTenantDirectory, createTenantRepository } from './repositories.js';
 import { createMetaCapiRepository } from './meta-capi.js';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import { createTestDatabase } from './test-database-name.js';
+import * as schema from './schema.js';
 import { members, metaCapiConsentEvidence, metaCapiEvents, metaCapiOutbox, orders, products, tenants, user } from './schema.js';
 
 const now = '2026-11-01T10:00:00.000Z';
@@ -261,4 +264,22 @@ it('normalizes offset timestamps and applies stable bounded event and consent or
   const events = await repo.listEvents('workspace');
   expect(events.map((row) => row.transactionId)).toEqual(expected);
   expect(events[0]?.recordedAt).toBe('2026-11-02T10:00:00.000Z');
+});
+
+it('looks up a return-page session through the checkout-session index', async () => {
+  const access = await makeOrder('indexed');
+  const pool = new pg.Pool({ connectionString: database.url });
+  const queries: { query: string; params: unknown[] }[] = [];
+  try {
+    const logged = drizzle(pool, { schema, logger: { logQuery: (query, params) => { queries.push({ query, params }); } } });
+    expect((await createMetaCapiRepository(logged, async () => 'https://workspace.example.org').findOrder('workspace', access))?.order.id).toBe('indexed');
+    const lookup = queries.find(({ query }) => query.includes('checkoutSession'));
+    if (lookup === undefined) throw new Error('Missing checkout-session lookup');
+    const client = await pool.connect();
+    try {
+      await client.query('SET enable_seqscan = off');
+      const plan = await client.query(`EXPLAIN ${lookup.query}`, lookup.params);
+      expect(JSON.stringify(plan.rows)).toContain('orders_tenant_provider_checkout_uidx');
+    } finally { client.release(); }
+  } finally { await pool.end(); }
 });

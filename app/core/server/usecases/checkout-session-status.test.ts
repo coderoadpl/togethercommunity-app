@@ -226,30 +226,48 @@ it('reports the chosen first variant in purchase analytics while retaining the s
   expect(deps.products.findById).not.toHaveBeenCalled();
 });
 
-it.each([false, true])('preserves shipping analytics and locale-resolved CAPI status when enabled=%s', async (enabled) => {
-  const purchase: Order = { ...order, paidAt: order.createdAt, amountCents: 1200, lines: [
-    { productId: 'product-1', name: 'Book', productType: 'physical', grossCents: 1000, netCents: 1000,
-      vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: 0 },
-    { productId: 'shipping', name: 'Delivery', productType: 'shipping', grossCents: 200, netCents: 200,
-      vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
-  ] };
-  const settings = { ...analyticsSettings, analyticsMetaCapiEnabled: enabled, analyticsMetaPixelId: '1234567890', privacyUrl: 'https://example.org/privacy' };
-  const deps = harness([purchase], settings);
+const capiPurchase: Order = { ...order, paidAt: order.createdAt, amountCents: 1200, lines: [
+  { productId: 'product-1', name: 'Book', productType: 'physical', grossCents: 1000, netCents: 1000,
+    vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: 0 },
+  { productId: 'shipping', name: 'Delivery', productType: 'shipping', grossCents: 200, netCents: 200,
+    vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+] };
+
+const capiDeps = (deps: ReturnType<typeof harness>) => {
+  const findOrder = vi.fn<MetaCapiDeps['repository']['findOrder']>(async () => ({ order: capiPurchase, consent: { consent: 'undecided', withdrawnAt: null },
+    email: 'buyer@example.org', memberDeleted: false, sourceUrl: 'https://example.org/checkout/book', consentAt: null }));
   const metaCapi: MetaCapiDeps = { tenants: deps.tenants, clock: { nowIso: () => order.createdAt }, hash: { sha256: (text) => {
     if (typeof text !== 'string') throw new Error('Consent snapshots must be text');
     return text;
   } },
-    repository: { findOrder: async () => ({ order: purchase, consent: { consent: 'undecided', withdrawnAt: null },
-      email: 'buyer@example.org', memberDeleted: false, sourceUrl: 'https://example.org/checkout/book', consentAt: null }),
-    decide: async () => err(notFound()), processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };
+    repository: { findOrder, decide: async () => err(notFound()), processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] } };
+  return { metaCapi, findOrder };
+};
+
+it('preserves shipping analytics and locale-resolved CAPI status for a tenant with Meta conversions enabled', async () => {
+  const settings = { ...analyticsSettings, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890', privacyUrl: 'https://example.org/privacy' };
+  const deps = harness([capiPurchase], settings);
+  const { metaCapi } = capiDeps(deps);
   for (const locale of ['en', 'pl'] as const) {
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, locale)).toMatchObject({
       ok: true, value: { status: 'paid', analytics: { value: 12, items: [{ itemId: 'product-1', itemName: 'Book', price: 10 }] },
-        metaCapi: { ...metaCapiCopy(settings, locale), enabled, locale, textVersion: JSON.stringify(metaCapiCopy(settings, locale)) } },
+        metaCapi: { ...metaCapiCopy(settings, locale), enabled: true, locale, textVersion: JSON.stringify(metaCapiCopy(settings, locale)) } },
     });
   }
-  deps.tenants.findSettings.mockResolvedValue({ ...settings, analyticsMetaPixelId: null, analyticsTagId: null });
-  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, 'en')).toMatchObject({
-    ok: true, value: { status: 'paid', metaCapi: { enabled: false, locale: 'en' } },
-  });
+});
+
+it.each([
+  ['the flag is off', { analyticsMetaCapiEnabled: false, analyticsMetaPixelId: '1234567890' }],
+  ['no pixel is configured', { analyticsMetaCapiEnabled: true, analyticsMetaPixelId: null }],
+  ['neither is configured', { analyticsMetaCapiEnabled: false, analyticsMetaPixelId: null, analyticsTagId: null }],
+])('returns the pre-CAPI response shape without Meta queries when %s', async (_case, overrides) => {
+  const settings = { ...analyticsSettings, privacyUrl: 'https://example.org/privacy', ...overrides };
+  const deps = harness([capiPurchase], settings);
+  const { metaCapi, findOrder } = capiDeps(deps);
+  const result = await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, 'en');
+  const plain = await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps, 'en');
+  expect(result).toEqual(plain);
+  expect(result.ok && 'metaCapi' in result.value).toBe(false);
+  expect(findOrder).not.toHaveBeenCalled();
+  expect(deps.tenants.findSettings).toHaveBeenCalledTimes(2);
 });

@@ -137,10 +137,14 @@ try {
   assert.equal(await page.getByRole('dialog').count(), 0);
   assert.equal((await database.db.select().from(metaCapiOutbox)).length, 0);
   await visit('accept');
+  await page.getByRole('heading', { name: en.checkout.successTitle, exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: en.metaCapi.withdraw, exact: true }).count(), 0);
+  await database.db.update(tenants).set({ analyticsMetaCapiEnabled: true }).where(eq(tenants.id, 'acme'));
+  await visit('accept');
   await choose(en.metaCapi.withdraw);
   assert.ok((await database.db.select().from(orders).where(eq(orders.id, 'accept')))[0]?.metaCapiConsentWithdrawnAt);
   assert.equal((await database.db.select().from(metaCapiEvents).where(eq(metaCapiEvents.orderId, 'accept')))[0]?.status, 'sent');
-  console.log('meta-capi-e2e: disabled tenant never prompts; guests can still withdraw on the success link');
+  console.log('meta-capi-e2e: disabled tenant never prompts or exposes CAPI state; guests withdraw on the success link');
   await context.close();
   console.log('meta-capi-e2e: PASS');
 } finally {

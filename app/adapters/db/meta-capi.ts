@@ -8,7 +8,7 @@ import { metaCapiConsentEvidence, metaCapiEvents, metaCapiOutbox } from './meta-
 import { normalizeOrderDates } from './order-dates.js';
 
 const accessFilter = (access: MetaCapiOrderAccess) => 'sessionId' in access
-  ? sql`${orders.providerObjectIds}->>'checkoutSession' = ${access.sessionId}`
+  ? sql`${orders.providerObjectIds} ? 'checkoutSession' and ${orders.providerObjectIds}->>'checkoutSession' = ${access.sessionId}`
   : 'orderToken' in access ? eq(orders.verificationToken, access.orderToken)
     : and(eq(orders.id, access.orderId), eq(orders.memberId, access.memberId));
 const iso = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();

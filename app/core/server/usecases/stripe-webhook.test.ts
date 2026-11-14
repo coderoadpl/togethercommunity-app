@@ -2825,7 +2825,33 @@ describe('Stripe payment mode isolation', () => {
     expect(h.orders[1]?.status).toBe('pending');
   });
 
-  it.each(['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
+  it('fulfills a live checkout when a test order from the same country exists', async () => {
+    const h = harness();
+    const live = completedEvent({ objectId: 'cs-live-country', paymentIntentId: 'pi-live-country' });
+    if (live.checkoutSession === null) throw new Error('Missing checkout');
+    await fulfillStripeWebhook(tenantA, { ...completedEvent({ id: 'evt-prior', objectId: 'cs-test-country', paymentIntentId: 'pi-test-country' }),
+      checkoutSession: { ...live.checkoutSession, customerCountry: 'PL', testPurchase: true } }, h.deps);
+    const prior = h.orders[0];
+    if (prior === undefined) throw new Error('Missing prior order');
+    h.orders[0] = { ...prior, mode: 'test', providerObjectIds: { checkoutSession: 'cs-test-country', paymentIntent: 'pi-test-country', customerCountry: 'PL', testPurchase: '1' } };
+    expect(await fulfillStripeWebhook(tenantA, { ...live, mode: 'live', livemode: true,
+      checkoutSession: { ...live.checkoutSession, customerCountry: 'PL' } }, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders.find((order) => order.providerObjectIds['checkoutSession'] === 'cs-live-country'))
+      .toMatchObject({ mode: 'live', status: 'paid', providerObjectIds: { customerCountry: 'PL' } });
+    expect(h.warnings.some((message) => message.includes('order mode mismatch'))).toBe(false);
+  });
+
+  it('fulfills a test checkout when a live order from the same country exists', async () => {
+    const { h, event, liveOrder } = await testCheckout();
+    if (event.checkoutSession === null) throw new Error('Missing checkout');
+    liveOrder.providerObjectIds['customerCountry'] = 'PL';
+    expect(await fulfillStripeWebhook(tenantA, { ...event,
+      checkoutSession: { ...event.checkoutSession, customerCountry: 'PL', testPurchase: true } }, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders[1]).toMatchObject({ id: 'test-order', mode: 'test', status: 'paid' });
+    expect(h.warnings.some((message) => message.includes('order mode mismatch'))).toBe(false);
+  });
+
+  it.each(['invoice.paid','invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
     'isolates subscription event %s in both directions', async (type) => {
       const { h, event } = await testCheckout(true);
       expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));

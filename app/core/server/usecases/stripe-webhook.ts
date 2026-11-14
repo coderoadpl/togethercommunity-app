@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   ok,
   isShippingLine,
+  orderProviderIdentifiers,
   orderShippingFrom,
   productLines,
   resolveEmailLanguage,
@@ -967,7 +968,7 @@ const paymentModeMatches = async (
     ...(event.adjustment?.paymentIntentId == null ? {} : { paymentIntent: event.adjustment.paymentIntentId }),
     ...(event.adjustment?.chargeId == null ? {} : { charge: event.adjustment.chargeId }),
   };
-  const correlated = Object.fromEntries(Object.entries(ids).filter(([key]) => key !== 'subscription'));
+  const correlated = Object.fromEntries(Object.entries(orderProviderIdentifiers(ids)).filter(([key]) => key !== 'subscription'));
   const findOrder = async (searched: StripeMode): Promise<Order | null> =>
     Object.keys(correlated).length === 0
       ? null

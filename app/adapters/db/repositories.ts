@@ -3,7 +3,7 @@ import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
-import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema } from '#core/domain/index.js';
+import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -3696,7 +3696,7 @@ export const createOrderRepository = (
 
 export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
   findOrderByProviderObjectIds: async (tenantId, providerObjectIds, mode) => {
-    const matches = Object.entries(providerObjectIds).map(
+    const matches = Object.entries(orderProviderIdentifiers(providerObjectIds)).map(
       ([key, value]) => key === 'checkoutSession'
         ? sql`${orders.providerObjectIds} ? 'checkoutSession' and ${orders.providerObjectIds} ->> 'checkoutSession' = ${value}`
         : sql`${orders.providerObjectIds} ->> ${key} = ${value}`,

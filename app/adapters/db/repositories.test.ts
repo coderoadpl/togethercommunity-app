@@ -854,6 +854,23 @@ describe('order repository', () => {
     }
   });
 
+  it('never correlates orders on stored keys that are not Stripe object identifiers', async () => {
+    const repo = createPaymentRefundRepository(db);
+    await db.update(orders).set({ mode: 'test', providerObjectIds: { checkoutSession: 'cs_test_country123', customerCountry: 'PL', testPurchase: '1' } })
+      .where(and(eq(orders.tenantId, ACME), eq(orders.id, 'order-acme-1')));
+    try {
+      expect(await repo.findOrderByProviderObjectIds(ACME, { customerCountry: 'PL' }, 'test')).toBeNull();
+      expect(await repo.findOrderByProviderObjectIds(ACME, { testPurchase: '1' })).toBeNull();
+      expect(await repo.findOrderByProviderObjectIds(ACME, { checkoutSession: 'cs_live_country123', customerCountry: 'PL', testPurchase: '1' }, 'test'))
+        .toBeNull();
+      expect(await repo.findOrderByProviderObjectIds(ACME, { checkoutSession: 'cs_test_country123', customerCountry: 'DE' }, 'test'))
+        .toMatchObject({ id: 'order-acme-1', mode: 'test' });
+    } finally {
+      await db.update(orders).set({ mode: 'live', providerObjectIds: {} })
+        .where(and(eq(orders.tenantId, ACME), eq(orders.id, 'order-acme-1')));
+    }
+  });
+
   it('paginates, filters by status, and isolates by tenant', async () => {
     const repo = createOrderRepository(db);
     const paid = await repo.list(ACME, { page: 1, pageSize: 20, status: 'paid' });

@@ -1,9 +1,12 @@
 # Declarative shop manifests
 
-Use `shop plan` and `shop apply` to configure existing workspaces and their
-physical-product catalogues from one JSON file. Both commands use the existing
-session management API through `core/client`; they do not create workspaces,
-configure integration credentials, upload images, or make payments.
+Use `shop plan`, `shop apply` and `shop drift` to manage workspaces and their
+physical-product catalogues from one JSON file. They use the existing typed
+`core/client` APIs: an owner session for workspace configuration, and optionally
+the trusted operator route to provision missing workspaces. Only
+`shop apply --integrations` configures integration credentials and registers
+Stripe webhooks. The tool never uploads images, creates payments or purchases
+shipments.
 
 ## Sign in first
 
@@ -74,6 +77,25 @@ format, not a tax recommendation.
           "deliveryEstimateDays": { "min": 2, "max": 4 }
         }
       ]
+    },
+    "integrations": {
+      "stripe": { "restrictedKeyEnv": "SHOP_STRIPE_TEST_KEY", "mode": "test" },
+      "shipx": {
+        "environment": "sandbox",
+        "organizationIdEnv": "SHOP_SHIPX_ORGANIZATION_ID",
+        "tokenEnv": "SHOP_SHIPX_TOKEN",
+        "sender": {
+          "name": "Acme",
+          "company": "Acme",
+          "email": "shipping@togethercommunity.app",
+          "phone": "123456789",
+          "street": "Example Street",
+          "buildingNumber": "1",
+          "city": "Example City",
+          "postCode": "00-001"
+        }
+      },
+      "parcelLocker": { "tokenEnv": "SHOP_GEOWIDGET_TOKEN" }
     }
   },
   "shops": [
@@ -111,6 +133,59 @@ format, not a tax recommendation.
           "published": true
         }
       ]
+    },
+    {
+      "workspace": {
+        "slug": "studio",
+        "provision": {
+          "name": "Studio Shop",
+          "ownerEmail": "owner@togethercommunity.app",
+          "defaultLanguage": "en"
+        }
+      },
+      "settings": {
+        "name": "Studio Shop",
+        "checkoutAppearance": { "displayName": "Studio Shop" }
+      },
+      "products": [
+        {
+          "slug": "hardback",
+          "title": "Hardback",
+          "description": "A printed hardback delivered by courier.",
+          "vatRate": 5,
+          "deliveryMethod": "shipping",
+          "parcelTemplate": "medium",
+          "price": { "amountCents": 6900, "currency": "PLN" },
+          "stock": { "onHand": 15 },
+          "published": true
+        }
+      ]
+    },
+    {
+      "workspace": {
+        "slug": "akademia",
+        "provision": {
+          "name": "Akademia Shop",
+          "ownerEmail": "owner@togethercommunity.app"
+        }
+      },
+      "settings": {
+        "name": "Akademia Shop",
+        "checkoutAppearance": { "displayName": "Akademia Shop" },
+        "shippingRates": []
+      },
+      "integrations": { "shipx": null, "parcelLocker": null },
+      "products": [
+        {
+          "slug": "printed-parts",
+          "title": "Printed Parts",
+          "description": "A set of printed parts for collection.",
+          "deliveryMethod": "pickup",
+          "price": { "amountCents": 2900, "currency": "PLN" },
+          "stock": { "onHand": 10 },
+          "published": true
+        }
+      ]
     }
   ]
 }
@@ -125,9 +200,11 @@ There is no new company membership, permission, credential inheritance or server
 resolver. Each shop still requires its own existing workspace permissions and
 integration configuration.
 
-`company` is optional and contains `settings`. Each shop has a required
-`workspace` slug, optional `settings`, and a required `products` array (which may
-be empty). Workspace slugs and product slugs within one shop must be unique.
+`company` is optional and may contain `settings` and/or `integrations`. Each
+shop has a required `workspace` (an existing slug string or the provisioning
+object below), optional `settings` and `integrations`, and a required `products`
+array (which may be empty). Workspace slugs and product slugs within one shop
+must be unique, including across string and object workspace forms.
 
 Effective settings merge company fields with shop fields. Shop values win,
 nested objects merge by field, arrays replace in full, and an explicit `null`
@@ -158,12 +235,110 @@ checks the effective exemption basis. Do not enable automatic multi-workspace
 KSeF issuance with shared seller credentials without a separate numbering design.
 
 Version 1 rejects unknown keys at every manifest object boundary, including
-nested settings, delivery estimates, prices, stock and compliance. It accepts no
-passwords, session tokens, API keys, payment secrets, ShipX credentials or storage
-credentials. Never embed credentials in URLs either. Provisioning and integration
-blocks are reserved for later additive extensions; they are not accepted by this
-version's schema. Analytics policy and unrelated workspace settings are outside
-this manifest's allow-list.
+provisioning, integrations, nested sender/settings fields, delivery estimates,
+prices, stock and compliance. It accepts no passwords, session tokens, operator
+secrets, inline Stripe/ShipX credentials or storage credentials. Integration
+credentials are referenced only by environment variable name. Never embed
+credentials in URLs either. Analytics policy and unrelated workspace settings
+are outside this manifest's allow-list.
+
+### Missing workspaces and operator provisioning
+
+Use `"workspace": "acme"` when creation is not allowed. If that workspace cannot
+be read, the command fails; it never silently provisions a string-only entry.
+For deliberate creation, use the object form from the complete example:
+`workspace.slug` plus `workspace.provision.name`, `ownerEmail`, and optional
+`defaultLanguage`. These are bootstrap inputs, not ongoing owner/team or name
+reconciliation. Manage the current name with `settings.name`.
+
+A `tenant_not_found` identity result for a provisioning entry is reported as
+`provisioning: "create"`; an accessible existing workspace is `"unchanged"`.
+Plan and drift need no operator secret. Authentication failures, permission
+failures, generic 404 errors and workspace mismatches are not converted into
+creation requests. Inactive workspaces may also be hidden by the server; the
+tool does not reactivate them or bypass that policy.
+
+For apply, inject `TOGETHER_SHOP_OPERATOR_SECRET` into the protected process
+environment using your secret manager. Its value must match the server's
+configured operator secret. There is no operator-secret flag or manifest field,
+and the tool never prints the value. When any selected workspace needs creation,
+a missing or empty variable fails apply before any write, including writes to
+other, already existing shops.
+
+The separate operator client targets the selected `--api-url` origin and sends
+`POST /api/internal/tenants/provision` with header
+`x-scheduler-operator-secret` and body `{slug, name, ownerEmail, defaultLanguage?}`.
+It does not attach the owner-session Bearer token. Workspace clients never
+receive that operator header. The existing route requires an already verified
+global owner account; it does not create an account or weaken production's
+self-service workspace-creation policy. Sign in as the owner who will administer
+the provisioned shops.
+
+The operator route is idempotent for the same slug and owner and rejects a slug
+owned by someone else. The tool skips provisioning when the selected session
+can already read that workspace. After all required provisioning calls it
+re-reads every selected workspace and rebuilds the configuration diff before
+further writes. A failed access check stops apply and reports any completed
+provisioning operations; it does not roll them back. Retry reads current state
+and does not create another workspace. The operator variable is unnecessary
+when all selected workspaces already exist and are accessible.
+
+### Explicit integration configuration
+
+Only `shop apply --integrations` resolves integration environment references or
+calls integration configure routes. Without that flag, apply leaves integrations
+alone; plan and drift always list each selected provider as
+`"skipped without --integrations"`. They do not inspect environment values,
+retrieve stored secrets, compare credential values, or contact providers.
+
+Company integration objects merge recursively with shop overrides, just like
+settings. Shop references win. Set a provider (`stripe`, `shipx` or
+`parcelLocker`) to `null` to opt that shop out; this skips configuration and does
+not delete an existing provider or its credentials. Omitted providers are
+unmanaged. Environment names must match `[A-Z_][A-Z0-9_]*`.
+
+| Manifest input | Environment value / accepted setting | Existing write route |
+| --- | --- | --- |
+| `stripe.restrictedKeyEnv` | Restricted Stripe key; never a webhook secret | `POST /api/integrations/stripe/configure` |
+| `stripe.mode` | Explicit `test` or `live`, matching the restricted key prefix | Same route |
+| `shipx.tokenEnv` | ShipX API token | `POST /api/integrations/shipx/configure` |
+| `shipx.organizationIdEnv` | Numeric ShipX organization ID | Same route |
+| `shipx.environment` | Optional `sandbox` or `production` | Same route |
+| `shipx.sender` | Optional existing sender object, or `null` to clear it | Same route |
+| `parcelLocker.tokenEnv` | Public InPost Geowidget token | `POST /api/tenant/settings` as `inpostGeowidgetToken` |
+
+ShipX fields are optional individually; at least one field must be supplied in
+a ShipX block. Sender fields are `name`, nullable `company`, `email`, Polish
+`phone`, `street`, `buildingNumber`, `city`, and `postCode`. The existing route's
+validation applies. Omitted fields preserve stored settings. This manifest does
+not expose credential deletion or shipment creation. The parcel-locker token is
+public checkout configuration, not a ShipX API token; do not manage it through
+both `settings.inpostGeowidgetToken` and `integrations.parcelLocker` in the same
+effective shop. Existing vendor-script document and load conditions are unchanged.
+
+The example uses `SHOP_STRIPE_TEST_KEY`, `SHOP_SHIPX_ORGANIZATION_ID`,
+`SHOP_SHIPX_TOKEN`, and `SHOP_GEOWIDGET_TOKEN`. Load their values from protected
+runtime configuration, not arguments, JSON, shell history or printed output.
+All selected shops' references, resolved route inputs, and Stripe key/mode
+compatibility are checked before any provisioning, settings or provider write.
+Missing variables and invalid values fail with sanitized validation errors.
+
+Each selected shop calls Stripe configure independently, even when the same
+company key references the same Stripe account. The existing provider flow
+registers that workspace's own webhook URL, endpoint ID and signing secret,
+preserving other workspaces and the other live/test slot. No signing secret,
+endpoint ID, customer, subscription or ledger is copied between shops or read
+back by the tool. Stripe permissions, endpoint capacity and credentials remain
+external preflight requirements, not guarantees made by this manifest.
+
+Every explicit integration apply calls configure again. In particular, Stripe
+configure can replace the selected workspace/slot endpoint and rotate its
+signing secret. It is not a read-only check or a credential-equality no-op.
+Use the flag deliberately for approved provider setup/rotation, not in a drift
+job or every catalogue update. On failure, completed operations remain applied;
+a provider transport failure can leave an uncertain external outcome. Inspect
+the provider/workspace state through the approved operational process before
+retrying. Never copy an old webhook secret into another workspace.
 
 ### Products
 
@@ -210,6 +385,14 @@ or checkout calculations. Existing publication prerequisites still apply.
 pnpm --silent run cli --json --api-url http://localhost:48730 shop plan --manifest ./shop.json
 pnpm --silent run cli --json --api-url http://localhost:48730 shop apply --manifest ./shop.json
 pnpm --silent run cli --json --api-url http://localhost:48730 shop plan --manifest ./shop.json --shop acme
+pnpm --silent run cli --json --api-url http://localhost:48730 shop drift --manifest ./shop.json
+```
+
+For separately approved sandbox/provider setup, after loading the documented
+environment variables in a protected environment:
+
+```bash
+pnpm --silent run cli --json --api-url http://localhost:48730 shop apply --manifest ./shop.json --integrations
 ```
 
 `plan` only reads. Its per-shop report includes settings field names to change
@@ -221,25 +404,31 @@ manifest/parser/server error values. `unmanaged` distinguishes an omitted stock
 or cover from a managed field already at its target.
 
 `apply` recomputes that same plan from current state; it does not consume a saved
-plan file. It preflights all selected shops before the first write. Within each
-shop, writes are serial and run in this order:
+plan file. It preflights all selected shops and required environment inputs
+before the first write. Missing workspaces are provisioned first, followed by a
+new configuration preflight. Within each shop, writes are serial and run in this
+order:
 
 1. Changed workspace settings.
-2. All product creations and metadata updates by slug.
-3. Active prices: add a replacement if needed, then deactivate alternatives.
-4. Stock enablement or on-hand adjustments.
-5. Cover attachment or clearing.
-6. Publication changes.
+2. With `--integrations` only: Stripe, ShipX, then parcel-locker configuration.
+3. All product creations and metadata updates by slug.
+4. Active prices: add a replacement if needed, then deactivate alternatives.
+5. Stock enablement or on-hand adjustments.
+6. Cover attachment or clearing.
+7. Publication changes.
 
 A successful apply returns the executed plan and an `applied` operation list.
-Run apply again without external changes and every managed item is unchanged,
-with an empty `applied` list and no writes. There is no extra price on rerun.
+Run apply again without `--integrations` or external changes and every managed
+item is unchanged, with an empty `applied` list and no writes. There is no extra
+price or workspace on rerun. Explicit integration configuration is deliberately
+repeated whenever its flag is present.
 
 On the first API error, apply stops immediately. The ordinary failure envelope
 retains the existing error code, identifies the failed operation/workspace under
 `error.details.failure`, and lists successful earlier writes under
 `error.details.applied`; human output includes the same operation list in the
-error message. An API read failure during preflight means no writes have begun.
+error message. An API read failure during the initial preflight means no writes
+have begun; a read failure after provisioning reports that completed prefix.
 The process exit code comes from the existing CLI error taxonomy, for example
 validation = 2 and authentication required = 3.
 
@@ -251,3 +440,25 @@ Serialize applies and avoid concurrent catalogue edits, stock writers or sales
 while reconciling an absolute on-hand target: the existing stock route accepts a
 delta, not a compare-and-set operation. A plan is a preview, not a lock on live
 workspace state. No production or provider mutation is implied by this guide.
+
+## Scheduled drift detection
+
+`shop drift --manifest ./shop.json` performs the same read-only diff as plan and
+adds `drifted: true|false`. It accepts the same `--shop <slug>` filter and never
+accepts `--integrations`. In JSON mode it emits exactly one normal envelope;
+ordinary drift is a successful read (`ok: true`), not an API failure.
+
+- Exit `0`: every managed workspace setting/product is at its target.
+- Exit `1`: at least one workspace needs provisioning, a settings field differs,
+  or a managed product/price/stock/cover/publication action is pending.
+- Read, authentication and validation errors retain the existing CLI taxonomy
+  (for example validation `2`, authentication required `3`), with `ok: false`.
+  Treat these as failed checks, not evidence that state is synchronized.
+
+This lets a scheduled job detect unapplied company changes without reapplying
+secrets or contacting payment/shipping providers. Integrations remain listed as
+skipped and do not make `drifted` true: the tool intentionally cannot compare
+stored credential values. Omitted fields and products absent from the manifest
+are also unmanaged, not drift. A converged drift report is not payment-provider
+readiness evidence. Keep the owner session fresh and store the manifest and
+session profile in protected automation storage.

@@ -241,6 +241,33 @@ describe('create InPost shipment', () => {
     expect(retry.calls.buy).toEqual([{ shipmentId: '1001', offerId: '77' }]);
   });
 
+  it('confirms the purchase of a stored tracking number that is not bought yet before shipping the order', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'offer_selected', trackingNumber: TRACKING });
+    const unpaid = createScriptedShipxClient({ polls: [(id) => ok(remoteShipment(id, { status: 'offer_selected', trackingNumber: TRACKING }))] });
+    h.deps.shipx.real = unpaid.client;
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'shipx_unavailable', details: { state: 'pending', shipmentId: '1001', status: 'offer_selected' } },
+    });
+    expect(unpaid.calls.get.length).toBeGreaterThan(0);
+    expect(h.ship).not.toHaveBeenCalled();
+
+    const paid = createScriptedShipxClient();
+    h.deps.shipx.real = paid.client;
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(paid.calls.get).toEqual(['1001']);
+    expect(h.ship).toHaveBeenCalledTimes(1);
+  });
+
+  it('ships a stored bought shipment without reading ShipX again', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.ship.mock.calls[0]?.[1].shipment.trackingNumber).toBe(TRACKING);
+  });
+
   it('keeps the order to pack and surfaces the ShipX reason when buying is rejected', async () => {
     const real = createScriptedShipxClient({
       polls: [(id) => ok(remoteShipment(id, {

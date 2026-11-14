@@ -458,7 +458,7 @@ const runShipment = async (
   }
 
   let trackingNumber = run.shipment.trackingNumber;
-  if (remote !== null || trackingNumber === null) {
+  if (remote !== null || !shipxShipmentBought(run.shipment)) {
     const bought = remote !== null && shipxShipmentBought(remote)
       ? ok(remote)
       : await pollUntilBought(scoped, client.value, shipmentId, !createdNow, deps);

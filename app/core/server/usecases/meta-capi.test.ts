@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { err, notFound, ok, orderSchema, tenantSettingsSchema, type Identity, type MetaCapiEvent } from '#core/domain/index.js';
-import type { MetaCapiJob, MetaCapiRepository } from '../meta-capi-ports.js';
+import type { MetaCapiJob, MetaCapiRepository, MetaCapiWorkspaceReaders } from '../meta-capi-ports.js';
 import { dispatchMetaCapi, getMetaCapiConfig, listMetaCapiEvents, recordPublicMetaCapiConsent, withdrawMetaCapiConsent, type MetaCapiDispatchDeps } from './meta-capi.js';
 
 const now = '2026-11-01T10:00:00.000Z';
@@ -22,11 +22,12 @@ const harness = () => {
     attempts: 0, capture: { at: now, ip: null, userAgent: null, fbp: null, textVersion: version, textSnapshot: '{}' },
   };
   let due = now;
+  const workspace: MetaCapiWorkspaceReaders = { tenants: { findSettings: async () => settings }, secrets: { resolve: async () => ok('secret-token') } };
   const repository: MetaCapiRepository = {
     findOrder: async (tenantId) => tenantId === 'workspace' ? job : null,
     decide: async (tenantId, access, decide) => {
       if (tenantId !== 'workspace' || ('memberId' in access && access.memberId !== job.order.memberId)) return err(notFound());
-      const result = await decide(job);
+      const result = await decide(job, workspace);
       if (!result.ok) return result;
       if (result.value.decision === 'withdrawn') { job.consent.withdrawnAt ??= time; pending = false; }
       else if (job.consent.consent === 'undecided' && job.consent.withdrawnAt === null) {
@@ -39,7 +40,7 @@ const harness = () => {
     listDueTenantIds: async () => (await deps.directory.listAll()).map(({ id }) => id),
     processNext: async (_tenantId, at, process) => {
       if (!pending || due > at) return false;
-      const result = await process(job);
+      const result = await process(job, workspace);
       if ('event' in result) { events.push(result.event); pending = false; }
       else { due = result.retryAt; job.attempts += 1; }
       return true;
@@ -54,7 +55,7 @@ const harness = () => {
   const decide = (decision: 'granted' | 'denied' | 'withdrawn', textVersion = version) => recordPublicMetaCapiConsent('workspace',
     { sessionId: 'cs_live_purchase', decision, textVersion, fbp: 'fb.1.1793527200000.123' },
     { ip: '192.0.2.1', userAgent: 'Browser' }, deps);
-  return { deps, job, settings, send, events, decide, setTime: (value: string) => { time = value; } };
+  return { deps, workspace, job, settings, send, events, decide, setTime: (value: string) => { time = value; } };
 };
 
 describe('Meta CAPI use cases', () => {
@@ -181,7 +182,7 @@ describe('Meta CAPI use cases', () => {
     h.deps.repository.processNext = async (tenantId, _at, process) => {
       if (tenantId === 'later' && !laterPending) return false;
       if (tenantId === 'later') laterPending = false;
-      await process({ ...h.job, order: { ...h.job.order, tenantId } });
+      await process({ ...h.job, order: { ...h.job.order, tenantId } }, h.workspace);
       processed.push(tenantId);
       return true;
     };
@@ -276,7 +277,7 @@ describe('Meta CAPI use cases', () => {
   });
   it.each(['granted', 'denied'] as const)('rejects a %s decision without recording it while the access token is missing', async (decision) => {
     const h = harness();
-    h.deps.secrets = { resolve: vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound())) };
+    h.workspace.secrets = { resolve: vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound())) };
     expect(await h.decide(decision)).toMatchObject({ ok: false, error: { code: 'validation', message: 'Meta conversion consent is unavailable' } });
     expect(h.job.consent).toEqual({ consent: 'undecided', withdrawnAt: null });
     expect(h.job.consentAt).toBeNull();
@@ -288,19 +289,23 @@ describe('Meta CAPI use cases', () => {
     await h.decide('granted');
     const resolve = vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound()));
     h.deps.secrets = { resolve };
+    h.workspace.secrets = { resolve };
     expect(await h.decide('withdrawn')).toMatchObject({ ok: true, value: { consent: 'granted', withdrawnAt: now } });
     expect(await withdrawMetaCapiConsent({ identity }, { orderId: 'purchase' }, h.deps)).toMatchObject({ ok: true, value: { withdrawnAt: now } });
     expect(resolve).not.toHaveBeenCalled();
   });
-  it('answers a repeated decision on a decided order with the recorded state while the access token is missing', async () => {
+  it('answers a repeated decision on a decided order with the stored state without reading the access token', async () => {
     const h = harness();
-    await h.decide('denied');
+    await h.decide('granted');
     const recorded = structuredClone(h.job.capture);
-    h.deps.secrets = { resolve: vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(async () => err(notFound())) };
-    expect(await h.decide('granted')).toMatchObject({ ok: true, value: { consent: 'denied', withdrawnAt: null } });
+    const resolve = vi.fn<MetaCapiDispatchDeps['secrets']['resolve']>(() => Promise.reject(new Error('Secret store unavailable')));
+    h.deps.secrets = { resolve };
+    h.workspace.secrets = { resolve };
+    expect(await h.decide('denied')).toEqual({ ok: true, value: { consent: 'granted', withdrawnAt: null } });
+    expect(resolve).not.toHaveBeenCalled();
     expect(h.job.capture).toEqual(recorded);
   });
-  it('reads the workspace settings and the access token before the repository locks the order', async () => {
+  it('reads the workspace settings and the access token only through the readers the repository passes under the order lock', async () => {
     const h = harness();
     let locked = false;
     const underLock = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -308,16 +313,20 @@ describe('Meta CAPI use cases', () => {
       try { return await run(); } finally { locked = false; }
     };
     const { decide, processNext } = h.deps.repository;
-    h.deps.repository.decide = async (tenantId, access, callback) => decide(tenantId, access, async (current) => underLock(async () => callback(current)));
-    h.deps.repository.processNext = async (tenantId, at, process) => processNext(tenantId, at, async (job) => underLock(async () => process(job)));
-    const readsUnderLock: boolean[] = [];
-    h.deps.tenants = { findSettings: async () => { readsUnderLock.push(locked); return h.settings; } };
-    h.deps.secrets = { resolve: async () => { readsUnderLock.push(locked); return ok('secret-token'); } };
+    h.deps.repository.decide = async (tenantId, access, callback) => decide(tenantId, access, async (current, workspace) => underLock(async () => callback(current, workspace)));
+    h.deps.repository.processNext = async (tenantId, at, process) => processNext(tenantId, at, async (job, workspace) => underLock(async () => process(job, workspace)));
+    const unavailable = () => Promise.reject(new Error('The shared pool must not be read'));
+    h.deps.tenants = { findSettings: unavailable };
+    h.deps.secrets = { resolve: unavailable };
+    const reads: { reader: string; locked: boolean }[] = [];
+    h.workspace.tenants = { findSettings: async () => { reads.push({ reader: 'settings', locked }); return h.settings; } };
+    h.workspace.secrets = { resolve: async () => { reads.push({ reader: 'secret', locked }); return ok('secret-token'); } };
+    const warn = vi.fn();
     expect(await h.decide('granted')).toMatchObject({ ok: true, value: { consent: 'granted' } });
-    await dispatchMetaCapi(h.deps);
+    await dispatchMetaCapi({ ...h.deps, logger: { warn } });
     expect(h.send).toHaveBeenCalledOnce();
-    expect(readsUnderLock.length).toBeGreaterThanOrEqual(4);
-    expect(readsUnderLock).not.toContain(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(reads).toEqual(['settings', 'secret', 'settings', 'secret'].map((reader) => ({ reader, locked: true })));
   });
   it('rejects new consent and blocks dispatch for a deleted member', async () => {
     const h = harness();

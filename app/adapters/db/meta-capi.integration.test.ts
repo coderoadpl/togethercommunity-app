@@ -10,6 +10,7 @@ import pg from 'pg';
 import { createTestDatabase } from './test-database-name.js';
 import * as schema from './schema.js';
 import { members, metaCapiConsentEvidence, metaCapiEvents, metaCapiOutbox, orders, products, tenants, user } from './schema.js';
+import type { Db } from './client.js';
 
 const now = '2026-11-01T10:00:00.000Z';
 const capture = { at: now, ip: '192.0.2.1', userAgent: 'Browser', fbp: 'fb.1.1793527200000.123', textVersion: 'a'.repeat(64), textSnapshot: '{"body":"Consent"}' };
@@ -27,7 +28,9 @@ const makeOrder = async (id: string, tenantId = 'workspace', memberId = 'buyer',
     amountCents: 9900, currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: `cs_live_${id}` }, paidAt: now, createdAt: now });
   return { sessionId: `cs_live_${id}` };
 };
-const repository = () => createMetaCapiRepository(database.db, async () => 'https://workspace.example.org');
+const readersAt = (origin: string) => (connection: Db) => ({ tenants: createTenantRepository(connection),
+  secrets: { resolve: async () => ok('test-token') }, resolveOrigin: async () => origin });
+const repository = () => createMetaCapiRepository(database.db, readersAt('https://workspace.example.org'));
 const sent = (id: string): MetaCapiJobOutcome => ({ event: { tenantId: 'workspace', transactionId: id, orderId: id, consentAt: now,
   eventTime: now, sentAt: now, recordedAt: now, status: 'sent', fbtraceId: 'trace', error: null, fieldsSent: ['user_data.em'] } });
 
@@ -174,7 +177,7 @@ describe('Meta privacy and failure isolation', () => {
   });
   it('backs off a poisoned first row, sends the next job and tenant, and terminates after four attempts', async () => {
     const warn = vi.fn();
-    const repo = createMetaCapiRepository(database.db, async () => 'https://example.org', { warn });
+    const repo = createMetaCapiRepository(database.db, readersAt('https://example.org'), { warn });
     for (const id of ['poison', 'following']) {
       const access = await makeOrder(id);
       await repo.decide('workspace', access, async () => ok({ decision: 'granted', capture }));
@@ -302,7 +305,7 @@ it('looks up a return-page session through the checkout-session index', async ()
   const queries: { query: string; params: unknown[] }[] = [];
   try {
     const logged = drizzle(pool, { schema, logger: { logQuery: (query, params) => { queries.push({ query, params }); } } });
-    expect((await createMetaCapiRepository(logged, async () => 'https://workspace.example.org').findOrder('workspace', access))?.order.id).toBe('indexed');
+    expect((await createMetaCapiRepository(logged, readersAt('https://workspace.example.org')).findOrder('workspace', access))?.order.id).toBe('indexed');
     const lookup = queries.find(({ query }) => query.includes('checkoutSession'));
     if (lookup === undefined) throw new Error('Missing checkout-session lookup');
     const client = await pool.connect();

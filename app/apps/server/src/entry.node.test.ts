@@ -180,16 +180,19 @@ describe('entry.node composition', () => {
     let pending = true;
     const events: MetaCapiEvent[] = [];
     const send = vi.fn<MetaCapiDispatchDeps['gateway']['send']>(async () => ({ ok: true, fbtraceId: 'trace' }));
+    const workspace = {
+      tenants: { findSettings: async () => tenantSettingsSchema.parse({ name: 'Workspace', billingPortalUrl: null,
+        bunnyStreamLibraryId: null, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890' }) },
+      secrets: { resolve: async () => ok('test-token') },
+    };
     harness.deps.metaCapi = {
       clock: { nowIso: () => now }, hash: { sha256: () => 'a'.repeat(64) },
       directory: { listAll: async () => [tenantSchema.parse({ id: 'workspace', slug: 'workspace', name: 'Workspace', status: 'active', plan: 'self_hosted', contentVersion: 1 })] },
-      tenants: { findSettings: async () => tenantSettingsSchema.parse({ name: 'Workspace', billingPortalUrl: null,
-        bunnyStreamLibraryId: null, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890' }) },
-      secrets: { resolve: async () => ok('test-token') }, gateway: { send },
+      ...workspace, gateway: { send },
       repository: { findOrder: async () => job, decide: async () => err(notFound()), listMemberConsents: async () => [], listDueTenantIds: async () => ['workspace'],
         listEvents: async () => events, processNext: async (_tenantId, _at, process) => {
           if (!pending) return false;
-          const outcome = await process(job);
+          const outcome = await process(job, workspace);
           if ('event' in outcome) { events.push(outcome.event); pending = false; }
           return true;
         } },

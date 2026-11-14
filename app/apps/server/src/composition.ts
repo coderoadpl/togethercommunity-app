@@ -917,11 +917,12 @@ export const createDeps = (
     env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname;
   const notificationRepository = createNotificationRepository(db);
   const publicRateLimitBuckets = createPublicRateLimitRepository(db);
-  const tenants = createTenantRepository(db, singleTenantMode
+  const tenantRepositoryOptions = singleTenantMode
     ? {
         onMultipleTenants: createMultipleTenantsReporter(),
       }
-    : undefined);
+    : undefined;
+  const tenants = createTenantRepository(db, tenantRepositoryOptions);
   const tenantAccess = createTenantAccessReader(db);
   const accountSecurity = createAccountSecurityReader(db);
   const consents = createTermsConsentRepository(db);
@@ -1030,6 +1031,16 @@ export const createDeps = (
   const resolveOrigin = createTenantOriginResolver({
     tenants, tenantDomains, appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
   });
+  const metaCapiReaders = (connection: Db) => {
+    const connectionTenants = createTenantRepository(connection, tenantRepositoryOptions);
+    return {
+      tenants: connectionTenants,
+      secrets: createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      resolveOrigin: createTenantOriginResolver({
+        tenants: connectionTenants, tenantDomains: createTenantDomainRepository(connection), appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
+      }),
+    };
+  };
   const unsubscribeBaseUrl = async (tenantId: string): Promise<string> => `${await resolveOrigin(tenantId)}/u`;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants,
@@ -1511,7 +1522,7 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
-    metaCapi: { repository: createMetaCapiRepository(db, resolveOrigin, logger), tenants, clock, hash: contentHash, logger,
+    metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
     shipxIntegration: {

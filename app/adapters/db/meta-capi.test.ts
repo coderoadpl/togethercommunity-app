@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
-import { ok } from '#core/domain/index.js';
+import { err, notFound, ok } from '#core/domain/index.js';
 import { createMetaCapiRepository } from './meta-capi.js';
 import * as schema from './schema.js';
 
@@ -13,7 +13,8 @@ const capture = { at: now, ip: identifiers[2] ?? null, userAgent: identifiers[3]
 const setup = (code: string) => {
   const client = new pg.Client();
   const query = vi.spyOn(client, 'query').mockRejectedValue(Object.assign(new Error(identifiers.join(' ')), { code }));
-  const repository = createMetaCapiRepository(drizzle(client, { schema }), async () => 'https://example.org');
+  const repository = createMetaCapiRepository(drizzle(client, { schema }), () => ({ tenants: { findSettings: async () => null },
+    secrets: { resolve: async () => err(notFound()) }, resolveOrigin: async () => 'https://example.org' }));
   return { repository, query };
 };
 

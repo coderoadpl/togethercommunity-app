@@ -1,4 +1,5 @@
 import type { AppError, MetaCapiState, MetaCapiEvent, MetaCapiPayload, Order, Result } from '#core/domain/index.js';
+import type { TenantRepository, TenantSecretResolver } from './ports.js';
 
 export interface MetaCapiOrder {
   order: Order;
@@ -26,11 +27,15 @@ export interface MetaCapiJob extends MetaCapiOrder {
   attempts: number;
 }
 export type MetaCapiJobOutcome = { event: MetaCapiEvent } | { retryAt: string };
+export interface MetaCapiWorkspaceReaders {
+  tenants: Pick<TenantRepository, 'findSettings'>;
+  secrets: TenantSecretResolver;
+}
 export interface MetaCapiRepository {
   findOrder(tenantId: string, access: MetaCapiOrderAccess): Promise<MetaCapiOrder | null>;
-  decide(tenantId: string, access: MetaCapiOrderAccess, decide: (current: MetaCapiOrder) => Promise<Result<MetaCapiDecisionWrite, AppError>>): Promise<Result<MetaCapiState, AppError>>;
+  decide(tenantId: string, access: MetaCapiOrderAccess, decide: (current: MetaCapiOrder, workspace: MetaCapiWorkspaceReaders) => Promise<Result<MetaCapiDecisionWrite, AppError>>): Promise<Result<MetaCapiState, AppError>>;
   listDueTenantIds(now: string): Promise<string[]>;
-  processNext(tenantId: string, now: string, process: (job: MetaCapiJob) => Promise<MetaCapiJobOutcome>): Promise<boolean>;
+  processNext(tenantId: string, now: string, process: (job: MetaCapiJob, workspace: MetaCapiWorkspaceReaders) => Promise<MetaCapiJobOutcome>): Promise<boolean>;
   listEvents(tenantId: string): Promise<MetaCapiEvent[]>;
   listMemberConsents(tenantId: string, memberId: string): Promise<(MetaCapiState & { orderId: string; consentAt: string | null })[]>;
 }

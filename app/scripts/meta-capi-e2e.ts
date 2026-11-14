@@ -81,7 +81,9 @@ try {
   assert.equal(evidence[0]?.textVersion, createHash('sha256').update(englishSnapshot).digest('hex'));
   let deliveries = 0;
   const dispatched = await dispatchMetaCapi({
-    repository: createMetaCapiRepository(database.db, async () => origin), tenants: createTenantRepository(database.db), directory: createTenantDirectory(database.db),
+    repository: createMetaCapiRepository(database.db, (connection) => ({ tenants: createTenantRepository(connection),
+      secrets: { resolve: async () => ok('local-test-token') }, resolveOrigin: async () => origin })),
+    tenants: createTenantRepository(database.db), directory: createTenantDirectory(database.db),
     clock: { nowIso: () => new Date().toISOString() }, hash: { sha256: (value) => createHash('sha256').update(value).digest('hex') },
     secrets: { resolve: async () => ok('local-test-token') },
     gateway: { send: async (_tenantId, input) => {

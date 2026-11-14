@@ -22,17 +22,18 @@ const harness = (limited = false) => {
     priceId: null, kind: 'one_time', status: 'paid', amountCents: 9900, currency: 'PLN', provider: 'stripe',
     providerObjectIds: { checkoutSession: 'cs_live_purchase' }, couponId: null, discountCents: 0, paidAt: now, createdAt: now }),
     consent: { consent: 'undecided', withdrawnAt: null }, consentAt: null, memberDeleted: false, email: 'buyer@example.org', sourceUrl: 'https://workspace.example.org/offer/book' };
+  const tenants: TenantRepository = { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
+    findSettings: async () => settings, updateSettings: async (_tenantId, next) => next, createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true };
+  const secrets = { resolve: async () => ok('never-returned-token') };
   const decide = vi.fn<MetaCapiRepository['decide']>(async (_tenantId, _access, action) => {
-    const result = await action(current);
+    const result = await action(current, { tenants, secrets });
     if (!result.ok) return result;
     return ok({ consent: result.value.decision === 'withdrawn' ? 'granted' : result.value.decision,
       withdrawnAt: result.value.decision === 'withdrawn' ? now : null });
   });
   const listEvents = vi.fn(async () => []);
-  const tenants: TenantRepository = { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
-    findSettings: async () => settings, updateSettings: async (_tenantId, next) => next, createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true };
   const metaCapi: MetaCapiDispatchDeps = { tenants, clock: { nowIso: () => now }, hash: { sha256: () => version },
-    secrets: { resolve: async () => ok('never-returned-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+    secrets, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
     directory: { listAll: async () => [tenant] }, repository: { decide, findOrder: async () => current,
       listDueTenantIds: async () => [], processNext: async () => false, listEvents, listMemberConsents: async () => [{ orderId: 'purchase', consent: 'granted', consentAt: now, withdrawnAt: null }] } };
   const deps = { metaCapi, tenants, tenantDomains: tenantDomainRepositoryStub({}), baseDomain: 'example.org', platformHost: null,

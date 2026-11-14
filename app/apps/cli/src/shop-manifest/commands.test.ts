@@ -43,13 +43,29 @@ describe('shop manifest command boundary', () => {
     expect(await readManifestFile(join(path, 'missing'))).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it.each(['plan', 'apply'])('%s emits one failure envelope and uses the validation exit code', async (command) => {
+  it.each(['plan', 'apply', 'drift'])('%s emits one failure envelope and uses the validation exit code', async (command) => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const path = await inputFile('not JSON');
     await program().parseAsync(['--json', 'shop', command, '--manifest', path], { from: 'user' });
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
+  });
+
+  it('emits the drift diff in one successful envelope but exits 1 when a managed setting differs', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      expect(init?.method).toBe('GET');
+      const path = new URL(String(input)).pathname;
+      const data = path === '/api/me' ? { userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null, banned: false } }
+        : path === '/api/tenant/settings' ? { settings: tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null }) } : { products: [] };
+      return Response.json({ ok: true, data });
+    });
+    const path = await inputFile(JSON.stringify({ version: 1, company: { settings: { invoiceSellerName: 'Studio' } }, shops: [{ workspace: 'acme', products: [] }] }));
+    await program().parseAsync(['shop', 'drift', '--manifest', path], { from: 'user' });
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { drifted: true, shops: [{ settings: { change: ['invoiceSellerName'] } }] } });
+    expect(process.exitCode).toBe(1);
   });
 
   it('passes the integrations opt-in and environment values only to the existing configure route', async () => {
@@ -77,7 +93,7 @@ describe('shop manifest command boundary', () => {
     for (const call of log.mock.calls) expect(String(call[0])).not.toContain('rk_test_private-fixture');
   });
 
-  it.each(['plan', 'apply'])('%s sends the session and shop selector through the typed client without writes for an empty catalogue', async (command) => {
+  it.each(['plan', 'apply', 'drift'])('%s sends the session and shop selector through the typed client without writes for an empty catalogue', async (command) => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       expect(new URL(String(input)).hostname).toBe('acme.togethercommunity.app');

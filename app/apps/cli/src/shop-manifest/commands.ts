@@ -7,6 +7,7 @@ import { err, ok, validation, type AppError, type Result } from '#core/domain/in
 import { emit } from '../output.js';
 import { planManifest } from './plan.js';
 import { applyManifest } from './apply.js';
+import { driftManifest } from './drift.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
 const optionsSchema = z.object({ manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional() }).strict();
@@ -32,10 +33,15 @@ export const readManifestFile = async (path: string): Promise<Result<unknown, Ap
 };
 
 export const registerShopManifestCommands = (program: Command, context: () => Result<ManifestCliContext, AppError>): void => {
-  const shop = program.command('shop').description('Plan and apply a declarative shop manifest');
-  for (const command of ['plan', 'apply'] as const) {
+  const shop = program.command('shop').description('Plan, apply and detect drift from a declarative shop manifest');
+  const descriptions = {
+    plan: 'Preview settings and catalogue changes without writing',
+    apply: 'Apply settings and catalogue changes, stopping at the first error',
+    drift: 'Read the plan and exit nonzero when managed workspace state differs',
+  };
+  for (const command of ['plan', 'apply', 'drift'] as const) {
     const subcommand = shop.command(command)
-      .description(command === 'plan' ? 'Preview settings and catalogue changes without writing' : 'Apply settings and catalogue changes, stopping at the first error')
+      .description(descriptions[command])
       .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace');
     if (command === 'apply') subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks');
     subcommand.action(async (raw: unknown) => {
@@ -56,6 +62,12 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
           [TENANT_HEADER]: workspace,
         }),
       });
+      if (command === 'drift') {
+        const result = await driftManifest(input.value, clientFor, options.data.shop);
+        emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
+        if (result.ok && result.value.drifted) process.exitCode = 1;
+        return;
+      }
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {

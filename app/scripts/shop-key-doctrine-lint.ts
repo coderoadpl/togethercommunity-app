@@ -12,6 +12,11 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     reason: 'must record the dated owner decision on shop management keys',
   },
   {
+    file: 'app/CLAUDE.md',
+    text: 'A key with `shop:fulfilment:write` can create carrier shipments (InPost ShipX) for its workspace\'s orders, which the carrier charges for.',
+    reason: 'must state in the owner decision that the fulfilment scope can buy carrier shipments',
+  },
+  {
     file: 'app/docs/security.md',
     section: '## Tenant API keys',
     text: 'owner decision 2026-11-14',

@@ -192,6 +192,8 @@ including delivery, carrier and payment configuration. Workspace-bound,
 expiring, revocable keys with explicit scopes may therefore call the shop
 management routes under `/api/m2m/shop`; a key with `shop:integrations:write`
 may configure the payment account of its workspace, including the live slot.
+A key with `shop:fulfilment:write` can create carrier shipments (InPost ShipX)
+for its workspace's orders, which the carrier charges for.
 Keys are created and revoked only by a verified owner in their own session,
 never by another key. Risk accepted by the owner: whoever holds such a key can
 change that workspace's shop and, with the integration scope, its payment

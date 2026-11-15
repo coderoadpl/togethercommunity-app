@@ -365,6 +365,8 @@ describe('shop settings and branding CLI', () => {
     ]);
     expect(calls[0]?.body).toEqual({ kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: 4 });
     expect(calls[1]?.headers.has('x-api-key')).toBe(false);
+    expect(calls[1]?.headers.has('x-tenant')).toBe(false);
+    expect(calls[1]?.headers.has('authorization')).toBe(false);
     expect(calls[1]?.headers.get('content-type')).toBe('image/png');
     expect(calls[2]?.body).toEqual({ key: 'image-asset-candidates/acme/logo/1.png' });
     await rm(directory, { recursive: true });
@@ -399,6 +401,7 @@ describe('shop cover and sales-links CLI', () => {
       ]);
       expect(calls[0]?.body).toEqual({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4 });
       expect(calls[1]?.headers.has('x-api-key')).toBe(false);
+      expect(calls[1]?.headers.has('x-tenant')).toBe(false);
       expect(calls[1]?.headers.has('authorization')).toBe(false);
       expect(calls[1]?.headers.get('content-type')).toBe('image/png');
       expect(calls[3]?.body).toEqual({ id: 'product-1', coverUrl: '/api/public/assets/product-cover/1.png' });

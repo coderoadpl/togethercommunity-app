@@ -11,7 +11,11 @@ import {
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
   apiKeysShopManagementPurgeOutputSchema,
+  SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
+  SHOP_INTEGRATION_ROUTES,
+  SHOP_ORDER_ROUTES,
+  SHOP_SETTINGS_ROUTES,
 } from '#core/contract/index.js';
 
 import { buildApp } from './app.js';
@@ -139,6 +143,14 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
     ['GET', SHOP_CATALOG_ROUTES.listProducts.path, {}],
     ['POST', SHOP_CATALOG_ROUTES.createProduct.path, { 'content-type': 'application/json' }],
     ['DELETE', SHOP_CATALOG_ROUTES.listProducts.path, {}],
+    ['GET', SHOP_ORDER_ROUTES.listOrders.path, {}],
+    ['POST', SHOP_ORDER_ROUTES.shipxLabel.path.replace(':orderId', 'order-1'), { 'content-type': 'application/json' }],
+    ['POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { 'content-type': 'application/json' }],
+    ['POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, { 'content-type': 'application/json' }],
+    ['POST', SHOP_ASSETS_ROUTES.productCoverUpload.path, { 'content-type': 'application/json' }],
+    ['GET', SHOP_ASSETS_ROUTES.listSalesLinks.path, {}],
+    ['POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { 'content-type': 'application/json' }],
+    ['GET', SHOP_INTEGRATION_ROUTES.shipxSettings.path, {}],
     ['GET', '/api/m2m/shop/unknown-path', {}],
     ['POST', '/api/m2m/shop/unknown-path', {}],
     ['GET', '/api/m2m/shop', {}],

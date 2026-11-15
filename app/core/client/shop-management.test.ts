@@ -138,6 +138,57 @@ describe('shop management client', () => {
     }
   });
 
+  it('refuses a redirect on order, settings, upload, sales-link and integration calls without sending the key there', async () => {
+    const targetKeys: Array<string | undefined> = [];
+    const target = await listen(createServer((request, response) => {
+      const key = request.headers['x-api-key'];
+      targetKeys.push(typeof key === 'string' ? key : undefined);
+      response.writeHead(200, { 'content-type': 'application/pdf' });
+      response.end('%PDF-1.4');
+    }));
+    const sourcePaths: string[] = [];
+    const source = await listen(createServer((request, response) => {
+      sourcePaths.push(`${request.method ?? ''} ${request.url ?? ''}`);
+      response.writeHead(307, { location: `${target.baseUrl}/collected` });
+      response.end();
+    }));
+    try {
+      const client = createShopManagementClient({ baseUrl: source.baseUrl, apiKey: 'shop-secret', tenant: 'acme' });
+      const bytes = new Uint8Array([137, 80, 78, 71]);
+      const results = [
+        await client.shipxLabel({ orderId: 'order-1' }),
+        await client.listOrders(),
+        await client.updateSettings({ supportUrl: null }),
+        await client.uploadBrandingAsset({ kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: bytes.byteLength, body: bytes }),
+        await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: bytes.byteLength, body: bytes }),
+        await client.createSalesLink(salesLinkFields),
+        await client.configureShipx({ environment: 'sandbox' }),
+      ];
+      expect(results.map((result) => result.ok ? 'ok' : result.error.message)).toEqual([
+        'Shop management request to /api/m2m/shop/orders/order-1/shipx/label refused a redirect',
+        `Shop management request to ${SHOP_ORDER_ROUTES.listOrders.path} refused a redirect`,
+        `Shop management request to ${SHOP_SETTINGS_ROUTES.updateSettings.path} refused a redirect`,
+        `Shop management request to ${SHOP_SETTINGS_ROUTES.brandingAssetUpload.path} refused a redirect`,
+        `Shop management request to ${SHOP_ASSETS_ROUTES.productCoverUpload.path} refused a redirect`,
+        `Shop management request to ${SHOP_ASSETS_ROUTES.createSalesLink.path} refused a redirect`,
+        `Shop management request to ${SHOP_INTEGRATION_ROUTES.shipxConfigure.path} refused a redirect`,
+      ]);
+      expect(sourcePaths).toEqual([
+        'POST /api/m2m/shop/orders/order-1/shipx/label',
+        `GET ${SHOP_ORDER_ROUTES.listOrders.path}`,
+        `POST ${SHOP_SETTINGS_ROUTES.updateSettings.path}`,
+        `POST ${SHOP_SETTINGS_ROUTES.brandingAssetUpload.path}`,
+        `POST ${SHOP_ASSETS_ROUTES.productCoverUpload.path}`,
+        `POST ${SHOP_ASSETS_ROUTES.createSalesLink.path}`,
+        `POST ${SHOP_INTEGRATION_ROUTES.shipxConfigure.path}`,
+      ]);
+      expect(targetKeys).toEqual([]);
+    } finally {
+      await source.close();
+      await target.close();
+    }
+  });
+
   it('refuses a same-origin redirect too', async () => {
     const paths: string[] = [];
     const server = await listen(createServer((request, response) => {

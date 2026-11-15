@@ -593,8 +593,8 @@ or use `createShopManagementClient`, which does that and returns a
 | Status | `error.code` | When | CLI exit code | What the backend does |
 |---|---|---|---|---|
 | 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode | 2 | Fix the request; never retry unchanged |
-| 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a cookie or `Authorization` header on the request | 3 | Stop and alert; rotate the key |
-| 403 | `forbidden` | The key lacks the route's scope, or its issuer is no longer a verified owner | 4 | Stop and alert; fix the key's scopes or issue a new key from a current owner |
+| 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a key whose issuer is no longer a verified owner; a cookie or `Authorization` header on the request | 3 | Stop and alert; ask a current owner for a new key |
+| 403 | `forbidden` | The key lacks the route's scope | 4 | Stop and alert; issue a key with the needed scope |
 | 404 | `not_found` | The product, price, order, sales link or candidate upload does not exist in this workspace | 5 | Treat as gone |
 | 404 | `tenant_not_found` | The host or `x-tenant` selects no workspace | 7 | Fix the base URL or workspace slug |
 | 409 | `conflict` | Stale sales-link revision, order line already issued | 6 | Re-read, then decide |
@@ -621,7 +621,6 @@ rejected body):
 { "ok": false, "error": { "code": "unauthorized", "message": "Missing API key" } }
 { "ok": false, "error": { "code": "unauthorized", "message": "Shop management requests must not carry a cookie or an Authorization header" } }
 { "ok": false, "error": { "code": "forbidden", "message": "shop:orders:read is not permitted" } }
-{ "ok": false, "error": { "code": "forbidden", "message": "The API key issuer is no longer a verified owner of this workspace" } }
 { "ok": false, "error": { "code": "validation", "message": "Invalid product payload", "details": { "formErrors": [], "fieldErrors": { "priceCents": ["Price must not be negative"] } } } }
 { "ok": false, "error": { "code": "fulfilment_conflict", "message": "Order has already been shipped" } }
 { "ok": false, "error": { "code": "rate_limited", "message": "API key rate limit exceeded", "details": { "period": "minute", "retryAfterSeconds": 17 } } }

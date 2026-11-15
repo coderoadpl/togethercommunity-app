@@ -76,15 +76,6 @@ const attributionOf = (found: ShopManagementKey | null): ShopKeyAttribution =>
     ? { match: 'none' }
     : { match: 'matched', apiKeyId: found.id, issuerUserId: found.issuedByUserId };
 
-export const identifyShopManagementKey = async (
-  tenantId: string,
-  presentedSecret: string,
-  deps: Pick<ShopMachineAuthDeps, 'shopManagementKeys' | 'apiKeyCrypto'>,
-): Promise<ShopKeyAttribution> => {
-  const secret = presentedSecret.trim();
-  return secret ? attributionOf(await findStoredKey(tenantId, secret, deps)) : { match: 'missing' };
-};
-
 const usableShopKey = (
   found: ShopManagementKey | null,
   deps: Pick<ShopMachineAuthDeps, 'clock'>,

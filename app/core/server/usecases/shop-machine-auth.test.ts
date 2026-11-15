@@ -14,7 +14,6 @@ import {
 import type { AccountIdentity, ShopManagementKeyRateLimitRepository } from '../ports.js';
 import {
   authenticateShopManagementKey,
-  identifyShopManagementKey,
   recordShopManagementKeyRequest,
   type ShopMachineAuthDeps,
 } from './shop-machine-auth.js';
@@ -321,14 +320,6 @@ describe('shop management key attribution', () => {
     expect((await authenticateWithAttribution(harness(), 'shop:catalog:read', TENANT, 'unknown')).attribution).toEqual({ match: 'none' });
     expect((await authenticateWithAttribution(harness(), 'shop:catalog:read', OTHER_TENANT)).attribution).toEqual({ match: 'none' });
     expect((await authenticateWithAttribution(harness(), 'shop:catalog:read', TENANT, '  ')).attribution).toEqual({ match: 'missing' });
-  });
-
-  it('identifies a key without authenticating it or claiming its rate limit', async () => {
-    const h = harness({ keys: [shopKey({ revokedAt: '1998-08-02T00:00:00.000Z' })] });
-    expect(await identifyShopManagementKey(TENANT.id, SECRET, h.deps)).toEqual(matched('shop-key-1'));
-    expect(await identifyShopManagementKey(TENANT.id, 'unknown', h.deps)).toEqual({ match: 'none' });
-    expect(await identifyShopManagementKey(TENANT.id, '', h.deps)).toEqual({ match: 'missing' });
-    expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(0);
   });
 });
 

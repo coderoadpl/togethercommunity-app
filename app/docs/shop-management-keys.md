@@ -75,9 +75,9 @@ workspace exactly like the other API-key routes: by the workspace host
 between requests:
 
 1. A request that also carries a `Cookie` or an `Authorization` header is
-   refused with `401` before the key is checked; the key is only looked up to
-   attribute the refusal in telemetry (below). A shop route never falls back to
-   a session, and a session never upgrades a key.
+   refused with `401` before the workspace is resolved or the key is looked up;
+   telemetry records only the refusal reason (below). A shop route never falls
+   back to a session, and a session never upgrades a key.
 2. The key must exist in `shop_management_keys` for the selected workspace, be
    unrevoked and expire strictly after the current time; the database admits
    only shop scopes, an issuer and an expiry on such a row. A missing key
@@ -111,6 +111,7 @@ presented in `app.api_key.match`:
 | `matched` | The secret matches a shop management key row in the selected workspace, whatever its state: usable, revoked, expired, or with an issuer that is no longer a verified owner | `app.api_key.id`, `app.api_key.issuer.id`, `app.tenant.id` |
 | `none` | The secret matches no shop management key of the selected workspace (a legacy key included), or no workspace was selected | `app.tenant.id` when a workspace was selected |
 | `missing` | The request carried no key | `app.tenant.id` when a workspace was selected |
+| `mixed_credentials` | The request also carried a `Cookie` or an `Authorization` header and was refused with `401` | nothing else: the refusal performs no key lookup |
 | `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else: the switch records only its state and performs no key lookup |
 
 A request refused by the body size limit (`400 validation`, checked before the
@@ -118,9 +119,9 @@ shop route runs) is not attributed to a key: its span carries no
 `app.api_key.*` attribute, the key is not looked up and no key history row is
 written.
 
-So a `401` for an unusable key, a `401` for mixed credentials, a `403` for a
-missing scope, a `429` and a failing handler each carry the id of the key that
-was presented. The secret, its hash and any part of either are never recorded,
+So a `401` for an unusable key, a `403` for a missing scope, a `429` and a
+failing handler each carry the id of the key that was presented; a `401` for
+mixed credentials carries none. The secret, its hash and any part of either are never recorded,
 and telemetry never records request headers, so the key secret does not reach
 traces or error reports. A database failure while looking a shop management
 key up by its hash or while storing a new one answers `500 internal` and is

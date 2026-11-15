@@ -499,11 +499,25 @@ describe('shop management key secrecy in telemetry', () => {
     expect(missing.attributes).toMatchObject({ 'app.api_key.match': 'missing', 'app.tenant.id': 'acme' });
   });
 
-  it('attributes a mixed-credential 401 to the presented key without authenticating it', async () => {
-    const { status, attributes } = await spanOf({ 'x-api-key': 'shop-read-secret', cookie: 'session=x' });
-    expect(status).toBe(401);
-    expect(attributes).toMatchObject(keyAttributes('shop-read'));
-    expect(attributes).not.toHaveProperty('app.user.id');
+  it.each([
+    ['a cookie', { cookie: 'session=x' }],
+    ['an Authorization header', { authorization: 'Bearer anything' }],
+  ])('records only the refusal reason for a key sent with %s and never looks the key up', async (_label, extra) => {
+    const findByHash = vi.fn(deps.shopManagementKeys.findByHash);
+    const mixed = new Hono<AppVars>();
+    mixed.use('*', telemetryMiddleware);
+    registerShopMachineRoute(mixed, { ...deps, shopManagementKeys: { ...deps.shopManagementKeys, findByHash } }, {
+      method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
+    });
+    exporter.reset();
+    const response = await mixed.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': 'shop-read-secret', ...extra } });
+    expect(response.status).toBe(401);
+    await provider.forceFlush();
+    const [span] = exporter.getFinishedSpans();
+    expect(span?.attributes).toMatchObject({ 'app.api_key.match': 'mixed_credentials' });
+    expect(Object.keys(span?.attributes ?? {}).filter((name) => name.startsWith('app.api_key.'))).toEqual(['app.api_key.match']);
+    expect(span?.attributes).not.toHaveProperty('app.user.id');
+    expect(findByHash).not.toHaveBeenCalled();
   });
 
   it('attributes a scope refusal to the key', async () => {
@@ -585,7 +599,7 @@ describe('shop management key secrecy in telemetry', () => {
     ['a revoked key', { 'x-api-key': 'shop-revoked-secret' }, 401, keyAttributes('shop-revoked')],
     ['an expired key', { 'x-api-key': 'shop-span-expired-secret' }, 401, keyAttributes('shop-span-expired')],
     ['a legacy key', { 'x-api-key': 'legacy-null-secret' }, 401, { 'app.api_key.match': 'none', 'app.tenant.id': 'acme' }],
-    ['mixed credentials', { 'x-api-key': 'shop-read-secret', cookie: 'session=x' }, 401, keyAttributes('shop-read')],
+    ['mixed credentials', { 'x-api-key': 'shop-read-secret', cookie: 'session=x' }, 401, { 'app.api_key.match': 'mixed_credentials' }],
     ['a missing scope', { 'x-api-key': 'shop-orders-secret' }, 403, keyAttributes('shop-orders')],
   ])('writes no request row for a keyed mutation refused for %s and still attributes its span', async (_label, headers, expectedStatus, expected) => {
     const before = await probeRows();
@@ -631,7 +645,6 @@ describe('shop management key secrecy in telemetry', () => {
 
   it.each([
     ['a shop route', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', {}],
-    ['a shop route with mixed credentials', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', { cookie: 'session=x' }],
   ])('keeps the key and its hash out of the span, the logs and the response when the key lookup fails on %s', async (_label, path, secret, extraHeaders) => {
     const brokenDb = createDb('node-postgres', `${database.url.replace(/\/[^/?]+(\?|$)/, '/together_missing_hash_lookup_db$1')}`, { connectionTimeoutMillis: 5_000 });
     const failingLookups = buildApp({ ...deps, shopManagementKeys: createShopManagementKeyRepository(brokenDb) });

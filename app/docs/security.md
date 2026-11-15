@@ -420,8 +420,9 @@ scopes on every shop key.
   qualifies all answer the same `401 Invalid API key`. A missing scope answers
   `403` after the rate limit.
 - **No mixed credentials.** A shop route refuses any request that also carries
-  a `Cookie` or an `Authorization` header with `401`, never falls back to a
-  session and never upgrades one. The routes live only under `/api/m2m/shop`,
+  a `Cookie` or an `Authorization` header with `401` before any key lookup,
+  records only `app.api_key.match=mixed_credentials` on its span, never falls
+  back to a session and never upgrades one. The routes live only under `/api/m2m/shop`,
   each needs a "Shop management key" entry in the self-authenticating route
   manifest, and their unsafe methods are classified `api-key` in
   `apps/server/src/request-origin-policy.ts`; registration fails otherwise.

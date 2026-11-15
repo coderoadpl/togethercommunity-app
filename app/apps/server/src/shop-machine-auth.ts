@@ -19,7 +19,6 @@ import {
 } from '#core/domain/index.js';
 import {
   authenticateShopManagementKey,
-  identifyShopManagementKey,
   recordShopManagementKeyRequest,
   resolveTenant,
   type ResolveTenantDeps,
@@ -77,18 +76,15 @@ const authenticateShopMachineRequest = async (
   scope: ShopManagementScope,
   deps: ShopMachineDeps,
 ): Promise<ShopMachineAttempt> => {
-  const key = headers.get(API_KEY_HEADER);
-  const tenant = await resolveShopTenant(headers, deps);
-  const unidentified: ApiKeyAttribution = { match: key === null ? 'missing' : 'none' };
   if (headers.has('cookie') || headers.has('authorization')) {
     return {
       result: err(unauthorized('Shop management requests must not carry a cookie or an Authorization header')),
-      attribution: tenant.ok && key !== null
-        ? { ...await identifyShopManagementKey(tenant.value.id, key, deps), tenantId: tenant.value.id }
-        : unidentified,
+      attribution: { match: 'mixed_credentials' },
     };
   }
-  if (!tenant.ok) return { result: tenant, attribution: unidentified };
+  const key = headers.get(API_KEY_HEADER);
+  const tenant = await resolveShopTenant(headers, deps);
+  if (!tenant.ok) return { result: tenant, attribution: { match: key === null ? 'missing' : 'none' } };
   if (key === null) return { result: err(unauthorized('Missing API key')), attribution: { match: 'missing', tenantId: tenant.value.id } };
   const { result, attribution } = await authenticateShopManagementKey(tenant.value, key, scope, deps);
   return {

@@ -10,7 +10,7 @@ import { matchedRoutes } from 'hono/route';
 import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 import type { ShopKeyAttribution } from '#core/server/index.js';
 
-export type ApiKeyAttribution = (ShopKeyAttribution | { match: 'switch_off' }) & { tenantId?: string };
+export type ApiKeyAttribution = (ShopKeyAttribution | { match: 'switch_off' | 'mixed_credentials' }) & { tenantId?: string };
 
 type TelemetryVars = {
   Variables: {

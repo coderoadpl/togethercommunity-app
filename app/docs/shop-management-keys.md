@@ -422,8 +422,20 @@ does not change `tenant_api_keys` or any other existing table. The previous
 release reads `tenant_api_keys` exactly as before, and nothing in it reads the
 three new tables, so its key list, import audit and API-key authentication
 answer as they did before this release, whatever shop management keys exist.
-Its `/api/health` reports `schemaFingerprintMatch: false`, which is expected
-while the newer schema remains.
+After the retreat, the previous release's `/api/health` answer reports
+`schemaFingerprintMatch: false`: the live schema, which keeps the three tables
+of the kept migration, no longer matches the schema fingerprint that release
+was built with. This is expected while the newer schema remains.
+
+The hourly production health monitor (`.github/workflows/prod-health.yml`)
+treats `schemaFingerprintMatch: false` as a failed `health` check: every run
+during the retreat fails, and its deep health probe is skipped. It pages
+through the alert gate (`.github/actions/alert-gate`), which sends an SMS only
+on a state change, so it alerts once: the first run after the retreat sends one
+SMS when the previous run was green, and every following run fails with the
+same failing set and sends none. Expect that one alert and do not treat it as a
+new incident. When this release returns and the fingerprint matches again, the
+next green run sends one `RECOVERED` SMS.
 
 Keep the schema and the migration when rolling back the binary. The shop
 management keys, their buckets and their history stay in place, unused by the

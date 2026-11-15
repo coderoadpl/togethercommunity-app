@@ -45,7 +45,7 @@ export const pl: Messages = {
     notFound: 'Nie znaleziono zamówienia',
     markIssued: 'Oznacz jako wydane',
     issuing: 'Oznaczanie jako wydane…',
-    issued: ({ count }) => format('Wydano {count} z 1', { count }),
+    issued: ({ count, quantity }) => format('Wydano {count} z {quantity}', { count, quantity }),
     firstIssued: 'Wydano po raz pierwszy',
     staff: 'Osoba wydająca',
     unpaidHelp: 'Można wydać tylko opłacone zamówienia.',

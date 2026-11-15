@@ -2,7 +2,7 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -150,7 +150,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </Stack>
       </SectionCard>
-      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
+      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} lineName={orderLineLabel} /></SectionCard>}
       {order.shipping == null ? null : (
         <SectionCard title={t.shipping.orderDeliveryHeading} data-testid="order-delivery">
           <Stack useFlexGap spacing="0.75rem">

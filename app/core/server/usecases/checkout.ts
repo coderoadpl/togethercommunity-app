@@ -136,7 +136,7 @@ const selectCheckoutProducts = async (
     if (!resolvedPrices.ok) return resolvedPrices;
     const product = products[0];
     if (product === undefined) return err(notFound('Sales link not found'));
-    const inStock = await ensureProductsInStock(tenantId, products, deps);
+    const inStock = await ensureProductsInStock(tenantId, products.map((item) => ({ product: item, quantity: 1 })), deps);
     if (!inStock.ok) return inStock;
     return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug, variantSelections: selections.filter((selection) => selection.productId !== selection.variantProductId) });
   }
@@ -159,7 +159,7 @@ const selectCheckoutProducts = async (
   if (product.type === 'membership' && price?.kind !== 'recurring') {
     return err(validation('Membership products require a recurring price'));
   }
-  const inStock = await ensureProductsInStock(tenantId, [product], deps);
+  const inStock = await ensureProductsInStock(tenantId, [{ product, quantity: 1 }], deps);
   if (!inStock.ok) return inStock;
 
   return ok({ product, price });
@@ -239,7 +239,7 @@ export const startCheckoutSession = async (
   const campaignQuery = attributionToSearchParams(fields).toString();
   const variantQuery = new URLSearchParams((selection.variantSelections ?? []).map((item) => [SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam(item)])).toString();
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
-  const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product] }, deps);
+  const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product], lines }, deps);
   let applied:
     | {
         breakdown: CouponCheckoutBreakdown;

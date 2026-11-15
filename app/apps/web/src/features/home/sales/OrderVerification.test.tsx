@@ -43,6 +43,18 @@ describe('OrderVerification', () => {
     expect(screen.queryByRole('button', { name: 'Mark as issued' })).toBeNull();
   });
 
+  it('names the units of a line above one and offers issuance until every unit is issued', () => {
+    const withUnits = (issuedCount: number) => ({ ...sampleBundleOrder, lines: sampleBundleOrder.lines?.map((line) => line.productType === 'physical' ? { ...line, quantity: 2, issuedCount } : line) });
+    const { unmount } = renderWithProviders(<OrderVerification order={withUnits(1)} canIssue onIssue={() => undefined} />);
+    expect(screen.getByText('2 × Printed workbook')).toBeVisible();
+    expect(screen.getByText('Issued 1 of 2')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Mark as issued' })).toBeVisible();
+    unmount();
+    renderWithProviders(<OrderVerification order={withUnits(2)} canIssue onIssue={() => undefined} />);
+    expect(screen.getByText('Issued 2 of 2')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Mark as issued' })).toBeNull();
+  });
+
   it('does not expose a staff identifier when the display name is unavailable', () => {
     const order = { ...sampleBundleOrder, lines: sampleBundleOrder.lines?.map((line) => line.productType === 'physical' ? { ...line, issuedCount: 1, issuedAt: '2026-10-08T12:00:00.000Z', issuedBy: 'staff-1' } : line) };
     renderWithProviders(<OrderVerification order={order} canIssue onIssue={() => undefined} />);

@@ -891,7 +891,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/image-assets.ts:271` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:282` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:366` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
-| member-scope | `core/server/usecases/invoices.ts:539` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
+| member-scope | `core/server/usecases/invoices.ts:542` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |
@@ -908,7 +908,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/meta-capi.ts:67` | `return recordDecision(tenant.value, { orderId: parsed.data.orderId, memberId: ctx.identity.memberId }, 'withdrawn',` |
 | member-scope | `core/server/usecases/meta-capi.ts:74` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
 | member-scope | `core/server/usecases/meta-capi.ts:75` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
-| member-scope | `core/server/usecases/my-products.ts:75` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/my-products.ts:77` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |

@@ -4,10 +4,15 @@ import {
   SUBSCRIPTION_GRACE_DAYS,
   allocateOrderLineGross,
   billingDataSchema,
+  checkoutSnapshotSchema,
   orderBillingDataSchema,
+  orderLineLabel,
+  orderLineQuantity,
+  orderLineSchema,
   orderSchema,
   orderListItemSchema,
   exportOrdersQuerySchema,
+  issueOrderLineInputSchema,
   graceExpiresAt,
   listOrdersQuerySchema,
   newProductPriceSchema,
@@ -29,6 +34,51 @@ describe('allocateOrderLineGross', () => {
   it('returns zeros for a zero total', () => {
     expect(allocateOrderLineGross([{ grossCents: 0 }, { grossCents: 0 }], 100)).toEqual([0, 0]);
     expect(allocateOrderLineGross([], 100)).toEqual([]);
+  });
+});
+
+describe('order line quantity', () => {
+  const line = { productId: 'p1', name: 'Poster', productType: 'physical', grossCents: 9000, netCents: 7317, vatCents: 1683, vatRate: 23, vatExemptionBasis: null, issuedCount: 0 } as const;
+
+  it('reads a stored line without a quantity as one unit', () => {
+    const parsed = orderLineSchema.parse(line);
+    expect(parsed).not.toHaveProperty('quantity');
+    expect(orderLineQuantity(parsed)).toBe(1);
+  });
+
+  it('keeps a positive integer quantity on order and checkout snapshot lines', () => {
+    expect(orderLineQuantity(orderLineSchema.parse({ ...line, quantity: 3 }))).toBe(3);
+    expect(checkoutSnapshotSchema.parse({
+      id: 'snapshot-1', tenantId: 'tenant-1', salesLinkId: null, currency: 'PLN', createdAt: '2026-11-15T10:00:00.000Z',
+      lines: [{ ...line, quantity: 3 }],
+    }).lines[0]?.quantity).toBe(3);
+  });
+
+  it.each([0, -1, 1.5])('rejects quantity %s', (quantity) => {
+    expect(orderLineSchema.safeParse({ ...line, quantity }).success).toBe(false);
+  });
+
+  it('names the units only above one', () => {
+    expect(orderLineLabel({ name: 'Poster' })).toBe('Poster');
+    expect(orderLineLabel({ name: 'Poster', quantity: 1 })).toBe('Poster');
+    expect(orderLineLabel({ name: 'Poster', quantity: 2 })).toBe('2 × Poster');
+  });
+
+  it('always carries the quantity on order list item lines', () => {
+    const item = orderListItemSchema.parse({
+      id: 'order-1', tenantId: 'tenant-1', memberId: 'member-1', productId: 'p1', priceId: null, kind: 'one_time', status: 'paid',
+      amountCents: 9000, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: null, productTitle: 'Poster', couponCode: null,
+      lines: [line, { ...line, productId: 'p2', quantity: 3 }],
+    });
+    expect(item.lines?.map((entry) => entry.quantity)).toEqual([1, 3]);
+    expect(orderListItemSchema.safeParse({ ...item, lines: [{ ...line, quantity: 0 }] }).success).toBe(false);
+  });
+
+  it('defaults an issue to one unit and accepts only a positive integer count', () => {
+    expect(issueOrderLineInputSchema.parse({ orderId: 'order-1', productId: 'p1' })).toEqual({ orderId: 'order-1', productId: 'p1', count: 1 });
+    expect(issueOrderLineInputSchema.parse({ orderId: 'order-1', productId: 'p1', count: 2 }).count).toBe(2);
+    for (const count of [0, -1, 1.5, '2']) expect(issueOrderLineInputSchema.safeParse({ orderId: 'order-1', productId: 'p1', count }).success).toBe(false);
   });
 });
 

@@ -1428,6 +1428,15 @@ describe('order verification commands', () => {
     expect(h.issueOrderLine).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'physical' });
     expect(soleJson()).toEqual({ ok: true, data: { order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } } });
   });
+  it('hands over several units of a line with --count', async () => {
+    await run('--json', 'orders', 'issue', 'order-number', 'physical', '--count', '2');
+    expect(h.issueOrderLine).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'physical', count: 2 });
+  });
+  it('rejects a count that is not a positive integer before calling the API', async () => {
+    await run('--json', 'orders', 'issue', 'order-number', 'physical', '--count', '0');
+    expect(h.issueOrderLine).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
   it('preserves the forbidden exit code for an unauthorized issue', async () => {
     h.issueOrderLine.mockResolvedValue(err(appError('forbidden', 'order:write is not permitted')));
     await run('--json', 'orders', 'issue', 'order-number', 'physical');

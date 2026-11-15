@@ -783,6 +783,18 @@ describe('purchase confirmation amounts', () => {
     expect(message.text).not.toContain(details.verificationUrl);
   });
 
+  it('names the units of a line above one and leaves single units unchanged', () => {
+    const details = purchaseEmailDetailsSchema.parse({ ...purchase, totalCents: 9000, lines: [
+      { name: 'Printed workbook', quantity: 2, grossCents: 8000, vatRate: 5 },
+      { name: 'Digital companion', quantity: 1, grossCents: 1000, vatRate: 23 },
+    ] });
+    const message = welcomeSignIn('en', { tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: details });
+    expect(message.html).toContain('<tr><td>2 × Printed workbook</td><td>PLN 80.00</td>');
+    expect(message.html).toContain('<tr><td>Digital companion</td><td>PLN 10.00</td>');
+    expect(message.text).toContain('- 2 × Printed workbook — PLN 80.00 (5 %)');
+    expect(message.text).toContain('- Digital companion — PLN 10.00 (23 %)');
+  });
+
   it.each([
     ['pl', expectedPurchaseDeliveryPl, purchaseDeliveryFixturesPl],
     ['en', {

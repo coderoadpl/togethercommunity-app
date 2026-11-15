@@ -63,6 +63,7 @@ export * from './order-vat.js';
 export * from './coupon.js';
 export * from './invoice.js';
 export * from './fa3.js';
+export * from './invoice-positions.js';
 export * from './ksef.js';
 export * from './versioning.js';
 export * from './version-preview.js';

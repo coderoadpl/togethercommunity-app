@@ -13,6 +13,7 @@ import {
   orderShippingFrom,
   productLines,
   resolveEmailLanguage,
+  stockQuantitiesFromLines,
   validation,
   type AppError,
   type ProcessedPaymentEvent,
@@ -566,7 +567,7 @@ const applyCheckoutCompleted = async (
     : await commitCheckoutStock(tenant, {
       checkoutSnapshotId: snapshot?.id ?? null,
       orderId: paidOrder.id,
-      productIds: snapshot === null ? [metadata.productId] : productLines(snapshot.lines).map((line) => line.productId),
+      items: snapshot === null ? [{ productId: metadata.productId, quantity: 1 }] : stockQuantitiesFromLines(snapshot.lines),
     }, deps);
   let emailsQueued = stockCommit.alertsQueued;
   if (event.mode !== 'test' && product !== null) {

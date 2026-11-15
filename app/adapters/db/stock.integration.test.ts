@@ -83,7 +83,7 @@ describe('stock repository on Postgres', () => {
       'SELECT 1 FROM product_stock WHERE tenant_id = $1 AND product_id = $2 FOR UPDATE',
       ['workspace', productId],
       8,
-      () => Array.from({ length: 8 }, (_, index) => repo.reserve('workspace', { checkoutSnapshotId: `snapshot-${String(index)}`, productIds: [productId], expiresAt: later, quantity: 1, now })),
+      () => Array.from({ length: 8 }, (_, index) => repo.reserve('workspace', { checkoutSnapshotId: `snapshot-${String(index)}`, items: [{ productId, quantity: 1 }], expiresAt: later, now })),
     );
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.filter((result) => !result.ok)).toEqual(Array.from({ length: 7 }, () => ({ ok: false, error: { soldOutProductId: productId } })));
@@ -97,9 +97,9 @@ describe('stock repository on Postgres', () => {
     const soldOut = await productFor('workspace', 0);
     const untracked = await productFor('workspace', null);
     const repo = createStockRepository(database.db);
-    expect(await repo.reserve('workspace', { checkoutSnapshotId: 'bundle-1', productIds: [available, soldOut, untracked], expiresAt: later, quantity: 1, now })).toEqual({ ok: false, error: { soldOutProductId: soldOut } });
+    expect(await repo.reserve('workspace', { checkoutSnapshotId: 'bundle-1', items: [{ productId: available, quantity: 1 }, { productId: soldOut, quantity: 1 }, { productId: untracked, quantity: 1 }], expiresAt: later, now })).toEqual({ ok: false, error: { soldOutProductId: soldOut } });
     expect(await level(available)).toMatchObject({ reserved: 0 });
-    const reserved = await repo.reserve('workspace', { checkoutSnapshotId: 'bundle-2', productIds: [available, untracked], expiresAt: later, quantity: 1, now });
+    const reserved = await repo.reserve('workspace', { checkoutSnapshotId: 'bundle-2', items: [{ productId: available, quantity: 1 }, { productId: untracked, quantity: 1 }], expiresAt: later, now });
     expect(reserved.ok && reserved.value.reservationIds).toHaveLength(1);
     expect(await reservationStatuses(untracked)).toEqual([]);
   });
@@ -107,12 +107,12 @@ describe('stock repository on Postgres', () => {
   it('decrements on hand once when three commits for one snapshot race', async () => {
     const productId = await productFor('workspace', 2);
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'race-commit', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'race-commit', items: [{ productId, quantity: 1 }], expiresAt: later, now });
     const results = await withLockedRows(
       'SELECT 1 FROM stock_reservations WHERE tenant_id = $1 AND checkout_snapshot_id = $2 FOR UPDATE',
       ['workspace', 'race-commit'],
       3,
-      () => Array.from({ length: 3 }, (_, index) => repo.commit('workspace', { checkoutSnapshotId: 'race-commit', orderId: `order-${String(index)}`, productIds: [productId], now })),
+      () => Array.from({ length: 3 }, (_, index) => repo.commit('workspace', { checkoutSnapshotId: 'race-commit', orderId: `order-${String(index)}`, items: [{ productId, quantity: 1 }], now })),
     );
     expect(results.flat().map((effect) => effect.outcome).toSorted()).toEqual(['committed', 'unchanged', 'unchanged']);
     expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 0 });
@@ -127,7 +127,7 @@ describe('stock repository on Postgres', () => {
       'SELECT 1 FROM product_stock WHERE tenant_id = $1 AND product_id = $2 FOR UPDATE',
       ['workspace', productId],
       3,
-      () => Array.from({ length: 3 }, () => repo.commit('workspace', { checkoutSnapshotId: 'legacy-snapshot', orderId: 'legacy-order', productIds: [productId], now })),
+      () => Array.from({ length: 3 }, () => repo.commit('workspace', { checkoutSnapshotId: 'legacy-snapshot', orderId: 'legacy-order', items: [{ productId, quantity: 1 }], now })),
     );
     expect(results.flat().map((effect) => effect.outcome).toSorted()).toEqual(['committed_late', 'unchanged', 'unchanged']);
     expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 0 });
@@ -141,12 +141,12 @@ describe('stock repository on Postgres', () => {
       'SELECT 1 FROM product_stock WHERE tenant_id = $1 AND product_id = $2 FOR UPDATE',
       ['workspace', productId],
       3,
-      () => Array.from({ length: 3 }, () => repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'snapshotless-order', productIds: [productId], now })),
+      () => Array.from({ length: 3 }, () => repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'snapshotless-order', items: [{ productId, quantity: 1 }], now })),
     );
     expect(results.flat().map((effect) => effect.outcome).toSorted()).toEqual(['committed_late', 'unchanged', 'unchanged']);
-    expect(await repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'snapshotless-order', productIds: [productId], now })).toEqual([expect.objectContaining({ outcome: 'unchanged', onHandAfter: 2 })]);
+    expect(await repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'snapshotless-order', items: [{ productId, quantity: 1 }], now })).toEqual([expect.objectContaining({ outcome: 'unchanged', onHandAfter: 2 })]);
     expect(await level(productId)).toMatchObject({ onHand: 2, reserved: 0 });
-    expect(await repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'another-order', productIds: [productId], now })).toEqual([expect.objectContaining({ outcome: 'committed_late', onHandAfter: 1 })]);
+    expect(await repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'another-order', items: [{ productId, quantity: 1 }], now })).toEqual([expect.objectContaining({ outcome: 'committed_late', onHandAfter: 1 })]);
     expect((await eventTypes(productId)).filter((type) => type === 'committed_late')).toHaveLength(2);
   });
 
@@ -154,7 +154,7 @@ describe('stock repository on Postgres', () => {
     const [unreserved, reserved] = [await productFor('workspace', 2), await productFor('workspace', 2)].toSorted();
     if (unreserved === undefined || reserved === undefined) throw new Error('Missing products');
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'lock-order-commit', productIds: [reserved], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'lock-order-commit', items: [{ productId: reserved, quantity: 1 }], expiresAt: later, now });
     const blocker = new pg.Client({ connectionString: database.url });
     const observer = new pg.Client({ connectionString: database.url });
     await blocker.connect();
@@ -176,9 +176,9 @@ describe('stock repository on Postgres', () => {
           if ((waiting.rows[0]?.count ?? 0) >= waiters) return;
         }
       };
-      const reserving = track(repo.reserve('workspace', { checkoutSnapshotId: 'lock-order-reserve', productIds: [reserved, unreserved], expiresAt: later, quantity: 1, now }));
+      const reserving = track(repo.reserve('workspace', { checkoutSnapshotId: 'lock-order-reserve', items: [{ productId: reserved, quantity: 1 }, { productId: unreserved, quantity: 1 }], expiresAt: later, now }));
       await waitForLockWaiters(1);
-      const committing = track(repo.commit('workspace', { checkoutSnapshotId: 'lock-order-commit', orderId: 'lock-order', productIds: [unreserved, reserved], now }));
+      const committing = track(repo.commit('workspace', { checkoutSnapshotId: 'lock-order-commit', orderId: 'lock-order', items: [{ productId: unreserved, quantity: 1 }, { productId: reserved, quantity: 1 }], now }));
       await waitForLockWaiters(2);
       await blocker.query('ROLLBACK');
       const [[reserveOutcome], [commitOutcome]] = await Promise.all([reserving, committing]);
@@ -215,10 +215,10 @@ describe('stock repository on Postgres', () => {
       const productId = await productFor('workspace', 1);
       const snapshotId = `sweep-race-${String(attempt)}`;
       const repo = createStockRepository(database.db);
-      await repo.reserve('workspace', { checkoutSnapshotId: snapshotId, productIds: [productId], expiresAt: now, quantity: 1, now });
+      await repo.reserve('workspace', { checkoutSnapshotId: snapshotId, items: [{ productId, quantity: 1 }], expiresAt: now, now });
       const operations: Array<() => Promise<unknown>> = [
         () => repo.releaseExpired(later, 100, 'workspace'),
-        () => repo.commit('workspace', { checkoutSnapshotId: snapshotId, orderId: `order-${snapshotId}`, productIds: [productId], now: later }),
+        () => repo.commit('workspace', { checkoutSnapshotId: snapshotId, orderId: `order-${snapshotId}`, items: [{ productId, quantity: 1 }], now: later }),
       ];
       await withLockedRows(
         'SELECT 1 FROM stock_reservations WHERE tenant_id = $1 AND checkout_snapshot_id = $2 FOR UPDATE',
@@ -238,9 +238,9 @@ describe('stock repository on Postgres', () => {
   it('clamps an oversold commit at zero and records the shortfall', async () => {
     const productId = await productFor('workspace', 1, 0);
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'oversold', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'oversold', items: [{ productId, quantity: 1 }], expiresAt: later, now });
     expect((await repo.adjust('workspace', { productId, delta: -1, reason: 'damaged', actorUserId: 'staff', now })).ok).toBe(true);
-    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'oversold', orderId: 'order-oversold', productIds: [productId], now });
+    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'oversold', orderId: 'order-oversold', items: [{ productId, quantity: 1 }], now });
     expect(effect).toMatchObject({ outcome: 'committed', onHandAfter: 0, reservedAfter: 0, oversold: true, lowStockThreshold: 0 });
     expect(await level(productId)).toMatchObject({ onHand: 0, reserved: 0 });
     expect(await eventTypes(productId)).toEqual(['tracking_enabled', 'reserved', 'adjusted', 'committed', 'oversold']);
@@ -252,12 +252,12 @@ describe('stock repository on Postgres', () => {
   it('reports the reserved count before a commit and keeps the sold-out marker until an adjustment frees a piece', async () => {
     const productId = await productFor('workspace', 3, 2);
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'sold-out-held-1', productIds: [productId], expiresAt: later, quantity: 1, now });
-    await repo.reserve('workspace', { checkoutSnapshotId: 'sold-out-held-2', productIds: [productId], expiresAt: later, quantity: 1, now });
-    const [late] = await repo.commit('workspace', { checkoutSnapshotId: 'sold-out-late', orderId: 'order-sold-out-late', productIds: [productId], now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'sold-out-held-1', items: [{ productId, quantity: 1 }], expiresAt: later, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'sold-out-held-2', items: [{ productId, quantity: 1 }], expiresAt: later, now });
+    const [late] = await repo.commit('workspace', { checkoutSnapshotId: 'sold-out-late', orderId: 'order-sold-out-late', items: [{ productId, quantity: 1 }], now });
     expect(late).toMatchObject({ outcome: 'committed_late', onHandBefore: 3, reservedBefore: 2, onHandAfter: 2, reservedAfter: 2, soldOutNotifiedAt: null });
     await repo.markLowStockNotified('workspace', { productId, soldOut: true, now });
-    const [held] = await repo.commit('workspace', { checkoutSnapshotId: 'sold-out-held-1', orderId: 'order-sold-out-held-1', productIds: [productId], now });
+    const [held] = await repo.commit('workspace', { checkoutSnapshotId: 'sold-out-held-1', orderId: 'order-sold-out-held-1', items: [{ productId, quantity: 1 }], now });
     expect(held).toMatchObject({ outcome: 'committed', onHandBefore: 2, reservedBefore: 2, onHandAfter: 1, reservedAfter: 1, lowStockNotifiedAt: now, soldOutNotifiedAt: now });
     expect((await repo.adjust('workspace', { productId, delta: -1, reason: 'damaged', actorUserId: 'staff', now })).ok).toBe(true);
     expect((await level(productId))?.soldOutNotifiedAt).not.toBeNull();
@@ -274,23 +274,23 @@ describe('stock repository on Postgres', () => {
       if (alert !== null) await repo.markLowStockNotified('workspace', { productId, soldOut: alert.soldOut, now });
       return alert;
     };
-    await repo.reserve('workspace', { checkoutSnapshotId: 'zero-held', productIds: [productId], expiresAt: '2026-11-05T09:30:00.000Z', quantity: 1, now });
-    const [first] = await repo.commit('workspace', { checkoutSnapshotId: 'zero-first', orderId: 'order-zero-first', productIds: [productId], now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'zero-held', items: [{ productId, quantity: 1 }], expiresAt: '2026-11-05T09:30:00.000Z', now });
+    const [first] = await repo.commit('workspace', { checkoutSnapshotId: 'zero-first', orderId: 'order-zero-first', items: [{ productId, quantity: 1 }], now });
     expect(await alertAndMark(first)).toEqual({ available: 0, oversold: false, soldOut: true });
     expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 1, lowStockNotifiedAt: expect.any(String), soldOutNotifiedAt: expect.any(String) });
 
     expect(await repo.releaseExpired(now, 10, 'workspace')).toBe(1);
     expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 0, lowStockNotifiedAt: expect.any(String), soldOutNotifiedAt: null });
 
-    const [second] = await repo.commit('workspace', { checkoutSnapshotId: 'zero-second', orderId: 'order-zero-second', productIds: [productId], now });
+    const [second] = await repo.commit('workspace', { checkoutSnapshotId: 'zero-second', orderId: 'order-zero-second', items: [{ productId, quantity: 1 }], now });
     expect(await alertAndMark(second)).toEqual({ available: 0, oversold: false, soldOut: true });
   });
 
   it('clears both alert markers when an explicit release lifts availability above the threshold', async () => {
     const productId = await productFor('workspace', 2, 1);
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'release-a', productIds: [productId], expiresAt: later, quantity: 1, now });
-    await repo.reserve('workspace', { checkoutSnapshotId: 'release-b', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'release-a', items: [{ productId, quantity: 1 }], expiresAt: later, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'release-b', items: [{ productId, quantity: 1 }], expiresAt: later, now });
     await repo.markLowStockNotified('workspace', { productId, soldOut: true, now });
     expect(await repo.release('workspace', { checkoutSnapshotId: 'release-a', reason: 'checkout_failed', now })).toBe(1);
     expect(await level(productId)).toMatchObject({ reserved: 1, lowStockNotifiedAt: expect.any(String), soldOutNotifiedAt: null });
@@ -301,10 +301,10 @@ describe('stock repository on Postgres', () => {
   it('commits late after the reservation was released and releases idempotently', async () => {
     const productId = await productFor('workspace', 2);
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'late', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'late', items: [{ productId, quantity: 1 }], expiresAt: later, now });
     expect(await repo.release('workspace', { checkoutSnapshotId: 'late', reason: 'checkout_failed', now })).toBe(1);
     expect(await repo.release('workspace', { checkoutSnapshotId: 'late', reason: 'checkout_failed', now })).toBe(0);
-    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'late', orderId: 'order-late', productIds: [productId], now });
+    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'late', orderId: 'order-late', items: [{ productId, quantity: 1 }], now });
     expect(effect).toMatchObject({ outcome: 'committed_late', onHandAfter: 1, reservedAfter: 0, oversold: false });
     expect(await repo.release('workspace', { checkoutSnapshotId: 'late', reason: 'checkout_failed', now })).toBe(0);
     expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 0 });
@@ -313,9 +313,9 @@ describe('stock repository on Postgres', () => {
   it('sweeps only expired active reservations in expiry order within the batch limit', async () => {
     const productId = await productFor('workspace', 5);
     const repo = createStockRepository(database.db);
-    await repo.reserve('workspace', { checkoutSnapshotId: 'expired-1', productIds: [productId], expiresAt: '2026-11-05T09:00:00.000Z', quantity: 1, now });
-    await repo.reserve('workspace', { checkoutSnapshotId: 'expired-2', productIds: [productId], expiresAt: '2026-11-05T09:30:00.000Z', quantity: 1, now });
-    await repo.reserve('workspace', { checkoutSnapshotId: 'current', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'expired-1', items: [{ productId, quantity: 1 }], expiresAt: '2026-11-05T09:00:00.000Z', now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'expired-2', items: [{ productId, quantity: 1 }], expiresAt: '2026-11-05T09:30:00.000Z', now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'current', items: [{ productId, quantity: 1 }], expiresAt: later, now });
     expect(await repo.releaseExpired(now, 1, 'workspace')).toBe(1);
     expect(await repo.releaseExpired(now, 10, 'workspace')).toBe(1);
     expect(await repo.releaseExpired(now, 10, 'workspace')).toBe(0);
@@ -351,5 +351,112 @@ describe('stock repository on Postgres', () => {
     expect(await repo.enableTracking('workspace', { productId: untracked, onHand: 1_000_001, lowStockThreshold: null, actorUserId: 'staff', now })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await repo.enableTracking('workspace', { productId: untracked, onHand: 1, lowStockThreshold: 1_000_001, actorUserId: 'staff', now })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await repo.find('workspace', untracked)).toBeNull();
+  });
+});
+
+const reservationsOf = async (checkoutSnapshotId: string) =>
+  (await database.db.select({ productId: stockReservations.productId, quantity: stockReservations.quantity, status: stockReservations.status })
+    .from(stockReservations)
+    .where(and(eq(stockReservations.tenantId, 'workspace'), eq(stockReservations.checkoutSnapshotId, checkoutSnapshotId)))
+    .orderBy(asc(stockReservations.productId)));
+
+const eventQuantities = async (productId: string) =>
+  (await database.db.select({ type: stockEvents.type, quantity: stockEvents.quantity }).from(stockEvents)
+    .where(eq(stockEvents.productId, productId))
+    .orderBy(asc(stockEvents.type)))
+    .filter((event) => event.type !== 'tracking_enabled');
+
+describe('stock quantities on Postgres', () => {
+  it('rolls back the whole call when one product lacks the requested quantity', async () => {
+    const [enough, short] = [await productFor('workspace', 5), await productFor('workspace', 2)].toSorted();
+    if (enough === undefined || short === undefined) throw new Error('Missing products');
+    const repo = createStockRepository(database.db);
+    expect(await repo.reserve('workspace', { checkoutSnapshotId: 'short-q3', items: [{ productId: short, quantity: 3 }, { productId: enough, quantity: 1 }], expiresAt: later, now }))
+      .toEqual({ ok: false, error: { soldOutProductId: short } });
+    expect(await level(enough)).toMatchObject({ onHand: 5, reserved: 0 });
+    expect(await level(short)).toMatchObject({ onHand: 2, reserved: 0 });
+    expect(await reservationsOf('short-q3')).toEqual([]);
+    expect(await eventQuantities(enough)).toEqual([]);
+    expect(await eventQuantities(short)).toEqual([]);
+  });
+
+  it('reserves each product by its own quantity and releases what each reservation holds', async () => {
+    const [first, second] = [await productFor('workspace', 3), await productFor('workspace', 3)].toSorted();
+    if (first === undefined || second === undefined) throw new Error('Missing products');
+    const repo = createStockRepository(database.db);
+    const reserved = await repo.reserve('workspace', { checkoutSnapshotId: 'mixed', items: [{ productId: second, quantity: 1 }, { productId: first, quantity: 2 }], expiresAt: later, now });
+    expect(reserved.ok && reserved.value.reservationIds).toHaveLength(2);
+    expect(await reservationsOf('mixed')).toEqual([
+      { productId: first, quantity: 2, status: 'active' },
+      { productId: second, quantity: 1, status: 'active' },
+    ]);
+    expect(await level(first)).toMatchObject({ onHand: 3, reserved: 2 });
+    expect(await level(second)).toMatchObject({ onHand: 3, reserved: 1 });
+    expect(await eventQuantities(first)).toEqual([{ type: 'reserved', quantity: 2 }]);
+    expect(await repo.release('workspace', { checkoutSnapshotId: 'mixed', reason: 'checkout_failed', now })).toBe(2);
+    expect(await level(first)).toMatchObject({ onHand: 3, reserved: 0 });
+    expect(await level(second)).toMatchObject({ onHand: 3, reserved: 0 });
+    expect(await eventQuantities(first)).toEqual([{ type: 'released', quantity: -2 }, { type: 'reserved', quantity: 2 }]);
+  });
+
+  it('merges repeated products of one call into a single reservation of the summed quantity', async () => {
+    const productId = await productFor('workspace', 3);
+    const repo = createStockRepository(database.db);
+    const reserved = await repo.reserve('workspace', { checkoutSnapshotId: 'repeated', items: [{ productId, quantity: 1 }, { productId, quantity: 2 }], expiresAt: later, now });
+    expect(reserved.ok && reserved.value.reservationIds).toHaveLength(1);
+    expect(await reservationsOf('repeated')).toEqual([{ productId, quantity: 3, status: 'active' }]);
+    expect(await level(productId)).toMatchObject({ onHand: 3, reserved: 3 });
+  });
+
+  it('refuses a quantity below one without touching stock', async () => {
+    const productId = await productFor('workspace', 3);
+    const repo = createStockRepository(database.db);
+    await expect(repo.reserve('workspace', { checkoutSnapshotId: 'zero', items: [{ productId, quantity: 0 }], expiresAt: later, now })).rejects.toThrow('must be a positive integer');
+    await expect(repo.commit('workspace', { checkoutSnapshotId: 'zero', orderId: 'order-zero', items: [{ productId, quantity: 1.5 }], now })).rejects.toThrow('must be a positive integer');
+    expect(await level(productId)).toMatchObject({ onHand: 3, reserved: 0 });
+  });
+
+  it('commits a held quantity and releases the same amount from reserved', async () => {
+    const productId = await productFor('workspace', 5);
+    const repo = createStockRepository(database.db);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'held-q2', items: [{ productId, quantity: 2 }], expiresAt: later, now });
+    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'held-q2', orderId: 'order-held-q2', items: [{ productId, quantity: 2 }], now });
+    expect(effect).toMatchObject({ outcome: 'committed', onHandBefore: 5, reservedBefore: 2, onHandAfter: 3, reservedAfter: 0, oversold: false });
+    expect(await eventQuantities(productId)).toEqual([{ type: 'committed', quantity: -2 }, { type: 'reserved', quantity: 2 }]);
+  });
+
+  it('commits the line quantity late when the snapshot never held stock', async () => {
+    const productId = await productFor('workspace', 5);
+    const repo = createStockRepository(database.db);
+    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'late-q3', orderId: 'order-late-q3', items: [{ productId, quantity: 3 }], now });
+    expect(effect).toMatchObject({ outcome: 'committed_late', onHandBefore: 5, onHandAfter: 2, reservedAfter: 0, oversold: false });
+    expect(await level(productId)).toMatchObject({ onHand: 2, reserved: 0 });
+    expect(await reservationsOf('late-q3')).toEqual([{ productId, quantity: 3, status: 'committed' }]);
+    expect(await eventQuantities(productId)).toEqual([{ type: 'committed_late', quantity: -3 }]);
+    expect(await repo.commit('workspace', { checkoutSnapshotId: 'late-q3', orderId: 'order-late-q3', items: [{ productId, quantity: 3 }], now }))
+      .toEqual([expect.objectContaining({ outcome: 'unchanged', onHandAfter: 2 })]);
+  });
+
+  it('clamps a late commit of three at zero and records the missing piece as oversold', async () => {
+    const productId = await productFor('workspace', 2);
+    const repo = createStockRepository(database.db);
+    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: null, orderId: 'order-oversold-q3', items: [{ productId, quantity: 3 }], now });
+    expect(effect).toMatchObject({ outcome: 'committed_late', onHandBefore: 2, onHandAfter: 0, oversold: true });
+    expect(await eventQuantities(productId)).toEqual([{ type: 'committed_late', quantity: -2 }, { type: 'oversold', quantity: -1 }]);
+  });
+
+  it('lets exactly one of two concurrent reservations of two pieces take three on hand', async () => {
+    const productId = await productFor('workspace', 3);
+    const repo = createStockRepository(database.db);
+    const results = await withLockedRows(
+      'SELECT 1 FROM product_stock WHERE tenant_id = $1 AND product_id = $2 FOR UPDATE',
+      ['workspace', productId],
+      2,
+      () => ['pair-1', 'pair-2'].map((checkoutSnapshotId) => repo.reserve('workspace', { checkoutSnapshotId, items: [{ productId, quantity: 2 }], expiresAt: later, now })),
+    );
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toEqual([{ ok: false, error: { soldOutProductId: productId } }]);
+    expect(await level(productId)).toMatchObject({ onHand: 3, reserved: 2 });
+    expect(await eventQuantities(productId)).toEqual([{ type: 'reserved', quantity: 2 }]);
   });
 });

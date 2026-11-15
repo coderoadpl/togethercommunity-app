@@ -1,9 +1,15 @@
-import { checkoutSessionStatusInputSchema, err, ok, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics, type Language } from '#core/domain/index.js';
+import { checkoutSessionStatusInputSchema, err, ok, orderLineQuantity, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics, type Language, type OrderLine } from '#core/domain/index.js';
 
 import type { PaymentRefundRepository, TenantRepository, ProductRepository } from '../ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { MetaCapiConfig } from '#core/domain/meta-capi.js';
 import { getMetaCapiConfig, type MetaCapiDeps } from './meta-capi.js';
+
+const analyticsItem = (line: OrderLine): CheckoutPurchaseAnalytics['items'][number] => {
+  const quantity = orderLineQuantity(line);
+  const item = { itemId: line.productId, itemName: line.name, price: line.grossCents / quantity / 100 };
+  return quantity === 1 ? item : { ...item, quantity };
+};
 
 export const getCheckoutSessionStatus = async (
   tenantId: string,
@@ -46,7 +52,7 @@ export const getCheckoutSessionStatus = async (
       currency: order.currency,
       offerSlug: salesLink?.tenantId === tenantId ? salesLink.slug : null,
       items: lines.length > 0
-        ? lines.map((line) => ({ itemId: line.productId, itemName: line.name, price: line.grossCents / 100 }))
+        ? lines.map(analyticsItem)
         : product === null ? [] : [{ itemId: product.id, itemName: product.title, price: order.amountCents / 100 }],
     },
   });

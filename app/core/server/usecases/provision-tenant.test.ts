@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { operatorCtx, operatorIdentity, operatorTenantHarness } from '../testing/operator-tenant-fakes.js';
 import { provisionTenant } from './provision-tenant.js';
+import { createTenant } from './create-tenant.js';
 import { getOperatorTenantReadiness } from './operator-tenant-readiness.js';
 
 const input = { slug: ' Acme ', name: 'Acme', ownerEmail: ' OWNER@EXAMPLE.TEST ', defaultLanguage: 'en' as const };
@@ -23,6 +24,45 @@ describe('operator tenant provisioning', () => {
     expect(h.state.ownerEmails).toEqual(['owner@example.test', 'owner@example.test']);
     expect(h.state.creationOptions).toEqual([
       { requireEmpty: false, idempotentOwner: true }, { requireEmpty: false, idempotentOwner: true },
+    ]);
+  });
+
+  it('provisions a further workspace for the verified owner idempotently while bootstrap self-service stays closed', async () => {
+    const h = operatorTenantHarness();
+    const first = await provisionTenant(operatorCtx, input, h.deps);
+    if (!first.ok) throw new Error(first.error.message);
+    const existingTenant = structuredClone(h.tenants[0]);
+    const existingAudit = structuredClone(h.audits[0]);
+    const further = { slug: 'studio', name: 'Studio', ownerEmail: 'owner@example.test', defaultLanguage: 'en' as const };
+    const ownerCtx = { identity: {
+      ...operatorIdentity, userId: first.value.ownerUserId, email: further.ownerEmail,
+      tenantAccess: 'staff' as const, tenantId: first.value.tenant.id,
+      tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner' as const,
+    } };
+
+    expect(await createTenant(ownerCtx, further, { ...h.deps, tenantCreationMode: 'bootstrap' })).toMatchObject({
+      ok: false, error: { code: 'forbidden', message: 'Tenant creation is closed after the first workspace' },
+    });
+    expect(h.tenants).toEqual([existingTenant]);
+    const second = await provisionTenant(operatorCtx, further, h.deps);
+    expect(second).toMatchObject({ ok: true, value: {
+      created: true, ownerUserId: first.value.ownerUserId,
+      tenant: { slug: 'studio', name: 'Studio' }, readiness: { ownerGrantPresent: true },
+    } });
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.value.tenant.id).not.toBe(first.value.tenant.id);
+    const tenantsBeforeReplay = structuredClone(h.tenants);
+    const auditsBeforeReplay = structuredClone(h.audits);
+    expect(await provisionTenant(operatorCtx, { ...further, name: 'Akademia', defaultLanguage: 'pl' }, h.deps))
+      .toMatchObject({ ok: true, value: { created: false, tenant: second.value.tenant } });
+    expect(h.tenants).toEqual(tenantsBeforeReplay);
+    expect(h.tenants).toHaveLength(2);
+    expect(h.tenants[0]).toEqual(existingTenant);
+    expect(h.audits).toEqual(auditsBeforeReplay);
+    expect(h.audits).toHaveLength(2);
+    expect(h.audits[0]).toEqual(existingAudit);
+    expect([...h.owners.entries()]).toEqual([
+      [first.value.tenant.id, first.value.ownerUserId], [second.value.tenant.id, first.value.ownerUserId],
     ]);
   });
 

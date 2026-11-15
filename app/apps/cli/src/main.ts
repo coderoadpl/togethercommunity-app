@@ -277,6 +277,7 @@ const priceAddOptionsSchema = z.object({
   currency: currencySchema.optional(),
 });
 const ordersListOptionsSchema = z.object({
+  mode: stripeModeSchema.optional(),
   sourceExact: z.boolean().optional(),
   source: z.string().min(1).max(200).optional(),
   status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
@@ -730,6 +731,7 @@ registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
+(await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -1821,6 +1823,7 @@ ordersCommand
 ordersCommand
   .command('list')
   .description('List orders with filters, search and paging')
+  .option('--mode <mode>', 'live or test; omit to include both')
   .option('--status <status>', 'paid, pending, failed, refunded or partially_refunded')
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
@@ -1835,6 +1838,7 @@ ordersCommand
     withInput(z.tuple([ordersListOptionsSchema]), async (ctx, [options]) => {
       emit(
         await ctx.api.listOrders({
+          ...(options.mode === undefined ? {} : { mode: options.mode }),
           ...(options.status === undefined ? {} : { status: options.status }),
           ...(options.product === undefined ? {} : { productId: options.product }),
           ...(options.kind === undefined ? {} : { kind: options.kind }),

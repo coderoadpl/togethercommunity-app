@@ -8,7 +8,7 @@ import { emit } from '../output.js';
 import { planManifest, preflightManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 import { driftManifest } from './drift.js';
-import { baseDomainSchema, manifestWorkspaceOrigins } from './instance.js';
+import { baseDomainSchema, manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
 import { confirmingOperator, readConfirmedWorkspaces } from './workspaces.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
@@ -17,9 +17,18 @@ const optionsSchema = z.object({
   reconfigurePayments: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
 }).strict();
 
-const sessionClient = (baseUrl: string, token: string | null, workspace: string | null) => createApiClient({
+type HostCheck = () => Promise<Result<true, AppError>>;
+
+const checkedFetch = (check: HostCheck): typeof fetch => async (input, init) => {
+  const checked = await check();
+  if (!checked.ok) return Response.json({ ok: false, error: checked.error }, { status: 400 });
+  return fetch(input, init);
+};
+
+const sessionClient = (baseUrl: string, token: string | null, workspace: string | null, check?: HostCheck) => createApiClient({
   baseUrl,
   refuseRedirects: true,
+  ...(check === undefined ? {} : { fetchImpl: checkedFetch(check) }),
   headers: () => ({ ...(token ? { authorization: `Bearer ${token}` } : {}), ...(workspace === null ? {} : { [TENANT_HEADER]: workspace }) }),
 });
 
@@ -68,8 +77,12 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const workspaceOrigin = await manifestWorkspaceOrigins(apiUrl, (workspace) => sessionClient(apiUrl, profile.token, workspace),
         preflight.value.map((shop) => shop.slug).filter((slug) => confirmed.value.has(slug)), options.data.baseDomain);
       if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
-      const clientFor = (workspace: string) => confirmed.value.has(workspace)
-        ? sessionClient(workspaceOrigin.value(workspace), profile.token, workspace) : null;
+      const hostServedByInstance = workspaceHostGuard(new URL(apiUrl).origin, (origin) => createApiClient({ baseUrl: origin, refuseRedirects: true }));
+      const clientFor = (workspace: string) => {
+        if (!confirmed.value.has(workspace)) return null;
+        const origin = workspaceOrigin.value(workspace);
+        return sessionClient(origin, profile.token, workspace, () => hostServedByInstance(origin));
+      };
       if (command === 'drift') {
         const result = await driftManifest(input.value, clientFor, options.data.shop);
         emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));

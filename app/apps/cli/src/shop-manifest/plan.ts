@@ -34,9 +34,21 @@ const STRIPE_SLOT_KEYS = {
 export const paymentConfigurationDue = (shop: Pick<PreparedShop, 'paymentConfigured'>, options: ManifestReportOptions): boolean =>
   !shop.paymentConfigured || options.reconfigurePayments === true;
 
+const FOREIGN_WORKSPACE_HOST_MESSAGE = 'The workspace host is not served by the instance of the API origin';
+
+export const foreignWorkspaceHost = (): AppError => validation(FOREIGN_WORKSPACE_HOST_MESSAGE);
+
+const operationFailureMessage = (error: AppError, operation: string): string => {
+  if (isRedirectRefusal(error)) return `Shop operation refused a redirect: ${operation}`;
+  if (error.code === 'validation' && error.message === FOREIGN_WORKSPACE_HOST_MESSAGE) {
+    return `Shop operation refused a workspace host that the instance of the API origin does not serve: ${operation}`;
+  }
+  return `Shop operation failed: ${operation}`;
+};
+
 export const manifestOperationError = (error: AppError, workspace: string | null, operation: string): AppError => ({
   code: error.code,
-  message: isRedirectRefusal(error) ? `Shop operation refused a redirect: ${operation}` : `Shop operation failed: ${operation}`,
+  message: operationFailureMessage(error, operation),
   details: workspace === null ? { operation } : { workspace, operation },
 });
 

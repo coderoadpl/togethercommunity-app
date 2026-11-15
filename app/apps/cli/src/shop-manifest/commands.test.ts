@@ -7,7 +7,7 @@ import { tenantSettingsSchema } from '#core/domain/index.js';
 import type * as ConfigModule from '../config.js';
 import { readManifestFile } from './commands.js';
 import { createInstanceFetch, type FakeInstance } from './fake-instance.js';
-import { manifestWorkspaceOrigins } from './instance.js';
+import { manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
 
 const h = vi.hoisted(() => ({ apiUrl: 'https://togethercommunity.app' }));
 vi.mock('../config.js', async (importOriginal) => ({
@@ -150,6 +150,44 @@ describe('shop manifest command boundary', () => {
       await runCli(['shop', 'plan', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
       expect(separateHostRequests(fake.requests)).toEqual([]);
       expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ provisioning: 'unchanged' }, { workspace: 'preview', provisioning: 'create' }] } });
+    });
+  });
+
+  describe('derived workspace hosts that another instance serves', () => {
+    const tokenRequestsTo = (requests: ReturnType<typeof createInstanceFetch>['requests'], origin: string) =>
+      requests.filter((request) => request.origin === origin && (request.authorization !== null || request.secret !== null));
+
+    it('sends no token to the host of a workspace this run provisioned when another instance serves that host', async () => {
+      vi.stubEnv('TOGETHER_SHOP_OPERATOR_SECRET', 'operator-fixture');
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const fake = createInstanceFetch([
+        { baseDomain: 'togethercommunity.app', workspaces: ['acme'] },
+        { baseDomain: 'preview.togethercommunity.app', workspaces: ['preview'] },
+      ]);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+      const input = { version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace: { slug: 'preview', provision: { name: 'Preview', ownerEmail: 'owner@togethercommunity.app' } }, products: [] }] };
+      await runCli(['shop', 'apply', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+      expect(tokenRequestsTo(fake.requests, 'https://preview.togethercommunity.app')).toEqual([]);
+      expect(fake.requests.filter((request) => request.origin === 'https://preview.togethercommunity.app').map((request) => request.path)).toEqual(['/api/health']);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: {
+        code: 'validation', message: expect.stringContaining('does not serve'),
+        details: { failure: { workspace: 'preview' }, applied: [{ workspace: 'preview', operation: 'workspace:provision' }] },
+      } });
+      expect(process.exitCode).toBe(2);
+    });
+
+    it.each(['plan', 'drift'])('%s sends no token to the host of a listed workspace when another instance serves that host', async (command) => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const fake = createInstanceFetch([
+        { baseDomain: 'togethercommunity.app', workspaces: ['acme', 'preview'] },
+        { baseDomain: 'preview.togethercommunity.app', workspaces: ['preview'] },
+      ]);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+      const input = { version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace: 'preview', products: [] }] };
+      await runCli(['shop', command, '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+      expect(tokenRequestsTo(fake.requests, 'https://preview.togethercommunity.app')).toEqual([]);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation', details: { workspace: 'preview' } } });
+      expect(process.exitCode).toBe(2);
     });
   });
 
@@ -309,10 +347,13 @@ describe('shop manifest command boundary', () => {
     expect(fake.requests.map((request) => `${request.method} ${request.origin}${request.path}`)).toEqual([
       'GET https://togethercommunity.app/api/tenants',
       'GET https://togethercommunity.app/api/me', 'GET https://togethercommunity.app/api/tenant/routing',
+      'GET https://togethercommunity.app/api/health', 'GET https://acme.togethercommunity.app/api/health',
       'GET https://acme.togethercommunity.app/api/me', 'GET https://acme.togethercommunity.app/api/tenant/settings', 'GET https://acme.togethercommunity.app/api/products',
     ]);
-    expect(fake.requests.every((request) => request.authorization === 'Bearer session-fixture')).toBe(true);
-    expect(fake.requests.map((request) => request.tenant)).toEqual([null, 'acme', 'acme', 'acme', 'acme', 'acme']);
+    const [health, authenticated] = [fake.requests.filter((request) => request.path === '/api/health'), fake.requests.filter((request) => request.path !== '/api/health')];
+    expect(health.map((request) => [request.authorization, request.tenant])).toEqual([[null, null], [null, null]]);
+    expect(authenticated.every((request) => request.authorization === 'Bearer session-fixture')).toBe(true);
+    expect(authenticated.map((request) => request.tenant)).toEqual([null, 'acme', 'acme', 'acme', 'acme', 'acme']);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme', products: [] }] } });
     expect(String(log.mock.calls[0]?.[0])).not.toContain('session-fixture');
@@ -334,6 +375,48 @@ const discover = async (apiUrl: string, setup: FakeInstance[] = instances(), wor
   });
   return { result: await manifestWorkspaceOrigins(apiUrl, probeFor, workspaces, baseDomain), requests: fake.requests };
 };
+
+describe('workspace host guard', () => {
+  const guardOn = (setup: FakeInstance[], profileOrigin = 'https://acme.togethercommunity.app') => {
+    const fake = createInstanceFetch(setup);
+    const guard = workspaceHostGuard(profileOrigin, (origin) => createApiClient({ baseUrl: origin, fetchImpl: fake.fetchImpl, refuseRedirects: true }));
+    return { guard, requests: fake.requests };
+  };
+
+  it('accepts a host that the same instance serves after asking both hosts without credentials once', async () => {
+    const { guard, requests } = guardOn(instances());
+    expect(await guard('https://studio.togethercommunity.app')).toEqual({ ok: true, value: true });
+    expect(await guard('https://studio.togethercommunity.app')).toEqual({ ok: true, value: true });
+    expect(requests.map((request) => `${request.origin}${request.path} ${String(request.authorization)}`)).toEqual([
+      'https://acme.togethercommunity.app/api/health null', 'https://studio.togethercommunity.app/api/health null',
+    ]);
+  });
+
+  it('accepts the profile origin itself without a request', async () => {
+    const { guard, requests } = guardOn(instances());
+    expect((await guard('https://acme.togethercommunity.app')).ok).toBe(true);
+    expect(requests).toEqual([]);
+  });
+
+  it.each([
+    ['another instance', 'https://acme.preview.togethercommunity.app', instances()],
+    ['a host that does not answer', 'https://studio.example.test', instances()],
+    ['an instance that reports no database fingerprint', 'https://studio.togethercommunity.app',
+      [{ baseDomain: 'togethercommunity.app', workspaces: ['acme', 'studio'], databaseFingerprint: null }]],
+  ])('refuses a host of %s', async (_case, origin, setup) => {
+    const { guard } = guardOn(setup);
+    expect(await guard(origin)).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('not served by the instance') } });
+  });
+
+  it('refuses a host of the same base domain that reports another database', async () => {
+    const profile = createInstanceFetch([{ baseDomain: 'togethercommunity.app', workspaces: ['acme'] }]);
+    const other = createInstanceFetch([{ baseDomain: 'togethercommunity.app', workspaces: ['studio'], databaseFingerprint: 'abcdefabcdef' }]);
+    const guard = workspaceHostGuard('https://acme.togethercommunity.app', (origin) => createApiClient({
+      baseUrl: origin, refuseRedirects: true, fetchImpl: origin === 'https://acme.togethercommunity.app' ? profile.fetchImpl : other.fetchImpl,
+    }));
+    expect((await guard('https://studio.togethercommunity.app')).ok).toBe(false);
+  });
+});
 
 describe('manifest instance discovery', () => {
   it.each([

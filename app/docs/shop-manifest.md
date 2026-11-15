@@ -50,6 +50,21 @@ workspace as `provisioning: "missing"` and an unconfirmed provisioning entry as
 `provisioning: "create"`; `shop apply` stops with a validation error that lists
 the unconfirmed string-form workspaces before any write.
 
+Confirmation alone does not prove that the derived host belongs to the same
+instance: a provisioned slug, or a listed one, can equal a host label that a
+separate instance serves. Before the first request that carries the session
+token to a derived workspace host whose origin differs from the selected
+origin, the command reads `GET /api/health` without credentials or a workspace
+header from both the selected origin and that host, once per host in a run. It
+sends the token only when both answer and report the same `version`, `sha`,
+`commit`, `environment`, `production` and a non-null `databaseFingerprint` (a
+hash of the database host name). When the host does not answer, answers
+without a database fingerprint or reports any other value, the command stops
+with a validation error naming the workspace and the operation, before any
+authenticated request to that host. Two deployments of the same release that
+share the same environment name and database host are indistinguishable to
+this check.
+
 The command does not guess the instance from the host name: before any
 workspace request it asks the selected origin itself, with the profile's
 session, for its identity (`GET /api/me`) and its workspace routing
@@ -59,9 +74,10 @@ from its configured base domain. The command accepts it only when that host is
 `<workspace>.<base domain>` for the workspace the origin resolved, uses the
 origin's port, and the selected origin is the base domain itself or a host one
 label below it. Every workspace client then uses
-`<scheme>://<workspace>.<base domain>[:<port>]`, and the operator client uses the
-selected origin, so the session token and the operator secret never leave the
-instance that answered. For example `https://acme.staging.togethercommunity.app`
+`<scheme>://<workspace>.<base domain>[:<port>]` after the health comparison
+above, and the operator client uses the selected origin, so the operator secret
+goes only to the selected origin and the session token only to hosts that
+report the selected origin's instance identity. For example `https://acme.staging.togethercommunity.app`
 and `https://staging.togethercommunity.app` lead to
 `https://studio.staging.togethercommunity.app` for the `studio` shop when that
 instance's base domain is `staging.togethercommunity.app`, and
@@ -90,8 +106,10 @@ distinguishes it reliably from a multi-tenant instance: if that host's first
 label happens to equal the workspace slug, the routing answer looks like a
 workspace host and the derived base domain is a parent domain that the instance
 does not serve, so another workspace, including one provisioned by the same run,
-would be addressed on a host of that parent domain. In every other case the
-routing check above already refuses such an origin.
+would be addressed on a host of that parent domain. The health comparison
+above withholds the session token from such a host unless it reports the same
+instance identity. In every other case the routing check above already refuses
+such an origin.
 
 Every request the tool sends refuses HTTP redirects: workspace requests carrying
 the session token, integration configure requests carrying provider

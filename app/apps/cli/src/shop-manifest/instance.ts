@@ -1,10 +1,39 @@
 import { z } from 'zod';
 import type { ApiClient } from '#core/client/index.js';
+import type { healthOutputSchema } from '#core/contract/index.js';
 import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
-import { manifestOperationError } from './plan.js';
+import { foreignWorkspaceHost, manifestOperationError } from './plan.js';
 
 type WorkspaceOrigins = (workspace: string) => string;
 type InstanceProbe = Pick<ApiClient, 'me' | 'getTenantRouting'>;
+type HealthProbe = Pick<ApiClient, 'health'>;
+
+const INSTANCE_IDENTITY_FIELDS = ['version', 'sha', 'commit', 'environment', 'production', 'databaseFingerprint'] as const;
+type InstanceIdentity = Pick<z.output<typeof healthOutputSchema>, typeof INSTANCE_IDENTITY_FIELDS[number]>;
+
+const readInstanceIdentity = async (probe: HealthProbe): Promise<InstanceIdentity | null> => {
+  const health = await probe.health();
+  if (!health.ok || health.value.databaseFingerprint === null) return null;
+  const { version, sha, commit, environment, production, databaseFingerprint } = health.value;
+  return { version, sha, commit, environment, production, databaseFingerprint };
+};
+
+export const workspaceHostGuard = (profileOrigin: string, healthFor: (origin: string) => HealthProbe) => {
+  const identities = new Map<string, Promise<InstanceIdentity | null>>();
+  const identityOf = (origin: string): Promise<InstanceIdentity | null> => {
+    const known = identities.get(origin);
+    if (known !== undefined) return known;
+    const identity = readInstanceIdentity(healthFor(origin));
+    identities.set(origin, identity);
+    return identity;
+  };
+  return async (origin: string): Promise<Result<true, AppError>> => {
+    if (origin === profileOrigin) return ok(true);
+    const [expected, actual] = await Promise.all([identityOf(profileOrigin), identityOf(origin)]);
+    if (expected === null || actual === null) return err(foreignWorkspaceHost());
+    return INSTANCE_IDENTITY_FIELDS.every((field) => expected[field] === actual[field]) ? ok(true) : err(foreignWorkspaceHost());
+  };
+};
 
 const LOOPBACK_HOST = 'localhost';
 const PLATFORM_HOST_LABEL = 'start';

@@ -8,6 +8,7 @@ export type FakeInstance = {
   customDomains?: Record<string, string>;
   tenantHost?: string;
   secretKeys?: Record<string, string[]>;
+  databaseFingerprint?: string | null;
 };
 type FakeInstanceRequest = {
   origin: string; path: string; method: string; tenant: string | null; authorization: string | null; secret: string | null; body: string | null;
@@ -15,6 +16,17 @@ type FakeInstanceRequest = {
 
 const json = (data: unknown, status = 200) => Response.json(status < 400 ? { ok: true, data } : { ok: false, error: data }, { status });
 const hostnameOf = (url: URL) => url.hostname.replace(/\.+$/, '');
+
+const FINGERPRINT_MODULUS = 2 ** 48;
+const fixtureFingerprint = (text: string): string => Array.from(text)
+  .reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) % FINGERPRINT_MODULUS, 7)
+  .toString(16).padStart(12, '0');
+
+const instanceHealth = (instance: FakeInstance) => ({
+  status: 'ok', version: '1.0.0', sha: 'fixture-sha', database: 'up', environment: instance.baseDomain, production: true, commit: 'fixture-commit',
+  databaseFingerprint: instance.databaseFingerprint === undefined ? fixtureFingerprint(instance.baseDomain) : instance.databaseFingerprint,
+  expectedMigrations: 1, appliedMigrations: 1, schemaCurrent: true, schemaFingerprint: null, schemaFingerprintMatch: null,
+});
 
 const resolveWorkspace = (instances: FakeInstance[], url: URL, tenantHeader: string | null) => {
   const host = hostnameOf(url);
@@ -43,8 +55,9 @@ export const createInstanceFetch = (instances: FakeInstance[]) => {
       body: typeof init?.body === 'string' ? init.body : null,
     };
     requests.push(request);
-    if (request.authorization === null && request.secret === null) return json({ code: 'unauthorized', message: 'Sign in' }, 401);
     const resolved = resolveWorkspace(instances, url, request.tenant);
+    if (request.path === '/api/health' && resolved !== null) return json(instanceHealth(resolved.instance));
+    if (request.authorization === null && request.secret === null) return json({ code: 'unauthorized', message: 'Sign in' }, 401);
     if (resolved === null) throw new TypeError('fetch failed');
     const { instance, slug } = resolved;
     if (request.path === '/api/tenants') {

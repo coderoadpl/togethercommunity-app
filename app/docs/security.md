@@ -444,15 +444,36 @@ scope array.
   secret or its hash; the workspace audit list is unchanged. Every shop
   request span records `app.api_key.match` and, when the secret matched a key
   row, `app.api_key.id`, `app.api_key.kind` and `app.api_key.issuer.id`.
-  Changes the reused use-cases record elsewhere (product versions, stock) are
-  attributed to the issuing owner's account.
+  Changes the reused use-cases record elsewhere (product versions, stock
+  events, order fulfilment and shipment events, stored secrets) are
+  attributed to the issuing owner's account; the key history row is what
+  tells a key's change apart from the owner's own. A request row names the
+  resource from the path, else the body's `id` or `productId`, and for the
+  generic secret route the secret's name; it never copies a credential, a
+  credential identifier such as the storage access key id or the ShipX
+  organization id, or a signed storage URL.
 - **Integration scope.** `shop:integrations:write` grants `tenant:secret:write`
-  and `integration:test`: within its workspace it may configure the payment
-  account, including the live Stripe slot, the storage connection and the
-  carrier credentials. On this change only the catalog routes (products,
-  prices and stock) exist; the order, settings and integration routes,
-  including the payment, storage and carrier configure routes, arrive in the
-  stacked change, so a key with that scope can reach no route here yet.
+  and `integration:test`. Within its workspace a key with it may:
+  configure the payment account with
+  `POST /api/m2m/shop/integrations/stripe/configure`, the live Stripe slot
+  included (owner decision 2026-11-14), and check the stored Stripe key with
+  `POST /api/m2m/shop/integrations/stripe/probe`; replace the storage
+  connection with `POST /api/m2m/shop/integrations/storage/configure`, which
+  probes the bucket against the workspace origins before it stores anything;
+  write the carrier credentials with
+  `POST /api/m2m/shop/integrations/shipx/configure` (see
+  [InPost ShipX credentials](#inpost-shipx-credentials)); and set or delete,
+  through `POST /api/m2m/shop/integrations/secrets` and
+  `DELETE /api/m2m/shop/integrations/secrets/:key`, only the iFirma and KSeF
+  secrets of a finite allow-list: `ifirma.invoiceApiKey`, `ifirma.username`,
+  `ksef.token`, `ksef.contextNip`, `ksef.test.token` and
+  `ksef.test.contextNip`. Any other secret name answers `400`, so the keyed
+  generic route never reaches the Stripe, storage, ShipX or Meta secrets.
+  These routes reuse the owner session's use-cases and validation, refuse
+  unknown body fields, and `shop:integrations:read` returns masked previews
+  only. A stolen key with this scope can therefore redirect the workspace's
+  live payments and storage until it expires, is revoked or the off switch is
+  set.
 
 Whoever holds a key can change that workspace's shop within its scopes and,
 with `shop:integrations:write`, its payment configuration, until the key
@@ -539,8 +560,12 @@ Member erasure removes registry rows; see [copy identifiers](storage.md#copy-ide
 
 The ShipX organization id and API token are encrypted tenant secrets
 (`shipx.organizationId`, `shipx.token`), written only through the owner-only
-`POST /api/integrations/shipx/configure` route (or the generic tenant-secret
-route) and returned only as masked previews. They are not part of tenant
+session route `POST /api/integrations/shipx/configure` (or the owner-only
+generic tenant-secret route) and through
+`POST /api/m2m/shop/integrations/shipx/configure` with a
+[shop management key](#shop-management-keys) holding
+`shop:integrations:write`; the keyed generic secret route refuses both names.
+They are returned only as masked previews. They are not part of tenant
 settings, the public offer or the public payment configuration. The server
 decrypts them only for a ShipX call; the readiness check on the order page asks
 the secret repository whether both secrets exist without decrypting them. Each
@@ -565,6 +590,18 @@ runs. `GET /api/orders/<orderId>/shipx` (`order:read`) is read-only: it returns
 the readiness and the stored shipment without calling ShipX, decrypting the
 credentials or writing anything, so a cross-site GET, which the origin guard
 does not inspect, cannot cause a carrier call or an event.
+
+The same four calls exist for shop management keys under
+`/api/m2m/shop/orders/<orderId>/shipx` (`POST` to create, `/refresh`, `/label`
+and `/discard`) and require `shop:fulfilment:write`, which grants only
+`order:write`. They are classified `api-key` in
+`apps/server/src/request-origin-policy.ts`, refuse any request that carries a
+cookie or an `Authorization` header, run the same use-cases with the same lease
+rules, and act as the key's issuer: each stored change records
+an `order_shipment_events` row with the issuing owner as the staff user, and
+the key history records the key id, the route and the order id.
+`GET /api/m2m/shop/orders/<orderId>/shipx` (`shop:orders:read`) is read-only
+like its session twin.
 
 Labels are proxied: `POST /api/orders/<orderId>/shipx/label` returns the PDF with
 `Content-Disposition: attachment` and `Cache-Control: private, no-store`, so no

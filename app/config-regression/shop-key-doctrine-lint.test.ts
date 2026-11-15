@@ -25,12 +25,27 @@ describe('shop management key doctrine lint', () => {
     },
   );
 
-  it('does not accept the key class described outside the Tenant API keys section', () => {
+  it('does not accept the key class or the keyed ShipX routes described outside their sections', () => {
+    const everything = shopKeyDoctrineRequirements
+      .filter((requirement) => requirement.file === 'app/docs/security.md')
+      .map((requirement) => requirement.text)
+      .join(' ');
     const files = new Map([
       ['app/CLAUDE.md', 'Shop management keys (owner decision 2026-11-14): text'],
-      ['app/docs/security.md', '## Tenant API keys\n\nNothing.\n\n## Other\n\nowner decision 2026-11-14 `shop_management` `SHOP_MANAGEMENT_KEYS` `shop:integrations:write`\n'],
+      ['app/docs/security.md', `## Tenant API keys\n\nNothing.\n\n## InPost ShipX credentials\n\nNothing.\n\n## Other\n\n${everything}\n`],
     ]);
-    expect(collectShopKeyDoctrineProblems(files)).toHaveLength(4);
+    expect(collectShopKeyDoctrineProblems(files)).toHaveLength(shopKeyDoctrineRequirements.length - 1);
+  });
+
+  it('requires the keyed ShipX routes in the carrier credentials section', () => {
+    expect(shopKeyDoctrineRequirements
+      .filter((requirement) => requirement.section === '## InPost ShipX credentials')
+      .map((requirement) => requirement.text)).toEqual([
+      '`POST /api/m2m/shop/integrations/shipx/configure`',
+      '`/api/m2m/shop/orders/<orderId>/shipx`',
+      'classified `api-key`',
+      "act as the key's issuer",
+    ]);
   });
 
   it('reports a surface that is not tracked markdown', () => {

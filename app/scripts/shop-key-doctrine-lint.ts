@@ -35,6 +35,48 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: '`shop:integrations:write`',
     reason: 'must state what the integration write scope can configure',
   },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`POST /api/m2m/shop/integrations/stripe/configure`',
+    reason: 'must state that a key configures Stripe, the live slot included',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`POST /api/m2m/shop/integrations/storage/configure`',
+    reason: 'must state that a key configures the storage connection',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`ksef.test.contextNip`',
+    reason: 'must list the finite generic secret allow-list of shop keys',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: '`POST /api/m2m/shop/integrations/shipx/configure`',
+    reason: 'must name the keyed ShipX credential write route',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: '`/api/m2m/shop/orders/<orderId>/shipx`',
+    reason: 'must name the keyed ShipX shipment routes',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: 'classified `api-key`',
+    reason: 'must state the api-key origin classification of the keyed ShipX routes',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: "act as the key's issuer",
+    reason: "must state that the keyed ShipX routes act as the key's issuer",
+  },
 ];
 
 const sectionOf = (text: string, heading: string): string | null => {

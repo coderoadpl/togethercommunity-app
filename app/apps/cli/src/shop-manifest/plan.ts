@@ -1,4 +1,4 @@
-import type { ApiClient } from '#core/client/index.js';
+import { isRedirectRefusal, type ApiClient } from '#core/client/index.js';
 import { err, ok, validation, type AppError, type Product, type ProductPrice, type ProductStock, type ProvisionTenantInput, type Result } from '#core/domain/index.js';
 import {
   diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, integrationReferenceError, manifestWorkspaceSlug, productVatConvergenceError, shopManifestSchema,
@@ -19,7 +19,8 @@ export type PreparedShop<C extends ManifestReadClient = ManifestReadClient> = {
 };
 
 export const manifestOperationError = (error: AppError, workspace: string, operation: string): AppError => ({
-  code: error.code, message: `Shop operation failed: ${operation}`,
+  code: error.code,
+  message: isRedirectRefusal(error) ? `Shop operation refused a redirect: ${operation}` : `Shop operation failed: ${operation}`,
   details: { workspace, operation },
 });
 

@@ -77,6 +77,7 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       if (!input.ok) { emit(input, ctx.value.json, () => ''); return; }
       const clientFor = (workspace: string) => createApiClient({
         baseUrl: workspaceOrigin.value(workspace),
+        refuseRedirects: true,
         headers: () => ({
           ...(ctx.value.profile.token ? { authorization: `Bearer ${ctx.value.profile.token}` } : {}),
           [TENANT_HEADER]: workspace,
@@ -91,7 +92,7 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {
-          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: ctx.value.apiUrl }),
+          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: ctx.value.apiUrl, refuseRedirects: true }),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
     });

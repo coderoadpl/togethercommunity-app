@@ -58,6 +58,12 @@ reserved name rather than a workspace. Use the instance's platform host
 settings or catalogue data, the command also checks `/api/me` and refuses a
 workspace mismatch.
 
+Every request the tool sends refuses HTTP redirects: workspace requests carrying
+the session token, integration configure requests carrying provider
+credentials, and the operator provisioning request. A redirect answer stops the
+command with `Shop operation refused a redirect: <operation>` instead of
+resending the token, credential or body to the redirect target.
+
 ## Manifest version 1
 
 Save the following complete example as `shop.json`. URLs and seller details are

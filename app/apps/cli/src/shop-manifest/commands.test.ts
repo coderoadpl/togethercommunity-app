@@ -40,6 +40,30 @@ const runCli = async (args: string[], apiUrl = 'https://togethercommunity.app') 
   await import('../main.js');
 };
 
+const { createServer } = process.getBuiltinModule('node:http');
+type TestRequest = { method: string; path: string; headers: Record<string, string | string[] | undefined>; body: string };
+type TestResponse = { status: number; headers: Record<string, string>; body: string };
+const listen = async (handler: (request: TestRequest) => TestResponse) => {
+  const server = createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk: string) => { body += chunk; });
+    request.on('end', () => {
+      const answer = handler({ method: request.method ?? '', path: request.url ?? '/', headers: request.headers, body });
+      response.writeHead(answer.status, answer.headers);
+      response.end(answer.body);
+    });
+  });
+  await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('Expected a TCP test server');
+  return {
+    port: address.port,
+    close: () => new Promise<void>((resolve) => { server.close(() => { resolve(); }); }),
+  };
+};
+const jsonAnswer = (status: number, body: unknown): TestResponse => ({ status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
 describe('shop manifest command boundary', () => {
   it.each([
     ['https://togethercommunity.app', 'https://studio.togethercommunity.app'],
@@ -136,6 +160,44 @@ describe('shop manifest command boundary', () => {
     expect(output).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(JSON.stringify(output)).toContain('"path":["shops",1,"workspace"]');
     expect(process.exitCode).toBe(2);
+  });
+
+  it.each([
+    ['a workspace read', '/api/me', ['plan'], { workspace: 'acme', products: [] }],
+    ['an integration configure request', '/api/integrations/stripe/configure', ['apply', '--integrations'],
+      { workspace: 'acme', integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_KEY', mode: 'test' } }, products: [] }],
+    ['a provisioning request', '/api/internal/tenants/provision', ['apply'],
+      { workspace: { slug: 'studio', provision: { name: 'Studio', ownerEmail: 'owner@togethercommunity.app' } }, products: [] }],
+  ])('refuses a redirect of %s without resending credentials to the target', async (_case, redirectPath, args, shop) => {
+    vi.stubEnv('SHOP_STRIPE_KEY', 'rk_test_private-fixture');
+    vi.stubEnv('TOGETHER_SHOP_OPERATOR_SECRET', 'operator-fixture');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const received: string[] = [];
+    const target = await listen((request) => {
+      received.push(`${request.method} ${request.path} ${String(request.headers.authorization)} ${request.body}`);
+      return jsonAnswer(200, { ok: true, data: {} });
+    });
+    const source = await listen((request) => {
+      const path = new URL(request.path, 'http://localhost').pathname;
+      const slug = String(request.headers['x-tenant']);
+      if (path === redirectPath) return { status: 307, headers: { location: `http://127.0.0.1:${String(target.port)}${path}` }, body: '' };
+      if (path === '/api/me' && slug === 'studio') return jsonAnswer(404, { ok: false, error: { code: 'tenant_not_found', message: 'No tenant' } });
+      const data = path === '/api/me' ? { userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug, name: slug, staffRole: 'owner', memberId: null, banned: false } }
+        : path === '/api/tenant/settings' ? { settings: tenantSettingsSchema.parse({ name: slug, billingPortalUrl: null, bunnyStreamLibraryId: null }) } : { products: [] };
+      return jsonAnswer(200, { ok: true, data });
+    });
+    try {
+      const path = await inputFile(JSON.stringify({ version: 1, shops: [shop] }));
+      await runCli(['shop', ...args, '--manifest', path], `http://localhost:${String(source.port)}`);
+    } finally {
+      await source.close();
+      await target.close();
+    }
+    expect(received).toEqual([]);
+    const output = String(log.mock.calls[0]?.[0]);
+    expect(JSON.parse(output)).toMatchObject({ ok: false, error: { code: 'internal', message: expect.stringContaining('refused a redirect') } });
+    expect(output).not.toContain('private-fixture');
+    expect(process.exitCode).not.toBe(0);
   });
 
   it('does not print JSON parser input or file errors', async () => {

@@ -143,6 +143,22 @@ describe('createApiClient', () => {
     });
   });
 
+  it('parses the instance description of the health answer and rejects a malformed one', async () => {
+    const answer = (instance: unknown): typeof fetch => async () => jsonResponse({
+      ok: true,
+      data: {
+        status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up', environment: 'production', production: true,
+        commit: 'cafe1234', databaseFingerprint: 'b1bfbb98b4f7', expectedMigrations: 82, appliedMigrations: 82,
+        schemaCurrent: true, schemaFingerprint: 'c087b16a6bb6', schemaFingerprintMatch: true, instance,
+      },
+    });
+    const instance = { baseDomain: 'togethercommunity.app', singleTenant: false, databaseIdentity: '0123456789abcdef' };
+    await expect(createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: answer(instance) }).health())
+      .resolves.toMatchObject({ ok: true, value: { instance } });
+    await expect(createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: answer({ ...instance, databaseIdentity: 'postgres://db' }) }).health())
+      .resolves.toMatchObject({ ok: false });
+  });
+
   it('requests and parses signed student lesson playback', async () => {
     const video: LessonPlaybackVideo = {
       kind: 'bunny',

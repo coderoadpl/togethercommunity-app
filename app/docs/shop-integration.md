@@ -274,10 +274,48 @@ For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. The hosted
 form already collects legal acceptance, applicable consent choices, billing and
 shipping selections. Do not embed it in an iframe.
 
-For a custom form, the following repository-based TypeScript example uses the
-contract schemas at both JSON boundaries. Call it only after the buyer accepted
-the displayed legal terms. This example selects the configured manual `courier`
-rate; choose an active rate from the offer in a real UI.
+For a custom form on an external site, the following plain JavaScript runs in a
+`<script type="module">` element without any package. Call the session request
+only after the buyer accepted the displayed legal terms. This example selects
+the configured manual `courier` rate; choose an active rate from the offer in a
+real UI.
+
+```js
+const workspaceOrigin = 'https://acme.togethercommunity.app';
+
+const readData = async (response) => {
+  const body = await response.json();
+  if (body.ok !== true) throw new Error(`${body.error.code}: ${body.error.message}`);
+  if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+  return body.data;
+};
+
+const offer = await readData(await fetch(`${workspaceOrigin}/api/public/offer?productRef=paperback`, {
+  credentials: 'omit',
+}));
+const product = offer.products.find((item) => item.slug === 'paperback');
+const price = product?.prices.find((item) => item.kind === 'one_time');
+if (!product || !price || product.stock.soldOut) throw new Error('Product is unavailable');
+const coverUrl = product.coverUrl === null ? null : new URL(product.coverUrl, workspaceOrigin).href;
+const session = await readData(await fetch(`${workspaceOrigin}/api/public/checkout/session`, {
+  method: 'POST',
+  credentials: 'omit',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    productId: product.id,
+    priceId: price.id,
+    termsAccepted: true,
+    language: 'en',
+    shipping: { rateId: 'courier' },
+  }),
+}));
+window.location.assign(session.url);
+```
+
+Inside this repository only, the same flow can use the contract schemas at both
+JSON boundaries. The `#core/contract/index.js` import resolves only within the
+repository's own packages; an external site cannot import it, so use the plain
+example above there.
 
 ```ts
 import {
@@ -352,7 +390,7 @@ have completed. Re-read protected order state before repeating fulfilment.
 
 The offer supports `If-None-Match` and a bodyless `304`. Consumers that cache it
 must retain the prior parsed offer and handle `304` **before** calling `.json()`.
-The browser example sends no conditional header and expects a JSON response.
+The browser examples send no conditional header and expect a JSON response.
 The open-CORS registration does not expose `ETag` to cross-origin JavaScript;
 do not assume a browser can discover it from `response.headers`.
 

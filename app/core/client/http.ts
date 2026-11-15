@@ -36,6 +36,8 @@ import {
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
   apiKeysShopManagementPurgeOutputSchema,
+  apiKeysShopManagementEventsOutputSchema,
+  type ApiKeysShopManagementEventsQuery,
   authConfigOutputSchema,
   authResolveOutputSchema,
   avatarRemoveOutputSchema,
@@ -2477,6 +2479,22 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listShopManagementKeyEvents: (input: ApiKeysShopManagementEventsQuery = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.keyId !== undefined) params.set('keyId', input.keyId);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    const path = API_ROUTES.apiKeysShopManagementEvents.path;
+    return request(
+      options,
+      API_ROUTES.apiKeysShopManagementEvents.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      apiKeysShopManagementEventsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   purgeShopManagementKeys: (signal?: AbortSignal) =>
     request(
       options,

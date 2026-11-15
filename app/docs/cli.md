@@ -113,6 +113,9 @@ scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `--expires-at` at most 30 days ahead. `api-keys list` prints each key's kind.
 `api-keys purge-shop-management --yes` deletes every shop management key of the
 workspace, revoked or not, and prints the count; it refuses without `--yes`.
+`api-keys shop-events [--key <id>] [--cursor <event-id>] [--limit <n>]` lists
+the workspace's shop management key history (creation, revocation, purge and
+keyed mutating requests), newest first.
 The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list.

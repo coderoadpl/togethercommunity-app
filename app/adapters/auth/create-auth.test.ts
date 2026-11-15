@@ -157,7 +157,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     const activateTeamInvitation = vi.fn(async (input: { userId: string; email: string; occurredAt: string }) => {
       await team.activateInvitation(tenantId, input.userId, crypto.randomUUID(), {
         id: crypto.randomUUID(), tenantId, kind: 'team.admin_activated',
-        actorUserId: input.userId, actorEmail: input.email, actorApiKeyId: null,
+        actorUserId: input.userId, actorEmail: input.email,
         subjectMemberId: null, reason: input.userId, at: input.occurredAt,
       });
     });
@@ -177,7 +177,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     const userId = account?.user.id ?? '';
     await team.inviteAdmin(tenantId, userId, normalizeEmail(email), crypto.randomUUID(), {
       id: crypto.randomUUID(), tenantId, kind: 'team.admin_invited', actorUserId: userId,
-      actorEmail: email, actorApiKeyId: null, subjectMemberId: null, reason: userId, at: new Date().toISOString(),
+      actorEmail: email, subjectMemberId: null, reason: userId, at: new Date().toISOString(),
     });
     expect(await team.list(tenantId)).toContainEqual(expect.objectContaining({ userId, status: 'invited' }));
     expect(activateTeamInvitation).not.toHaveBeenCalled();

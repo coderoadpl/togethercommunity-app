@@ -110,6 +110,7 @@ export const buildApp = (deps: AppDeps) => {
     c.res.headers.set('content-security-policy', policy);
   });
   app.use('*', marketingSignupCorsMiddleware(deps));
+  app.use('*', telemetryMiddleware);
   app.use('/api/*', shopManagementKeysSwitchMiddleware(deps.shopManagementKeys));
   app.use('*', async (c, next) => {
     const maxSize = requestBodyLimit(c.req.method, c.req.path);
@@ -122,7 +123,6 @@ export const buildApp = (deps: AppDeps) => {
       onError: () => isMarketingSignupSubmissionPath(c.req.path) ? new Response(null, { status: 413 }) : respond(err(validation(`Request body exceeds the ${maxSize} byte limit`))),
     })(c, next);
   });
-  app.use('*', telemetryMiddleware);
   app.use('*', signInTimingMiddleware(deps.signInTelemetrySecret));
   app.use('*', publicRateLimitMiddleware(deps));
   app.use('/api/*', async (c, next) => {

@@ -53,7 +53,6 @@ const auditEvent = (
   kind,
   actorUserId: session.actorUserId,
   actorEmail: ACTOR_EMAIL,
-  actorApiKeyId: null,
   subjectMemberId: session.subjectMemberId,
   reason: session.reason,
   at,

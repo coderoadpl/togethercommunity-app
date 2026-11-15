@@ -13,20 +13,21 @@ import {
   type CreateApiKeyInput,
   type ImportAuditEvent,
   type Result,
+  type ShopManagementKeyEvent,
+  type ShopManagementKeyEventPage,
   type ShopManagementKeysSwitch,
   type TenantApiKey,
   type TenantApiKeyPublic,
-  type TenantAuditEventInput,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { tenantAuditActor } from '../tenant-audit.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
   ApiKeyCrypto,
   Clock,
   IdGenerator,
   ImportAuditEventRepository,
+  ShopManagementKeyEventRepository,
   TenantApiKeyRepository,
 } from '../ports.js';
 
@@ -43,6 +44,10 @@ export interface CreatedApiKey {
   secret: string;
 }
 
+export interface ShopManagementKeyEventReadDeps {
+  shopManagementKeyEvents: Pick<ShopManagementKeyEventRepository, 'list'>;
+}
+
 export interface ImportAuditReadDeps {
   tenantApiKeys: Pick<TenantApiKeyRepository, 'listByTenant'>;
   importAuditEvents: Pick<ImportAuditEventRepository, 'listByApiKey'>;
@@ -57,19 +62,23 @@ const shopManagementKeyDenial = (ctx: Ctx): AppError | null =>
     ? null
     : forbidden('Shop management keys require a verified owner session');
 
-const shopManagementAudit = (
+const shopManagementLifecycleEvent = (
   ctx: Ctx,
   tenantId: string,
-  kind: 'api_key.shop_management_created' | 'api_key.shop_management_revoked',
-  apiKey: Pick<TenantApiKey, 'id' | 'name'>,
+  kind: 'created' | 'revoked' | 'purged',
+  apiKeyId: string,
   deps: Pick<ApiKeyDeps, 'ids' | 'clock'>,
-): TenantAuditEventInput => ({
+): ShopManagementKeyEvent => ({
   id: deps.ids.nextId(),
   tenantId,
+  apiKeyId,
   kind,
-  ...tenantAuditActor(ctx),
-  subjectMemberId: null,
-  reason: `${apiKey.name} (${apiKey.id})`,
+  actorUserId: ctx.identity.userId,
+  method: null,
+  route: null,
+  resourceId: null,
+  status: null,
+  outcome: 'succeeded',
   at: deps.clock.nowIso(),
 });
 
@@ -129,7 +138,7 @@ export const createTenantApiKey = async (
     await deps.tenantApiKeys.createShopManagement(
       tenant.value,
       apiKey,
-      shopManagementAudit(ctx, tenant.value, 'api_key.shop_management_created', apiKey, deps),
+      shopManagementLifecycleEvent(ctx, tenant.value, 'created', apiKey.id, deps),
     );
   } else {
     await deps.tenantApiKeys.create(tenant.value, apiKey);
@@ -165,7 +174,7 @@ export const revokeTenantApiKey = async (
       tenant.value,
       existing.id,
       deps.clock.nowIso(),
-      shopManagementAudit(ctx, tenant.value, 'api_key.shop_management_revoked', existing, deps),
+      shopManagementLifecycleEvent(ctx, tenant.value, 'revoked', existing.id, deps),
     )
     : await deps.tenantApiKeys.revoke(tenant.value, input.id, deps.clock.nowIso());
   if (!revoked) return err(notFound(`No API key "${input.id}" in this tenant`));
@@ -181,16 +190,27 @@ export const purgeShopManagementKeys = async (
   const denial = shopManagementKeyDenial(ctx);
   if (denial !== null) return err(denial);
 
-  const purged = await deps.tenantApiKeys.purgeShopManagement(tenant.value, (count) => ({
-    id: deps.ids.nextId(),
-    tenantId: tenant.value,
-    kind: 'api_key.shop_management_purged',
-    ...tenantAuditActor(ctx),
-    subjectMemberId: null,
-    reason: `${String(count)} shop management keys purged`,
-    at: deps.clock.nowIso(),
-  }));
+  const purged = await deps.tenantApiKeys.purgeShopManagement(
+    tenant.value,
+    (apiKeyId) => shopManagementLifecycleEvent(ctx, tenant.value, 'purged', apiKeyId, deps),
+  );
   return ok({ purged });
+};
+
+export const listShopManagementKeyEvents = async (
+  ctx: Ctx,
+  input: { apiKeyId?: string; cursor?: string; limit: number },
+  deps: ShopManagementKeyEventReadDeps,
+): Promise<Result<ShopManagementKeyEventPage, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'api-key:write');
+  if (!tenant.ok) return tenant;
+  const denial = shopManagementKeyDenial(ctx);
+  if (denial !== null) return err(denial);
+  return ok(await deps.shopManagementKeyEvents.list(tenant.value, {
+    limit: input.limit,
+    ...(input.apiKeyId === undefined ? {} : { apiKeyId: input.apiKeyId }),
+    ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+  }));
 };
 
 export const listImportAuditForApiKey = async (

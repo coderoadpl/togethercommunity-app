@@ -3902,6 +3902,43 @@ apiKey
     }),
   );
 
+const apiKeyShopEventsOptionsSchema = z.object({
+  key: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+apiKey
+  .command('shop-events')
+  .description('List the shop management key history of the workspace, newest first')
+  .option('--key <id>', 'only events of this key id')
+  .option('--cursor <id>', 'continue after this event id')
+  .option('--limit <n>', 'events per page (1-100, default 50)')
+  .action(
+    withInput(z.tuple([apiKeyShopEventsOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listShopManagementKeyEvents({
+          ...(options.key === undefined ? {} : { keyId: options.key }),
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) => [
+          ...(data.events.length === 0 ? ['no shop management key events'] : data.events.map((event) => [
+            event.at,
+            event.kind,
+            event.apiKeyId,
+            event.actorUserId ?? '-',
+            event.method === null ? '-' : `${event.method} ${event.route ?? ''}`,
+            event.resourceId ?? '-',
+            event.status === null ? event.outcome : `${String(event.status)} ${event.outcome}`,
+          ].join('\t'))),
+          ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
+        ].join('\n'),
+      );
+    }),
+  );
+
 const tenantSecret = program
   .command('tenant-secret')
   .description('Encrypted BYO integration secrets (owner only)');

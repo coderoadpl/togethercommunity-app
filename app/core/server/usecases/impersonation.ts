@@ -17,7 +17,6 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import { tenantAuditActor } from '../tenant-audit.js';
 import type {
   AuthenticatedUser,
   Clock,
@@ -58,7 +57,6 @@ const endedEvent = (ids: IdGenerator, input: EndedRecordAudit): TenantAuditEvent
   kind: 'impersonation_ended',
   actorUserId: input.session.actorUserId,
   actorEmail: input.actorEmail,
-  actorApiKeyId: null,
   subjectMemberId: input.session.subjectMemberId,
   reason: input.session.reason,
   at: input.at,
@@ -105,7 +103,8 @@ export const startImpersonation = async (
       id: deps.ids.nextId(),
       tenantId: tenant.value,
       kind: 'impersonation_started',
-      ...tenantAuditActor(ctx),
+      actorUserId: ctx.identity.userId,
+      actorEmail: ctx.identity.email,
       subjectMemberId: member.id,
       reason: input.reason,
       at: startedAt,

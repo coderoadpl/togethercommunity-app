@@ -42,6 +42,7 @@ interface Hoisted {
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
   purgeShopManagementKeys: ReturnType<typeof vi.fn>;
+  listShopManagementKeyEvents: ReturnType<typeof vi.fn>;
   listSurveys: ReturnType<typeof vi.fn>;
   createSurvey: ReturnType<typeof vi.fn>;
   deleteSurvey: ReturnType<typeof vi.fn>;
@@ -121,6 +122,7 @@ const h = vi.hoisted(
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
     purgeShopManagementKeys: vi.fn(),
+    listShopManagementKeyEvents: vi.fn(),
     listSurveys: vi.fn(),
     createSurvey: vi.fn(),
     deleteSurvey: vi.fn(),
@@ -248,6 +250,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
     purgeShopManagementKeys: h.purgeShopManagementKeys,
+    listShopManagementKeyEvents: h.listShopManagementKeyEvents,
     listSurveys: h.listSurveys,
     createSurvey: h.createSurvey,
     deleteSurvey: h.deleteSurvey,
@@ -1362,6 +1365,24 @@ describe('activity report CLI parsing', () => {
     await run('--json', 'api-key', 'purge-shop-management', '--yes');
     expect(h.purgeShopManagementKeys).toHaveBeenCalledOnce();
     expect(soleJson()).toEqual({ ok: true, data: { purged: 3 } });
+  });
+  it('lists the shop management key history for one key with paging options', async () => {
+    const event = {
+      id: 'event-1', tenantId: 'acme', apiKeyId: 'shop-key', kind: 'request', actorUserId: 'owner-1', method: 'POST',
+      route: '/api/m2m/shop/products/update', resourceId: 'product-1', status: 403, outcome: 'refused', at: '1998-08-08T00:00:00.000Z',
+    };
+    h.listShopManagementKeyEvents.mockReset().mockResolvedValue(ok({ events: [event], nextCursor: 'event-1' }));
+    await run('api-key', 'shop-events', '--key', 'shop-key', '--limit', '1', '--cursor', 'event-0');
+    expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({ keyId: 'shop-key', cursor: 'event-0', limit: 1 });
+    expect(logSpy).toHaveBeenCalledWith(
+      '1998-08-08T00:00:00.000Z\trequest\tshop-key\towner-1\tPOST /api/m2m/shop/products/update\tproduct-1\t403 refused\nnext: --cursor event-1',
+    );
+  });
+  it('lists the whole workspace shop management key history without a key filter', async () => {
+    h.listShopManagementKeyEvents.mockReset().mockResolvedValue(ok({ events: [], nextCursor: null }));
+    await run('--json', 'api-key', 'shop-events');
+    expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { events: [], nextCursor: null } });
   });
   it('rejects an unknown api-keys create --kind before calling the API', async () => {
     h.createApiKey.mockReset();

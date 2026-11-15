@@ -1060,6 +1060,41 @@ export const tenantApiKeys = pgTable(
       'tenant_api_keys_shop_management_issuer_expiry_check',
       sql`${table.kind} <> 'shop_management' OR (${table.issuedByUserId} IS NOT NULL AND ${table.expiresAt} IS NOT NULL)`,
     ),
+    check(
+      'tenant_api_keys_shop_management_scopes_check',
+      sql`${table.kind} <> 'shop_management' OR (${table.scopes} IS NOT NULL AND jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb)`,
+    ),
+  ],
+);
+
+export const shopManagementKeyEvents = pgTable(
+  'shop_management_key_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    apiKeyId: text('api_key_id').notNull(),
+    kind: text('kind', { enum: ['created', 'revoked', 'purged', 'request'] }).notNull(),
+    actorUserId: text('actor_user_id'),
+    method: text('method', { enum: ['POST', 'PUT', 'PATCH', 'DELETE'] }),
+    route: text('route'),
+    resourceId: text('resource_id'),
+    status: integer('status'),
+    outcome: text('outcome', { enum: ['succeeded', 'refused', 'failed'] }).notNull(),
+    at: text('at').notNull(),
+  },
+  (table) => [
+    index('shop_management_key_events_tenant_at_idx').on(table.tenantId, table.at),
+    index('shop_management_key_events_tenant_key_at_idx').on(table.tenantId, table.apiKeyId, table.at),
+    check('shop_management_key_events_kind_check', sql`${table.kind} IN ('created', 'revoked', 'purged', 'request')`),
+    check('shop_management_key_events_method_check', sql`${table.method} IN ('POST', 'PUT', 'PATCH', 'DELETE')`),
+    check('shop_management_key_events_status_check', sql`${table.status} BETWEEN 100 AND 599`),
+    check('shop_management_key_events_outcome_check', sql`${table.outcome} IN ('succeeded', 'refused', 'failed')`),
+    check(
+      'shop_management_key_events_shape_check',
+      sql`(${table.kind} = 'request' AND ${table.method} IS NOT NULL AND ${table.route} IS NOT NULL AND ${table.status} IS NOT NULL) OR (${table.kind} <> 'request' AND ${table.actorUserId} IS NOT NULL AND ${table.method} IS NULL AND ${table.route} IS NULL AND ${table.resourceId} IS NULL AND ${table.status} IS NULL AND ${table.outcome} = 'succeeded')`,
+    ),
   ],
 );
 
@@ -2354,14 +2389,10 @@ export const tenantAuditEvents = pgTable(
         'team.admin_activated',
         'team.invitation_revoked',
         'team.admin_removed',
-        'api_key.shop_management_created',
-        'api_key.shop_management_revoked',
-        'api_key.shop_management_purged',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
-    actorApiKeyId: text('actor_api_key_id'),
     subjectMemberId: text('subject_member_id'),
     reason: text('reason'),
     at: text('at').notNull(),

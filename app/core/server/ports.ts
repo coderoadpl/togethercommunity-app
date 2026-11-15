@@ -129,6 +129,8 @@ import type {
   InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
+  ShopManagementKeyEvent,
+  ShopManagementKeyEventPage,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
   ImportAuditEvent,
@@ -866,15 +868,24 @@ export interface TenantApiKeyRepository {
   listByTenant(tenantId: string): Promise<TenantApiKey[]>;
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
+  findByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
-  createShopManagement(tenantId: string, apiKey: TenantApiKey, audit: TenantAuditEventInput): Promise<void>;
+  createShopManagement(tenantId: string, apiKey: TenantApiKey, event: ShopManagementKeyEvent): Promise<void>;
   revokeShopManagement(
     tenantId: string,
     id: string,
     revokedAt: string,
-    audit: TenantAuditEventInput,
+    event: ShopManagementKeyEvent,
   ): Promise<TenantApiKey | null>;
-  purgeShopManagement(tenantId: string, audit: (purged: number) => TenantAuditEventInput): Promise<number>;
+  purgeShopManagement(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+}
+
+export interface ShopManagementKeyEventRepository {
+  record(tenantId: string, event: ShopManagementKeyEvent): Promise<void>;
+  list(
+    tenantId: string,
+    query: { apiKeyId?: string; cursor?: string; limit: number },
+  ): Promise<ShopManagementKeyEventPage>;
 }
 
 export interface ImportAuditEventRepository {

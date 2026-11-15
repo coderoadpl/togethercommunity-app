@@ -20,7 +20,6 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { tenantAuditActor } from '../tenant-audit.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
   CourseLessonRepository,
@@ -328,7 +327,8 @@ export const restoreContentVersion = async (
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     kind: 'content_version_restored',
-    ...tenantAuditActor(ctx),
+    actorUserId: ctx.identity.userId,
+    actorEmail: ctx.identity.email,
     subjectMemberId: null,
     reason: `${record.entityKind} ${record.entityId} restored to version ${record.ordinal}`,
     at: deps.clock.nowIso(),

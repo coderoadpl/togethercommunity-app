@@ -465,6 +465,7 @@ const apiKeyDeps = (rows: TenantApiKey[]): {
     createShopManagement: async () => undefined,
     revokeShopManagement: async () => null,
     purgeShopManagement: async () => 0,
+    findByHash: async () => null,
   },
   apiKeyCrypto: {
     generateSecret: () => 'secret',

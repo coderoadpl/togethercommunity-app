@@ -1,6 +1,6 @@
 {
-  "hash": "a2e02d7a2171663966e06c637a5e24b157980576911409ddf348928377ea3109",
-  "shortId": "a2e02d7a2171",
+  "hash": "0946641b4402c87e3761a8c7daf92e8c5360b716360cee51b562580be668cae2",
+  "shortId": "0946641b4402",
   "schema": {
     "constraints": [
       {
@@ -9586,6 +9586,14 @@
       },
       {
         "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_api_key_id",
+            "notNull": false,
+            "type": "text"
+          },
           {
             "default": null,
             "generated": "",

@@ -2360,6 +2360,7 @@ export const tenantAuditEvents = pgTable(
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
+    actorApiKeyId: text('actor_api_key_id'),
     subjectMemberId: text('subject_member_id'),
     reason: text('reason'),
     at: text('at').notNull(),

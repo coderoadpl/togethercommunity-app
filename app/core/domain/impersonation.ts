@@ -64,6 +64,7 @@ export const tenantAuditEventSchema = z.object({
   ]),
   actorUserId: z.string().min(1),
   actorEmail: z.string().min(1),
+  actorApiKeyId: z.string().nullable(),
   subjectMemberId: z.string().nullable(),
   subjectLabel: z.string().nullable(),
   reason: z.string().nullable(),

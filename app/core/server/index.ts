@@ -1,4 +1,5 @@
 export * from './context.js';
+export * from './tenant-audit.js';
 export * from './authorize.js';
 export * from './ports.js';
 export * from './meta-capi-ports.js';

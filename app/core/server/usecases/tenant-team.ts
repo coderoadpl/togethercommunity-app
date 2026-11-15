@@ -16,6 +16,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
+import { tenantAuditActor } from '../tenant-audit.js';
 import type {
   AuthPort,
   Clock,
@@ -56,8 +57,7 @@ export const addTenantAdmin = async (
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     kind: 'team.admin_invited',
-    actorUserId: ctx.identity.userId,
-    actorEmail: ctx.identity.email,
+    ...tenantAuditActor(ctx),
     subjectMemberId: null,
     reason: userId,
     at: deps.clock.nowIso(),
@@ -96,8 +96,7 @@ export const removeTenantAdmin = async (
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     kind: member.status === 'invited' ? 'team.invitation_revoked' : 'team.admin_removed',
-    actorUserId: ctx.identity.userId,
-    actorEmail: ctx.identity.email,
+    ...tenantAuditActor(ctx),
     subjectMemberId: null,
     reason: parsed.data.userId,
     at: deps.clock.nowIso(),

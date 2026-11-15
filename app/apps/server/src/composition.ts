@@ -1380,7 +1380,7 @@ export const createDeps = (
       const tenantId = resolved.value.tenant.id;
       await team.activateInvitation(tenantId, userId, ids.nextId(), {
         id: ids.nextId(), tenantId, kind: 'team.admin_activated',
-        actorUserId: userId, actorEmail: email, subjectMemberId: null,
+        actorUserId: userId, actorEmail: email, actorApiKeyId: null, subjectMemberId: null,
         reason: userId, at: occurredAt,
       });
     },

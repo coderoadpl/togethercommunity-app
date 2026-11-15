@@ -378,7 +378,7 @@ describe('shop management keys', () => {
     expect(h.rows).toEqual([expect.objectContaining({ kind: 'shop_management', issuedByUserId: 'u1', keyHash: 'hash:super-secret-value' })]);
     expect(h.audits).toEqual([{
       id: 'key-2', tenantId: 't1', kind: 'api_key.shop_management_created', actorUserId: 'u1',
-      actorEmail: 'owner@together.dev', subjectMemberId: null, reason: 'Shop backend (key-1)', at: NOW,
+      actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null, reason: 'Shop backend (key-1)', at: NOW,
     }]);
     expect(JSON.stringify(h.audits)).not.toContain('super-secret-value');
 

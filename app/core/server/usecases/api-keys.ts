@@ -19,6 +19,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { tenantAuditActor } from '../tenant-audit.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
   ApiKeyCrypto,
@@ -63,8 +64,7 @@ const shopManagementAudit = (
   id: deps.ids.nextId(),
   tenantId,
   kind,
-  actorUserId: ctx.identity.userId,
-  actorEmail: ctx.identity.email,
+  ...tenantAuditActor(ctx),
   subjectMemberId: null,
   reason: `${apiKey.name} (${apiKey.id})`,
   at: deps.clock.nowIso(),

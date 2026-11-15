@@ -388,6 +388,15 @@ optional metadata fields are preserved on existing products. Use `null` to clear
 nullable metadata. Omitted product VAT inherits the workspace treatment on new
 products; use an explicit `null` to return an existing product to inheritance.
 
+`vatExemptionBasis` must describe the value the product routes store, so that a
+second apply finds nothing to change. A string basis requires `"vatRate":
+"exempt"`. A `null` basis requires an explicit rate (`5`, `8`, `23` or `null`).
+For an exempt product, omit `vatExemptionBasis` to let the product route copy
+the workspace's exemption basis when the product becomes exempt, or set the
+basis string explicitly; `"vatRate": "exempt"` with a `null` basis is rejected
+before any request, because the route stores the workspace basis instead of
+`null`.
+
 `price` describes one active, non-imported, one-time sellable price, with an
 integer nonnegative `amountCents` and an uppercase three-letter `currency`.
 Amounts are in minor currency units, not decimal major units. The tool creates a

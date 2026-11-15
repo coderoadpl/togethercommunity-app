@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { forbidden } from '#core/domain/index.js';
 import { planManifest } from './plan.js';
+import { applyManifest } from './apply.js';
+import { driftManifest } from './drift.js';
 import { createManifestFake, existingPrice, existingProduct, existingStock, manifestFixture } from './fake-client.js';
 
 describe('shop plan', () => {
@@ -66,5 +68,13 @@ describe('shop plan', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden', details: { workspace: 'acme', operation: 'settings:read' } } });
     expect(JSON.stringify(result)).not.toContain('never-echo-this');
     expect(state.requests).toEqual(['GET /api/me', 'GET /api/tenant/settings']);
+  });
+
+  it.each(['plan', 'apply', 'drift'] as const)('%s refuses a non-convergent product VAT basis before any request', async (command) => {
+    const { api, state } = createManifestFake();
+    const input = { version: 1, shops: [{ workspace: 'acme', products: [{ slug: 'paperback', title: 'Paperback', vatRate: 'exempt', vatExemptionBasis: null, price: { amountCents: 4900, currency: 'PLN' }, published: true }] }] };
+    const run = { plan: planManifest, apply: applyManifest, drift: driftManifest }[command];
+    expect(await run(input, () => api)).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('omit vatExemptionBasis') } });
+    expect(state.requests).toEqual([]);
   });
 });

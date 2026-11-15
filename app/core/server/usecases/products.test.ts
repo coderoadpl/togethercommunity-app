@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { tenantSettingsSchema } from '#core/domain/index.js';
+import { tenantSettingsSchema, updateProductInputSchema } from '#core/domain/index.js';
+import { diffManifestProduct, productMetadata, productVatConvergenceError, shopManifestProductSchema } from '#core/domain/shop-manifest.js';
 
 import type {
   Identity,
@@ -509,4 +510,66 @@ it('rejects creating a product when persistence finds unavailable courses', asyn
   );
   expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product access items may only reference existing, active courses' } });
   expect(store).toEqual([]);
+});
+
+describe('shop manifest product VAT convergence with the persisted product', () => {
+  const ctx = { identity: identity('t-acme', 'owner') };
+  const settings = tenantSettingsSchema.parse({
+    name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null,
+    invoiceVatMode: 'exempt', invoiceExemptionBasisKind: 'art_113_1', invoiceExemptionBasis: 'art. 113 ust. 1',
+  });
+  const manifestProduct = (vat: Record<string, unknown>) => shopManifestProductSchema.parse({
+    slug: 'printed-guide', title: 'Printed guide', price: { amountCents: 4900, currency: 'PLN' }, published: false, ...vat,
+  });
+  const stored = (vat: Pick<Product, 'vatRate' | 'vatExemptionBasis'>): Product => ({
+    ...draft('product-1', 't-acme'), type: 'physical', slug: 'printed-guide', title: 'Printed guide', parcelTemplate: 'medium', ...vat,
+  });
+  const pendingFields = (desired: ReturnType<typeof manifestProduct>, product: Product | undefined) =>
+    diffManifestProduct(desired, product === undefined ? null : { product, prices: [], stock: null }).fields;
+  const applyOnce = async (desired: ReturnType<typeof manifestProduct>, existing?: Product) => {
+    const { repo, store } = fakeRepo(existing === undefined ? [] : [existing]);
+    const productDeps = { ...deps(repo, ['product-1', 'version-1']), tenants: { findSettings: async () => settings } };
+    const fields = pendingFields(desired, store[0]);
+    const result = existing === undefined
+      ? await createProduct(ctx, { ...productMetadata(desired), slug: desired.slug, type: desired.type, priceCents: 4900 }, productDeps)
+      : await updateProduct(ctx, updateProductInputSchema.parse({
+        id: existing.id, ...Object.fromEntries(Object.entries(productMetadata(desired)).filter(([key]) => fields.includes(key))),
+      }), productDeps);
+    expect(result).toMatchObject({ ok: true });
+    return { persisted: store[0], pending: pendingFields(desired, store[0]) };
+  };
+
+  it.each([
+    [{ vatRate: 'exempt', vatExemptionBasis: null }, undefined],
+    [{ vatRate: 'exempt', vatExemptionBasis: null }, stored({ vatRate: 'exempt', vatExemptionBasis: 'art. 43 ust. 1 pkt 29' })],
+    [{ vatRate: 5, vatExemptionBasis: 'art. 43 ust. 1 pkt 29' }, undefined],
+    [{ vatRate: null, vatExemptionBasis: 'art. 43 ust. 1 pkt 29' }, undefined],
+    [{ vatExemptionBasis: 'art. 43 ust. 1 pkt 29' }, undefined],
+    [{ vatExemptionBasis: null }, stored({ vatRate: 'exempt', vatExemptionBasis: 'art. 43 ust. 1 pkt 29' })],
+  ])('rejects %j in preflight because the use-cases persist a different basis', async (vat, existing) => {
+    const desired = manifestProduct(vat);
+    expect(productVatConvergenceError(desired)).not.toBeNull();
+    expect((await applyOnce(desired, existing)).pending).toEqual(['vatExemptionBasis']);
+  });
+
+  it('shows the seller basis that an exempt product with a null basis receives', async () => {
+    expect((await applyOnce(manifestProduct({ vatRate: 'exempt', vatExemptionBasis: null }))).persisted)
+      .toMatchObject({ vatRate: 'exempt', vatExemptionBasis: 'art. 113 ust. 1' });
+  });
+
+  it.each([
+    {},
+    { vatRate: null },
+    { vatRate: null, vatExemptionBasis: null },
+    { vatRate: 5 },
+    { vatRate: 23, vatExemptionBasis: null },
+    { vatRate: 'exempt' },
+    { vatRate: 'exempt', vatExemptionBasis: '  Art. 43 ust. 1 pkt 29  ' },
+  ])('converges after one create or update for accepted VAT fields %j', async (vat) => {
+    const desired = manifestProduct(vat);
+    expect(productVatConvergenceError(desired)).toBeNull();
+    for (const existing of [undefined, stored({ vatRate: 8, vatExemptionBasis: null }), stored({ vatRate: 'exempt', vatExemptionBasis: 'art. 43 ust. 1 pkt 29' })]) {
+      expect((await applyOnce(desired, existing)).pending).toEqual([]);
+    }
+  });
 });

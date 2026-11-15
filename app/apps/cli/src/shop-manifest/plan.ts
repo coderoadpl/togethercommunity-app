@@ -1,7 +1,7 @@
 import type { ApiClient } from '#core/client/index.js';
 import { err, ok, validation, type AppError, type Product, type ProductPrice, type ProductStock, type ProvisionTenantInput, type Result } from '#core/domain/index.js';
 import {
-  diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, integrationReferenceError, manifestWorkspaceSlug, shopManifestSchema,
+  diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, integrationReferenceError, manifestWorkspaceSlug, productVatConvergenceError, shopManifestSchema,
   type ShopManifestIntegrations, type ShopManifestProduct, type ShopManifestSettings,
 } from '#core/domain/shop-manifest.js';
 
@@ -47,12 +47,16 @@ export const prepareManifest = async <C extends ManifestReadClient>(
     desired: effectiveShopSettings(parsed.data.company?.settings, shop.settings),
     integrations: effectiveShopIntegrations(parsed.data.company?.integrations, shop.integrations),
   }));
-  for (const { slug, desired, integrations } of effective) {
+  for (const { shop, slug, desired, integrations } of effective) {
     if (integrations.parcelLocker != null && desired.inpostGeowidgetToken !== undefined) {
       return err(validation('Manage the parcel locker token through settings or integrations, not both'));
     }
     const referenceError = integrationReferenceError(integrations);
     if (referenceError !== null) return err(validation(referenceError, { workspace: slug }));
+    for (const product of shop.products) {
+      const vatError = productVatConvergenceError(product);
+      if (vatError !== null) return err(validation(vatError, { workspace: slug, slug: product.slug }));
+    }
   }
   const prepared: PreparedShop<C>[] = [];
   for (const { shop, slug, desired, integrations } of effective) {

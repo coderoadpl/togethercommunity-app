@@ -159,6 +159,16 @@ export const productMetadata = (product: ShopManifestProduct) => {
   return metadata;
 };
 
+export const productVatConvergenceError = (product: Pick<ShopManifestProduct, 'vatRate' | 'vatExemptionBasis'>): string | null => {
+  if (product.vatExemptionBasis === undefined) return null;
+  if (product.vatExemptionBasis === null) {
+    return product.vatRate === undefined || product.vatRate === 'exempt'
+      ? 'Product vatExemptionBasis null needs an explicit non-exempt vatRate; for an exempt product omit vatExemptionBasis to use the seller basis or set the basis'
+      : null;
+  }
+  return product.vatRate === 'exempt' ? null : 'Product vatExemptionBasis requires vatRate "exempt"';
+};
+
 export const diffManifestProduct = (
   desired: ShopManifestProduct,
   current: { product: Product; prices: ProductPrice[]; stock: ProductStock | null } | null,

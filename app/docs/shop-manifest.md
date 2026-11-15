@@ -335,21 +335,36 @@ unmanaged.
 
 Environment references follow strict naming rules, because the server publishes
 the parcel-locker token to anonymous checkout visitors and a wrong reference
-would publish a secret:
+would publish a secret or hand one provider's credential to another provider.
+Each variable name is bound to its provider by a namespace; `<NAME>` below is one
+or more segments of upper-case letters and digits separated by single
+underscores:
 
-- Every integration variable is named `SHOP_` followed by upper-case letters,
-  digits and underscores. Other variables, including database, session and
-  provider variables of the deployment, cannot be referenced.
-- `TOGETHER_SHOP_OPERATOR_SECRET` can never be referenced by a manifest.
+- `stripe.restrictedKeyEnv` must match `SHOP_STRIPE_<NAME>`, for example
+  `SHOP_STRIPE_TEST_KEY`.
+- `shipx.tokenEnv` and `shipx.organizationIdEnv` must match `SHOP_SHIPX_<NAME>`,
+  for example `SHOP_SHIPX_TOKEN` and `SHOP_SHIPX_ORGANIZATION_ID`.
+- `parcelLocker.tokenEnv` must match `SHOP_GEOWIDGET_PUBLIC_TOKEN` or
+  `SHOP_GEOWIDGET_<NAME>_PUBLIC_TOKEN`, for example
+  `SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN`.
+- The Stripe and ShipX fields are secret and must not use a name containing the
+  `PUBLIC` marker as a separate segment.
+- Other variables, including database, session and provider variables of the
+  deployment, cannot be referenced, and `TOGETHER_SHOP_OPERATOR_SECRET` can never
+  be referenced by a manifest.
 - One variable name can be referenced by only one provider field in the
   effective configuration of a shop, after company and shop settings merge.
-- `parcelLocker.tokenEnv` must match `SHOP_<NAME>_PUBLIC_TOKEN`, for example
-  `SHOP_GEOWIDGET_PUBLIC_TOKEN`. The Stripe and ShipX fields are secret and must
-  not use a name containing the `PUBLIC` marker as a separate segment.
 
 The manifest parser enforces these rules, and the tool checks them again on the
 merged configuration of every selected shop before the first request and again
 before reading any value. Error messages name the rule, never a value.
+
+A value with the shape of a Stripe secret or restricted key (`sk_test_`,
+`sk_live_`, `rk_test_` or `rk_live_` followed by key characters) is accepted
+only from the variable named by `stripe.restrictedKeyEnv`. The parser refuses
+such a value anywhere in the manifest itself, and `shop apply --integrations`
+refuses it in the variables of the ShipX fields and the parcel-locker token
+before any write. The error names the rule, never the value.
 
 | Manifest input | Environment value / accepted setting | Existing write route |
 | --- | --- | --- |

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { configureShipxInputSchema, configureStripeInputSchema, err, ok, stripeModeFromKey, validation, type AppError, type Result } from '#core/domain/index.js';
 import { inpostGeowidgetTokenSchema } from '#core/domain/shipping.js';
-import { integrationReferenceError, type ShopManifestIntegrations } from '#core/domain/shop-manifest.js';
+import { integrationReferenceError, paymentKeyValueError, type ShopManifestIntegrations } from '#core/domain/shop-manifest.js';
 
 const resolvedIntegrationsSchema = z.object({
   stripe: configureStripeInputSchema.optional(),
@@ -20,6 +20,9 @@ export const resolveManifestIntegrations = (
   for (const name of references) {
     if (name !== undefined && !environment[name]?.trim()) return err(validation(`Missing environment variable ${name}`));
   }
+  const nonPaymentReferences = [integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv, integrations.parcelLocker?.tokenEnv];
+  const keyError = paymentKeyValueError(nonPaymentReferences.map((name) => name === undefined ? undefined : environment[name]));
+  if (keyError !== null) return err(validation(keyError));
   const parsed = resolvedIntegrationsSchema.safeParse({
     ...(integrations.stripe == null ? {} : { stripe: {
       mode: integrations.stripe.mode, restrictedKey: environment[integrations.stripe.restrictedKeyEnv],

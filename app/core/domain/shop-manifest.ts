@@ -42,42 +42,54 @@ export const shopManifestProductSchema = newProductSchema.omit({
 }).strict();
 
 export const SHOP_OPERATOR_SECRET_ENV = 'TOGETHER_SHOP_OPERATOR_SECRET';
-const SHOP_ENVIRONMENT_NAME = /^SHOP_[A-Z0-9_]+$/;
-const PUBLIC_ENVIRONMENT_NAME = /^SHOP_[A-Z0-9_]+_PUBLIC_TOKEN$/;
+const PAYMENT_ENVIRONMENT_NAME = /^SHOP_STRIPE_[A-Z0-9]+(?:_[A-Z0-9]+)*$/;
+const CARRIER_ENVIRONMENT_NAME = /^SHOP_SHIPX_[A-Z0-9]+(?:_[A-Z0-9]+)*$/;
+const PUBLIC_ENVIRONMENT_NAME = /^SHOP_GEOWIDGET_(?:[A-Z0-9]+_)*PUBLIC_TOKEN$/;
 const PUBLIC_MARKER = /(^|_)PUBLIC(_|$)/;
+const PAYMENT_KEY_SHAPE = /\b(?:sk|rk)_(?:test|live)_[0-9A-Za-z]/;
 
-const secretEnvironmentNameSchema = z.string()
-  .regex(SHOP_ENVIRONMENT_NAME, 'Integration variables must be named SHOP_<NAME>')
-  .refine((name) => !PUBLIC_MARKER.test(name), 'Secret integration variables must not carry the PUBLIC marker');
-const publicEnvironmentNameSchema = z.string()
-  .regex(PUBLIC_ENVIRONMENT_NAME, 'The parcel-locker token variable must be named SHOP_<NAME>_PUBLIC_TOKEN');
+const PAYMENT_NAME_MESSAGE = 'Stripe variables must be named SHOP_STRIPE_<NAME>';
+const CARRIER_NAME_MESSAGE = 'ShipX variables must be named SHOP_SHIPX_<NAME>';
+const PUBLIC_NAME_MESSAGE = 'The parcel-locker token variable must be named SHOP_GEOWIDGET_<NAME>_PUBLIC_TOKEN or SHOP_GEOWIDGET_PUBLIC_TOKEN';
+const PUBLIC_MARKER_MESSAGE = 'Secret integration variables must not carry the PUBLIC marker';
+const PAYMENT_KEY_MESSAGE = 'A Stripe secret or restricted key may be supplied only through stripe.restrictedKeyEnv';
+
+const looksLikePaymentKey = (value: string): boolean => PAYMENT_KEY_SHAPE.test(value);
+
+const secretEnvironmentNameSchema = (namespace: RegExp, message: string) => z.string()
+  .regex(namespace, message)
+  .refine((name) => !PUBLIC_MARKER.test(name), PUBLIC_MARKER_MESSAGE);
+const publicEnvironmentNameSchema = z.string().regex(PUBLIC_ENVIRONMENT_NAME, PUBLIC_NAME_MESSAGE);
 
 const shopManifestIntegrationsShape = z.object({
-  stripe: z.object({ restrictedKeyEnv: secretEnvironmentNameSchema, mode: stripeModeSchema }).strict().nullable().optional(),
+  stripe: z.object({
+    restrictedKeyEnv: secretEnvironmentNameSchema(PAYMENT_ENVIRONMENT_NAME, PAYMENT_NAME_MESSAGE), mode: stripeModeSchema,
+  }).strict().nullable().optional(),
   shipx: z.object({
     environment: configureShipxInputSchema.shape.environment,
     sender: shipxSenderSchema.strict().nullable().optional(),
-    organizationIdEnv: secretEnvironmentNameSchema.optional(),
-    tokenEnv: secretEnvironmentNameSchema.optional(),
+    organizationIdEnv: secretEnvironmentNameSchema(CARRIER_ENVIRONMENT_NAME, CARRIER_NAME_MESSAGE).optional(),
+    tokenEnv: secretEnvironmentNameSchema(CARRIER_ENVIRONMENT_NAME, CARRIER_NAME_MESSAGE).optional(),
   }).strict().refine((value) => Object.values(value).some((field) => field !== undefined), 'ShipX settings must not be empty').nullable().optional(),
   parcelLocker: z.object({ tokenEnv: publicEnvironmentNameSchema }).strict().nullable().optional(),
 }).strict();
 
 export const integrationReferenceError = (integrations: z.output<typeof shopManifestIntegrationsShape>): string | null => {
-  const secret = [integrations.stripe?.restrictedKeyEnv, integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv]
-    .filter((name) => name !== undefined);
+  const payment = integrations.stripe?.restrictedKeyEnv;
+  const carrier = [integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv].filter((name) => name !== undefined);
   const publicToken = integrations.parcelLocker?.tokenEnv;
-  const references = publicToken === undefined ? secret : [...secret, publicToken];
+  const references = [payment, ...carrier, publicToken].filter((name) => name !== undefined);
   if (references.includes(SHOP_OPERATOR_SECRET_ENV)) return 'Integration variables must not reference the operator secret';
-  if (secret.some((name) => !SHOP_ENVIRONMENT_NAME.test(name) || PUBLIC_MARKER.test(name))) {
-    return 'Secret integration variables must be named SHOP_<NAME> without the PUBLIC marker';
-  }
-  if (publicToken !== undefined && !PUBLIC_ENVIRONMENT_NAME.test(publicToken)) {
-    return 'The parcel-locker token variable must be named SHOP_<NAME>_PUBLIC_TOKEN';
-  }
+  if ([payment, ...carrier].some((name) => name !== undefined && PUBLIC_MARKER.test(name))) return PUBLIC_MARKER_MESSAGE;
+  if (payment !== undefined && !PAYMENT_ENVIRONMENT_NAME.test(payment)) return PAYMENT_NAME_MESSAGE;
+  if (carrier.some((name) => !CARRIER_ENVIRONMENT_NAME.test(name))) return CARRIER_NAME_MESSAGE;
+  if (publicToken !== undefined && !PUBLIC_ENVIRONMENT_NAME.test(publicToken)) return PUBLIC_NAME_MESSAGE;
   if (new Set(references).size !== references.length) return 'Each integration variable may be referenced by one provider field only';
   return null;
 };
+
+export const paymentKeyValueError = (values: ReadonlyArray<string | undefined>): string | null =>
+  values.some((value) => value !== undefined && looksLikePaymentKey(value)) ? PAYMENT_KEY_MESSAGE : null;
 
 const shopManifestIntegrationsSchema = shopManifestIntegrationsShape.superRefine((integrations, context) => {
   const message = integrationReferenceError(integrations);
@@ -106,18 +118,28 @@ const shopSchema = z.object({
 }).strict().refine((shop) => new Set(shop.products.map((product) => product.slug)).size === shop.products.length,
   'Product slugs must be unique within a shop');
 
+const objectSchema = z.record(z.unknown());
+const paymentKeyPaths = (value: unknown, path: Array<string | number>): Array<Array<string | number>> => {
+  if (typeof value === 'string') return looksLikePaymentKey(value) ? [path] : [];
+  if (Array.isArray(value)) return value.flatMap((item: unknown, index) => paymentKeyPaths(item, [...path, index]));
+  const record = objectSchema.safeParse(value);
+  return record.success ? Object.entries(record.data).flatMap(([key, item]) => paymentKeyPaths(item, [...path, key])) : [];
+};
+
 export const shopManifestSchema = z.object({
   version: z.literal(1),
   company: z.object({ settings: shopManifestSettingsSchema.optional(), integrations: shopManifestIntegrationsSchema.optional() }).strict().optional(),
   shops: z.array(shopSchema).min(1),
 }).strict().refine((manifest) => new Set(manifest.shops.map((shop) => manifestWorkspaceSlug(shop.workspace))).size === manifest.shops.length,
-  'Shop workspaces must be unique');
+  'Shop workspaces must be unique')
+  .superRefine((manifest, context) => {
+    for (const path of paymentKeyPaths(manifest, [])) context.addIssue({ code: z.ZodIssueCode.custom, path, message: PAYMENT_KEY_MESSAGE });
+  });
 
 export type ShopManifestProduct = z.output<typeof shopManifestProductSchema>;
 export type ShopManifestSettings = z.output<typeof shopManifestSettingsSchema>;
 export type ShopManifestIntegrations = z.output<typeof shopManifestIntegrationsSchema>;
 
-const objectSchema = z.record(z.unknown());
 const mergeFields = (base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> => {
   const merged = { ...base };
   for (const [key, value] of Object.entries(override)) {

@@ -56,7 +56,7 @@ describe('shop drift', () => {
     fake.state.products = [existingProduct({ title: 'Paperback' })];
     fake.state.prices = [existingPrice()];
     fake.state.stock = existingStock(7);
-    const input = { version: 1, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_NOT_READ', mode: 'live' } } }, shops: [{ workspace: 'acme', products: [{ slug: 'paperback', title: 'Paperback', price: { amountCents: 4900, currency: 'PLN' }, published: false }] }] };
+    const input = { version: 1, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_NOT_READ', mode: 'live' } } }, shops: [{ workspace: 'acme', products: [{ slug: 'paperback', title: 'Paperback', price: { amountCents: 4900, currency: 'PLN' }, published: false }] }] };
     expect(await driftManifest(input, () => fake.api)).toMatchObject({ ok: true, value: { drifted: false, shops: [{ integrations: [{ provider: 'stripe', action: 'skipped without --integrations' }] }] } });
     expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
   });

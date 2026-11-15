@@ -575,10 +575,12 @@ export const registerShopKeyCommands = (
     }, (data) => data.url));
 
   const cover = shop.command('cover').description('Product cover images');
-  keyed(cover.command('upload <productId> <file>').description('Upload a product cover and attach the completed image to the product'))
+  keyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read), upload a product cover and attach the completed image to the product'))
     .action(run(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file]) => {
       const input = await imageUploadInput('product-cover', file);
       if (!input.ok) return input;
+      const product = await client.listProductPrices(id);
+      if (!product.ok) return product;
       const uploaded = await client.uploadProductCover(input.value);
       if (!uploaded.ok) return uploaded;
       return client.updateProduct({ id, coverUrl: uploaded.value.url });

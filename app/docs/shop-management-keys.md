@@ -259,8 +259,12 @@ checks apply as on session routes. Write scope does not grant read access.
 The typed client exposes `uploadProductCover`, `listSalesLinks`, `getSalesLink`,
 `createSalesLink`, `updateSalesLink` and `deleteSalesLink`. The cover helper runs
 upload → signed storage PUT → completion; only the two API requests carry the
-shop key, never the storage PUT. The CLI adds the product update after successful
-completion, and never updates the product when upload or completion fails.
+shop key, never the storage PUT. `shop cover upload` first reads the product's
+prices to check that the product exists in the key's workspace, so its key needs
+`shop:catalog:read` as well as `shop:catalog:write`; an unknown product fails
+with `not_found` (exit code 5) before anything is uploaded. The CLI adds the
+product update after successful completion, and never updates the product when
+upload or completion fails.
 
 ```bash
 pnpm --silent run cli --tenant acme shop cover upload <product-id> ./cover.png

@@ -397,19 +397,41 @@ describe('shop cover and sales-links CLI', () => {
       await run('shop', 'cover', 'upload', 'product-1', file);
       expect(soleJson()).toMatchObject({ ok: true, data: { product: { id: 'product-1' } } });
       expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        'GET /api/m2m/shop/products/product-1/prices',
         'POST /api/m2m/shop/image-assets/product-cover/upload', 'PUT /candidate',
         'POST /api/m2m/shop/image-assets/product-cover/complete', 'POST /api/m2m/shop/products/update',
       ]);
-      expect(calls[0]?.body).toEqual({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4 });
-      expect(calls[1]?.headers.has('x-api-key')).toBe(false);
-      expect(calls[1]?.headers.has('x-tenant')).toBe(false);
-      expect(calls[1]?.headers.has('authorization')).toBe(false);
-      expect(calls[1]?.headers.get('content-type')).toBe('image/png');
-      expect(calls[3]?.body).toEqual({ id: 'product-1', coverUrl: '/api/public/assets/product-cover/1.png' });
+      expect(calls[1]?.body).toEqual({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4 });
+      expect(calls[2]?.headers.has('x-api-key')).toBe(false);
+      expect(calls[2]?.headers.has('x-tenant')).toBe(false);
+      expect(calls[2]?.headers.has('authorization')).toBe(false);
+      expect(calls[2]?.headers.get('content-type')).toBe('image/png');
+      expect(calls[4]?.body).toEqual({ id: 'product-1', coverUrl: '/api/public/assets/product-cover/1.png' });
       for (const call of calls.filter((call) => call.path.startsWith('/api/'))) {
         expect(call.headers.get('x-api-key')).toBe('shop-secret-from-env');
         expect(call.headers.has('authorization')).toBe(false);
       }
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('fails with the not_found exit code and uploads nothing when the product is not in the workspace', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-cover-cli-'));
+    try {
+      const file = join(directory, 'cover.png');
+      await writeFile(file, new Uint8Array([137, 80, 78, 71]));
+      h.fetchImpl = async (input, init) => {
+        if (String(input).endsWith('/products/missing-product/prices')) {
+          calls.push({ method: init?.method ?? 'GET', path: new URL(String(input)).pathname, search: '', headers: new Headers(init?.headers), body: null });
+          return Response.json({ ok: false, error: { code: 'not_found', message: 'No product "missing-product" in this tenant' } }, { status: 404 });
+        }
+        return fetchImpl(input, init);
+      };
+      await run('shop', 'cover', 'upload', 'missing-product', file);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.not_found);
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(['GET /api/m2m/shop/products/missing-product/prices']);
     } finally {
       await rm(directory, { recursive: true });
     }
@@ -425,7 +447,7 @@ describe('shop cover and sales-links CLI', () => {
         : fetchImpl(input, init);
       await run('shop', 'cover', 'upload', 'product-1', file);
       expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
-      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/image-assets/product-cover/upload', '/candidate']);
+      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/products/product-1/prices', '/api/m2m/shop/image-assets/product-cover/upload', '/candidate']);
     } finally {
       await rm(directory, { recursive: true });
     }

@@ -102,6 +102,23 @@ reaches those use-cases.
 > expiry, and revoke it as soon as provisioning ends. See
 > [Integration routes](#integration-routes).
 
+`shop:settings:write` reaches only the shop settings fields on the allow-list
+`SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`,
+checked in `core/server/authorize.ts` below every route: a key ctx holds
+`tenant:settings:write` only when the use-case names the shop settings update
+or the branding asset upload with fields from that list, and the settings
+update refuses a change to any field its grant does not name. The list is the
+workspace name and default language, the logo, dark logo, favicon, accent
+colours and share image, the share title and description, the social links,
+the checkout appearance, the support e-mail and URL, the terms and privacy
+URLs, the invoice seller, VAT treatment, invoicing provider, automatic
+invoicing and KSeF submission settings, the shipping rates and the InPost
+Geowidget token. A key never changes analytics, the Meta Conversions API
+settings, video hosting, the billing portal, the home space, member messaging
+or autoplay settings, the sign-in notice, the team, domains, redirects or the
+telemetry store; those stay with the owner's session, which keeps every
+settings write it has.
+
 ## Who can create one
 
 Only the workspace owner, signed in with a verified e-mail address, in their
@@ -1227,10 +1244,22 @@ does not change `tenant_api_keys` or any other existing table. The previous
 release reads `tenant_api_keys` exactly as before, and nothing in it reads the
 three new tables, so its key list, import audit and API-key authentication
 answer as they did before this release, whatever shop management keys exist.
-Its `/api/health` reports `schemaFingerprintMatch: false`, which is expected
-while the newer schema remains. The order, settings, asset and integration
-routes add no migration, so a retreat from them to the release with only the
-catalog routes needs no data step either.
+After the retreat, the previous release's `/api/health` answer reports
+`schemaFingerprintMatch: false`: the live schema, which keeps the three tables
+of the kept migration, no longer matches the schema fingerprint that release
+was built with. This is expected while the newer schema remains. The order,
+settings, asset and integration routes add no migration, so a retreat from
+them to the release with only the catalog routes needs no data step either.
+
+The hourly production health monitor (`.github/workflows/prod-health.yml`)
+treats `schemaFingerprintMatch: false` as a failed `health` check: every run
+during the retreat fails, and its deep health probe is skipped. It pages
+through the alert gate (`.github/actions/alert-gate`), which sends an SMS only
+on a state change, so it alerts once: the first run after the retreat sends one
+SMS when the previous run was green, and every following run fails with the
+same failing set and sends none. Expect that one alert and do not treat it as a
+new incident. When this release returns and the fingerprint matches again, the
+next green run sends one `RECOVERED` SMS.
 
 Keep the schema and the migration when rolling back the binary. The shop
 management keys, their buckets and their history stay in place, unused by the

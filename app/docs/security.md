@@ -524,6 +524,15 @@ scopes on every shop key.
   `503` and stores nothing. A stolen key with this scope can therefore
   redirect the workspace's live payments and storage until it expires, is
   revoked or the off switch is set.
+  `shop:settings:write` grants `tenant:settings:write`, and a key ctx holds
+  that capability only when the use-case names the shop settings update or
+  the branding asset upload with fields from the allow-list
+  `SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`,
+  checked in `core/server/authorize.ts`; a grant naming any other field is
+  refused, and the settings update refuses a change to a field its grant does
+  not name. Every other use-case that needs `tenant:settings:write` (team,
+  domains, redirects, Meta Conversions API settings, telemetry store) refuses
+  a key ctx; owner and admin sessions are unchanged.
 
 Whoever holds a key can change that workspace's shop within its scopes and,
 with `shop:integrations:write`, its payment configuration, until the key

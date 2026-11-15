@@ -495,4 +495,14 @@ describe('shop management key rollback guide', () => {
     expect(rollback).not.toMatch(/^\d\. /mu);
     expect(rollback).toMatch(/owner\s+controls, not rollback steps/u);
   });
+
+  it('warns that the previous release reports a fingerprint mismatch and the health monitor alerts once', () => {
+    const monitor = readFileSync('../.github/workflows/prod-health.yml', 'utf8');
+    expect(monitor).toMatch(/\$fingerprint" = "false"/u);
+    expect(monitor).toMatch(/uses: \.\/\.github\/actions\/alert-gate/u);
+    expect(rollback).toMatch(/`\/api\/health` answer reports\s+`schemaFingerprintMatch: false`/u);
+    expect(rollback).toMatch(/`\.github\/workflows\/prod-health\.yml`/u);
+    expect(rollback).toMatch(/so it alerts once/u);
+    expect(rollback).toMatch(/same failing set and sends none/u);
+  });
 });

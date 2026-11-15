@@ -172,6 +172,17 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
   },
   {
     file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'a key ctx holds that capability only when the use-case names the shop settings update or the branding asset upload with fields from the allow-list `SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS`',
+    reason: 'must state that the settings write scope holds the settings write capability only for allow-listed fields',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: '`shop:settings:write` reaches only the shop settings fields on the allow-list `SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`',
+    reason: 'must state that the settings write scope reaches only the domain field allow-list',
+  },
+  {
+    file: 'app/docs/security.md',
     section: '## Meta conversions credentials',
     text: 'A shop management key never writes or removes it',
     reason: 'must state that a shop management key never writes the Meta Conversions API token',

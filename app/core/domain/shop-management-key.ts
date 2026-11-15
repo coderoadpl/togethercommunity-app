@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { Capability } from './authorization.js';
+import type { UpdateTenantSettingsInput } from './tenant.js';
 import type { TenantSecretKey } from './tenant-secret.js';
 
 export const shopManagementScopeSchema = z.enum([
@@ -95,18 +96,69 @@ export type ShopManagementKeyIntegrationGrant =
   | { operation: ShopManagementKeyIntegrationOperation }
   | { secretKey: string };
 
-const integrationCapabilitiesNeedingGrant: readonly Capability[] = ['tenant:secret:write', 'integration:test'];
+export const SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS = {
+  name: true,
+  defaultLanguage: true,
+  logoUrl: true,
+  logoDarkUrl: true,
+  faviconUrl: true,
+  accentColor: true,
+  accentLight: true,
+  ogTitle: true,
+  ogDescription: true,
+  ogImageUrl: true,
+  socialLinks: true,
+  checkoutAppearance: true,
+  supportEmail: true,
+  supportUrl: true,
+  termsUrl: true,
+  privacyUrl: true,
+  invoiceSellerName: true,
+  invoiceSellerAddress: true,
+  invoiceVatMode: true,
+  invoiceVatRatePercent: true,
+  invoiceExemptionBasisKind: true,
+  invoiceExemptionBasis: true,
+  invoicingProvider: true,
+  autoIssueInvoices: true,
+  autoIssueInvoiceScope: true,
+  ksefSubmissionMode: true,
+  shippingRates: true,
+  inpostGeowidgetToken: true,
+} as const satisfies Partial<Record<keyof UpdateTenantSettingsInput, true>>;
+
+export const SHOP_MANAGEMENT_KEY_SETTINGS_OPERATIONS = ['shop-settings:update', 'shop-settings:branding-asset-upload'] as const;
+
+export interface ShopManagementKeySettingsGrant {
+  operation: (typeof SHOP_MANAGEMENT_KEY_SETTINGS_OPERATIONS)[number];
+  fields: readonly string[];
+}
+
+export type ShopManagementKeyGrant = ShopManagementKeyIntegrationGrant | ShopManagementKeySettingsGrant;
+
+const capabilitiesNeedingGrant: readonly Capability[] = ['tenant:secret:write', 'tenant:settings:write', 'integration:test'];
 
 export const shopManagementKeyMayWriteSecret = (key: string): boolean =>
   SHOP_MANAGEMENT_KEY_SECRET_KEYS.some((allowed) => allowed === key);
 
-export const shopManagementKeyGrantCovers = (
-  capability: Capability,
-  grant: ShopManagementKeyIntegrationGrant | undefined,
-): boolean => {
-  if (!integrationCapabilitiesNeedingGrant.includes(capability)) return true;
-  if (capability !== 'tenant:secret:write' || grant === undefined) return false;
-  return 'operation' in grant
+export const shopManagementKeyMayWriteSetting = (field: string): boolean =>
+  Object.keys(SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS).includes(field);
+
+const integrationGrantCovers = (grant: ShopManagementKeyIntegrationGrant): boolean =>
+  'operation' in grant
     ? SHOP_MANAGEMENT_KEY_INTEGRATION_OPERATIONS.includes(grant.operation)
     : shopManagementKeyMayWriteSecret(grant.secretKey);
+
+export const shopManagementKeyGrantCovers = (
+  capability: Capability,
+  grant: ShopManagementKeyGrant | undefined,
+): boolean => {
+  if (!capabilitiesNeedingGrant.includes(capability)) return true;
+  if (grant === undefined) return false;
+  if ('fields' in grant) {
+    return capability === 'tenant:settings:write'
+      && SHOP_MANAGEMENT_KEY_SETTINGS_OPERATIONS.includes(grant.operation)
+      && grant.fields.every(shopManagementKeyMayWriteSetting);
+  }
+  return capability === 'tenant:secret:write' && integrationGrantCovers(grant);
 };

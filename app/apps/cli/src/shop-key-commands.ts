@@ -171,7 +171,8 @@ export const registerShopKeyCommands = (
   context: () => Result<ShopCliContext, AppError>,
   createClient: ShopClientFactory = createShopManagementClient,
 ): void => {
-  const shop = program.command('shop').description(`Manage the shop catalog with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
+  const shop = (program.commands.find((command) => command.name() === 'shop') ?? program.command('shop'))
+    .description(`Plan, apply and detect drift from a declarative shop manifest, or manage the shop catalog with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
   const run = <S extends z.ZodTypeAny, T>(
     schema: S,
     action: (client: ShopManagementClient, input: z.output<S>) => Promise<Result<T, AppError>> | Result<T, AppError>,

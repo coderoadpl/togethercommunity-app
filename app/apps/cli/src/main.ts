@@ -734,10 +734,10 @@ registerMarketingCommands(program, cliCtx);
 registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
-registerShopKeyCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
+registerShopKeyCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(

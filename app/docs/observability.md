@@ -101,8 +101,10 @@ tell instances of the same release apart:
   instance, which runs without it.
 - `singleTenant`: `true` when the instance runs without `APP_BASE_DOMAIN`.
 - `databaseIdentity`: the first 16 hex characters of a SHA-256 hash of the
-  database host, port (5432 when the URL names none) and database name taken
-  from `DATABASE_URL`, or `null` when the URL names no host or database. It
+  database host, port (5432 when the URL names none) and database name that
+  the PostgreSQL driver takes from `DATABASE_URL`, including the `host` and
+  `port` query parameters that override the URL authority, or `null` when the
+  URL names no host or database or selects a Unix socket. It
   never contains a credential or the connection string, and unlike
   `databaseFingerprint` it differs for two databases on one server.
 

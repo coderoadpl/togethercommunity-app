@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DATABASE_IDENTITY_PATTERN } from '#core/domain/index.js';
 import { databaseHostFingerprint, databaseIdentityFingerprint } from './database-fingerprint.js';
 
 describe('databaseIdentityFingerprint', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('distinguishes databases on one server that the host fingerprint cannot tell apart', () => {
     const first = 'postgres://user:secret@db.example:6432/together_one';
     const second = 'postgres://user:secret@db.example:6432/together_two';
@@ -29,7 +33,30 @@ describe('databaseIdentityFingerprint', () => {
     expect(identity).not.toContain('db.example');
   });
 
-  it.each(['postgres:///together', 'postgres://db.example:6432/', 'not a url'])('reports no identity for %s', (url) => {
+  it('keeps the identity that plain connection URLs had before query parameters were resolved', () => {
+    vi.stubEnv('PGPORT', '');
+    expect(databaseIdentityFingerprint('postgres://user:secret@db.example:6432/together')).toBe('d1582da28ac495fe');
+    expect(databaseIdentityFingerprint('postgres://db.example/together')).toBe('3594b4a19059adae');
+  });
+
+  it('follows the port and host that query parameters select for the driver', () => {
+    const plain = databaseIdentityFingerprint('postgres://a:b@db.example:5432/together');
+    const queryPort = databaseIdentityFingerprint('postgres://a:b@db.example:5432/together?port=5433');
+    const queryHost = databaseIdentityFingerprint('postgres://a:b@db.example:5432/together?host=other.example');
+    expect(new Set([plain, queryPort, queryHost]).size).toBe(3);
+    expect(queryPort).toBe(databaseIdentityFingerprint('postgres://a:b@db.example:5433/together'));
+    expect(queryHost).toBe(databaseIdentityFingerprint('postgres://a:b@other.example:5432/together'));
+  });
+
+  it.each([
+    'postgres:///together',
+    'postgres://db.example:6432/',
+    'not a url',
+    'postgres://user@%2Fvar%2Frun%2Fpostgresql/together',
+    'postgres://user@db.example/together?host=/var/run/postgresql',
+    'socket:/var/run/postgresql?db=together',
+    '/var/run/postgresql together',
+  ])('reports no identity for %s', (url) => {
     expect(databaseIdentityFingerprint(url)).toBeNull();
   });
 });

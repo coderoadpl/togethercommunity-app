@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const POSTGRES_DEFAULT_PORT = '5432';
+import { databaseConnectionTarget } from '#adapters/db/connection-target.js';
 
 export const databaseHostFingerprint = (databaseUrl: string): string | null => {
   try {
@@ -14,14 +14,9 @@ export const databaseHostFingerprint = (databaseUrl: string): string | null => {
 };
 
 export const databaseIdentityFingerprint = (databaseUrl: string): string | null => {
-  try {
-    const { hostname, port, pathname } = new URL(databaseUrl);
-    const database = decodeURIComponent(pathname.replace(/^\//, ''));
-    if (hostname === '' || database === '') return null;
-    return createHash('sha256')
-      .update(JSON.stringify([hostname, port === '' ? POSTGRES_DEFAULT_PORT : port, database]))
-      .digest('hex').slice(0, 16);
-  } catch {
-    return null;
-  }
+  const target = databaseConnectionTarget(databaseUrl);
+  if (target === null) return null;
+  return createHash('sha256')
+    .update(JSON.stringify([target.host, String(target.port), target.database]))
+    .digest('hex').slice(0, 16);
 };

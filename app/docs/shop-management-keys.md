@@ -190,14 +190,22 @@ keep ignoring unknown fields.
 | `POST /api/m2m/shop/products/stock/adjust` | `shop:catalog:write` | `POST /api/products/stock/adjust` |
 | `POST /api/m2m/shop/products/stock/threshold` | `shop:catalog:write` | `POST /api/products/stock/threshold` |
 
-The examples below use the workspace host and read the key from the
-environment; `<product-id>` and `<price-id>` are placeholders. On the platform
-host, add `-H 'x-tenant: <workspace-slug>'`. Never send a cookie or an
-`Authorization` header with the key.
+The examples below use the workspace host; `<product-id>` and `<price-id>`
+are placeholders. On the platform host, add `-H 'x-tenant: <workspace-slug>'`.
+Never send a cookie or an `Authorization` header with the key.
+
+Never put the key, or any other secret, into a command-line argument: other
+users and process listings on the host can read the arguments of a running
+process. The examples write the key header once into a file only the current
+user can read and let curl read it with `-H @file` (curl 7.55 or newer);
+`printf` is a shell builtin and starts no process. Delete the header file when
+the job ends.
 
 ```bash
 SHOP=https://<workspace-host>/api/m2m/shop
-KEY="x-api-key: $TOGETHER_SHOP_KEY"
+umask 077
+printf 'x-api-key: %s\n' "$TOGETHER_SHOP_KEY" > shop-key.header
+KEY=@shop-key.header
 JSON='content-type: application/json'
 
 curl -s -H "$KEY" "$SHOP/products"

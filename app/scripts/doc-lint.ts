@@ -7,6 +7,7 @@ import { envSchema } from '../apps/server/src/env.js';
 import packageJson from '../package.json' with { type: 'json' };
 import { collectReleaseVersionProblems } from './release-version-lint.js';
 import { lintLinks } from './link-lint.js';
+import { collectSecretArgumentProblems } from './secret-argument-lint.js';
 import { collectShopKeyDoctrineProblems } from './shop-key-doctrine-lint.js';
 
 const appRoot = join(import.meta.dirname, '..');
@@ -98,6 +99,7 @@ const releaseVersionResult = collectReleaseVersionProblems(
 );
 problems.push(...releaseVersionResult.problems);
 problems.push(...collectShopKeyDoctrineProblems(markdownFiles));
+problems.push(...collectSecretArgumentProblems(markdownFiles, ['app/docs/shop-management-keys.md', 'app/docs/cli.md']));
 
 const claudeRules = readFileSync(join(appRoot, 'CLAUDE.md'), 'utf8');
 const checkClaim = checkClaimPattern.exec(claudeRules);

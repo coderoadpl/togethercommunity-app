@@ -2,7 +2,7 @@ name: ${COMPOSE_PROJECT_NAME:-together-self-host}
 
 services:
   postgres:
-    image: public.ecr.aws/docker/library/postgres:16-bookworm@sha256:5264710be20f409750ac6dc4e5706dcef929c87e241605463f0f9aefa932a8d9
+    image: public.ecr.aws/docker/library/postgres:16-bookworm@sha256:a49f7438ba03589f9b1ca062f2da82e899b48ea1dc50d2449fa09a70be83ebca
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -35,7 +35,7 @@ services:
       INTERNAL_PORT: '48732'
 
   caddy:
-    image: public.ecr.aws/docker/library/caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
+    image: public.ecr.aws/docker/library/caddy:2-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     restart: unless-stopped
     depends_on:
       app:

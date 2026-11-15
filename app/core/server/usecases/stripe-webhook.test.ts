@@ -3423,8 +3423,23 @@ describe('shipped checkout fulfilment', () => {
     const commit = vi.spyOn(stock.repository, 'commit');
     h.deps.stock = stock.repository;
     expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
-    expect(commit).toHaveBeenCalledExactlyOnceWith(tenantA.id, expect.objectContaining({ checkoutSnapshotId: 'snapshot-1', productIds: ['product-1', 'product-2', 'product-3'] }));
+    expect(commit).toHaveBeenCalledExactlyOnceWith(tenantA.id, expect.objectContaining({
+      checkoutSnapshotId: 'snapshot-1',
+      items: [{ productId: 'product-1', quantity: 1 }, { productId: 'product-2', quantity: 1 }, { productId: 'product-3', quantity: 1 }],
+    }));
     expect(stock.levels.get(tenantA.id, 'product-3')).toMatchObject({ onHand: 1, reserved: 0 });
+  });
+
+  it('commits the quantity of a snapshot line late when the snapshot held no stock', async () => {
+    const h = shippedPayment();
+    h.snapshot.lines = h.lines.map((line) => line.productId === 'product-3' ? { ...line, quantity: 3 } : line);
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-3', 5);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+    expect(stock.levels.get(tenantA.id, 'product-3')).toMatchObject({ onHand: 2, reserved: 0 });
+    expect(stock.reservations).toEqual([expect.objectContaining({ productId: 'product-3', checkoutSnapshotId: 'snapshot-1', quantity: 3, status: 'committed' })]);
+    expect(stock.events).toEqual([expect.objectContaining({ type: 'committed_late', quantity: -3 })]);
   });
 
   it.each([

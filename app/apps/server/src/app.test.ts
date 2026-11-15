@@ -6618,7 +6618,7 @@ describe('public offer route', () => {
     expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
     expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
     expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
-    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', productIds: ['acme-published'], expiresAt: '2026-11-05T10:35:00.000Z', quantity: 1, now: '2026-11-05T10:00:00.000Z' });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 1 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
     const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
     expect(soldOut.status).toBe(200);
     expect(soldOut.headers.get('etag')).not.toBe(etag);

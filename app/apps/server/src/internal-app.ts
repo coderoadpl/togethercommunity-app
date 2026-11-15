@@ -1036,7 +1036,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         } else {
           const captured = await captureCheckoutSelection(tenant.value.tenant.id, selection.value, deps);
           if (!captured.ok) return respond(captured);
-          const hold = await reserveCheckoutStock(tenant.value.tenant.id, { checkoutSnapshotId: captured.value.checkoutSnapshotId, products: selectedProducts }, deps);
+          const hold = await reserveCheckoutStock(tenant.value.tenant.id, { checkoutSnapshotId: captured.value.checkoutSnapshotId, products: selectedProducts, lines: captured.value.lines }, deps);
           if (!hold.ok) return respond(hold);
           try {
             const couponSessionId = deps.ids.nextId();

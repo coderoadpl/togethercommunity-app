@@ -760,11 +760,16 @@ example damaged goods); a later commit then records `oversold` and alerts.
 ### Checkout
 
 1. `validateCheckoutSelection` reads the stock of the selected products and
-   returns `sold_out` early when any tracked product has no available piece.
-   This read is advisory only.
+   returns `sold_out` early when any tracked product has fewer available pieces
+   than requested (one per product today). This read is advisory only.
 2. After the checkout snapshot is captured and before the Stripe session is
-   created, `StockRepository.reserve` reserves one piece of every tracked
-   product in one transaction. The conditional update is the only authority:
+   created, `StockRepository.reserve` reserves the quantity of every tracked
+   product line of the snapshot (a line without a quantity counts as one piece,
+   and every checkout today has one piece per product) in one transaction,
+   updating products in product-id order so concurrent multi-product
+   reservations cannot deadlock. Repeated products in one call are merged into
+   one reservation of the summed quantity. The conditional update is the only
+   authority:
 
    ```sql
    update "product_stock" set "reserved" = "product_stock"."reserved" + $1, "updated_at" = $2
@@ -804,12 +809,14 @@ The paid branch of `checkout.session.completed` and
 transaction that records the order:
 
 - an `active` reservation becomes `committed`: `on_hand` and `reserved` both
-  drop by one;
+  drop by the reserved quantity;
 - a `committed` reservation is left unchanged, so webhook retries are safe;
 - a `released` reservation (the session outlived the sweep) becomes
-  `committed` with a `committed_late` event and `on_hand` drops by one;
+  `committed` with a `committed_late` event and `on_hand` drops by the
+  reserved quantity;
 - a tracked product of the snapshot without any reservation (orders started
-  before tracking) is committed late the same way;
+  before tracking) is committed late by the quantity of its snapshot line,
+  recorded as a `committed` reservation of that quantity;
 - an order without a checkout snapshot is committed late once: a retry finds
   the earlier commit event of that order and changes nothing;
 - when `on_hand` would go below zero it is clamped at zero, an `oversold` event

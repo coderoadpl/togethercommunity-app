@@ -195,14 +195,29 @@ pnpm --silent run cli org workspace unlink acme --org holding
 ```
 
 Linking changes nothing in the workspace's settings, secrets, payments or
-checkout. Linking a workspace that is already in the organization, or unlinking
-one that is not linked, reports `changed: false`. A workspace that belongs to
-another organization is a `conflict`; an organization admin, or an owner who is
-only a workspace admin, is `forbidden`. Both changes are recorded in the
-organization audit and in the workspace audit.
+checkout. Linking a workspace that is already in the organization reports
+`changed: false`. A workspace that belongs to another organization is a
+`conflict`; an organization admin, or an owner who is only a workspace admin, is
+`forbidden` to link. Both changes are recorded in the organization audit and in
+the workspace audit.
 
-Unlinking is a `conflict` while the workspace takes any configuration group from
-the organization. `org workspace sources` lists the six groups of a linked
+Unlinking needs either side. Any organization owner can unlink a linked
+workspace with `org workspace unlink`, without a grant in it; to an owner
+without a direct owner grant, a workspace outside the organization is
+`not_found`. A direct owner of the
+workspace can take the active workspace out of its organization, whether or not
+they belong to the organization:
+
+```bash
+pnpm --silent run cli tenant organization unlink
+```
+
+An owner whose role comes only from the organization is `forbidden` there.
+Unlinking ends every organization-derived role in the workspace on the next
+request; derived staff cannot be removed one by one (`organization_managed`).
+
+Unlinking is a `conflict` on both routes while the workspace takes any
+configuration group from the organization. `org workspace sources` lists the six groups of a linked
 workspace (`payments_live`, `payments_test`, `invoicing`, `email_transport`,
 `telemetry`, `shipping_carrier`) and whether each comes from the `workspace`
 (the default) or the `organization`; owners and admins can read it:

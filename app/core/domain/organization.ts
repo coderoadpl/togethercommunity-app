@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
-import type { StaffRole } from './identity.js';
+import type { StaffGrantSource, StaffRole } from './identity.js';
 import { operatorTenantSlugSchema } from './operator-tenant.js';
 import { shipxEnvironmentSchema, shipxSenderSchema } from './shipx.js';
-import { isReservedTenantSlug, tenantSchema, type StaffGrantSource } from './tenant.js';
+import { isReservedTenantSlug, tenantSchema } from './tenant.js';
 import { tenantSecretKeySchema, type TenantSecretKey } from './tenant-secret.js';
 
 const organizationSlugSchema = operatorTenantSlugSchema

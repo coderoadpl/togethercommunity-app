@@ -315,28 +315,41 @@ type WorkspaceChangeCheck =
   | { status: 'organization_owner_required' }
   | { status: 'allowed'; organizationId: string | null; workspace: OrganizationWorkspace };
 
+const lockWorkspace = async (tx: Db, tenantId: string) => {
+  const [row] = await tx.select({ ...workspaceColumns, organizationId: tenants.organizationId })
+    .from(tenants).where(eq(tenants.id, tenantId)).for('update');
+  if (row === undefined) return null;
+  const { organizationId, ...workspace } = row;
+  return { organizationId, workspace: organizationWorkspaceSchema.parse(workspace) };
+};
+
+const holdsDirectOwnerGrant = async (tx: Db, tenantId: string, userId: string) => (await tx.select({ id: tenantAdmins.id })
+  .from(tenantAdmins).where(and(
+    eq(tenantAdmins.tenantId, tenantId),
+    eq(tenantAdmins.userId, userId),
+    eq(tenantAdmins.role, 'owner'),
+  )).for('share')).length === 1;
+
+const holdsOrganizationOwnership = async (tx: Db, organizationId: string, userId: string) => (await tx
+  .select({ id: organizationMembers.id }).from(organizationMembers).where(and(
+    eq(organizationMembers.organizationId, organizationId),
+    eq(organizationMembers.userId, userId),
+    eq(organizationMembers.role, 'owner'),
+  )).for('share')).length === 1;
+
+const hasConfigSources = async (tx: Db, tenantId: string) => (await tx.select({ tenantId: tenantConfigSources.tenantId })
+  .from(tenantConfigSources).where(eq(tenantConfigSources.tenantId, tenantId)).limit(1)).length > 0;
+
 const checkWorkspaceChange = async (
   tx: Db,
   tenantId: string,
   input: { organizationId: string; actorUserId: string },
 ): Promise<WorkspaceChangeCheck> => {
-  const rows = await tx.select({ ...workspaceColumns, organizationId: tenants.organizationId })
-    .from(tenants).where(eq(tenants.id, tenantId)).for('update');
-  const directOwner = await tx.select({ id: tenantAdmins.id }).from(tenantAdmins).where(and(
-    eq(tenantAdmins.tenantId, tenantId),
-    eq(tenantAdmins.userId, input.actorUserId),
-    eq(tenantAdmins.role, 'owner'),
-  )).for('share');
-  const row = rows[0];
-  if (row === undefined || directOwner.length !== 1) return { status: 'workspace_owner_required' };
-  const organizationOwner = await tx.select({ id: organizationMembers.id }).from(organizationMembers).where(and(
-    eq(organizationMembers.organizationId, input.organizationId),
-    eq(organizationMembers.userId, input.actorUserId),
-    eq(organizationMembers.role, 'owner'),
-  )).for('share');
-  if (organizationOwner.length !== 1) return { status: 'organization_owner_required' };
-  const { organizationId, ...workspace } = row;
-  return { status: 'allowed', organizationId, workspace: organizationWorkspaceSchema.parse(workspace) };
+  const locked = await lockWorkspace(tx, tenantId);
+  const directOwner = await holdsDirectOwnerGrant(tx, tenantId, input.actorUserId);
+  if (locked === null || !directOwner) return { status: 'workspace_owner_required' };
+  if (!await holdsOrganizationOwnership(tx, input.organizationId, input.actorUserId)) return { status: 'organization_owner_required' };
+  return { status: 'allowed', ...locked };
 };
 
 export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorkspaceRepository => ({
@@ -356,17 +369,36 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     return { status: 'linked', workspace: checked.workspace } as const;
   }),
   unlink: async (tenantId, input) => db.transaction(async (tx) => {
-    const checked = await checkWorkspaceChange(tx, tenantId, input);
-    if (checked.status !== 'allowed') return checked;
-    if (checked.organizationId === null) return { status: 'not_linked', workspace: checked.workspace } as const;
-    if (checked.organizationId !== input.organizationId) return { status: 'linked_elsewhere' } as const;
-    const sources = await tx.select({ tenantId: tenantConfigSources.tenantId }).from(tenantConfigSources)
-      .where(eq(tenantConfigSources.tenantId, tenantId)).limit(1);
-    if (sources.length > 0) return { status: 'config_sources_present' } as const;
+    const locked = await lockWorkspace(tx, tenantId);
+    if (!await holdsOrganizationOwnership(tx, input.organizationId, input.actorUserId)) {
+      return { status: 'organization_owner_required' } as const;
+    }
+    if (locked === null) return { status: 'not_in_organization' } as const;
+    if (locked.organizationId !== input.organizationId) {
+      // Without a direct grant the caller must not learn whether a workspace outside the organization exists or where it is linked.
+      if (!await holdsDirectOwnerGrant(tx, tenantId, input.actorUserId)) return { status: 'not_in_organization' } as const;
+      return locked.organizationId === null
+        ? { status: 'not_linked', workspace: locked.workspace } as const
+        : { status: 'linked_elsewhere' } as const;
+    }
+    if (await hasConfigSources(tx, tenantId)) return { status: 'config_sources_present' } as const;
     await tx.update(tenants).set({ organizationId: null }).where(eq(tenants.id, tenantId));
     await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId: input.organizationId });
     await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId });
-    return { status: 'unlinked', workspace: checked.workspace } as const;
+    return { status: 'unlinked', workspace: locked.workspace } as const;
+  }),
+  unlinkAsWorkspaceOwner: async (tenantId, input) => db.transaction(async (tx) => {
+    const locked = await lockWorkspace(tx, tenantId);
+    if (locked === null || !await holdsDirectOwnerGrant(tx, tenantId, input.actorUserId)) {
+      return { status: 'workspace_owner_required' } as const;
+    }
+    const { organizationId, workspace } = locked;
+    if (organizationId === null) return { status: 'not_linked', workspace } as const;
+    if (await hasConfigSources(tx, tenantId)) return { status: 'config_sources_present' } as const;
+    await tx.update(tenants).set({ organizationId: null }).where(eq(tenants.id, tenantId));
+    await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId });
+    await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId, reason: organizationId });
+    return { status: 'unlinked', workspace, organizationId } as const;
   }),
   list: async (organizationId) => (await db.select(workspaceColumns).from(tenants)
     .where(eq(tenants.organizationId, organizationId))

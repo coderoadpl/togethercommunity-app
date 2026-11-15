@@ -258,7 +258,7 @@ export const registerOrganizationCommands = (
     .description('Link a workspace you own directly to the organization (organization owners only)')
     .option(...orgOption).action(change((ctx, input) => ctx.api.linkOrganizationWorkspace(input)));
   workspace.command('unlink <slug>')
-    .description('Unlink a workspace you own directly from the organization (organization owners only)')
+    .description('Unlink a linked workspace from the organization (organization owners only)')
     .option(...orgOption).action(change((ctx, input) => ctx.api.unlinkOrganizationWorkspace(input)));
   workspace.command('sources <slug>')
     .description('Show whether each configuration group of a linked workspace comes from the workspace or the organization')

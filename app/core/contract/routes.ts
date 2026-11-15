@@ -2712,6 +2712,7 @@ export const API_PATHS = {
   organizationWorkspaceLink: API_ROUTES.organizationWorkspaceLink.path,
   organizationWorkspaceUnlink: API_ROUTES.organizationWorkspaceUnlink.path,
   organizationWorkspaceSources: API_ROUTES.organizationWorkspaceSources.path,
+  tenantOrganizationUnlink: API_ROUTES.tenantOrganizationUnlink.path,
   organizationSecrets: API_ROUTES.organizationSecrets.path,
   organizationSecretDelete: API_ROUTES.organizationSecretDelete.path,
 } as const;

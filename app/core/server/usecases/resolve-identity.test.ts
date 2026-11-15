@@ -166,6 +166,14 @@ describe('resolveIdentity', () => {
     });
   });
 
+  it.each(['direct', 'organization'] as const)('carries the %s source of the staff grant and none without a grant', async (source) => {
+    const staff = await resolveIdentity(user, { host: 'acme.localhost:4711', tenantHeader: null }, deps([{ ...acme, source }]));
+    expect(staff).toMatchObject({ ok: true, value: { staffRole: 'owner', staffGrantSource: source } });
+    const visitor = await resolveIdentity(user, { host: 'acme.localhost:4711', tenantHeader: null }, deps([], [], [member]));
+    expect(visitor).toMatchObject({ ok: true, value: { tenantAccess: 'member', staffRole: null } });
+    expect(visitor.ok && 'staffGrantSource' in visitor.value).toBe(false);
+  });
+
   it('rejects anonymous requests', async () => {
     const result = await resolveIdentity(null, { host: 'localhost', tenantHeader: null }, deps([]));
     expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized' } });

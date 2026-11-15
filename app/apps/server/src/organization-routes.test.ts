@@ -17,7 +17,7 @@ import {
   organizationWorkspaceSourcesOutputSchema,
   organizationWorkspacesOutputSchema,
 } from '#core/contract/index.js';
-import { ok, type Identity } from '#core/domain/index.js';
+import { ok, staffGrantSourceSchema, staffRoleSchema, type Identity } from '#core/domain/index.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 
 import type { AppVars } from './app-vars.js';
@@ -54,7 +54,14 @@ const harness = () => {
     operatorSecret: secret,
   });
   app.use('/api/*', async (c, next) => {
-    c.set('identity', identity(c.req.header('x-test-user') ?? 'anonymous'));
+    const tenantId = c.req.header('x-test-tenant');
+    const staffRole = staffRoleSchema.safeParse(c.req.header('x-test-role'));
+    const source = staffGrantSourceSchema.safeParse(c.req.header('x-test-source'));
+    const base = identity(c.req.header('x-test-user') ?? 'anonymous');
+    c.set('identity', tenantId === undefined || !staffRole.success ? base : {
+      ...base, tenantAccess: 'staff', tenantId, tenantSlug: tenantId, tenantName: tenantId, staffRole: staffRole.data,
+      ...(source.success ? { staffGrantSource: source.data } : {}),
+    });
     await next();
   });
   const secretCrypto = {
@@ -256,6 +263,36 @@ describe('organization session routes', () => {
     expect((await h.remove(secretPath('smtp.password'), 'owner-1')).status).toBe(404);
     expect(h.auditRows.map((event) => event.kind).slice(-2)).toEqual(['secret.set', 'secret.deleted']);
     expect(JSON.stringify(h.auditRows)).not.toMatch(/smtp-secret|cipher/);
+  });
+
+  it('unlinks the active workspace for a direct owner only and keeps the organization route open to an organization owner', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    const limits = API_PATHS.operatorOrganizationLimits.replace(':organizationId', organizationId);
+    expect((await h.app.request(limits, { method: 'POST', headers: operatorHeaders, body: JSON.stringify({ maxWorkspaces: 1 }) })).status).toBe(200);
+    const link = () => h.post(API_PATHS.organizationWorkspaceLink.replace(':organizationId', organizationId), 'owner-1', { tenantId: 'acme' });
+    const unlinkAsStaff = (userId: string, role: string, source: string) => h.app.request(API_PATHS.tenantOrganizationUnlink, {
+      method: 'POST',
+      headers: { 'x-test-user': userId, 'x-test-tenant': 'acme', 'x-test-role': role, 'x-test-source': source, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect((await link()).status).toBe(200);
+
+    expect((await unlinkAsStaff('other-1', 'owner', 'organization')).status).toBe(403);
+    expect((await unlinkAsStaff('admin-1', 'admin', 'direct')).status).toBe(403);
+    const unlinked = await unlinkAsStaff('admin-1', 'owner', 'direct');
+    expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await unlinked.json()))
+      .toEqual({ ok: true, data: { workspace: { id: 'acme', slug: 'acme', name: 'Acme', status: 'active' }, changed: true } });
+    expect(h.workspaceRows.find((row) => row.id === 'acme')?.organizationId).toBeNull();
+    expect(h.tenantAuditRows.map(({ kind, actorUserId, reason }) => [kind, actorUserId, reason])).toEqual([
+      ['organization.linked', 'owner-1', organizationId], ['organization.unlinked', 'admin-1', organizationId],
+    ]);
+
+    expect((await link()).status).toBe(200);
+    h.configSourceRows.push({ tenantId: 'acme', group: 'telemetry', source: 'organization', updatedAt: '2026-11-15T12:00:00.000Z', updatedByUserId: 'owner-1' });
+    expect((await unlinkAsStaff('admin-1', 'owner', 'direct')).status).toBe(409);
+    expect((await h.post(API_PATHS.organizationWorkspaceUnlink.replace(':organizationId', organizationId), 'owner-1', { tenantId: 'acme' })).status).toBe(409);
+    expect(h.workspaceRows.find((row) => row.id === 'acme')?.organizationId).toBe(organizationId);
   });
 
   it('refuses to delete a secret whose group a linked workspace inherits and reads the workspace sources', async () => {

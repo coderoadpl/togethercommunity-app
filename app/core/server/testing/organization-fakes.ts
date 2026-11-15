@@ -185,9 +185,11 @@ export const createOrganizationFakes = (
   };
 
   const workspaceOf = ({ id, slug, name, status }: OrganizationFakeWorkspace): OrganizationWorkspace => ({ id, slug, name, status });
+  const holdsDirectOwnerGrant = (workspace: OrganizationFakeWorkspace, userId: string) =>
+    workspace.grants.some((grant) => grant.userId === userId && grant.role === 'owner');
   const checkChange = (tenantId: string, organizationId: string, actorUserId: string) => {
     const workspace = workspaceRows.find((row) => row.id === tenantId);
-    if (workspace === undefined || !workspace.grants.some((grant) => grant.userId === actorUserId && grant.role === 'owner')) {
+    if (workspace === undefined || !holdsDirectOwnerGrant(workspace, actorUserId)) {
       return { status: 'workspace_owner_required' } as const;
     }
     if (!memberRows.some((row) => row.organizationId === organizationId && row.userId === actorUserId && row.role === 'owner')) {
@@ -214,16 +216,29 @@ export const createOrganizationFakes = (
       return { status: 'linked', workspace: workspaceOf(workspace) };
     },
     unlink: async (tenantId, { organizationId, actorUserId, organizationAudit, tenantAudit }) => {
-      const checked = checkChange(tenantId, organizationId, actorUserId);
-      if (checked.status !== 'allowed') return checked;
-      const { workspace } = checked;
-      if (workspace.organizationId === null) return { status: 'not_linked', workspace: workspaceOf(workspace) };
-      if (workspace.organizationId !== organizationId) return { status: 'linked_elsewhere' };
+      const workspace = workspaceRows.find((row) => row.id === tenantId);
+      if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
+      if (workspace === undefined) return { status: 'not_in_organization' };
+      if (workspace.organizationId !== organizationId) {
+        if (!holdsDirectOwnerGrant(workspace, actorUserId)) return { status: 'not_in_organization' };
+        return workspace.organizationId === null ? { status: 'not_linked', workspace: workspaceOf(workspace) } : { status: 'linked_elsewhere' };
+      }
       if (configSourceRows.some((row) => row.tenantId === tenantId)) return { status: 'config_sources_present' };
       workspace.organizationId = null;
       auditRows.push({ ...organizationAudit, organizationId });
       tenantAuditRows.push({ ...tenantAudit, tenantId });
       return { status: 'unlinked', workspace: workspaceOf(workspace) };
+    },
+    unlinkAsWorkspaceOwner: async (tenantId, { actorUserId, organizationAudit, tenantAudit }) => {
+      const workspace = workspaceRows.find((row) => row.id === tenantId);
+      if (workspace === undefined || !holdsDirectOwnerGrant(workspace, actorUserId)) return { status: 'workspace_owner_required' };
+      const { organizationId } = workspace;
+      if (organizationId === null) return { status: 'not_linked', workspace: workspaceOf(workspace) };
+      if (configSourceRows.some((row) => row.tenantId === tenantId)) return { status: 'config_sources_present' };
+      workspace.organizationId = null;
+      auditRows.push({ ...organizationAudit, organizationId });
+      tenantAuditRows.push({ ...tenantAudit, tenantId, reason: organizationId });
+      return { status: 'unlinked', workspace: workspaceOf(workspace), organizationId };
     },
     list: async (organizationId) => workspaceRows
       .filter((row) => row.organizationId === organizationId)

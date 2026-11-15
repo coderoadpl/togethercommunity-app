@@ -12,6 +12,7 @@ export const CAPABILITIES = [
   'tenant:domain:read',
   'tenant:secret:read',
   'tenant:secret:write',
+  'tenant:organization:unlink',
   'tenant:onboarding:read',
   'tenant:onboarding:write',
   'terms:accept',
@@ -284,6 +285,7 @@ const sharedStaffCapabilities = [
 const ownerOnlyCapabilities = [
   'tenant:settings:write',
   'tenant:secret:write',
+  'tenant:organization:unlink',
   'api-key:write',
   'integration:test',
 ] as const satisfies readonly Capability[];

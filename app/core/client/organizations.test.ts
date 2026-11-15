@@ -74,10 +74,13 @@ describe('organization client', () => {
     expect(await link.api.linkOrganizationWorkspace({ organizationId: 'org-1', tenantId: 'acme' })).toEqual({ ok: true, value: { workspace, changed: true } });
     const unlink = recordingClient({ workspace, changed: false });
     expect(await unlink.api.unlinkOrganizationWorkspace({ organizationId: 'org-1', tenantId: 'acme' })).toEqual({ ok: true, value: { workspace, changed: false } });
-    expect([list, link, unlink].map(({ calls }) => [calls[0]?.init?.method, calls[0]?.url, calls[0]?.init?.body])).toEqual([
+    const tenantUnlink = recordingClient({ workspace, changed: true });
+    expect(await tenantUnlink.api.unlinkTenantFromOrganization()).toEqual({ ok: true, value: { workspace, changed: true } });
+    expect([list, link, unlink, tenantUnlink].map(({ calls }) => [calls[0]?.init?.method, calls[0]?.url, calls[0]?.init?.body])).toEqual([
       ['GET', 'http://localhost:48730/api/organizations/org-1/workspaces', null],
       ['POST', 'http://localhost:48730/api/organizations/org-1/workspaces/link', JSON.stringify({ tenantId: 'acme' })],
       ['POST', 'http://localhost:48730/api/organizations/org-1/workspaces/unlink', JSON.stringify({ tenantId: 'acme' })],
+      ['POST', 'http://localhost:48730/api/tenant/organization/unlink', '{}'],
     ]);
   });
 

@@ -248,6 +248,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/organizations/:organizationId/workspaces` | authenticated | read | organization workspaces |
 | `POST /api/organizations/:organizationId/workspaces/link` | authenticated | mutating | organization workspace link |
 | `POST /api/organizations/:organizationId/workspaces/unlink` | authenticated | mutating | organization workspace unlink |
+| `POST /api/tenant/organization/unlink` | authenticated | mutating | tenant organization unlink |
 | `GET /api/organizations/:organizationId/workspaces/:tenantId/sources` | authenticated | read | organization workspace sources |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |

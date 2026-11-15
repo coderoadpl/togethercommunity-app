@@ -94,6 +94,7 @@ interface Hoisted {
   deleteOrganizationSecret: ReturnType<typeof vi.fn>;
   listOrganizationWorkspaces: ReturnType<typeof vi.fn>;
   getWorkspaceConfigSources: ReturnType<typeof vi.fn>;
+  unlinkTenantFromOrganization: ReturnType<typeof vi.fn>;
   getTenantSettings: ReturnType<typeof vi.fn>;
   updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
@@ -192,6 +193,7 @@ const h = vi.hoisted(
     deleteOrganizationSecret: vi.fn(),
     listOrganizationWorkspaces: vi.fn(),
     getWorkspaceConfigSources: vi.fn(),
+    unlinkTenantFromOrganization: vi.fn(),
     getTenantSettings: vi.fn(),
     updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
@@ -308,6 +310,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     deleteOrganizationSecret: h.deleteOrganizationSecret,
     listOrganizationWorkspaces: h.listOrganizationWorkspaces,
     getWorkspaceConfigSources: h.getWorkspaceConfigSources,
+    unlinkTenantFromOrganization: h.unlinkTenantFromOrganization,
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
@@ -1230,6 +1233,24 @@ describe('lesson preview commands', () => {
       details: { failedLessonId: 'four', updatedLessonIds: ['two'] },
     } });
     expect(process.exitCode).toBe(6);
+  });
+});
+
+describe('tenant organization unlink', () => {
+  it('unlinks the active tenant', async () => {
+    h.unlinkTenantFromOrganization.mockReset().mockResolvedValue(ok({
+      workspace: { id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' }, changed: true,
+    }));
+    await run('tenant', 'organization', 'unlink');
+    expect(h.unlinkTenantFromOrganization).toHaveBeenCalledExactlyOnceWith();
+    expect(logSpy).toHaveBeenCalledWith('unlinked: Acme (acme)');
+  });
+
+  it('reports a refusal with the forbidden exit code', async () => {
+    h.unlinkTenantFromOrganization.mockReset().mockResolvedValue(err(appError('forbidden', 'Direct owner required')));
+    await run('--json', 'tenant', 'organization', 'unlink');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
   });
 });
 

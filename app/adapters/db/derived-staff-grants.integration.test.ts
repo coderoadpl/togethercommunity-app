@@ -12,7 +12,11 @@ import { authorize, authorizeOrganization, authorizeTenant } from '#core/server/
 import type { Ctx, OrganizationCtx } from '#core/server/context.js';
 import type { AuthPort } from '#core/server/ports.js';
 import { removeOrganizationMember } from '#core/server/usecases/organization-members.js';
-import { linkOrganizationWorkspace, unlinkOrganizationWorkspace } from '#core/server/usecases/organization-workspaces.js';
+import {
+  linkOrganizationWorkspace,
+  unlinkOrganizationWorkspace,
+  unlinkWorkspaceFromOrganization,
+} from '#core/server/usecases/organization-workspaces.js';
 import { resolveIdentity } from '#core/server/usecases/resolve-identity.js';
 import { authenticateShopManagementKey } from '#core/server/usecases/shop-machine-auth.js';
 import { createShopManagementKey } from '#core/server/usecases/shop-management-keys.js';
@@ -29,7 +33,7 @@ import {
   createTenantRepository,
   createTenantTeamRepository,
 } from './repositories.js';
-import { organizationMembers, organizations, tenantAdmins, tenants, user } from './schema.js';
+import { organizationMembers, organizations, tenantAdmins, tenantConfigSources, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -418,6 +422,111 @@ describe('derived workspace roles', () => {
 
       const next = await authenticateShopManagementKey(shopTenant('flow-key-unlink'), secret, 'shop:catalog:read', machineDeps());
       expect(next.result).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } });
+    });
+
+    describe('unlinking from either side', () => {
+      const addAccount = async (userId: string) => {
+        const account = { userId, email: `${userId}@example.test`, emailVerified: true };
+        accounts.push(account);
+        await database.db.insert(user).values({ id: userId, email: account.email, name: userId, emailVerified: true });
+      };
+      const linkedWorkspace = async (tenantId: string, linkedBy = 'flow-actor') => {
+        await addTenant(tenantId, null);
+        await addGrant(tenantId, linkedBy, 'owner');
+        const linked = await linkOrganizationWorkspace(await organizationCtx(linkedBy, 'flow-org'), { organizationId: 'flow-org', tenantId }, workspaceDeps());
+        expect(linked).toMatchObject({ ok: true, value: { changed: true } });
+      };
+      const linkOf = async (tenantId: string) =>
+        (await database.db.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId)))[0]?.organizationId;
+      const expectDerivedRolesGone = async (tenantId: string) => {
+        for (const userId of ['flow-org-owner', 'flow-org-admin']) {
+          expect(await createTenantAccessReader(database.db).findStaffGrant(userId, { tenantId }), userId).toBeNull();
+          expect((await ctxFor(userId, tenantId)).identity, userId).toMatchObject({ staffRole: null });
+        }
+        expect(authorizeTenant(await ctxFor('flow-org-owner', tenantId), 'tenant:settings:write'))
+          .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      };
+
+      it('lets a direct owner who never belonged to the organization unlink through the workspace and ends every derived role on the next request', async () => {
+        await linkedWorkspace('flow-solo');
+        await addAccount('flow-solo-owner');
+        await addGrant('flow-solo', 'flow-solo-owner', 'owner');
+        expect((await ctxFor('flow-org-owner', 'flow-solo')).identity).toMatchObject({ staffRole: 'owner', staffGrantSource: 'organization' });
+        expect((await ctxFor('flow-org-admin', 'flow-solo')).identity).toMatchObject({ staffRole: 'admin', staffGrantSource: 'organization' });
+
+        const owner = await ctxFor('flow-solo-owner', 'flow-solo');
+        expect(owner.identity).toMatchObject({ staffRole: 'owner', staffGrantSource: 'direct' });
+        expect(await unlinkWorkspaceFromOrganization(owner, workspaceDeps())).toEqual({
+          ok: true, value: { workspace: { id: 'flow-solo', slug: 'flow-solo', name: 'Workspace flow-solo', status: 'active' }, changed: true },
+        });
+        expect(await linkOf('flow-solo')).toBeNull();
+        await expectDerivedRolesGone('flow-solo');
+        expect(await unlinkWorkspaceFromOrganization(await ctxFor('flow-solo-owner', 'flow-solo'), workspaceDeps()))
+          .toMatchObject({ ok: true, value: { changed: false } });
+      });
+
+      it('lets a direct owner removed from the organization unlink through the workspace', async () => {
+        await addAccount('flow-leaver');
+        await addMember('flow-org', 'flow-leaver', 'owner');
+        await linkedWorkspace('flow-leave', 'flow-leaver');
+        const removed = await removeOrganizationMember(
+          await organizationCtx('flow-actor', 'flow-org'),
+          { organizationId: 'flow-org', email: 'flow-leaver@example.test' },
+          memberDeps(),
+        );
+        expect(removed).toMatchObject({ ok: true, value: { changed: true } });
+        expect(await unlinkOrganizationWorkspace(await organizationCtx('flow-leaver', 'flow-org'), { organizationId: 'flow-org', tenantId: 'flow-leave' }, workspaceDeps()))
+          .toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+        expect(await unlinkWorkspaceFromOrganization(await ctxFor('flow-leaver', 'flow-leave'), workspaceDeps()))
+          .toMatchObject({ ok: true, value: { changed: true } });
+        expect(await linkOf('flow-leave')).toBeNull();
+        await expectDerivedRolesGone('flow-leave');
+      });
+
+      it('lets an organization owner without a direct grant unlink through the organization', async () => {
+        await linkedWorkspace('flow-org-side');
+        expect(await createTenantAccessReader(database.db).findStaffGrant('flow-org-owner', { tenantId: 'flow-org-side' }))
+          .toMatchObject({ staffRole: 'owner', source: 'organization' });
+
+        const unlinked = await unlinkOrganizationWorkspace(
+          await organizationCtx('flow-org-owner', 'flow-org'),
+          { organizationId: 'flow-org', tenantId: 'flow-org-side' },
+          workspaceDeps(),
+        );
+        expect(unlinked).toMatchObject({ ok: true, value: { workspace: { id: 'flow-org-side' }, changed: true } });
+        expect(await linkOf('flow-org-side')).toBeNull();
+        await expectDerivedRolesGone('flow-org-side');
+      });
+
+      it('refuses the workspace route to an owner whose role is derived from the organization, even with a forged direct source', async () => {
+        await linkedWorkspace('flow-derived');
+        const derivedOwner = await ctxFor('flow-org-owner', 'flow-derived');
+        expect(derivedOwner.identity).toMatchObject({ staffRole: 'owner', staffGrantSource: 'organization' });
+
+        expect(await unlinkWorkspaceFromOrganization(derivedOwner, workspaceDeps())).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+        expect(await unlinkWorkspaceFromOrganization({ identity: { ...derivedOwner.identity, staffGrantSource: 'direct' } }, workspaceDeps()))
+          .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+        expect(await linkOf('flow-derived')).toBe('flow-org');
+      });
+
+      it('refuses to unlink from either side while a configuration group takes the organization source', async () => {
+        await linkedWorkspace('flow-sourced');
+        await database.db.insert(tenantConfigSources).values({
+          tenantId: 'flow-sourced', configGroup: 'telemetry', source: 'organization', updatedAt: NOW, updatedByUserId: 'flow-actor',
+        });
+
+        expect(await unlinkWorkspaceFromOrganization(await ctxFor('flow-actor', 'flow-sourced'), workspaceDeps()))
+          .toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await unlinkOrganizationWorkspace(
+          await organizationCtx('flow-org-owner', 'flow-org'),
+          { organizationId: 'flow-org', tenantId: 'flow-sourced' },
+          workspaceDeps(),
+        )).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await linkOf('flow-sourced')).toBe('flow-org');
+        expect(await createTenantAccessReader(database.db).findStaffGrant('flow-org-owner', { tenantId: 'flow-sourced' }))
+          .toMatchObject({ staffRole: 'owner', source: 'organization' });
+      });
     });
   });
 });

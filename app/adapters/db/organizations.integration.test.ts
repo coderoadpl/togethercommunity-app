@@ -178,7 +178,7 @@ describe('organization repositories', () => {
     ]);
   });
 
-  it('links and unlinks only for a direct workspace owner who owns the organization, auditing both sides in one transaction', async () => {
+  it('links only for a direct workspace owner who owns the organization and unlinks for an organization owner, auditing both sides in one transaction', async () => {
     await createOrganizationRepository(database.db).create(organization('org-ws', 'workspaces'));
     await createOrganizationRepository(database.db).create(organization('org-ws-other', 'workspaces-other'));
     await database.db.insert(tenants).values([
@@ -230,7 +230,7 @@ describe('organization repositories', () => {
     expect(await repository.list('org-ws-other')).toEqual([{ id: 'ws-taken', slug: 'ws-taken', name: 'Taken', status: 'active' }]);
     expect(await audits()).toEqual({ organization: ['org-e'], tenant: ['tenant-e'] });
 
-    expect(await repository.unlink('ws-own', change('ws-admin', 'g', false))).toEqual({ status: 'workspace_owner_required' });
+    expect(await repository.unlink('ws-own', change('ws-org-admin', 'g', false))).toEqual({ status: 'organization_owner_required' });
     expect(await repository.unlink('ws-own', change('ws-owner', 'h', false))).toEqual({ status: 'unlinked', workspace });
     expect(await repository.unlink('ws-own', change('ws-owner', 'i', false))).toEqual({ status: 'not_linked', workspace });
     expect(await linkOf('ws-own')).toBeNull();
@@ -465,6 +465,88 @@ describe('organization repositories', () => {
 
     await database.db.delete(tenantConfigSources).where(eq(tenantConfigSources.tenantId, 'sources-ws'));
     expect(await workspaces.unlink('sources-ws', change('c', false))).toMatchObject({ status: 'unlinked' });
+  });
+
+  it('unlinks for either side, re-checking the authority and the source rows inside the transaction', async () => {
+    await createOrganizationRepository(database.db).create(organization('org-either', 'either'));
+    await createOrganizationRepository(database.db).create(organization('org-either-other', 'either-other'));
+    await database.db.insert(tenants).values([
+      { id: 'either-a', slug: 'either-a', name: 'Either A', createdAt: at, organizationId: 'org-either' },
+      { id: 'either-b', slug: 'either-b', name: 'Either B', createdAt: at, organizationId: 'org-either' },
+      { id: 'either-out', slug: 'either-out', name: 'Either out', createdAt: at },
+      { id: 'either-elsewhere', slug: 'either-elsewhere', name: 'Either elsewhere', createdAt: at, organizationId: 'org-either-other' },
+    ]);
+    await database.db.insert(tenantAdmins).values([
+      { id: 'either-grant-owner', tenantId: 'either-b', userId: 'either-ws-owner', role: 'owner' },
+      { id: 'either-grant-admin', tenantId: 'either-b', userId: 'either-ws-admin', role: 'admin' },
+    ]);
+    await createOrganizationMemberRepository(database.db)
+      .add('org-either', { id: 'either-member', userId: 'either-org-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    const repository = createOrganizationWorkspaceRepository(database.db);
+    const audit = (actorUserId: string, tenantId: string, id: string) => ({
+      organizationAudit: {
+        id: `either-org-${id}`, kind: 'workspace.unlinked' as const, actorUserId, actorEmail: `${actorUserId}@example.test`,
+        actorKeyId: null, subjectTenantId: tenantId, subjectUserId: null, data: {}, at,
+      },
+      tenantAudit: {
+        id: `either-tenant-${id}`, kind: 'organization.unlinked' as const, actorUserId, actorEmail: `${actorUserId}@example.test`,
+        subjectMemberId: null, at,
+      },
+    });
+    const byOrganization = (actorUserId: string, tenantId: string, id: string) => {
+      const audits = audit(actorUserId, tenantId, id);
+      return { organizationId: 'org-either', actorUserId, ...audits, tenantAudit: { ...audits.tenantAudit, reason: 'org-either' } };
+    };
+    const byWorkspace = (actorUserId: string, tenantId: string, id: string) => ({ actorUserId, ...audit(actorUserId, tenantId, id) });
+    const linkOf = async (tenantId: string) =>
+      (await database.db.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId)))[0]?.organizationId;
+    const auditRows = async () => ({
+      organization: (await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-either')))
+        .map(({ id, actorUserId, subjectTenantId }) => [id, actorUserId, subjectTenantId]),
+      tenant: (await database.db.select().from(tenantAuditEvents))
+        .filter((row) => row.tenantId.startsWith('either-'))
+        .map(({ id, tenantId, reason }) => [id, tenantId, reason]),
+    });
+
+    expect(await repository.unlink('either-a', byOrganization('either-org-owner', 'either-a', 'a'))).toEqual({
+      status: 'unlinked', workspace: { id: 'either-a', slug: 'either-a', name: 'Either A', status: 'active' },
+    });
+    for (const tenantId of ['either-a', 'either-out', 'either-elsewhere', 'either-missing']) {
+      expect(await repository.unlink(tenantId, byOrganization('either-org-owner', tenantId, `refused-${tenantId}`)), tenantId)
+        .toEqual({ status: 'not_in_organization' });
+    }
+    expect(await repository.unlink('either-b', byOrganization('either-ws-owner', 'either-b', 'not-member')))
+      .toEqual({ status: 'organization_owner_required' });
+
+    for (const actorUserId of ['either-ws-admin', 'either-org-owner']) {
+      expect(await repository.unlinkAsWorkspaceOwner('either-b', byWorkspace(actorUserId, 'either-b', `refused-${actorUserId}`)), actorUserId)
+        .toEqual({ status: 'workspace_owner_required' });
+    }
+    expect(await repository.unlinkAsWorkspaceOwner('either-missing', byWorkspace('either-ws-owner', 'either-missing', 'missing')))
+      .toEqual({ status: 'workspace_owner_required' });
+
+    await database.db.insert(tenantConfigSources).values({
+      tenantId: 'either-b', configGroup: 'invoicing', source: 'organization', updatedAt: later, updatedByUserId: 'either-org-owner',
+    });
+    expect(await repository.unlinkAsWorkspaceOwner('either-b', byWorkspace('either-ws-owner', 'either-b', 'sourced')))
+      .toEqual({ status: 'config_sources_present' });
+    expect(await repository.unlink('either-b', byOrganization('either-org-owner', 'either-b', 'sourced-org')))
+      .toEqual({ status: 'config_sources_present' });
+    expect(await linkOf('either-b')).toBe('org-either');
+    await database.db.delete(tenantConfigSources).where(eq(tenantConfigSources.tenantId, 'either-b'));
+
+    const workspace = { id: 'either-b', slug: 'either-b', name: 'Either B', status: 'active' };
+    expect(await repository.unlinkAsWorkspaceOwner('either-b', byWorkspace('either-ws-owner', 'either-b', 'b')))
+      .toEqual({ status: 'unlinked', workspace, organizationId: 'org-either' });
+    expect(await repository.unlinkAsWorkspaceOwner('either-b', byWorkspace('either-ws-owner', 'either-b', 'b-again')))
+      .toEqual({ status: 'not_linked', workspace });
+    expect(await linkOf('either-a')).toBeNull();
+    expect(await linkOf('either-b')).toBeNull();
+    expect(await linkOf('either-elsewhere')).toBe('org-either-other');
+    expect(await auditRows()).toEqual({
+      organization: [['either-org-a', 'either-org-owner', 'either-a'], ['either-org-b', 'either-ws-owner', 'either-b']],
+      tenant: [['either-tenant-a', 'either-a', 'org-either'], ['either-tenant-b', 'either-b', 'org-either']],
+    });
   });
 
   it('accepts only known groups and the organization source in the source table', async () => {

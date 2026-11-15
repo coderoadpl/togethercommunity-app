@@ -676,6 +676,9 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.organizationWorkspaceUnlink.method,
       API_ROUTES.organizationWorkspaceUnlink.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
       organizationWorkspaceChangeOutputSchema, { tenantId: input.tenantId }, signal),
+  unlinkTenantFromOrganization: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.tenantOrganizationUnlink.method, API_ROUTES.tenantOrganizationUnlink.path,
+      organizationWorkspaceChangeOutputSchema, {}, signal),
 
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),

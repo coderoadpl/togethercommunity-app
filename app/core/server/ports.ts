@@ -2720,28 +2720,41 @@ interface OrganizationWorkspaceChange {
   tenantAudit: Omit<TenantAuditEventInput, 'tenantId'>;
 }
 
-type OrganizationWorkspaceRefusal =
+type OrganizationWorkspaceLinkResult =
+  | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_quota_exceeded' }
   | { status: 'workspace_owner_required' }
   | { status: 'organization_owner_required' }
   | { status: 'linked_elsewhere' };
 
-type OrganizationWorkspaceLinkResult =
-  | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
-  | { status: 'workspace_quota_exceeded' }
-  | OrganizationWorkspaceRefusal;
-
 type OrganizationWorkspaceUnlinkResult =
   | { status: 'unlinked' | 'not_linked'; workspace: OrganizationWorkspace }
   | { status: 'config_sources_present' }
-  | OrganizationWorkspaceRefusal;
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | { status: 'not_in_organization' };
+
+interface WorkspaceOwnerUnlink {
+  actorUserId: string;
+  organizationAudit: Omit<OrganizationAuditEvent, 'organizationId'>;
+  tenantAudit: Omit<TenantAuditEventInput, 'tenantId' | 'reason'>;
+}
+
+type WorkspaceOwnerUnlinkResult =
+  | { status: 'unlinked'; workspace: OrganizationWorkspace; organizationId: string }
+  | { status: 'not_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_owner_required' }
+  | { status: 'config_sources_present' };
 
 /**
- * Link and unlink re-check, inside one transaction with the change and both audit rows,
- * that the actor holds a direct owner grant in the workspace and is an owner of the organization.
+ * Every change re-checks its authority inside one transaction with the change and both audit rows.
+ * Linking needs a direct workspace owner who owns the organization. Unlinking needs either side:
+ * `unlink` an organization owner, `unlinkAsWorkspaceOwner` a direct owner grant in the workspace.
  */
 export interface OrganizationWorkspaceRepository {
   link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;
   unlink(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceUnlinkResult>;
+  unlinkAsWorkspaceOwner(tenantId: string, input: WorkspaceOwnerUnlink): Promise<WorkspaceOwnerUnlinkResult>;
   list(organizationId: string): Promise<OrganizationWorkspace[]>;
 }
 

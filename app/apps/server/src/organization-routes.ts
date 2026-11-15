@@ -29,6 +29,7 @@ import {
   organizationContext,
   removeOrganizationMember,
   unlinkOrganizationWorkspace,
+  unlinkWorkspaceFromOrganization,
   setOrganizationLimits,
   setOrganizationMemberRole,
   setOrganizationSecret,
@@ -170,6 +171,7 @@ export const registerOrganizationRoutes = (
       return withOrganization(c, organizationId, (octx) => change(octx, { organizationId, ...parsed.data }, deps));
     });
   }
+  app.post(API_PATHS.tenantOrganizationUnlink, async (c) => respond(await unlinkWorkspaceFromOrganization(ctxOf(c), deps)));
   app.get(API_PATHS.organizationWorkspaceSources, async (c) => {
     const organizationId = c.req.param('organizationId');
     const tenantId = c.req.param('tenantId');

@@ -20,10 +20,10 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller's own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning.
+The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller's own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning. `tenant:organization:unlink` is listed for `owner`, and the use-case and the repository additionally require that owner role to come from a direct workspace grant: an owner derived from the organization is refused.
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-Closed capability count: 137. Route rows: 488. Exported `Ctx` use-case rows: 377.
+Closed capability count: 138. Route rows: 489. Exported `Ctx` use-case rows: 378.
 
 ## Human-readable diff
 
@@ -274,6 +274,7 @@ no changes
 | `GET /api/organizations/:organizationId/workspaces` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `POST /api/organizations/:organizationId/workspaces/link` | organization:workspace:link | organization-owner | organization-owner | yes | identity middleware + use-case guard |
 | `POST /api/organizations/:organizationId/workspaces/unlink` | organization:workspace:link | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/organization/unlink` | tenant:organization:unlink | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId/workspaces/:tenantId/sources` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -796,6 +797,7 @@ no changes
 | `organization-workspaces.ts#listOrganizationWorkspaces` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organization-workspaces.ts#linkOrganizationWorkspace` | organization:workspace:link | organization-owner | organization-owner | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organization-workspaces.ts#unlinkOrganizationWorkspace` | organization:workspace:link | organization-owner | organization-owner | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
+| `organization-workspaces.ts#unlinkWorkspaceFromOrganization` | tenant:organization:unlink | owner | owner | yes | core/server/usecases/organization-workspaces.ts authorization call |
 | `organization-workspaces.ts#getWorkspaceConfigSources` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organizations.ts#listOrganizations` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/organizations.ts authorization call |
 | `organizations.ts#getOrganization` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |

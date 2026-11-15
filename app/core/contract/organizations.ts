@@ -50,6 +50,7 @@ export const ORGANIZATION_ROUTES = {
   organizationWorkspaceLink: { method: 'POST', path: '/api/organizations/:organizationId/workspaces/link' },
   organizationWorkspaceUnlink: { method: 'POST', path: '/api/organizations/:organizationId/workspaces/unlink' },
   organizationWorkspaceSources: { method: 'GET', path: '/api/organizations/:organizationId/workspaces/:tenantId/sources' },
+  tenantOrganizationUnlink: { method: 'POST', path: '/api/tenant/organization/unlink' },
   organizationSecrets: { method: 'GET', path: '/api/organizations/:organizationId/secrets' },
   organizationSecretSet: { method: 'POST', path: '/api/organizations/:organizationId/secrets' },
   organizationSecretDelete: { method: 'DELETE', path: '/api/organizations/:organizationId/secrets/:key' },

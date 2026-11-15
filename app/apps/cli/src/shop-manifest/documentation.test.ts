@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { API_ROUTES, checkoutSessionOutputSchema, checkoutSessionRequestSchema, publicOfferOutputSchema } from '#core/contract/index.js';
 import { newProductSchema, newProductPriceSchema, provisionTenantInputSchema, updateTenantSettingsInputSchema } from '#core/domain/index.js';
 import { effectiveShopIntegrations, effectiveShopSettings, manifestWorkspaceSlug, productMetadata, shopManifestSchema } from '#core/domain/shop-manifest.js';
 import { resolveManifestIntegrations } from './integrations.js';
@@ -54,6 +55,26 @@ describe('shop manifest documentation', () => {
     const document = await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8');
     expect(document.replace(/\s+/gu, ' ')).toContain('The tool supports multi-tenant instances only');
     expect(document).toContain('APP_BASE_DOMAIN');
+  });
+
+  it('gives external sites a plain fetch storefront example that matches the public contract', async () => {
+    const document = await readFile(new URL('../../../../docs/shop-integration.md', import.meta.url), 'utf8');
+    const plain = /```js\n([\s\S]*?)\n```/u.exec(document)?.[1];
+    if (plain === undefined) throw new Error('Expected a plain JavaScript storefront example');
+    expect(plain).not.toMatch(/\bimport\b|#core\//u);
+    expect(plain).toContain(`\${workspaceOrigin}${API_ROUTES.publicOffer.path}?productRef=paperback`);
+    expect(plain).toContain(`\${workspaceOrigin}${API_ROUTES.checkoutSession.path}\``);
+    expect(plain).toContain(`method: '${API_ROUTES.checkoutSession.method}'`);
+    const offerProduct = publicOfferOutputSchema.shape.products.element.shape;
+    for (const field of ['id', 'slug', 'prices', 'stock', 'coverUrl'] as const) expect(plain).toContain(`.${field}`);
+    expect(Object.keys(offerProduct)).toEqual(expect.arrayContaining(['id', 'slug', 'prices', 'stock', 'coverUrl']));
+    expect(Object.keys(checkoutSessionOutputSchema.shape)).toContain('url');
+    const body = { productId: 'p1', priceId: 'price1', termsAccepted: true, language: 'en', shipping: { rateId: 'courier' } };
+    for (const key of Object.keys(body)) expect(plain).toContain(`${key}: `);
+    expect(checkoutSessionRequestSchema.strict().safeParse(body).success).toBe(true);
+    const typedStart = document.indexOf('```ts\nimport');
+    expect(document.slice(document.lastIndexOf('```\n', typedStart), typedStart)).toContain('Inside this repository only');
+    expect(document.slice(typedStart)).toContain("from '#core/contract/index.js'");
   });
 
   it.each(['shop-manifest.md', 'shop-integration.md'])('runs every --json example in %s without the script banner', async (name) => {

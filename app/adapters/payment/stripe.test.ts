@@ -257,7 +257,6 @@ describe('configureWebhook', () => {
         ids: { nextId: () => `secret-${++sequence}` },
         clock: { nowIso: () => '2026-10-01T12:00:00.000Z' },
         appBaseUrl: 'https://togethercommunity.app', baseDomain: 'togethercommunity.app', singleTenantMode: false,
-        tenantDomains: tenantDomainRepositoryStub({}),
       });
       if (!result.ok) throw new Error(result.error.message);
       const endpoint = endpointSchema.parse(registered.find((candidate) => candidate.url === result.value.webhookUrl));

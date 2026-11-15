@@ -1060,6 +1060,10 @@ export const tenantApiKeys = pgTable(
       'tenant_api_keys_shop_management_issuer_expiry_check',
       sql`${table.kind} <> 'shop_management' OR (${table.issuedByUserId} IS NOT NULL AND ${table.expiresAt} IS NOT NULL)`,
     ),
+    check(
+      'tenant_api_keys_shop_management_scopes_check',
+      sql`${table.kind} <> 'shop_management' OR (${table.scopes} IS NOT NULL AND jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb)`,
+    ),
   ],
 );
 

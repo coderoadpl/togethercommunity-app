@@ -1,6 +1,6 @@
 {
-  "hash": "0946641b4402c87e3761a8c7daf92e8c5360b716360cee51b562580be668cae2",
-  "shortId": "0946641b4402",
+  "hash": "a7ff830d961501e987aaeb5dca5955a9b78bcc26a81ab6278b4f94b4ef4c4189",
+  "shortId": "a7ff830d9615",
   "schema": {
     "constraints": [
       {
@@ -31,6 +31,11 @@
       {
         "definition": "CHECK (((kind <> 'shop_management'::text) OR ((issued_by_user_id IS NOT NULL) AND (expires_at IS NOT NULL))))",
         "name": "tenant_api_keys_shop_management_issuer_expiry_check",
+        "table": "tenant_api_keys"
+      },
+      {
+        "definition": "CHECK (((kind <> 'shop_management'::text) OR ((scopes IS NOT NULL) AND (jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb))))",
+        "name": "tenant_api_keys_shop_management_scopes_check",
         "table": "tenant_api_keys"
       },
       {

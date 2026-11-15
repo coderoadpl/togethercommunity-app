@@ -228,6 +228,14 @@ describe('authenticateShopManagementKey', () => {
     expect(await authenticate(h)).toMatchObject(invalidKey);
   });
 
+  it.each([
+    ['null scopes', null],
+    ['an empty scope list', []],
+  ] as const)('rejects a shop key with %s even though the database refuses such a row', async (_label, scopes) => {
+    const h = harness({ keys: [shopKey({ scopes: scopes === null ? null : [...scopes] })] });
+    expect(await authenticate(h)).toMatchObject(invalidKey);
+  });
+
   it('rejects a key presented for another tenant', async () => {
     expect(await authenticate(harness(), 'shop:catalog:read', OTHER_TENANT)).toMatchObject(invalidKey);
   });

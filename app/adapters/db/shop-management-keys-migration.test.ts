@@ -165,6 +165,29 @@ describe('shop management key migration', () => {
       [TENANT, NOW],
     )).rejects.toThrow(/tenant_api_keys_/);
   });
+
+  it.each([
+    ['null scopes', 'null'],
+    ['an empty scope array', `'[]'`],
+    ['a scope string instead of an array', `'"shop:catalog:read"'`],
+    ['a scope object instead of an array', `'{"scope":"shop:catalog:read"}'`],
+  ])('rejects a shop management key with %s at the database', async (_label, scopes) => {
+    await expect(pool.query(
+      `insert into tenant_api_keys (id, tenant_id, name, key_hash, kind, issued_by_user_id, expires_at, scopes, created_at)
+       values ('unscoped-shop', $1, 'Unscoped shop', 'hash-unscoped-shop', 'shop_management', 'user-owner', $2, ${scopes}, $3)`,
+      [TENANT, EXPIRY, NOW],
+    )).rejects.toThrow(/tenant_api_keys_shop_management_scopes_check/);
+  });
+
+  it('keeps accepting a legacy key without scopes', async () => {
+    await pool.query(
+      `insert into tenant_api_keys (id, tenant_id, name, key_hash, kind, scopes, created_at)
+       values ('new-unscoped-legacy', $1, 'New unscoped legacy', 'hash-new-unscoped-legacy', 'legacy', null, $2)`,
+      [TENANT, NOW],
+    );
+    expect(await createTenantApiKeyRepository(db).findActiveByHash(TENANT, 'hash-new-unscoped-legacy'))
+      .toMatchObject({ id: 'new-unscoped-legacy', kind: 'legacy', scopes: null });
+  });
 });
 
 describe('shop management key lifecycle', () => {

@@ -843,7 +843,8 @@ settings routes). Accepted types are PNG, JPEG, WebP and SVG, at most 5 MiB;
 the bytes must match the declared type.
 
 ```bash
-curl -s -H "$KEY" -H "$JSON" -d '{"kind":"product-cover","fileName":"cover.png","contentType":"image/png","sizeBytes":<bytes>}' "$SHOP/image-assets/product-cover/upload"
+umask 077
+curl -s -H "$KEY" -H "$JSON" -d '{"kind":"product-cover","fileName":"cover.png","contentType":"image/png","sizeBytes":<bytes>}' "$SHOP/image-assets/product-cover/upload" > cover-upload.json
 ```
 
 ```json
@@ -851,10 +852,14 @@ curl -s -H "$KEY" -H "$JSON" -d '{"kind":"product-cover","fileName":"cover.png",
 ```
 
 `PUT` the file to `upload.url` with exactly the returned `upload.headers` and
-without the shop key, before `expiresAt` (fifteen minutes). Then complete and attach:
+without the shop key, before `expiresAt` (fifteen minutes). The signed URL
+authorizes the upload on its own, so keep it out of command-line arguments like
+the key: the example keeps the answer in a file only the current user can read
+and hands curl the URL as a `url = "..."` config line on stdin (`-K -`).
+Delete `cover-upload.json` after the upload. Then complete and attach:
 
 ```bash
-curl -s -X PUT -H 'content-type: image/png' --data-binary @cover.png '<signed-storage-url>'
+jq -r '"url = \"\(.data.upload.url)\""' cover-upload.json | curl -s -K - -X PUT -H 'content-type: image/png' --data-binary @cover.png
 curl -s -H "$KEY" -H "$JSON" -d '{"key":"<candidate-key>"}' "$SHOP/image-assets/product-cover/complete"
 curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>","coverUrl":"/api/public/assets/product-cover/<file>"}' "$SHOP/products/update"
 ```

@@ -16,7 +16,7 @@ import {
   type TenantTeamOrganization,
 } from '#core/domain/index.js';
 
-import { authorizeTenant } from '../authorize.js';
+import { authorizeTenant, requireDirectGrant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type {
   AuthPort,
@@ -34,6 +34,8 @@ export interface TenantTeamDeps extends TenantOriginDeps {
   ids: IdGenerator;
   clock: Clock;
 }
+
+const directTeamGrantRequired = 'Changing the workspace team requires a direct owner grant in this workspace';
 
 export const listTenantTeam = async (
   ctx: Ctx,
@@ -53,7 +55,7 @@ export const addTenantAdmin = async (
   input: AddTenantAdminInput,
   deps: TenantTeamDeps,
 ): Promise<Result<{ status: 'invitation_sent' }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = requireDirectGrant(ctx, authorizeTenant(ctx, 'tenant:settings:write'), directTeamGrantRequired);
   if (!tenant.ok) return tenant;
   const parsed = addTenantAdminInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid administrator email', parsed.error.flatten()));
@@ -87,7 +89,7 @@ export const removeTenantAdmin = async (
   input: { userId: string },
   deps: TenantTeamDeps,
 ): Promise<Result<{ userId: string }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = requireDirectGrant(ctx, authorizeTenant(ctx, 'tenant:settings:write'), directTeamGrantRequired);
   if (!tenant.ok) return tenant;
   const parsed = removeTenantAdminInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid administrator', parsed.error.flatten()));

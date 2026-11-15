@@ -19,8 +19,9 @@ import {
 } from '#core/server/usecases/organization-workspaces.js';
 import { resolveIdentity } from '#core/server/usecases/resolve-identity.js';
 import { authenticateShopManagementKey } from '#core/server/usecases/shop-machine-auth.js';
+import { createTenantApiKey } from '#core/server/usecases/api-keys.js';
 import { createShopManagementKey } from '#core/server/usecases/shop-management-keys.js';
-import { listTenantTeam, removeTenantAdmin, type TenantTeamDeps } from '#core/server/usecases/tenant-team.js';
+import { addTenantAdmin, listTenantTeam, removeTenantAdmin, type TenantTeamDeps } from '#core/server/usecases/tenant-team.js';
 
 import { createApiKeyCrypto } from '../auth/api-key-crypto.js';
 import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from './shop-management-keys.js';
@@ -29,11 +30,20 @@ import {
   createAccountIdentityReader,
   createMemberRepository,
   createTenantAccessReader,
+  createTenantApiKeyRepository,
   createTenantDomainRepository,
   createTenantRepository,
   createTenantTeamRepository,
 } from './repositories.js';
-import { organizationMembers, organizations, tenantAdmins, tenantConfigSources, tenants, user } from './schema.js';
+import {
+  organizationMembers,
+  organizations,
+  tenantAdminInvitations,
+  tenantAdmins,
+  tenantConfigSources,
+  tenants,
+  user,
+} from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -252,6 +262,7 @@ describe('derived workspace roles', () => {
       clock,
       shopManagementKeysSwitch: 'enabled' as const,
     });
+    const apiKeyDeps = () => ({ tenantApiKeys: createTenantApiKeyRepository(database.db), apiKeyCrypto: createApiKeyCrypto(), ids, clock });
     const machineDeps = () => ({
       shopManagementKeys: createShopManagementKeyRepository(database.db),
       apiKeyCrypto: createApiKeyCrypto(),
@@ -422,6 +433,90 @@ describe('derived workspace roles', () => {
 
       const next = await authenticateShopManagementKey(shopTenant('flow-key-unlink'), secret, 'shop:catalog:read', machineDeps());
       expect(next.result).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } });
+    });
+
+    it('refuses a shop key issued by an organization-derived owner once the organization is suspended', async () => {
+      await createOrganization('flow-suspend-org');
+      await addMember('flow-suspend-org', 'flow-actor', 'owner');
+      await addMember('flow-suspend-org', 'flow-org-owner', 'owner');
+      await addTenant('flow-key-suspend', null);
+      await addGrant('flow-key-suspend', 'flow-actor', 'owner');
+      const linked = await linkOrganizationWorkspace(
+        await organizationCtx('flow-actor', 'flow-suspend-org'),
+        { organizationId: 'flow-suspend-org', tenantId: 'flow-key-suspend' },
+        workspaceDeps(),
+      );
+      expect(linked).toMatchObject({ ok: true, value: { changed: true } });
+      const secret = await issueShopKey('flow-org-owner', 'flow-key-suspend');
+      const first = await authenticateShopManagementKey(shopTenant('flow-key-suspend'), secret, 'shop:catalog:read', machineDeps());
+      expect(first.result).toMatchObject({ ok: true, value: { ctx: { identity: { userId: 'flow-org-owner', staffRole: 'owner' } } } });
+
+      await database.db.update(organizations).set({ status: 'suspended' }).where(eq(organizations.id, 'flow-suspend-org'));
+
+      const next = await authenticateShopManagementKey(shopTenant('flow-key-suspend'), secret, 'shop:catalog:read', machineDeps());
+      expect(next.result).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } });
+    });
+
+    describe('artefacts that outlive the request', () => {
+      const tenantId = 'flow-lasting';
+      const teamRows = async () => ({
+        admins: (await database.db.select({ userId: tenantAdmins.userId, role: tenantAdmins.role }).from(tenantAdmins)
+          .where(eq(tenantAdmins.tenantId, tenantId))).sort((left, right) => left.userId.localeCompare(right.userId)),
+        invitations: (await database.db.select({ userId: tenantAdminInvitations.userId }).from(tenantAdminInvitations)
+          .where(eq(tenantAdminInvitations.tenantId, tenantId))).map(({ userId }) => userId).sort(),
+      });
+
+      beforeAll(async () => {
+        for (const userId of ['flow-invitee', 'flow-invitee-direct']) {
+          accounts.push({ userId, email: `${userId}@example.test`, emailVerified: true });
+          await database.db.insert(user).values({ id: userId, email: `${userId}@example.test`, name: userId, emailVerified: true });
+        }
+        await addTenant(tenantId, null);
+        await addGrant(tenantId, 'flow-actor', 'owner');
+        await addGrant(tenantId, 'flow-ws-owner', 'admin');
+        const linked = await linkOrganizationWorkspace(await organizationCtx('flow-actor', 'flow-org'), { organizationId: 'flow-org', tenantId }, workspaceDeps());
+        expect(linked).toMatchObject({ ok: true, value: { changed: true } });
+      });
+
+      it('refuses a legacy API key to an owner whose role comes only from the organization and still lets them issue a shop key', async () => {
+        const derivedOwner = await ctxFor('flow-org-owner', tenantId);
+        expect(derivedOwner.identity).toMatchObject({ staffRole: 'owner', staffGrantSource: 'organization' });
+
+        expect(await createTenantApiKey(derivedOwner, { name: 'Legacy integration' }, apiKeyDeps()))
+          .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+        expect(await createTenantApiKeyRepository(database.db).listByTenant(tenantId)).toEqual([]);
+
+        const secret = await issueShopKey('flow-org-owner', tenantId);
+        expect((await authenticateShopManagementKey(shopTenant(tenantId), secret, 'shop:catalog:read', machineDeps())).result)
+          .toMatchObject({ ok: true });
+      });
+
+      it('refuses team changes to an owner whose role comes only from the organization', async () => {
+        const derivedOwner = await ctxFor('flow-org-owner', tenantId);
+        const before = await teamRows();
+
+        expect(await listTenantTeam(derivedOwner, teamDeps())).toMatchObject({ ok: true });
+        expect(await addTenantAdmin(derivedOwner, { email: 'flow-invitee@example.test' }, teamDeps()))
+          .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+        expect(await removeTenantAdmin(derivedOwner, { userId: 'flow-ws-owner' }, teamDeps()))
+          .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+        expect(await teamRows()).toEqual(before);
+        expect(before.admins).toContainEqual({ userId: 'flow-ws-owner', role: 'admin' });
+      });
+
+      it('leaves a direct owner who also owns the organization able to create legacy keys and change the team', async () => {
+        const owner = await ctxFor('flow-actor', tenantId);
+        expect(owner.identity).toMatchObject({ staffRole: 'owner', staffGrantSource: 'direct' });
+
+        const created = await createTenantApiKey(owner, { name: 'Direct integration' }, apiKeyDeps());
+        expect(created).toMatchObject({ ok: true, value: { apiKey: { name: 'Direct integration' } } });
+        expect(await addTenantAdmin(owner, { email: 'flow-invitee-direct@example.test' }, teamDeps()))
+          .toEqual({ ok: true, value: { status: 'invitation_sent' } });
+        expect((await teamRows()).invitations).toEqual(['flow-invitee-direct']);
+        expect(await removeTenantAdmin(owner, { userId: 'flow-ws-owner' }, teamDeps()))
+          .toEqual({ ok: true, value: { userId: 'flow-ws-owner' } });
+        expect((await teamRows()).admins).toEqual([{ userId: 'flow-actor', role: 'owner' }]);
+      });
     });
 
     describe('unlinking from either side', () => {

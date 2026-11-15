@@ -91,6 +91,21 @@ export const authorizeTenant = (
   return ok(ctx.identity.tenantId);
 };
 
+/**
+ * An organization-derived role ends with the organization link or membership, so operations whose
+ * result outlives the request (credentials, team grants) stay with roles granted in the workspace.
+ */
+export const requireDirectGrant = (
+  ctx: Ctx,
+  tenant: Result<string, AppError>,
+  refusal: string,
+): Result<string, AppError> => {
+  if (!tenant.ok) return tenant;
+  return ctx.identity.staffGrantSource === 'direct' && ctx.machineActor === undefined
+    ? tenant
+    : err(forbidden(refusal));
+};
+
 export const authorizeRequiredTenant = (
   ctx: Ctx,
   capability: Capability,

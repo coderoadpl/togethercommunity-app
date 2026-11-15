@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, StaffRole, TenantAuditEventInput, TenantTeamMember, TenantTeamOrganization } from '#core/domain/index.js';
+import type { Identity, StaffGrantSource, StaffRole, TenantAuditEventInput, TenantTeamMember, TenantTeamOrganization } from '#core/domain/index.js';
 
 import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 
 import { addTenantAdmin, listTenantTeam, removeTenantAdmin, type TenantTeamDeps } from './tenant-team.js';
 
-const identity = (staffRole: StaffRole | null = 'owner'): Identity => ({
+const identity = (staffRole: StaffRole | null = 'owner', staffGrantSource: StaffGrantSource = 'direct'): Identity => ({
   userId: 'owner-1',
   email: 'owner@acme.test',
   name: 'Owner',
@@ -17,6 +17,7 @@ const identity = (staffRole: StaffRole | null = 'owner'): Identity => ({
   tenantSlug: 'acme',
   tenantName: 'Acme',
   staffRole,
+  ...(staffRole === null ? {} : { staffGrantSource }),
   memberId: staffRole === null ? 'member-1' : null,
   memberDisplayName: null,
   memberBannedAt: null,
@@ -219,6 +220,22 @@ describe('tenant team', () => {
     expect(h.deps.team.list).not.toHaveBeenCalled();
     expect(h.deps.team.inviteAdmin).not.toHaveBeenCalled();
     expect(h.deps.team.removeAdmin).not.toHaveBeenCalled();
+    expect(h.ensured).toEqual([]);
+    expect(h.audit).toEqual([]);
+    expect(h.requestMagicLink).not.toHaveBeenCalled();
+  });
+
+  it('lets an owner whose role comes only from the organization list the team but not change it', async () => {
+    const h = harness();
+    const ctx = { identity: identity('owner', 'organization') };
+    expect(await listTenantTeam(ctx, h.deps)).toMatchObject({ ok: true });
+    for (const result of [
+      await addTenantAdmin(ctx, { email: 'new@acme.test' }, h.deps),
+      await removeTenantAdmin(ctx, { userId: 'admin-1' }, h.deps),
+    ]) expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(h.deps.team.inviteAdmin).not.toHaveBeenCalled();
+    expect(h.deps.team.removeAdmin).not.toHaveBeenCalled();
+    expect(h.deps.team.revokeInvitation).not.toHaveBeenCalled();
     expect(h.ensured).toEqual([]);
     expect(h.audit).toEqual([]);
     expect(h.requestMagicLink).not.toHaveBeenCalled();

@@ -149,6 +149,31 @@ describe('organization workspace link and unlink', () => {
     expect(h.auditRows.map(({ kind }) => kind)).toEqual(['workspace.linked']);
   });
 
+  it('refuses a link past the workspace limit with workspace_quota_exceeded and links once the limit is raised', async () => {
+    const h = await harness();
+    const octx = await h.octx('owner-1');
+    const limit = (maxWorkspaces: number) => h.repositories.organizations.setMaxWorkspaces('org-1', {
+      maxWorkspaces, updatedAt: at,
+      audit: {
+        id: `limit-${maxWorkspaces}`, kind: 'organization.updated', actorUserId: 'operator', actorEmail: 'operator@example.test',
+        actorKeyId: null, subjectTenantId: null, subjectUserId: null, data: { maxWorkspaces }, at,
+      },
+    });
+    await limit(0);
+    expect(await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps)).toEqual({
+      ok: false, error: { code: 'workspace_quota_exceeded', message: 'The organization already holds its maximum number of workspaces' },
+    });
+    expect(linkOf(h, 'acme')).toBeNull();
+    expect(h.auditRows.map(({ kind }) => kind)).toEqual(['organization.updated']);
+    expect(h.tenantAuditRows).toEqual([]);
+    await limit(1);
+    expect(await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
+      .toMatchObject({ ok: true, value: { changed: true } });
+    expect(await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
+      .toMatchObject({ ok: true, value: { changed: false } });
+    expect(linkOf(h, 'acme')).toBe('org-1');
+  });
+
   it('rejects an empty workspace selection before touching the store', async () => {
     const h = await harness();
     expect(await linkOrganizationWorkspace(await h.octx('owner-1'), { organizationId: 'org-1', tenantId: ' ' }, h.deps))

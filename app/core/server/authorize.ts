@@ -7,11 +7,13 @@ import {
   notFound,
   ok,
   requiresVerifiedEmail,
+  shopManagementKeyGrantCovers,
   tenantNotFound,
   type AppError,
   type Capability,
   type OrganizationRole,
   type Result,
+  type ShopManagementKeyIntegrationGrant,
 } from '#core/domain/index.js';
 
 import type { Ctx, OrganizationCtx } from './context.js';
@@ -32,6 +34,11 @@ interface AuthorizeOptions {
    * staff-only read is unreachable while viewing as a member.
    */
   asImpersonationActor?: boolean;
+  /**
+   * Required for a shop management key ctx to use `tenant:secret:write`, so a
+   * future use-case that names no allow-listed grant stays closed to keys.
+   */
+  shopManagementKeyGrant?: ShopManagementKeyIntegrationGrant;
 }
 
 export const authorize = (
@@ -60,6 +67,9 @@ export const authorize = (
       )
     );
   if (!granted) return forbidden(`${capability} is not permitted`);
+  if (ctx.machineActor !== undefined && !shopManagementKeyGrantCovers(capability, options.shopManagementKeyGrant)) {
+    return forbidden(`${capability} is not permitted for a shop management key on this operation`);
+  }
   return requiresVerifiedEmail(capability)
     && !ctx.identity.emailVerified
     && options.allowUnverifiedEmail !== true

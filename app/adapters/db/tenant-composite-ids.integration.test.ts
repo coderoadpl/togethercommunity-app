@@ -55,8 +55,6 @@ const tenantFixture = (slug: string): Tenant => {
     tenantId: id,
     name: 'Migration',
     keyHash: `hash-${slug}`,
-    kind: 'legacy',
-    issuedByUserId: null,
     scopes: ['import:content', 'import:users'],
     createdAt: NOW,
     expiresAt: '1998-08-20T10:00:00.000Z',

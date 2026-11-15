@@ -161,6 +161,14 @@ describe('organization session routes', () => {
     expect(refused.status).toBe(403);
     expect((await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: '' })).status).toBe(400);
     expect((await h.post(path(API_PATHS.organizationWorkspaceLink), 'other-1', { tenantId: 'acme' })).status).toBe(404);
+    const overLimit = await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' });
+    expect(overLimit.status).toBe(409);
+    expect(await overLimit.json()).toMatchObject({ ok: false, error: { code: 'workspace_quota_exceeded' } });
+    expect(h.tenantAuditRows).toEqual([]);
+    const raised = await h.app.request(path(API_PATHS.operatorOrganizationLimits), {
+      method: 'POST', headers: operatorHeaders, body: JSON.stringify({ maxWorkspaces: 1 }),
+    });
+    expect(raised.status).toBe(200);
     const linked = await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' });
     expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await linked.json()))
       .toEqual({ ok: true, data: { workspace: { id: 'acme', slug: 'acme', name: 'Acme', status: 'active' }, changed: true } });
@@ -253,6 +261,8 @@ describe('organization session routes', () => {
   it('refuses to delete a secret whose group a linked workspace inherits and reads the workspace sources', async () => {
     const h = harness();
     const organizationId = await created(h);
+    const limits = API_PATHS.operatorOrganizationLimits.replace(':organizationId', organizationId);
+    expect((await h.app.request(limits, { method: 'POST', headers: operatorHeaders, body: JSON.stringify({ maxWorkspaces: 1 }) })).status).toBe(200);
     await h.post(API_PATHS.organizationWorkspaceLink.replace(':organizationId', organizationId), 'owner-1', { tenantId: 'acme' });
     await h.post(API_PATHS.organizationSecrets.replace(':organizationId', organizationId), 'owner-1', { key: 'ksef.token', value: 'ksef-token-5678' });
     h.configSourceRows.push({ tenantId: 'acme', group: 'invoicing', source: 'organization', updatedAt: '2026-11-15T12:00:00.000Z', updatedByUserId: 'owner-1' });

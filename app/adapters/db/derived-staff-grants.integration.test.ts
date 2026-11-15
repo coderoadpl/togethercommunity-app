@@ -11,21 +11,20 @@ import {
 import { authorize, authorizeOrganization, authorizeTenant } from '#core/server/authorize.js';
 import type { Ctx, OrganizationCtx } from '#core/server/context.js';
 import type { AuthPort } from '#core/server/ports.js';
-import { createTenantApiKey } from '#core/server/usecases/api-keys.js';
 import { removeOrganizationMember } from '#core/server/usecases/organization-members.js';
 import { linkOrganizationWorkspace, unlinkOrganizationWorkspace } from '#core/server/usecases/organization-workspaces.js';
 import { resolveIdentity } from '#core/server/usecases/resolve-identity.js';
 import { authenticateShopManagementKey } from '#core/server/usecases/shop-machine-auth.js';
+import { createShopManagementKey } from '#core/server/usecases/shop-management-keys.js';
 import { listTenantTeam, removeTenantAdmin, type TenantTeamDeps } from '#core/server/usecases/tenant-team.js';
 
 import { createApiKeyCrypto } from '../auth/api-key-crypto.js';
+import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from './shop-management-keys.js';
 import { createOrganizationMemberRepository, createOrganizationWorkspaceRepository } from './organizations.js';
 import {
   createAccountIdentityReader,
-  createApiKeyRateLimitRepository,
   createMemberRepository,
   createTenantAccessReader,
-  createTenantApiKeyRepository,
   createTenantDomainRepository,
   createTenantRepository,
   createTenantTeamRepository,
@@ -243,18 +242,18 @@ describe('derived workspace roles', () => {
     const workspaceDeps = () => ({ organizationWorkspaces: createOrganizationWorkspaceRepository(database.db), ids, clock });
     const memberDeps = () => ({ organizationMembers: createOrganizationMemberRepository(database.db), authPort, ids, clock });
     const keyDeps = () => ({
-      tenantApiKeys: createTenantApiKeyRepository(database.db),
+      shopManagementKeys: createShopManagementKeyRepository(database.db),
       apiKeyCrypto: createApiKeyCrypto(),
       ids,
       clock,
-      shopManagementKeys: 'enabled' as const,
+      shopManagementKeysSwitch: 'enabled' as const,
     });
     const machineDeps = () => ({
-      tenantApiKeys: createTenantApiKeyRepository(database.db),
+      shopManagementKeys: createShopManagementKeyRepository(database.db),
       apiKeyCrypto: createApiKeyCrypto(),
       accountIdentities: createAccountIdentityReader(database.db),
       tenantAccess: createTenantAccessReader(database.db),
-      apiKeyRateLimits: createApiKeyRateLimitRepository(database.db),
+      shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(database.db),
       clock,
     });
     const shopTenant = (id: string) => ({ id, slug: id, name: `Workspace ${id}` });
@@ -383,13 +382,13 @@ describe('derived workspace roles', () => {
     });
 
     const issueShopKey = async (userId: string, tenantId: string) => {
-      const created = await createTenantApiKey(
+      const created = await createShopManagementKey(
         await ctxFor(userId, tenantId),
-        { name: 'Shop backend', kind: 'shop_management', scopes: ['shop:catalog:read'], expiresAt: IN_A_WEEK },
+        { name: 'Shop backend', scopes: ['shop:catalog:read'], expiresAt: IN_A_WEEK },
         keyDeps(),
       );
       if (!created.ok) throw new Error(created.error.message);
-      expect(created.value.apiKey).toMatchObject({ kind: 'shop_management', issuedByUserId: userId });
+      expect(created.value.apiKey).toMatchObject({ issuedByUserId: userId });
       return created.value.secret;
     };
 

@@ -481,4 +481,70 @@ describe('organization repositories', () => {
     await expect(database.db.insert(tenantConfigSources).values(row)).rejects.toThrow();
     await database.db.delete(tenantConfigSources).where(eq(tenantConfigSources.tenantId, 'acme'));
   });
+
+  describe('workspace limit on link', () => {
+    const quotaOrganization = async (organizationId: string, tenantIds: string[]) => {
+      await createOrganizationRepository(database.db).create({ ...organization(organizationId, organizationId), maxWorkspaces: 1 });
+      await database.db.insert(tenants).values(tenantIds.map((id) => ({ id, slug: id, name: id, createdAt: at })));
+      await database.db.insert(tenantAdmins).values(tenantIds.map((id) => ({ id: `grant-${id}`, tenantId: id, userId: 'quota-owner', role: 'owner' as const })));
+      await createOrganizationMemberRepository(database.db)
+        .add(organizationId, { id: `${organizationId}-owner`, userId: 'quota-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    };
+    const change = (organizationId: string, tenantId: string, id: string) => ({
+      organizationId,
+      actorUserId: 'quota-owner',
+      organizationAudit: {
+        id: `org-${id}`, kind: 'workspace.linked' as const, actorUserId: 'quota-owner', actorEmail: 'quota-owner@example.test',
+        actorKeyId: null, subjectTenantId: tenantId, subjectUserId: null, data: {}, at,
+      },
+      tenantAudit: {
+        id: `tenant-${id}`, kind: 'organization.linked' as const, actorUserId: 'quota-owner', actorEmail: 'quota-owner@example.test',
+        subjectMemberId: null, reason: organizationId, at,
+      },
+    });
+    const linkedTo = async (organizationId: string) =>
+      (await database.db.select({ id: tenants.id }).from(tenants).where(eq(tenants.organizationId, organizationId))).map((row) => row.id).sort();
+    const auditIds = async (organizationId: string, tenantIds: string[]) => ({
+      organization: (await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, organizationId)))
+        .filter((row) => row.kind === 'workspace.linked').map((row) => row.id).sort(),
+      tenant: (await database.db.select().from(tenantAuditEvents))
+        .filter((row) => tenantIds.includes(row.tenantId)).map((row) => row.id).sort(),
+    });
+
+    it('refuses a link past max_workspaces without writing anything, keeps re-links idempotent and links after the limit is raised', async () => {
+      await quotaOrganization('org-quota', ['quota-1', 'quota-2']);
+      const repository = createOrganizationWorkspaceRepository(database.db);
+
+      expect(await repository.link('quota-1', change('org-quota', 'quota-1', 'quota-a'))).toMatchObject({ status: 'linked' });
+      expect(await repository.link('quota-1', change('org-quota', 'quota-1', 'quota-b'))).toMatchObject({ status: 'already_linked' });
+      expect(await repository.link('quota-2', change('org-quota', 'quota-2', 'quota-c'))).toEqual({ status: 'workspace_quota_exceeded' });
+      expect(await linkedTo('org-quota')).toEqual(['quota-1']);
+      expect(await auditIds('org-quota', ['quota-1', 'quota-2'])).toEqual({ organization: ['org-quota-a'], tenant: ['tenant-quota-a'] });
+
+      const raised = await createOrganizationRepository(database.db).setMaxWorkspaces('org-quota', {
+        maxWorkspaces: 2,
+        updatedAt: later,
+        audit: {
+          id: 'org-quota-limit', kind: 'organization.updated', actorUserId: 'operator-secret', actorEmail: 'operator@together.invalid', actorKeyId: null,
+          subjectTenantId: null, subjectUserId: null, data: { maxWorkspaces: 2 }, at: later,
+        },
+      });
+      expect(raised?.maxWorkspaces).toBe(2);
+      expect(await repository.link('quota-2', change('org-quota', 'quota-2', 'quota-d'))).toMatchObject({ status: 'linked' });
+      expect(await linkedTo('org-quota')).toEqual(['quota-1', 'quota-2']);
+    });
+
+    it('lets exactly one of two concurrent links take the last place', async () => {
+      const repository = createOrganizationWorkspaceRepository(database.db);
+      for (const round of [1, 2, 3, 4, 5]) {
+        const organizationId = `org-race-${round}`;
+        const tenantIds = [`race-${round}-a`, `race-${round}-b`];
+        await quotaOrganization(organizationId, tenantIds);
+        const results = await Promise.all(tenantIds.map((tenantId) => repository.link(tenantId, change(organizationId, tenantId, `race-${tenantId}`))));
+        expect(results.map((result) => result.status).sort()).toEqual(['linked', 'workspace_quota_exceeded']);
+        expect(await linkedTo(organizationId)).toHaveLength(1);
+        expect((await auditIds(organizationId, tenantIds)).tenant).toHaveLength(1);
+      }
+    });
+  });
 });

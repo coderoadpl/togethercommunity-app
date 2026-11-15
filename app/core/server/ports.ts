@@ -142,6 +142,7 @@ import type {
   InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
+  ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
   TenantAuditEventListQuery,
@@ -882,16 +883,34 @@ export interface TenantApiKeyRepository {
   listByTenant(tenantId: string): Promise<TenantApiKey[]>;
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
-  findByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
-  createShopManagement(tenantId: string, apiKey: TenantApiKey, event: ShopManagementKeyEvent): Promise<void>;
-  revokeShopManagement(
+}
+
+export interface ShopManagementKeyRepository {
+  listByTenant(tenantId: string): Promise<ShopManagementKey[]>;
+  create(tenantId: string, key: ShopManagementKey, event: ShopManagementKeyEvent): Promise<void>;
+  findByHash(tenantId: string, keyHash: string): Promise<ShopManagementKey | null>;
+  revoke(
     tenantId: string,
     id: string,
     revokedAt: string,
     event: ShopManagementKeyEvent,
-  ): Promise<TenantApiKey | null>;
-  purgeShopManagement(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+  ): Promise<ShopManagementKey | null>;
+  purge(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+}
+
+export interface ShopManagementKeyRateLimitRepository {
+  claim(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    limit: number;
+  }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+  }): Promise<void>;
 }
 
 export interface ShopManagementKeyEventRepository {
@@ -2708,6 +2727,7 @@ type OrganizationWorkspaceRefusal =
 
 type OrganizationWorkspaceLinkResult =
   | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_quota_exceeded' }
   | OrganizationWorkspaceRefusal;
 
 type OrganizationWorkspaceUnlinkResult =
@@ -2755,17 +2775,26 @@ export interface ActivityReportRepository {
   memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }
 
+export interface MemberStripeCustomerRepository {
+  recordStripeCustomerId(tenantId: string, memberId: string, customerId: string): Promise<boolean>;
+}
+
 export interface SubscriptionAdoptionRepositories {
-  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  members: Pick<MemberRepository, 'findById' | 'findByEmail'> & MemberStripeCustomerRepository;
   products: Pick<ProductRepository, 'findById'>;
   prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
   subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;
   grants: Pick<ProductGrantRepository, 'findGrant' | 'createGrant' | 'setGrantWindow'>;
   memberEvents: Pick<MemberEventRepository, 'append'>;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
 }
 
 export interface SubscriptionAdoptionTransaction {
-  run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  run<T>(
+    tenantId: string,
+    stripe: { subscriptionId: string; customerId: string },
+    operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>,
+  ): Promise<Result<T, AppError>>;
 }
 
 export interface LessonEditionRepository {

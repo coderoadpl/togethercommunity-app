@@ -103,7 +103,7 @@ export const setTenantSecret = async (
   input: SetTenantSecretInput,
   deps: TenantSecretDeps,
 ): Promise<Result<TenantSecretMasked, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { secretKey: input.key } });
   if (!tenant.ok) return tenant;
   const parsed = setTenantSecretInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid tenant secret', parsed.error.flatten()));
@@ -162,7 +162,7 @@ export const deleteTenantSecret = async (
   key: TenantSecretKey,
   deps: TenantSecretDeps,
 ): Promise<Result<{ key: TenantSecretKey }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { secretKey: key } });
   if (!tenant.ok) return tenant;
   if (key === 'telemetry.mongodb') return err(validation('Use the telemetry disconnect flow'));
   if (!(await deps.tenantSecrets.delete(tenant.value, key))) {

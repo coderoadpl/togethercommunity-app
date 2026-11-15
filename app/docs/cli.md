@@ -92,14 +92,16 @@ pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:r
 scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `api-keys revoke <id>`. Studio integrations also supports report keys.
 
-`api-keys create --kind shop_management` creates a
-[shop management key](shop-management-keys.md); it requires `shop:*` scopes and
-`--expires-at` at most 30 days ahead. `api-keys list` prints each key's kind.
-`api-keys purge-shop-management --yes` deletes every shop management key of the
+`api-keys shop-management create <name> --scope <shop:*...> --expires-at <ISO>`
+creates a [shop management key](shop-management-keys.md); it requires `shop:*`
+scopes and an expiry at most 30 days ahead. `api-keys shop-management list` and
+`api-keys shop-management revoke <id>` list and revoke them; `api-keys list`,
+`create` and `revoke` handle only the other keys.
+`api-keys shop-management purge --yes` deletes every shop management key of the
 workspace, revoked or not, and prints the count; it refuses without `--yes`.
-`api-keys shop-events [--key <id>] [--cursor <event-id>] [--limit <n>]` lists
-the workspace's shop management key history (creation, revocation, purge and
-keyed mutating requests handed to a shop route handler), newest first.
+`api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
+lists the workspace's shop management key history (creation, revocation, purge
+and keyed mutating requests handed to a shop route handler), newest first.
 The `shop products|prices|stock` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list.
@@ -140,7 +142,14 @@ OPERATOR_SECRET=... pnpm --silent run cli --json operator org limits <organizati
 
 Creation is idempotent by slug for the same owner (`created: false` on replay);
 the same slug for another owner is a `conflict`. An unknown and an unverified
-owner produce the same validation error. The workspace limit defaults to 0.
+owner produce the same validation error.
+
+An organization holds at most `max_workspaces` workspaces, whether they are
+linked now or created in it later. The limit defaults to 0 until the operator
+raises it with `operator org limits`. Linking a workspace that would exceed it
+is refused with `workspace_quota_exceeded` (HTTP 409, CLI exit 30) and changes
+nothing; linking a workspace that is already in the organization does not count
+it twice.
 
 Members read their organizations with their usual session. `--org` accepts the
 organization ID or slug and falls back to `TOGETHER_CLI_ORG`:

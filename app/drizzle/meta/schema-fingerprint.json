@@ -1,6 +1,6 @@
 {
-  "hash": "d1eec0f0521c792fb4cc11f463f40aa056e796d257e6baa814d0b31bf50d70cf",
-  "shortId": "d1eec0f0521c",
+  "hash": "2e18232263fc74e90a1a7e4199d5e84fb61344f0cc9465a1044be5efe486e28f",
+  "shortId": "2e18232263fc",
   "schema": {
     "constraints": [
       {
@@ -29,19 +29,14 @@
         "table": "orders"
       },
       {
+        "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb) AND (scopes <@ '[\"shop:catalog:read\", \"shop:catalog:write\", \"shop:orders:read\", \"shop:fulfilment:write\", \"shop:settings:read\", \"shop:settings:write\", \"shop:integrations:read\", \"shop:integrations:write\"]'::jsonb)))",
+        "name": "shop_management_keys_scopes_check",
+        "table": "shop_management_keys"
+      },
+      {
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
         "name": "marketing_contacts_tags_check",
         "table": "marketing_contacts"
-      },
-      {
-        "definition": "CHECK (((kind <> 'shop_management'::text) OR ((issued_by_user_id IS NOT NULL) AND (expires_at IS NOT NULL))))",
-        "name": "tenant_api_keys_shop_management_issuer_expiry_check",
-        "table": "tenant_api_keys"
-      },
-      {
-        "definition": "CHECK (((kind <> 'shop_management'::text) OR ((scopes IS NOT NULL) AND (jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb))))",
-        "name": "tenant_api_keys_shop_management_scopes_check",
-        "table": "tenant_api_keys"
       },
       {
         "definition": "CHECK (((language IS NULL) OR (language = ANY (ARRAY['pl'::text, 'en'::text]))))",
@@ -149,11 +144,6 @@
         "table": "shop_management_key_events"
       },
       {
-        "definition": "CHECK ((kind = ANY (ARRAY['legacy'::text, 'shop_management'::text])))",
-        "name": "tenant_api_keys_kind_check",
-        "table": "tenant_api_keys"
-      },
-      {
         "definition": "CHECK ((ksef_submission_mode = ANY (ARRAY['automatic'::text, 'manual'::text])))",
         "name": "organizations_ksef_submission_mode_check",
         "table": "organizations"
@@ -219,6 +209,11 @@
         "table": "telemetry_accounting"
       },
       {
+        "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
+        "name": "shop_management_key_rate_limit_buckets_period_check",
+        "table": "shop_management_key_rate_limit_buckets"
+      },
+      {
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
@@ -242,6 +237,11 @@
         "definition": "CHECK ((reserved >= 0))",
         "name": "product_stock_reserved_check",
         "table": "product_stock"
+      },
+      {
+        "definition": "CHECK ((resource_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'::text))",
+        "name": "shop_management_key_events_resource_id_pattern_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((revision > 0))",
@@ -362,6 +362,11 @@
         "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
         "name": "products_visibility_check",
         "table": "products"
+      },
+      {
+        "definition": "FOREIGN KEY (api_key_id) REFERENCES shop_management_keys(id) ON DELETE CASCADE",
+        "name": "shop_management_key_rate_limit_buckets_api_key_id_fkey",
+        "table": "shop_management_key_rate_limit_buckets"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES tenant_api_keys(id) ON DELETE CASCADE",
@@ -1060,6 +1065,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "shop_management_keys_tenant_id_fkey",
+        "table": "shop_management_keys"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
         "table": "sns_webhook_deliveries"
       },
@@ -1454,6 +1464,11 @@
         "table": "api_key_rate_limit_buckets"
       },
       {
+        "definition": "PRIMARY KEY (api_key_id, period)",
+        "name": "shop_management_key_rate_limit_buckets_api_key_id_period_pk",
+        "table": "shop_management_key_rate_limit_buckets"
+      },
+      {
         "definition": "PRIMARY KEY (email)",
         "name": "dev_magic_links_pkey",
         "table": "dev_magic_links"
@@ -1802,6 +1817,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "shop_management_key_events_pkey",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "shop_management_keys_pkey",
+        "table": "shop_management_keys"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2778,6 +2798,11 @@
         "table": "shop_management_key_events"
       },
       {
+        "definition": "CREATE INDEX shop_management_keys_tenant_id_idx ON shop_management_keys USING btree (tenant_id)",
+        "name": "shop_management_keys_tenant_id_idx",
+        "table": "shop_management_keys"
+      },
+      {
         "definition": "CREATE INDEX space_event_rsvps_tenant_event_idx ON space_event_rsvps USING btree (tenant_id, event_id)",
         "name": "space_event_rsvps_tenant_event_idx",
         "table": "space_event_rsvps"
@@ -3221,6 +3246,11 @@
         "definition": "CREATE UNIQUE INDEX scheduler_run_tenants_run_tenant_uidx ON scheduler_run_tenants USING btree (run_id, tenant_id)",
         "name": "scheduler_run_tenants_run_tenant_uidx",
         "table": "scheduler_run_tenants"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX shop_management_keys_key_hash_uidx ON shop_management_keys USING btree (key_hash)",
+        "name": "shop_management_keys_key_hash_uidx",
+        "table": "shop_management_keys"
       },
       {
         "definition": "CREATE UNIQUE INDEX space_event_rsvps_tenant_event_user_uidx ON space_event_rsvps USING btree (tenant_id, event_id, user_id)",
@@ -5771,91 +5801,6 @@
           }
         ],
         "name": "tenant_redirects"
-      },
-      {
-        "columns": [
-          {
-            "default": "'legacy'::text",
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "issued_by_user_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "key_hash",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "revoked_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "scopes",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "tenant_api_keys"
       },
       {
         "columns": [
@@ -10626,6 +10571,43 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "period",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "window_started_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "shop_management_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "archived_at",
             "notNull": false,
             "type": "text"
@@ -13987,6 +13969,152 @@
           }
         ],
         "name": "invoices"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revoked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scopes",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_api_keys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "issued_by_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revoked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scopes",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "shop_management_keys"
       },
       {
         "columns": [

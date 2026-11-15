@@ -6,14 +6,23 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
-import { createTenantApiKeyRepository } from '#adapters/db/repositories.js';
+import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { apiKeyRateLimitBuckets, shopManagementKeyEvents, tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
+import {
+  shopManagementKeyEvents,
+  shopManagementKeyRateLimitBuckets,
+  shopManagementKeys,
+  tenantAdmins,
+  tenantApiKeys,
+  tenants,
+  user,
+} from '#adapters/db/schema.js';
 import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
   shopManagementScopeSchema,
-  type TenantApiKeyStoredScope,
+  type ShopManagementScope,
+  type TenantApiKeyScope,
 } from '#core/domain/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -66,23 +75,28 @@ const insertKey = async (input: {
   id: string;
   secret: string;
   tenantId?: string;
-  kind?: 'legacy' | 'shop_management';
-  scopes: TenantApiKeyStoredScope[] | null;
-  issuedByUserId?: string | null;
-  expiresAt?: string | null;
+  scopes: ShopManagementScope[];
+  issuedByUserId?: string;
+  expiresAt?: string;
   revokedAt?: string | null;
 }): Promise<void> => {
-  await database.db.insert(tenantApiKeys).values({
+  await database.db.insert(shopManagementKeys).values({
     id: input.id,
     tenantId: input.tenantId ?? 'acme',
     name: input.id,
     keyHash: deps.apiKeyCrypto.hash(input.secret),
-    kind: input.kind ?? 'shop_management',
     scopes: input.scopes,
-    issuedByUserId: input.issuedByUserId === undefined ? issuers.owner : input.issuedByUserId,
+    issuedByUserId: input.issuedByUserId ?? issuers.owner,
     createdAt: CREATED_AT,
-    expiresAt: input.expiresAt === undefined ? EXPIRES_AT : input.expiresAt,
+    expiresAt: input.expiresAt ?? EXPIRES_AT,
     revokedAt: input.revokedAt ?? null,
+  });
+};
+
+const insertLegacyKey = async (id: string, secret: string, scopes: TenantApiKeyScope[] | null): Promise<void> => {
+  await database.db.insert(tenantApiKeys).values({
+    id, tenantId: 'acme', name: id, keyHash: deps.apiKeyCrypto.hash(secret), scopes,
+    createdAt: CREATED_AT, expiresAt: null, revokedAt: null,
   });
 };
 
@@ -125,13 +139,12 @@ beforeAll(async () => {
   await insertKey({ id: 'shop-read', secret: 'shop-read-secret', scopes: ['shop:catalog:read'] });
   await insertKey({ id: 'shop-all', secret: 'shop-all-secret', scopes: [...shopManagementScopeSchema.options] });
   await insertKey({ id: 'shop-orders', secret: 'shop-orders-secret', scopes: ['shop:orders:read'] });
-  await insertKey({ id: 'shop-mixed', secret: 'shop-mixed-secret', scopes: ['shop:catalog:read', 'report:read'] });
   await insertKey({ id: 'shop-revoked', secret: 'shop-revoked-secret', scopes: ['shop:catalog:read'], revokedAt: CREATED_AT });
   await insertKey({ id: 'shop-expiring', secret: 'shop-expiring-secret', scopes: ['shop:catalog:read'], expiresAt: '2026-11-16T00:00:00.000Z' });
   await insertKey({ id: 'shop-rate', secret: 'shop-rate-secret', scopes: ['shop:catalog:read'] });
-  await insertKey({ id: 'legacy-null', secret: 'legacy-null-secret', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null });
+  await insertLegacyKey('legacy-null', 'legacy-null-secret', null);
   for (const scope of ['report:read', 'enrollment', 'subscriptions:read', 'subscriptions:adopt', 'marketing', 'transactional', 'import:content', 'import:users'] as const) {
-    await insertKey({ id: `legacy-${scope}`, secret: `legacy-${scope}-secret`, kind: 'legacy', scopes: [scope], issuedByUserId: null });
+    await insertLegacyKey(`legacy-${scope}`, `legacy-${scope}-secret`, [scope]);
   }
   for (const [name, issuer] of Object.entries(issuers)) {
     if (name === 'owner') continue;
@@ -229,7 +242,6 @@ describe('shop management key authentication over HTTP', () => {
     'legacy-transactional-secret',
     'legacy-import:content-secret',
     'legacy-import:users-secret',
-    'shop-mixed-secret',
     'shop-revoked-secret',
     'unknown-secret',
   ])('rejects %s as an invalid key', async (secret) => {
@@ -302,7 +314,7 @@ describe('shop management key authentication over HTTP', () => {
     expect(limited.headers.get('retry-after')).toBe('30');
     expect(await errorOf(limited)).toMatchObject({ code: 'rate_limited' });
     expect((await probe({ 'x-api-key': 'shop-read-secret' })).status).toBe(200);
-    const buckets = (await database.db.select().from(apiKeyRateLimitBuckets))
+    const buckets = (await database.db.select().from(shopManagementKeyRateLimitBuckets))
       .filter((bucket) => bucket.apiKeyId === 'shop-rate')
       .map((bucket) => ({ period: bucket.period, count: bucket.count }));
     expect(buckets).toEqual(expect.arrayContaining([{ period: 'day', count: 60 }, { period: 'minute', count: 60 }]));
@@ -317,8 +329,12 @@ describe('shop management keys on existing routes of the real app', () => {
   });
 
   it.each([
-    ['POST', API_ROUTES.apiKeysCreate.path, { name: 'Minted by a key', kind: 'shop_management', scopes: ['shop:catalog:read'], expiresAt: EXPIRES_AT }],
-    ['DELETE', API_PATHS.apiKeyRevoke.replace(':id', 'shop-read'), undefined],
+    ['POST', API_ROUTES.apiKeysShopManagementCreate.path, { name: 'Minted by a key', scopes: ['shop:catalog:read'], expiresAt: EXPIRES_AT }],
+    ['DELETE', API_PATHS.apiKeysShopManagementRevoke.replace(':id', 'shop-read'), undefined],
+    ['GET', API_PATHS.apiKeysShopManagement, undefined],
+    ['POST', API_PATHS.apiKeysShopManagementPurge, undefined],
+    ['GET', API_PATHS.apiKeysShopManagementEvents, undefined],
+    ['POST', API_ROUTES.apiKeysCreate.path, { name: 'Minted by a key' }],
     ['GET', API_PATHS.apiKeys, undefined],
     ['GET', API_PATHS.tenantTeam, undefined],
     ['POST', API_PATHS.tenantSettingsUpdate, { name: 'Renamed by a key' }],
@@ -343,7 +359,7 @@ describe('shop management keys on existing routes of the real app', () => {
   });
 
   it('leaves the key and the key list untouched after the refused key administration calls', async () => {
-    const keys = await deps.tenantApiKeys.listByTenant('acme');
+    const keys = await deps.shopManagementKeys.listByTenant('acme');
     expect(keys.find((key) => key.id === 'shop-read')?.revokedAt).toBeNull();
     expect(keys.some((key) => key.name === 'Minted by a key')).toBe(false);
   });
@@ -448,25 +464,29 @@ describe('shop management key secrecy in telemetry', () => {
     return { status: response.status, attributes: spans[0]?.attributes ?? {} };
   };
 
-  const keyAttributes = (apiKeyId: string, kind = 'shop_management', issuerId: string | null = issuers.owner) => ({
+  const keyAttributes = (apiKeyId: string, issuerId: string = issuers.owner) => ({
     'app.api_key.match': 'matched',
     'app.api_key.id': apiKeyId,
-    'app.api_key.kind': kind,
+    'app.api_key.issuer.id': issuerId,
     'app.tenant.id': 'acme',
-    ...(issuerId === null ? {} : { 'app.api_key.issuer.id': issuerId }),
   });
 
   it.each([
     ['a revoked key', 'shop-revoked-secret', keyAttributes('shop-revoked')],
     ['an expired key', 'shop-span-expired-secret', keyAttributes('shop-span-expired')],
-    ['a legacy key', 'legacy-null-secret', keyAttributes('legacy-null', 'legacy', null)],
-    ['a key whose issuer is unverified', 'shop-unverified-secret', keyAttributes('shop-unverified', 'shop_management', issuers.unverified)],
+    ['a key whose issuer is unverified', 'shop-unverified-secret', keyAttributes('shop-unverified', issuers.unverified)],
   ])('attributes the 401 refusal of %s to the stored key row', async (_label, secret, expected) => {
     const { status, attributes } = await spanOf({ 'x-api-key': secret });
     expect(status).toBe(401);
     expect(attributes).toMatchObject(expected);
     expect(attributes).not.toHaveProperty('app.user.id');
-    if (!('app.api_key.issuer.id' in expected)) expect(attributes).not.toHaveProperty('app.api_key.issuer.id');
+  });
+
+  it('never looks a legacy key up on a shop route: its 401 matches no key', async () => {
+    const { status, attributes } = await spanOf({ 'x-api-key': 'legacy-null-secret' });
+    expect(status).toBe(401);
+    expect(attributes).toMatchObject({ 'app.api_key.match': 'none', 'app.tenant.id': 'acme' });
+    expect(attributes).not.toHaveProperty('app.api_key.id');
   });
 
   it('records that no key matched an unknown secret and that a request carried no key', async () => {
@@ -479,11 +499,25 @@ describe('shop management key secrecy in telemetry', () => {
     expect(missing.attributes).toMatchObject({ 'app.api_key.match': 'missing', 'app.tenant.id': 'acme' });
   });
 
-  it('attributes a mixed-credential 401 to the presented key without authenticating it', async () => {
-    const { status, attributes } = await spanOf({ 'x-api-key': 'shop-read-secret', cookie: 'session=x' });
-    expect(status).toBe(401);
-    expect(attributes).toMatchObject(keyAttributes('shop-read'));
-    expect(attributes).not.toHaveProperty('app.user.id');
+  it.each([
+    ['a cookie', { cookie: 'session=x' }],
+    ['an Authorization header', { authorization: 'Bearer anything' }],
+  ])('records only the refusal reason for a key sent with %s and never looks the key up', async (_label, extra) => {
+    const findByHash = vi.fn(deps.shopManagementKeys.findByHash);
+    const mixed = new Hono<AppVars>();
+    mixed.use('*', telemetryMiddleware);
+    registerShopMachineRoute(mixed, { ...deps, shopManagementKeys: { ...deps.shopManagementKeys, findByHash } }, {
+      method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
+    });
+    exporter.reset();
+    const response = await mixed.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': 'shop-read-secret', ...extra } });
+    expect(response.status).toBe(401);
+    await provider.forceFlush();
+    const [span] = exporter.getFinishedSpans();
+    expect(span?.attributes).toMatchObject({ 'app.api_key.match': 'mixed_credentials' });
+    expect(Object.keys(span?.attributes ?? {}).filter((name) => name.startsWith('app.api_key.'))).toEqual(['app.api_key.match']);
+    expect(span?.attributes).not.toHaveProperty('app.user.id');
+    expect(findByHash).not.toHaveBeenCalled();
   });
 
   it('attributes a scope refusal to the key', async () => {
@@ -564,8 +598,8 @@ describe('shop management key secrecy in telemetry', () => {
   it.each([
     ['a revoked key', { 'x-api-key': 'shop-revoked-secret' }, 401, keyAttributes('shop-revoked')],
     ['an expired key', { 'x-api-key': 'shop-span-expired-secret' }, 401, keyAttributes('shop-span-expired')],
-    ['a legacy key', { 'x-api-key': 'legacy-null-secret' }, 401, keyAttributes('legacy-null', 'legacy', null)],
-    ['mixed credentials', { 'x-api-key': 'shop-read-secret', cookie: 'session=x' }, 401, keyAttributes('shop-read')],
+    ['a legacy key', { 'x-api-key': 'legacy-null-secret' }, 401, { 'app.api_key.match': 'none', 'app.tenant.id': 'acme' }],
+    ['mixed credentials', { 'x-api-key': 'shop-read-secret', cookie: 'session=x' }, 401, { 'app.api_key.match': 'mixed_credentials' }],
     ['a missing scope', { 'x-api-key': 'shop-orders-secret' }, 403, keyAttributes('shop-orders')],
   ])('writes no request row for a keyed mutation refused for %s and still attributes its span', async (_label, headers, expectedStatus, expected) => {
     const before = await probeRows();
@@ -611,11 +645,9 @@ describe('shop management key secrecy in telemetry', () => {
 
   it.each([
     ['a shop route', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', {}],
-    ['a shop route with mixed credentials', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', { cookie: 'session=x' }],
-    ['a legacy API-key route', API_PATHS.m2mListStripeSubscriptions, 'legacy-subscriptions:read-secret', {}],
   ])('keeps the key and its hash out of the span, the logs and the response when the key lookup fails on %s', async (_label, path, secret, extraHeaders) => {
     const brokenDb = createDb('node-postgres', `${database.url.replace(/\/[^/?]+(\?|$)/, '/together_missing_hash_lookup_db$1')}`, { connectionTimeoutMillis: 5_000 });
-    const failingLookups = buildApp({ ...deps, tenantApiKeys: createTenantApiKeyRepository(brokenDb) });
+    const failingLookups = buildApp({ ...deps, shopManagementKeys: createShopManagementKeyRepository(brokenDb) });
     const logged: unknown[] = [];
     const consoleSpies = (['error', 'warn', 'log', 'info', 'debug'] as const)
       .map((level) => vi.spyOn(console, level).mockImplementation((...args: unknown[]) => { logged.push(args); }));

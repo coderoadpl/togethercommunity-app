@@ -119,6 +119,25 @@ describe('shop manifest command boundary', () => {
     expect(requests.every((request) => request.host.endsWith('.staging.togethercommunity.app'))).toBe(true);
   });
 
+  it.each([
+    ['plan', 'staging'],
+    ['apply', 'status'],
+    ['drift', 'docs'],
+    ['plan', { slug: 'staging', provision: { name: 'Staging', ownerEmail: 'owner@togethercommunity.app' } }],
+    ['apply', { slug: 'WWW', provision: { name: 'Web', ownerEmail: 'owner@togethercommunity.app' } }],
+  ])('%s refuses the reserved workspace %j before any request', async (command, workspace) => {
+    vi.stubEnv('TOGETHER_SHOP_OPERATOR_SECRET', 'operator-fixture');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace, products: [] }] }));
+    await runCli(['shop', command, '--manifest', path, '--shop', 'acme'], 'https://acme.togethercommunity.app');
+    expect(fetch).not.toHaveBeenCalled();
+    const output: unknown = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(output).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(JSON.stringify(output)).toContain('"path":["shops",1,"workspace"]');
+    expect(process.exitCode).toBe(2);
+  });
+
   it('does not print JSON parser input or file errors', async () => {
     const path = await inputFile('{"password":"never-echo-this",');
     expect(await readManifestFile(path)).toEqual({ ok: false, error: { code: 'validation', message: 'Manifest must be valid JSON' } });

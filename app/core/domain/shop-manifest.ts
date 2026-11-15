@@ -7,7 +7,7 @@ import type { ProductPrice } from './commerce.js';
 import { newProductSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
 import { MAX_STOCK_QUANTITY, type ProductStock } from './stock.js';
-import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema, updateTenantSettingsInputSchema } from './tenant.js';
+import { isReservedTenantSlug, SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema, updateTenantSettingsInputSchema } from './tenant.js';
 
 const deliveryEstimateSchema = z.object({ min: z.number().int().positive(), max: z.number().int().positive() })
   .strict().refine((value) => value.min <= value.max, 'Minimum delivery days must not exceed maximum');
@@ -84,7 +84,7 @@ const shopManifestIntegrationsSchema = shopManifestIntegrationsShape.superRefine
   if (message !== null) context.addIssue({ code: z.ZodIssueCode.custom, message });
 });
 
-const workspaceSchema = z.union([
+const workspaceFormsSchema = z.union([
   productSlugSchema,
   z.object({
     slug: provisionTenantInputSchema.shape.slug,
@@ -92,8 +92,11 @@ const workspaceSchema = z.union([
   }).strict(),
 ]);
 
-export const manifestWorkspaceSlug = (workspace: z.output<typeof workspaceSchema>): string =>
+export const manifestWorkspaceSlug = (workspace: z.output<typeof workspaceFormsSchema>): string =>
   typeof workspace === 'string' ? workspace : workspace.slug;
+
+const workspaceSchema = workspaceFormsSchema.refine((workspace) => !isReservedTenantSlug(manifestWorkspaceSlug(workspace)),
+  'Workspace slug is a reserved platform name');
 
 const shopSchema = z.object({
   workspace: workspaceSchema,

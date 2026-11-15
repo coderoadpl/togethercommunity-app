@@ -217,7 +217,12 @@ integration configuration.
 shop has a required `workspace` (an existing slug string or the provisioning
 object below), optional `settings` and `integrations`, and a required `products`
 array (which may be empty). Workspace slugs and product slugs within one shop
-must be unique, including across string and object workspace forms.
+must be unique, including across string and object workspace forms. A workspace
+slug must not be one of the platform's reserved names (for example `start`,
+`staging`, `status`, `docs` or `www`) in either form: a manifest that contains
+one anywhere is refused before the first request, even when `--shop` selects
+another workspace, because such a name addresses platform or environment hosts
+rather than a workspace.
 
 Effective settings merge company fields with shop fields. Shop values win,
 nested objects merge by field, arrays replace in full, and an explicit `null`

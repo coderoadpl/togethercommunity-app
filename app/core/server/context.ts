@@ -11,7 +11,6 @@ export interface Ctx {
   impersonation?: ImpersonationPrincipal;
 }
 
-/** Every organisation-scoped use-case takes this as its first argument. */
 export interface OrganizationCtx {
   identity: Pick<Identity, 'userId' | 'email' | 'emailVerified'>;
   /** Read from the store for this request only; never cached across requests. */

@@ -13,7 +13,7 @@ type ManifestWriteClient = ManifestReadClient & Pick<ApiClient,
 type AppliedOperation = { workspace: string; operation: string; slug?: string };
 
 export type ManifestApplyOptions = {
-  integrations?: boolean;
+  integrations?: boolean | undefined;
   environment?: Readonly<Record<string, string | undefined>>;
   operator?: Pick<ApiClient, 'provisionOperatorTenant'>;
 };

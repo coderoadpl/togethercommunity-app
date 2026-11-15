@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq } from 'drizzle-orm';
 
 import {
   organizationAuditEventSchema,
@@ -148,6 +148,11 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     if (checked.status !== 'allowed') return checked;
     if (checked.organizationId === input.organizationId) return { status: 'already_linked', workspace: checked.workspace } as const;
     if (checked.organizationId !== null) return { status: 'linked_elsewhere' } as const;
+    const [organization] = await tx.select({ maxWorkspaces: organizations.maxWorkspaces }).from(organizations)
+      .where(eq(organizations.id, input.organizationId)).for('no key update');
+    if (organization === undefined) return { status: 'organization_owner_required' } as const;
+    const [linked] = await tx.select({ total: count() }).from(tenants).where(eq(tenants.organizationId, input.organizationId));
+    if ((linked?.total ?? 0) >= organization.maxWorkspaces) return { status: 'workspace_quota_exceeded' } as const;
     await tx.update(tenants).set({ organizationId: input.organizationId }).where(eq(tenants.id, tenantId));
     await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId: input.organizationId });
     await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId });

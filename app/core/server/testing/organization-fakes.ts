@@ -113,6 +113,11 @@ export const createOrganizationFakes = (
       const { workspace } = checked;
       if (workspace.organizationId === organizationId) return { status: 'already_linked', workspace: workspaceOf(workspace) };
       if (workspace.organizationId !== null) return { status: 'linked_elsewhere' };
+      const organization = organizationRows.find((row) => row.id === organizationId);
+      if (organization === undefined) return { status: 'organization_owner_required' };
+      if (workspaceRows.filter((row) => row.organizationId === organizationId).length >= organization.maxWorkspaces) {
+        return { status: 'workspace_quota_exceeded' };
+      }
       workspace.organizationId = organizationId;
       auditRows.push({ ...organizationAudit, organizationId });
       tenantAuditRows.push({ ...tenantAudit, tenantId });

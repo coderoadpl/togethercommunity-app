@@ -80,6 +80,8 @@ export const linkOrganizationWorkspace = async (
     case 'workspace_owner_required': return workspaceOwnerRequired();
     case 'organization_owner_required': return err(forbidden('organization:workspace:link is not permitted'));
     case 'linked_elsewhere': return linkedElsewhere();
+    case 'workspace_quota_exceeded':
+      return err(appError('workspace_quota_exceeded', 'The organization already holds its maximum number of workspaces'));
   }
 };
 

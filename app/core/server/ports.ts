@@ -2634,6 +2634,7 @@ type OrganizationWorkspaceRefusal =
 
 type OrganizationWorkspaceLinkResult =
   | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_quota_exceeded' }
   | OrganizationWorkspaceRefusal;
 
 type OrganizationWorkspaceUnlinkResult =

@@ -152,6 +152,14 @@ describe('organization session routes', () => {
     expect(refused.status).toBe(403);
     expect((await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: '' })).status).toBe(400);
     expect((await h.post(path(API_PATHS.organizationWorkspaceLink), 'other-1', { tenantId: 'acme' })).status).toBe(404);
+    const overLimit = await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' });
+    expect(overLimit.status).toBe(409);
+    expect(await overLimit.json()).toMatchObject({ ok: false, error: { code: 'workspace_quota_exceeded' } });
+    expect(h.tenantAuditRows).toEqual([]);
+    const raised = await h.app.request(path(API_PATHS.operatorOrganizationLimits), {
+      method: 'POST', headers: operatorHeaders, body: JSON.stringify({ maxWorkspaces: 1 }),
+    });
+    expect(raised.status).toBe(200);
     const linked = await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' });
     expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await linked.json()))
       .toEqual({ ok: true, data: { workspace: { id: 'acme', slug: 'acme', name: 'Acme', status: 'active' }, changed: true } });

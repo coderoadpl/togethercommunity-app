@@ -140,7 +140,14 @@ OPERATOR_SECRET=... pnpm --silent run cli --json operator org limits <organizati
 
 Creation is idempotent by slug for the same owner (`created: false` on replay);
 the same slug for another owner is a `conflict`. An unknown and an unverified
-owner produce the same validation error. The workspace limit defaults to 0.
+owner produce the same validation error.
+
+An organization holds at most `max_workspaces` workspaces, whether they are
+linked now or created in it later. The limit defaults to 0 until the operator
+raises it with `operator org limits`. Linking a workspace that would exceed it
+is refused with `workspace_quota_exceeded` (HTTP 409, CLI exit 30) and changes
+nothing; linking a workspace that is already in the organization does not count
+it twice.
 
 Members read their organizations with their usual session. `--org` accepts the
 organization ID or slug and falls back to `TOGETHER_CLI_ORG`:

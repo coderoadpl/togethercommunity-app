@@ -368,6 +368,12 @@ such a value anywhere in the manifest itself, and `shop apply --integrations`
 refuses it in the variables of the ShipX fields and the parcel-locker token
 before any write. The error names the rule, never the value.
 
+Because the parcel-locker token is published to checkout visitors,
+`shop apply --integrations` also refuses, before any write, a parcel-locker
+token whose value equals the value of the ShipX token or the ShipX organization
+ID after surrounding whitespace is trimmed. The error names the rule, never a
+value.
+
 | Manifest input | Environment value / accepted setting | Existing write route |
 | --- | --- | --- |
 | `stripe.restrictedKeyEnv` | Restricted Stripe key; never a webhook secret | `POST /api/integrations/stripe/configure` |

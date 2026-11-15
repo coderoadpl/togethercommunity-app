@@ -262,6 +262,19 @@ describe('manifest integrations', () => {
       expect(published).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['the carrier token', { SHOP_GEOWIDGET_PUBLIC_TOKEN: ` ${environment.SHOP_SHIPX_TOKEN}\n` }],
+      ['the carrier organization id', { SHOP_GEOWIDGET_PUBLIC_TOKEN: environment.SHOP_SHIPX_ORGANIZATION, SHOP_SHIPX_ORGANIZATION: ` ${environment.SHOP_SHIPX_ORGANIZATION}` }],
+    ])('refuses a public parcel-locker token equal to %s without printing it', async (_case, override) => {
+      const fake = integrationFake();
+      const result = await applyManifest(manifest, () => fake.api, undefined, { integrations: true, environment: { ...environment, ...override } });
+      expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('parcel-locker public token must differ'), details: { applied: [] } } });
+      expect(fake.api.configureStripe).not.toHaveBeenCalled();
+      expect(fake.api.shipxConfigure).not.toHaveBeenCalled();
+      expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
+      expectNoSecrets(result);
+    });
+
     it('checks references again before resolving values', () => {
       const unchecked = { parcelLocker: { tokenEnv: 'SHOP_STRIPE_KEY' }, stripe: integrations.stripe };
       const result = resolveManifestIntegrations(unchecked, environment);

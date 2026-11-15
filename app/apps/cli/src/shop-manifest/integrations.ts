@@ -10,6 +10,17 @@ const resolvedIntegrationsSchema = z.object({
 }).strict();
 export type ResolvedManifestIntegrations = z.output<typeof resolvedIntegrationsSchema>;
 
+const PUBLIC_TOKEN_REUSE_MESSAGE = 'The parcel-locker public token must differ from the ShipX token and organization ID';
+
+const publicTokenRepeatsCarrierCredential = (
+  integrations: ShopManifestIntegrations, environment: Readonly<Record<string, string | undefined>>,
+): boolean => {
+  const valueOf = (name: string | undefined) => name === undefined ? undefined : environment[name]?.trim();
+  const publicToken = valueOf(integrations.parcelLocker?.tokenEnv);
+  if (publicToken === undefined) return false;
+  return [integrations.shipx?.tokenEnv, integrations.shipx?.organizationIdEnv].some((name) => valueOf(name) === publicToken);
+};
+
 export const resolveManifestIntegrations = (
   integrations: ShopManifestIntegrations, environment: Readonly<Record<string, string | undefined>>,
 ): Result<ResolvedManifestIntegrations, AppError> => {
@@ -23,6 +34,7 @@ export const resolveManifestIntegrations = (
   const nonPaymentReferences = [integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv, integrations.parcelLocker?.tokenEnv];
   const keyError = paymentKeyValueError(nonPaymentReferences.map((name) => name === undefined ? undefined : environment[name]));
   if (keyError !== null) return err(validation(keyError));
+  if (publicTokenRepeatsCarrierCredential(integrations, environment)) return err(validation(PUBLIC_TOKEN_REUSE_MESSAGE));
   const parsed = resolvedIntegrationsSchema.safeParse({
     ...(integrations.stripe == null ? {} : { stripe: {
       mode: integrations.stripe.mode, restrictedKey: environment[integrations.stripe.restrictedKeyEnv],

@@ -25,7 +25,28 @@ API key` for it, and no session route accepts it.
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
 | Product cover image and sales-link routes (below) | Available |
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
-| Invoice and refund routes | Not yet available |
+| Builder guide, error taxonomy and deployment checklist (below) | Available |
+| End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
+| Invoices and refunds | Not offered with a shop key; staff session routes only |
+
+## Backend only
+
+A shop management key is a server-side credential. Keep it in the shop
+backend's secret store and send it only from that backend:
+
+- Never put a key in a browser, a mobile app, a storefront bundle, a static
+  site or a URL. The shop routes send no CORS headers, so a browser on another
+  origin cannot read their answers, and a request that carries a cookie or an
+  `Authorization` header is refused before the key is checked.
+- Never log the key. Pass it from the environment, as in the examples below;
+  the CLI reads it from an environment variable and never from its arguments.
+- Use one key per job and the narrowest scopes: a provisioning key for settings
+  and integrations, a catalog key, and a warehouse key. Revoking one never
+  disturbs the others.
+
+The storefront itself needs no key: the anonymous public offer and the
+checkout handoff (see [Selling](#selling-public-offer-checkout-and-return))
+are open to any origin.
 
 ## Scopes
 
@@ -536,12 +557,65 @@ pnpm --silent run cli --tenant acme shop integrations shipx configure --environm
 `setIntegrationSecret`, `deleteIntegrationSecret`, `configureStripe`,
 `probeStripe`, `configureStorage`, `getShipxSettings` and `configureShipx`.
 
+## Responses and errors
+
+Every JSON route answers the same envelope. A success is
+`{ "ok": true, "data": { ... } }` with status `200` (`201` for sales-link
+creation); a failure is `{ "ok": false, "error": { "code", "message",
+"details"? } }` with the status of its code. Parse `data` with the contract
+schemas in `core/contract` (`shopCatalogContracts`, `shopOrderContracts`,
+`shopSettingsContracts`, `shopAssetsContracts`, `shopIntegrationContracts`),
+or use `createShopManagementClient`, which does that and returns a
+`Result`. Every JSON response carries `cache-control: no-store`.
+
+| Status | `error.code` | When | CLI exit code | What the backend does |
+|---|---|---|---|---|
+| 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode | 2 | Fix the request; never retry unchanged |
+| 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a cookie or `Authorization` header on the request | 3 | Stop and alert; rotate the key |
+| 403 | `forbidden` | The key lacks the route's scope, or its issuer is no longer a verified owner | 4 | Stop and alert; fix the key's scopes or issue a new key from a current owner |
+| 404 | `not_found` | The product, price, order, sales link or candidate upload does not exist in this workspace | 5 | Treat as gone |
+| 404 | `tenant_not_found` | The host or `x-tenant` selects no workspace | 7 | Fix the base URL or workspace slug |
+| 409 | `conflict` | Stale sales-link revision, order line already issued | 6 | Re-read, then decide |
+| 409 | `fulfilment_conflict` | Order already shipped, or another request is creating its InPost shipment | 27 | Re-read the order; shipped means done |
+| 409 | `sold_out` | Public checkout of a product without available stock | 26 | Show the product as sold out |
+| 412 | `integration_not_configured` | A provider the route needs is not set up | 8 | Run provisioning first |
+| 422 | `invoice_exemption_basis_missing` | VAT `exempt` without a legal basis | 22 | Send the basis with the mode |
+| 422 | `shipx_rejected` | InPost refused the shipment data | 29 | Correct the sender or order data |
+| 429 | `rate_limited` | Per-key minute or day limit reached | 12 | Wait `Retry-After` seconds |
+| 502 | `integration_auth` | A provider rejected the stored credentials | 9 | Reconfigure the provider |
+| 503 | `integration_unavailable`, `shipx_unavailable` | A provider could not be reached, or a storage probe failed | 11, 28 | Retry later with backoff |
+| 500 | `internal` | Unexpected server failure | 10 | Retry later with backoff; report if it persists |
+
+The CLI exit codes come from `EXIT_CODE_BY_ERROR_CODE` in
+`core/contract/http-status.ts`; with `--json` the CLI prints exactly one
+envelope on stdout, and without it prints `error(<code>): <message>` on stderr.
+An empty key variable is a `validation` error (exit code 2) before any request.
+
+Error examples (the `details` of a validation error are the field errors of the
+rejected body):
+
+```json
+{ "ok": false, "error": { "code": "unauthorized", "message": "Invalid API key" } }
+{ "ok": false, "error": { "code": "unauthorized", "message": "Missing API key" } }
+{ "ok": false, "error": { "code": "unauthorized", "message": "Shop management requests must not carry a cookie or an Authorization header" } }
+{ "ok": false, "error": { "code": "forbidden", "message": "shop:orders:read is not permitted" } }
+{ "ok": false, "error": { "code": "forbidden", "message": "The API key issuer is no longer a verified owner of this workspace" } }
+{ "ok": false, "error": { "code": "validation", "message": "Invalid product payload", "details": { "formErrors": [], "fieldErrors": { "priceCents": ["Price must not be negative"] } } } }
+{ "ok": false, "error": { "code": "fulfilment_conflict", "message": "Order has already been shipped" } }
+{ "ok": false, "error": { "code": "rate_limited", "message": "API key rate limit exceeded", "details": { "period": "minute", "retryAfterSeconds": 17 } } }
+```
+
 ## Rate limits
 
 Each key has its own durable buckets on the shop routes: **60 requests a
-minute** and **10,000 requests a day**. A request over either limit answers
-`429 rate_limited` with a `Retry-After` header in seconds until the current
-window ends.
+minute** and **10,000 requests a day**. The windows are fixed (calendar minute
+and UTC day), shared by every route and counted after the key and its issuer
+are accepted. A request over either limit answers `429 rate_limited` with a
+`Retry-After` header in whole seconds until the current window ends, and the
+same number in `error.details.retryAfterSeconds`. Wait at least that long
+before the next request with that key; do not spread the retry over other
+keys. Polling every five minutes with a few pages uses a small fraction of the
+budget.
 
 ## Lifetime
 
@@ -551,27 +625,362 @@ renewal: rotate instead.
 
 ## Bootstrap
 
+The owner, signed in with a verified e-mail address in their own session,
+creates one key per job. Keep the provisioning key only as long as the setup
+takes.
+
 ```bash
-pnpm --silent run cli --tenant acme api-key create 'Shop backend' \
+pnpm --silent run cli login --email <owner-email>
+pnpm --silent run cli --tenant acme api-key create 'Shop provisioning' \
   --kind shop_management \
-  --scope shop:catalog:read shop:catalog:write \
-  --expires-at 2026-11-21T00:00:00.000Z
+  --scope shop:settings:read shop:settings:write shop:integrations:read shop:integrations:write \
+  --expires-at <ISO time at most 30 days ahead>
+pnpm --silent run cli --tenant acme api-key create 'Shop catalog' \
+  --kind shop_management --scope shop:catalog:read shop:catalog:write \
+  --expires-at <ISO time at most 30 days ahead>
+pnpm --silent run cli --tenant acme api-key create 'Shop warehouse' \
+  --kind shop_management --scope shop:orders:read shop:fulfilment:write \
+  --expires-at <ISO time at most 30 days ahead>
 ```
 
 The secret is printed once. Store it in the shop backend's secret store; it
-cannot be shown again. `api-key list` shows each key's kind and state without
-the secret. The same operations are available over HTTP with the owner session:
-`POST /api/api-keys` with `{"name", "kind": "shop_management", "scopes",
-"expiresAt"}`, `GET /api/api-keys`, `DELETE /api/api-keys/:id`.
+cannot be shown again. `api-key list` shows each key's name, kind, state and id
+without the secret. The same operations are available over HTTP with the owner
+session token:
+
+```http
+POST https://<workspace-host>/api/api-keys
+Authorization: Bearer <owner-session-token>
+Content-Type: application/json
+
+{"name":"Shop catalog","kind":"shop_management","scopes":["shop:catalog:read","shop:catalog:write"],"expiresAt":"<ISO time at most 30 days ahead>"}
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "apiKey": {
+      "id": "<key-id>", "tenantId": "acme", "name": "Shop catalog", "kind": "shop_management",
+      "scopes": ["shop:catalog:read", "shop:catalog:write"], "issuedByUserId": "<owner-user-id>",
+      "createdAt": "<ISO time>", "expiresAt": "<ISO time>", "revokedAt": null
+    },
+    "secret": "<shown once>"
+  }
+}
+```
+
+`GET /api/api-keys` lists the keys in the same shape without secrets, and
+`DELETE /api/api-keys/<key-id>` revokes one and answers `{ "apiKey": { ... } }`
+with `revokedAt` set. A key, a member session or an owner viewing as a member
+cannot create a shop management key.
 
 ## Rotate and revoke
 
-1. Create a replacement key with the same scopes.
-2. Deploy it to the shop backend and verify a request succeeds with it.
-3. Revoke the old key: `api-key revoke <old-id>`.
+1. Create a replacement key with the same scopes (Bootstrap above).
+2. Deploy it to the shop backend and verify one read succeeds with it, for
+   example `GET /api/m2m/shop/products` for a catalog key or
+   `GET /api/m2m/shop/orders?mode=live&pageSize=1` for a warehouse key.
+3. Revoke the old key: `api-key revoke <old-key-id>` or
+   `DELETE /api/api-keys/<old-key-id>`.
+4. Verify the old key now answers `401 Invalid API key`.
 
 Revocation takes effect on the next request; keys are not cached between
-requests.
+requests. Revoke a key at once when it may have leaked, when its job ends or
+when its backend is retired. Demoting or removing the issuing owner also stops
+every key that owner issued; issue replacements from a current owner.
+
+## Examples by route family
+
+The examples use placeholders only. `SHOP`, `KEY` and `JSON` are the shell
+variables from [Catalog routes](#catalog-routes). Responses are abbreviated
+to the fields a backend usually reads; the contract schemas list them all.
+
+Catalog: create a physical product, then price, stock and publish it.
+
+```bash
+curl -s -H "$KEY" -H "$JSON" -d '{"title":"Printed handbook","slug":"printed-handbook","type":"physical","deliveryMethod":"shipping","priceCents":4900,"currency":"PLN","vatRate":5}' "$SHOP/products"
+```
+
+```json
+{ "ok": true, "data": { "product": { "id": "<product-id>", "tenantId": "acme", "type": "physical", "slug": "printed-handbook", "title": "Printed handbook", "coverUrl": null, "priceCents": 4900, "currency": "PLN", "published": false, "deliveryMethod": "shipping" } } }
+```
+
+`vatRate` 5 is a schema example, not tax advice. The product's `priceCents`
+is its base price; buyers pay the active price created next.
+
+```json
+{ "ok": true, "data": { "price": { "id": "<price-id>", "productId": "<product-id>", "kind": "one_time", "interval": null, "amountCents": 4900, "currency": "PLN", "active": true } } }
+{ "ok": true, "data": { "stock": { "productId": "<product-id>", "onHand": 20, "reserved": 0, "available": 20, "lowStockThreshold": null, "low": false, "soldOut": false } } }
+{ "ok": true, "data": { "product": { "id": "<product-id>", "published": true } } }
+```
+
+File upload (product cover; branding images work the same through the
+settings routes). Accepted types are PNG, JPEG, WebP and SVG, at most 5 MiB;
+the bytes must match the declared type.
+
+```bash
+curl -s -H "$KEY" -H "$JSON" -d '{"kind":"product-cover","fileName":"cover.png","contentType":"image/png","sizeBytes":<bytes>}' "$SHOP/image-assets/product-cover/upload"
+```
+
+```json
+{ "ok": true, "data": { "key": "<candidate-key>", "servePath": "/api/public/assets/product-cover/<file>", "upload": { "url": "<signed-storage-url>", "headers": { "content-type": "image/png" }, "expiresAt": "<ISO time>" } } }
+```
+
+`PUT` the file to `upload.url` with exactly the returned `upload.headers` and
+without the shop key, before `expiresAt` (fifteen minutes). Then complete and attach:
+
+```bash
+curl -s -X PUT -H 'content-type: image/png' --data-binary @cover.png '<signed-storage-url>'
+curl -s -H "$KEY" -H "$JSON" -d '{"key":"<candidate-key>"}' "$SHOP/image-assets/product-cover/complete"
+curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>","coverUrl":"/api/public/assets/product-cover/<file>"}' "$SHOP/products/update"
+```
+
+Completion answers `{ "url": "/api/public/assets/product-cover/<file>" }`.
+Asset URLs are relative to the workspace origin; prefix them with
+`https://<workspace-host>` before using them on another site. The public URL
+redirects to a short-lived signed storage URL, so do not cache the redirect
+target.
+
+Orders: list the live orders to pack, then ship one manually.
+
+```bash
+curl -s -H "$KEY" "$SHOP/orders?mode=live&fulfilmentStatus=to_pack&page=1&pageSize=100"
+```
+
+```json
+{ "ok": true, "data": { "orders": [ { "id": "<order-id>", "mode": "live", "status": "paid", "fulfilmentStatus": "to_pack", "amountCents": 6400, "currency": "PLN", "memberEmail": "<buyer-email>", "productTitle": "Printed handbook", "shipping": { "rateId": "courier", "label": "Courier", "address": { "name": "<buyer-name>", "line1": "<street>", "postalCode": "<postal-code>", "city": "<city>", "country": "PL" }, "phone": "<phone>" } } ], "total": 1, "page": 1, "pageSize": 100 } }
+```
+
+```bash
+curl -s -H "$KEY" -H "$JSON" -d '{"carrier":"other","trackingNumber":"<tracking-number>"}' "$SHOP/orders/<order-id>/ship"
+```
+
+```json
+{ "ok": true, "data": { "order": { "id": "<order-id>", "fulfilmentStatus": "shipped", "shipment": { "carrier": "other", "trackingNumber": "<tracking-number>", "shippedBy": "<owner-user-id>" } } } }
+```
+
+Settings answer `{ "settings": { ... } }` with the allow-listed fields;
+integrations answer masked previews such as
+`{ "key": "ksef.token", "maskedPreview": "••••abcd", "updatedAt": "<ISO time>" }`
+and never a secret value.
+
+## Provider setup
+
+Configure only the providers the shop uses, in this order, with the
+provisioning key. Each step is optional unless the next one needs it.
+
+1. **Seller, legal and shipping settings** (`POST .../settings`): `termsUrl`
+   and `privacyUrl` (checkout then requires `termsAccepted: true`),
+   `supportEmail`, `invoiceSellerName`, `invoiceSellerAddress` and at least
+   one active entry in `shippingRates` for physical products.
+2. **Storage** (`POST .../integrations/storage/configure`): needed for cover and
+   branding uploads. The probe contacts the bucket and checks its CORS rules
+   for the workspace origins before anything is stored.
+3. **Stripe** (`POST .../integrations/stripe/configure`): the live slot is what
+   anonymous buyers pay through; the test slot serves only staff test
+   purchases (below).
+4. **ShipX** (`POST .../integrations/shipx/configure`): needed only for
+   `POST .../orders/<order-id>/shipx`; manual shipping needs nothing.
+5. **iFirma or KSeF credentials** (`POST .../integrations/secrets`): needed
+   only for invoicing.
+
+Real external effects need the workspace owner's explicit approval before any
+automation runs them on a production deployment, and are never part of a test
+run:
+
+- Stripe `configure` registers a webhook endpoint in the Stripe account behind
+  the restricted key, for either mode, and the live slot takes real payments.
+- ShipX `POST .../orders/<order-id>/shipx` on a live order with a `production`
+  ShipX environment creates and pays a real InPost shipment.
+- Stored KSeF credentials together with `autoIssueInvoices` and
+  `ksefSubmissionMode` `automatic` submit real invoices to KSeF; keep
+  `ksefSubmissionMode` `manual` until that is approved.
+- Order e-mail (the purchase confirmation and the tracking message) reaches
+  real buyers on a deployment with a real e-mail provider.
+
+Deployments that run the fake payment provider (local development and tests)
+never contact Stripe, and use the simulated ShipX client; no test in this
+repository calls a real provider.
+
+## Selling: public offer, checkout and return
+
+The storefront calls two anonymous routes on the workspace origin. Both answer
+any origin (`access-control-allow-origin: *`), need no key and must be called
+with credentials omitted.
+
+```ts
+const base = 'https://<workspace-host>';
+const offer = await fetch(`${base}/api/public/offer`, { credentials: 'omit' });
+const handoff = await fetch(`${base}/api/public/checkout/session`, {
+  method: 'POST',
+  credentials: 'omit',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    productId: '<product-id>',
+    priceId: '<active-price-id>',
+    termsAccepted: true,
+    language: 'en',
+    shipping: { rateId: 'courier' },
+  }),
+});
+const payload = await handoff.json();
+if (!handoff.ok || payload.ok !== true) throw new Error('Checkout could not start');
+window.location.assign(payload.data.url);
+```
+
+- `GET /api/public/offer` lists the published products with their active
+  prices, cover URL and public stock state (`tracked`, `soldOut`, `low`). It
+  answers a weak `ETag`; send it back in `If-None-Match` to receive `304` with
+  no body when nothing changed.
+- `POST /api/public/checkout/session` validates the product, price, delivery
+  option (`shipping.rateId` must name an active rate; physical products need
+  one) and terms acceptance, reserves one piece of tracked stock and answers
+  `{ "url": "<hosted-checkout-url>" }`. Send the buyer there. A sold-out
+  product answers `409 sold_out`; too many attempts answer `429` with
+  `Retry-After`.
+- An anonymous checkout is always a live checkout. Test purchases are
+  available only to a signed-in staff member of the workspace who has switched
+  on test purchases for their own session; test orders never reserve or reduce
+  stock, send no buyer e-mail and are excluded by `mode=live`.
+
+The return is fixed: after payment the buyer lands on
+`https://<workspace-host>/checkout/<product-id>?status=success&...` (or
+`/offer/<slug>?status=success&...` for a sales link), and a cancelled payment
+returns to the same page with `status=cancelled`. The request cannot choose
+another return URL. Never fulfil on `status=success` or on any value the
+browser sends: an order exists only after the payment provider's signed
+webhook has been processed, and the warehouse finds it by polling (below).
+`GET /api/public/checkout/session-status?session_id=<session-id>` answers
+`pending` or `paid` for a confirmation page.
+
+The signed webhook creates exactly one paid order per payment. A repeated
+delivery of the same provider event is recognised and neither creates a
+second order nor reduces stock a second time; payment turns the reservation
+into a sale (one piece leaves `onHand` and `reserved`), and an expired checkout
+releases it.
+
+## Polling with overlap and de-duplication
+
+See [Polling for orders to fulfil](#polling-for-orders-to-fulfil). In short:
+re-read the whole `mode=live&fulfilmentStatus=to_pack` list on every poll,
+remember the order ids already handed to the warehouse, and treat
+`409 fulfilment_conflict` on `ship` as already shipped. A missed poll loses
+nothing, because an order stays `to_pack` until it is shipped.
+
+## End-to-end replay
+
+`scripts/shop-machine-replay.test.ts` runs the whole flow against the
+real server routes and a database, with the fake payment provider and fake
+storage, and no network:
+
+1. A clean workspace; its owner session issues a provisioning key
+   (`shop:settings:*`, `shop:integrations:*`), a catalog key
+   (`shop:catalog:*`) and a warehouse key (`shop:orders:read`,
+   `shop:fulfilment:write`).
+2. Provisioning sets legal URLs, seller and a courier rate, configures Stripe
+   (test and live slots), storage and a ShipX sandbox, and reads the masked
+   secret list without any secret value; it cannot read the catalog.
+3. Catalog uploads a cover through the signed-upload protocol, creates the
+   physical book, attaches the cover, prices it, enables stock of 20 and
+   publishes it; it cannot read orders. A browser-origin request to a shop
+   route receives no CORS header.
+4. The anonymous offer lists the book for another origin, and a
+   cross-origin checkout request (preflight and `POST`) starts a live checkout
+   whose fixed success URL points at the workspace and reserves one piece.
+5. A forged signature is refused without an order; the signed
+   `checkout.session.completed` fixture creates exactly one paid order and
+   leaves 19 on hand; its replay creates nothing and leaves stock unchanged.
+6. The warehouse key lists the live order to pack and ships it manually; a
+   second ship answers `409 fulfilment_conflict`.
+7. The e-mail outbox holds one purchase confirmation and one tracking message
+   for the buyer.
+8. The owner revokes the warehouse key; its next call answers
+   `401 Invalid API key`.
+
+Run it with `pnpm exec vitest run scripts/shop-machine-replay.test.ts`.
+
+## CLI-first evidence
+
+The same flow through the CLI, in replay order, against a local server
+(`pnpm run dev:server`) or a deployment. Add `--json` to any command for the
+exact envelope; exit codes follow the table above. Each `shop` command reads
+the key from `TOGETHER_SHOP_KEY` unless `--api-key-env` names another
+variable.
+
+```bash
+# 1. Owner session: issue the three keys (Bootstrap) and note their ids
+pnpm --silent run cli login --email <owner-email>
+pnpm --silent run cli --tenant acme api-key list
+
+# 2. Provisioning key
+export TOGETHER_SHOP_KEY="$PROVISIONING_KEY"
+pnpm --silent run cli --tenant acme shop settings set --json-file shop-settings.json
+pnpm --silent run cli --tenant acme shop settings show
+pnpm --silent run cli --tenant acme shop integrations storage configure --provider cloudflare_r2 \
+  --endpoint https://storage.example.test --region auto --bucket shop-assets \
+  --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET
+pnpm --silent run cli --tenant acme shop integrations stripe configure --mode test --restricted-key-env STRIPE_TEST_RESTRICTED_KEY
+pnpm --silent run cli --tenant acme shop integrations shipx configure --environment sandbox \
+  --sender-json-file sender.json --organization-id <organization-id> --token-env SHIPX_TOKEN
+pnpm --silent run cli --tenant acme shop integrations secrets list
+
+# 3. Catalog key
+export TOGETHER_SHOP_KEY="$CATALOG_KEY"
+pnpm --silent run cli --tenant acme shop products create --title 'Printed handbook' --slug printed-handbook \
+  --type physical --delivery-method shipping --price 49 --currency PLN
+pnpm --silent run cli --tenant acme shop cover upload <product-id> ./cover.png
+pnpm --silent run cli --tenant acme shop prices add --product <product-id> --kind one_time --price 49
+pnpm --silent run cli --tenant acme shop stock enable <product-id> --on-hand 20
+pnpm --silent run cli --tenant acme shop products publish <product-id>
+pnpm --silent run cli --tenant acme public offer
+
+# 4. Buyer: the anonymous checkout request from Selling above, then payment
+
+# 5. Warehouse key
+export TOGETHER_SHOP_KEY="$WAREHOUSE_KEY"
+pnpm --silent run cli --tenant acme shop orders list --mode live --fulfilment to_pack --page-size 100
+pnpm --silent run cli --tenant acme shop orders ship <order-id> --carrier other --tracking <tracking-number>
+pnpm --silent run cli --tenant acme shop orders show <order-id>
+pnpm --silent run cli --tenant acme shop stock show <product-id> --api-key-env CATALOG_KEY
+
+# 6. Owner session: revoke the warehouse key; the next warehouse call exits with 3
+pnpm --silent run cli --tenant acme api-key revoke <warehouse-key-id>
+pnpm --silent run cli --tenant acme shop orders list --mode live
+```
+
+`shop-settings.json` holds the settings object, for example
+`{"termsUrl":"https://brand.example.test/terms","privacyUrl":"https://brand.example.test/privacy","invoiceSellerName":"Example Press","invoiceSellerAddress":"<street, postal code, city>","shippingRates":[{"id":"courier","label":"Courier","amountCents":1500,"vatRatePercent":23,"carrier":"other","pickupPoint":"none","active":true}]}`.
+The `checkout session` command sends no terms acceptance, so on a workspace
+with legal URLs start the checkout with the HTTP request from
+[Selling](#selling-public-offer-checkout-and-return).
+
+## Deployment read-back checklist
+
+Before handing keys to a shop backend, read each item back on the deployed
+workspace and keep the output:
+
+1. `GET https://<workspace-host>/api/health` answers `status` `ok`,
+   `database` `up`, `schemaCurrent` `true` and the expected `commit`.
+2. A route under `/api/m2m/shop` without a key answers `401 Missing API key`,
+   and the same route with a cookie or `Authorization` header answers `401`.
+3. `api-key list` shows exactly the intended shop keys, each with kind
+   `shop_management`, the intended scopes and an expiry within 30 days; no
+   shop key carries a legacy scope.
+4. Each key reads its own family (`shop settings show`, `shop products list`,
+   `shop orders list --mode live --page-size 1`) and gets `403` on another.
+5. `shop settings show` answers the intended legal URLs, seller and active
+   shipping rates; `shop integrations secrets list` shows masked previews only.
+6. `shop integrations stripe probe --mode live` reports every required
+   permission as `ok` (only after the owner approved the live key).
+7. `GET https://<workspace-host>/api/public/offer` lists the published book
+   with its active price, and, requested with an `Origin` header, carries
+   `access-control-allow-origin: *`.
+8. After the first real order, `shop orders list --mode live --fulfilment
+   to_pack` shows it once, and `shop stock show <product-id>` shows one piece
+   fewer on hand.
+9. The provisioning key is revoked once setup is done; `api-key list` shows it
+   as `revoked`.
 
 ## Rollback
 

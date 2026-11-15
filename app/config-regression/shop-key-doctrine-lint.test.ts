@@ -18,19 +18,26 @@ describe('shop management key doctrine lint', () => {
     'reports a doctrine without %s',
     (text, requirement) => {
       const files = readSurfaces();
-      files.set(requirement.file, (files.get(requirement.file) ?? '').replaceAll(text, ''));
+      const spaced = new RegExp(text.split(/\s+/u).map((word) => word.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+'), 'gu');
+      files.set(requirement.file, (files.get(requirement.file) ?? '').replace(spaced, ''));
       expect(collectShopKeyDoctrineProblems(files)).toEqual([
         expect.stringMatching(new RegExp(`^\\[shop-key-doctrine\\] ${requirement.file.replaceAll('.', '\\.')} .*${requirement.reason}`)),
       ]);
     },
   );
 
-  it('does not accept the key class described outside the Tenant API keys section', () => {
-    const files = new Map([
-      ['app/CLAUDE.md', 'Shop management keys (owner decision 2026-11-14): text'],
-      ['app/docs/security.md', '## Tenant API keys\n\nNothing.\n\n## Other\n\nowner decision 2026-11-14 `shop_management_keys` `SHOP_MANAGEMENT_KEYS` `shop:integrations:write`\n'],
-    ]);
-    expect(collectShopKeyDoctrineProblems(files)).toHaveLength(4);
+  it('does not accept the security doctrine described outside the Tenant API keys section', () => {
+    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+    const files = readSurfaces();
+    files.set('app/docs/security.md', `## Tenant API keys\n\nNothing.\n\n## Other\n\n${sectioned.map((requirement) => requirement.text).join('\n')}\n`);
+    expect(collectShopKeyDoctrineProblems(files)).toHaveLength(sectioned.length);
+  });
+
+  it('accepts the required security doctrine wrapped across lines', () => {
+    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+    const files = readSurfaces();
+    files.set('app/docs/security.md', `## Tenant API keys\n\n${sectioned.map((requirement) => requirement.text.replaceAll(' ', '\n  ')).join('\n')}\n`);
+    expect(collectShopKeyDoctrineProblems(files)).toEqual([]);
   });
 
   it('reports a surface that is not tracked markdown', () => {

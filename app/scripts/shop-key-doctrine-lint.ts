@@ -35,7 +35,15 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: '`shop:integrations:write`',
     reason: 'must state what the integration write scope can configure',
   },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'A refusal returned by the handler (a validation error, an id of another workspace, a conflict) does have a request row',
+    reason: 'must state that a refusal returned by a shop route handler has a key history row',
+  },
 ];
+
+const singleSpaced = (text: string): string => text.replace(/\s+/gu, ' ');
 
 const sectionOf = (text: string, heading: string): string | null => {
   const lines = text.split('\n');
@@ -51,7 +59,7 @@ const requirementProblem = (files: ReadonlyMap<string, string>, requirement: Doc
   if (text === undefined) return `[shop-key-doctrine] ${requirement.file} is not tracked markdown`;
   const scope = requirement.section === undefined ? text : sectionOf(text, requirement.section);
   if (scope === null) return `[shop-key-doctrine] ${requirement.file} has no "${requirement.section ?? ''}" section`;
-  if (scope.includes(requirement.text)) return null;
+  if (singleSpaced(scope).includes(singleSpaced(requirement.text))) return null;
   const where = requirement.section === undefined ? requirement.file : `${requirement.file} "${requirement.section}"`;
   return `[shop-key-doctrine] ${where} ${requirement.reason} (expected "${requirement.text}")`;
 };

@@ -154,8 +154,7 @@ characters, starting with a letter or digit and continuing with letters,
 digits, `.`, `_`, `:` or `-` (ASCII only). Anything else is stored as no
 resource id, and the database enforces both rules with its own checks: a length
 check of at most 200 characters and the pattern `^[A-Za-z0-9][A-Za-z0-9._:-]*$`.
-The shared shop
-route helper writes the row, so every shop route inherits it.
+The shared shop route helper writes the row, so every shop route inherits it.
 
 The row is written before the handler runs, so no keyed change commits without
 its history row, and nothing is written after the handler, so a committed
@@ -165,12 +164,15 @@ cannot be written, the request is refused with `503 unavailable` and a
 request still counts against the rate limits, and the failure is recorded in
 request telemetry. Retrying is safe.
 
-A refused request writes no row: a missing, unknown, revoked, expired, legacy
-or other-workspace key, an issuer who no longer qualifies, mixed credentials, a
-missing scope (`403`), a rate-limit refusal (`429`) and a request refused before
-the shop route runs (such as the body size limit) are recorded in request
-telemetry only (above). Reads (`GET`) write no row either; they are attributed
-in request telemetry only.
+A request refused before the handler writes no row: the off switch, the body
+size limit, mixed credentials, a missing, unknown, revoked, expired, legacy or
+other-workspace key, an issuer who no longer qualifies, a rate-limit refusal
+(`429`) and a missing scope (`403`) are recorded in request telemetry only
+(above). A refusal returned by the handler itself, such as a validation error,
+a product or price id of another workspace (`404`) or a conflict, does have a
+`request` row, because the row is written before the handler runs; the row does
+not say that the handler refused. Reads (`GET`) write no row; they are
+attributed in request telemetry only.
 
 A history row stores the key id as plain text and is never deleted with its
 key, so the history of a revoked or purged key stays readable. It goes away only

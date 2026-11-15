@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { err, internal, postSchema, type NotificationFanoutKind, type Product } from '#core/domain/index.js';
 import type { NotificationChannelPort } from '#core/server/index.js';
+import { fakeFanoutBatches } from '#core/server/testing/fanout-batches.js';
 import { notificationRecipient, spaceNotificationRecipient } from '#core/server/usecases/community-access.js';
 import { subscriberCanAccessContext } from '#core/server/usecases/thread-context.js';
 import { buildNotificationFanoutJob, runPostFanoutJob, type PostFanoutDeps } from '#core/server/usecases/notification-fanout.js';
@@ -18,7 +19,10 @@ import {
   createProductGrantRepository, createSpaceRepository, createSpaceSubscriptionRepository,
   createTenantAccessReader, createThreadSubscriptionRepository,
 } from './repositories.js';
-import { courses, courseModules, courseLessons, emailOutbox, emailEvents, members, productGrants, products, spaces, tenantAdmins, tenants, user } from './schema.js';
+import {
+  courses, courseModules, courseLessons, emailOutbox, emailEvents, members, organizationMembers, organizations,
+  productGrants, products, spaces, tenantAdmins, tenants, user,
+} from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const NOW = '2026-10-01T12:00:00.000Z';
@@ -310,6 +314,25 @@ describe('set-based notification recipients', () => {
     const otherRows = await batches.listAccessForUsers(OTHER, userIds, NOW);
     expect(otherRows.every((row) => row.member === null && row.activeProductIds.length === 0)).toBe(true);
     select.mockRestore();
+  });
+
+  it('treats an organization-derived owner without a direct grant as non-staff in the adapter and in the test fake', async () => {
+    const organizationId = 'fanout-organization';
+    const workspaceId = 'fanout-organization-workspace';
+    const ownerId = 'organization-owner';
+    await db.insert(organizations).values({ id: organizationId, slug: organizationId, name: 'Organization', maxWorkspaces: 1, createdAt: NOW, updatedAt: NOW });
+    await db.insert(tenants).values({ id: workspaceId, slug: workspaceId, name: 'Workspace', createdAt: NOW, organizationId });
+    await db.insert(user).values({ id: ownerId, name: ownerId, email: `${ownerId}@auth.example.test` });
+    await db.insert(organizationMembers).values({ id: `om-${ownerId}`, organizationId, userId: ownerId, role: 'owner', createdAt: NOW, createdByUserId: 'operator' });
+    await db.insert(members).values({ id: `member-${ownerId}`, tenantId: workspaceId, userId: ownerId, email: `${ownerId}@member.example.test`, createdAt: NOW });
+    const d = deps();
+    expect(await d.tenantAccess.findStaffGrant(ownerId, { tenantId: workspaceId })).toMatchObject({ staffRole: 'owner', source: 'organization' });
+
+    for (const batches of [d.fanoutBatches, fakeFanoutBatches(() => d)]) {
+      expect(await batches.listAccessForUsers(workspaceId, [ownerId], NOW)).toEqual([
+        expect.objectContaining({ userId: ownerId, member: expect.objectContaining({ userId: ownerId }), isStaff: false }),
+      ]);
+    }
   });
 
   it('pages the same staff recipients as the original rule and preserves an explicit mute when subscriptions are retried', async () => {

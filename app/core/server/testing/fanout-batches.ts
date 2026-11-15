@@ -12,18 +12,20 @@ export const fakeFanoutBatches = (deps: () => {
   notifications: NotificationRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
 }): NotificationFanoutBatchRepository => ({
-  listAccessForUsers: async (tenantId, userIds, now) => Promise.all(userIds.map(async (userId) => {
+  listAccessForUsers: async (tenantId, userIds, now) => {
     const { tenantAccess, grants } = deps();
-    const member = await tenantAccess.findMember(tenantId, userId);
-    const staff = await tenantAccess.findStaffGrant(userId, { tenantId });
-    const active = member === null ? [] : await grants.listActiveForMember(tenantId, member.id, now);
-    const products = member === null ? [] : await grants.listGrantedProducts(tenantId, member.id);
-    const activeProductIds = active.map((grant) => grant.productId);
-    return {
-      userId, member, isStaff: staff !== null, activeProductIds,
-      accessItems: products.filter((product) => activeProductIds.includes(product.id)).flatMap((product) => product.accessItems),
-    };
-  })),
+    const directStaffIds = new Set((await tenantAccess.listStaffForTenant(tenantId)).map((staff) => staff.userId));
+    return Promise.all(userIds.map(async (userId) => {
+      const member = await tenantAccess.findMember(tenantId, userId);
+      const active = member === null ? [] : await grants.listActiveForMember(tenantId, member.id, now);
+      const products = member === null ? [] : await grants.listGrantedProducts(tenantId, member.id);
+      const activeProductIds = active.map((grant) => grant.productId);
+      return {
+        userId, member, isStaff: directStaffIds.has(userId), activeProductIds,
+        accessItems: products.filter((product) => activeProductIds.includes(product.id)).flatMap((product) => product.accessItems),
+      };
+    }));
+  },
   listStaffPage: async (tenantId, input) => (await deps().tenantAccess.listStaffForTenant(tenantId))
     .filter((staff) => input.afterUserId === null || staff.userId > input.afterUserId)
     .sort((left, right) => left.userId.localeCompare(right.userId)).slice(0, input.limit),

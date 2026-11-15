@@ -12,6 +12,7 @@ import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchem
 import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
 import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
+import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
 import type { ShopSettingsPatch } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
@@ -2909,6 +2910,7 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     ...shopOrderMethods(options),
     ...shopSettingsMethods(options),
     ...shopAssetsMethods(options),
+    ...shopIntegrationMethods(options),
   };
 };
 
@@ -2976,6 +2978,32 @@ const shopAssetsMethods = (options: ApiClientOptions) => {
       request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), contracts.updateSalesLink.output, input, signal),
     deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal) =>
       request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), contracts.deleteSalesLink.output, undefined, signal),
+  };
+};
+
+type ShopIntegrationInput<K extends 'setSecret' | 'deleteSecret' | 'stripeConfigure' | 'stripeProbe' | 'storageConfigure' | 'shipxConfigure'> =
+  z.input<(typeof shopIntegrationContracts)[K]['input']>;
+
+const shopIntegrationMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_INTEGRATION_ROUTES;
+  const contracts = shopIntegrationContracts;
+  return {
+    listIntegrationSecrets: (signal?: AbortSignal) =>
+      request(options, routes.listSecrets.method, routes.listSecrets.path, contracts.listSecrets.output, undefined, signal),
+    setIntegrationSecret: (input: ShopIntegrationInput<'setSecret'>, signal?: AbortSignal) =>
+      request(options, routes.setSecret.method, routes.setSecret.path, contracts.setSecret.output, input, signal),
+    deleteIntegrationSecret: (input: ShopIntegrationInput<'deleteSecret'>, signal?: AbortSignal) =>
+      request(options, routes.deleteSecret.method, routes.deleteSecret.path.replace(':key', encodeURIComponent(input.key)), contracts.deleteSecret.output, undefined, signal),
+    configureStripe: (input: ShopIntegrationInput<'stripeConfigure'>, signal?: AbortSignal) =>
+      request(options, routes.stripeConfigure.method, routes.stripeConfigure.path, contracts.stripeConfigure.output, input, signal),
+    probeStripe: (input: ShopIntegrationInput<'stripeProbe'>, signal?: AbortSignal) =>
+      request(options, routes.stripeProbe.method, routes.stripeProbe.path, contracts.stripeProbe.output, input, signal),
+    configureStorage: (input: ShopIntegrationInput<'storageConfigure'>, signal?: AbortSignal) =>
+      request(options, routes.storageConfigure.method, routes.storageConfigure.path, contracts.storageConfigure.output, input, signal),
+    getShipxSettings: (signal?: AbortSignal) =>
+      request(options, routes.shipxSettings.method, routes.shipxSettings.path, contracts.shipxSettings.output, undefined, signal),
+    configureShipx: (input: ShopIntegrationInput<'shipxConfigure'>, signal?: AbortSignal) =>
+      request(options, routes.shipxConfigure.method, routes.shipxConfigure.path, contracts.shipxConfigure.output, input, signal),
   };
 };
 

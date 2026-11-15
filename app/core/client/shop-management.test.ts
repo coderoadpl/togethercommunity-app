@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 
 import { createShopManagementClient } from './http.js';
 
@@ -262,5 +262,60 @@ describe('shop management client asset calls', () => {
     const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
     expect(await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array(4) })).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('shop management client integration calls', () => {
+  it('sends every integration call to its keyed route with only the key and workspace headers', async () => {
+    const masked = { maskedPreview: '••••1234', updatedAt: '2026-11-15T10:00:00.000Z' };
+    const shipxView = { environment: 'sandbox', sender: null, organizationId: masked, token: masked, configured: false };
+    const seen: { method: string; path: string; headers: Headers; body: unknown }[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      seen.push({ method, path: url.pathname, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+      const data = url.pathname === SHOP_INTEGRATION_ROUTES.listSecrets.path && method === 'GET'
+        ? { secrets: [{ key: 'ksef.token', ...masked }], stripeMode: null, stripeWebhookUrl: 'https://acme.example.test/api/webhooks/stripe/acme', stripeTestLastEventAt: null }
+        : url.pathname === SHOP_INTEGRATION_ROUTES.setSecret.path ? { secret: { key: 'ksef.token', ...masked } }
+          : method === 'DELETE' ? { key: 'ksef.token' }
+            : url.pathname === SHOP_INTEGRATION_ROUTES.stripeConfigure.path ? { mode: 'test', webhookUrl: 'https://acme.example.test/api/webhooks/stripe/acme?mode=test' }
+              : url.pathname === SHOP_INTEGRATION_ROUTES.stripeProbe.path ? { mode: 'test', checks: [], allOk: true, checkedAt: '2026-11-15T10:00:00.000Z' }
+                : url.pathname === SHOP_INTEGRATION_ROUTES.storageConfigure.path
+                  ? { diagnostic: { code: 'storage.available', message: 'Storage is available.' }, secret: { key: 's3.configuration', ...masked } }
+                  : shipxView;
+      return Response.json({ ok: true, data });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+    const storage = { provider: 'minio', endpoint: 'https://storage.example.test', region: 'eu-central-1', bucket: 'assets', accessKeyId: 'id', secretAccessKey: 'secret' } as const;
+    const results = [
+      await client.listIntegrationSecrets(),
+      await client.setIntegrationSecret({ key: 'ksef.token', value: 'ksef-token-1234' }),
+      await client.deleteIntegrationSecret({ key: 'ksef.token' }),
+      await client.configureStripe({ mode: 'test', restrictedKey: 'rk_test_1234' }),
+      await client.probeStripe({ mode: 'test' }),
+      await client.configureStorage(storage),
+      await client.getShipxSettings(),
+      await client.configureShipx({ organizationId: '1234', token: 'token-1234' }),
+    ];
+    expect(results.filter((result) => !result.ok)).toEqual([]);
+    expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
+      `GET ${SHOP_INTEGRATION_ROUTES.listSecrets.path}`,
+      `POST ${SHOP_INTEGRATION_ROUTES.setSecret.path}`,
+      'DELETE /api/m2m/shop/integrations/secrets/ksef.token',
+      `POST ${SHOP_INTEGRATION_ROUTES.stripeConfigure.path}`,
+      `POST ${SHOP_INTEGRATION_ROUTES.stripeProbe.path}`,
+      `POST ${SHOP_INTEGRATION_ROUTES.storageConfigure.path}`,
+      `GET ${SHOP_INTEGRATION_ROUTES.shipxSettings.path}`,
+      `POST ${SHOP_INTEGRATION_ROUTES.shipxConfigure.path}`,
+    ]);
+    expect(seen.map((call) => call.body)).toEqual([
+      null, { key: 'ksef.token', value: 'ksef-token-1234' }, null, { mode: 'test', restrictedKey: 'rk_test_1234' }, { mode: 'test' }, storage, null,
+      { organizationId: '1234', token: 'token-1234' },
+    ]);
+    for (const call of seen) {
+      expect(call.headers.get('x-api-key')).toBe('shop-secret');
+      expect(call.headers.get('x-tenant')).toBe('acme');
+      expect(call.headers.has('authorization')).toBe(false);
+    }
   });
 });

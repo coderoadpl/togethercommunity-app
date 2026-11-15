@@ -90,6 +90,26 @@ const orderData = (pathname: string, method: string): unknown => {
   return { order };
 };
 
+const maskedCredential = { maskedPreview: '••••2345', updatedAt: '2026-11-15T10:00:00.000Z' };
+const shipxView = {
+  environment: 'sandbox', configured: true, organizationId: maskedCredential, token: maskedCredential,
+  sender: { name: 'Warehouse', company: null, email: 'warehouse@example.test', phone: '600700800', street: 'Garden Street', buildingNumber: '5', city: 'Warsaw', postCode: '00-950' },
+};
+
+const integrationData = (pathname: string, method: string, body: unknown): unknown => {
+  const parsed: unknown = typeof body === 'string' ? JSON.parse(body) : null;
+  const sentKey: unknown = typeof parsed === 'object' && parsed !== null ? Reflect.get(parsed, 'key') : null;
+  if (pathname === '/api/m2m/shop/integrations/secrets' && method === 'GET') {
+    return { secrets: [{ key: 'ksef.token', ...maskedCredential }], stripeMode: 'live', stripeWebhookUrl: 'https://acme.example.test/api/webhooks/stripe/acme', stripeTestLastEventAt: null };
+  }
+  if (pathname === '/api/m2m/shop/integrations/secrets') return { secret: { key: typeof sentKey === 'string' ? sentKey : 'unknown', ...maskedCredential } };
+  if (method === 'DELETE') return { key: decodeURIComponent(pathname.split('/').at(-1) ?? '') };
+  if (pathname.endsWith('/stripe/configure')) return { mode: 'test', webhookUrl: 'https://acme.example.test/api/webhooks/stripe/acme?mode=test' };
+  if (pathname.endsWith('/stripe/probe')) return { mode: 'test', checks: [{ resource: 'Webhook Endpoints', permission: 'write', status: 'ok' }], allOk: true, checkedAt: '2026-11-15T10:00:00.000Z' };
+  if (pathname.endsWith('/storage/configure')) return { diagnostic: { code: 'storage.available', message: 'Storage is available.' }, secret: { key: 's3.configuration', maskedPreview: '••••', updatedAt: '2026-11-15T10:00:00.000Z' } };
+  return shipxView;
+};
+
 interface Call { method: string; path: string; search: string; headers: Headers; body: unknown }
 
 let calls: Call[];
@@ -115,6 +135,9 @@ const fetchImpl: typeof fetch = async (input, init) => {
     return Response.json({ ok: true, data: method === 'DELETE' ? { deleted: true }
       : method === 'GET' && url.pathname === '/api/m2m/shop/sales-links' ? { salesLinks: [salesLink] }
         : { salesLink } });
+  }
+  if (url.pathname.startsWith('/api/m2m/shop/integrations/')) {
+    return Response.json({ ok: true, data: integrationData(url.pathname, method, init?.body) });
   }
   if (url.pathname === '/api/m2m/shop/settings') {
     return new Response(JSON.stringify({ ok: true, data: { settings: shopSettings } }), { headers: { 'content-type': 'application/json' } });
@@ -446,6 +469,115 @@ describe('shop cover and sales-links CLI', () => {
       await run('shop', 'sales-links', 'update', 'link-1', '--json-file', file);
       expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
       expect(calls).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+});
+
+const stdinOf = (text: string) => vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(async function* (): AsyncGenerator<Buffer, undefined> {
+  yield Buffer.from(text);
+  return undefined;
+});
+
+const printedOutput = (): string => [...logSpy.mock.calls, ...errorSpy.mock.calls].flat().join('\n');
+
+describe('shop integrations CLI', () => {
+  it('lists the masked secrets with the env key only', async () => {
+    await run('shop', 'integrations', 'secrets', 'list');
+    expect(soleJson()).toMatchObject({ ok: true, data: { secrets: [{ key: 'ksef.token', maskedPreview: '••••2345' }] } });
+    expect(calls[0]).toMatchObject({ method: 'GET', path: '/api/m2m/shop/integrations/secrets' });
+    expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('sets a credential from --value-env and from stdin and never prints the value', async () => {
+    vi.stubEnv('KSEF_TOKEN_VALUE', 'ksef-token-from-env');
+    await run('shop', 'integrations', 'secrets', 'set', 'ksef.token', '--value-env', 'KSEF_TOKEN_VALUE');
+    expect(soleJson()).toMatchObject({ ok: true, data: { secret: { key: 'ksef.token', maskedPreview: '••••2345' } } });
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/integrations/secrets', body: { key: 'ksef.token', value: 'ksef-token-from-env' } });
+
+    logSpy.mockClear();
+    stdinOf('1234563218\n');
+    await run('shop', 'integrations', 'secrets', 'set', 'ksef.contextNip');
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls[1]?.body).toEqual({ key: 'ksef.contextNip', value: '1234563218' });
+    expect(printedOutput()).not.toContain('ksef-token-from-env');
+    expect(printedOutput()).not.toContain('shop-secret-from-env');
+  });
+
+  it.each([
+    [['shop', 'integrations', 'secrets', 'set', 'stripe.restrictedKey', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 's3.configuration', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'shipx.token', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'ksef.contextNip', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'ifirma.username', '--value-env', 'EMPTY_VALUE']],
+    [['shop', 'integrations', 'secrets', 'delete', 'stripe.webhookSecret']],
+    [['shop', 'integrations', 'stripe', 'configure', '--mode', 'test', '--restricted-key-env', 'EMPTY_VALUE']],
+    [['shop', 'integrations', 'stripe', 'probe', '--mode', 'staging']],
+    [['shop', 'integrations', 'storage', 'configure', '--provider', 'minio', '--endpoint', 'ftp://storage.example.test', '--region', 'eu', '--bucket', 'assets', '--access-key-id', 'id', '--secret-access-key-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'shipx', 'configure', '--organization-id', 'not-a-number']],
+    [['shop', 'integrations', 'shipx', 'configure', '--token-env', 'RAW_VALUE', '--token-stdin']],
+    [['shop', 'integrations', 'shipx', 'configure', '--sender-json-file', '-', '--token-stdin']],
+  ])('rejects %j before any request', async (args) => {
+    vi.stubEnv('RAW_VALUE', 'raw-value');
+    vi.stubEnv('EMPTY_VALUE', '');
+    await run(...args);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    [['shop', 'integrations', 'secrets', 'delete', 'ifirma.username'], 'DELETE', '/api/m2m/shop/integrations/secrets/ifirma.username', null],
+    [['shop', 'integrations', 'stripe', 'probe', '--mode', 'test'], 'POST', '/api/m2m/shop/integrations/stripe/probe', { mode: 'test' }],
+    [['shop', 'integrations', 'shipx', 'show'], 'GET', '/api/m2m/shop/integrations/shipx', null],
+    [['shop', 'integrations', 'shipx', 'configure', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { clearCredentials: true }],
+  ])('sends %j to the integration route', async (args, method, path, body) => {
+    await run(...args);
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method, path, body });
+    expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('configures Stripe with the restricted key from the environment or stdin, never from argv', async () => {
+    vi.stubEnv('STRIPE_RESTRICTED_KEY', 'rk_test_from_env');
+    await run('shop', 'integrations', 'stripe', 'configure', '--mode', 'test', '--restricted-key-env', 'STRIPE_RESTRICTED_KEY');
+    expect(soleJson()).toMatchObject({ ok: true, data: { mode: 'test' } });
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/integrations/stripe/configure', body: { mode: 'test', restrictedKey: 'rk_test_from_env' } });
+
+    logSpy.mockClear();
+    stdinOf('rk_test_from_stdin\n');
+    await run('shop', 'integrations', 'stripe', 'configure', '--mode', 'test');
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls[1]?.body).toEqual({ mode: 'test', restrictedKey: 'rk_test_from_stdin' });
+    expect(printedOutput()).not.toContain('rk_test_from');
+  });
+
+  it('configures storage with the secret access key from the environment', async () => {
+    vi.stubEnv('STORAGE_SECRET', 'storage-secret-value');
+    await run('shop', 'integrations', 'storage', 'configure', '--provider', 'minio', '--endpoint', 'https://storage.example.test',
+      '--region', 'eu-central-1', '--bucket', 'assets', '--access-key-id', 'access-id', '--secret-access-key-env', 'STORAGE_SECRET');
+    expect(soleJson()).toMatchObject({ ok: true, data: { secret: { key: 's3.configuration' } } });
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/integrations/storage/configure', body: {
+      provider: 'minio', endpoint: 'https://storage.example.test', region: 'eu-central-1', bucket: 'assets', accessKeyId: 'access-id', secretAccessKey: 'storage-secret-value',
+    } });
+    expect(printedOutput()).not.toContain('storage-secret-value');
+  });
+
+  it('configures the ShipX sender from a file and the token from the environment', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-shipx-cli-'));
+    try {
+      const file = join(directory, 'sender.json');
+      await writeFile(file, JSON.stringify(shipxView.sender));
+      vi.stubEnv('SHIPX_TOKEN', 'shipx-token-from-env');
+      await run('shop', 'integrations', 'shipx', 'configure', '--environment', 'sandbox', '--sender-json-file', file, '--organization-id', '12345', '--token-env', 'SHIPX_TOKEN');
+      expect(soleJson()).toMatchObject({ ok: true, data: { configured: true } });
+      expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/integrations/shipx/configure', body: {
+        environment: 'sandbox', sender: shipxView.sender, organizationId: '12345', token: 'shipx-token-from-env',
+      } });
+      expect(printedOutput()).not.toContain('shipx-token-from-env');
     } finally {
       await rm(directory, { recursive: true });
     }

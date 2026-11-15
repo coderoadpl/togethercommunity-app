@@ -24,7 +24,8 @@ API key` for it, and no session route accepts it.
 | Shop settings and branding image routes (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
 | Product cover image and sales-link routes (below) | Available |
-| Invoice, refund and integration routes | Not yet available |
+| Payment, storage, shipping and invoicing credential routes (below) | Available |
+| Invoice and refund routes | Not yet available |
 
 ## Scopes
 
@@ -42,8 +43,8 @@ access.
 | `shop:fulfilment:write` | Fulfil orders, including configured paid shipment creation |
 | `shop:settings:read` | Read shop settings |
 | `shop:settings:write` | Change the constrained shop settings |
-| `shop:integrations:read` | Read masked integration configuration |
-| `shop:integrations:write` | Configure and probe integrations |
+| `shop:integrations:read` | Read the masked secret list and the masked ShipX settings |
+| `shop:integrations:write` | Configure Stripe, storage and ShipX, probe Stripe, set and delete the iFirma and KSeF credentials |
 
 Write scopes do not include the matching read scope. A key with
 `shop:integrations:write` carries financial and configuration power: keep it
@@ -440,6 +441,100 @@ pnpm --silent run cli --tenant acme shop branding upload logo ./logo.png
 
 The typed client exposes `getSettings`, `updateSettings` and
 `uploadBrandingAsset`.
+
+## Integration routes
+
+> **An integrations key carries financial power.** A key with
+> `shop:integrations:write` can replace the workspace's Stripe account, so
+> payments go to whoever controls the new restricted key, and it can point file
+> storage, InPost shipping and invoicing at other accounts. Create it only for a
+> provisioning backend, with the shortest expiry that covers the setup, never
+> in a browser, a storefront or a warehouse tool, and never together with
+> catalog, order or settings scopes on one key. Revoke it when provisioning is
+> done.
+
+| Method and path | Scope | Session counterpart |
+|---|---|---|
+| `GET /api/m2m/shop/integrations/secrets` | `shop:integrations:read` | `GET /api/tenant-secrets` |
+| `POST /api/m2m/shop/integrations/secrets` | `shop:integrations:write` | `POST /api/tenant-secrets`, allow-listed keys only |
+| `DELETE /api/m2m/shop/integrations/secrets/:key` | `shop:integrations:write` | `DELETE /api/tenant-secrets/:key`, allow-listed keys only |
+| `POST /api/m2m/shop/integrations/stripe/configure` | `shop:integrations:write` | `POST /api/integrations/stripe/configure` |
+| `POST /api/m2m/shop/integrations/stripe/probe` | `shop:integrations:write` | `POST /api/integrations/stripe/probe` |
+| `POST /api/m2m/shop/integrations/storage/configure` | `shop:integrations:write` | `POST /api/integrations/storage/configure` |
+| `GET /api/m2m/shop/integrations/shipx` | `shop:integrations:read` | `GET /api/integrations/shipx` |
+| `POST /api/m2m/shop/integrations/shipx/configure` | `shop:integrations:write` | `POST /api/integrations/shipx/configure` |
+
+Every route reuses the request body, validation, use-case and response of its
+session counterpart; the session routes keep answering `401` for a shop key.
+No secret value is ever returned: the secret list answers the same masked
+previews, Stripe mode and webhook URL as the session route.
+
+The generic secret routes accept only this fixed list of keys:
+`ifirma.invoiceApiKey`, `ifirma.username`, `ksef.token`, `ksef.contextNip`,
+`ksef.test.token` and `ksef.test.contextNip`. The value is trimmed and must not
+be empty, and a KSeF context NIP must have ten digits and a valid checksum.
+Any other key, including every `stripe.*`, `s3.*` and `shipx.*` key, the
+telemetry, video, e-mail and Meta Conversions API secrets and unknown names,
+answers `400 validation` on both set and delete and changes nothing. Stripe,
+storage and ShipX credentials go through their dedicated routes, which validate
+and probe before storing; e-mail provider setup stays on the owner session.
+Storing KSeF credentials changes no invoicing setting: whether invoices are
+sent to KSeF automatically still follows `invoicingProvider`,
+`autoIssueInvoices` and `ksefSubmissionMode` (which defaults to `automatic`).
+Automatic KSeF submission for several workspaces that share one seller is not
+supported; set `ksefSubmissionMode` to `manual` on such workspaces before
+storing their KSeF credentials.
+
+- **Stripe** `configure` takes `{"mode":"test","restrictedKey":"rk_test_..."}`;
+  the key prefix must match the mode or the call answers `400 validation`
+  before Stripe is contacted. It registers this workspace's webhook endpoint
+  with the new key, stores the key, a fresh signing secret and the endpoint id
+  in the slot of that mode, and answers `{ "mode", "webhookUrl" }`. The other
+  mode's slot and every other workspace's endpoints stay untouched. `probe`
+  takes `{"mode":"test"}` and reports which permissions the stored key has.
+- **Storage** `configure` takes the S3-compatible configuration
+  (`provider`, `endpoint`, `region`, `bucket`, `accessKeyId`,
+  `secretAccessKey`), probes the bucket and the workspace origins for CORS and
+  stores it only when the probe succeeds.
+- **ShipX** `configure` changes only the parts it is given: `environment`,
+  `sender` (or `null` to remove it), `organizationId`, `token`, or
+  `"clearCredentials": true`. The view answers the environment, the sender and
+  masked credentials.
+
+```bash
+curl -s -H "$KEY" "$SHOP/integrations/secrets"
+curl -s -H "$KEY" -H "$JSON" -d "{\"key\":\"ksef.token\",\"value\":\"$KSEF_TOKEN\"}" "$SHOP/integrations/secrets"
+curl -s -H "$KEY" -X DELETE "$SHOP/integrations/secrets/ksef.test.token"
+curl -s -H "$KEY" -H "$JSON" -d "{\"mode\":\"test\",\"restrictedKey\":\"$STRIPE_RESTRICTED_KEY\"}" "$SHOP/integrations/stripe/configure"
+curl -s -H "$KEY" -H "$JSON" -d '{"mode":"test"}' "$SHOP/integrations/stripe/probe"
+```
+
+### Integrations CLI
+
+Secret values never travel on the command line: each command reads them from
+the environment variable named by its option, or from stdin when the option is
+left out.
+
+```bash
+export TOGETHER_SHOP_KEY="$PROVISIONING_KEY"
+pnpm --silent run cli --tenant acme shop integrations secrets list
+pnpm --silent run cli --tenant acme shop integrations secrets set ksef.token --value-env KSEF_TOKEN
+printf '%s' "$IFIRMA_KEY" | pnpm --silent run cli --tenant acme shop integrations secrets set ifirma.invoiceApiKey
+pnpm --silent run cli --tenant acme shop integrations secrets delete ksef.test.token
+pnpm --silent run cli --tenant acme shop integrations stripe configure --mode test --restricted-key-env STRIPE_RESTRICTED_KEY
+pnpm --silent run cli --tenant acme shop integrations stripe probe --mode test
+pnpm --silent run cli --tenant acme shop integrations storage configure --provider cloudflare_r2 \
+  --endpoint https://storage.example.test --region auto --bucket shop-assets \
+  --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET
+pnpm --silent run cli --tenant acme shop integrations shipx show
+pnpm --silent run cli --tenant acme shop integrations shipx configure --environment sandbox \
+  --sender-json-file sender.json --organization-id 12345 --token-env SHIPX_TOKEN
+```
+
+`shipx configure` also takes `--clear-sender`, `--clear-credentials` and
+`--token-stdin`. The typed client exposes `listIntegrationSecrets`,
+`setIntegrationSecret`, `deleteIntegrationSecret`, `configureStripe`,
+`probeStripe`, `configureStorage`, `getShipxSettings` and `configureShipx`.
 
 ## Rate limits
 

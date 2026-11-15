@@ -586,6 +586,7 @@ const beforeForUseCase = (
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
   if (file === 'shop-settings.ts') return name === 'getShopSettings' ? staff : owner;
+  if (file === 'shop-integrations.ts') return name === 'getShopIntegrationSecrets' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;

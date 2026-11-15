@@ -24,6 +24,7 @@ export * from './usecases/api-keys.js';
 export * from './usecases/m2m-enroll.js';
 export * from './usecases/shop-machine-auth.js';
 export * from './usecases/shop-settings.js';
+export * from './usecases/shop-integrations.js';
 export * from './usecases/m2m-transactional-email.js';
 export * from './usecases/m2m-import.js';
 export * from './usecases/m2m-import-users.js';

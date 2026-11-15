@@ -9,7 +9,13 @@ import {
   type ShopManagementClient,
   type ShopManagementClientOptions,
 } from '#core/client/index.js';
-import { imageAssetUploadRequestSchema, shopAssetsContracts, shopCatalogContracts, shopSettingsContracts } from '#core/contract/index.js';
+import {
+  imageAssetUploadRequestSchema,
+  shopAssetsContracts,
+  shopCatalogContracts,
+  shopIntegrationContracts,
+  shopSettingsContracts,
+} from '#core/contract/index.js';
 import {
   currencySchema,
   deliveryMethodSchema,
@@ -30,6 +36,7 @@ import {
   type ProductStock,
   type Result,
   type ShipxOrderView,
+  type ShipxSettingsView,
 } from '#core/domain/index.js';
 
 import { emit } from './output.js';
@@ -165,6 +172,71 @@ const imageUploadInput = async (kind: z.output<typeof brandingKindSchema> | 'pro
   return input.ok ? ok({ ...input.value, body: bytes }) : input;
 };
 
+const envNameSchema = z.string().min(1).optional();
+const secretSetSchema = keyOnlySchema.extend({ valueEnv: envNameSchema });
+const stripeConfigureSchema = keyOnlySchema.extend({ mode: stripeModeSchema, restrictedKeyEnv: envNameSchema });
+const storageConfigureSchema = keyOnlySchema.extend({
+  provider: z.string(),
+  endpoint: z.string(),
+  region: z.string(),
+  bucket: z.string(),
+  accessKeyId: z.string(),
+  secretAccessKeyEnv: envNameSchema,
+});
+const shipxConfigureSchema = keyOnlySchema.extend({
+  environment: z.string().optional(),
+  senderJsonFile: z.string().min(1).optional(),
+  clearSender: z.boolean().optional(),
+  organizationId: z.string().optional(),
+  tokenEnv: envNameSchema,
+  tokenStdin: z.boolean().optional(),
+  clearCredentials: z.boolean().optional(),
+});
+
+const secretInput = async (envName: string | undefined, label: string): Promise<Result<string, AppError>> => {
+  const value = envName === undefined ? (await readStdin()).trim() : process.env[envName]?.trim();
+  if (value) return ok(value);
+  return err(validation(envName === undefined
+    ? `Pipe the ${label} on stdin or name an environment variable holding it`
+    : `Environment variable ${envName} must hold the ${label}`));
+};
+
+const shipxConfigureInput = async (options: z.output<typeof shipxConfigureSchema>) => {
+  if (options.senderJsonFile !== undefined && options.clearSender === true) return err(validation('Provide only one of --sender-json-file and --clear-sender'));
+  if (options.tokenEnv !== undefined && options.tokenStdin === true) return err(validation('Provide only one of --token-env and --token-stdin'));
+  if (options.senderJsonFile === '-' && options.tokenStdin === true) return err(validation('Only one of the sender JSON and the token can come from stdin'));
+  let sender: unknown;
+  if (options.senderJsonFile !== undefined) {
+    let raw: string;
+    try {
+      raw = options.senderJsonFile === '-' ? await readStdin() : await readFile(options.senderJsonFile, 'utf8');
+    } catch (cause) {
+      return err(validation(`Could not read the sender JSON from "${options.senderJsonFile}": ${String(cause)}`));
+    }
+    const parsed = inlineJson(raw, 'ShipX sender');
+    if (!parsed.ok) return parsed;
+    sender = parsed.value;
+  }
+  const token = options.tokenEnv !== undefined || options.tokenStdin === true ? await secretInput(options.tokenEnv, 'ShipX token') : ok(undefined);
+  if (!token.ok) return token;
+  return contractInput(shopIntegrationContracts.shipxConfigure.input, {
+    ...(options.environment === undefined ? {} : { environment: options.environment }),
+    ...(options.senderJsonFile === undefined ? {} : { sender }),
+    ...(options.clearSender === true ? { sender: null } : {}),
+    ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
+    ...(token.value === undefined ? {} : { token: token.value }),
+    ...(options.clearCredentials === true ? { clearCredentials: true } : {}),
+  }, 'Invalid InPost ShipX settings');
+};
+
+const shipxSettingsLines = (view: ShipxSettingsView): string => [
+  `environment: ${view.environment}`,
+  `configured: ${String(view.configured)}`,
+  `organization id: ${view.organizationId?.maskedPreview ?? '(not set)'}`,
+  `token: ${view.token?.maskedPreview ?? '(not set)'}`,
+  `sender: ${view.sender === null ? '(not set)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
+].join('\n');
+
 const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
   ...(options.status === undefined ? {} : { status: options.status }),
   ...(options.product === undefined ? {} : { productId: options.product }),
@@ -294,7 +366,7 @@ export const registerShopKeyCommands = (
   context: () => Result<ShopCliContext, AppError>,
   createClient: ShopClientFactory = createShopManagementClient,
 ): void => {
-  const shop = program.command('shop').description(`Manage the shop catalog, orders and settings with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
+  const shop = program.command('shop').description(`Manage the shop catalog, orders, settings and integrations with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
   const run = <S extends z.ZodTypeAny, T>(
     schema: S,
     action: (client: ShopManagementClient, input: z.output<S>) => Promise<Result<T, AppError>> | Result<T, AppError>,
@@ -531,4 +603,75 @@ export const registerShopKeyCommands = (
     }, (data) => JSON.stringify(data.salesLink, null, 2)));
   keyed(salesLinks.command('delete <id>').description('Delete a sales link'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deleteSalesLink({ id }), () => 'deleted'));
+
+  const integrations = shop.command('integrations').description('Payment, storage, shipping and invoicing integrations; keep a shop:integrations:write key only in a provisioning backend');
+  const secrets = integrations.command('secrets').description('Masked integration secrets and the iFirma and KSeF credentials');
+  keyed(secrets.command('list').description('List every stored secret as a masked preview'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.listIntegrationSecrets(), (data) =>
+      [
+        ...data.secrets.map((secret) => `- ${secret.key}  ${secret.maskedPreview}  (${secret.updatedAt})`),
+        `stripe mode: ${data.stripeMode ?? '(not configured)'}`,
+        `stripe webhook URL: ${data.stripeWebhookUrl}`,
+      ].join('\n')));
+  keyed(secrets.command('set <key>').description('Store an iFirma or KSeF credential read from --value-env or stdin, never from the command line')
+    .option('--value-env <name>', 'environment variable holding the value (default: read stdin)'))
+    .action(run(z.tuple([z.string(), secretSetSchema]), async (client, [key, options]) => {
+      const value = await secretInput(options.valueEnv, `${key} value`);
+      if (!value.ok) return value;
+      const input = contractInput(shopIntegrationContracts.setSecret.input, { key, value: value.value }, 'Invalid integration secret');
+      return input.ok ? client.setIntegrationSecret(input.value) : input;
+    }, (data) => `stored ${data.secret.key}: ${data.secret.maskedPreview}`));
+  keyed(secrets.command('delete <key>').description('Delete a stored iFirma or KSeF credential'))
+    .action(run(z.tuple([z.string(), keyOnlySchema]), (client, [key]) => {
+      const input = contractInput(shopIntegrationContracts.deleteSecret.input, { key }, 'Invalid integration secret key');
+      return input.ok ? client.deleteIntegrationSecret(input.value) : input;
+    }, (data) => `deleted ${data.key}`));
+
+  const stripe = integrations.command('stripe').description('Stripe payments');
+  keyed(stripe.command('configure').description('Store a Stripe restricted key read from --restricted-key-env or stdin and register this workspace\'s webhook endpoint')
+    .requiredOption('--mode <mode>', 'live or test; must match the restricted key prefix')
+    .option('--restricted-key-env <name>', 'environment variable holding the restricted key (default: read stdin)'))
+    .action(run(z.tuple([stripeConfigureSchema]), async (client, [options]) => {
+      const restrictedKey = await secretInput(options.restrictedKeyEnv, 'Stripe restricted key');
+      if (!restrictedKey.ok) return restrictedKey;
+      return client.configureStripe({ mode: options.mode, restrictedKey: restrictedKey.value });
+    }, (data) => `configured Stripe ${data.mode} mode; webhook ${data.webhookUrl}`));
+  keyed(stripe.command('probe').description('Check the permissions of the stored Stripe restricted key')
+    .requiredOption('--mode <mode>', 'live or test'))
+    .action(run(z.tuple([keyOnlySchema.extend({ mode: stripeModeSchema })]), (client, [options]) => client.probeStripe({ mode: options.mode }), (data) =>
+      [...data.checks.map((check) => `- ${check.resource} ${check.permission}: ${check.status}`), `all ok: ${String(data.allOk)}`].join('\n')));
+
+  const storage = integrations.command('storage').description('S3-compatible file storage');
+  keyed(storage.command('configure').description('Probe and store an S3-compatible bucket; the secret access key comes from --secret-access-key-env or stdin')
+    .requiredOption('--provider <provider>', 'aws_s3, cloudflare_r2, backblaze_b2 or minio')
+    .requiredOption('--endpoint <url>')
+    .requiredOption('--region <region>')
+    .requiredOption('--bucket <bucket>')
+    .requiredOption('--access-key-id <id>')
+    .option('--secret-access-key-env <name>', 'environment variable holding the secret access key (default: read stdin)'))
+    .action(run(z.tuple([storageConfigureSchema]), async (client, [options]) => {
+      const secretAccessKey = await secretInput(options.secretAccessKeyEnv, 'secret access key');
+      if (!secretAccessKey.ok) return secretAccessKey;
+      const input = contractInput(shopIntegrationContracts.storageConfigure.input, {
+        provider: options.provider, endpoint: options.endpoint, region: options.region, bucket: options.bucket,
+        accessKeyId: options.accessKeyId, secretAccessKey: secretAccessKey.value,
+      }, 'Invalid storage configuration');
+      return input.ok ? client.configureStorage(input.value) : input;
+    }, (data) => `stored storage configuration: ${data.diagnostic.message}`));
+
+  const shipxSettings = integrations.command('shipx').description('InPost ShipX sender and credentials');
+  keyed(shipxSettings.command('show').description('Show the ShipX environment, sender and masked credentials'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.getShipxSettings(), shipxSettingsLines));
+  keyed(shipxSettings.command('configure').description('Change the ShipX environment, sender or credentials; omitted parts keep their value')
+    .option('--environment <environment>', 'production or sandbox')
+    .option('--sender-json-file <path>', 'JSON file with the sender address, or - for stdin')
+    .option('--clear-sender', 'remove the sender address')
+    .option('--organization-id <id>', 'ShipX organization id')
+    .option('--token-env <name>', 'environment variable holding the ShipX token')
+    .option('--token-stdin', 'read the ShipX token from stdin')
+    .option('--clear-credentials', 'remove the stored organization id and token'))
+    .action(run(z.tuple([shipxConfigureSchema]), async (client, [options]) => {
+      const input = await shipxConfigureInput(options);
+      return input.ok ? client.configureShipx(input.value) : input;
+    }, shipxSettingsLines));
 };

@@ -43,6 +43,7 @@ export * from './tenant-redirect.js';
 export * from './heading-id.js';
 export * from './tenant.js';
 export * from './shop-settings.js';
+export * from './shop-integrations.js';
 export * from './checkout-appearance.js';
 export * from './tenant-creation.js';
 export * from './support.js';

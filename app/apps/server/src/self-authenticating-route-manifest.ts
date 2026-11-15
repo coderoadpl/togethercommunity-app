@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -118,6 +118,14 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_ASSETS_ROUTES.createSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_ASSETS_ROUTES.updateSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_ASSETS_ROUTES.deleteSalesLink.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_INTEGRATION_ROUTES.listSecrets.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:secret:read' },
+  { path: SHOP_INTEGRATION_ROUTES.setSecret.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.deleteSecret.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.stripeConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.stripeProbe.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.storageConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.shipxSettings.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:secret:read' },
+  { path: SHOP_INTEGRATION_ROUTES.shipxConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
 ] as const;
 
 export const selfAuthenticatingRouteManifestEntry = (

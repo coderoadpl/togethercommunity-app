@@ -13,17 +13,19 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(488);
-    expect(inventory.useCases).toHaveLength(357);
+    expect(inventory.routes).toHaveLength(496);
+    expect(inventory.useCases).toHaveLength(360);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(36);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(44);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: ['owner'], after: ['owner'] });
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
+      .toMatchObject({ capability: 'tenant:secret:write', before: ['owner'], after: ['owner'] });
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),

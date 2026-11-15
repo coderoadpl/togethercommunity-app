@@ -191,6 +191,14 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/sales-links` | self-authenticating | mutating | api m2m shop sales-links |
 | `POST /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
 | `DELETE /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
+| `GET /api/m2m/shop/integrations/secrets` | self-authenticating | read | api m2m shop integrations secrets |
+| `POST /api/m2m/shop/integrations/secrets` | self-authenticating | mutating | api m2m shop integrations secrets |
+| `DELETE /api/m2m/shop/integrations/secrets/:key` | self-authenticating | mutating | api m2m shop integrations secrets key |
+| `POST /api/m2m/shop/integrations/stripe/configure` | self-authenticating | mutating | api m2m shop integrations stripe configure |
+| `POST /api/m2m/shop/integrations/stripe/probe` | self-authenticating | mutating | api m2m shop integrations stripe probe |
+| `POST /api/m2m/shop/integrations/storage/configure` | self-authenticating | mutating | api m2m shop integrations storage configure |
+| `GET /api/m2m/shop/integrations/shipx` | self-authenticating | read | api m2m shop integrations shipx |
+| `POST /api/m2m/shop/integrations/shipx/configure` | self-authenticating | mutating | api m2m shop integrations shipx configure |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

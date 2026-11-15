@@ -33,4 +33,5 @@ export * from './catalog-cleanup.js';
 export * from './shop-catalog.js';
 export * from './shop-orders.js';
 export * from './shop-settings.js';
+export * from './shop-integrations.js';
 export * from './shop-assets.js';

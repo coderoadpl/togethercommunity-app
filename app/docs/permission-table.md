@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 124. Route rows: 488. Exported `Ctx` use-case rows: 357.
+Closed capability count: 124. Route rows: 496. Exported `Ctx` use-case rows: 360.
 
 ## Human-readable diff
 
@@ -214,6 +214,14 @@ no changes
 | `POST /api/m2m/shop/sales-links` | product:write | owner | owner | yes | Shop management key |
 | `POST /api/m2m/shop/sales-links/:id` | product:write | owner | owner | yes | Shop management key |
 | `DELETE /api/m2m/shop/sales-links/:id` | product:write | owner | owner | yes | Shop management key |
+| `GET /api/m2m/shop/integrations/secrets` | tenant:secret:read | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/secrets` | tenant:secret:write | owner | owner | yes | Shop management key |
+| `DELETE /api/m2m/shop/integrations/secrets/:key` | tenant:secret:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/stripe/probe` | tenant:secret:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | Shop management key |
+| `GET /api/m2m/shop/integrations/shipx` | tenant:secret:read | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | Shop management key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -820,6 +828,9 @@ no changes
 | `shipx.ts#createInpostShipment` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
 | `shipx.ts#discardInpostShipmentAttempt` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
 | `shipx.ts#inpostShipmentLabel` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
+| `shop-integrations.ts#getShopIntegrationSecrets` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/shop-integrations.ts authorization call |
+| `shop-integrations.ts#setShopIntegrationSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/shop-integrations.ts authorization call |
+| `shop-integrations.ts#deleteShopIntegrationSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/shop-integrations.ts authorization call |
 | `shop-settings.ts#getShopSettings` | tenant:settings:read | owner, admin | owner, admin | yes | core/server/usecases/shop-settings.ts authorization call |
 | `shop-settings.ts#updateShopSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/shop-settings.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -889,12 +900,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:31` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:211` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1258` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1260` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1282` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1296` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1823` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1823` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1259` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1261` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1283` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1297` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1824` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1824` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

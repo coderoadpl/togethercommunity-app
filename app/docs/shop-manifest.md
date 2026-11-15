@@ -434,6 +434,12 @@ variables are read for this comparison only when the run publishes a token. The
 error names the rule, the publishing workspaces and the shops whose credential
 matched (or the operator secret), never a value.
 
+The comparison covers only credentials referenced by the selected manifest
+entries and the operator secret. Carrier credentials stored earlier in a
+workspace, by an earlier apply, another manifest or Studio, are not compared,
+because the tool never reads stored secret values; a public token equal to such
+a stored credential is not detected. A server-side check is a later change.
+
 | Manifest input | Environment value / accepted setting | Existing write route |
 | --- | --- | --- |
 | `stripe.restrictedKeyEnv` | Restricted Stripe key; never a webhook secret | `POST /api/integrations/stripe/configure` |

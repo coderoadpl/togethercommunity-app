@@ -66,7 +66,7 @@ const harness = (initial: readonly TenantSecret[] = []) => {
   const payment: PaymentProvider = {
     configureWebhook: async () => ok({ webhookEndpointId: 'we_live', webhookSecret: 'whsec_live' }),
     deleteWebhookEndpoint: async () => ok({ deleted: true }),
-    probeStripePermissions: async () => ok([{ resource: 'Products', permission: 'write', status: 'ok' }]),
+    probeStripePermissions: async () => ok([{ resource: 'Checkout Sessions', permission: 'write', status: 'ok' }]),
     createCheckoutSession: unused,
     expireCheckoutSession: unused,
     cancelSubscription: unused,

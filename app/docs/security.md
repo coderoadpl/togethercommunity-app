@@ -458,9 +458,10 @@ scope array.
   attributed to the issuing owner's account; the key history row is what
   tells a key's change apart from the owner's own. A request row names the
   resource from the path, else the body's `id` or `productId`, and for the
-  generic secret route the secret's name; it never copies a credential, a
-  credential identifier such as the storage access key id or the ShipX
-  organization id, or a signed storage URL.
+  generic secret routes the secret's name only when it is one of the
+  allow-listed names below; it never copies a credential, a credential
+  identifier such as the storage access key id or the ShipX organization id,
+  or a signed storage URL.
 - **Hash secrecy on failure.** A database driver error carries the query's
   bound parameters, and the key hash is one of them. Every query that takes a
   key hash (the shop and legacy lookups and the key inserts) replaces a
@@ -486,9 +487,11 @@ scope array.
   generic route never reaches the Stripe, storage, ShipX or Meta secrets.
   These routes reuse the owner session's use-cases and validation, refuse
   unknown body fields, and `shop:integrations:read` returns masked previews
-  only. A stolen key with this scope can therefore redirect the workspace's
-  live payments and storage until it expires, is revoked or the off switch is
-  set.
+  only. Each accepted call writes its key history row before the use-case
+  runs, so a configure or secret call whose row cannot be written answers
+  `503` and stores nothing. A stolen key with this scope can therefore
+  redirect the workspace's live payments and storage until it expires, is
+  revoked or the off switch is set.
 
 Whoever holds a key can change that workspace's shop within its scopes and,
 with `shop:integrations:write`, its payment configuration, until the key
@@ -614,7 +617,10 @@ and `/discard`) and require `shop:fulfilment:write`, which grants only
 cookie or an `Authorization` header, run the same use-cases with the same lease
 rules, and act as the key's issuer: each stored change records
 an `order_shipment_events` row with the issuing owner as the staff user, and
-the key history records the key id, the route and the order id.
+the key history records the key id, the route and the order id of every call
+that passed the key checks, before the use-case runs. A call refused by those
+checks writes no history row, and when the row cannot be written the call
+answers `503` with `Retry-After` without calling ShipX or changing the order.
 `GET /api/m2m/shop/orders/<orderId>/shipx` (`shop:orders:read`) is read-only
 like its session twin.
 

@@ -459,7 +459,9 @@ with `mode=live`, so test checkouts never reach the warehouse, and
    between pages while you read them.
 3. De-duplicate by order `id`: keep a record of the ids you have already handed
    to the warehouse and skip them, and treat `409 fulfilment_conflict` on
-   `ship` as "already shipped".
+   `ship` as "already shipped". A `503 unavailable` on `ship` means its key
+   history row could not be written and the order was not shipped: retry the
+   same call after `Retry-After` seconds.
 4. Ship or issue each order exactly once with the routes above; a shipped order
    leaves the `to_pack` list.
 
@@ -731,6 +733,7 @@ or use `createShopManagementClient`, which does that and returns a
 | 429 | `rate_limited` | Per-key minute or day limit reached | 12 | Wait `Retry-After` seconds |
 | 502 | `integration_auth` | A provider rejected the stored credentials | 9 | Reconfigure the provider |
 | 503 | `integration_unavailable`, `shipx_unavailable` | A provider could not be reached, or a storage probe failed | 11, 28 | Retry later with backoff |
+| 503 | `unavailable` | The key history row of an accepted `POST`, `PUT`, `PATCH` or `DELETE` could not be written; the handler did not run and nothing changed | 20 | Wait `Retry-After` seconds, then retry the same request |
 | 500 | `internal` | Unexpected server failure | 10 | Retry later with backoff; report if it persists |
 
 The CLI exit codes come from `EXIT_CODE_BY_ERROR_CODE` in
@@ -1053,6 +1056,11 @@ storage, and no network:
    for the buyer.
 8. The owner revokes the warehouse key; its next call answers
    `401 Invalid API key`.
+9. The key history holds one `request` row per keyed mutation that reached its
+   handler: two for the warehouse key's ship calls, the refused second one
+   included, each with the order id, and one for each provisioning settings
+   and configure call, with no resource id and no credential. Reads, refused
+   or not, write no row.
 
 Run it with `pnpm exec vitest run scripts/shop-machine-replay.test.ts`.
 

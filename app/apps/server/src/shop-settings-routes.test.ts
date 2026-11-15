@@ -373,7 +373,7 @@ describe('shop settings routes with a shop management key', () => {
 });
 
 describe('shop management key history of keyed settings writes', () => {
-  it('writes one row per settings and branding write with the route template and no resource', async () => {
+  it('writes one row per settings and branding write that reaches its handler, with the route template and no resource', async () => {
     const { apiKey, secret } = await createShopKeyRecord([READ, WRITE]);
     const updated = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { supportUrl: null });
     const upload = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, {
@@ -386,13 +386,13 @@ describe('shop management key history of keyed settings writes', () => {
 
     const rows = (await database.db.select().from(shopManagementKeyEvents))
       .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')
-      .map(({ method, route, resourceId, status, outcome }) => ({ method, route, resourceId, status, outcome }))
+      .map(({ method, route, resourceId }) => ({ method, route, resourceId }))
       .toSorted((left, right) => (left.route ?? '').localeCompare(right.route ?? ''));
     expect(rows).toEqual([
       SHOP_SETTINGS_ROUTES.brandingAssetComplete.path,
       SHOP_SETTINGS_ROUTES.brandingAssetUpload.path,
       SHOP_SETTINGS_ROUTES.updateSettings.path,
-    ].map((route) => ({ method: 'POST', route, resourceId: null, status: 200, outcome: 'succeeded' })));
+    ].map((route) => ({ method: 'POST', route, resourceId: null })));
     expect(JSON.stringify(rows)).not.toContain(started.upload.url);
   });
 });

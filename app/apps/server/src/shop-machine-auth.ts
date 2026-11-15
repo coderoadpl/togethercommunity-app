@@ -59,6 +59,7 @@ export interface ShopMachineRoute {
   path: string;
   scope: ShopManagementScope;
   resourceIdField?: string;
+  resourceIdSchema?: z.ZodType<string>;
   handler: (c: Context<AppVars>, request: ShopMachineRequest) => Response | Promise<Response>;
 }
 
@@ -111,13 +112,19 @@ const RESOURCE_ID_BODY_FIELDS = ['id', 'productId'] as const;
 const pathParamNames = (path: string): string[] =>
   path.split('/').filter((segment) => segment.startsWith(':')).map((segment) => segment.slice(1));
 
+const routeResourceId = (route: ShopMachineRoute, candidate: string | undefined): string | null => {
+  if (candidate === undefined || (route.resourceIdSchema !== undefined && !route.resourceIdSchema.safeParse(candidate).success)) return null;
+  return shopManagementKeyEventResourceId(candidate);
+};
+
 const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: Request): Promise<string | null> => {
   const fromPath = pathParamNames(route.path).map((name) => c.req.param(name)).find((value) => value !== undefined && value.length > 0);
-  if (fromPath !== undefined) return shopManagementKeyEventResourceId(fromPath);
+  if (fromPath !== undefined) return routeResourceId(route, fromPath);
   const parsed = requestBodySchema.safeParse(await body.json().catch(() => null));
   if (!parsed.success) return null;
   const fields = route.resourceIdField === undefined ? RESOURCE_ID_BODY_FIELDS : [route.resourceIdField];
-  return shopManagementKeyEventResourceId(
+  return routeResourceId(
+    route,
     fields.map((field) => parsed.data[field]).find((value): value is string => typeof value === 'string' && value.length > 0),
   );
 };

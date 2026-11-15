@@ -38,6 +38,7 @@ const READ = 'shop:orders:read';
 const FULFIL = 'shop:fulfilment:write';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
+let deps: ReturnType<typeof createDeps>;
 let app: ReturnType<typeof buildApp>;
 let ownerId: string;
 let ownerToken: string;
@@ -129,7 +130,7 @@ beforeAll(async () => {
     'together_shop_order_routes_test',
     process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/postgres',
   );
-  const deps = createDeps(envSchema.parse({
+  deps = createDeps(envSchema.parse({
     NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'shop-order-routes-test-secret-at-least-32-characters',
@@ -408,7 +409,7 @@ describe('shop order routes with a shop management key', () => {
 });
 
 describe('shop management key history of keyed order writes', () => {
-  it('writes one row per fulfilment call with the route template and the order id', async () => {
+  it('writes one row per fulfilment call that reaches its handler, with the route template and the order id', async () => {
     const orderId = 'acme-history-courier';
     await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: courierShipping }));
     const { apiKey, secret } = await createKeyRecord(shopKeyInput([READ, FULFIL]));
@@ -421,15 +422,44 @@ describe('shop management key history of keyed order writes', () => {
       SHOP_ORDER_ROUTES.shipxLabel.path,
     ];
     const expected = [];
+    const statuses = [];
     for (const [index, [path, body]] of writeRoutes(orderId, 'book-acme').entries()) {
       const response = await keyed(secret, 'POST', path, body === undefined ? undefined : { ...body, trackingNumber: 'HISTORY01' });
-      expected.push({ actorUserId: ownerId, method: 'POST', route: templates[index], resourceId: orderId, status: response.status });
+      statuses.push(response.status);
+      expected.push({ actorUserId: ownerId, method: 'POST', route: templates[index], resourceId: orderId });
     }
-    expect(expected[0]?.status).toBe(200);
+    expect(statuses[0]).toBe(200);
+    expect(statuses.slice(1).some((status) => status >= 400)).toBe(true);
     const rows = (await database.db.select().from(shopManagementKeyEvents))
       .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')
-      .map(({ actorUserId, method, route, resourceId, status }) => ({ actorUserId, method, route, resourceId, status }));
+      .map(({ actorUserId, method, route, resourceId }) => ({ actorUserId, method, route, resourceId }));
     const byRoute = <T extends { route: string | null | undefined }>(entries: T[]) => entries.toSorted((left, right) => (left.route ?? '').localeCompare(right.route ?? ''));
     expect(byRoute(rows)).toEqual(byRoute(expected));
+  });
+
+  it('refuses a keyed ship with a retryable 503 and leaves the order unshipped when its history row cannot be written', async () => {
+    const orderId = 'acme-history-down-courier';
+    await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: courierShipping }));
+    const { apiKey, secret } = await createKeyRecord(shopKeyInput([READ, FULFIL]));
+    const historyDown = buildApp({
+      ...deps,
+      shopManagementKeyEvents: { ...deps.shopManagementKeyEvents, record: async () => { throw new Error('history unavailable'); } },
+    });
+
+    const refused = await historyDown.request(`${baseUrl}${orderPath(SHOP_ORDER_ROUTES.shipOrder.path, orderId)}`, {
+      method: 'POST',
+      headers: { host: acmeHost, 'x-api-key': secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ carrier: 'other', trackingNumber: 'NEVERSHIPPED' }),
+    });
+
+    expect(refused.status).toBe(503);
+    expect(refused.headers.get('retry-after')).toMatch(/^[1-9]\d*$/);
+    expect(await errorOf(refused)).toMatchObject({ code: 'unavailable' });
+    const untouched = await keyed(secret, 'GET', orderPath(SHOP_ORDER_ROUTES.getOrder.path, orderId));
+    expect(envelope(shopOrderContracts.getOrder.output).parse(await untouched.json()).data.order).toMatchObject({ fulfilmentStatus: 'to_pack', shipment: null });
+    expect((await database.db.select().from(orderFulfilmentEvents)).filter((event) => event.orderId === orderId)).toEqual([]);
+    expect((await database.db.select().from(orderShipmentEvents)).filter((event) => event.orderId === orderId)).toEqual([]);
+    expect((await database.db.select().from(shopManagementKeyEvents))
+      .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')).toEqual([]);
   });
 });

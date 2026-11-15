@@ -1,5 +1,5 @@
 import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
-import { err, internal, ok, validation, type Tenant } from '#core/domain/index.js';
+import { err, internal, ok, shopIntegrationSecretKeySchema, validation, type Tenant } from '#core/domain/index.js';
 import {
   configureShipx,
   configureStorageConnection,
@@ -39,6 +39,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   {
     ...SHOP_INTEGRATION_ROUTES.setSecret,
     resourceIdField: 'key',
+    resourceIdSchema: shopIntegrationSecretKeySchema,
     handler: async (c, { ctx }) => {
       const parsed = shopIntegrationContracts.setSecret.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid integration secret', parsed.error.flatten())));
@@ -48,6 +49,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.deleteSecret,
+    resourceIdSchema: shopIntegrationSecretKeySchema,
     handler: async (c, { ctx }) => respond(await deleteShopIntegrationSecret(ctx, c.req.param('key') ?? '', deps)),
   },
   {

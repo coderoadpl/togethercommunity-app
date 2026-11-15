@@ -459,21 +459,34 @@ describe('shop management key history of keyed integration writes', () => {
     for (const [method, path, route, body, resourceId] of calls) {
       const response = await keyed(secret, method, path, body);
       expect(response.status, path).toBe(200);
-      expected.push({ apiKeyId: apiKey.id, actorUserId: ownerId, method, route, resourceId, status: 200, outcome: 'succeeded' });
+      expected.push({ apiKeyId: apiKey.id, actorUserId: ownerId, method, route, resourceId });
     }
     const rows = await requestRows(apiKey.id);
-    expect(byRoute(rows.map(({ apiKeyId, actorUserId, method, route, resourceId, status, outcome }) =>
-      ({ apiKeyId, actorUserId, method, route, resourceId, status, outcome })))).toEqual(byRoute(expected));
+    expect(byRoute(rows.map(({ apiKeyId, actorUserId, method, route, resourceId }) =>
+      ({ apiKeyId, actorUserId, method, route, resourceId })))).toEqual(byRoute(expected));
     const recorded = JSON.stringify(rows.map(({ route, resourceId }) => ({ route, resourceId })));
     for (const credential of credentials) expect(recorded).not.toContain(credential);
   });
 
-  it('writes one refused row for a write the key scope does not allow', async () => {
+  it('writes no row for a write the key scope does not allow', async () => {
     const { apiKey, secret } = await createShopKey([READ]);
     const refused = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'ifirma.username', value: 'refused-login' });
     expect(refused.status).toBe(403);
-    expect((await requestRows(apiKey.id)).map(({ route, resourceId, status, outcome }) => ({ route, resourceId, status, outcome })))
-      .toEqual([{ route: SHOP_INTEGRATION_ROUTES.setSecret.path, resourceId: 'ifirma.username', status: 403, outcome: 'refused' }]);
-    expect(JSON.stringify((await requestRows(apiKey.id)).map(({ route, resourceId }) => ({ route, resourceId })))).not.toContain('refused-login');
+    expect(await requestRows(apiKey.id)).toEqual([]);
+  });
+
+  it('keeps no resource id when the secret name is not an allow-listed name, so a credential sent as the name is never stored', async () => {
+    const { apiKey, secret } = await createShopKey([READ, WRITE]);
+    const credential = 'a3f9c2e17b4d4e0f9a6b8c5d2e1f0a9b';
+    const swapped = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key: credential, value: 'ifirma.invoiceApiKey' });
+    expect(swapped.status).toBe(400);
+    const deleted = await keyed(secret, 'DELETE', secretPath(credential));
+    expect(deleted.status).toBe(400);
+    const rows = await requestRows(apiKey.id);
+    expect(byRoute(rows.map(({ method, route, resourceId }) => ({ method, route, resourceId })))).toEqual(byRoute([
+      { method: 'POST', route: SHOP_INTEGRATION_ROUTES.setSecret.path, resourceId: null },
+      { method: 'DELETE', route: SHOP_INTEGRATION_ROUTES.deleteSecret.path, resourceId: null },
+    ]));
+    expect(JSON.stringify(rows)).not.toContain(credential);
   });
 });

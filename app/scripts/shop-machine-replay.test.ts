@@ -301,18 +301,18 @@ describe('shop management key replay on a clean workspace', () => {
     const history = await database.db.select().from(shopManagementKeyEvents);
     const requestsOf = (apiKeyId: string) => history
       .filter((event) => event.apiKeyId === apiKeyId && event.kind === 'request')
-      .map(({ route, resourceId, status }) => `${route ?? ''} ${resourceId ?? '-'} ${String(status)}`)
+      .map(({ route, resourceId }) => `${route ?? ''} ${resourceId ?? '-'}`)
       .toSorted();
     expect(requestsOf(warehouseKey.apiKey.id)).toEqual([
-      `${SHOP_ORDER_ROUTES.shipOrder.path} ${order.id} 200`,
-      `${SHOP_ORDER_ROUTES.shipOrder.path} ${order.id} 409`,
+      `${SHOP_ORDER_ROUTES.shipOrder.path} ${order.id}`,
+      `${SHOP_ORDER_ROUTES.shipOrder.path} ${order.id}`,
     ]);
     expect(requestsOf(provisioningKey.apiKey.id)).toEqual([
-      `${SHOP_INTEGRATION_ROUTES.shipxConfigure.path} - 200`,
-      `${SHOP_INTEGRATION_ROUTES.storageConfigure.path} - 200`,
-      `${SHOP_INTEGRATION_ROUTES.stripeConfigure.path} - 200`,
-      `${SHOP_INTEGRATION_ROUTES.stripeConfigure.path} - 200`,
-      `${SHOP_SETTINGS_ROUTES.updateSettings.path} - 200`,
+      `${SHOP_INTEGRATION_ROUTES.shipxConfigure.path} -`,
+      `${SHOP_INTEGRATION_ROUTES.storageConfigure.path} -`,
+      `${SHOP_INTEGRATION_ROUTES.stripeConfigure.path} -`,
+      `${SHOP_INTEGRATION_ROUTES.stripeConfigure.path} -`,
+      `${SHOP_SETTINGS_ROUTES.updateSettings.path} -`,
     ]);
     const recorded = JSON.stringify(history.map(({ route, resourceId }) => ({ route, resourceId })));
     for (const secret of ['rk_test_replay_fixture', 'rk_live_replay_fixture', 'access-key-id', 'secret-access-key', '12345', 'shipx-token-abcd']) {

@@ -298,16 +298,16 @@ describe('shop management key history of keyed asset writes', () => {
 
     const rows = (await database.db.select().from(shopManagementKeyEvents))
       .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')
-      .map(({ method, route, resourceId, status }) => ({ method, route, resourceId, status }));
+      .map(({ method, route, resourceId }) => ({ method, route, resourceId }));
     const key = (row: { method: string | null; route: string | null }) => `${row.route ?? ''} ${row.method ?? ''}`;
     const byRoute = <T extends { method: string | null; route: string | null }>(entries: T[]) => entries.toSorted((left, right) => key(left).localeCompare(key(right)));
     expect(byRoute(rows)).toEqual(byRoute([
-      { method: 'POST', route: SHOP_CATALOG_ROUTES.createProduct.path, resourceId: null, status: 200 },
-      { method: 'POST', route: SHOP_ASSETS_ROUTES.productCoverUpload.path, resourceId: null, status: 200 },
-      { method: 'POST', route: SHOP_ASSETS_ROUTES.productCoverComplete.path, resourceId: null, status: 200 },
-      { method: 'POST', route: SHOP_ASSETS_ROUTES.createSalesLink.path, resourceId: null, status: 201 },
-      { method: 'POST', route: SHOP_ASSETS_ROUTES.updateSalesLink.path, resourceId: salesLink.id, status: 200 },
-      { method: 'DELETE', route: SHOP_ASSETS_ROUTES.deleteSalesLink.path, resourceId: salesLink.id, status: 200 },
+      { method: 'POST', route: SHOP_CATALOG_ROUTES.createProduct.path, resourceId: null },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.productCoverUpload.path, resourceId: null },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.productCoverComplete.path, resourceId: null },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.createSalesLink.path, resourceId: null },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.updateSalesLink.path, resourceId: salesLink.id },
+      { method: 'DELETE', route: SHOP_ASSETS_ROUTES.deleteSalesLink.path, resourceId: salesLink.id },
     ]));
     expect(JSON.stringify(rows)).not.toContain(candidate.upload.url);
   });

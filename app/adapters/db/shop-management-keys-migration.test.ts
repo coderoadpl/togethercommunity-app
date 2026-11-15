@@ -274,6 +274,17 @@ describe('shop management key lifecycle', () => {
     )).rejects.toThrow(/shop_management_key_events_shape_check/);
   });
 
+  it('rejects a resource id longer than 200 characters at the database and in the event schema', async () => {
+    const event = requestEvent({ id: 'bad-resource', resourceId: 'r'.repeat(201) });
+    await expect(pool.query(
+      `insert into shop_management_key_events (id, tenant_id, api_key_id, kind, actor_user_id, method, route, resource_id, status, outcome, at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [event.id, event.tenantId, event.apiKeyId, event.kind, event.actorUserId, event.method, event.route, event.resourceId, event.status, event.outcome, event.at],
+    )).rejects.toThrow(/shop_management_key_events_resource_id_length_check/);
+    await expect(createShopManagementKeyEventRepository(db).record(TENANT, event)).rejects.toThrow();
+    expect(await eventIds(TENANT)).not.toContain('bad-resource');
+  });
+
   it('leaves tenant_audit_events in the shape of the previous release', async () => {
     const columns = await pool.query<{ column_name: string }>(
       `select column_name from information_schema.columns where table_name = 'tenant_audit_events' order by column_name collate "C"`,

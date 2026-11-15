@@ -353,7 +353,7 @@ describe('shop management key history of keyed requests', () => {
     productId = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data.product.id;
   });
 
-  it('writes exactly one row per keyed mutation, succeeded, refused or invalid, with the key, issuer, route, resource and outcome', async () => {
+  it('writes exactly one row per keyed mutation that reaches the handler, with the key, issuer, route, resource and outcome, and none for a refused key', async () => {
     const updated = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, description: 'Second edition' });
     expect(updated.status).toBe(200);
     const invalid = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, misspelt: true });
@@ -369,7 +369,7 @@ describe('shop management key history of keyed requests', () => {
       row(400, 'refused', productId),
     ]));
     expect(await requestRows(writer.apiKey.id)).toHaveLength(3);
-    expect(await requestRows(reader.apiKey.id)).toEqual([row(403, 'refused', productId)]);
+    expect(await requestRows(reader.apiKey.id)).toEqual([]);
   });
 
   it('writes no row for a keyed read', async () => {

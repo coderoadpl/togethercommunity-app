@@ -6,6 +6,17 @@ const shopManagementKeyEventMethodSchema = z.enum(['POST', 'PUT', 'PATCH', 'DELE
 
 const shopManagementKeyEventOutcomeSchema = z.enum(['succeeded', 'refused', 'failed']);
 
+export const SHOP_MANAGEMENT_KEY_EVENT_RESOURCE_ID_MAX_LENGTH = 200;
+
+const shopManagementKeyEventResourceIdSchema = z.string()
+  .max(SHOP_MANAGEMENT_KEY_EVENT_RESOURCE_ID_MAX_LENGTH)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
+
+export const shopManagementKeyEventResourceId = (candidate: unknown): string | null => {
+  const parsed = shopManagementKeyEventResourceIdSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+};
+
 export const shopManagementKeyEventSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
@@ -14,7 +25,7 @@ export const shopManagementKeyEventSchema = z.object({
   actorUserId: z.string().min(1).nullable(),
   method: shopManagementKeyEventMethodSchema.nullable(),
   route: z.string().min(1).nullable(),
-  resourceId: z.string().min(1).nullable(),
+  resourceId: shopManagementKeyEventResourceIdSchema.nullable(),
   status: z.number().int().min(100).max(599).nullable(),
   outcome: shopManagementKeyEventOutcomeSchema,
   at: z.string().datetime(),

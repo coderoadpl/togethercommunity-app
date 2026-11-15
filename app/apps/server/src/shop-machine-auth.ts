@@ -7,6 +7,7 @@ import {
   err,
   notFound,
   ok,
+  shopManagementKeyEventResourceId,
   tenantNotFound,
   unauthorized,
   type AppError,
@@ -104,13 +105,15 @@ const requestBodySchema = z.record(z.string(), z.unknown());
 
 const resourceIdOf = async (c: Context<AppVars>, body: Request): Promise<string | null> => {
   const fromPath = Object.values(c.req.param()).find((value) => value.length > 0);
-  if (fromPath !== undefined) return fromPath;
+  if (fromPath !== undefined) return shopManagementKeyEventResourceId(fromPath);
   const parsed = requestBodySchema.safeParse(await body.json().catch(() => null));
   if (!parsed.success) return null;
   const candidates = [parsed.data['id'], ...Object.entries(parsed.data)
     .filter(([name]) => name.endsWith('Id'))
     .map(([, value]) => value)];
-  return candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
+  return shopManagementKeyEventResourceId(
+    candidates.find((value): value is string => typeof value === 'string' && value.length > 0),
+  );
 };
 
 export const registerShopMachineRoute = (
@@ -125,23 +128,22 @@ export const registerShopMachineRoute = (
     const body = c.req.raw.clone();
     const { result, attribution } = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     c.set('apiKeyAttribution', attribution);
+    if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
+    c.set('identity', result.value.ctx.identity);
+    const { method } = route;
+    if (method === 'GET') return route.handler(c, result.value);
     const recordRequest = async (status: number): Promise<void> => {
-      if (route.method === 'GET' || attribution.match !== 'matched' || attribution.tenantId === undefined) return;
-      await recordShopManagementKeyRequest(attribution.tenantId, {
-        apiKeyId: attribution.apiKeyId,
-        actorUserId: attribution.issuerUserId,
-        method: route.method,
+      await recordShopManagementKeyRequest(result.value.tenant.id, {
+        apiKeyId: result.value.apiKey.id,
+        actorUserId: result.value.ctx.identity.userId,
+        method,
         route: route.path,
         resourceId: await resourceIdOf(c, body),
         status,
       }, deps);
     };
-    const answer = async (): Promise<Response> => {
-      if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
-      c.set('identity', result.value.ctx.identity);
-      return route.handler(c, result.value);
-    };
-    const response = await answer().catch(async (error: unknown) => {
+    const handle = async (): Promise<Response> => route.handler(c, result.value);
+    const response = await handle().catch(async (error: unknown) => {
       await recordRequest(500);
       throw error;
     });

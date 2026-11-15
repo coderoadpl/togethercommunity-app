@@ -16,6 +16,7 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import { buildApp } from './app.js';
+import { DEFAULT_API_BODY_LIMIT } from './body-limits.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
 import { telemetryMiddleware } from './telemetry.js';
@@ -345,6 +346,14 @@ describe('shop management keys on existing routes of the real app', () => {
     expect(keys.some((key) => key.name === 'Minted by a key')).toBe(false);
   });
 
+  it('writes no request row for a keyed mutation refused by the body size limit', async () => {
+    const before = (await database.db.select().from(shopManagementKeyEvents)).length;
+    const response = await keyed(SHOP_CATALOG_ROUTES.updateProduct.path, 'POST', { id: 'product-1', description: 'x'.repeat(DEFAULT_API_BODY_LIMIT) });
+    expect(response.status).toBe(400);
+    expect(await errorOf(response)).toMatchObject({ code: 'validation' });
+    expect(await database.db.select().from(shopManagementKeyEvents)).toHaveLength(before);
+  });
+
   it.each([
     ['POST', API_PATHS.m2mEnroll, { email: 'buyer@example.test', productId: 'product' }],
     ['GET', API_PATHS.activitySummary, undefined],
@@ -372,10 +381,14 @@ describe('shop management key secrecy in telemetry', () => {
     registerShopMachineRoute(app, deps, {
       method: 'POST', path: THROWING_PATH, scope: 'shop:catalog:read', handler: () => { throw new Error('handler failed'); },
     });
+    registerShopMachineRoute(app, deps, {
+      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
+    });
   });
   beforeAll(async () => {
     await insertKey({ id: 'shop-span-rate', secret: 'shop-span-rate-secret', scopes: ['shop:catalog:read'] });
     await insertKey({ id: 'shop-span-expired', secret: 'shop-span-expired-secret', scopes: ['shop:catalog:read'], expiresAt: '2026-11-02T00:00:00.000Z' });
+    await insertKey({ id: 'shop-row-rate', secret: 'shop-row-rate-secret', scopes: ['shop:catalog:read'] });
   });
   afterAll(async () => { await provider.shutdown(); });
   beforeEach(() => { exporter.reset(); });
@@ -411,12 +424,12 @@ describe('shop management key secrecy in telemetry', () => {
     expect(JSON.stringify(spans[0]?.attributes)).not.toContain('shop-read-secret');
   });
 
-  const spanOf = async (headers: Record<string, string>, path = PROBE_PATH, method = 'GET') => {
+  const spanOf = async (headers: Record<string, string>, path = PROBE_PATH, method = 'GET', body: unknown = {}) => {
     exporter.reset();
     const response = await app.request(`${baseUrl}${path}`, {
       method,
       headers: { host: acmeHost, ...headers },
-      ...(method === 'GET' ? {} : { body: '{}' }),
+      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
     });
     await provider.forceFlush();
     const spans = exporter.getFinishedSpans();
@@ -492,6 +505,57 @@ describe('shop management key secrecy in telemetry', () => {
     await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
     expect((await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH))
       .toHaveLength(before + 1);
+  });
+
+  const probeRows = async () => (await database.db.select().from(shopManagementKeyEvents))
+    .filter((event) => event.route === PROBE_PATH);
+
+  it.each([
+    ['a revoked key', { 'x-api-key': 'shop-revoked-secret' }, 401, keyAttributes('shop-revoked')],
+    ['an expired key', { 'x-api-key': 'shop-span-expired-secret' }, 401, keyAttributes('shop-span-expired')],
+    ['a legacy key', { 'x-api-key': 'legacy-null-secret' }, 401, keyAttributes('legacy-null', 'legacy', null)],
+    ['mixed credentials', { 'x-api-key': 'shop-read-secret', cookie: 'session=x' }, 401, keyAttributes('shop-read')],
+    ['a missing scope', { 'x-api-key': 'shop-orders-secret' }, 403, keyAttributes('shop-orders')],
+  ])('writes no request row for a keyed mutation refused for %s and still attributes its span', async (_label, headers, expectedStatus, expected) => {
+    const before = await probeRows();
+    const { status, attributes } = await spanOf(headers, PROBE_PATH, 'POST', { id: 'product-1' });
+    expect(status).toBe(expectedStatus);
+    expect(attributes).toMatchObject(expected);
+    expect(await probeRows()).toEqual(before);
+  });
+
+  it('writes no request row for a keyed mutation refused by the rate limit and still attributes its span', async () => {
+    for (let request = 0; request < 60; request += 1) {
+      await app.request(`${baseUrl}${PROBE_PATH}`, { method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-row-rate-secret' }, body: '{}' });
+    }
+    const before = await probeRows();
+    const { status, attributes } = await spanOf({ 'x-api-key': 'shop-row-rate-secret' }, PROBE_PATH, 'POST', { id: 'product-1' });
+    expect(status).toBe(429);
+    expect(attributes).toMatchObject(keyAttributes('shop-row-rate'));
+    expect(await probeRows()).toEqual(before);
+  });
+
+  it('writes exactly one request row with the key, issuer, route and resource id for an accepted keyed mutation', async () => {
+    const before = await probeRows();
+    const longestId = `p${'x'.repeat(199)}`;
+    const { status } = await spanOf({ 'x-api-key': 'shop-read-secret' }, PROBE_PATH, 'POST', { id: longestId });
+    expect(status).toBe(200);
+    const added = (await probeRows()).filter((row) => !before.some((earlier) => earlier.id === row.id));
+    expect(added).toEqual([expect.objectContaining({
+      apiKeyId: 'shop-read', kind: 'request', actorUserId: issuers.owner, method: 'POST', route: PROBE_PATH, resourceId: longestId,
+    })]);
+  });
+
+  it.each([
+    ['an over-long id', { id: `p${'x'.repeat(200)}` }],
+    ['an id that is not an identifier', { id: 'product 1; drop table' }],
+    ['an id starting with a separator', { productId: '-product-1' }],
+  ])('stores %s as no resource id', async (_label, body) => {
+    const before = await probeRows();
+    const { status } = await spanOf({ 'x-api-key': 'shop-read-secret' }, PROBE_PATH, 'POST', body);
+    expect(status).toBe(200);
+    const added = (await probeRows()).filter((row) => !before.some((earlier) => earlier.id === row.id));
+    expect(added).toEqual([expect.objectContaining({ apiKeyId: 'shop-read', resourceId: null })]);
   });
 
   it('never records the key hash or a prefix of the secret', async () => {

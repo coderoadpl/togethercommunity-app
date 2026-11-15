@@ -127,22 +127,32 @@ kind of event, the acting account and the time:
 | `created` | with the key, in the same transaction | the owner who created it |
 | `revoked` | with the revocation, in the same transaction | the owner who revoked it |
 | `purged` | one row per deleted key, in the purge transaction | the owner who purged |
-| `request` | after every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route whose secret matched a key row of the workspace, accepted or refused | the key's issuer (none for a legacy key presented to a shop route) |
+| `request` | after every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route that passed the key, issuer, rate-limit and scope checks and reached the route's handler | the key's issuer |
 
 A `request` row also records the method, the route template (for example
 `/api/m2m/shop/products/update`), the id of the resource the request names
 (a path parameter, else the body's `id`, else the first body field ending in
 `Id`; none when the request names no existing resource, such as a product
 creation), the HTTP status and an outcome: `succeeded` (2xx), `refused` (4xx,
-including `401`, `403`, `429` and validation errors) or `failed` (5xx or a
-handler error). The shared shop route helper writes it after the handler or the
-refusal, so every shop route inherits it. Reads (`GET`) write no row; they are
-attributed in request telemetry only. A request whose secret matches no key
-writes no row.
+such as a validation error from the handler) or `failed` (5xx or a handler
+error). The resource id is kept only when it looks like an identifier: at most
+200 characters, starting with a letter or digit and continuing with letters,
+digits, `.`, `_`, `:` or `-`. Anything else is stored as no resource id, and
+the database refuses a resource id longer than 200 characters. The shared shop
+route helper writes the row after the handler, so every shop route inherits it.
+
+A refused request writes no row: a missing, unknown, revoked, expired, legacy
+or other-workspace key, an issuer who no longer qualifies, mixed credentials, a
+missing scope (`403`), a rate-limit refusal (`429`) and a request refused before
+the shop route runs (such as the body size limit) are recorded in request
+telemetry only (above). Reads (`GET`) write no row either; they are attributed
+in request telemetry only.
 
 A history row stores the key id as plain text and is never deleted with its
 key, so the history of a revoked or purged key stays readable. It goes away only
-with the workspace itself.
+with the workspace itself; there is no retention purge of key history. The rate
+limits bound its growth: a key makes at most 10,000 requests a day, so it adds
+at most 10,000 `request` rows a day.
 
 The owner reads the history with the same verified owner session as creation
 (an admin, an unverified owner, an owner viewing as a member and any API key

@@ -15,7 +15,7 @@ CREATE TABLE "shop_management_key_events" (
   "actor_user_id" text,
   "method" text CONSTRAINT "shop_management_key_events_method_check" CHECK ("method" IN ('POST', 'PUT', 'PATCH', 'DELETE')),
   "route" text,
-  "resource_id" text,
+  "resource_id" text CONSTRAINT "shop_management_key_events_resource_id_length_check" CHECK (char_length("resource_id") <= 200),
   "status" integer CONSTRAINT "shop_management_key_events_status_check" CHECK ("status" BETWEEN 100 AND 599),
   "outcome" text NOT NULL CONSTRAINT "shop_management_key_events_outcome_check" CHECK ("outcome" IN ('succeeded', 'refused', 'failed')),
   "at" text NOT NULL,

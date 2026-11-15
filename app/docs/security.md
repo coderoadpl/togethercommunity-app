@@ -439,9 +439,13 @@ scope array.
   of the workspace, revoked or not, with its rate-limit buckets, in one
   transaction.
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
-  `PATCH` or `DELETE` to a shop route, accepted or refused, write a row to the
-  dedicated `shop_management_key_events` table with the key id, never the
-  secret or its hash; the workspace audit list is unchanged. Every shop
+  `PATCH` or `DELETE` to a shop route that passed every check and reached its
+  handler write a row to the dedicated `shop_management_key_events` table with
+  the key id, never the secret or its hash; the workspace audit list is
+  unchanged. A refused request writes no row and is recorded in its request
+  span only, so refusals cannot grow the table, and the rate limits bound the
+  rows of one key to 10,000 a day. A row keeps a resource id only when it is an
+  identifier of at most 200 characters (also a database check). Every shop
   request span records `app.api_key.match` and, when the secret matched a key
   row, `app.api_key.id`, `app.api_key.kind` and `app.api_key.issuer.id`.
   Changes the reused use-cases record elsewhere (product versions, stock) are

@@ -1,6 +1,6 @@
 {
-  "hash": "3fc6772fdbcd61eed031105fa0add4e3363e3fa20b8efadd1609d35c2fd0710d",
-  "shortId": "3fc6772fdbcd",
+  "hash": "c126420398855a56a06fed7420e5e070e9c82052c63d8562eb723ed9167ec939",
+  "shortId": "c12642039885",
   "schema": {
     "constraints": [
       {
@@ -97,6 +97,11 @@
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
         "name": "posts_body_format_check",
         "table": "posts"
+      },
+      {
+        "definition": "CHECK ((char_length(resource_id) <= 200))",
+        "name": "shop_management_key_events_resource_id_length_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",

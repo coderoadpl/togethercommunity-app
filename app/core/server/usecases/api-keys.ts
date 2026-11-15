@@ -13,6 +13,7 @@ import {
   type CreateApiKeyInput,
   type ImportAuditEvent,
   type Result,
+  type ShopManagementKeysSwitch,
   type TenantApiKey,
   type TenantApiKeyPublic,
   type TenantAuditEventInput,
@@ -34,6 +35,7 @@ export interface ApiKeyDeps {
   apiKeyCrypto: ApiKeyCrypto;
   ids: IdGenerator;
   clock: Clock;
+  shopManagementKeys: ShopManagementKeysSwitch;
 }
 
 export interface CreatedApiKey {
@@ -82,6 +84,9 @@ export const createTenantApiKey = async (
   if (!parsed.success) return err(validation('Invalid API key', parsed.error.flatten()));
   const kind = parsed.data.kind ?? 'legacy';
   if (kind === 'shop_management') {
+    if (deps.shopManagementKeys === 'disabled') {
+      return err(forbidden('Shop management keys are disabled on this deployment (SHOP_MANAGEMENT_KEYS=disabled)'));
+    }
     const denial = shopManagementKeyDenial(ctx);
     if (denial !== null) return err(denial);
   }

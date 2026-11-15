@@ -952,6 +952,7 @@ const deps = (input: {
       databaseFingerprint: 'b1bfbb98b4f7',
     },
     tenantCreationMode: 'open',
+    shopManagementKeys: 'enabled',
     ids: { nextId: () => `id-${String(++nextId)}` },
     consentTokens: { nextToken: () => `confirmation-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },

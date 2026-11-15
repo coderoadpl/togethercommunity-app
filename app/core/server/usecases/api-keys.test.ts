@@ -7,6 +7,7 @@ import {
   type Identity,
   type ImpersonationPrincipal,
   type ImportAuditEvent,
+  type ShopManagementKeysSwitch,
   type StaffRole,
   type TenantApiKey,
   type TenantAuditEventInput,
@@ -46,7 +47,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   return { identity };
 };
 
-const harness = (rows: TenantApiKey[] = []): {
+const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKeysSwitch = 'enabled'): {
   deps: ApiKeyDeps;
   rows: TenantApiKey[];
   audits: TenantAuditEventInput[];
@@ -84,7 +85,13 @@ const harness = (rows: TenantApiKey[] = []): {
   return {
     rows: store,
     audits,
-    deps: { tenantApiKeys, apiKeyCrypto, ids: { nextId: () => `key-${(seq += 1)}` }, clock: { nowIso: () => NOW } },
+    deps: {
+      tenantApiKeys,
+      apiKeyCrypto,
+      ids: { nextId: () => `key-${(seq += 1)}` },
+      clock: { nowIso: () => NOW },
+      shopManagementKeys,
+    },
   };
 };
 
@@ -455,5 +462,27 @@ describe('shop management keys', () => {
     const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'legacy-key' }, h.deps)).toMatchObject({ ok: true });
     expect(h.audits).toEqual([]);
+  });
+
+  describe('while SHOP_MANAGEMENT_KEYS is disabled', () => {
+    it('refuses shop management key creation and names the switch state', async () => {
+      const h = harness([], 'disabled');
+      const result = await createTenantApiKey(ctx('owner'), shopInput, h.deps);
+      expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      expect(result.ok ? '' : result.error.message).toContain('SHOP_MANAGEMENT_KEYS=disabled');
+      expect(h.rows).toHaveLength(0);
+      expect(h.audits).toHaveLength(0);
+    });
+
+    it('keeps legacy key creation, key listing and shop key revocation working', async () => {
+      const h = harness([shopRow()], 'disabled');
+      expect(await createTenantApiKey(ctx('owner'), { name: 'CI key' }, h.deps))
+        .toMatchObject({ ok: true, value: { apiKey: { kind: 'legacy' } } });
+      expect(await listTenantApiKeys(ctx('owner'), h.deps))
+        .toMatchObject({ ok: true, value: [{ id: 'shop-key', kind: 'shop_management' }, { kind: 'legacy' }] });
+      expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
+        .toMatchObject({ ok: true, value: { id: 'shop-key', revokedAt: NOW } });
+      expect(h.audits).toEqual([expect.objectContaining({ kind: 'api_key.shop_management_revoked' })]);
+    });
   });
 });

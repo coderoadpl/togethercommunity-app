@@ -369,6 +369,7 @@ import {
   type ResettableEnvironment,
   type SmokeTenantPasswords,
   type Result,
+  type ShopManagementKeysSwitch,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
@@ -591,6 +592,7 @@ export interface AppDeps {
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
   tenantCreationMode: TenantCreationMode;
+  shopManagementKeys: ShopManagementKeysSwitch;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
   clock: Clock;
@@ -1632,6 +1634,7 @@ export const createDeps = (
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
     deploymentIdentity: selectDeploymentIdentity(env),
     tenantCreationMode,
+    shopManagementKeys: env.SHOP_MANAGEMENT_KEYS,
     ids,
     clock,
     logger,

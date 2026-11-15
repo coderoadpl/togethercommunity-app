@@ -1,6 +1,6 @@
 {
-  "hash": "b77150feacc979ffd9bdbb535c2ee9547d791cdd86a44464d72b747f6b1dbf48",
-  "shortId": "b77150feacc9",
+  "hash": "c886af5c9c63ae90ef4374d7ed19baad97ce9ac148370a75f9cfe12f2b99e7e7",
+  "shortId": "c886af5c9c63",
   "schema": {
     "constraints": [
       {
@@ -27,6 +27,11 @@
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
         "name": "marketing_contacts_tags_check",
         "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK (((kind <> 'shop_management'::text) OR ((issued_by_user_id IS NOT NULL) AND (expires_at IS NOT NULL))))",
+        "name": "tenant_api_keys_shop_management_issuer_expiry_check",
+        "table": "tenant_api_keys"
       },
       {
         "definition": "CHECK (((language IS NULL) OR (language = ANY (ARRAY['pl'::text, 'en'::text]))))",
@@ -112,6 +117,11 @@
         "definition": "CHECK ((invoice_vat_mode = ANY (ARRAY['rate'::text, 'exempt'::text])))",
         "name": "tenants_invoice_vat_mode_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['legacy'::text, 'shop_management'::text])))",
+        "name": "tenant_api_keys_kind_check",
+        "table": "tenant_api_keys"
       },
       {
         "definition": "CHECK ((length(comment) <= 2000))",
@@ -5622,6 +5632,91 @@
       {
         "columns": [
           {
+            "default": "'legacy'::text",
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "issued_by_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revoked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scopes",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_api_keys"
+      },
+      {
+        "columns": [
+          {
             "default": "'live'::text",
             "generated": "",
             "identity": "",
@@ -9719,6 +9814,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "actor_api_key_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "actor_email",
             "notNull": true,
             "type": "text"
@@ -13558,75 +13661,6 @@
           }
         ],
         "name": "invoices"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "key_hash",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "revoked_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "scopes",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "tenant_api_keys"
       },
       {
         "columns": [

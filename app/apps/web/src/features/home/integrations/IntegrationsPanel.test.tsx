@@ -81,7 +81,9 @@ const renderPanel = (
         id: `import-key-${apiKeys.length + 1}`,
         tenantId: 'tenant-123',
         name: parsed.name,
+        kind: parsed.kind ?? 'legacy',
         scopes: parsed.scopes ?? null,
+        issuedByUserId: null,
         createdAt: '1998-08-14T10:00:00.000Z',
         expiresAt: parsed.expiresAt ?? null,
         revokedAt: null,
@@ -468,9 +470,11 @@ describe('IntegrationsPanel', () => {
   });
 
   it('lists active, expired, and revoked import keys and revokes an active key', async () => {
-    const base: Pick<TenantApiKeyPublic, 'tenantId' | 'scopes' | 'createdAt'> = {
+    const base: Pick<TenantApiKeyPublic, 'tenantId' | 'kind' | 'scopes' | 'issuedByUserId' | 'createdAt'> = {
       tenantId: 'tenant-123',
+      kind: 'legacy',
       scopes: ['import:content'],
+      issuedByUserId: null,
       createdAt: '1998-08-01T10:00:00.000Z',
     };
     renderPanel([], defaultSettings, null, 'success', [
@@ -519,7 +523,7 @@ describe('IntegrationsPanel', () => {
 
   it('opens the import audit from an import key', async () => {
     renderPanel([], defaultSettings, null, 'success', [{
-      id: 'audited-key', tenantId: 'tenant-123', name: 'Audited migration',
+      id: 'audited-key', tenantId: 'tenant-123', name: 'Audited migration', kind: 'legacy', issuedByUserId: null,
       scopes: ['import:users'], createdAt: '1998-08-01T10:00:00.000Z',
       expiresAt: null, revokedAt: null,
     }]);

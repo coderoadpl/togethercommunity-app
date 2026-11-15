@@ -64,7 +64,7 @@ describe('organization workspace link and unlink', () => {
     }]);
     expect(h.tenantAuditRows).toEqual([{
       id: 'id-2', tenantId: 'acme', kind: 'organization.linked', actorUserId: 'owner-1', actorEmail: 'owner-1@example.test',
-      subjectMemberId: null, reason: 'org-1', at,
+      subjectMemberId: null, actorApiKeyId: null, reason: 'org-1', at,
     }]);
     expect(await listOrganizationWorkspaces(await h.octx('org-admin'), { organizationId: 'org-1' }, h.deps)).toEqual({
       ok: true, value: { workspaces: [{ id: 'acme', slug: 'acme', name: 'Workspace acme', status: 'active' }] },

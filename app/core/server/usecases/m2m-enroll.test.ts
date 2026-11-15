@@ -442,6 +442,8 @@ const apiKeyRow = (overrides: Partial<TenantApiKey>): TenantApiKey => ({
   tenantId: 't1',
   name: 'CI key',
   keyHash: 'hash:secret',
+  kind: 'legacy',
+  issuedByUserId: null,
   scopes: null,
   createdAt: NOW,
   expiresAt: null,
@@ -460,6 +462,9 @@ const apiKeyDeps = (rows: TenantApiKey[]): {
     findActiveByHash: async (tenantId, keyHash) =>
       rows.find((r) => r.tenantId === tenantId && r.keyHash === keyHash && r.revokedAt === null) ?? null,
     revoke: async () => null,
+    createShopManagement: async () => undefined,
+    revokeShopManagement: async () => null,
+    purgeShopManagement: async () => 0,
   },
   apiKeyCrypto: {
     generateSecret: () => 'secret',
@@ -501,5 +506,15 @@ describe('authenticateApiKey', () => {
   it('rejects a key that belongs to another tenant', async () => {
     const result = await authenticateApiKey('t2', 'secret', apiKeyDeps([apiKeyRow({})]));
     expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+
+  it('rejects a shop management key exactly like an unknown key', async () => {
+    const result = await authenticateApiKey('t1', 'secret', apiKeyDeps([apiKeyRow({
+      kind: 'shop_management',
+      scopes: ['shop:catalog:read'],
+      issuedByUserId: 'owner-1',
+      expiresAt: '2999-01-01T00:00:00.000Z',
+    })]));
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'unauthorized', message: 'Invalid API key' }) });
   });
 });

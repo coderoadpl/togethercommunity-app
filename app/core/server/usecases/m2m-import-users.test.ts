@@ -35,6 +35,8 @@ const apiKey: TenantApiKey = {
   tenantId: TENANT_ID,
   name: 'Migration',
   keyHash: 'hash',
+  kind: 'legacy',
+  issuedByUserId: null,
   scopes: ['import:users'],
   createdAt: NOW,
   expiresAt: '1998-08-20T10:00:00.000Z',

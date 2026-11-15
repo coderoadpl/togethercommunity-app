@@ -1091,6 +1091,13 @@
       "idx": 155,
       "version": "7",
       "when": 1790964000071,
+      "tag": "0155_shop_management_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1790964000072,
       "tag": "0156_organizations_core",
       "breakpoints": true
     }

@@ -873,6 +873,14 @@ export interface TenantApiKeyRepository {
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
+  createShopManagement(tenantId: string, apiKey: TenantApiKey, audit: TenantAuditEventInput): Promise<void>;
+  revokeShopManagement(
+    tenantId: string,
+    id: string,
+    revokedAt: string,
+    audit: TenantAuditEventInput,
+  ): Promise<TenantApiKey | null>;
+  purgeShopManagement(tenantId: string, audit: (purged: number) => TenantAuditEventInput): Promise<number>;
 }
 
 export interface ImportAuditEventRepository {
@@ -2428,6 +2436,17 @@ export interface TenantAccessReader {
   ): Promise<Array<{ userId: string; email: string; staffRole: StaffRole; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
+}
+
+export interface AccountIdentity {
+  userId: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+export interface AccountIdentityReader {
+  findById(userId: string): Promise<AccountIdentity | null>;
 }
 
 export interface AccountSecurityReader {

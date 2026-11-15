@@ -1,4 +1,5 @@
 export * from './context.js';
+export * from './tenant-audit.js';
 export * from './authorize.js';
 export * from './ports.js';
 export * from './meta-capi-ports.js';
@@ -22,6 +23,7 @@ export * from './usecases/grant-window.js';
 export * from './usecases/grants.js';
 export * from './usecases/api-keys.js';
 export * from './usecases/m2m-enroll.js';
+export * from './usecases/shop-machine-auth.js';
 export * from './usecases/m2m-transactional-email.js';
 export * from './usecases/m2m-import.js';
 export * from './usecases/m2m-import-users.js';

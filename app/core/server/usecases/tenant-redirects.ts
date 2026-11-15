@@ -22,6 +22,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
+import { tenantAuditActor } from '../tenant-audit.js';
 import type {
   Clock,
   CourseLessonRepository,
@@ -150,8 +151,7 @@ export const createTenantRedirect = async (
     id: deps.ids.nextId(),
     tenantId: tenantId.value,
     kind: 'redirect_created',
-    actorUserId: ctx.identity.userId,
-    actorEmail: ctx.identity.email,
+    ...tenantAuditActor(ctx),
     subjectMemberId: null,
     reason: `${redirect.fromPath} to ${redirect.targetPath}`,
     at: deps.clock.nowIso(),
@@ -201,8 +201,7 @@ export const updateTenantRedirect = async (
     id: deps.ids.nextId(),
     tenantId: tenantId.value,
     kind: 'redirect_updated',
-    actorUserId: ctx.identity.userId,
-    actorEmail: ctx.identity.email,
+    ...tenantAuditActor(ctx),
     subjectMemberId: null,
     reason: `${targetWithAnchor(existing)} to ${targetWithAnchor(updated)}`,
     at: deps.clock.nowIso(),
@@ -232,8 +231,7 @@ export const deleteTenantRedirect = async (
     id: deps.ids.nextId(),
     tenantId: tenantId.value,
     kind: 'redirect_deleted',
-    actorUserId: ctx.identity.userId,
-    actorEmail: ctx.identity.email,
+    ...tenantAuditActor(ctx),
     subjectMemberId: null,
     reason: `${redirect.fromPath} to ${redirect.targetPath}`,
     at: deps.clock.nowIso(),

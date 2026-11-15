@@ -3,10 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   capabilitiesForApiKey,
   capabilitiesForPrincipal,
+  type CreateApiKeyInput,
   type Identity,
+  type ImpersonationPrincipal,
   type ImportAuditEvent,
+  type ShopManagementKeysSwitch,
   type StaffRole,
   type TenantApiKey,
+  type TenantAuditEventInput,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -15,6 +19,7 @@ import {
   createTenantApiKey,
   listImportAuditForApiKey,
   listTenantApiKeys,
+  purgeShopManagementKeys,
   revokeTenantApiKey,
   type ApiKeyDeps,
 } from './api-keys.js';
@@ -43,20 +48,41 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   return { identity };
 };
 
-const harness = (rows: TenantApiKey[] = []): { deps: ApiKeyDeps; rows: TenantApiKey[] } => {
+const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKeysSwitch = 'enabled'): {
+  deps: ApiKeyDeps;
+  rows: TenantApiKey[];
+  audits: TenantAuditEventInput[];
+} => {
   const store = [...rows];
+  const audits: TenantAuditEventInput[] = [];
   let seq = 0;
+  const revokeKind = (tenantId: string, id: string, revokedAt: string, kind: TenantApiKey['kind']) => {
+    const row = store.find((r) => r.tenantId === tenantId && r.id === id && r.kind === kind && r.revokedAt === null);
+    if (!row) return null;
+    row.revokedAt = revokedAt;
+    return row;
+  };
   const tenantApiKeys: TenantApiKeyRepository = {
     listByTenant: async (tenantId) => store.filter((r) => r.tenantId === tenantId),
     create: async (_t, apiKey) => {
       store.push(apiKey);
     },
     findActiveByHash: async () => null,
-    revoke: async (tenantId, id, revokedAt) => {
-      const row = store.find((r) => r.tenantId === tenantId && r.id === id && r.revokedAt === null);
-      if (!row) return null;
-      row.revokedAt = revokedAt;
+    revoke: async (tenantId, id, revokedAt) => revokeKind(tenantId, id, revokedAt, 'legacy'),
+    createShopManagement: async (_t, apiKey, audit) => {
+      store.push(apiKey);
+      audits.push(audit);
+    },
+    revokeShopManagement: async (tenantId, id, revokedAt, audit) => {
+      const row = revokeKind(tenantId, id, revokedAt, 'shop_management');
+      if (row) audits.push(audit);
       return row;
+    },
+    purgeShopManagement: async (tenantId, audit) => {
+      const purged = store.filter((r) => r.tenantId === tenantId && r.kind === 'shop_management');
+      for (const row of purged) store.splice(store.indexOf(row), 1);
+      if (purged.length > 0) audits.push(audit(purged.length));
+      return purged.length;
     },
   };
   const apiKeyCrypto: ApiKeyCrypto = {
@@ -65,7 +91,14 @@ const harness = (rows: TenantApiKey[] = []): { deps: ApiKeyDeps; rows: TenantApi
   };
   return {
     rows: store,
-    deps: { tenantApiKeys, apiKeyCrypto, ids: { nextId: () => `key-${(seq += 1)}` }, clock: { nowIso: () => NOW } },
+    audits,
+    deps: {
+      tenantApiKeys,
+      apiKeyCrypto,
+      ids: { nextId: () => `key-${(seq += 1)}` },
+      clock: { nowIso: () => NOW },
+      shopManagementKeys,
+    },
   };
 };
 
@@ -217,7 +250,7 @@ describe('API key scope capabilities', () => {
 describe('listTenantApiKeys', () => {
   it('lists keys without hashes for staff', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: null, createdAt: NOW, expiresAt: null, revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', kind: 'legacy', issuedByUserId: null, scopes: null, createdAt: NOW, expiresAt: null, revokedAt: null },
     ]);
     const result = await listTenantApiKeys(ctx('admin'), h.deps);
     expect(result.ok).toBe(true);
@@ -236,7 +269,7 @@ describe('listTenantApiKeys', () => {
 describe('revokeTenantApiKey', () => {
   it('lets the owner revoke a key', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: null, createdAt: NOW, expiresAt: null, revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', kind: 'legacy', issuedByUserId: null, scopes: null, createdAt: NOW, expiresAt: null, revokedAt: null },
     ]);
     const result = await revokeTenantApiKey(ctx('owner'), { id: 'key-a' }, h.deps);
     expect(result).toMatchObject({ ok: true, value: { id: 'key-a', revokedAt: NOW } });
@@ -251,7 +284,7 @@ describe('revokeTenantApiKey', () => {
 
   it('forbids an admin from revoking', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: null, createdAt: NOW, expiresAt: null, revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', kind: 'legacy', issuedByUserId: null, scopes: null, createdAt: NOW, expiresAt: null, revokedAt: null },
     ]);
     const result = await revokeTenantApiKey(ctx('admin'), { id: 'key-a' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -267,7 +300,7 @@ describe('listImportAuditForApiKey', () => {
 
   it('lists the selected tenant key audit for the owner', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', kind: 'legacy', issuedByUserId: null, scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
     ]);
     const result = await listImportAuditForApiKey(ctx('owner'), {
       id: 'key-a', limit: 50,
@@ -286,7 +319,7 @@ describe('listImportAuditForApiKey', () => {
 
   it('forbids an admin from reading import audit', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', kind: 'legacy', issuedByUserId: null, scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
     ]);
     const result = await listImportAuditForApiKey(ctx('admin'), {
       id: 'key-a', limit: 50,
@@ -302,7 +335,7 @@ describe('listImportAuditForApiKey', () => {
 
   it('does not expose audit for a key outside the tenant', async () => {
     const h = harness([
-      { id: 'key-foreign', tenantId: 't2', name: 'Foreign', keyHash: 'hash:f', scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
+      { id: 'key-foreign', tenantId: 't2', name: 'Foreign', keyHash: 'hash:f', kind: 'legacy', issuedByUserId: null, scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
     ]);
     const result = await listImportAuditForApiKey(ctx('owner'), {
       id: 'key-foreign', limit: 50,
@@ -314,5 +347,196 @@ describe('listImportAuditForApiKey', () => {
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
+describe('shop management keys', () => {
+  const SEVEN_DAYS = '2026-06-08T00:00:00.000Z';
+  const shopInput: CreateApiKeyInput = {
+    name: 'Shop backend',
+    kind: 'shop_management',
+    scopes: ['shop:catalog:read', 'shop:catalog:write'],
+    expiresAt: SEVEN_DAYS,
+  };
+  const shopRow = (overrides: Partial<TenantApiKey> = {}): TenantApiKey => ({
+    id: 'shop-key', tenantId: 't1', name: 'Shop backend', keyHash: 'hash:shop', kind: 'shop_management',
+    scopes: ['shop:orders:read'], issuedByUserId: 'u1', createdAt: NOW, expiresAt: SEVEN_DAYS, revokedAt: null,
+    ...overrides,
+  });
+  const impersonation: ImpersonationPrincipal = {
+    id: 'imp-1', actorUserId: 'u1', actorEmail: 'owner@together.dev', actorName: 'Owner', actorStaffRole: 'owner',
+    subjectMemberId: 'm1', subjectName: 'Member', expiresAt: SEVEN_DAYS,
+  };
+  const denyingContexts: [string, Ctx][] = [
+    ['an admin', ctx('admin')],
+    ['an owner with an unverified email', { identity: { ...ctx('owner').identity, emailVerified: false } }],
+    ['an impersonating owner', { ...ctx('owner'), impersonation }],
+    ['a capability override context', { ...ctx('owner'), capabilities: ['api-key:write', 'api-key:read'] }],
+  ];
+
+  it('records the issuing owner and returns the secret only in the create result', async () => {
+    const h = harness();
+    const result = await createTenantApiKey(ctx('owner'), shopInput, h.deps);
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        secret: 'super-secret-value',
+        apiKey: {
+          id: 'key-1', tenantId: 't1', name: 'Shop backend', kind: 'shop_management',
+          scopes: ['shop:catalog:read', 'shop:catalog:write'], issuedByUserId: 'u1',
+          createdAt: NOW, expiresAt: SEVEN_DAYS, revokedAt: null,
+        },
+      },
+    });
+    expect(h.rows).toEqual([expect.objectContaining({ kind: 'shop_management', issuedByUserId: 'u1', keyHash: 'hash:super-secret-value' })]);
+    expect(h.audits).toEqual([{
+      id: 'key-2', tenantId: 't1', kind: 'api_key.shop_management_created', actorUserId: 'u1',
+      actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null, reason: 'Shop backend (key-1)', at: NOW,
+    }]);
+    expect(JSON.stringify(h.audits)).not.toContain('super-secret-value');
+
+    const listed = await listTenantApiKeys(ctx('admin'), h.deps);
+    expect(listed).toMatchObject({ ok: true, value: [{ id: 'key-1', kind: 'shop_management', issuedByUserId: 'u1' }] });
+    expect(JSON.stringify(listed)).not.toContain('super-secret-value');
+    expect(JSON.stringify(listed)).not.toContain('keyHash');
+  });
+
+  it('creates legacy keys without issuer or lifecycle audit', async () => {
+    const h = harness();
+    expect(await createTenantApiKey(ctx('owner'), { name: 'CI key', kind: 'legacy' }, h.deps))
+      .toMatchObject({ ok: true, value: { apiKey: { kind: 'legacy', issuedByUserId: null } } });
+    expect(h.audits).toEqual([]);
+  });
+
+  it.each(denyingContexts)('denies creation to %s', async (_label, denied) => {
+    const h = harness();
+    expect(await createTenantApiKey(denied, shopInput, h.deps)).toMatchObject({ ok: false });
+    expect(h.rows).toHaveLength(0);
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it.each<[string, CreateApiKeyInput]>([
+    ['without an expiry', { ...shopInput, expiresAt: undefined }],
+    ['with a null expiry', { ...shopInput, expiresAt: null }],
+    ['without scopes', { ...shopInput, scopes: undefined }],
+    ['with a legacy scope mixed in', { ...shopInput, scopes: ['shop:catalog:read', 'marketing'] }],
+    ['with an import scope mixed in', { ...shopInput, scopes: ['shop:orders:read', 'import:content'] }],
+    ['with a report scope mixed in', { ...shopInput, scopes: ['shop:orders:read', 'report:read'] }],
+    ['with an expiry in the past', { ...shopInput, expiresAt: NOW }],
+    ['with an expiry beyond 30 days', { ...shopInput, expiresAt: '2026-07-01T00:00:00.001Z' }],
+  ])('rejects a shop management key %s', async (_label, input) => {
+    const h = harness();
+    expect(await createTenantApiKey(ctx('owner'), input, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.rows).toHaveLength(0);
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it('accepts an expiry of exactly 30 days', async () => {
+    const h = harness();
+    expect(await createTenantApiKey(ctx('owner'), { ...shopInput, expiresAt: '2026-07-01T00:00:00.000Z' }, h.deps))
+      .toMatchObject({ ok: true });
+  });
+
+  it('rejects shop scopes on a legacy key', async () => {
+    const h = harness();
+    expect(await createTenantApiKey(ctx('owner'), { name: 'Sneaky', scopes: ['shop:catalog:write'], expiresAt: SEVEN_DAYS }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.rows).toHaveLength(0);
+  });
+
+  it('revokes with an audit event for a verified owner session', async () => {
+    const h = harness([shopRow()]);
+    expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
+      .toMatchObject({ ok: true, value: { id: 'shop-key', kind: 'shop_management', revokedAt: NOW } });
+    expect(h.audits).toEqual([expect.objectContaining({
+      kind: 'api_key.shop_management_revoked', actorUserId: 'u1', actorEmail: 'owner@together.dev',
+      reason: 'Shop backend (shop-key)',
+    })]);
+    expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(h.audits).toHaveLength(1);
+  });
+
+  it.each(denyingContexts)('denies revocation to %s', async (_label, denied) => {
+    const h = harness([shopRow()]);
+    expect(await revokeTenantApiKey(denied, { id: 'shop-key' }, h.deps)).toMatchObject({ ok: false });
+    expect(h.rows[0]?.revokedAt).toBeNull();
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it('keeps legacy revocation unaudited', async () => {
+    const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
+    expect(await revokeTenantApiKey(ctx('owner'), { id: 'legacy-key' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.audits).toEqual([]);
+  });
+
+  describe('while SHOP_MANAGEMENT_KEYS is disabled', () => {
+    it('refuses shop management key creation and names the switch state', async () => {
+      const h = harness([], 'disabled');
+      const result = await createTenantApiKey(ctx('owner'), shopInput, h.deps);
+      expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      expect(result.ok ? '' : result.error.message).toContain('SHOP_MANAGEMENT_KEYS=disabled');
+      expect(h.rows).toHaveLength(0);
+      expect(h.audits).toHaveLength(0);
+    });
+
+    it('keeps legacy key creation, key listing and shop key revocation working', async () => {
+      const h = harness([shopRow()], 'disabled');
+      expect(await createTenantApiKey(ctx('owner'), { name: 'CI key' }, h.deps))
+        .toMatchObject({ ok: true, value: { apiKey: { kind: 'legacy' } } });
+      expect(await listTenantApiKeys(ctx('owner'), h.deps))
+        .toMatchObject({ ok: true, value: [{ id: 'shop-key', kind: 'shop_management' }, { kind: 'legacy' }] });
+      expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
+        .toMatchObject({ ok: true, value: { id: 'shop-key', revokedAt: NOW } });
+      expect(h.audits).toEqual([expect.objectContaining({ kind: 'api_key.shop_management_revoked' })]);
+    });
+  });
+
+  describe('purgeShopManagementKeys', () => {
+    const workspaceRows = () => [
+      shopRow({ id: 'shop-active' }),
+      shopRow({ id: 'shop-revoked', revokedAt: NOW }),
+      shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null }),
+      shopRow({ id: 'other-workspace-shop', tenantId: 't2' }),
+    ];
+    const machineCtx: Ctx = {
+      ...ctx('owner'),
+      capabilities: ['api-key:write', 'api-key:read'],
+      machineActor: { kind: 'shop_management_key', apiKeyId: 'shop-active' },
+    };
+
+    it.each<ShopManagementKeysSwitch>(['enabled', 'disabled'])(
+      'deletes every shop management key of the workspace with one audit event while the switch is %s',
+      async (switchState) => {
+        const h = harness(workspaceRows(), switchState);
+        expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 2 } });
+        expect(h.rows.map((row) => row.id)).toEqual(['legacy-key', 'other-workspace-shop']);
+        expect(h.audits).toEqual([{
+          id: 'key-1', tenantId: 't1', kind: 'api_key.shop_management_purged', actorUserId: 'u1',
+          actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null,
+          reason: '2 shop management keys purged', at: NOW,
+        }]);
+      },
+    );
+
+    it('records nothing when the workspace has no shop management key', async () => {
+      const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
+      expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 0 } });
+      expect(h.rows).toHaveLength(1);
+      expect(h.audits).toEqual([]);
+    });
+
+    const purgeDenials: [string, Ctx][] = [...denyingContexts, ['a shop management key context', machineCtx]];
+
+    it.each(purgeDenials)(
+      'refuses the purge to %s',
+      async (_label, denied) => {
+        const h = harness(workspaceRows());
+        expect(await purgeShopManagementKeys(denied, h.deps)).toMatchObject({ ok: false });
+        expect(h.rows).toHaveLength(4);
+        expect(h.audits).toHaveLength(0);
+      },
+    );
   });
 });

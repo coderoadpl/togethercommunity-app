@@ -26,6 +26,7 @@ import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
 import { requestOriginGuard } from './request-origin.js';
 import { assertRequestOriginCoverage } from './request-origin-policy.js';
+import { shopManagementKeysSwitchMiddleware } from './shop-machine-auth.js';
 import { registerSocialPreviewRoute } from './social-preview.js';
 import { registerTenantRedirects } from './tenant-redirects.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
@@ -109,6 +110,7 @@ export const buildApp = (deps: AppDeps) => {
     c.res.headers.set('content-security-policy', policy);
   });
   app.use('*', marketingSignupCorsMiddleware(deps));
+  app.use('/api/*', shopManagementKeysSwitchMiddleware(deps.shopManagementKeys));
   app.use('*', async (c, next) => {
     const maxSize = requestBodyLimit(c.req.method, c.req.path);
     if (maxSize === undefined) {

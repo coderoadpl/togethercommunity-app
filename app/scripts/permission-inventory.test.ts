@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(462);
-    expect(inventory.useCases).toHaveLength(364);
+    expect(inventory.routes).toHaveLength(476);
+    expect(inventory.useCases).toHaveLength(365);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -23,6 +23,9 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(13);
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
+      .toMatchObject({ capability: 'product:write', before: ['owner'], after: ['owner'] });
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),

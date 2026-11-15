@@ -193,7 +193,7 @@ describe('organization repositories', () => {
       },
       tenantAudit: {
         id: `tenant-${id}`, kind: linked ? 'organization.linked' as const : 'organization.unlinked' as const, actorUserId,
-        actorEmail: `${actorUserId}@example.test`, subjectMemberId: null, reason: 'org-ws', at,
+        actorEmail: `${actorUserId}@example.test`, subjectMemberId: null, actorApiKeyId: null, reason: 'org-ws', at,
       },
     });
     const linkOf = async (tenantId: string) =>

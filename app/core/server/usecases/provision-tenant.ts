@@ -43,7 +43,7 @@ export const provisionTenant = async (
     ownerGrant: { id: deps.ids.nextId(), userId: owner.userId, staffRole: 'owner' },
     provisionAudit: {
       id: deps.ids.nextId(), tenantId: id, kind: 'tenant_provisioned',
-      actorUserId: 'operator-secret', actorEmail: 'operator@together.invalid',
+      actorUserId: 'operator-secret', actorEmail: 'operator@together.invalid', actorApiKeyId: null,
       subjectMemberId: null, reason: null, at,
     },
   }, { requireEmpty: false, idempotentOwner: true });

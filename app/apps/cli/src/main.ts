@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, shopManagementScopeSchema, tenantApiKeyKindSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -63,6 +63,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
+import { registerShopKeyCommands } from './shop-key-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
@@ -474,7 +475,11 @@ const devGrantOptionsSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 const apiKeyCreateOptionsSchema = z.object({
-  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt', 'import:content', 'import:users', 'report:read'])).min(1).optional(),
+  kind: tenantApiKeyKindSchema,
+  scope: z.array(z.union([
+    z.enum(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt', 'import:content', 'import:users', 'report:read']),
+    shopManagementScopeSchema,
+  ])).min(1).optional(),
   expiresAt: z.string().datetime().optional(),
 });
 const m2mEnrollOptionsSchema = z.object({
@@ -734,6 +739,7 @@ registerTeamCommands(program, cliCtx);
 registerOrganizationCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
+registerShopKeyCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -3837,7 +3843,7 @@ apiKey.command('list').description('List API keys (no secrets)').action(
       data.apiKeys.length === 0
         ? 'no API keys'
         : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\t(${k.id})`)
+            .map((k) => `${k.name}\t${k.kind}\t${k.revokedAt ? 'revoked' : 'active'}\t(${k.id})`)
             .join('\n'),
     );
   }),
@@ -3846,13 +3852,15 @@ apiKey.command('list').description('List API keys (no secrets)').action(
 apiKey
   .command('create <name...>')
   .description('Create an API key; the secret is shown once')
-  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, subscriptions:read, subscriptions:adopt, import:content, import:users, report:read')
+  .option('--kind <kind>', 'Key kind: legacy or shop_management (shop_management needs shop:* scopes and --expires-at, at most 30 days ahead; 7 days is the suggested lifetime)', 'legacy')
+  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, subscriptions:read, subscriptions:adopt, import:content, import:users, report:read; shop_management keys: shop:catalog:read, shop:catalog:write, shop:orders:read, shop:fulfilment:write, shop:settings:read, shop:settings:write, shop:integrations:read, shop:integrations:write')
   .option('--expires-at <iso>', 'ISO datetime when the key expires')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), apiKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
         await ctx.api.createApiKey({
           name: nameWords.join(' '),
+          ...(options.kind === 'legacy' ? {} : { kind: options.kind }),
           ...(options.scope === undefined ? {} : { scopes: options.scope }),
           ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
         }),
@@ -3870,6 +3878,22 @@ apiKey
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       emit(await ctx.api.revokeApiKey({ id }), ctx.json, (data) =>
         `revoked API key ${data.apiKey.name} (${data.apiKey.id})`,
+      );
+    }),
+  );
+
+apiKey
+  .command('purge-shop-management')
+  .description('Delete every shop management key of the workspace, revoked or not (retreat before a rollback)')
+  .option('--yes', 'confirm the permanent deletion')
+  .action(
+    withInput(z.tuple([z.object({ yes: z.boolean().optional() })]), async (ctx, [options]) => {
+      if (options.yes !== true) {
+        emit(err(validation('Purging shop management keys requires --yes')), ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.purgeShopManagementKeys(), ctx.json, (data) =>
+        `purged ${String(data.purged)} shop management keys`,
       );
     }),
   );

@@ -49,7 +49,7 @@ const prepareChange = (
         ...actor, id: deps.ids.nextId(), kind: kinds.organization, actorKeyId: null,
         subjectTenantId: tenantId, subjectUserId: null, data: {}, at,
       },
-      tenantAudit: { ...actor, id: deps.ids.nextId(), kind: kinds.tenant, subjectMemberId: null, reason: organizationId, at },
+      tenantAudit: { ...actor, id: deps.ids.nextId(), kind: kinds.tenant, subjectMemberId: null, actorApiKeyId: null, reason: organizationId, at },
     },
   });
 };

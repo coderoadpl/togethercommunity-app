@@ -14,7 +14,7 @@ const input = (id: string, slug: string, owner = 'owner-1', auditId = id) => ({
   ownerGrant: { id: `grant-${id}`, userId: owner, staffRole: 'owner' as const },
   provisionAudit: {
     id: auditId, tenantId: id, kind: 'tenant_provisioned', actorUserId: 'operator-secret',
-    actorEmail: 'operator@together.invalid', subjectMemberId: null, reason: null, at,
+    actorEmail: 'operator@together.invalid', actorApiKeyId: null, subjectMemberId: null, reason: null, at,
   } satisfies TenantAuditEventInput,
 });
 const options = { requireEmpty: false, idempotentOwner: true };

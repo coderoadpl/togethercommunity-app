@@ -41,6 +41,7 @@ import type { Db } from './client.js';
 import {
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountIdentityReader,
   createAccountSecurityReader,
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -1601,6 +1602,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       tenantId: ACME,
       name: 'CI',
       keyHash: 'hash-abc',
+      kind: 'legacy',
+      issuedByUserId: null,
       scopes: null,
       createdAt: NOW,
       expiresAt: null,
@@ -1621,7 +1624,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
   it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('round-trips explicit %s API key scopes within the tenant', async (scope) => {
     const repo = createTenantApiKeyRepository(db);
     const apiKey: TenantApiKey = {
-      id: `key-${scope}`, tenantId: ACME, name: 'Subscriptions', keyHash: `hash-${scope}`,
+      id: `key-${scope}`, tenantId: ACME, name: 'Subscriptions', keyHash: `hash-${scope}`, kind: 'legacy', issuedByUserId: null,
       scopes: [scope], createdAt: NOW, expiresAt: null, revokedAt: null,
     };
     await repo.create(ACME, apiKey);
@@ -1665,6 +1668,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       tenantId: ACME,
       name: 'Migration',
       keyHash: 'hash-import-acme',
+      kind: 'legacy',
+      issuedByUserId: null,
       scopes: ['import:content'],
       createdAt: NOW,
       expiresAt: FUTURE,
@@ -4269,6 +4274,24 @@ describe('member erasure repository', () => {
     await expect(
       db.delete(members).where(and(eq(members.tenantId, ERASURE), eq(members.id, 'mem-erasure'))),
     ).rejects.toThrow();
+  });
+});
+
+describe('createAccountIdentityReader', () => {
+  it('reads the account identity by id and returns null for a missing account', async () => {
+    await db.insert(user).values({
+      id: 'user-identity-reader', name: 'Identity Reader', email: 'identity-reader@together.dev', emailVerified: true,
+    });
+    const reader = createAccountIdentityReader(db);
+
+    await expect(reader.findById('user-identity-reader')).resolves.toEqual({
+      userId: 'user-identity-reader',
+      email: 'identity-reader@together.dev',
+      name: 'Identity Reader',
+      emailVerified: true,
+    });
+    await expect(reader.findById('user-globex-member')).resolves.toMatchObject({ emailVerified: false });
+    await expect(reader.findById('user-missing')).resolves.toBeNull();
   });
 });
 

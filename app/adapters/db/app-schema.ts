@@ -47,7 +47,7 @@ import type {
   SchedulerRunTrigger,
   StorageCorsProbeResult,
   TenantDomainEventKind,
-  TenantApiKeyScope,
+  TenantApiKeyStoredScope,
 } from '#core/domain/index.js';
 
 export const tenants = pgTable(
@@ -1048,7 +1048,9 @@ export const tenantApiKeys = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
-    scopes: jsonb('scopes').$type<TenantApiKeyScope[]>(),
+    kind: text('kind', { enum: ['legacy', 'shop_management'] }).notNull().default('legacy'),
+    scopes: jsonb('scopes').$type<TenantApiKeyStoredScope[]>(),
+    issuedByUserId: text('issued_by_user_id'),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at'),
     revokedAt: text('revoked_at'),
@@ -1056,6 +1058,11 @@ export const tenantApiKeys = pgTable(
   (table) => [
     index('tenant_api_keys_tenantId_idx').on(table.tenantId),
     uniqueIndex('tenant_api_keys_key_hash_uidx').on(table.keyHash),
+    check('tenant_api_keys_kind_check', sql`${table.kind} IN ('legacy', 'shop_management')`),
+    check(
+      'tenant_api_keys_shop_management_issuer_expiry_check',
+      sql`${table.kind} <> 'shop_management' OR (${table.issuedByUserId} IS NOT NULL AND ${table.expiresAt} IS NOT NULL)`,
+    ),
   ],
 );
 
@@ -2353,10 +2360,14 @@ export const tenantAuditEvents = pgTable(
         'organization.linked',
         'organization.unlinked',
         'config_source.changed',
+        'api_key.shop_management_created',
+        'api_key.shop_management_revoked',
+        'api_key.shop_management_purged',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
+    actorApiKeyId: text('actor_api_key_id'),
     subjectMemberId: text('subject_member_id'),
     reason: text('reason'),
     at: text('at').notNull(),

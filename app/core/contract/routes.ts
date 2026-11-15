@@ -1456,6 +1456,10 @@ export const apiKeyRevokeOutputSchema = z.object({
   apiKey: tenantApiKeyPublicSchema,
 });
 
+export const apiKeysShopManagementPurgeOutputSchema = z.object({
+  purged: z.number().int().min(0),
+});
+
 export const apiKeyImportAuditQuerySchema = z.object({
   id: z.string().min(1),
   cursor: z.string().min(1).optional(),
@@ -2146,6 +2150,7 @@ export const API_ROUTES = {
   apiKeys: { method: 'GET', path: '/api/api-keys' },
   apiKeysCreate: { method: 'POST', path: '/api/api-keys' },
   apiKeyRevoke: { method: 'DELETE', path: '/api/api-keys/:id' },
+  apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
   apiKeyImportAudit: { method: 'GET', path: '/api/api-keys/:id/import-audit' },
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
@@ -2548,6 +2553,7 @@ export const API_PATHS = {
   devEmail: API_ROUTES.devEmail.path,
   apiKeys: API_ROUTES.apiKeys.path,
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
+  apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
   apiKeyImportAudit: API_ROUTES.apiKeyImportAudit.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,

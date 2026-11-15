@@ -158,6 +158,19 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/import/progress` | self-authenticating | mutating | m2m import progress |
 | `GET /api/reports/activity-summary` | self-authenticating | read | activity summary |
 | `GET /api/reports/member-activity` | self-authenticating | read | member activity |
+| `GET /api/m2m/shop/products` | self-authenticating | read | api m2m shop products |
+| `POST /api/m2m/shop/products` | self-authenticating | mutating | api m2m shop products |
+| `POST /api/m2m/shop/products/update` | self-authenticating | mutating | api m2m shop products update |
+| `POST /api/m2m/shop/products/publish` | self-authenticating | mutating | api m2m shop products publish |
+| `POST /api/m2m/shop/products/unpublish` | self-authenticating | mutating | api m2m shop products unpublish |
+| `POST /api/m2m/shop/products/delete` | self-authenticating | mutating | api m2m shop products delete |
+| `GET /api/m2m/shop/products/:productId/prices` | self-authenticating | read | api m2m shop products productId prices |
+| `POST /api/m2m/shop/products/prices` | self-authenticating | mutating | api m2m shop products prices |
+| `POST /api/m2m/shop/products/prices/deactivate` | self-authenticating | mutating | api m2m shop products prices deactivate |
+| `GET /api/m2m/shop/products/:productId/stock` | self-authenticating | read | api m2m shop products productId stock |
+| `POST /api/m2m/shop/products/stock/enable` | self-authenticating | mutating | api m2m shop products stock enable |
+| `POST /api/m2m/shop/products/stock/adjust` | self-authenticating | mutating | api m2m shop products stock adjust |
+| `POST /api/m2m/shop/products/stock/threshold` | self-authenticating | mutating | api m2m shop products stock threshold |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -314,6 +327,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/api-keys` | authenticated | read | api keys |
 | `POST /api/api-keys` | authenticated | mutating | api keys create |
 | `DELETE /api/api-keys/:id` | authenticated | mutating | api key revoke |
+| `POST /api/api-keys/shop-management/purge` | authenticated | mutating | api keys shop management purge |
 | `GET /api/api-keys/:id/import-audit` | authenticated | read | api key import audit |
 | `GET /api/tenant-secrets` | authenticated | read | tenant secrets |
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |

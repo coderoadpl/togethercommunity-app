@@ -39,6 +39,7 @@ interface Hoisted {
   activitySummary: ReturnType<typeof vi.fn>;
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
+  purgeShopManagementKeys: ReturnType<typeof vi.fn>;
   listSurveys: ReturnType<typeof vi.fn>;
   createSurvey: ReturnType<typeof vi.fn>;
   deleteSurvey: ReturnType<typeof vi.fn>;
@@ -115,6 +116,7 @@ const h = vi.hoisted(
     activitySummary: vi.fn(),
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
+    purgeShopManagementKeys: vi.fn(),
     listSurveys: vi.fn(),
     createSurvey: vi.fn(),
     deleteSurvey: vi.fn(),
@@ -239,6 +241,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     activitySummary: h.activitySummary,
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
+    purgeShopManagementKeys: h.purgeShopManagementKeys,
     listSurveys: h.listSurveys,
     createSurvey: h.createSurvey,
     deleteSurvey: h.deleteSurvey,
@@ -1287,6 +1290,35 @@ describe('activity report CLI parsing', () => {
     h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Reporting' }, secret: 'secret' }));
     await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
     expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
+  });
+  it('creates a shop management key with explicit kind, scopes and expiry', async () => {
+    h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Shop' }, secret: 'shop-secret' }));
+    await run(
+      'api-keys', 'create', 'Shop', '--kind', 'shop_management', '--scope', 'shop:catalog:read', 'shop:orders:read',
+      '--expires-at', '1998-08-08T00:00:00.000Z', '--json',
+    );
+    expect(h.createApiKey).toHaveBeenCalledWith({
+      name: 'Shop', kind: 'shop_management', scopes: ['shop:catalog:read', 'shop:orders:read'], expiresAt: '1998-08-08T00:00:00.000Z',
+    });
+  });
+  it('refuses api-key purge-shop-management without --yes before calling the API', async () => {
+    h.purgeShopManagementKeys.mockReset();
+    await run('--json', 'api-key', 'purge-shop-management');
+    expect(h.purgeShopManagementKeys).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Purging shop management keys requires --yes' } });
+    expect(process.exitCode).toBe(2);
+  });
+  it('purges the shop management keys with --yes and reports the count', async () => {
+    h.purgeShopManagementKeys.mockReset().mockResolvedValue(ok({ purged: 3 }));
+    await run('--json', 'api-key', 'purge-shop-management', '--yes');
+    expect(h.purgeShopManagementKeys).toHaveBeenCalledOnce();
+    expect(soleJson()).toEqual({ ok: true, data: { purged: 3 } });
+  });
+  it('rejects an unknown api-keys create --kind before calling the API', async () => {
+    h.createApiKey.mockReset();
+    await run('api-keys', 'create', 'Shop', '--kind', 'root', '--json');
+    expect(h.createApiKey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });
 

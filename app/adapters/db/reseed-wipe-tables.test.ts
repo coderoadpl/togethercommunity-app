@@ -38,6 +38,7 @@ describe('DEMO_TENANT_WIPE_TABLES', () => {
       schema.twoFactor,
       schema.rateLimit,
       schema.apiKeyRateLimitBuckets,
+      schema.shopManagementKeyRateLimitBuckets,
       schema.rateLimitBuckets,
       schema.platformAuditEvents,
     ].map(getTableName).toSorted();

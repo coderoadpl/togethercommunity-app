@@ -20,8 +20,8 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
   {
     file: 'app/docs/security.md',
     section: '## Tenant API keys',
-    text: '`shop_management`',
-    reason: 'must describe the shop management key kind',
+    text: '`shop_management_keys`',
+    reason: 'must describe the separate shop management key table',
   },
   {
     file: 'app/docs/security.md',

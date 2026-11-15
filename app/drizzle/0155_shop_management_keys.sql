@@ -1,11 +1,31 @@
-ALTER TABLE tenant_api_keys
-  ADD COLUMN kind text NOT NULL DEFAULT 'legacy',
-  ADD COLUMN issued_by_user_id text;
+CREATE TABLE "shop_management_keys" (
+  "id" text PRIMARY KEY NOT NULL,
+  "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "name" text NOT NULL,
+  "key_hash" text NOT NULL,
+  "scopes" jsonb NOT NULL,
+  "issued_by_user_id" text NOT NULL,
+  "created_at" text NOT NULL,
+  "expires_at" text NOT NULL,
+  "revoked_at" text,
+  CONSTRAINT "shop_management_keys_scopes_check" CHECK (
+    jsonb_typeof("scopes") = 'array'
+    AND "scopes" <> '[]'::jsonb
+    AND "scopes" <@ '["shop:catalog:read", "shop:catalog:write", "shop:orders:read", "shop:fulfilment:write", "shop:settings:read", "shop:settings:write", "shop:integrations:read", "shop:integrations:write"]'::jsonb
+  )
+);
 --> statement-breakpoint
-ALTER TABLE tenant_api_keys
-  ADD CONSTRAINT tenant_api_keys_kind_check CHECK (kind IN ('legacy', 'shop_management')),
-  ADD CONSTRAINT tenant_api_keys_shop_management_issuer_expiry_check CHECK (kind <> 'shop_management' OR (issued_by_user_id IS NOT NULL AND expires_at IS NOT NULL)),
-  ADD CONSTRAINT tenant_api_keys_shop_management_scopes_check CHECK (kind <> 'shop_management' OR (scopes IS NOT NULL AND jsonb_typeof(scopes) = 'array' AND scopes <> '[]'::jsonb));
+CREATE INDEX "shop_management_keys_tenant_id_idx" ON "shop_management_keys" ("tenant_id");
+--> statement-breakpoint
+CREATE UNIQUE INDEX "shop_management_keys_key_hash_uidx" ON "shop_management_keys" ("key_hash");
+--> statement-breakpoint
+CREATE TABLE "shop_management_key_rate_limit_buckets" (
+  "api_key_id" text NOT NULL REFERENCES "shop_management_keys"("id") ON DELETE CASCADE,
+  "period" text NOT NULL CONSTRAINT "shop_management_key_rate_limit_buckets_period_check" CHECK ("period" IN ('minute', 'day')),
+  "window_started_at" timestamp with time zone NOT NULL,
+  "count" integer NOT NULL,
+  CONSTRAINT "shop_management_key_rate_limit_buckets_api_key_id_period_pk" PRIMARY KEY ("api_key_id", "period")
+);
 --> statement-breakpoint
 CREATE TABLE "shop_management_key_events" (
   "id" text PRIMARY KEY NOT NULL,

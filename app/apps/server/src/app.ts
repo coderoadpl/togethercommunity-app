@@ -111,7 +111,7 @@ export const buildApp = (deps: AppDeps) => {
   });
   app.use('*', marketingSignupCorsMiddleware(deps));
   app.use('*', telemetryMiddleware);
-  app.use('/api/*', shopManagementKeysSwitchMiddleware(deps.shopManagementKeys));
+  app.use('/api/*', shopManagementKeysSwitchMiddleware(deps.shopManagementKeysSwitch));
   app.use('*', async (c, next) => {
     const maxSize = requestBodyLimit(c.req.method, c.req.path);
     if (maxSize === undefined) {

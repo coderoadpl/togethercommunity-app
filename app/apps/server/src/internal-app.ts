@@ -38,7 +38,9 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
+  apiKeysShopManagementCreateInputSchema,
   apiKeysShopManagementEventsQuerySchema,
+  apiKeysShopManagementRevokeInputSchema,
   authSendLogLatestOutputSchema,
   authSendLogLatestQuerySchema,
   bunnyVideosInputSchema,
@@ -368,6 +370,9 @@ import {
   listSpacesForStaff,
   listTenantApiKeys,
   listImportAuditForApiKey,
+  createShopManagementKey,
+  listShopManagementKeys,
+  revokeShopManagementKey,
   purgeShopManagementKeys,
   listShopManagementKeyEvents,
   listTenantDocuments,
@@ -2343,6 +2348,25 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = apiKeyRevokeInputSchema.safeParse({ id: c.req.param('id') });
     if (!parsed.success) return respond(err(validation('Invalid API key id', parsed.error.flatten())));
     const result = await revokeTenantApiKey(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.get(API_PATHS.apiKeysShopManagement, async (c) => {
+    const result = await listShopManagementKeys(ctxOf(c), deps);
+    return respond(result.ok ? ok({ apiKeys: result.value }) : result);
+  });
+
+  app.post(API_PATHS.apiKeysShopManagement, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = apiKeysShopManagementCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid shop management key payload', parsed.error.flatten())));
+    return respond(await createShopManagementKey(ctxOf(c), parsed.data, deps));
+  });
+
+  app.delete(API_PATHS.apiKeysShopManagementRevoke, async (c) => {
+    const parsed = apiKeysShopManagementRevokeInputSchema.safeParse({ id: c.req.param('id') });
+    if (!parsed.success) return respond(err(validation('Invalid shop management key id', parsed.error.flatten())));
+    const result = await revokeShopManagementKey(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
   });
 

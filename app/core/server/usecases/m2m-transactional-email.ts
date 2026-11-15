@@ -46,31 +46,8 @@ export interface M2mTransactionalEmailDeps {
   hash: { compute(value: string): string };
 }
 
-export interface ApiKeyRateLimitWindow {
-  period: 'minute' | 'day';
-  windowStartedAt: string;
-  durationMs: number;
-  limit: number;
-}
-
 const windowStart = (now: string, durationMs: number): string =>
   new Date(Math.floor(Date.parse(now) / durationMs) * durationMs).toISOString();
-
-export const apiKeyRateLimitWindows = (
-  now: string,
-  limits: { perMinute: number; perDay: number },
-): { minute: ApiKeyRateLimitWindow; day: ApiKeyRateLimitWindow } => ({
-  minute: { period: 'minute', windowStartedAt: windowStart(now, 60_000), durationMs: 60_000, limit: limits.perMinute },
-  day: { period: 'day', windowStartedAt: windowStart(now, 86_400_000), durationMs: 86_400_000, limit: limits.perDay },
-});
-
-export const apiKeyRateLimited = (window: ApiKeyRateLimitWindow, now: string): AppError =>
-  appError('rate_limited', 'API key rate limit exceeded', {
-    period: window.period,
-    retryAfterSeconds: Math.max(1, Math.ceil(
-      (Date.parse(window.windowStartedAt) + window.durationMs - Date.parse(now)) / 1000,
-    )),
-  });
 
 export const claimApiKeyRateLimit = async (
   apiKeyId: string,
@@ -78,15 +55,25 @@ export const claimApiKeyRateLimit = async (
   now: string,
   deps: Pick<M2mTransactionalEmailDeps, 'rateLimits' | 'limits'>,
 ): Promise<Result<void, AppError>> => {
-  const { minute, day } = apiKeyRateLimitWindows(now, deps.limits);
-  for (const window of [day, minute]) {
+  const windows = [
+    { period: 'day' as const, durationMs: 86_400_000, limit: deps.limits.perDay },
+    { period: 'minute' as const, durationMs: 60_000, limit: deps.limits.perMinute },
+  ];
+  for (const window of windows) {
+    const startedAt = windowStart(now, window.durationMs);
     if (await deps.rateLimits.claim(tenantId, {
       apiKeyId,
       period: window.period,
-      windowStartedAt: window.windowStartedAt,
+      windowStartedAt: startedAt,
       limit: window.limit,
     })) continue;
-    return err(apiKeyRateLimited(window, now));
+    const retryAfterSeconds = Math.max(1, Math.ceil(
+      (Date.parse(startedAt) + window.durationMs - Date.parse(now)) / 1000,
+    ));
+    return err(appError('rate_limited', 'API key rate limit exceeded', {
+      period: window.period,
+      retryAfterSeconds,
+    }));
   }
   return ok(undefined);
 };

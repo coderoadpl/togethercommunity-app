@@ -1,110 +1,99 @@
 import {
+  appError,
   capabilitiesForPrincipal,
   err,
   forbidden,
   ok,
-  shopManagementCapabilitiesForApiKey,
-  shopManagementScopeSchema,
+  shopManagementCapabilities,
   unauthorized,
   type AppError,
   type Identity,
   type Result,
+  type ShopManagementKey,
   type ShopManagementKeyEvent,
   type ShopManagementScope,
   type Tenant,
-  type TenantApiKey,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {
   AccountIdentityReader,
   ApiKeyCrypto,
-  ApiKeyRateLimitRepository,
   Clock,
   IdGenerator,
   ShopManagementKeyEventRepository,
+  ShopManagementKeyRateLimitRepository,
+  ShopManagementKeyRepository,
   TenantAccessReader,
-  TenantApiKeyRepository,
 } from '../ports.js';
-import { apiKeyRateLimited, apiKeyRateLimitWindows, type ApiKeyRateLimitWindow } from './m2m-transactional-email.js';
 
-const SHOP_MANAGEMENT_KEY_RATE_LIMITS = { perMinute: 60, perDay: 10_000 } as const;
+const SHOP_MANAGEMENT_KEY_RATE_LIMITS = [
+  { period: 'minute', durationMs: 60_000, limit: 60 },
+  { period: 'day', durationMs: 86_400_000, limit: 10_000 },
+] as const;
+
+type RateLimitWindow = (typeof SHOP_MANAGEMENT_KEY_RATE_LIMITS)[number];
 
 export interface ShopMachineAuthDeps {
-  tenantApiKeys: Pick<TenantApiKeyRepository, 'findByHash'>;
+  shopManagementKeys: Pick<ShopManagementKeyRepository, 'findByHash'>;
   apiKeyCrypto: ApiKeyCrypto;
   accountIdentities: AccountIdentityReader;
   tenantAccess: Pick<TenantAccessReader, 'findStaffGrant' | 'findMember'>;
-  apiKeyRateLimits: ApiKeyRateLimitRepository;
+  shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
   clock: Clock;
 }
 
 export interface ShopMachineAuthentication {
   ctx: Ctx;
-  apiKey: TenantApiKey;
+  apiKey: ShopManagementKey;
 }
 
 type ShopTenant = Pick<Tenant, 'id' | 'slug' | 'name'>;
 
 const invalidKey = (): AppError => unauthorized('Invalid API key');
 
-const hasOnlyShopScopes = (apiKey: TenantApiKey): boolean =>
-  apiKey.scopes !== null
-  && apiKey.scopes.length > 0
-  && apiKey.scopes.every((scope) => shopManagementScopeSchema.safeParse(scope).success);
-
 export type ShopKeyAttribution =
   | { match: 'missing' }
   | { match: 'none' }
-  | { match: 'matched'; apiKeyId: string; kind: TenantApiKey['kind']; issuerUserId: string | null };
+  | { match: 'matched'; apiKeyId: string; issuerUserId: string };
 
 interface ShopMachineAuthOutcome {
   result: Result<ShopMachineAuthentication, AppError>;
   attribution: ShopKeyAttribution;
 }
 
-type KeyLookupDeps = Pick<ShopMachineAuthDeps, 'tenantApiKeys' | 'apiKeyCrypto'>;
-
 const findStoredKey = async (
   tenantId: string,
   secret: string,
-  deps: KeyLookupDeps,
-): Promise<TenantApiKey | null> => {
-  const found = await deps.tenantApiKeys.findByHash(tenantId, deps.apiKeyCrypto.hash(secret));
+  deps: Pick<ShopMachineAuthDeps, 'shopManagementKeys' | 'apiKeyCrypto'>,
+): Promise<ShopManagementKey | null> => {
+  const found = await deps.shopManagementKeys.findByHash(tenantId, deps.apiKeyCrypto.hash(secret));
   return found?.tenantId === tenantId ? found : null;
 };
 
-const attributionOf = (found: TenantApiKey | null): ShopKeyAttribution =>
+const attributionOf = (found: ShopManagementKey | null): ShopKeyAttribution =>
   found === null
     ? { match: 'none' }
-    : { match: 'matched', apiKeyId: found.id, kind: found.kind, issuerUserId: found.issuedByUserId };
+    : { match: 'matched', apiKeyId: found.id, issuerUserId: found.issuedByUserId };
 
 export const identifyShopManagementKey = async (
   tenantId: string,
   presentedSecret: string,
-  deps: KeyLookupDeps,
+  deps: Pick<ShopMachineAuthDeps, 'shopManagementKeys' | 'apiKeyCrypto'>,
 ): Promise<ShopKeyAttribution> => {
   const secret = presentedSecret.trim();
   return secret ? attributionOf(await findStoredKey(tenantId, secret, deps)) : { match: 'missing' };
 };
 
 const usableShopKey = (
-  found: TenantApiKey | null,
+  found: ShopManagementKey | null,
   deps: Pick<ShopMachineAuthDeps, 'clock'>,
-): Result<TenantApiKey & { issuedByUserId: string }, AppError> => {
-  if (
-    found === null
-    || found.kind !== 'shop_management'
-    || found.revokedAt !== null
-    || found.expiresAt === null
-    || Date.parse(found.expiresAt) <= Date.parse(deps.clock.nowIso())
-    || found.issuedByUserId === null
-    || !hasOnlyShopScopes(found)
-  ) {
-    return err(invalidKey());
-  }
-  return ok({ ...found, issuedByUserId: found.issuedByUserId });
-};
+): Result<ShopManagementKey, AppError> =>
+  found === null
+  || found.revokedAt !== null
+  || Date.parse(found.expiresAt) <= Date.parse(deps.clock.nowIso())
+    ? err(invalidKey())
+    : ok(found);
 
 const issuerIdentity = async (
   tenant: ShopTenant,
@@ -136,33 +125,43 @@ const issuerIdentity = async (
   });
 };
 
+const windowStartedAt = (now: string, window: RateLimitWindow): string =>
+  new Date(Math.floor(Date.parse(now) / window.durationMs) * window.durationMs).toISOString();
+
+const rateLimited = (window: RateLimitWindow, startedAt: string, now: string): AppError =>
+  appError('rate_limited', 'API key rate limit exceeded', {
+    period: window.period,
+    retryAfterSeconds: Math.max(1, Math.ceil((Date.parse(startedAt) + window.durationMs - Date.parse(now)) / 1000)),
+  });
+
 const claimShopKeyRateLimit = async (
   apiKeyId: string,
   tenantId: string,
-  deps: Pick<ShopMachineAuthDeps, 'apiKeyRateLimits' | 'clock'>,
+  deps: Pick<ShopMachineAuthDeps, 'shopManagementKeyRateLimits' | 'clock'>,
 ): Promise<Result<void, AppError>> => {
   const now = deps.clock.nowIso();
-  const { minute, day } = apiKeyRateLimitWindows(now, SHOP_MANAGEMENT_KEY_RATE_LIMITS);
-  const claim = (window: ApiKeyRateLimitWindow) => deps.apiKeyRateLimits.claim(tenantId, {
-    apiKeyId,
-    period: window.period,
-    windowStartedAt: window.windowStartedAt,
-    limit: window.limit,
-  });
-  if (!await claim(minute)) return err(apiKeyRateLimited(minute, now));
-  if (await claim(day)) return ok(undefined);
-  await deps.apiKeyRateLimits.release(tenantId, { apiKeyId, period: minute.period, windowStartedAt: minute.windowStartedAt });
-  return err(apiKeyRateLimited(day, now));
+  const [minute, day] = SHOP_MANAGEMENT_KEY_RATE_LIMITS;
+  const minuteStartedAt = windowStartedAt(now, minute);
+  const dayStartedAt = windowStartedAt(now, day);
+  const limits = deps.shopManagementKeyRateLimits;
+  if (!await limits.claim(tenantId, { apiKeyId, period: minute.period, windowStartedAt: minuteStartedAt, limit: minute.limit })) {
+    return err(rateLimited(minute, minuteStartedAt, now));
+  }
+  if (await limits.claim(tenantId, { apiKeyId, period: day.period, windowStartedAt: dayStartedAt, limit: day.limit })) {
+    return ok(undefined);
+  }
+  await limits.release(tenantId, { apiKeyId, period: minute.period, windowStartedAt: minuteStartedAt });
+  return err(rateLimited(day, dayStartedAt, now));
 };
 
-const shopManagementKeyCapabilities = (apiKey: TenantApiKey) => {
+const shopManagementKeyCapabilities = (apiKey: ShopManagementKey) => {
   const ownerCapabilities = capabilitiesForPrincipal('owner');
-  return shopManagementCapabilitiesForApiKey(apiKey).filter((capability) => ownerCapabilities.includes(capability));
+  return shopManagementCapabilities(apiKey.scopes).filter((capability) => ownerCapabilities.includes(capability));
 };
 
 const authenticateStoredKey = async (
   tenant: ShopTenant,
-  found: TenantApiKey | null,
+  found: ShopManagementKey | null,
   requiredScope: ShopManagementScope,
   deps: ShopMachineAuthDeps,
 ): Promise<Result<ShopMachineAuthentication, AppError>> => {
@@ -172,7 +171,7 @@ const authenticateStoredKey = async (
   if (!identity.ok) return identity;
   const limited = await claimShopKeyRateLimit(apiKey.value.id, tenant.id, deps);
   if (!limited.ok) return limited;
-  if (!(apiKey.value.scopes ?? []).includes(requiredScope)) {
+  if (!apiKey.value.scopes.includes(requiredScope)) {
     return err(forbidden(`${requiredScope} is not permitted`));
   }
   return ok({

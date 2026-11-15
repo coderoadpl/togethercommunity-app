@@ -28,7 +28,7 @@ describe('shop management key doctrine lint', () => {
   it('does not accept the key class described outside the Tenant API keys section', () => {
     const files = new Map([
       ['app/CLAUDE.md', 'Shop management keys (owner decision 2026-11-14): text'],
-      ['app/docs/security.md', '## Tenant API keys\n\nNothing.\n\n## Other\n\nowner decision 2026-11-14 `shop_management` `SHOP_MANAGEMENT_KEYS` `shop:integrations:write`\n'],
+      ['app/docs/security.md', '## Tenant API keys\n\nNothing.\n\n## Other\n\nowner decision 2026-11-14 `shop_management_keys` `SHOP_MANAGEMENT_KEYS` `shop:integrations:write`\n'],
     ]);
     expect(collectShopKeyDoctrineProblems(files)).toHaveLength(4);
   });

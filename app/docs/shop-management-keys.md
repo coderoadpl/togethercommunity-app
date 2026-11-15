@@ -2,22 +2,25 @@
 
 A shop management key is a short-lived, revocable tenant API key for a shop
 backend that administers one workspace's catalog, orders, settings and
-integrations without a human session. It is a separate key kind
-(`shop_management`) next to the existing keys (kind `legacy`): it uses the same
-random secret, stores only its SHA-256 hash, travels in the `x-api-key` header
-and is bound to exactly one workspace.
+integrations without a human session. It lives in its own table,
+`shop_management_keys`, apart from the existing tenant API keys
+(`tenant_api_keys`, called legacy keys below), which it never reads or changes.
+It uses the same kind of random secret, stores only its SHA-256 hash, travels in
+the `x-api-key` header and is bound to exactly one workspace.
 
 A shop management key is accepted only by the dedicated routes under
 `/api/m2m/shop`. Every existing API-key route (reports, enrollment,
 subscriptions, transactional e-mail, imports, marketing) answers `401 Invalid
-API key` for it, and no session route accepts it.
+API key` for it, because those routes look keys up only in `tenant_api_keys`,
+and no session route accepts it. The shop routes look keys up only in
+`shop_management_keys`, so a legacy key never reaches them.
 
 ## Status
 
 | Surface | Status |
 |---|---|
-| Key kind, scopes, issuer, expiry, key history | Available |
-| Owner-session creation, listing and revocation (`/api/api-keys`, CLI `api-key`) | Available |
+| Key table, scopes, issuer, expiry, key history | Available |
+| Owner-session creation, listing and revocation (`/api/api-keys/shop-management`, CLI `api-key shop-management`) | Available |
 | Kill switch `SHOP_MANAGEMENT_KEYS` and owner-session purge | Available |
 | Request authentication, issuer revalidation and rate limits | Available |
 | Catalog routes: products, prices and stock (below) | Available |
@@ -75,11 +78,11 @@ between requests:
    refused with `401` before the key is checked; the key is only looked up to
    attribute the refusal in telemetry (below). A shop route never falls back to
    a session, and a session never upgrades a key.
-2. The key must exist in the selected workspace, be of kind `shop_management`,
-   be unrevoked, carry only shop scopes and expire strictly after the current
-   time. A missing key answers `401 Missing API key`; an unknown, revoked,
-   expired, legacy or other-workspace key answers the same `401 Invalid API
-   key`.
+2. The key must exist in `shop_management_keys` for the selected workspace, be
+   unrevoked and expire strictly after the current time; the database admits
+   only shop scopes, an issuer and an expiry on such a row. A missing key
+   answers `401 Missing API key`; an unknown, revoked, expired, legacy or
+   other-workspace key answers the same `401 Invalid API key`.
 3. The issuing account must still exist, have a verified e-mail address and
    hold the owner role in that workspace. Otherwise the request answers the
    same `401 Invalid API key` as every other unusable key, so a caller cannot
@@ -105,8 +108,8 @@ presented in `app.api_key.match`:
 
 | `app.api_key.match` | Meaning | Also recorded |
 |---|---|---|
-| `matched` | The secret matches a stored key row in the selected workspace, whatever its state: usable, revoked, expired, of kind `legacy`, or with an issuer that is no longer a verified owner | `app.api_key.id`, `app.api_key.kind` (`legacy` or `shop_management`), `app.api_key.issuer.id` when the row has an issuer, `app.tenant.id` |
-| `none` | The secret matches no key row of the selected workspace, or no workspace was selected | `app.tenant.id` when a workspace was selected |
+| `matched` | The secret matches a shop management key row in the selected workspace, whatever its state: usable, revoked, expired, or with an issuer that is no longer a verified owner | `app.api_key.id`, `app.api_key.issuer.id`, `app.tenant.id` |
+| `none` | The secret matches no shop management key of the selected workspace (a legacy key included), or no workspace was selected | `app.tenant.id` when a workspace was selected |
 | `missing` | The request carried no key | `app.tenant.id` when a workspace was selected |
 | `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else: the switch records only its state and performs no key lookup |
 
@@ -119,11 +122,11 @@ So a `401` for an unusable key, a `401` for mixed credentials, a `403` for a
 missing scope, a `429` and a failing handler each carry the id of the key that
 was presented. The secret, its hash and any part of either are never recorded,
 and telemetry never records request headers, so the key secret does not reach
-traces or error reports. A database failure while looking a key up by its hash
-(on a shop route or a legacy API-key route) or while storing a new key answers
-`500 internal` and is reported as `API key lookup failed` or `API key write
-failed` without the query or its parameters, so the hash never reaches a trace,
-a log or a response.
+traces or error reports. A database failure while looking a shop management
+key up by its hash or while storing a new one answers `500 internal` and is
+reported as `API key lookup failed` or `API key write failed` without the query
+or its parameters, so the hash never reaches a trace, a log or a response. The
+legacy key routes keep their own error handling unchanged.
 
 ## Key history
 
@@ -177,9 +180,9 @@ The owner reads the history with the same verified owner session as creation
 are refused), newest first, 50 rows a page by default and at most 100:
 
 ```bash
-pnpm --silent run cli --tenant acme api-key shop-events
-pnpm --silent run cli --tenant acme api-key shop-events --key <key-id> --limit 20
-pnpm --silent run cli --tenant acme api-key shop-events --cursor <event-id>
+pnpm --silent run cli --tenant acme api-key shop-management events
+pnpm --silent run cli --tenant acme api-key shop-management events --key <key-id> --limit 20
+pnpm --silent run cli --tenant acme api-key shop-management events --cursor <event-id>
 ```
 
 Over HTTP: `GET /api/api-keys/shop-management/events?keyId=<key-id>&cursor=<event-id>&limit=<n>`
@@ -263,7 +266,7 @@ empty. It sends the key and the selected workspace (`--tenant`) only, never the
 signed-in session. Options mirror `product`, `price` and `product stock`.
 
 ```bash
-export TOGETHER_SHOP_KEY=<secret from api-key create>
+export TOGETHER_SHOP_KEY=<secret from api-key shop-management create>
 pnpm --silent run cli --tenant acme shop products list
 pnpm --silent run cli --tenant acme shop products create --title 'Printed handbook' --type physical --price 49
 pnpm --silent run cli --tenant acme shop products update <product-id> --description 'Second edition'
@@ -312,23 +315,27 @@ renewal: rotate instead.
 ## Bootstrap
 
 ```bash
-pnpm --silent run cli --tenant acme api-key create 'Shop backend' \
-  --kind shop_management \
+pnpm --silent run cli --tenant acme api-key shop-management create 'Shop backend' \
   --scope shop:catalog:read shop:catalog:write \
   --expires-at 2026-11-21T00:00:00.000Z
 ```
 
 The secret is printed once. Store it in the shop backend's secret store; it
-cannot be shown again. `api-key list` shows each key's kind and state without
-the secret. The same operations are available over HTTP with the owner session:
-`POST /api/api-keys` with `{"name", "kind": "shop_management", "scopes",
-"expiresAt"}`, `GET /api/api-keys`, `DELETE /api/api-keys/:id`.
+cannot be shown again. `api-key shop-management list` shows each key's state,
+expiry and scopes without the secret. Every shop management key operation needs
+the verified owner session described above, listing included. The same
+operations are available over HTTP with that session, all under
+`/api/api-keys/shop-management`: `POST` with `{"name", "scopes", "expiresAt"}`
+creates, `GET` lists, `DELETE /api/api-keys/shop-management/:id` revokes,
+`POST .../purge` purges and `GET .../events` reads the history. The legacy key
+routes (`/api/api-keys`, `api-key create|list|revoke`) neither list nor create
+nor revoke shop management keys.
 
 ## Rotate and revoke
 
 1. Create a replacement key with the same scopes.
 2. Deploy it to the shop backend and verify a request succeeds with it.
-3. Revoke the old key: `api-key revoke <old-id>`.
+3. Revoke the old key: `api-key shop-management revoke <old-id>`.
 
 Revocation takes effect on the next request; keys are not cached between
 requests.
@@ -348,8 +355,9 @@ default) or `disabled`; any other value stops the server from booting. With
 - Creating a shop management key answers `403 forbidden` with the message
   `Shop management keys are disabled on this deployment
   (SHOP_MANAGEMENT_KEYS=disabled)`.
-- Existing keys stay listable (`GET /api/api-keys`), revocable
-  (`DELETE /api/api-keys/:id`) and purgeable (below) through the owner session.
+- Existing keys stay listable (`GET /api/api-keys/shop-management`), revocable
+  (`DELETE /api/api-keys/shop-management/:id`) and purgeable (below) through the
+  owner session.
 - Legacy keys behave exactly as with `enabled`.
 
 The switch is read at boot: change it and redeploy (or restart) the server.
@@ -357,9 +365,10 @@ The switch is read at boot: change it and redeploy (or restart) the server.
 ## Purge
 
 `POST /api/api-keys/shop-management/purge` (CLI
-`api-key purge-shop-management --yes`) deletes every shop management key of
-the workspace, revoked or not, in one transaction with one `purged` key event
-per deleted key, and answers `{"purged": <count>}`. It needs the same verified owner session as
+`api-key shop-management purge --yes`) is the owner's kill switch for one
+workspace: it deletes every shop management key of the workspace, revoked or
+not, in one transaction with one `purged` key event per deleted key, and answers
+`{"purged": <count>}`. It needs the same verified owner session as
 creation, refuses an admin, an unverified owner, an owner viewing as a member
 and any API key, and works with the switch in either state. Legacy keys and
 other workspaces' keys are untouched, and the keys' rate-limit buckets go with

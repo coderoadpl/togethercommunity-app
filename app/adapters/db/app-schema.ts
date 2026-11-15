@@ -46,7 +46,8 @@ import type {
   SchedulerRunTrigger,
   StorageCorsProbeResult,
   TenantDomainEventKind,
-  TenantApiKeyStoredScope,
+  TenantApiKeyScope,
+  ShopManagementScope,
 } from '#core/domain/index.js';
 
 export const tenants = pgTable(
@@ -1045,9 +1046,7 @@ export const tenantApiKeys = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
-    kind: text('kind', { enum: ['legacy', 'shop_management'] }).notNull().default('legacy'),
-    scopes: jsonb('scopes').$type<TenantApiKeyStoredScope[]>(),
-    issuedByUserId: text('issued_by_user_id'),
+    scopes: jsonb('scopes').$type<TenantApiKeyScope[]>(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at'),
     revokedAt: text('revoked_at'),
@@ -1055,15 +1054,45 @@ export const tenantApiKeys = pgTable(
   (table) => [
     index('tenant_api_keys_tenantId_idx').on(table.tenantId),
     uniqueIndex('tenant_api_keys_key_hash_uidx').on(table.keyHash),
-    check('tenant_api_keys_kind_check', sql`${table.kind} IN ('legacy', 'shop_management')`),
+  ],
+);
+
+export const shopManagementKeys = pgTable(
+  'shop_management_keys',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull(),
+    scopes: jsonb('scopes').$type<ShopManagementScope[]>().notNull(),
+    issuedByUserId: text('issued_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    revokedAt: text('revoked_at'),
+  },
+  (table) => [
+    index('shop_management_keys_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('shop_management_keys_key_hash_uidx').on(table.keyHash),
     check(
-      'tenant_api_keys_shop_management_issuer_expiry_check',
-      sql`${table.kind} <> 'shop_management' OR (${table.issuedByUserId} IS NOT NULL AND ${table.expiresAt} IS NOT NULL)`,
+      'shop_management_keys_scopes_check',
+      sql`jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb AND ${table.scopes} <@ '["shop:catalog:read", "shop:catalog:write", "shop:orders:read", "shop:fulfilment:write", "shop:settings:read", "shop:settings:write", "shop:integrations:read", "shop:integrations:write"]'::jsonb`,
     ),
-    check(
-      'tenant_api_keys_shop_management_scopes_check',
-      sql`${table.kind} <> 'shop_management' OR (${table.scopes} IS NOT NULL AND jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb)`,
-    ),
+  ],
+);
+
+export const shopManagementKeyRateLimitBuckets = pgTable(
+  'shop_management_key_rate_limit_buckets',
+  {
+    apiKeyId: text('api_key_id').notNull().references(() => shopManagementKeys.id, { onDelete: 'cascade' }),
+    period: text('period', { enum: ['minute', 'day'] }).notNull(),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.apiKeyId, table.period] }),
+    check('shop_management_key_rate_limit_buckets_period_check', sql`${table.period} IN ('minute', 'day')`),
   ],
 );
 

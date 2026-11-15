@@ -333,7 +333,7 @@ const beforeForRoute = (
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
-  if (path === '/api/api-keys/shop-management/events') return owner;
+  if (path === '/api/api-keys/shop-management' || path.startsWith('/api/api-keys/shop-management/')) return owner;
   if (path === '/api/posts/:postId/permanent') return staff;
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;
@@ -587,6 +587,7 @@ const beforeForUseCase = (
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
+  if (file === 'shop-management-keys.ts') return owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts' || file === 'probe-stripe-permissions.ts') return owner;

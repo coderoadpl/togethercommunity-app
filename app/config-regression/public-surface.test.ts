@@ -28,6 +28,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'submitSurvey',
   'authLinkBaseUrl',
   'cleanUpFailedCheckout',
+  'describeInstance',
   'ensureMember',
   'hasStripeTestSession',
   'fulfillStripeWebhook',

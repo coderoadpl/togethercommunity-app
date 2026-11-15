@@ -1,10 +1,48 @@
 import { z } from 'zod';
 import type { ApiClient } from '#core/client/index.js';
-import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
-import { manifestOperationError } from './plan.js';
+import type { healthOutputSchema } from '#core/contract/index.js';
+import { err, ok, validation, type AppError, type InstanceDescription, type Result } from '#core/domain/index.js';
+import { foreignWorkspaceHost, manifestOperationError } from './plan.js';
 
 type WorkspaceOrigins = (workspace: string) => string;
 type InstanceProbe = Pick<ApiClient, 'me' | 'getTenantRouting'>;
+type HealthProbe = Pick<ApiClient, 'health'>;
+type Health = z.output<typeof healthOutputSchema>;
+export type HealthReader = (origin: string) => Promise<Health | null>;
+
+const INSTANCE_IDENTITY_FIELDS = ['version', 'sha', 'commit', 'environment', 'production', 'databaseFingerprint'] as const;
+
+export const INSTANCE_DESCRIPTION_UNAVAILABLE_WARNING =
+  'The API origin does not describe its instance in GET /api/health (it runs an older release), so workspace hosts are derived from its routing answer and checked by release, environment and database host only. The stronger instance check is unavailable until the instance is upgraded.';
+const SINGLE_TENANT_MESSAGE =
+  'The API origin is a single-tenant instance. The shop manifest tool supports only multi-tenant instances, where each workspace is served on <workspace>.<base domain>';
+
+export const cachedHealthReader = (healthFor: (origin: string) => HealthProbe): HealthReader => {
+  const answers = new Map<string, Promise<Health | null>>();
+  return (origin) => {
+    const known = answers.get(origin);
+    if (known !== undefined) return known;
+    const answer = healthFor(origin).health().then((result) => result.ok ? result.value : null);
+    answers.set(origin, answer);
+    return answer;
+  };
+};
+
+const releaseIdentityMatches = (expected: Health, actual: Health): boolean =>
+  expected.databaseFingerprint !== null && INSTANCE_IDENTITY_FIELDS.every((field) => expected[field] === actual[field]);
+
+const describedIdentityMatches = (expected: InstanceDescription, actual: InstanceDescription | undefined): boolean =>
+  expected.baseDomain !== null && expected.databaseIdentity !== null && actual !== undefined &&
+  actual.baseDomain === expected.baseDomain && actual.databaseIdentity === expected.databaseIdentity;
+
+export const workspaceHostGuard = (profileOrigin: string, healthOf: HealthReader) =>
+  async (origin: string): Promise<Result<true, AppError>> => {
+    if (origin === profileOrigin) return ok(true);
+    const [expected, actual] = await Promise.all([healthOf(profileOrigin), healthOf(origin)]);
+    if (expected === null || actual === null || !releaseIdentityMatches(expected, actual)) return err(foreignWorkspaceHost());
+    if (expected.instance !== undefined && !describedIdentityMatches(expected.instance, actual.instance)) return err(foreignWorkspaceHost());
+    return ok(true);
+  };
 
 const LOOPBACK_HOST = 'localhost';
 const PLATFORM_HOST_LABEL = 'start';
@@ -54,16 +92,35 @@ const workspaceOriginsOn = (profile: URL, baseDomain: string): WorkspaceOrigins 
   return target.origin;
 };
 
+const describedWorkspaceOrigins = (
+  profile: URL, description: InstanceDescription, explicitBaseDomain: string | undefined,
+): Result<WorkspaceOrigins, AppError> => {
+  if (description.singleTenant) return err(validation(SINGLE_TENANT_MESSAGE));
+  const baseDomain = baseDomainSchema.safeParse(description.baseDomain);
+  if (!baseDomain.success) return unusableOrigin();
+  if (explicitBaseDomain !== undefined && explicitBaseDomain !== baseDomain.data) {
+    return err(validation('The --base-domain option does not match the base domain reported by the API origin'));
+  }
+  const host = hostnameOf(profile);
+  if (host !== `${PLATFORM_HOST_LABEL}.${baseDomain.data}` && !isDirectHostOf(host, baseDomain.data)) return unusableOrigin();
+  return ok(workspaceOriginsOn(profile, baseDomain.data));
+};
+
 export const manifestWorkspaceOrigins = async (
   apiUrl: string,
   probeFor: (workspace: string) => InstanceProbe,
   workspaces: readonly string[],
-  explicitBaseDomain?: string,
+  options: { baseDomain?: string | undefined; healthOf: HealthReader },
+  warn: (message: string) => void,
 ): Promise<Result<WorkspaceOrigins, AppError>> => {
   if (!URL.canParse(apiUrl)) return unusableOrigin();
   const profile = new URL(apiUrl);
   const host = hostnameOf(profile);
   if (host === LOOPBACK_HOST) return ok(() => profile.origin);
+  const explicitBaseDomain = options.baseDomain;
+  const description = (await options.healthOf(profile.origin))?.instance;
+  if (description !== undefined) return describedWorkspaceOrigins(profile, description, explicitBaseDomain);
+  warn(INSTANCE_DESCRIPTION_UNAVAILABLE_WARNING);
   const discovery = await discoverBaseDomain(profile, probeFor, workspaces);
   if (!discovery.ok) return discovery;
   if (discovery.value.kind === 'discovered') {

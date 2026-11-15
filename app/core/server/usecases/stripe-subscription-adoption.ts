@@ -42,6 +42,9 @@ const listedForTenant = async (
   ? !await hasForeignOwner(tenantId, remote, ownership)
   : remote.metadataTenantId === tenantId;
 
+const foreignOwnerRefusal = () =>
+  err(adoptionRefusal('conflict', 'conflict', 'Stripe subscription belongs to another workspace'));
+
 type AdoptionRepositories = SubscriptionAdoptionRepositories
   & Pick<StripeSubscriptionAdoptionDeps, 'clock' | 'ids'>;
 
@@ -213,11 +216,12 @@ export const m2mAdoptStripeSubscription = async (
   const remote = await deps.payment.retrieveStripeSubscription(tenantId, parsed.data.subscriptionId);
   if (!remote.ok) return remote;
   if (remote.value.id !== parsed.data.subscriptionId) return err(validation('Stripe returned a different subscription'));
-  if (!await adoptableByTenant(tenantId, remote.value, deps.stripeWebhookOwnership)) {
-    return err(adoptionRefusal('conflict', 'conflict', 'Stripe subscription belongs to another workspace'));
-  }
-  return deps.subscriptionAdoptionTransaction.run(tenantId, (repositories) =>
-    saveAdoption(tenantId, parsed.data, remote.value, { ...repositories, clock: deps.clock, ids: deps.ids }));
+  if (!await adoptableByTenant(tenantId, remote.value, deps.stripeWebhookOwnership)) return foreignOwnerRefusal();
+  const stripe = { subscriptionId: remote.value.id, customerId: remote.value.customerId };
+  return deps.subscriptionAdoptionTransaction.run(tenantId, stripe, async (repositories) =>
+    await hasForeignOwner(tenantId, remote.value, repositories.stripeWebhookOwnership)
+      ? foreignOwnerRefusal()
+      : saveAdoption(tenantId, parsed.data, remote.value, { ...repositories, clock: deps.clock, ids: deps.ids }));
 };
 
 export const adoptStripeSubscription = async (

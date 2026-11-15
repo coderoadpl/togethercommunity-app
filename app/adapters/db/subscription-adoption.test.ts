@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
-import { err, ok, validation } from '#core/domain/index.js';
+import { err, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription, type StripeSubscriptionAdoptionDeps } from '#core/server/index.js';
 
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
@@ -44,7 +44,7 @@ afterAll(async () => { await database?.close(); });
 it('rolls back every local write when an adoption fails', async () => {
   const transaction = deps.subscriptionAdoptionTransaction;
   const result = await m2mAdoptStripeSubscription('t1', input, { ...deps, subscriptionAdoptionTransaction: {
-    run: (tenantId, operation) => transaction.run(tenantId, async (repositories) => {
+    run: (tenantId, stripe, operation) => transaction.run(tenantId, stripe, async (repositories) => {
       const result = await operation(repositories);
       expect(result.ok).toBe(true);
       return err(validation('Reject transaction after audit write'));
@@ -72,4 +72,37 @@ it('refuses another tenant adopting a subscription already stored for this accou
   expect(await database.db.select().from(memberSubscriptions)).toMatchObject([{ tenantId: 't1' }]);
   expect((await database.db.select().from(productPrices)).map((price) => price.tenantId)).toEqual(['t1']);
   expect((await database.db.select().from(productGrants)).map((grant) => grant.tenantId)).toEqual(['t1']);
+});
+
+it('lets exactly one of two workspaces adopt the same subscription when both pass the early ownership check', async () => {
+  const contested: StripeSubscriptionSnapshot = { id: 'sub_contested', status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
+    cancelAtPeriodEnd: false, customerId: 'cus_contested', customerEmail: 'buyer@example.com', metadataTenantId: null,
+    price: { id: 'price_contested', amountCents: 4500, currency: 'EUR', interval: 'month', intervalCount: 1 } };
+  const reader = createStripeWebhookOwnershipReader(database.db);
+  let checked = 0;
+  let releaseChecks = () => {};
+  const bothChecked = new Promise<void>((resolve) => { releaseChecks = resolve; });
+  const contestedDeps: StripeSubscriptionAdoptionDeps = { ...deps,
+    payment: { retrieveStripeSubscription: async () => ok(contested) },
+    stripeWebhookOwnership: { hasForeignOwner: async (tenantId, ids) => {
+      const foreign = await reader.hasForeignOwner(tenantId, ids);
+      if (++checked === 2) releaseChecks();
+      await bothChecked;
+      return foreign;
+    } } };
+  const results = await Promise.all([
+    m2mAdoptStripeSubscription('t1', { subscriptionId: contested.id, memberId: 'member-1', productId: 'product-1' }, contestedDeps),
+    m2mAdoptStripeSubscription('t2', { subscriptionId: contested.id, memberId: 'member-2', productId: 'product-2' }, contestedDeps),
+  ]);
+  expect(results.filter((result) => result.ok && result.value.subscriptionCreated)).toHaveLength(1);
+  expect(results.filter((result) => !result.ok)).toMatchObject([{ error: { code: 'conflict', details: { adoptionRefusal: 'conflict' } } }]);
+  const stored = (await database.db.select().from(memberSubscriptions))
+    .filter((subscription) => subscription.providerSubscriptionId === contested.id);
+  expect(stored).toHaveLength(1);
+  const winner = stored[0]?.tenantId;
+  expect((await database.db.select().from(productPrices)).filter((price) => price.providerPriceId === contested.price.id)
+    .map((price) => price.tenantId)).toEqual([winner]);
+  expect((await database.db.select().from(memberEvents))
+    .filter((event) => event.payload['providerSubscriptionId'] === contested.id)
+    .map((event) => event.tenantId)).toEqual([winner]);
 });

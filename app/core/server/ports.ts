@@ -2688,10 +2688,15 @@ export interface SubscriptionAdoptionRepositories {
   subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;
   grants: Pick<ProductGrantRepository, 'findGrant' | 'createGrant' | 'setGrantWindow'>;
   memberEvents: Pick<MemberEventRepository, 'append'>;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
 }
 
 export interface SubscriptionAdoptionTransaction {
-  run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  run<T>(
+    tenantId: string,
+    stripe: { subscriptionId: string; customerId: string },
+    operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>,
+  ): Promise<Result<T, AppError>>;
 }
 
 export interface LessonEditionRepository {

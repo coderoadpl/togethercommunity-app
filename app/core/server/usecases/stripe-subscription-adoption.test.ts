@@ -28,7 +28,7 @@ const harness = (published = true) => {
   const subscriptions: MemberSubscription[] = [];
   const grants: ProductGrant[] = [];
   const events: Omit<MemberEvent, 'tenantId'>[] = [];
-  const repositories: SubscriptionAdoptionRepositories = {
+  const repositories: Omit<SubscriptionAdoptionRepositories, 'stripeWebhookOwnership'> = {
     members: { findById: async (tenantId, id) => members.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
       findByEmail: async (tenantId, email) => members.find((candidate) => candidate.tenantId === tenantId && candidate.email === email) ?? null },
     products: { findById: async (tenantId, id) => (tenantId === 't1' || tenantId === tenantB) && id === input.productId ? {
@@ -68,7 +68,7 @@ const harness = (published = true) => {
   const deps: StripeSubscriptionAdoptionDeps = {
     payment: { retrieveStripeSubscription: retrieve }, clock: { nowIso: () => now }, ids: { nextId: () => `id-${++sequence}` },
     stripeWebhookOwnership: ownership,
-    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation(repositories) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) => operation({ ...repositories, stripeWebhookOwnership: ownership }) },
   };
   const adoptedIds = {
     listKnownProviderSubscriptionIds: async (tenantId: string, ids: readonly string[]) => subscriptions

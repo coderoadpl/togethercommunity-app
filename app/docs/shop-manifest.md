@@ -46,7 +46,8 @@ operator route. An unconfirmed workspace never receives a request on a derived
 host, so a slug that happens to equal a host label of a separate instance (for
 example `preview` next to `preview.togethercommunity.app`) does not receive the
 session token. `shop plan` and `shop drift` report an unconfirmed string-form
-workspace as `provisioning: "missing"` and an unconfirmed provisioning entry as
+workspace as `provisioning: "missing"`, after which plan exits with the
+validation code `2` and drift with `1`, and an unconfirmed provisioning entry as
 `provisioning: "create"`; `shop apply` stops with a validation error that lists
 the unconfirmed string-form workspaces before any write.
 
@@ -601,6 +602,25 @@ Serialize applies and avoid concurrent catalogue edits, stock writers or sales
 while reconciling an absolute on-hand target: the existing stock route accepts a
 delta, not a compare-and-set operation. A plan is a preview, not a lock on live
 workspace state. No production or provider mutation is implied by this guide.
+
+### Exit codes
+
+The three commands print their report or failure envelope first and then set
+the process exit code, so a job can use them as gates:
+
+- `shop plan`: `0` when the plan was read and every selected shop exists or will
+  be created by a provisioning entry, whether or not changes are pending.
+  Validation exit code `2`, with the complete `ok: true` report still printed,
+  when any selected string-form workspace is reported as
+  `provisioning: "missing"` (mistyped, revoked or absent from the account's
+  workspace list). Any other failure keeps its CLI taxonomy exit code with
+  `ok: false`.
+- `shop apply`: `0` when every selected change was applied or nothing was
+  pending; otherwise the exit code of the first error (validation `2`,
+  including missing workspaces, authentication required `3`, and so on), with
+  `ok: false` and the completed operations under `error.details.applied`.
+- `shop drift`: `0` when converged, `1` when drift is reported (see Scheduled
+  drift detection), otherwise the exit code of the error with `ok: false`.
 
 ## Scheduled drift detection
 

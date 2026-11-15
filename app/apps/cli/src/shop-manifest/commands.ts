@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import { z } from 'zod';
 import { createApiClient } from '#core/client/index.js';
-import { TENANT_HEADER } from '#core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
 import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import { emit } from '../output.js';
 import { planManifest, preflightManifest } from './plan.js';
@@ -96,6 +96,9 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
           operator: confirmingOperator(createApiClient({ baseUrl: apiUrl, refuseRedirects: true }), confirmed.value),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
+      if (command === 'plan' && result.ok && result.value.shops.some((entry) => entry.provisioning === 'missing')) {
+        process.exitCode = EXIT_CODE_BY_ERROR_CODE.validation;
+      }
     });
   }
 };

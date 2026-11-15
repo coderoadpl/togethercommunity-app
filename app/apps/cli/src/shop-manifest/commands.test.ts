@@ -118,7 +118,7 @@ describe('shop manifest command boundary', () => {
     const separateHostRequests = (requests: ReturnType<typeof createInstanceFetch>['requests']) =>
       requests.filter((request) => request.origin === 'https://preview.togethercommunity.app');
 
-    it.each([['plan', 0], ['drift', 1]] as const)('%s reports a slug that names another instance host as missing without a request to it', async (command, exitCode) => {
+    it.each([['plan', 2], ['drift', 1]] as const)('%s reports a slug that names another instance host as missing without a request to it', async (command, exitCode) => {
       const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
       const fake = createInstanceFetch(separateInstances());
       vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
@@ -150,6 +150,19 @@ describe('shop manifest command boundary', () => {
       await runCli(['shop', 'plan', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
       expect(separateHostRequests(fake.requests)).toEqual([]);
       expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ provisioning: 'unchanged' }, { workspace: 'preview', provisioning: 'create' }] } });
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('plan prints the full report but exits with the validation code when one of several shops is missing', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(createInstanceFetch(separateInstances()).fetchImpl);
+      const input = { version: 1, company: { settings: { invoiceSellerName: 'Acme' } }, shops: [{ workspace: 'acme', products: [] }, { workspace: 'mistyped', products: [] }] };
+      await runCli(['shop', 'plan', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [
+        { workspace: 'acme', provisioning: 'unchanged', settings: { change: ['invoiceSellerName'] } }, { workspace: 'mistyped', provisioning: 'missing' },
+      ] } });
+      expect(process.exitCode).toBe(2);
     });
   });
 

@@ -421,7 +421,8 @@ fields, which are also the only fields the write accepts:
 | Area | Fields |
 |---|---|
 | Name and language | `name`, `defaultLanguage` |
-| Brand | `logoUrl`, `logoDarkUrl`, `faviconUrl`, `accentColor`, `accentLight`, `ogImageUrl`, `socialLinks` |
+| Brand | `logoUrl`, `logoDarkUrl`, `faviconUrl`, `accentColor`, `accentLight`, `socialLinks` |
+| Link previews (Open Graph) | `ogTitle` (at most 70 characters), `ogDescription` (at most 200 characters), `ogImageUrl` |
 | Checkout | `checkoutAppearance` |
 | Support and legal | `supportEmail`, `supportUrl`, `termsUrl`, `privacyUrl` |
 | Seller and invoicing | `invoiceSellerName`, `invoiceSellerAddress`, `invoiceVatMode`, `invoiceVatRatePercent`, `invoiceExemptionBasisKind`, `invoiceExemptionBasis`, `invoicingProvider`, `autoIssueInvoices`, `autoIssueInvoiceScope`, `ksefSubmissionMode` |
@@ -438,11 +439,12 @@ Merge and clear semantics:
 
 - A field left out of the body keeps its stored value; `{}` changes nothing.
 - `null` clears a field where the session route allows clearing: the brand
-  image URLs, `accentColor`, `accentLight`, `supportEmail`, `supportUrl`,
-  `termsUrl`, `privacyUrl`, `checkoutAppearance`, `invoiceSellerName`,
-  `invoiceSellerAddress`, `invoiceVatRatePercent`, `invoiceExemptionBasisKind`,
-  `invoiceExemptionBasis` and `inpostGeowidgetToken`. An empty string clears
-  the same URL, e-mail, colour, exemption basis and Geowidget token fields.
+  image URLs, `accentColor`, `accentLight`, `ogTitle`, `ogDescription`,
+  `supportEmail`, `supportUrl`, `termsUrl`, `privacyUrl`, `checkoutAppearance`,
+  `invoiceSellerName`, `invoiceSellerAddress`, `invoiceVatRatePercent`,
+  `invoiceExemptionBasisKind`, `invoiceExemptionBasis` and
+  `inpostGeowidgetToken`. An empty string clears the same URL, e-mail, colour,
+  Open Graph text, exemption basis and Geowidget token fields.
 - `name`, `defaultLanguage`, `invoiceVatMode`, `invoicingProvider`,
   `autoIssueInvoices`, `autoIssueInvoiceScope` and `ksefSubmissionMode` cannot
   be cleared; `null` answers `400 validation`. Send `[]` to remove every social

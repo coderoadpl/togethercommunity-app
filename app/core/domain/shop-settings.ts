@@ -10,6 +10,8 @@ const SHOP_SETTINGS_FIELDS = {
   faviconUrl: true,
   accentColor: true,
   accentLight: true,
+  ogTitle: true,
+  ogDescription: true,
   ogImageUrl: true,
   socialLinks: true,
   checkoutAppearance: true,

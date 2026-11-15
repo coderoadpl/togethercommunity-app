@@ -22,6 +22,8 @@ const projectShopSettings = (settings: TenantSettings): ShopSettings => ({
   faviconUrl: settings.faviconUrl,
   accentColor: settings.accentColor,
   accentLight: settings.accentLight,
+  ogTitle: settings.ogTitle,
+  ogDescription: settings.ogDescription,
   ogImageUrl: settings.ogImageUrl,
   socialLinks: settings.socialLinks,
   checkoutAppearance: settings.checkoutAppearance,

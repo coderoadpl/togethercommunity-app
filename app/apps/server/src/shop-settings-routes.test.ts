@@ -197,6 +197,23 @@ describe('shop settings routes with a shop management key', () => {
     expect(await readSettings(secret)).toEqual(before);
   });
 
+  it('sets, reads back and clears the Open Graph title and description', async () => {
+    const secret = await createShopKey([READ, WRITE]);
+    const og = { ogTitle: 'Printed handbooks', ogDescription: 'Handbooks printed and shipped from Warsaw.' };
+    const written = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, og);
+    expect(written.status).toBe(200);
+    expect(envelope(shopSettingsContracts.updateSettings.output).parse(await written.json()).data.settings).toMatchObject(og);
+    expect(await readSettings(secret)).toMatchObject(og);
+    expect(await sessionSettings()).toMatchObject(og);
+
+    const tooLong = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { ogTitle: 'x'.repeat(71) });
+    expect(tooLong.status).toBe(400);
+
+    const cleared = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { ogTitle: null, ogDescription: '' });
+    expect(cleared.status).toBe(200);
+    expect(await readSettings(secret)).toMatchObject({ ogTitle: null, ogDescription: null });
+  });
+
   it('rejects an unknown field inside a nested settings object and keeps the stored configuration', async () => {
     const secret = await createShopKey([READ, WRITE]);
     const configured = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, {

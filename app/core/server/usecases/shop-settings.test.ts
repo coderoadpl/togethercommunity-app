@@ -99,7 +99,7 @@ describe('shop settings use-cases', () => {
     const result = await getShopSettings(keyCtx(['tenant:settings:read']), deps);
     if (!result.ok) throw new Error('Expected settings');
     expect(Object.keys(result.value).toSorted()).toEqual(Object.keys(shopSettingsSchema.shape).toSorted());
-    expect(result.value).toMatchObject({ name: 'Alpha', supportEmail: 'help@example.test', invoiceVatRatePercent: 23 });
+    expect(result.value).toMatchObject({ name: 'Alpha', supportEmail: 'help@example.test', invoiceVatRatePercent: 23, ogTitle: 'Private title', ogDescription: null });
     expect(result.value).not.toHaveProperty('analyticsTagId');
     expect(result.value).not.toHaveProperty('signInNotice');
     expect(result.value).not.toHaveProperty('billingPortalUrl');

@@ -73,7 +73,8 @@ const shipment = {
 };
 
 const shopSettings = {
-  name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null, ogImageUrl: null,
+  name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null,
+  ogTitle: 'Printed handbooks', ogDescription: null, ogImageUrl: null,
   socialLinks: [], supportEmail: null, supportUrl: null, termsUrl: 'https://brand.example.test/terms', privacyUrl: null,
 };
 

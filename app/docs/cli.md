@@ -184,6 +184,34 @@ removed (`conflict`), including by themselves. An organization admin is
 Each change is recorded in the organization audit as `member.added`,
 `member.role_changed` or `member.removed`.
 
+Members also hold a role in every workspace linked to the organization, without
+a workspace grant: an organization `owner` acts as a workspace `owner` and an
+organization `admin` as a workspace `admin`. A member who also holds a direct
+grant in the workspace gets the higher of the two roles; on a tie the direct
+grant counts. The role is read on every request, so removing a member, changing
+their role, unlinking the workspace or suspending the organization takes effect
+on the next request. A suspended organization gives no workspace role; its own
+routes keep their reads and refuse every write with `forbidden`, while the
+`operator org` commands and `tenant organization unlink` keep working. No
+command changes an organization's status.
+
+Adding a member needs no invitation because a member reaches only the
+workspaces that were linked with a direct owner's consent (below), and any
+direct owner of such a workspace can take it out of the organization again.
+
+An owner whose workspace role comes from the organization can use the
+workspace like a direct owner, with three exceptions that need a direct owner
+grant in the workspace: `api-key create` (tenant API keys), `team add` and
+`team remove`, and `tenant organization unlink`; each is `forbidden` otherwise.
+Shop management keys stay open to such an owner because every request with the
+key checks the issuer's role again. `team list` shows the direct team and, for a
+workspace of an active organization, a read-only `organization` section with
+each member's derived role and `source: "organization"`. `team remove` for a
+user whose only access comes from the organization answers
+`organization_managed` (HTTP 409, CLI exit 31): change it with
+`org member role` or `org member remove` instead. Staff notifications go to the
+direct team only.
+
 An organization owner links a workspace in which they also hold a direct owner
 grant. The workspace is named by its slug and resolved from the caller's staff
 workspaces:
@@ -193,6 +221,12 @@ pnpm --silent run cli org workspace list --org holding
 pnpm --silent run cli org workspace link acme --org holding
 pnpm --silent run cli org workspace unlink acme --org holding
 ```
+
+Linking gives every current and future owner of the organization owner-level
+access to the workspace, and every current and future organization admin
+admin-level access, for as long as the workspace stays linked. Organization
+owners add and promote members without asking the workspace, so link only a
+workspace whose access you want the organization's owners to control.
 
 Linking changes nothing in the workspace's settings, secrets, payments or
 checkout. Linking a workspace that is already in the organization reports

@@ -71,6 +71,14 @@ The key records the issuing owner. Every request made with it will act with at
 most the issuer's current authority, so a key stops working when its issuer is
 no longer a verified owner of the workspace.
 
+The issuer's owner role may come from the organization the workspace is linked
+to: an owner of an active organization is an owner of every workspace linked
+to it and can create
+shop management keys there, although creating a tenant API key needs a direct
+owner grant. Such a key stops on the next request when that derivation ends:
+the issuer leaves the organization or loses its owner role, the workspace is
+unlinked, or the organization is suspended.
+
 Creation and revocation each write a key event (`created`, `revoked`) to the
 dedicated shop management key history (below) in the same transaction as the
 key change. A purge writes one `purged` event per deleted key in the same
@@ -97,7 +105,8 @@ between requests:
    answers `401 Missing API key`; an unknown, revoked, expired, legacy or
    other-workspace key answers the same `401 Invalid API key`.
 3. The issuing account must still exist, have a verified e-mail address and
-   hold the owner role in that workspace. Otherwise the request answers the
+   hold the owner role in that workspace, directly or derived from the
+   organization the workspace is linked to. Otherwise the request answers the
    same `401 Invalid API key` as every other unusable key, so a caller cannot
    tell an issuer change from a revoked or unknown key; demoting or removing
    the issuer, or deleting the account, takes effect on the next request.

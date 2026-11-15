@@ -185,6 +185,24 @@ describe('shop order routes with a shop management key', () => {
     expect((await errorOf(invalid)).code).toBe('validation');
   });
 
+  it('rejects an unknown query parameter or body field instead of ignoring it', async () => {
+    const secret = await createShopKey([READ, FULFIL]);
+    for (const path of [
+      `${SHOP_ORDER_ROUTES.listOrders.path}?fulfillmentStatus=to_pack`,
+      `${SHOP_ORDER_ROUTES.exportOrders.path}?format=csv&fulfillmentStatus=to_pack`,
+      `${SHOP_ORDER_ROUTES.ordersPackingList.path}?format=csv&mod=live`,
+    ]) {
+      const response = await keyed(secret, 'GET', path);
+      expect(response.status, path).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    const shipped = await keyed(secret, 'POST', orderPath(SHOP_ORDER_ROUTES.shipOrder.path, 'acme-live-courier'), {
+      carrier: 'other', trackingNumber: 'MANUAL0002', trackingUrl: 'https://carrier.example.test/MANUAL0002',
+    });
+    expect(shipped.status).toBe(400);
+    expect((await errorOf(shipped)).code).toBe('validation');
+  });
+
   it('serves order detail, verification, the export and the packing list to a read key', async () => {
     const secret = await createShopKey([READ]);
     const detail = await keyed(secret, 'GET', orderPath(SHOP_ORDER_ROUTES.getOrder.path, 'acme-live-pickup'));

@@ -92,7 +92,9 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
     ...SHOP_INTEGRATION_ROUTES.shipxConfigure,
     handler: async (c, { ctx }) => {
       if (deps.shipxIntegration === undefined) return shipxUnavailable();
-      return respond(await configureShipx(ctx, await readJson(c.req.raw), {
+      const parsed = shopIntegrationContracts.shipxConfigure.input.safeParse(await readJson(c.req.raw));
+      if (!parsed.success) return respond(err(validation('Invalid InPost ShipX settings', parsed.error.flatten())));
+      return respond(await configureShipx(ctx, parsed.data, {
         shipxSettings: deps.shipxIntegration.shipxSettings,
         tenantSecrets: deps.tenantSecrets,
         secretCrypto: deps.secretCrypto,

@@ -161,6 +161,24 @@ describe('shop asset routes with shop management keys', () => {
     expect(objects.get(unsignedUrl(location))).toEqual(new Uint8Array(png));
   });
 
+  it('rejects an unknown field in cover upload and sales-link bodies before any write', async () => {
+    const secret = await createShopKey([READ, WRITE]);
+    const product = await createProduct(secret);
+    const stored = objects.size;
+    for (const [path, body] of [
+      [SHOP_ASSETS_ROUTES.productCoverUpload.path, { kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: png.byteLength, width: 800 }],
+      [SHOP_ASSETS_ROUTES.productCoverComplete.path, { key: 'image-asset-candidates/acme/product-cover/1.png', productId: product.id }],
+      [SHOP_ASSETS_ROUTES.createSalesLink.path, { ...linkFields(product.id), slug: 'strict-bundle', subtitle: 'Typo of heading' }],
+    ] as const) {
+      const response = await keyed(secret, 'POST', path, body);
+      expect(response.status, path).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    expect(objects.size).toBe(stored);
+    const links = await keyed(secret, 'GET', SHOP_ASSETS_ROUTES.listSalesLinks.path);
+    expect(JSON.stringify(await links.json())).not.toContain('strict-bundle');
+  });
+
   it('rejects another workspace key and foreign candidate without publishing or deleting it', async () => {
     const secret = await createShopKey([WRITE]);
     const studioSecret = await createShopKey([WRITE], studioHost);

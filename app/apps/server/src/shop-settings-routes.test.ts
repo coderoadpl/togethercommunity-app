@@ -197,6 +197,35 @@ describe('shop settings routes with a shop management key', () => {
     expect(await readSettings(secret)).toEqual(before);
   });
 
+  it('rejects an unknown field inside a nested settings object and keeps the stored configuration', async () => {
+    const secret = await createShopKey([READ, WRITE]);
+    const configured = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, {
+      checkoutAppearance: { backgroundColor: '#112233' },
+      socialLinks: [{ label: 'Blog', url: 'https://brand.example.test/blog' }],
+      shippingRates: [courier],
+    });
+    expect(configured.status).toBe(200);
+    const before = await readSettings(secret);
+    expect(before.checkoutAppearance).toMatchObject({ backgroundColor: '#112233' });
+
+    for (const body of [
+      { checkoutAppearance: { backgoundColor: '#445566' } },
+      { socialLinks: [{ label: 'Blog', url: 'https://brand.example.test/blog', target: '_blank' }] },
+      { shippingRates: [{ ...courier, amountCent: 1600 }] },
+    ]) {
+      const response = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, body);
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    expect(await readSettings(secret)).toEqual(before);
+
+    const branding = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, {
+      kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: png.byteLength, width: 512,
+    });
+    expect(branding.status).toBe(400);
+    expect((await errorOf(branding)).code).toBe('validation');
+  });
+
   it('keeps VAT coherent through the reused settings update', async () => {
     const secret = await createShopKey([READ, WRITE]);
     const missing = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { invoiceVatMode: 'exempt' });

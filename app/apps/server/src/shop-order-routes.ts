@@ -2,7 +2,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 
 import { SHOP_ORDER_ROUTES, shopOrderContracts } from '#core/contract/index.js';
-import { err, internal, validation } from '#core/domain/index.js';
+import { err, internal, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
   createInpostShipment,
   discardInpostShipmentAttempt,
@@ -25,17 +25,13 @@ import { respond } from './respond.js';
 import { shipxLabelResponse, shipxOrderDeps } from './shipx-routes.js';
 import type { ShopMachineRoute } from './shop-machine-auth.js';
 
-const LIST_QUERY_KEYS = ['source', 'sourceMatch', 'mode', 'status', 'productId', 'kind', 'couponId', 'fulfilmentStatus', 'search', 'page', 'pageSize'] as const;
-const EXPORT_QUERY_KEYS = ['source', 'sourceMatch', 'format', 'status', 'productId', 'kind', 'couponId', 'fulfilmentStatus', 'search'] as const;
-const PACKING_LIST_QUERY_KEYS = ['format', 'fulfilmentStatus', 'mode'] as const;
-
 const shipBodySchema = z.object({}).passthrough();
 
-const presentQuery = (c: Context<AppVars>, keys: readonly string[]): Record<string, string> =>
-  Object.fromEntries(keys.flatMap((key) => {
-    const value = c.req.query(key);
-    return value === undefined ? [] : [[key, value]];
-  }));
+const strictQuery = (c: Context<AppVars>, schema: z.ZodTypeAny, label: string): Result<Record<string, string>, AppError> => {
+  const query = c.req.query();
+  const parsed = schema.safeParse(query);
+  return parsed.success ? ok(query) : err(validation(`Invalid ${label} query`, parsed.error.flatten()));
+};
 
 const orderIdParam = (c: Context<AppVars>): string => c.req.param('orderId') ?? '';
 
@@ -44,19 +40,25 @@ const unavailable = (message: string): Response => respond(err(internal(message)
 export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   {
     ...SHOP_ORDER_ROUTES.listOrders,
-    handler: async (c, { ctx }) => respond(await listOrders(ctx, presentQuery(c, LIST_QUERY_KEYS), deps)),
+    handler: async (c, { ctx }) => {
+      const query = strictQuery(c, shopOrderContracts.listOrders.input, 'orders list');
+      return respond(query.ok ? await listOrders(ctx, query.value, deps) : query);
+    },
   },
   {
     ...SHOP_ORDER_ROUTES.exportOrders,
     handler: async (c, { ctx }) => {
-      const parsed = shopOrderContracts.exportOrders.input.safeParse(presentQuery(c, EXPORT_QUERY_KEYS));
+      const parsed = shopOrderContracts.exportOrders.input.safeParse(c.req.query());
       if (!parsed.success) return respond(err(validation('Invalid orders export query', parsed.error.flatten())));
       return respond(await exportOrders(ctx, parsed.data, deps));
     },
   },
   {
     ...SHOP_ORDER_ROUTES.ordersPackingList,
-    handler: async (c, { ctx }) => respond(await exportPackingList(ctx, presentQuery(c, PACKING_LIST_QUERY_KEYS), deps)),
+    handler: async (c, { ctx }) => {
+      const query = strictQuery(c, shopOrderContracts.ordersPackingList.input, 'packing list');
+      return respond(query.ok ? await exportPackingList(ctx, query.value, deps) : query);
+    },
   },
   {
     ...SHOP_ORDER_ROUTES.verifyOrder,
@@ -77,7 +79,9 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
     handler: async (c, { ctx }) => {
       if (deps.orderFulfilment === undefined || deps.orderDetails === undefined) return unavailable('Order fulfilment is unavailable');
       const body = shipBodySchema.safeParse(await readJson(c.req.raw));
-      return respond(await shipOrder(ctx, { ...(body.success ? body.data : {}), orderId: orderIdParam(c) }, {
+      const parsed = shopOrderContracts.shipOrder.input.safeParse({ ...(body.success ? body.data : {}), orderId: orderIdParam(c) });
+      if (!parsed.success) return respond(err(validation('Invalid shipment payload', parsed.error.flatten())));
+      return respond(await shipOrder(ctx, parsed.data, {
         ...deps,
         fulfilment: deps.orderFulfilment,
         orderDetails: deps.orderDetails,

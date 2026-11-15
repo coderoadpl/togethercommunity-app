@@ -141,11 +141,13 @@ names (`id` for update, publish and unpublish and for price deactivation;
 scope, and the reused use-case checks the matching capability again. A product
 or price id from another workspace answers `404 not_found`.
 
-Request bodies on the shop routes are strict: a field the route does not know,
-at the top level or inside a nested object such as `compliance` or an
-`accessItems` entry, answers `400 validation` and nothing is written. A
-misspelt field therefore fails instead of being dropped. The session routes
-keep ignoring unknown fields.
+Request bodies on every shop route are strict: a field the route does not
+know, at the top level or inside a nested object such as `compliance`, an
+`accessItems` entry, `checkoutAppearance`, a `socialLinks` or `shippingRates`
+entry, or the ShipX `sender`, answers `400 validation` and nothing is written.
+The order list, export and packing-list routes reject an unknown query
+parameter the same way. A misspelt field therefore fails instead of being
+dropped. The session routes keep ignoring unknown fields.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|

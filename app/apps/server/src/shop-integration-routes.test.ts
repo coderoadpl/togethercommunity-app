@@ -279,6 +279,27 @@ describe('shop integration routes with a shop management key', () => {
     expect(await storedSecret('acme', 'shipx.token')).toBe('shipx-token-abcd');
   });
 
+  it('rejects an unknown field at any level of a configure body before any provider call or write', async () => {
+    const { secret } = await createShopKey([READ, WRITE]);
+    const before = await deps.tenantSecrets.listByTenant('acme');
+    const webhooks = registeredWebhooks.length;
+    const probes = storageProbes.length;
+    for (const [path, body] of [
+      [SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { sender: { ...sender, compnay: 'Other Press' } }],
+      [SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { mode: 'test', restrictedKey: 'rk_test_strict', webhookSecret: 'whsec_typed' }],
+      [SHOP_INTEGRATION_ROUTES.stripeProbe.path, { mode: 'test', verbose: true }],
+      [SHOP_INTEGRATION_ROUTES.storageConfigure.path, { ...storage, bucket: 'strict-bucket', forcePathStyle: true }],
+      [SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'ksef.token', value: 'ksef-strict-token', environment: 'test' }],
+    ] as const) {
+      const response = await keyed(secret, 'POST', path, body);
+      expect(response.status, path).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    expect(registeredWebhooks).toHaveLength(webhooks);
+    expect(storageProbes).toHaveLength(probes);
+    expect(await deps.tenantSecrets.listByTenant('acme')).toEqual(before);
+  });
+
   it('sets, lists masked and deletes the allow-listed iFirma and KSeF credentials', async () => {
     const { secret } = await createShopKey([READ, WRITE]);
     for (const [key, value] of [

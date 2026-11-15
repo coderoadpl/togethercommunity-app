@@ -6,6 +6,7 @@ import { orderFulfilmentContracts } from './order-fulfilment.js';
 import { orderVerificationContracts } from './order-verification.js';
 import { orderDetailOutputSchema, ordersExportOutputSchema, ordersExportQuerySchema, ordersListOutputSchema } from './routes.js';
 import { shipxContracts } from './shipx.js';
+import { strictInput } from './strict-input.js';
 
 const READ = 'shop:orders:read' satisfies ShopManagementScope;
 const FULFIL = 'shop:fulfilment:write' satisfies ShopManagementScope;
@@ -26,12 +27,12 @@ export const SHOP_ORDER_ROUTES = {
 } as const;
 
 export const shopOrderContracts = {
-  listOrders: { input: listOrdersQuerySchema, output: ordersListOutputSchema },
-  exportOrders: { input: ordersExportQuerySchema, output: ordersExportOutputSchema },
-  ordersPackingList: orderFulfilmentContracts.ordersPackingList,
+  listOrders: { input: strictInput(listOrdersQuerySchema), output: ordersListOutputSchema },
+  exportOrders: { input: strictInput(ordersExportQuerySchema), output: ordersExportOutputSchema },
+  ordersPackingList: { ...orderFulfilmentContracts.ordersPackingList, input: strictInput(orderFulfilmentContracts.ordersPackingList.input) },
   verifyOrder: orderVerificationContracts.verifyOrder,
   getOrder: { input: z.object({ orderId: z.string().min(1) }).strict(), output: orderDetailOutputSchema },
-  shipOrder: orderFulfilmentContracts.shipOrder,
+  shipOrder: { ...orderFulfilmentContracts.shipOrder, input: strictInput(orderFulfilmentContracts.shipOrder.input) },
   issueOrderLine: orderVerificationContracts.issueOrderLine,
   shipxShipment: shipxContracts.shipxShipment,
   shipxCreate: shipxContracts.shipxCreate,

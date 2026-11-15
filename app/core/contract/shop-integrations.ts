@@ -18,6 +18,7 @@ import {
   tenantSecretsListOutputSchema,
 } from './routes.js';
 import { shipxContracts } from './shipx.js';
+import { strictInput } from './strict-input.js';
 
 const READ = 'shop:integrations:read' satisfies ShopManagementScope;
 const WRITE = 'shop:integrations:write' satisfies ShopManagementScope;
@@ -35,11 +36,11 @@ export const SHOP_INTEGRATION_ROUTES = {
 
 export const shopIntegrationContracts = {
   listSecrets: { output: tenantSecretsListOutputSchema },
-  setSecret: { input: shopIntegrationSecretInputSchema, output: z.object({ secret: tenantSecretMaskedSchema }) },
-  deleteSecret: { input: shopIntegrationSecretDeleteInputSchema, output: z.object({ key: shopIntegrationSecretKeySchema }) },
-  stripeConfigure: { input: stripeConfigureInputSchema, output: stripeConfigureOutputSchema },
-  stripeProbe: { input: stripeProbePermissionsInputSchema, output: stripeProbePermissionsOutputSchema },
-  storageConfigure: { input: storageConfigureInputSchema, output: storageConfigureOutputSchema },
+  setSecret: { input: strictInput(shopIntegrationSecretInputSchema), output: z.object({ secret: tenantSecretMaskedSchema }) },
+  deleteSecret: { input: strictInput(shopIntegrationSecretDeleteInputSchema), output: z.object({ key: shopIntegrationSecretKeySchema }) },
+  stripeConfigure: { input: strictInput(stripeConfigureInputSchema), output: stripeConfigureOutputSchema },
+  stripeProbe: { input: strictInput(stripeProbePermissionsInputSchema), output: stripeProbePermissionsOutputSchema },
+  storageConfigure: { input: strictInput(storageConfigureInputSchema), output: storageConfigureOutputSchema },
   shipxSettings: { output: shipxContracts.shipxSettings.output },
-  shipxConfigure: shipxContracts.shipxConfigure,
+  shipxConfigure: { ...shipxContracts.shipxConfigure, input: strictInput(shipxContracts.shipxConfigure.input) },
 } as const;

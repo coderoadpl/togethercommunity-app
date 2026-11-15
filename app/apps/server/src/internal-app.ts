@@ -479,6 +479,7 @@ import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
+import { shopOrderRoutes } from './shop-order-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -1305,7 +1306,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, shopCatalogRoutes(deps));
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),

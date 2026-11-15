@@ -1,3 +1,5 @@
+import { writeFile } from 'node:fs/promises';
+
 import type { Command } from 'commander';
 import { z } from 'zod';
 
@@ -11,15 +13,21 @@ import {
   currencySchema,
   deliveryMethodSchema,
   err,
+  fulfilmentStatusSchema,
   ok,
   parcelTemplateSchema,
+  priceKindSchema,
   priceMajorSchema,
   productVisibilitySchema,
+  shippingCarrierSchema,
+  stripeModeSchema,
   validation,
   type AppError,
+  type OrderListItem,
   type ProductPrice,
   type ProductStock,
   type Result,
+  type ShipxOrderView,
 } from '#core/domain/index.js';
 
 import { emit } from './output.js';
@@ -74,6 +82,67 @@ const priceAddSchema = z.object({
   price: priceMajorSchema.optional(),
   currency: currencySchema.optional(),
 });
+
+const positiveIntSchema = z.string().regex(/^[1-9]\d*$/, 'Expected a positive whole number').transform((value) => Number.parseInt(value, 10));
+const orderFiltersSchema = z.object({
+  apiKeyEnv: z.string(),
+  status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
+  product: idSchema.optional(),
+  kind: priceKindSchema.optional(),
+  coupon: idSchema.optional(),
+  fulfilment: fulfilmentStatusSchema.optional(),
+  source: z.string().min(1).max(200).optional(),
+  sourceExact: z.boolean().optional(),
+  search: z.string().min(1).optional(),
+});
+const ordersListSchema = orderFiltersSchema.extend({
+  mode: stripeModeSchema.optional(),
+  page: positiveIntSchema.optional(),
+  pageSize: positiveIntSchema.optional(),
+});
+const ordersExportSchema = orderFiltersSchema.extend({ format: z.enum(['csv', 'json']), out: z.string().min(1).optional() });
+const packingListSchema = z.object({
+  apiKeyEnv: z.string(),
+  format: z.literal('csv'),
+  fulfilment: fulfilmentStatusSchema.optional(),
+  mode: stripeModeSchema.default('live'),
+  out: z.string().min(1).optional(),
+});
+const shipSchema = keyOnlySchema.extend({ carrier: shippingCarrierSchema, tracking: z.string().min(1) });
+const labelSchema = keyOnlySchema.extend({ out: z.string().min(1) });
+
+const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
+  ...(options.status === undefined ? {} : { status: options.status }),
+  ...(options.product === undefined ? {} : { productId: options.product }),
+  ...(options.kind === undefined ? {} : { kind: options.kind }),
+  ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+  ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
+  ...(options.source === undefined ? {} : { source: options.source }),
+  ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
+  ...(options.search === undefined ? {} : { search: options.search }),
+});
+
+const orderLine = (order: OrderListItem): string =>
+  `${order.createdAt}\t${order.status}\t${order.mode ?? 'live'}\t${order.fulfilmentStatus ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
+
+const shipxOrderLines = (view: ShipxOrderView): string => [
+  `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
+  `service: ${view.service ?? '(none)'}`,
+  `parcel template: ${view.parcelTemplate}`,
+  `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
+].join('\n');
+
+const writeExport = async <T extends { filename: string; content: string }>(
+  result: Result<T, AppError>,
+  out: string | undefined,
+): Promise<Result<T & { out?: string }, AppError>> => {
+  if (!result.ok || out === undefined) return result;
+  await writeFile(out, result.value.content);
+  return ok({ ...result.value, out });
+};
+
+const exportSummary = (file: { filename: string; content: string; out?: string }): string =>
+  file.out === undefined ? file.content : `wrote ${file.filename} to ${file.out}`;
 
 const inlineJson = (raw: string | undefined, label: string): Result<unknown, AppError> => {
   if (raw === undefined) return ok(undefined);
@@ -171,7 +240,7 @@ export const registerShopKeyCommands = (
   context: () => Result<ShopCliContext, AppError>,
   createClient: ShopClientFactory = createShopManagementClient,
 ): void => {
-  const shop = program.command('shop').description(`Manage the shop catalog with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
+  const shop = program.command('shop').description(`Manage the shop catalog and orders with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
   const run = <S extends z.ZodTypeAny, T>(
     schema: S,
     action: (client: ShopManagementClient, input: z.output<S>) => Promise<Result<T, AppError>> | Result<T, AppError>,
@@ -287,4 +356,78 @@ export const registerShopKeyCommands = (
     .action(run(z.tuple([idSchema, keyOnlySchema.extend({ value: z.union([z.literal('none').transform(() => null), countSchema]) })]), (client, [productId, options]) =>
       client.setProductStockThreshold({ productId, lowStockThreshold: options.value }),
     (data) => `low-stock threshold updated: ${describeStock(data.stock)}`));
+
+  const orders = shop.command('orders').description('Orders and physical fulfilment of the key\'s workspace');
+  const withOrderFilters = (command: Command): Command => command
+    .option('--status <status>', 'paid, pending, failed, refunded or partially_refunded')
+    .option('--product <id>')
+    .option('--kind <kind>', 'one_time or recurring')
+    .option('--coupon <id>')
+    .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
+    .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
+    .option('--source-exact', 'treat --source literally, including the campaign source none')
+    .option('--search <text>', 'search by member e-mail or name');
+  keyed(withOrderFilters(orders.command('list').description('List orders with filters and paging; use --mode live for fulfilment automation'))
+    .option('--mode <mode>', 'live or test (default: both)')
+    .option('--page <n>')
+    .option('--page-size <n>'))
+    .action(run(z.tuple([ordersListSchema]), (client, [options]) =>
+      client.listOrders({
+        ...orderFilters(options),
+        ...(options.mode === undefined ? {} : { mode: options.mode }),
+        ...(options.page === undefined ? {} : { page: options.page }),
+        ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
+      }),
+    (data) => data.orders.length === 0
+      ? `no orders (total ${String(data.total)})`
+      : [...data.orders.map(orderLine), `page ${String(data.page)}/${String(Math.max(1, Math.ceil(data.total / data.pageSize)))} — ${String(data.total)} order(s)`].join('\n')));
+  keyed(withOrderFilters(orders.command('export').description('Export live orders as CSV or JSON'))
+    .requiredOption('--format <format>', 'csv or json')
+    .option('--out <file>', 'write the export to a file instead of stdout'))
+    .action(run(z.tuple([ordersExportSchema]), async (client, [options]) =>
+      writeExport(await client.exportOrders({ ...orderFilters(options), format: options.format }), options.out),
+    exportSummary));
+  keyed(orders.command('packing-list').description('Export the orders to pack as a CSV packing list')
+    .requiredOption('--format <format>', 'csv')
+    .option('--fulfilment <status>', 'to_pack (default) or shipped')
+    .option('--mode <mode>', 'live (default) or test')
+    .option('--out <file>', 'write the packing list to a file instead of stdout'))
+    .action(run(z.tuple([packingListSchema]), async (client, [options]) =>
+      writeExport(await client.ordersPackingList({
+        format: options.format,
+        mode: options.mode,
+        ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
+      }), options.out),
+    exportSummary));
+  keyed(orders.command('verify <reference>').description('Verify an order by QR token or order number'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [reference]) => client.verifyOrder({ reference }), (data) => JSON.stringify(data.order, null, 2)));
+  keyed(orders.command('show <orderId>').description('Show one order with its current invoice'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.getOrder(orderId), (data) => JSON.stringify(data, null, 2)));
+  keyed(orders.command('ship <orderId>').description('Mark a paid order to pack as shipped and e-mail the buyer the tracking number')
+    .requiredOption('--carrier <carrier>', 'inpost or other')
+    .requiredOption('--tracking <number>', 'parcel tracking number, 4-64 characters'))
+    .action(run(z.tuple([idSchema, shipSchema]), (client, [orderId, options]) =>
+      client.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
+    (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`));
+  keyed(orders.command('issue <orderId> <productId>').description('Record collection of a physical order line'))
+    .action(run(z.tuple([idSchema, idSchema, keyOnlySchema]), (client, [orderId, productId]) => client.issueOrderLine({ orderId, productId }), (data) => JSON.stringify(data.order, null, 2)));
+
+  const shipx = orders.command('shipx').description('InPost ShipX shipments and labels');
+  keyed(shipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxShipment({ orderId }), shipxOrderLines));
+  keyed(shipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxCreate({ orderId }), (data) =>
+      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`));
+  keyed(shipx.command('refresh <orderId>').description('Read the live ShipX status of a shipment not yet paid, store it and show the order'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxRefresh({ orderId }), shipxOrderLines));
+  keyed(shipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek; this never cancels a shipment in ShipX'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxDiscard({ orderId }), () => 'discarded the unconfirmed InPost attempt'));
+  keyed(shipx.command('label <orderId>').description('Download the A6 PDF label of the InPost shipment')
+    .requiredOption('--out <file>', 'write the PDF label to this file'))
+    .action(run(z.tuple([idSchema, labelSchema]), async (client, [orderId, options]) => {
+      const result = await client.shipxLabel({ orderId });
+      if (!result.ok) return result;
+      await writeFile(options.out, result.value.bytes);
+      return ok({ filename: result.value.filename, contentType: result.value.contentType, bytes: result.value.bytes.byteLength, out: options.out });
+    }, (file) => `wrote ${file.filename} (${String(file.bytes)} bytes) to ${file.out}`));
 };

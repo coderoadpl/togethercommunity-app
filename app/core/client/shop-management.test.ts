@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
+import { SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES } from '#core/contract/index.js';
 
 import { createShopManagementClient } from './http.js';
 
@@ -77,5 +77,64 @@ describe('shop management client', () => {
     const headers = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers);
     expect(headers.has('x-tenant')).toBe(false);
     expect(headers.has('authorization')).toBe(false);
+  });
+});
+
+const order = {
+  id: 'order-1', tenantId: 'acme', memberId: 'member-1', productId: 'product-1', priceId: null, kind: 'one_time', status: 'paid', mode: 'live',
+  amountCents: 6398, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0,
+  createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
+};
+const shipxView = { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null };
+const exportFile = { filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number' };
+
+describe('shop management client order calls', () => {
+  it('sends every order call to its shop route with the query, the key and no session', async () => {
+    const seen: { method: string; url: URL; headers: Headers; body: unknown }[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      const method = init?.method ?? 'GET';
+      seen.push({ method, url, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+      if (url.pathname.endsWith('/label')) {
+        return new Response(new TextEncoder().encode('%PDF-1.4'), { headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="inpost-1.pdf"' } });
+      }
+      const data = url.pathname === SHOP_ORDER_ROUTES.listOrders.path ? { sources: [], orders: [order], total: 1, page: 1, pageSize: 20 }
+        : url.pathname.endsWith('/export') || url.pathname.endsWith('/packing-list') ? exportFile
+          : url.pathname.endsWith('/discard') ? { discarded: true }
+            : method === 'POST' && url.pathname.endsWith('/shipx') ? { order, shipment: { shipxShipmentId: '1', status: 'confirmed', environment: 'production', trackingNumber: 'T1', createAttemptedAt: null, boughtAt: null, labelFetchedAt: null, createdAt: order.createdAt, updatedAt: order.createdAt } }
+              : url.pathname.includes('/shipx') ? shipxView
+                : url.pathname === '/api/m2m/shop/orders/order-1' ? { order, invoice: null }
+                  : { order };
+      return new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+
+    const results = [
+      await client.listOrders({ mode: 'live', page: 2, pageSize: 50 }),
+      await client.exportOrders({ format: 'csv', fulfilmentStatus: 'to_pack' }),
+      await client.ordersPackingList({ format: 'csv', mode: 'live' }),
+      await client.verifyOrder({ reference: 'order-1' }),
+      await client.getOrder('order-1'),
+      await client.shipOrder({ orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' }),
+      await client.issueOrderLine({ orderId: 'order-1', productId: 'product-1' }),
+      await client.shipxShipment({ orderId: 'order-1' }),
+      await client.shipxCreate({ orderId: 'order-1' }),
+      await client.shipxRefresh({ orderId: 'order-1' }),
+      await client.shipxDiscard({ orderId: 'order-1' }),
+      await client.shipxLabel({ orderId: 'order-1' }),
+    ];
+
+    expect(results.filter((result) => !result.ok)).toEqual([]);
+    expect(seen.map((call) => `${call.method} ${call.url.pathname}`)).toEqual(Object.values(SHOP_ORDER_ROUTES).map((route) =>
+      `${route.method} ${route.path.replace(':orderId', 'order-1').replace(':productId', 'product-1').replace(':reference', 'order-1')}`));
+    expect(seen[0]?.url.search).toBe('?mode=live&page=2&pageSize=50');
+    expect(seen[1]?.url.search).toBe('?format=csv&fulfilmentStatus=to_pack');
+    expect(seen[5]?.body).toEqual({ orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' });
+    expect(results[11]).toMatchObject({ ok: true, value: { filename: 'inpost-1.pdf', contentType: 'application/pdf' } });
+    for (const call of seen) {
+      expect(call.headers.get('x-api-key')).toBe('shop-secret');
+      expect(call.headers.has('authorization')).toBe(false);
+      expect(call.headers.has('cookie')).toBe(false);
+    }
   });
 });

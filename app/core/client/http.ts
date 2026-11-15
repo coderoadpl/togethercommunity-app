@@ -9,7 +9,7 @@ import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
-import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, shopCatalogContracts, TENANT_HEADER } from '#core/contract/index.js';
+import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
@@ -2854,6 +2854,15 @@ export interface ShopManagementClientOptions {
 type ShopCatalogInput<K extends keyof typeof shopCatalogContracts> =
   (typeof shopCatalogContracts)[K] extends { input: infer S extends z.ZodTypeAny } ? z.input<S> : never;
 
+type ShopOrderInput<K extends keyof typeof shopOrderContracts> = z.input<(typeof shopOrderContracts)[K]['input']>;
+
+const withQuery = (path: string, query: Record<string, string | number | undefined>): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+  const suffix = params.toString();
+  return suffix.length > 0 ? `${path}?${suffix}` : path;
+};
+
 export const createShopManagementClient = (shopOptions: ShopManagementClientOptions) => {
   const options: ApiClientOptions = {
     baseUrl: shopOptions.baseUrl,
@@ -2894,6 +2903,39 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
       request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, contracts.adjustProductStock.output, input, signal),
     setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
       request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
+    ...shopOrderMethods(options),
+  };
+};
+
+const shopOrderMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_ORDER_ROUTES;
+  const contracts = shopOrderContracts;
+  const orderPath = (path: string, orderId: string): string => path.replace(':orderId', encodeURIComponent(orderId));
+  return {
+    listOrders: (input: ShopOrderInput<'listOrders'> = {}, signal?: AbortSignal) =>
+      request(options, routes.listOrders.method, withQuery(routes.listOrders.path, input), contracts.listOrders.output, undefined, signal),
+    exportOrders: (input: ShopOrderInput<'exportOrders'>, signal?: AbortSignal) =>
+      request(options, routes.exportOrders.method, withQuery(routes.exportOrders.path, input), contracts.exportOrders.output, undefined, signal),
+    ordersPackingList: (input: ShopOrderInput<'ordersPackingList'>, signal?: AbortSignal) =>
+      request(options, routes.ordersPackingList.method, withQuery(routes.ordersPackingList.path, input), contracts.ordersPackingList.output, undefined, signal),
+    verifyOrder: (input: ShopOrderInput<'verifyOrder'>, signal?: AbortSignal) =>
+      request(options, routes.verifyOrder.method, routes.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), contracts.verifyOrder.output, undefined, signal),
+    getOrder: (orderId: string, signal?: AbortSignal) =>
+      request(options, routes.getOrder.method, orderPath(routes.getOrder.path, orderId), contracts.getOrder.output, undefined, signal),
+    shipOrder: (input: ShopOrderInput<'shipOrder'>, signal?: AbortSignal) =>
+      request(options, routes.shipOrder.method, orderPath(routes.shipOrder.path, input.orderId), contracts.shipOrder.output, input, signal),
+    issueOrderLine: (input: ShopOrderInput<'issueOrderLine'>, signal?: AbortSignal) =>
+      request(options, routes.issueOrderLine.method, orderPath(routes.issueOrderLine.path, input.orderId).replace(':productId', encodeURIComponent(input.productId)), contracts.issueOrderLine.output, input, signal),
+    shipxShipment: (input: ShopOrderInput<'shipxShipment'>, signal?: AbortSignal) =>
+      request(options, routes.shipxShipment.method, orderPath(routes.shipxShipment.path, input.orderId), contracts.shipxShipment.output, undefined, signal),
+    shipxCreate: (input: ShopOrderInput<'shipxCreate'>, signal?: AbortSignal) =>
+      request(options, routes.shipxCreate.method, orderPath(routes.shipxCreate.path, input.orderId), contracts.shipxCreate.output, {}, signal),
+    shipxRefresh: (input: ShopOrderInput<'shipxRefresh'>, signal?: AbortSignal) =>
+      request(options, routes.shipxRefresh.method, orderPath(routes.shipxRefresh.path, input.orderId), contracts.shipxRefresh.output, {}, signal),
+    shipxDiscard: (input: ShopOrderInput<'shipxDiscard'>, signal?: AbortSignal) =>
+      request(options, routes.shipxDiscard.method, orderPath(routes.shipxDiscard.path, input.orderId), contracts.shipxDiscard.output, {}, signal),
+    shipxLabel: (input: ShopOrderInput<'shipxLabel'>, signal?: AbortSignal) =>
+      request(options, routes.shipxLabel.method, orderPath(routes.shipxLabel.path, input.orderId), contracts.shipxLabel.output, {}, signal, { headers: {}, responseBinary: 'application/pdf' }),
   };
 };
 

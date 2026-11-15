@@ -168,6 +168,18 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/products/stock/enable` | self-authenticating | mutating | api m2m shop products stock enable |
 | `POST /api/m2m/shop/products/stock/adjust` | self-authenticating | mutating | api m2m shop products stock adjust |
 | `POST /api/m2m/shop/products/stock/threshold` | self-authenticating | mutating | api m2m shop products stock threshold |
+| `GET /api/m2m/shop/orders` | self-authenticating | read | api m2m shop orders |
+| `GET /api/m2m/shop/orders/export` | self-authenticating | read | api m2m shop orders export |
+| `GET /api/m2m/shop/orders/packing-list` | self-authenticating | read | api m2m shop orders packing-list |
+| `GET /api/m2m/shop/orders/verify/:reference` | self-authenticating | read | api m2m shop orders verify reference |
+| `GET /api/m2m/shop/orders/:orderId` | self-authenticating | read | api m2m shop orders orderId |
+| `POST /api/m2m/shop/orders/:orderId/ship` | self-authenticating | mutating | api m2m shop orders orderId ship |
+| `POST /api/m2m/shop/orders/:orderId/lines/:productId/issue` | self-authenticating | mutating | api m2m shop orders orderId lines productId issue |
+| `GET /api/m2m/shop/orders/:orderId/shipx` | self-authenticating | read | api m2m shop orders orderId shipx |
+| `POST /api/m2m/shop/orders/:orderId/shipx` | self-authenticating | mutating | api m2m shop orders orderId shipx |
+| `POST /api/m2m/shop/orders/:orderId/shipx/refresh` | self-authenticating | mutating | api m2m shop orders orderId shipx refresh |
+| `POST /api/m2m/shop/orders/:orderId/shipx/discard` | self-authenticating | mutating | api m2m shop orders orderId shipx discard |
+| `POST /api/m2m/shop/orders/:orderId/shipx/label` | self-authenticating | mutating | api m2m shop orders orderId shipx label |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

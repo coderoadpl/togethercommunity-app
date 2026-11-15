@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -95,6 +95,18 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_CATALOG_ROUTES.enableProductStock.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_CATALOG_ROUTES.adjustProductStock.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_CATALOG_ROUTES.setProductStockThreshold.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ORDER_ROUTES.listOrders.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.exportOrders.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:export' },
+  { path: SHOP_ORDER_ROUTES.ordersPackingList.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:export' },
+  { path: SHOP_ORDER_ROUTES.verifyOrder.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.getOrder.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.shipOrder.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.issueOrderLine.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxShipment.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.shipxCreate.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxRefresh.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxDiscard.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxLabel.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
 ] as const;
 
 export const selfAuthenticatingRouteManifestEntry = (

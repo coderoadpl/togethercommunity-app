@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
-import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
   shopManagementScopeSchema,
@@ -174,11 +174,11 @@ describe('shop management route registration', () => {
     expect(() => assertShopMachineRouteCoverage([])).not.toThrow();
   });
 
-  it('registers only the catalog routes under the shop management prefix', () => {
+  it('registers only the catalog and order routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
       .map((route) => `${route.method} ${route.path}`))
-      .toEqual(Object.values(SHOP_CATALOG_ROUTES).map((route) => `${route.method} ${route.path}`));
+      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES)].map((route) => `${route.method} ${route.path}`));
   });
 });
 

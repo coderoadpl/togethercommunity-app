@@ -20,8 +20,9 @@ API key` for it, and no session route accepts it.
 | Owner-session creation, listing and revocation (`/api/api-keys`, CLI `api-key`) | Available |
 | Request authentication, issuer revalidation and rate limits | Available |
 | Catalog routes: products, prices and stock (below) | Available |
+| Order and fulfilment routes, including InPost ShipX (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
-| Image, sales-link, order, fulfilment, settings and integration routes | Not yet available |
+| Image, sales-link, invoice, refund, settings and integration routes | Not yet available |
 
 ## Scopes
 
@@ -182,6 +183,118 @@ exposes the thirteen calls with the same method names as the session client
 `enableProductStock`, `adjustProductStock`, `setProductStockThreshold`). It
 sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `Authorization` header. Use it only from a backend.
+
+## Order and fulfilment routes
+
+Each route reuses the query or body, response, validation and use-case of its
+session counterpart under `/api/orders`. Reads need `shop:orders:read`; every
+action that changes an order needs `shop:fulfilment:write`, and a warehouse
+integration usually carries both. An order id from another workspace answers
+`404 not_found`. Shipments, line issues and ShipX events are recorded under the
+issuing owner's account. Invoices and refunds are not available with a shop
+management key; they stay on the staff session routes.
+
+| Method and path | Scope | Session counterpart |
+|---|---|---|
+| `GET /api/m2m/shop/orders` | `shop:orders:read` | `GET /api/orders`, plus the `mode` filter |
+| `GET /api/m2m/shop/orders/export` | `shop:orders:read` | `GET /api/orders/export` (live orders only) |
+| `GET /api/m2m/shop/orders/packing-list` | `shop:orders:read` | `GET /api/orders/packing-list` |
+| `GET /api/m2m/shop/orders/verify/:reference` | `shop:orders:read` | `GET /api/orders/verify/:reference` |
+| `GET /api/m2m/shop/orders/:orderId` | `shop:orders:read` | `GET /api/orders/:orderId` |
+| `POST /api/m2m/shop/orders/:orderId/ship` | `shop:fulfilment:write` | `POST /api/orders/:orderId/ship` |
+| `POST /api/m2m/shop/orders/:orderId/lines/:productId/issue` | `shop:fulfilment:write` | `POST /api/orders/:orderId/lines/:productId/issue` |
+| `GET /api/m2m/shop/orders/:orderId/shipx` | `shop:orders:read` | `GET /api/orders/:orderId/shipx` |
+| `POST /api/m2m/shop/orders/:orderId/shipx` | `shop:fulfilment:write` | `POST /api/orders/:orderId/shipx` (buys the shipment) |
+| `POST /api/m2m/shop/orders/:orderId/shipx/refresh` | `shop:fulfilment:write` | `POST /api/orders/:orderId/shipx/refresh` |
+| `POST /api/m2m/shop/orders/:orderId/shipx/discard` | `shop:fulfilment:write` | `POST /api/orders/:orderId/shipx/discard` |
+| `POST /api/m2m/shop/orders/:orderId/shipx/label` | `shop:fulfilment:write` | `POST /api/orders/:orderId/shipx/label` |
+
+The order list accepts the session filters (`status`, `productId`, `kind`,
+`couponId`, `fulfilmentStatus`, `source`, `sourceMatch`, `search`) and paging
+(`page` from 1, `pageSize` up to 100, default 20), and additionally `mode=live`
+or `mode=test`; any other mode answers `400 validation`. Without `mode` the
+list returns both live and test orders, as the session list does. The export
+and the packing list answer the session JSON envelope with `filename`,
+`mimeType` and `content`; the label answers the PDF bytes with the session
+route's `content-type`, `content-disposition: attachment` and
+`cache-control: private, no-store` headers.
+
+Fulfilment keeps the session rules. Shipping an order that has already been
+shipped answers `409 fulfilment_conflict`; issuing a line that has already been
+issued answers `409 conflict`. A manual shipment (`carrier` `other` or
+`inpost` with a tracking number) needs no ShipX configuration and e-mails the
+buyer the tracking number for a live order. `POST .../shipx` creates and pays
+a real InPost shipment when the workspace's ShipX integration is configured for
+production, so automate it only with explicit operational approval; a request
+that finds another request working on the same shipment answers
+`409 fulfilment_conflict` and should be retried later. `POST .../shipx/discard`
+only forgets an attempt that ShipX did not confirm; it never cancels a shipment
+in ShipX.
+
+### Polling for orders to fulfil
+
+There is no delivery webhook for orders. A fulfilment backend polls the list
+with `mode=live`, so test checkouts never reach the warehouse, and
+`fulfilmentStatus=to_pack`:
+
+1. Request every page of
+   `GET /api/m2m/shop/orders?mode=live&fulfilmentStatus=to_pack&pageSize=100`
+   until `page * pageSize >= total`.
+2. Overlap consecutive polls (for example, poll every five minutes and always
+   re-read the whole to-pack list) instead of keeping a cursor; orders can move
+   between pages while you read them.
+3. De-duplicate by order `id`: keep a record of the ids you have already handed
+   to the warehouse and skip them, and treat `409 fulfilment_conflict` on
+   `ship` as "already shipped".
+4. Ship or issue each order exactly once with the routes above; a shipped order
+   leaves the `to_pack` list.
+
+Stay within the key's rate limits below when sizing the poll interval.
+
+```bash
+SHOP=https://<workspace-host>/api/m2m/shop
+KEY="x-api-key: $TOGETHER_SHOP_KEY"
+JSON='content-type: application/json'
+
+curl -s -H "$KEY" "$SHOP/orders?mode=live&fulfilmentStatus=to_pack&page=1&pageSize=100"
+curl -s -H "$KEY" "$SHOP/orders/<order-id>"
+curl -s -H "$KEY" "$SHOP/orders/verify/<qr-token-or-order-id>"
+curl -s -H "$KEY" "$SHOP/orders/export?format=csv&fulfilmentStatus=to_pack"
+curl -s -H "$KEY" "$SHOP/orders/packing-list?format=csv&mode=live"
+curl -s -H "$KEY" -H "$JSON" -d '{"carrier":"other","trackingNumber":"<tracking-number>"}' "$SHOP/orders/<order-id>/ship"
+curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/lines/<product-id>/issue"
+curl -s -H "$KEY" "$SHOP/orders/<order-id>/shipx"
+curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx"
+curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx/refresh"
+curl -s -H "$KEY" -X POST -o label.pdf "$SHOP/orders/<order-id>/shipx/label"
+curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx/discard"
+```
+
+### Order CLI
+
+The `shop orders` commands take the key exactly like the catalog commands and
+mirror the session `orders` commands; `list` additionally accepts `--mode`,
+and `export`, `packing-list` and `shipx label` write to the `--out` path.
+
+```bash
+pnpm --silent run cli --tenant acme shop orders list --mode live --fulfilment to_pack --page-size 100
+pnpm --silent run cli --tenant acme shop orders show <order-id>
+pnpm --silent run cli --tenant acme shop orders verify <qr-token-or-order-id>
+pnpm --silent run cli --tenant acme shop orders export --format csv --out orders.csv
+pnpm --silent run cli --tenant acme shop orders packing-list --format csv --out packing.csv
+pnpm --silent run cli --tenant acme shop orders ship <order-id> --carrier other --tracking <tracking-number>
+pnpm --silent run cli --tenant acme shop orders issue <order-id> <product-id>
+pnpm --silent run cli --tenant acme shop orders shipx show <order-id>
+pnpm --silent run cli --tenant acme shop orders shipx create <order-id>
+pnpm --silent run cli --tenant acme shop orders shipx refresh <order-id>
+pnpm --silent run cli --tenant acme shop orders shipx label <order-id> --out label.pdf
+pnpm --silent run cli --tenant acme shop orders shipx discard <order-id>
+```
+
+The typed client exposes the twelve calls with the session client's names:
+`listOrders`, `exportOrders`, `ordersPackingList`, `verifyOrder`, `getOrder`,
+`shipOrder`, `issueOrderLine`, `shipxShipment`, `shipxCreate`, `shipxRefresh`,
+`shipxDiscard` and `shipxLabel`.
 
 ## Rate limits
 

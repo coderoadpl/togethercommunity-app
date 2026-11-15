@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type * as ClientModule from '#core/client/index.js';
@@ -57,7 +61,28 @@ const stock = {
   updatedAt: '2026-11-15T10:00:00.000Z', soldOut: false, low: false,
 };
 
-interface Call { method: string; path: string; headers: Headers; body: unknown }
+const order = {
+  id: 'order-1', tenantId: 'acme', memberId: 'member-1', productId: 'product-1', priceId: null, kind: 'one_time', status: 'paid', mode: 'live',
+  amountCents: 6398, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0, fulfilmentStatus: 'shipped',
+  shipment: { carrier: 'other', trackingNumber: 'MANUAL0001', shippedAt: '2026-11-15T10:00:00.000Z', shippedBy: 'owner' },
+  createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
+};
+const shipment = {
+  shipxShipmentId: '1', status: 'confirmed', environment: 'production', trackingNumber: 'T1', createAttemptedAt: null, boughtAt: null,
+  labelFetchedAt: null, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: '2026-11-15T10:00:00.000Z',
+};
+
+const orderData = (pathname: string, method: string): unknown => {
+  if (pathname === '/api/m2m/shop/orders') return { sources: [], orders: [order], total: 1, page: 1, pageSize: 20 };
+  if (pathname.endsWith('/export') || pathname.endsWith('/packing-list')) return { filename: 'orders.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number\norder-1' };
+  if (pathname.endsWith('/discard')) return { discarded: true };
+  if (method === 'POST' && pathname.endsWith('/shipx')) return { order, shipment };
+  if (pathname.includes('/shipx')) return { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
+  if (pathname === '/api/m2m/shop/orders/order-1') return { order, invoice: null };
+  return { order };
+};
+
+interface Call { method: string; path: string; search: string; headers: Headers; body: unknown }
 
 let calls: Call[];
 let logSpy: MockInstance<typeof console.log>;
@@ -66,7 +91,13 @@ let errorSpy: MockInstance<typeof console.error>;
 const fetchImpl: typeof fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   const method = init?.method ?? 'GET';
-  calls.push({ method, path: url.pathname, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+  if (url.pathname.endsWith('/label')) {
+    return new Response(new TextEncoder().encode('%PDF-1.4 label'), { headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="inpost-T1.pdf"' } });
+  }
+  if (url.pathname.startsWith('/api/m2m/shop/orders')) {
+    return new Response(JSON.stringify({ ok: true, data: orderData(url.pathname, method) }), { headers: { 'content-type': 'application/json' } });
+  }
   const data = url.pathname.endsWith('/prices') && method === 'GET' ? { prices: [price] }
     : url.pathname.includes('/prices') ? { price }
       : url.pathname.includes('/stock') ? { stock }
@@ -176,5 +207,51 @@ describe('shop key CLI', () => {
     expect(printed).not.toContain('shop-secret-from-env');
     expect(calls[0]?.headers.get('x-tenant')).toBe('studio');
     expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+});
+
+describe('shop orders CLI', () => {
+  it.each([
+    [['shop', 'orders', 'list', '--mode', 'live', '--fulfilment', 'to_pack', '--page', '2', '--page-size', '50'], 'GET', '/api/m2m/shop/orders', '?fulfilmentStatus=to_pack&mode=live&page=2&pageSize=50', null],
+    [['shop', 'orders', 'export', '--format', 'csv', '--status', 'paid'], 'GET', '/api/m2m/shop/orders/export', '?status=paid&format=csv', null],
+    [['shop', 'orders', 'packing-list', '--format', 'csv'], 'GET', '/api/m2m/shop/orders/packing-list', '?format=csv&mode=live', null],
+    [['shop', 'orders', 'verify', 'order-1'], 'GET', '/api/m2m/shop/orders/verify/order-1', '', null],
+    [['shop', 'orders', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1', '', null],
+    [['shop', 'orders', 'ship', 'order-1', '--carrier', 'other', '--tracking', 'MANUAL0001'], 'POST', '/api/m2m/shop/orders/order-1/ship', '', { orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' }],
+    [['shop', 'orders', 'issue', 'order-1', 'product-1'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1' }],
+    [['shop', 'orders', 'shipx', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1/shipx', '', null],
+    [['shop', 'orders', 'shipx', 'create', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', {}],
+    [['shop', 'orders', 'shipx', 'refresh', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/refresh', '', {}],
+    [['shop', 'orders', 'shipx', 'discard', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/discard', '', {}],
+  ])('sends %j to the shop order route with the env key only', async (args, method, path, search, body) => {
+    await run(...args);
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method, path, search, body });
+    expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('writes the label and the packing list to the --out paths', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-orders-cli-'));
+    const label = join(directory, 'label.pdf');
+    await run('shop', 'orders', 'shipx', 'label', 'order-1', '--out', label);
+    expect(soleJson()).toEqual({ ok: true, data: { filename: 'inpost-T1.pdf', contentType: 'application/pdf', bytes: 14, out: label } });
+    expect(await readFile(label, 'utf8')).toBe('%PDF-1.4 label');
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/orders/order-1/shipx/label' });
+
+    logSpy.mockClear();
+    const packing = join(directory, 'packing.csv');
+    await run('shop', 'orders', 'packing-list', '--format', 'csv', '--mode', 'test', '--out', packing);
+    expect(soleJson()).toMatchObject({ ok: true, data: { filename: 'orders.csv', out: packing } });
+    expect(await readFile(packing, 'utf8')).toBe('order_number\norder-1');
+    expect(calls[1]?.search).toBe('?format=csv&mode=test');
+    await rm(directory, { recursive: true });
+  });
+
+  it('rejects an unknown order mode before any request', async () => {
+    await run('shop', 'orders', 'list', '--mode', 'staging');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
   });
 });

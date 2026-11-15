@@ -1,31 +1,28 @@
 import { MetaCapiConsent } from './MetaCapiConsent.js';
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
+import { checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
 import { useCallback, useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
-  Checkbox,
   FormControl,
   FormControlLabel,
   FormLabel,
   Link as MuiLink,
   LinearProgress,
   OutlinedInput,
-  Paper,
   Radio,
   RadioGroup,
   Stack,
-  SvgIcon,
-  Switch,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams, formatSalesLinkVariantParam, SALES_LINK_VARIANT_PARAM, FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, formatSalesLinkVariantParam, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -39,7 +36,6 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatOfferPrice, formatPrice } from '../../lib/format.js';
 import {
   CardTitle,
-  CheckoutDisclosureButton,
   CheckoutPrice,
   CheckoutPriceOption,
   DataValue,
@@ -55,13 +51,6 @@ type OfferPrice = {
   amountCents: number;
   currency: string;
 };
-type InvoiceField = readonly [string, string, string, (value: string) => void];
-
-const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
-  <SvgIcon fontSize="small" aria-hidden>
-    <path d={expanded ? 'M5 11h14v2H5z' : 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z'} />
-  </SvgIcon>
-);
 
 const priceLabel = (
   price: OfferPrice,
@@ -72,31 +61,6 @@ const priceLabel = (
   if (price.interval === 'year') return t.checkout.subscribeYearlyPrice({ price: formattedPrice });
   return t.checkout.subscribeMonthlyPrice({ price: formattedPrice });
 };
-
-const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const couponError = (
-  error: unknown,
-  t: ReturnType<typeof useTranslations>,
-): string => {
-  if (!(error instanceof ApiError)) return localizeError(error, t);
-  switch (error.appError.message) {
-    case 'Coupon cannot be applied':
-      return t.checkout.couponUnavailable;
-    case 'An email is required to validate this coupon':
-      return t.checkout.couponEmailRequired;
-    default:
-      return localizeError(error, t);
-  }
-};
-
-const checkoutSessionError = (
-  error: unknown,
-  t: ReturnType<typeof useTranslations>,
-): string =>
-  error instanceof ApiError && error.appError.message === FREE_ORDER_DELIVERY_UNAVAILABLE
-    ? t.shipping.freeOrderUnavailable
-    : localizeError(error, t);
 
 export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string; salesLinkSlug?: string }) => {
   const t = useTranslations();
@@ -135,21 +99,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     new URLSearchParams(window.location.search).get('test_purchase') === '1';
   const stripeConfigured = testEnabled ? paymentConfig.data?.testConfigured === true : paymentConfig.data?.stripeConfigured === true;
   const [email, setEmail] = useState('');
-  const [invoiceVisible, setInvoiceVisible] = useState(false);
-  const [nip, setNip] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [billingAddress, setBillingAddress] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [city, setCity] = useState('');
-  const [country, setCountry] = useState('PL');
-  const invoiceFields: InvoiceField[] = [
-    ['checkout-nip', t.checkout.nipLabel, nip, setNip],
-    ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
-    ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
-    ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
-    ['checkout-city', t.checkout.cityLabel, city, setCity],
-    ['checkout-country', t.checkout.countryLabel, country, setCountry],
-  ];
+  const invoice = useInvoiceFields();
   const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
   const [checkoutState, dispatchCheckout] = useReducer(
     reduceCheckoutState,
@@ -252,18 +202,6 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
   const consent = consentRequired ? { termsAccepted } : {};
-  const billing = invoiceVisible
-    ? {
-        billing: {
-          nip: nip === '' ? null : nip,
-          companyName,
-          address: billingAddress,
-          postalCode,
-          city,
-          country,
-        },
-      }
-    : {};
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -279,7 +217,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         language,
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
         ...consent,
-        ...billing,
+        ...invoice.billing,
         ...shipping,
         ...(priceId === undefined ? {} : { priceId }),
         ...(appliedCoupon === undefined ? {} : { couponCode }),
@@ -294,7 +232,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       language,
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
-      ...billing,
+      ...invoice.billing,
       ...shipping,
       ...(priceId === undefined ? {} : { priceId }),
       ...(appliedCoupon === undefined ? {} : { couponCode }),
@@ -545,178 +483,45 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               required
             />
           </FormControl>
-          {paymentConfig.data.canTest && (paymentConfig.data.testConfigured || testEnabled) ? <>
-            <FormControlLabel label={t.checkout.stripeTestMode}
-              control={<Switch checked={testEnabled} data-testid="checkout-test-mode-switch"
-                disabled={testSession.isPending || checkoutSession.isPending}
-                onChange={(_event, enabled) => testSession.mutate({ enabled })} />} />
-            {testEnabled ? (
-              <Alert severity={paymentConfig.data.testConfigured ? 'info' : 'warning'} data-testid="checkout-test-mode-hint">
-                {paymentConfig.data.testConfigured ? t.checkout.testModeHint : t.checkout.testModeUnavailable}
-              </Alert>
-            ) : null}
-            {testSession.isError ? <Alert severity="error">{localizeError(testSession.error, t)}</Alert> : null}
-          </> : null}
-          <CheckoutDisclosureButton
-            type="button"
-            variant="text"
-            size="small"
-            color="primary"
-            startIcon={<DisclosureIcon expanded={invoiceVisible} />}
-            onClick={() => setInvoiceVisible((current) => !current)}
-            aria-expanded={invoiceVisible}
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            {t.checkout.invoiceReveal}
-          </CheckoutDisclosureButton>
-          {invoiceVisible ? (
-            <Stack useFlexGap spacing="0.75rem">
-              {invoiceFields.map(([id, label, value, setValue]) => (
-                <FormControl key={id} fullWidth>
-                  <FormLabel htmlFor={id}>{label}</FormLabel>
-                  <OutlinedInput
-                    id={id}
-                    value={value}
-                    onChange={(event) => setValue(event.target.value)}
-                    required={id !== 'checkout-nip'}
-                    inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
-                  />
-                </FormControl>
-              ))}
-            </Stack>
-          ) : null}
-          <CheckoutDisclosureButton
-            type="button"
-            variant="text"
-            size="small"
-            color="primary"
-            disabled={testEnabled}
-            startIcon={<DisclosureIcon expanded={couponVisible} />}
-            data-testid="checkout-coupon-reveal"
-            onClick={() => dispatchCheckout({
-              type: 'couponVisibilityChanged',
-              visible: !couponVisible,
+          {paymentConfig.data.canTest && (paymentConfig.data.testConfigured || testEnabled) ? <StripeTestModeControls
+            testConfigured={paymentConfig.data.testConfigured}
+            testEnabled={testEnabled}
+            disabled={testSession.isPending || checkoutSession.isPending}
+            onChange={(enabled) => testSession.mutate({ enabled })}
+            error={testSession.error}
+          /> : null}
+          <InvoiceFields invoice={invoice} />
+          <CouponField
+            visible={couponVisible}
+            testEnabled={testEnabled}
+            code={couponCode}
+            onVisibilityChange={(visible) => dispatchCheckout({ type: 'couponVisibilityChanged', visible })}
+            onCodeChange={(code) => {
+              dispatchCheckout({ type: 'couponCodeChanged', couponCode: code });
+              couponValidation.reset();
+            }}
+            onApply={() => couponValidation.mutate({
+              productId,
+              ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+              ...(variantSelections.length === 0 ? {} : { variantSelections }),
+              ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+              ...(email === '' ? {} : { email }),
+              couponCode,
             })}
-            aria-expanded={couponVisible}
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            {t.checkout.couponReveal}
-          </CheckoutDisclosureButton>
-          {testEnabled ? (
-            <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
-              {t.checkout.testModeCouponBlocked}
-            </FinePrint>
-          ) : null}
-          {couponVisible && !testEnabled ? (
-            <Stack useFlexGap spacing="0.5rem">
-              <FormControl fullWidth>
-                <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
-                <OutlinedInput
-                  id="checkout-coupon"
-                  inputProps={{ 'data-testid': 'checkout-coupon-input' }}
-                  value={couponCode}
-                  onChange={(event) => {
-                    dispatchCheckout({
-                      type: 'couponCodeChanged',
-                      couponCode: event.target.value,
-                    });
-                    couponValidation.reset();
-                  }}
-                />
-              </FormControl>
-              <Button
-                type="button"
-                variant="outlined"
-                data-testid="checkout-coupon-apply"
-                disabled={couponValidation.isPending || couponCode.trim() === ''}
-                onClick={() => couponValidation.mutate({
-                  productId,
-                  ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
-                  ...(variantSelections.length === 0 ? {} : { variantSelections }),
-                  ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
-                  ...(email === '' ? {} : { email }),
-                  couponCode,
-                })}
-              >
-                {couponValidation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
-              </Button>
-              {couponValidation.data === undefined ? null : (
-                <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
-                  <Stack useFlexGap spacing="0.25rem">
-                    <Typography>{t.checkout.couponOriginal({
-                      price: formatPrice(couponValidation.data.breakdown.originalCents, selectedCurrency, language),
-                    })}</Typography>
-                    <Typography>{t.checkout.couponDiscount({
-                      price: formatPrice(couponValidation.data.breakdown.discountCents, selectedCurrency, language),
-                    })}</Typography>
-                    <Typography data-testid="checkout-coupon-final">
-                      {t.checkout.couponFinal({
-                        price: formatPrice(couponValidation.data.breakdown.finalCents, selectedCurrency, language),
-                      })}
-                    </Typography>
-                    {selectedPrice?.kind !== 'recurring' ? null : (
-                      <Typography>
-                        {couponValidation.data.recurringDuration === 'forever'
-                          ? t.checkout.couponForever
-                          : t.checkout.couponFirstInvoice}
-                      </Typography>
-                    )}
-                    <FinePrint component="p" variant="caption">
-                      {t.checkout.omnibusLowest({
-                        price: formatPrice(
-                          couponValidation.data.breakdown.lowestPriceLast30DaysCents,
-                          selectedCurrency,
-                          language,
-                        ),
-                      })}
-                    </FinePrint>
-                  </Stack>
-                </Paper>
-              )}
-              {couponValidation.isError ? (
-                <Alert severity="error" data-testid="checkout-coupon-error">
-                  {couponError(couponValidation.error, t)}
-                </Alert>
-              ) : null}
-            </Stack>
-          ) : null}
+            validation={couponValidation}
+            currency={selectedCurrency}
+            language={language}
+            recurring={selectedPrice?.kind === 'recurring'}
+          />
           {consentRequired ? (
             <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
           ) : null}
-          {product.marketingConsents.length > 0 ? (
-            <FormControl component="fieldset">
-              <FormLabel component="legend">{t.checkout.marketingConsentsLabel}</FormLabel>
-              <Stack useFlexGap spacing="0.5rem">
-                {product.marketingConsents.map((definition) => (
-                  <FormControlLabel
-                    key={definition.definitionId}
-                    control={(
-                      <Checkbox
-                        checked={marketingConsentDefinitionIds.includes(definition.definitionId)}
-                        onChange={(event) => setMarketingConsentDefinitionIds((current) =>
-                          event.target.checked
-                            ? [...current, definition.definitionId]
-                            : current.filter((id) => id !== definition.definitionId))}
-                      />
-                    )}
-                    label={(
-                      <Stack useFlexGap spacing="0.2rem">
-                        <Typography>{definition.label}</Typography>
-                        {definition.documentUrl === null ? null : (
-                          <MuiLink href={definition.documentUrl} target="_blank" rel="noreferrer">
-                            {t.checkout.marketingConsentDocument}
-                          </MuiLink>
-                        )}
-                        {definition.doubleOptIn ? (
-                          <FinePrint component="span" variant="caption">{t.checkout.marketingConsentDoiHint}</FinePrint>
-                        ) : null}
-                      </Stack>
-                    )}
-                  />
-                ))}
-              </Stack>
-            </FormControl>
-          ) : null}
+          <MarketingConsentFields
+            consents={product.marketingConsents}
+            selected={marketingConsentDefinitionIds}
+            onChange={(definitionId, checked) => setMarketingConsentDefinitionIds((current) =>
+              checked ? [...current, definitionId] : current.filter((id) => id !== definitionId))}
+          />
           {shippingRequired ? (
             <DeliveryStep
               rates={shippingRates}
@@ -784,7 +589,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   language,
                   ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                   ...consent,
-                  ...billing,
+                  ...invoice.billing,
                   ...shipping,
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                   ...(appliedCoupon === undefined ? {} : { couponCode }),

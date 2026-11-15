@@ -1,0 +1,275 @@
+import { useState } from 'react';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  Link as MuiLink,
+  OutlinedInput,
+  Paper,
+  Stack,
+  SvgIcon,
+  Switch,
+  Typography,
+} from '@mui/material';
+
+import { FREE_ORDER_DELIVERY_UNAVAILABLE, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+
+import { localizeError, useTranslations } from '../../i18n/index.js';
+import { formatPrice } from '../../lib/format.js';
+import { CheckoutDisclosureButton, FinePrint } from '../../theme.js';
+
+type Translations = ReturnType<typeof useTranslations>;
+type InvoiceField = readonly [string, string, string, (value: string) => void];
+
+const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
+  <SvgIcon fontSize="small" aria-hidden>
+    <path d={expanded ? 'M5 11h14v2H5z' : 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z'} />
+  </SvgIcon>
+);
+
+export const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const couponError = (error: unknown, t: Translations): string => {
+  if (!(error instanceof ApiError)) return localizeError(error, t);
+  switch (error.appError.message) {
+    case 'Coupon cannot be applied':
+      return t.checkout.couponUnavailable;
+    case 'An email is required to validate this coupon':
+      return t.checkout.couponEmailRequired;
+    default:
+      return localizeError(error, t);
+  }
+};
+
+export const checkoutSessionError = (error: unknown, t: Translations): string =>
+  error instanceof ApiError && error.appError.message === FREE_ORDER_DELIVERY_UNAVAILABLE
+    ? t.shipping.freeOrderUnavailable
+    : localizeError(error, t);
+
+export const useInvoiceFields = () => {
+  const t = useTranslations();
+  const [visible, setVisible] = useState(false);
+  const [nip, setNip] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('PL');
+  const fields: InvoiceField[] = [
+    ['checkout-nip', t.checkout.nipLabel, nip, setNip],
+    ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
+    ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
+    ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
+    ['checkout-city', t.checkout.cityLabel, city, setCity],
+    ['checkout-country', t.checkout.countryLabel, country, setCountry],
+  ];
+  const billing: { billing?: BillingData } = visible
+    ? { billing: { nip: nip === '' ? null : nip, companyName, address: billingAddress, postalCode, city, country } }
+    : {};
+  return { visible, toggle: () => setVisible((current) => !current), fields, billing };
+};
+
+export const InvoiceFields = ({ invoice }: { invoice: ReturnType<typeof useInvoiceFields> }) => {
+  const t = useTranslations();
+  return (
+    <>
+      <CheckoutDisclosureButton
+        type="button"
+        variant="text"
+        size="small"
+        color="primary"
+        startIcon={<DisclosureIcon expanded={invoice.visible} />}
+        onClick={invoice.toggle}
+        aria-expanded={invoice.visible}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {t.checkout.invoiceReveal}
+      </CheckoutDisclosureButton>
+      {invoice.visible ? (
+        <Stack useFlexGap spacing="0.75rem">
+          {invoice.fields.map(([id, label, value, setValue]) => (
+            <FormControl key={id} fullWidth>
+              <FormLabel htmlFor={id}>{label}</FormLabel>
+              <OutlinedInput
+                id={id}
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                required={id !== 'checkout-nip'}
+                inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
+              />
+            </FormControl>
+          ))}
+        </Stack>
+      ) : null}
+    </>
+  );
+};
+
+export const StripeTestModeControls = ({ testConfigured, testEnabled, disabled, onChange, error }: {
+  testConfigured: boolean;
+  testEnabled: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => void;
+  error: unknown;
+}) => {
+  const t = useTranslations();
+  return (
+    <>
+      <FormControlLabel label={t.checkout.stripeTestMode}
+        control={<Switch checked={testEnabled} data-testid="checkout-test-mode-switch"
+          disabled={disabled}
+          onChange={(_event, enabled) => onChange(enabled)} />} />
+      {testEnabled ? (
+        <Alert severity={testConfigured ? 'info' : 'warning'} data-testid="checkout-test-mode-hint">
+          {testConfigured ? t.checkout.testModeHint : t.checkout.testModeUnavailable}
+        </Alert>
+      ) : null}
+      {error === null ? null : <Alert severity="error">{localizeError(error, t)}</Alert>}
+    </>
+  );
+};
+
+export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, onCodeChange, onApply, validation, currency, language, recurring }: {
+  visible: boolean;
+  testEnabled: boolean;
+  code: string;
+  onVisibilityChange: (visible: boolean) => void;
+  onCodeChange: (code: string) => void;
+  onApply: () => void;
+  validation: {
+    isPending: boolean;
+    data: { breakdown: CouponCheckoutBreakdown; recurringDuration: 'first_invoice' | 'forever' } | undefined;
+    error: unknown;
+  };
+  currency: string;
+  language: 'pl' | 'en';
+  recurring: boolean;
+}) => {
+  const t = useTranslations();
+  return (
+    <>
+      <CheckoutDisclosureButton
+        type="button"
+        variant="text"
+        size="small"
+        color="primary"
+        disabled={testEnabled}
+        startIcon={<DisclosureIcon expanded={visible} />}
+        data-testid="checkout-coupon-reveal"
+        onClick={() => onVisibilityChange(!visible)}
+        aria-expanded={visible}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {t.checkout.couponReveal}
+      </CheckoutDisclosureButton>
+      {testEnabled ? (
+        <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
+          {t.checkout.testModeCouponBlocked}
+        </FinePrint>
+      ) : null}
+      {visible && !testEnabled ? (
+        <Stack useFlexGap spacing="0.5rem">
+          <FormControl fullWidth>
+            <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
+            <OutlinedInput
+              id="checkout-coupon"
+              inputProps={{ 'data-testid': 'checkout-coupon-input' }}
+              value={code}
+              onChange={(event) => onCodeChange(event.target.value)}
+            />
+          </FormControl>
+          <Button
+            type="button"
+            variant="outlined"
+            data-testid="checkout-coupon-apply"
+            disabled={validation.isPending || code.trim() === ''}
+            onClick={onApply}
+          >
+            {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
+          </Button>
+          {validation.data === undefined ? null : (
+            <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
+              <Stack useFlexGap spacing="0.25rem">
+                <Typography>{t.checkout.couponOriginal({
+                  price: formatPrice(validation.data.breakdown.originalCents, currency, language),
+                })}</Typography>
+                <Typography>{t.checkout.couponDiscount({
+                  price: formatPrice(validation.data.breakdown.discountCents, currency, language),
+                })}</Typography>
+                <Typography data-testid="checkout-coupon-final">
+                  {t.checkout.couponFinal({
+                    price: formatPrice(validation.data.breakdown.finalCents, currency, language),
+                  })}
+                </Typography>
+                {!recurring ? null : (
+                  <Typography>
+                    {validation.data.recurringDuration === 'forever'
+                      ? t.checkout.couponForever
+                      : t.checkout.couponFirstInvoice}
+                  </Typography>
+                )}
+                <FinePrint component="p" variant="caption">
+                  {t.checkout.omnibusLowest({
+                    price: formatPrice(
+                      validation.data.breakdown.lowestPriceLast30DaysCents,
+                      currency,
+                      language,
+                    ),
+                  })}
+                </FinePrint>
+              </Stack>
+            </Paper>
+          )}
+          {validation.error === null ? null : (
+            <Alert severity="error" data-testid="checkout-coupon-error">
+              {couponError(validation.error, t)}
+            </Alert>
+          )}
+        </Stack>
+      ) : null}
+    </>
+  );
+};
+
+export const MarketingConsentFields = ({ consents, selected, onChange }: {
+  consents: readonly { definitionId: string; label: string; doubleOptIn: boolean; documentUrl: string | null }[];
+  selected: readonly string[];
+  onChange: (definitionId: string, checked: boolean) => void;
+}) => {
+  const t = useTranslations();
+  return consents.length > 0 ? (
+    <FormControl component="fieldset">
+      <FormLabel component="legend">{t.checkout.marketingConsentsLabel}</FormLabel>
+      <Stack useFlexGap spacing="0.5rem">
+        {consents.map((definition) => (
+          <FormControlLabel
+            key={definition.definitionId}
+            control={(
+              <Checkbox
+                checked={selected.includes(definition.definitionId)}
+                onChange={(event) => onChange(definition.definitionId, event.target.checked)}
+              />
+            )}
+            label={(
+              <Stack useFlexGap spacing="0.2rem">
+                <Typography>{definition.label}</Typography>
+                {definition.documentUrl === null ? null : (
+                  <MuiLink href={definition.documentUrl} target="_blank" rel="noreferrer">
+                    {t.checkout.marketingConsentDocument}
+                  </MuiLink>
+                )}
+                {definition.doubleOptIn ? (
+                  <FinePrint component="span" variant="caption">{t.checkout.marketingConsentDoiHint}</FinePrint>
+                ) : null}
+              </Stack>
+            )}
+          />
+        ))}
+      </Stack>
+    </FormControl>
+  ) : null;
+};

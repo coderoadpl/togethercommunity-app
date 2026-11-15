@@ -478,6 +478,7 @@ import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
+import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
   parseLastEventId,
@@ -1303,6 +1304,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
+  registerShopMachineRoutes(app, deps);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),

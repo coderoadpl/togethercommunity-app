@@ -29,6 +29,7 @@ export interface TenantScopeSource {
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AccountSecurityReader.read': 'Authentication security state belongs to the platform user identity, not to a tenant membership.',
+  'AccountIdentityReader.findById': 'The account e-mail, name and verification state belong to the platform user identity, not to a tenant membership.',
   'TelemetryTenantDirectory.listTenantIds': 'The platform telemetry worker discovers connected tenants before tenant-scoped outbox delivery.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
@@ -157,6 +158,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   SesOnboardingControlPlane: 'External SES and SNS control-plane boundary.',
   ShipOrderDeps: 'Use-case email dispatch callback.',
   ShipxClient: 'External InPost ShipX API boundary; callers resolve tenant credentials.',
+  ShopMachineRoute: 'Route registration descriptor; its handler receives a request whose workspace the shop key authenticator already resolved.',
   ShipxIntegrationDeps: 'Server composition polling wait callback.',
   ShutdownPlan: 'Process shutdown callbacks with no persistence access.',
   SmtpTransport: 'External SMTP delivery boundary.',

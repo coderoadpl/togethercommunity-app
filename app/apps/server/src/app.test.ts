@@ -931,6 +931,7 @@ const deps = (input: {
     accountSecurity: {
       read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
     },
+    accountIdentities: { findById: async () => null },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
       migrationCounts: async () => input.migrationCounts ?? { expected: 82, applied: 82, current: true },

@@ -140,6 +140,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -4833,6 +4834,17 @@ export const createOnboardingStateRepository = (db: Db): OnboardingStateReposito
       .update(tenants)
       .set({ onboardingDismissedAt: dismissedAt })
       .where(eq(tenants.id, tenantId));
+  },
+});
+
+export const createAccountIdentityReader = (db: Db): AccountIdentityReader => ({
+  findById: async (userId) => {
+    const [row] = await db
+      .select({ userId: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    return row ?? null;
   },
 });
 

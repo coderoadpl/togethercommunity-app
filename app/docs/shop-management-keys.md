@@ -18,6 +18,7 @@ API key` for it, and no session route accepts it.
 |---|---|
 | Key kind, scopes, issuer, expiry, lifecycle audit | Available |
 | Owner-session creation, listing and revocation (`/api/api-keys`, CLI `api-key`) | Available |
+| Request authentication, issuer revalidation and rate limits | Available |
 | Shop resource routes under `/api/m2m/shop` | Not yet available |
 
 Until the resource routes ship, a newly created shop management key reaches no
@@ -58,6 +59,48 @@ Creation and revocation each write a workspace audit event
 (`api_key.shop_management_created`, `api_key.shop_management_revoked`) in the
 same transaction as the key change. The event carries the owner's account and
 e-mail and the key name and id, never the secret or its hash.
+
+## Authenticating a request
+
+A request to a shop route carries the key in `x-api-key` and selects the
+workspace exactly like the other API-key routes: by the workspace host
+(subdomain or verified custom domain) or, on the platform host, by the
+`x-tenant` header. Every request is checked from scratch; nothing is cached
+between requests:
+
+1. A request that also carries a `Cookie` or an `Authorization` header is
+   refused with `401` before the key is read. A shop route never falls back to
+   a session, and a session never upgrades a key.
+2. The key must exist in the selected workspace, be of kind `shop_management`,
+   be unrevoked, carry only shop scopes and expire strictly after the current
+   time. A missing key answers `401 Missing API key`; an unknown, revoked,
+   expired, legacy or other-workspace key answers the same `401 Invalid API
+   key`.
+3. The issuing account must still exist, have a verified e-mail address and
+   hold the owner role in that workspace. Otherwise the request answers `403`;
+   demoting or removing the issuer, or deleting the account, takes effect on
+   the next request.
+4. The request is counted against the key's rate limits (below).
+5. The key must carry the route's scope, otherwise `403 <scope> is not
+   permitted`.
+
+The request then acts as the issuing owner's real account, never as a
+synthetic API-key user, so product versions, stock and fulfilment changes are
+attributed to that account. Its permissions are the capabilities of the key's
+scopes intersected with the owner's, never more; the key id travels with the
+request for audit and diagnostics. The request never creates or edits a member
+record.
+
+Request telemetry records the route template, status and resolved identity;
+it never records request headers, so the key secret does not reach traces or
+error reports.
+
+## Rate limits
+
+Each key has its own durable buckets on the shop routes: **60 requests a
+minute** and **10,000 requests a day**. A request over either limit answers
+`429 rate_limited` with a `Retry-After` header in seconds until the current
+window ends.
 
 ## Lifetime
 

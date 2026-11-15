@@ -2431,6 +2431,17 @@ export interface TenantAccessReader {
   findMember(tenantId: string, userId: string): Promise<Member | null>;
 }
 
+export interface AccountIdentity {
+  userId: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+export interface AccountIdentityReader {
+  findById(userId: string): Promise<AccountIdentity | null>;
+}
+
 export interface AccountSecurityReader {
   read(userId: string): Promise<{
     hasPassword: boolean;

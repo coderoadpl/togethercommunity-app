@@ -115,6 +115,7 @@ import {
   createAvatarSourceReader,
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountIdentityReader,
   createAccountSecurityReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
@@ -212,6 +213,7 @@ import type {
   LessonEditionRepository,
   LessonEditionTransaction,
   ActivityReportRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
@@ -583,6 +585,7 @@ export interface AppDeps {
   tenantAccess: TenantAccessReader;
   signInTelemetrySecret: string;
   accountSecurity: AccountSecurityReader;
+  accountIdentities: AccountIdentityReader;
   health: HealthPort;
   appVersion: string;
   commitSha: string;
@@ -1623,6 +1626,7 @@ export const createDeps = (
     tenantAccess,
     signInTelemetrySecret: env.BETTER_AUTH_SECRET,
     accountSecurity,
+    accountIdentities: createAccountIdentityReader(db),
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',

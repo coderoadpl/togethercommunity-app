@@ -18,6 +18,8 @@ interface Hoisted {
   listOrders: ReturnType<typeof vi.fn>;
   exportOrders: ReturnType<typeof vi.fn>;
   publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
+  createCheckoutSession: ReturnType<typeof vi.fn>;
+  simulatePurchase: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
@@ -95,6 +97,8 @@ const h = vi.hoisted(
     listOrders: vi.fn(),
     exportOrders: vi.fn(),
     publicCheckoutSessionStatus: vi.fn(),
+    createCheckoutSession: vi.fn(),
+    simulatePurchase: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
     updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
@@ -220,6 +224,8 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listOrders: h.listOrders,
     exportOrders: h.exportOrders,
     publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
+    createCheckoutSession: h.createCheckoutSession,
+    simulatePurchase: h.simulatePurchase,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
     updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
@@ -328,6 +334,15 @@ const soleJson = (): unknown => {
 beforeEach(() => {
   h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
   h.publicCheckoutSessionStatus.mockReset().mockResolvedValue(ok({ status: 'pending' }));
+  h.createCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
+  h.simulatePurchase.mockReset().mockResolvedValue(ok({
+    memberId: 'member-1',
+    productId: 'product-1',
+    alreadyOwned: false,
+    subscriptionId: null,
+    orderId: 'order-1',
+    magicLink: null,
+  }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
@@ -445,6 +460,40 @@ describe('checkout session-status CLI', () => {
     expect(h.publicCheckoutSessionStatus).toHaveBeenCalledExactlyOnceWith('invalid');
     expect(soleJson()).toEqual(failure);
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('terms acceptance flag', () => {
+  it('starts a checkout session with termsAccepted only when --accept-terms is given', async () => {
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--email', 'buyer@example.test');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
+
+    h.createCheckoutSession.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/session' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('simulates a purchase with termsAccepted only when --accept-terms is given', async () => {
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
+
+    h.simulatePurchase.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(soleJson()).toMatchObject({ ok: true, data: { orderId: 'order-1' } });
+    expect(process.exitCode).toBe(0);
   });
 });
 

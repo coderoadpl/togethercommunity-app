@@ -1004,7 +1004,9 @@ pnpm --silent run cli --tenant acme shop stock enable <product-id> --on-hand 20
 pnpm --silent run cli --tenant acme shop products publish <product-id>
 pnpm --silent run cli --tenant acme public offer
 
-# 4. Buyer: the anonymous checkout request from Selling above, then payment
+# 4. Buyer: start the anonymous checkout and accept the terms, then pay at the printed URL
+pnpm --silent run cli --tenant acme checkout session --product <product-id> --email <buyer-email> \
+  --shipping-rate courier --accept-terms
 
 # 5. Warehouse key
 export TOGETHER_SHOP_KEY="$WAREHOUSE_KEY"
@@ -1020,9 +1022,9 @@ pnpm --silent run cli --tenant acme shop orders list --mode live
 
 `shop-settings.json` holds the settings object, for example
 `{"termsUrl":"https://brand.example.test/terms","privacyUrl":"https://brand.example.test/privacy","invoiceSellerName":"Example Press","invoiceSellerAddress":"<street, postal code, city>","shippingRates":[{"id":"courier","label":"Courier","amountCents":1500,"vatRatePercent":23,"carrier":"other","pickupPoint":"none","active":true}]}`.
-The `checkout session` command sends no terms acceptance, so on a workspace
-with legal URLs start the checkout with the HTTP request from
-[Selling](#selling-public-offer-checkout-and-return).
+A workspace with legal URLs refuses a checkout without terms acceptance, so
+`checkout session` and `simulate-purchase` take `--accept-terms` to send
+`termsAccepted: true`; without the flag they send no terms field.
 
 ## Deployment read-back checklist
 

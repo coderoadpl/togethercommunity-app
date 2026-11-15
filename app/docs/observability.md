@@ -101,12 +101,18 @@ tell instances of the same release apart:
   instance, which runs without it.
 - `singleTenant`: `true` when the instance runs without `APP_BASE_DOMAIN`.
 - `databaseIdentity`: the first 16 hex characters of a SHA-256 hash of the
-  database host, port (5432 when the URL names none) and database name that
-  the PostgreSQL driver takes from `DATABASE_URL`, including the `host` and
-  `port` query parameters that override the URL authority, or `null` when the
-  URL names no host or database or selects a Unix socket. It
-  never contains a credential or the connection string, and unlike
-  `databaseFingerprint` it differs for two databases on one server.
+  database host, port and database name that the PostgreSQL driver resolves
+  for the application's own pool: the same SSL-mode-normalised `DATABASE_URL`,
+  passed as the pool's `connectionString`, so the `host` and `port` query
+  parameters override the URL authority and a nested `connectionString`
+  parameter is ignored. The port follows the driver: a URL that names none
+  takes `PGPORT`, then 5432. The database name is hashed as the driver decodes
+  it (`%C3%A9` becomes `é`, `%2F` stays as written). The value is `null` when
+  the URL itself names no host or database (a value the driver would take from
+  `PGHOST`, `PGDATABASE` or the user name does not count), selects a Unix
+  socket, or does not parse. It never contains a credential or the connection
+  string, and unlike `databaseFingerprint` it differs for two databases on one
+  server.
 
 The object is additive: `databaseFingerprint` keeps its value (a hash of the
 database host name only), so monitors that pin it are unaffected. Releases

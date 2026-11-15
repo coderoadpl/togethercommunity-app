@@ -433,7 +433,8 @@ scope array.
   unit.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
-  cookie or key is read and refuses key creation; existing keys stay listable,
+  cookie or key is read, records only the switch state on the span, performs
+  no key lookup and refuses key creation; existing keys stay listable,
   revocable and purgeable. An unknown value stops the server from booting.
 - **Purge.** `POST /api/api-keys/shop-management/purge` deletes every shop key
   of the workspace, revoked or not, with its rate-limit buckets, in one

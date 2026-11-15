@@ -643,6 +643,20 @@ describe('shop management key secrecy in telemetry', () => {
     }
   });
 
+  it('attributes no key to a keyed mutation refused by the body size limit', async () => {
+    exporter.reset();
+    const response = await realApp.request(`${baseUrl}${SHOP_CATALOG_ROUTES.updateProduct.path}`, {
+      method: 'POST',
+      headers: { host: acmeHost, 'x-api-key': 'shop-all-secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'product-1', description: 'x'.repeat(DEFAULT_API_BODY_LIMIT) }),
+    });
+    expect(response.status).toBe(400);
+    await provider.forceFlush();
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(Object.keys(spans[0]?.attributes ?? {}).filter((name) => name.startsWith('app.api_key.'))).toEqual([]);
+  });
+
   it('never records the key hash or a prefix of the secret', async () => {
     const { attributes } = await spanOf({ 'x-api-key': 'shop-revoked-secret' });
     const recorded = JSON.stringify(attributes);

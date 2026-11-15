@@ -108,7 +108,12 @@ presented in `app.api_key.match`:
 | `matched` | The secret matches a stored key row in the selected workspace, whatever its state: usable, revoked, expired, of kind `legacy`, or with an issuer that is no longer a verified owner | `app.api_key.id`, `app.api_key.kind` (`legacy` or `shop_management`), `app.api_key.issuer.id` when the row has an issuer, `app.tenant.id` |
 | `none` | The secret matches no key row of the selected workspace, or no workspace was selected | `app.tenant.id` when a workspace was selected |
 | `missing` | The request carried no key | `app.tenant.id` when a workspace was selected |
-| `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else; the switch does not read the key |
+| `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else: the switch records only its state and performs no key lookup |
+
+A request refused by the body size limit (`400 validation`, checked before the
+shop route runs) is not attributed to a key: its span carries no
+`app.api_key.*` attribute, the key is not looked up and no key history row is
+written.
 
 So a `401` for an unusable key, a `401` for mixed credentials, a `403` for a
 missing scope, a `429` and a failing handler each carry the id of the key that
@@ -337,8 +342,9 @@ default) or `disabled`; any other value stops the server from booting. With
 - Every request under `/api/m2m/shop`, to a listed route or an unknown path,
   with any method, answers `404 not_found` before the server looks at a session,
   a cookie or the key, so it never answers `401`. The request span records
-  `app.api_key.match=switch_off` and no key id: the switch stays a pure kill
-  path that never touches the database.
+  only the switch state, `app.api_key.match=switch_off`, and no key id: the
+  switch performs no key lookup and stays a pure kill path that never touches
+  the database.
 - Creating a shop management key answers `403 forbidden` with the message
   `Shop management keys are disabled on this deployment
   (SHOP_MANAGEMENT_KEYS=disabled)`.

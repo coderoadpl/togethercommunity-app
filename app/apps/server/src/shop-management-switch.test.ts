@@ -31,6 +31,7 @@ let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let enabledApp: ReturnType<typeof buildApp>;
 let disabledApp: ReturnType<typeof buildApp>;
 let ownerToken: string;
+let keyLookups = 0;
 let sessionLookups = 0;
 
 const previousReleaseApiKeySchema = z.object({
@@ -101,6 +102,17 @@ const errorOf = async (response: Response) =>
 
 const countingSessionLookups = (deps: AppDeps): AppDeps => ({
   ...deps,
+  tenantApiKeys: {
+    ...deps.tenantApiKeys,
+    findByHash: async (tenantId, keyHash) => {
+      keyLookups += 1;
+      return deps.tenantApiKeys.findByHash(tenantId, keyHash);
+    },
+    findActiveByHash: async (tenantId, keyHash) => {
+      keyLookups += 1;
+      return deps.tenantApiKeys.findActiveByHash(tenantId, keyHash);
+    },
+  },
   authPort: {
     ...deps.authPort,
     getAuthenticatedUser: async (headers) => {
@@ -163,7 +175,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await database?.close(); });
 
-beforeEach(() => { sessionLookups = 0; });
+beforeEach(() => { sessionLookups = 0; keyLookups = 0; });
 
 describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
   const shopRequests: [string, string, Record<string, string>][] = [
@@ -177,9 +189,10 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
     ['POST', SHOP_CATALOG_ROUTES.createProduct.path, { authorization: 'Bearer anything' }],
   ];
 
-  it.each(shopRequests)('answers %s %s with 404 not_found before any session lookup', async (method, path, headers) => {
+  it.each(shopRequests)('answers %s %s with 404 not_found before any session or key lookup', async (method, path, headers) => {
     const { secret } = await createShopKey();
     sessionLookups = 0;
+    keyLookups = 0;
     const response = await disabledApp.request(`${baseUrl}${path}`, {
       method,
       headers: { host: acmeHost, 'x-api-key': secret, ...headers },
@@ -188,6 +201,7 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
     expect(response.status).toBe(404);
     expect(await errorOf(response)).toMatchObject({ code: 'not_found' });
     expect(sessionLookups).toBe(0);
+    expect(keyLookups).toBe(0);
   });
 
   it('records the switch as the refusal reason on the request span without reading the key', async () => {

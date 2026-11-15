@@ -153,12 +153,14 @@ describe('Vercel platform entry boundary', () => {
           && (has ?? []).every(present) && !(missing ?? []).some(present))
         .flatMap(({ headers }) => headers.filter(({ key }) => key === 'Content-Security-Policy').map(({ value }) => value));
     };
+    const cartLines = 'lines=00000000-0000-4000-8000-0000000000a1.2~00000000-0000-4000-8000-0000000000a2.1';
     const successDocuments = [
       '/checkout/reference?status=success',
       '/checkout/reference?status=success&session_id=cs_live_one',
       '/checkout/reference?checkout=together&status=success',
       '/offer/workbook?status=success',
       '/offer/workbook?checkout=together&status=success',
+      '/checkout/cart?status=success&purchase_kind=one_time&session_id=cs_live_one',
     ];
     const formDocuments = [
       '/checkout/reference',
@@ -167,6 +169,9 @@ describe('Vercel platform entry boundary', () => {
       '/offer/workbook?checkout=together',
       '/offer/workbook?status=cancelled',
       '/offer/workbook?checkout=together&status=cancelled',
+      `/checkout/cart?${cartLines}`,
+      `/checkout/cart?status=cancelled&${cartLines}`,
+      '/checkout/cart',
     ];
     const signedInOrSignInDocuments = [
       '/', '/index.html', '/login', '/login?status=cancelled', '/register', '/my', '/my/products', '/my?status=success',
@@ -234,6 +239,22 @@ describe('Vercel platform entry boundary', () => {
       for (const path of [...formDocuments, '/checkout/reference?status=successful']) expect(effectivePolicy(path), path).toBe(checkoutForm);
       for (const path of signedInOrSignInDocuments) expect(effectivePolicy(path), path).toBe(baseline);
       expect(effectivePolicy('/offer/workbook')).toBeUndefined();
+    });
+
+    it.each(Object.entries(queryMatchers))('gives the hosted cart documents the policy of the single-product checkout documents (%s query matching)', (_label, matchQuery) => {
+      for (const query of ['', 'status=cancelled', 'code=SPRING', 'status=successful', 'status=success', 'status=success&purchase_kind=one_time&session_id=cs_live_one']) {
+        const cart = matchingPolicies(`/checkout/cart?${cartLines}${query === '' ? '' : `&${query}`}`, matchQuery);
+        expect(cart, query).toEqual(matchingPolicies(`/checkout/reference${query === '' ? '' : `?${query}`}`, matchQuery));
+      }
+    });
+
+    it('resolves the hosted cart form and success documents to the checkout form and success policies', () => {
+      for (const path of [`/checkout/cart?${cartLines}`, `/checkout/cart?${cartLines}&status=cancelled`, `/checkout/cart?${cartLines}&status=successful`, '/checkout/cart']) {
+        expect(matchingPolicies(path, queryMatchers.anchored), path).toEqual([checkoutForm]);
+      }
+      for (const path of ['/checkout/cart?status=success', `/checkout/cart?${cartLines}&status=success&session_id=cs_live_one`]) {
+        expect(matchingPolicies(path, queryMatchers.anchored), path).toEqual([extended]);
+      }
     });
   });
 

@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { apiKeyRateLimitBuckets, tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
+import { apiKeyRateLimitBuckets, shopManagementKeyEvents, tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
 import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
@@ -481,6 +481,17 @@ describe('shop management key secrecy in telemetry', () => {
     const { status, attributes } = await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
     expect(status).toBe(500);
     expect(attributes).toMatchObject({ ...keyAttributes('shop-read'), 'app.user.id': issuers.owner });
+  });
+
+  it('writes one failed request row when a keyed mutation handler throws', async () => {
+    await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
+    const rows = (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((event) => event.apiKeyId === 'shop-read' && event.status === 500 && event.outcome === 'failed')).toBe(true);
+    const before = rows.length;
+    await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
+    expect((await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH))
+      .toHaveLength(before + 1);
   });
 
   it('never records the key hash or a prefix of the secret', async () => {

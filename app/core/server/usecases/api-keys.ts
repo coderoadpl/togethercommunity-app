@@ -14,6 +14,7 @@ import {
   type ImportAuditEvent,
   type Result,
   type ShopManagementKeyEvent,
+  type ShopManagementKeyEventPage,
   type ShopManagementKeysSwitch,
   type TenantApiKey,
   type TenantApiKeyPublic,
@@ -26,6 +27,7 @@ import type {
   Clock,
   IdGenerator,
   ImportAuditEventRepository,
+  ShopManagementKeyEventRepository,
   TenantApiKeyRepository,
 } from '../ports.js';
 
@@ -40,6 +42,10 @@ export interface ApiKeyDeps {
 export interface CreatedApiKey {
   apiKey: TenantApiKeyPublic;
   secret: string;
+}
+
+export interface ShopManagementKeyEventReadDeps {
+  shopManagementKeyEvents: Pick<ShopManagementKeyEventRepository, 'list'>;
 }
 
 export interface ImportAuditReadDeps {
@@ -189,6 +195,22 @@ export const purgeShopManagementKeys = async (
     (apiKeyId) => shopManagementLifecycleEvent(ctx, tenant.value, 'purged', apiKeyId, deps),
   );
   return ok({ purged });
+};
+
+export const listShopManagementKeyEvents = async (
+  ctx: Ctx,
+  input: { apiKeyId?: string; cursor?: string; limit: number },
+  deps: ShopManagementKeyEventReadDeps,
+): Promise<Result<ShopManagementKeyEventPage, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'api-key:write');
+  if (!tenant.ok) return tenant;
+  const denial = shopManagementKeyDenial(ctx);
+  if (denial !== null) return err(denial);
+  return ok(await deps.shopManagementKeyEvents.list(tenant.value, {
+    limit: input.limit,
+    ...(input.apiKeyId === undefined ? {} : { apiKeyId: input.apiKeyId }),
+    ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+  }));
 };
 
 export const listImportAuditForApiKey = async (

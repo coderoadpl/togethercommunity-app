@@ -127,10 +127,37 @@ kind of event, the acting account and the time:
 | `created` | with the key, in the same transaction | the owner who created it |
 | `revoked` | with the revocation, in the same transaction | the owner who revoked it |
 | `purged` | one row per deleted key, in the purge transaction | the owner who purged |
+| `request` | after every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route whose secret matched a key row of the workspace, accepted or refused | the key's issuer (none for a legacy key presented to a shop route) |
+
+A `request` row also records the method, the route template (for example
+`/api/m2m/shop/products/update`), the id of the resource the request names
+(a path parameter, else the body's `id`, else the first body field ending in
+`Id`; none when the request names no existing resource, such as a product
+creation), the HTTP status and an outcome: `succeeded` (2xx), `refused` (4xx,
+including `401`, `403`, `429` and validation errors) or `failed` (5xx or a
+handler error). The shared shop route helper writes it after the handler or the
+refusal, so every shop route inherits it. Reads (`GET`) write no row; they are
+attributed in request telemetry only. A request whose secret matches no key
+writes no row.
 
 A history row stores the key id as plain text and is never deleted with its
 key, so the history of a revoked or purged key stays readable. It goes away only
 with the workspace itself.
+
+The owner reads the history with the same verified owner session as creation
+(an admin, an unverified owner, an owner viewing as a member and any API key
+are refused), newest first, 50 rows a page by default and at most 100:
+
+```bash
+pnpm --silent run cli --tenant acme api-key shop-events
+pnpm --silent run cli --tenant acme api-key shop-events --key <key-id> --limit 20
+pnpm --silent run cli --tenant acme api-key shop-events --cursor <event-id>
+```
+
+Over HTTP: `GET /api/api-keys/shop-management/events?keyId=<key-id>&cursor=<event-id>&limit=<n>`
+answers `{"events": [...], "nextCursor": <event-id or null>}`; pass
+`nextCursor` back as `cursor` for the next page. A key id from another
+workspace lists nothing.
 
 ## Catalog routes
 

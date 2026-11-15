@@ -8,11 +8,17 @@ import {
   type StaffRole,
   type Tenant,
   type TenantApiKey,
+  type ShopManagementKeyEvent,
   type TenantApiKeyStoredScope,
 } from '#core/domain/index.js';
 
 import type { AccountIdentity, ApiKeyRateLimitRepository } from '../ports.js';
-import { authenticateShopManagementKey, identifyShopManagementKey, type ShopMachineAuthDeps } from './shop-machine-auth.js';
+import {
+  authenticateShopManagementKey,
+  identifyShopManagementKey,
+  recordShopManagementKeyRequest,
+  type ShopMachineAuthDeps,
+} from './shop-machine-auth.js';
 
 const NOW = '1998-08-03T10:00:30.000Z';
 const TENANT: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1 };
@@ -372,5 +378,34 @@ describe('shop management key attribution', () => {
     expect(await identifyShopManagementKey(TENANT.id, 'unknown', h.deps)).toEqual({ match: 'none' });
     expect(await identifyShopManagementKey(TENANT.id, '', h.deps)).toEqual({ match: 'missing' });
     expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(0);
+  });
+});
+
+describe('recordShopManagementKeyRequest', () => {
+  it.each([
+    [200, 'succeeded'],
+    [204, 'succeeded'],
+    [400, 'refused'],
+    [401, 'refused'],
+    [403, 'refused'],
+    [429, 'refused'],
+    [500, 'failed'],
+  ] as const)('records one request row for status %i as %s', async (status, outcome) => {
+    const recorded: Array<{ tenantId: string; event: ShopManagementKeyEvent }> = [];
+    await recordShopManagementKeyRequest(TENANT.id, {
+      apiKeyId: 'shop-key-1', actorUserId: OWNER_ID, method: 'POST', route: '/api/m2m/shop/products/update',
+      resourceId: 'product-1', status,
+    }, {
+      shopManagementKeyEvents: { record: async (tenantId, event) => { recorded.push({ tenantId, event }); } },
+      ids: { nextId: () => 'event-1' },
+      clock: { nowIso: () => NOW },
+    });
+    expect(recorded).toEqual([{
+      tenantId: TENANT.id,
+      event: {
+        id: 'event-1', tenantId: TENANT.id, apiKeyId: 'shop-key-1', kind: 'request', actorUserId: OWNER_ID, method: 'POST',
+        route: '/api/m2m/shop/products/update', resourceId: 'product-1', status, outcome, at: NOW,
+      },
+    }]);
   });
 });

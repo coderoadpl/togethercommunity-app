@@ -312,6 +312,6 @@ describe('retreat to the previous release', () => {
       .filter((event) => event.apiKeyId === apiKey.id)
       .map((event) => event.kind)
       .sort();
-    expect(history).toEqual(expect.arrayContaining(['created', 'purged', 'revoked']));
+    expect(history).toEqual(expect.arrayContaining(['created', 'purged', 'request', 'revoked']));
   });
 });

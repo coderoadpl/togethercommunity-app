@@ -4,11 +4,13 @@ import {
   forbidden,
   ok,
   shopManagementCapabilitiesForApiKey,
+  shopManagementKeyEventOutcomeForStatus,
   shopManagementScopeSchema,
   unauthorized,
   type AppError,
   type Identity,
   type Result,
+  type ShopManagementKeyEvent,
   type ShopManagementScope,
   type Tenant,
   type TenantApiKey,
@@ -20,6 +22,8 @@ import type {
   ApiKeyCrypto,
   ApiKeyRateLimitRepository,
   Clock,
+  IdGenerator,
+  ShopManagementKeyEventRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
 } from '../ports.js';
@@ -195,4 +199,34 @@ export const authenticateShopManagementKey = async (
     result: await authenticateStoredKey(tenant, found, requiredScope, deps),
     attribution: attributionOf(found),
   };
+};
+
+export interface ShopManagementKeyRequest {
+  apiKeyId: string;
+  actorUserId: string | null;
+  method: NonNullable<ShopManagementKeyEvent['method']>;
+  route: string;
+  resourceId: string | null;
+  status: number;
+}
+
+export interface ShopManagementKeyRequestDeps {
+  shopManagementKeyEvents: Pick<ShopManagementKeyEventRepository, 'record'>;
+  ids: IdGenerator;
+  clock: Clock;
+}
+
+export const recordShopManagementKeyRequest = async (
+  tenantId: string,
+  request: ShopManagementKeyRequest,
+  deps: ShopManagementKeyRequestDeps,
+): Promise<void> => {
+  await deps.shopManagementKeyEvents.record(tenantId, {
+    id: deps.ids.nextId(),
+    tenantId,
+    kind: 'request',
+    ...request,
+    outcome: shopManagementKeyEventOutcomeForStatus(request.status),
+    at: deps.clock.nowIso(),
+  });
 };

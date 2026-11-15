@@ -1,5 +1,6 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { RouterRoute } from 'hono/types';
+import { z } from 'zod';
 
 import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
@@ -17,10 +18,12 @@ import {
 import {
   authenticateShopManagementKey,
   identifyShopManagementKey,
+  recordShopManagementKeyRequest,
   resolveTenant,
   type ResolveTenantDeps,
   type ShopMachineAuthDeps,
   type ShopMachineAuthentication,
+  type ShopManagementKeyRequestDeps,
 } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -44,7 +47,7 @@ export const shopManagementKeysSwitchMiddleware = (state: ShopManagementKeysSwit
     await next();
   };
 
-type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps;
+type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementKeyRequestDeps;
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
@@ -97,6 +100,19 @@ const retryAfterHeaders = (error: AppError): HeadersInit => {
   return typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {};
 };
 
+const requestBodySchema = z.record(z.string(), z.unknown());
+
+const resourceIdOf = async (c: Context<AppVars>, body: Request): Promise<string | null> => {
+  const fromPath = Object.values(c.req.param()).find((value) => value.length > 0);
+  if (fromPath !== undefined) return fromPath;
+  const parsed = requestBodySchema.safeParse(await body.json().catch(() => null));
+  if (!parsed.success) return null;
+  const candidates = [parsed.data['id'], ...Object.entries(parsed.data)
+    .filter(([name]) => name.endsWith('Id'))
+    .map(([, value]) => value)];
+  return candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
+};
+
 export const registerShopMachineRoute = (
   app: Hono<AppVars>,
   deps: ShopMachineDeps,
@@ -106,11 +122,31 @@ export const registerShopMachineRoute = (
     throw new Error(`Shop management routes must live under ${SHOP_MACHINE_PATH_PREFIX}: ${route.path}`);
   }
   app.on(route.method, route.path, async (c) => {
+    const body = c.req.raw.clone();
     const { result, attribution } = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     c.set('apiKeyAttribution', attribution);
-    if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
-    c.set('identity', result.value.ctx.identity);
-    return route.handler(c, result.value);
+    const recordRequest = async (status: number): Promise<void> => {
+      if (route.method === 'GET' || attribution.match !== 'matched' || attribution.tenantId === undefined) return;
+      await recordShopManagementKeyRequest(attribution.tenantId, {
+        apiKeyId: attribution.apiKeyId,
+        actorUserId: attribution.issuerUserId,
+        method: route.method,
+        route: route.path,
+        resourceId: await resourceIdOf(c, body),
+        status,
+      }, deps);
+    };
+    const answer = async (): Promise<Response> => {
+      if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
+      c.set('identity', result.value.ctx.identity);
+      return route.handler(c, result.value);
+    };
+    const response = await answer().catch(async (error: unknown) => {
+      await recordRequest(500);
+      throw error;
+    });
+    await recordRequest(response.status);
+    return response;
   });
 };
 

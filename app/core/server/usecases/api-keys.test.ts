@@ -18,6 +18,7 @@ import type { ApiKeyCrypto, TenantApiKeyRepository } from '../ports.js';
 import {
   createTenantApiKey,
   listImportAuditForApiKey,
+  listShopManagementKeyEvents,
   listTenantApiKeys,
   purgeShopManagementKeys,
   revokeTenantApiKey,
@@ -538,6 +539,54 @@ describe('shop management keys', () => {
         expect(await purgeShopManagementKeys(denied, h.deps)).toMatchObject({ ok: false });
         expect(h.rows).toHaveLength(4);
         expect(h.events).toHaveLength(0);
+      },
+    );
+  });
+
+  describe('listShopManagementKeyEvents', () => {
+    const machineCtx: Ctx = {
+      ...ctx('owner'),
+      capabilities: ['api-key:write', 'api-key:read'],
+      machineActor: { kind: 'shop_management_key', apiKeyId: 'shop-active' },
+    };
+    const lister = () => {
+      const calls: Array<{ tenantId: string; query: unknown }> = [];
+      const event: ShopManagementKeyEvent = {
+        id: 'event-1', tenantId: 't1', apiKeyId: 'shop-key', kind: 'created', actorUserId: 'u1',
+        method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
+      };
+      return {
+        calls,
+        deps: {
+          shopManagementKeyEvents: {
+            list: async (tenantId: string, query: unknown) => {
+              calls.push({ tenantId, query });
+              return { events: [event], nextCursor: null };
+            },
+          },
+        },
+      };
+    };
+
+    it('lists the history of the owner workspace with the key filter and paging', async () => {
+      const l = lister();
+      expect(await listShopManagementKeyEvents(ctx('owner'), { apiKeyId: 'shop-key', cursor: 'event-0', limit: 10 }, l.deps))
+        .toMatchObject({ ok: true, value: { events: [{ id: 'event-1' }], nextCursor: null } });
+      expect(l.calls).toEqual([{ tenantId: 't1', query: { apiKeyId: 'shop-key', cursor: 'event-0', limit: 10 } }]);
+    });
+
+    it('reads only the workspace of the session', async () => {
+      const l = lister();
+      await listShopManagementKeyEvents(ctx('owner', 't2'), { limit: 50 }, l.deps);
+      expect(l.calls).toEqual([{ tenantId: 't2', query: { limit: 50 } }]);
+    });
+
+    it.each<[string, Ctx]>([...denyingContexts, ['a shop management key context', machineCtx], ['a member', ctx(null)]])(
+      'refuses the history to %s',
+      async (_label, denied) => {
+        const l = lister();
+        expect(await listShopManagementKeyEvents(denied, { limit: 50 }, l.deps)).toMatchObject({ ok: false });
+        expect(l.calls).toEqual([]);
       },
     );
   });

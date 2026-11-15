@@ -26,3 +26,8 @@ export interface ShopManagementKeyEventPage {
   events: ShopManagementKeyEvent[];
   nextCursor: string | null;
 }
+
+export const shopManagementKeyEventOutcomeForStatus = (status: number): ShopManagementKeyEvent['outcome'] => {
+  if (status >= 500) return 'failed';
+  return status >= 400 ? 'refused' : 'succeeded';
+};

@@ -57,7 +57,8 @@ no longer a verified owner of the workspace.
 Creation and revocation each write a workspace audit event
 (`api_key.shop_management_created`, `api_key.shop_management_revoked`) in the
 same transaction as the key change. The event carries the owner's account and
-e-mail and the key name and id, never the secret or its hash.
+e-mail and the key name and id, never the secret or its hash. These two events
+are written by the owner's session, so their `actorApiKeyId` is null.
 
 ## Authenticating a request
 
@@ -91,9 +92,17 @@ scopes intersected with the owner's, never more; the key id travels with the
 request for audit and diagnostics. The request never creates or edits a member
 record.
 
-Request telemetry records the route template, status and resolved identity;
-it never records request headers, so the key secret does not reach traces or
-error reports.
+Request telemetry records the route template, status and resolved identity.
+For an accepted shop request that identity is the issuing owner
+(`app.user.id`, `app.user.email`, `app.tenant.id`, `app.tenant.slug`), and the
+span also carries the key id in `app.api_key.id` and the key kind in
+`app.api_key.kind`. Telemetry never records request headers, so the key secret
+does not reach traces or error reports.
+
+Every workspace audit event records `actorApiKeyId`: the id of the shop
+management key behind the request that wrote it, or null for a session,
+operator or sign-in event. None of the catalog routes writes an audit event
+today; any audit event a keyed route writes later carries its key id.
 
 ## Catalog routes
 
@@ -103,6 +112,12 @@ names (`id` for update, publish and unpublish and for price deactivation;
 `productId` for draft deletion, price creation and stock). The route checks the
 scope, and the reused use-case checks the matching capability again. A product
 or price id from another workspace answers `404 not_found`.
+
+Request bodies on the shop routes are strict: a field the route does not know,
+at the top level or inside a nested object such as `compliance` or an
+`accessItems` entry, answers `400 validation` and nothing is written. A
+misspelt field therefore fails instead of being dropped. The session routes
+keep ignoring unknown fields.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|
@@ -182,14 +197,20 @@ exposes the thirteen calls with the same method names as the session client
 `createProductPrice`, `deactivateProductPrice`, `getProductStock`,
 `enableProductStock`, `adjustProductStock`, `setProductStockThreshold`). It
 sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
-`Authorization` header. Use it only from a backend.
+`Authorization` header. It never follows a redirect, same-origin or not: a
+`30x` answer fails the call with `internal` (CLI exit code 10) and the message
+`Shop management request to <path> refused a redirect`, so the key never
+reaches another URL. Use it only from a backend.
 
 ## Rate limits
 
 Each key has its own durable buckets on the shop routes: **60 requests a
 minute** and **10,000 requests a day**. A request over either limit answers
 `429 rate_limited` with a `Retry-After` header in seconds until the current
-window ends.
+window ends. The minute bucket is counted first: a request refused by the
+minute limit does not count against the day, and a request refused by the day
+limit gives its minute unit back. Requests refused before the rate limit
+(missing, unknown or unusable key, mixed credentials) are not counted.
 
 ## Lifetime
 

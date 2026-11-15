@@ -1,6 +1,17 @@
-import type { Organization, OrganizationAuditEvent, OrganizationMember } from '#core/domain/index.js';
+import type {
+  Organization,
+  OrganizationAuditEvent,
+  OrganizationMember,
+  OrganizationWorkspace,
+  TenantAuditEventInput,
+} from '#core/domain/index.js';
 
-import type { OrganizationAuditRepository, OrganizationMemberRepository, OrganizationRepository } from '../ports.js';
+import type {
+  OrganizationAuditRepository,
+  OrganizationMemberRepository,
+  OrganizationRepository,
+  OrganizationWorkspaceRepository,
+} from '../ports.js';
 
 export interface OrganizationFakeAccount {
   userId: string;
@@ -8,10 +19,21 @@ export interface OrganizationFakeAccount {
   emailVerified: boolean;
 }
 
-export const createOrganizationFakes = (accounts: OrganizationFakeAccount[] = []) => {
+export interface OrganizationFakeWorkspace extends OrganizationWorkspace {
+  organizationId: string | null;
+  grants: Array<{ userId: string; role: 'owner' | 'admin' }>;
+}
+
+export const createOrganizationFakes = (
+  accounts: OrganizationFakeAccount[] = [],
+  workspaces: OrganizationFakeWorkspace[] = [],
+) => {
   const organizationRows: Organization[] = [];
   const memberRows: OrganizationMember[] = [];
   const auditRows: OrganizationAuditEvent[] = [];
+  const workspaceRows = workspaces.map((workspace) => ({ ...workspace, grants: [...workspace.grants] }));
+  const tenantAuditRows: TenantAuditEventInput[] = [];
+  const configSourceTenantIds = new Set<string>();
   const isVerified = (userId: string) => accounts.some((account) => account.userId === userId && account.emailVerified);
 
   const organizations: OrganizationRepository = {
@@ -72,6 +94,48 @@ export const createOrganizationFakes = (accounts: OrganizationFakeAccount[] = []
       .slice(0, query.limit),
   };
 
+  const workspaceOf = ({ id, slug, name, status }: OrganizationFakeWorkspace): OrganizationWorkspace => ({ id, slug, name, status });
+  const checkChange = (tenantId: string, organizationId: string, actorUserId: string) => {
+    const workspace = workspaceRows.find((row) => row.id === tenantId);
+    if (workspace === undefined || !workspace.grants.some((grant) => grant.userId === actorUserId && grant.role === 'owner')) {
+      return { status: 'workspace_owner_required' } as const;
+    }
+    if (!memberRows.some((row) => row.organizationId === organizationId && row.userId === actorUserId && row.role === 'owner')) {
+      return { status: 'organization_owner_required' } as const;
+    }
+    return { status: 'allowed', workspace } as const;
+  };
+
+  const organizationWorkspaces: OrganizationWorkspaceRepository = {
+    link: async (tenantId, { organizationId, actorUserId, organizationAudit, tenantAudit }) => {
+      const checked = checkChange(tenantId, organizationId, actorUserId);
+      if (checked.status !== 'allowed') return checked;
+      const { workspace } = checked;
+      if (workspace.organizationId === organizationId) return { status: 'already_linked', workspace: workspaceOf(workspace) };
+      if (workspace.organizationId !== null) return { status: 'linked_elsewhere' };
+      workspace.organizationId = organizationId;
+      auditRows.push({ ...organizationAudit, organizationId });
+      tenantAuditRows.push({ ...tenantAudit, tenantId });
+      return { status: 'linked', workspace: workspaceOf(workspace) };
+    },
+    unlink: async (tenantId, { organizationId, actorUserId, organizationAudit, tenantAudit }) => {
+      const checked = checkChange(tenantId, organizationId, actorUserId);
+      if (checked.status !== 'allowed') return checked;
+      const { workspace } = checked;
+      if (workspace.organizationId === null) return { status: 'not_linked', workspace: workspaceOf(workspace) };
+      if (workspace.organizationId !== organizationId) return { status: 'linked_elsewhere' };
+      if (configSourceTenantIds.has(tenantId)) return { status: 'config_sources_present' };
+      workspace.organizationId = null;
+      auditRows.push({ ...organizationAudit, organizationId });
+      tenantAuditRows.push({ ...tenantAudit, tenantId });
+      return { status: 'unlinked', workspace: workspaceOf(workspace) };
+    },
+    list: async (organizationId) => workspaceRows
+      .filter((row) => row.organizationId === organizationId)
+      .toSorted((left, right) => left.slug.localeCompare(right.slug))
+      .map(workspaceOf),
+  };
+
   const authPort = {
     findUserByEmail: async (email: string) => {
       const account = accounts.find((candidate) => candidate.email === email);
@@ -79,5 +143,14 @@ export const createOrganizationFakes = (accounts: OrganizationFakeAccount[] = []
     },
   };
 
-  return { repositories: { organizations, organizationMembers, organizationAudit }, authPort, organizationRows, memberRows, auditRows };
+  return {
+    repositories: { organizations, organizationMembers, organizationAudit, organizationWorkspaces },
+    authPort,
+    organizationRows,
+    memberRows,
+    auditRows,
+    workspaceRows,
+    tenantAuditRows,
+    configSourceTenantIds,
+  };
 };

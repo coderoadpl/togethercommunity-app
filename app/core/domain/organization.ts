@@ -48,6 +48,15 @@ export const organizationMemberAccountSchema = z.object({
 
 export type OrganizationMemberAccount = z.infer<typeof organizationMemberAccountSchema>;
 
+export const organizationWorkspaceSchema = tenantSchema.pick({ id: true, slug: true, status: true })
+  .extend({ name: z.string().min(1) });
+
+export type OrganizationWorkspace = z.infer<typeof organizationWorkspaceSchema>;
+
+export const organizationWorkspaceSelectionSchema = z.object({ tenantId: z.string().trim().min(1) }).strict();
+
+export type OrganizationWorkspaceSelection = z.infer<typeof organizationWorkspaceSelectionSchema>;
+
 const maxWorkspacesSchema = z.number().int().min(0).max(10_000);
 
 export const createOrganizationInputSchema = z.object({

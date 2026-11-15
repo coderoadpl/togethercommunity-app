@@ -81,6 +81,7 @@ import type {
   OrganizationAuditEvent,
   OrganizationMember,
   OrganizationMemberAccount,
+  OrganizationWorkspace,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -2587,6 +2588,37 @@ export interface OrganizationMemberRepository {
 export interface OrganizationAuditRepository {
   record(organizationId: string, event: Omit<OrganizationAuditEvent, 'organizationId'>): Promise<void>;
   list(organizationId: string, query: { limit: number }): Promise<OrganizationAuditEvent[]>;
+}
+
+interface OrganizationWorkspaceChange {
+  organizationId: string;
+  actorUserId: string;
+  organizationAudit: Omit<OrganizationAuditEvent, 'organizationId'>;
+  tenantAudit: Omit<TenantAuditEventInput, 'tenantId'>;
+}
+
+type OrganizationWorkspaceRefusal =
+  | { status: 'workspace_owner_required' }
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' };
+
+type OrganizationWorkspaceLinkResult =
+  | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
+  | OrganizationWorkspaceRefusal;
+
+type OrganizationWorkspaceUnlinkResult =
+  | { status: 'unlinked' | 'not_linked'; workspace: OrganizationWorkspace }
+  | { status: 'config_sources_present' }
+  | OrganizationWorkspaceRefusal;
+
+/**
+ * Link and unlink re-check, inside one transaction with the change and both audit rows,
+ * that the actor holds a direct owner grant in the workspace and is an owner of the organization.
+ */
+export interface OrganizationWorkspaceRepository {
+  link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;
+  unlink(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceUnlinkResult>;
+  list(organizationId: string): Promise<OrganizationWorkspace[]>;
 }
 
 export interface ImpersonationTokenCodec {

@@ -2651,6 +2651,9 @@ export const API_PATHS = {
   organization: API_ROUTES.organization.path,
   organizationMembers: API_ROUTES.organizationMembers.path,
   organizationAuditEvents: API_ROUTES.organizationAuditEvents.path,
+  organizationWorkspaces: API_ROUTES.organizationWorkspaces.path,
+  organizationWorkspaceLink: API_ROUTES.organizationWorkspaceLink.path,
+  organizationWorkspaceUnlink: API_ROUTES.organizationWorkspaceUnlink.path,
 } as const;
 
 /**

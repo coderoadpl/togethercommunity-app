@@ -14,8 +14,11 @@ import {
   organizationListOutputSchema,
   organizationMembersOutputSchema,
   organizationOutputSchema,
+  organizationWorkspaceChangeOutputSchema,
+  organizationWorkspacesOutputSchema,
   type CreateOrganizationInput,
   type OrganizationLimits,
+  type OrganizationWorkspaceSelection,
 } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
@@ -602,6 +605,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input.limit === undefined ? path : `${path}?${new URLSearchParams({ limit: String(input.limit) }).toString()}`,
       organizationAuditEventsOutputSchema, undefined, signal);
   },
+  listOrganizationWorkspaces: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaces.method,
+      API_ROUTES.organizationWorkspaces.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationWorkspacesOutputSchema, undefined, signal),
+  linkOrganizationWorkspace: (input: { organizationId: string } & OrganizationWorkspaceSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaceLink.method,
+      API_ROUTES.organizationWorkspaceLink.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationWorkspaceChangeOutputSchema, { tenantId: input.tenantId }, signal),
+  unlinkOrganizationWorkspace: (input: { organizationId: string } & OrganizationWorkspaceSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaceUnlink.method,
+      API_ROUTES.organizationWorkspaceUnlink.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationWorkspaceChangeOutputSchema, { tenantId: input.tenantId }, signal),
 
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),

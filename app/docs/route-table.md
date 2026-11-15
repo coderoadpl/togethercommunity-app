@@ -225,6 +225,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/organizations/:organizationId` | authenticated | read | organization |
 | `GET /api/organizations/:organizationId/members` | authenticated | read | organization members |
 | `GET /api/organizations/:organizationId/audit-events` | authenticated | read | organization audit events |
+| `GET /api/organizations/:organizationId/workspaces` | authenticated | read | organization workspaces |
+| `POST /api/organizations/:organizationId/workspaces/link` | authenticated | mutating | organization workspace link |
+| `POST /api/organizations/:organizationId/workspaces/unlink` | authenticated | mutating | organization workspace unlink |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

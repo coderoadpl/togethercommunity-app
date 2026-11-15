@@ -5,15 +5,19 @@ import {
   organizationMemberAccountSchema,
   organizationMemberSchema,
   organizationSchema,
+  organizationWorkspaceSchema,
+  type OrganizationWorkspace,
 } from '#core/domain/index.js';
 import type {
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
+  OrganizationWorkspaceRepository,
 } from '#core/server/index.js';
 
 import { user } from './auth-schema.js';
 import type { Db } from './client.js';
+import { tenantAdmins, tenantAuditEvents, tenants } from './app-schema.js';
 import { organizationAuditEvents, organizationMembers, organizations } from './organization-schema.js';
 
 export const createOrganizationRepository = (db: Db): OrganizationRepository => ({
@@ -105,4 +109,63 @@ export const createOrganizationAuditRepository = (db: Db): OrganizationAuditRepo
     .orderBy(desc(organizationAuditEvents.at), desc(organizationAuditEvents.id))
     .limit(query.limit))
     .map((row) => organizationAuditEventSchema.parse(row)),
+});
+
+const workspaceColumns = { id: tenants.id, slug: tenants.slug, name: tenants.name, status: tenants.status };
+
+type WorkspaceChangeCheck =
+  | { status: 'workspace_owner_required' }
+  | { status: 'organization_owner_required' }
+  | { status: 'allowed'; organizationId: string | null; workspace: OrganizationWorkspace };
+
+const checkWorkspaceChange = async (
+  tx: Db,
+  tenantId: string,
+  input: { organizationId: string; actorUserId: string },
+): Promise<WorkspaceChangeCheck> => {
+  const rows = await tx.select({ ...workspaceColumns, organizationId: tenants.organizationId })
+    .from(tenants).where(eq(tenants.id, tenantId)).for('update');
+  const directOwner = await tx.select({ id: tenantAdmins.id }).from(tenantAdmins).where(and(
+    eq(tenantAdmins.tenantId, tenantId),
+    eq(tenantAdmins.userId, input.actorUserId),
+    eq(tenantAdmins.role, 'owner'),
+  )).for('share');
+  const row = rows[0];
+  if (row === undefined || directOwner.length !== 1) return { status: 'workspace_owner_required' };
+  const organizationOwner = await tx.select({ id: organizationMembers.id }).from(organizationMembers).where(and(
+    eq(organizationMembers.organizationId, input.organizationId),
+    eq(organizationMembers.userId, input.actorUserId),
+    eq(organizationMembers.role, 'owner'),
+  )).for('share');
+  if (organizationOwner.length !== 1) return { status: 'organization_owner_required' };
+  const { organizationId, ...workspace } = row;
+  return { status: 'allowed', organizationId, workspace: organizationWorkspaceSchema.parse(workspace) };
+};
+
+export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorkspaceRepository => ({
+  link: async (tenantId, input) => db.transaction(async (tx) => {
+    const checked = await checkWorkspaceChange(tx, tenantId, input);
+    if (checked.status !== 'allowed') return checked;
+    if (checked.organizationId === input.organizationId) return { status: 'already_linked', workspace: checked.workspace } as const;
+    if (checked.organizationId !== null) return { status: 'linked_elsewhere' } as const;
+    await tx.update(tenants).set({ organizationId: input.organizationId }).where(eq(tenants.id, tenantId));
+    await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId: input.organizationId });
+    await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId });
+    return { status: 'linked', workspace: checked.workspace } as const;
+  }),
+  unlink: async (tenantId, input) => db.transaction(async (tx) => {
+    const checked = await checkWorkspaceChange(tx, tenantId, input);
+    if (checked.status !== 'allowed') return checked;
+    if (checked.organizationId === null) return { status: 'not_linked', workspace: checked.workspace } as const;
+    if (checked.organizationId !== input.organizationId) return { status: 'linked_elsewhere' } as const;
+    // TODO(O06): return config_sources_present while tenant_config_sources holds a row for this tenant (table arrives in O06).
+    await tx.update(tenants).set({ organizationId: null }).where(eq(tenants.id, tenantId));
+    await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId: input.organizationId });
+    await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId });
+    return { status: 'unlinked', workspace: checked.workspace } as const;
+  }),
+  list: async (organizationId) => (await db.select(workspaceColumns).from(tenants)
+    .where(eq(tenants.organizationId, organizationId))
+    .orderBy(asc(tenants.slug)))
+    .map((row) => organizationWorkspaceSchema.parse(row)),
 });

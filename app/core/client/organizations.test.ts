@@ -61,4 +61,19 @@ describe('organization client', () => {
       expect(new Headers(calls[0]?.init?.headers).has(SCHEDULER_OPERATOR_SECRET_HEADER)).toBe(false);
     }
   });
+
+  it('lists, links and unlinks workspaces with the workspace id in the body', async () => {
+    const workspace = { id: 'acme', slug: 'acme', name: 'Acme', status: 'active' };
+    const list = recordingClient({ workspaces: [workspace] });
+    expect(await list.api.listOrganizationWorkspaces({ organizationId: 'org-1' })).toEqual({ ok: true, value: { workspaces: [workspace] } });
+    const link = recordingClient({ workspace, changed: true });
+    expect(await link.api.linkOrganizationWorkspace({ organizationId: 'org-1', tenantId: 'acme' })).toEqual({ ok: true, value: { workspace, changed: true } });
+    const unlink = recordingClient({ workspace, changed: false });
+    expect(await unlink.api.unlinkOrganizationWorkspace({ organizationId: 'org-1', tenantId: 'acme' })).toEqual({ ok: true, value: { workspace, changed: false } });
+    expect([list, link, unlink].map(({ calls }) => [calls[0]?.init?.method, calls[0]?.url, calls[0]?.init?.body])).toEqual([
+      ['GET', 'http://localhost:48730/api/organizations/org-1/workspaces', null],
+      ['POST', 'http://localhost:48730/api/organizations/org-1/workspaces/link', JSON.stringify({ tenantId: 'acme' })],
+      ['POST', 'http://localhost:48730/api/organizations/org-1/workspaces/unlink', JSON.stringify({ tenantId: 'acme' })],
+    ]);
+  });
 });

@@ -6,6 +6,7 @@ import {
   createOrganizationInputSchema,
   organizationAuditEventListQuerySchema,
   organizationLimitsSchema,
+  organizationWorkspaceSelectionSchema,
 } from '#core/contract/index.js';
 import { err, unauthorized, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
@@ -13,13 +14,17 @@ import {
   getOrganization,
   listOrganizationAuditEvents,
   listOrganizationMembers,
+  linkOrganizationWorkspace,
   listOrganizations,
+  listOrganizationWorkspaces,
   organizationContext,
+  unlinkOrganizationWorkspace,
   setOrganizationLimits,
   type OperatorOrganizationDeps,
   type OrganizationCtx,
   type OrganizationMemberRepository,
   type OrganizationReadDeps,
+  type OrganizationWorkspaceDeps,
 } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -58,7 +63,7 @@ export const registerOperatorOrganizationRoutes = (
 
 export const registerOrganizationRoutes = (
   app: Hono<AppVars>,
-  deps: OrganizationReadDeps & { organizationMembers: Pick<OrganizationMemberRepository, 'find'> },
+  deps: OrganizationReadDeps & OrganizationWorkspaceDeps & { organizationMembers: Pick<OrganizationMemberRepository, 'find'> },
 ): void => {
   const withOrganization = async <T>(
     c: Context<AppVars>,
@@ -87,4 +92,20 @@ export const registerOrganizationRoutes = (
     return withOrganization(c, organizationId, (octx) =>
       listOrganizationAuditEvents(octx, { organizationId, ...query.data }, deps));
   });
+  app.get(API_PATHS.organizationWorkspaces, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    return withOrganization(c, organizationId, (octx) => listOrganizationWorkspaces(octx, { organizationId }, deps));
+  });
+  for (const [path, change] of [
+    [API_PATHS.organizationWorkspaceLink, linkOrganizationWorkspace],
+    [API_PATHS.organizationWorkspaceUnlink, unlinkOrganizationWorkspace],
+  ] as const) {
+    app.post(path, async (c) => {
+      const organizationId = c.req.param('organizationId');
+      const body: unknown = await c.req.json().catch(() => null);
+      const parsed = organizationWorkspaceSelectionSchema.safeParse(body);
+      if (!parsed.success) return respond(err(validation('Invalid workspace selection', parsed.error.flatten())));
+      return withOrganization(c, organizationId, (octx) => change(octx, { organizationId, ...parsed.data }, deps));
+    });
+  }
 };

@@ -7,9 +7,10 @@ import {
   createOrganizationAuditRepository,
   createOrganizationMemberRepository,
   createOrganizationRepository,
+  createOrganizationWorkspaceRepository,
 } from './organizations.js';
 import { createTenantDirectory, createTenantRepository } from './repositories.js';
-import { organizationAuditEvents, organizationMembers, organizations, tenants, user } from './schema.js';
+import { organizationAuditEvents, organizationMembers, organizations, tenantAdmins, tenantAuditEvents, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -163,5 +164,70 @@ describe('organization repositories', () => {
     expect(await createOrganizationMemberRepository(database.db).listAccounts('org-created')).toEqual([
       { userId: 'creator', email: 'creator@example.test', role: 'owner', createdAt: at },
     ]);
+  });
+
+  it('links and unlinks only for a direct workspace owner who owns the organization, auditing both sides in one transaction', async () => {
+    await createOrganizationRepository(database.db).create(organization('org-ws', 'workspaces'));
+    await createOrganizationRepository(database.db).create(organization('org-ws-other', 'workspaces-other'));
+    await database.db.insert(tenants).values([
+      { id: 'ws-own', slug: 'ws-own', name: 'Own', createdAt: at },
+      { id: 'ws-taken', slug: 'ws-taken', name: 'Taken', createdAt: at, organizationId: 'org-ws-other' },
+    ]);
+    await database.db.insert(tenantAdmins).values([
+      { id: 'grant-owner', tenantId: 'ws-own', userId: 'ws-owner', role: 'owner' },
+      { id: 'grant-admin', tenantId: 'ws-own', userId: 'ws-admin', role: 'admin' },
+      { id: 'grant-org-admin', tenantId: 'ws-own', userId: 'ws-org-admin', role: 'owner' },
+      { id: 'grant-taken', tenantId: 'ws-taken', userId: 'ws-owner', role: 'owner' },
+    ]);
+    const members = createOrganizationMemberRepository(database.db);
+    for (const [userId, role] of [['ws-owner', 'owner'], ['ws-admin', 'owner'], ['ws-org-admin', 'admin']] as const) {
+      await members.add('org-ws', { id: `org-ws-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
+    }
+    const repository = createOrganizationWorkspaceRepository(database.db);
+    const change = (actorUserId: string, id: string, linked: boolean) => ({
+      organizationId: 'org-ws',
+      actorUserId,
+      organizationAudit: {
+        id: `org-${id}`, kind: linked ? 'workspace.linked' as const : 'workspace.unlinked' as const, actorUserId,
+        actorEmail: `${actorUserId}@example.test`, actorKeyId: null, subjectTenantId: 'ws-own', subjectUserId: null, data: {}, at,
+      },
+      tenantAudit: {
+        id: `tenant-${id}`, kind: linked ? 'organization.linked' as const : 'organization.unlinked' as const, actorUserId,
+        actorEmail: `${actorUserId}@example.test`, subjectMemberId: null, reason: 'org-ws', at,
+      },
+    });
+    const linkOf = async (tenantId: string) =>
+      (await database.db.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId)))[0]?.organizationId;
+    const audits = async () => ({
+      organization: (await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-ws'))).map((row) => row.id),
+      tenant: (await database.db.select().from(tenantAuditEvents).where(eq(tenantAuditEvents.tenantId, 'ws-own'))).map((row) => row.id),
+    });
+    const workspace = { id: 'ws-own', slug: 'ws-own', name: 'Own', status: 'active' };
+
+    expect(await repository.link('ws-own', change('ws-admin', 'a', true))).toEqual({ status: 'workspace_owner_required' });
+    expect(await repository.link('ws-own', change('ws-org-admin', 'b', true))).toEqual({ status: 'organization_owner_required' });
+    expect(await repository.link('ws-missing', change('ws-owner', 'c', true))).toEqual({ status: 'workspace_owner_required' });
+    expect(await repository.link('ws-taken', change('ws-owner', 'd', true))).toEqual({ status: 'linked_elsewhere' });
+    expect(await audits()).toEqual({ organization: [], tenant: [] });
+    expect(await linkOf('ws-taken')).toBe('org-ws-other');
+
+    expect(await repository.link('ws-own', change('ws-owner', 'e', true))).toEqual({ status: 'linked', workspace });
+    expect(await repository.link('ws-own', change('ws-owner', 'f', true))).toEqual({ status: 'already_linked', workspace });
+    expect(await linkOf('ws-own')).toBe('org-ws');
+    expect(await repository.list('org-ws')).toEqual([workspace]);
+    expect(await repository.list('org-ws-other')).toEqual([{ id: 'ws-taken', slug: 'ws-taken', name: 'Taken', status: 'active' }]);
+    expect(await audits()).toEqual({ organization: ['org-e'], tenant: ['tenant-e'] });
+
+    expect(await repository.unlink('ws-own', change('ws-admin', 'g', false))).toEqual({ status: 'workspace_owner_required' });
+    expect(await repository.unlink('ws-own', change('ws-owner', 'h', false))).toEqual({ status: 'unlinked', workspace });
+    expect(await repository.unlink('ws-own', change('ws-owner', 'i', false))).toEqual({ status: 'not_linked', workspace });
+    expect(await linkOf('ws-own')).toBeNull();
+    expect(await repository.list('org-ws')).toEqual([]);
+    expect(await audits()).toEqual({ organization: ['org-e', 'org-h'], tenant: ['tenant-e', 'tenant-h'] });
+
+    const duplicateAudit = change('ws-owner', 'e', true);
+    await expect(repository.link('ws-own', { ...duplicateAudit, tenantAudit: { ...duplicateAudit.tenantAudit, id: 'tenant-fresh' } })).rejects.toThrow();
+    expect(await linkOf('ws-own')).toBeNull();
+    expect(await audits()).toEqual({ organization: ['org-e', 'org-h'], tenant: ['tenant-e', 'tenant-h'] });
   });
 });

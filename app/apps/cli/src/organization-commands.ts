@@ -7,7 +7,17 @@ import { err, notFound, ok, validation, type AppError, type Result } from '#core
 import { emit } from './output.js';
 
 type OrganizationCliContext = {
-  api: Pick<ApiClient, 'listOrganizations' | 'getOrganization' | 'listOrganizationMembers' | 'listOrganizationAuditEvents'>;
+  api: Pick<
+    ApiClient,
+    | 'listOrganizations'
+    | 'getOrganization'
+    | 'listOrganizationMembers'
+    | 'listOrganizationAuditEvents'
+    | 'listOrganizationWorkspaces'
+    | 'linkOrganizationWorkspace'
+    | 'unlinkOrganizationWorkspace'
+    | 'listTenants'
+  >;
   json: boolean;
 };
 
@@ -29,6 +39,18 @@ export const resolveOrganizationId = async (
   const match = listed.value.organizations.find((organization) =>
     organization.id === chosen.data || organization.slug === chosen.data.toLowerCase());
   return match === undefined ? err(notFound('Organization not found')) : ok(match.id);
+};
+
+export const resolveWorkspaceId = async (
+  api: Pick<ApiClient, 'listTenants'>,
+  selector: unknown,
+): Promise<Result<string, AppError>> => {
+  const chosen = selectorSchema.safeParse(selector);
+  if (!chosen.success) return err(validation('Name the workspace by its slug'));
+  const listed = await api.listTenants();
+  if (!listed.ok) return listed;
+  const match = listed.value.tenants.find(({ tenant }) => tenant.id === chosen.data || tenant.slug === chosen.data.toLowerCase());
+  return match === undefined ? err(notFound('Workspace not found among your staff workspaces')) : ok(match.tenant.id);
 };
 
 export const registerOrganizationCommands = (
@@ -80,4 +102,21 @@ export const registerOrganizationCommands = (
         organizationId, ...(options.limit === undefined ? {} : { limit: options.limit }),
       })),
     ));
+  const workspace = org.command('workspace').description('Workspaces linked to an organization');
+  workspace.command('list').description('List the workspaces linked to the organization').option(...orgOption).action(run(
+    orgOptionSchema,
+    scoped((ctx, organizationId) => ctx.api.listOrganizationWorkspaces({ organizationId })),
+    (value) => value.workspaces.map((entry) => `${entry.slug}\t${entry.status}\t${entry.name}\t${entry.id}`).join('\n'),
+  ));
+  const change = <T>(call: (ctx: OrganizationCliContext, input: { organizationId: string; tenantId: string }) => Promise<Result<T, AppError>>) =>
+    (slug: unknown, raw: unknown) => run(orgOptionSchema, scoped(async (ctx, organizationId) => {
+      const tenantId = await resolveWorkspaceId(ctx.api, slug);
+      return tenantId.ok ? call(ctx, { organizationId, tenantId: tenantId.value }) : tenantId;
+    }))(raw);
+  workspace.command('link <slug>')
+    .description('Link a workspace you own directly to the organization (organization owners only)')
+    .option(...orgOption).action(change((ctx, input) => ctx.api.linkOrganizationWorkspace(input)));
+  workspace.command('unlink <slug>')
+    .description('Unlink a workspace you own directly from the organization (organization owners only)')
+    .option(...orgOption).action(change((ctx, input) => ctx.api.unlinkOrganizationWorkspace(input)));
 };

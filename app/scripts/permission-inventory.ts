@@ -79,6 +79,10 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/organizations/:organizationId') return 'organization:read';
   if (path === '/api/organizations/:organizationId/members') return 'organization:member:read';
   if (path === '/api/organizations/:organizationId/audit-events') return 'organization:audit:read';
+  if (path === '/api/organizations/:organizationId/workspaces') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/workspaces/link' || path === '/api/organizations/:organizationId/workspaces/unlink') {
+    return 'organization:workspace:link';
+  }
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';

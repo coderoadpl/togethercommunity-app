@@ -93,6 +93,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'OrganizationMemberRepository.list': 'Organisation boundary, verified by authorizeOrganization before the call.',
   'OrganizationMemberRepository.listAccounts': 'Organisation boundary, verified by authorizeOrganization before the call.',
   'OrganizationMemberRepository.listForUser': 'Sign-in discovers the organisations available to a platform user.',
+  'OrganizationWorkspaceRepository.list': 'Organisation boundary, verified by authorizeOrganization before the call.',
   'OrganizationAuditRepository.record': 'Organisation boundary, verified by authorizeOrganization before the call.',
   'OrganizationAuditRepository.list': 'Organisation boundary, verified by authorizeOrganization before the call.',
 };

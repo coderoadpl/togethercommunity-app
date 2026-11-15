@@ -10,6 +10,8 @@ import {
   organizationListOutputSchema,
   organizationMembersOutputSchema,
   organizationOutputSchema,
+  organizationWorkspaceChangeOutputSchema,
+  organizationWorkspacesOutputSchema,
 } from '#core/contract/index.js';
 import type { Identity } from '#core/domain/index.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
@@ -33,25 +35,31 @@ const harness = () => {
     { userId: 'admin-1', email: 'admin-1@example.test', emailVerified: true },
     { userId: 'other-1', email: 'other-1@example.test', emailVerified: true },
     { userId: 'unverified-1', email: 'unverified-1@example.test', emailVerified: false },
+  ], [
+    { id: 'acme', slug: 'acme', name: 'Acme', status: 'active', organizationId: null, grants: [{ userId: 'owner-1', role: 'owner' }, { userId: 'admin-1', role: 'owner' }] },
   ]);
   let nextId = 0;
+  const ids = { nextId: () => `id-${++nextId}` };
+  const clock = { nowIso: () => '2026-11-15T12:00:00.000Z' };
   const app = new Hono<AppVars>();
   registerOperatorOrganizationRoutes(app, {
     ...fakes.repositories,
     authPort: fakes.authPort,
-    ids: { nextId: () => `id-${++nextId}` },
-    clock: { nowIso: () => '2026-11-15T12:00:00.000Z' },
+    ids,
+    clock,
     operatorSecret: secret,
   });
   app.use('/api/*', async (c, next) => {
     c.set('identity', identity(c.req.header('x-test-user') ?? 'anonymous'));
     await next();
   });
-  registerOrganizationRoutes(app, fakes.repositories);
+  registerOrganizationRoutes(app, { ...fakes.repositories, ids, clock });
   const create = (ownerEmail: string, headers: Record<string, string> = operatorHeaders) =>
     app.request(API_PATHS.operatorOrganizationCreate, { method: 'POST', headers, body: createBody(ownerEmail) });
   const read = (path: string, userId: string) => app.request(path, { headers: { 'x-test-user': userId } });
-  return { ...fakes, app, create, read };
+  const post = (path: string, userId: string, body: unknown) =>
+    app.request(path, { method: 'POST', headers: { 'x-test-user': userId, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  return { ...fakes, app, create, read, post };
 };
 
 const created = async (h: ReturnType<typeof harness>) => {
@@ -134,5 +142,24 @@ describe('organization session routes', () => {
     expect(envelopeSchema(organizationAuditEventsOutputSchema).parse(await audit.json()))
       .toMatchObject({ ok: true, data: { events: [{ organizationId }] } });
     expect((await h.read(`${path(API_PATHS.organizationAuditEvents)}?limit=0`, 'admin-1')).status).toBe(400);
+  });
+
+  it('links, lists and unlinks a workspace for an owner and refuses an admin', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    const path = (template: string) => template.replace(':organizationId', organizationId);
+    const refused = await h.post(path(API_PATHS.organizationWorkspaceLink), 'admin-1', { tenantId: 'acme' });
+    expect(refused.status).toBe(403);
+    expect((await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: '' })).status).toBe(400);
+    expect((await h.post(path(API_PATHS.organizationWorkspaceLink), 'other-1', { tenantId: 'acme' })).status).toBe(404);
+    const linked = await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' });
+    expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await linked.json()))
+      .toEqual({ ok: true, data: { workspace: { id: 'acme', slug: 'acme', name: 'Acme', status: 'active' }, changed: true } });
+    expect(envelopeSchema(organizationWorkspacesOutputSchema).parse(await (await h.read(path(API_PATHS.organizationWorkspaces), 'admin-1')).json()))
+      .toEqual({ ok: true, data: { workspaces: [{ id: 'acme', slug: 'acme', name: 'Acme', status: 'active' }] } });
+    const unlinked = await h.post(path(API_PATHS.organizationWorkspaceUnlink), 'owner-1', { tenantId: 'acme' });
+    expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await unlinked.json())).toMatchObject({ ok: true, data: { changed: true } });
+    expect(h.auditRows.map((event) => event.kind).slice(-2)).toEqual(['workspace.linked', 'workspace.unlinked']);
+    expect(h.tenantAuditRows.map((event) => event.kind)).toEqual(['organization.linked', 'organization.unlinked']);
   });
 });

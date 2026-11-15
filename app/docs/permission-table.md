@@ -22,7 +22,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller's own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning.
 
-Closed capability count: 137. Route rows: 459. Exported `Ctx` use-case rows: 361.
+Closed capability count: 137. Route rows: 462. Exported `Ctx` use-case rows: 364.
 
 ## Human-readable diff
 
@@ -250,6 +250,9 @@ no changes
 | `GET /api/organizations/:organizationId` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId/members` | organization:member:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId/audit-events` | organization:audit:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
+| `GET /api/organizations/:organizationId/workspaces` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/workspaces/link` | organization:workspace:link | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/workspaces/unlink` | organization:workspace:link | organization-owner | organization-owner | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -757,6 +760,9 @@ no changes
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
+| `organization-workspaces.ts#listOrganizationWorkspaces` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
+| `organization-workspaces.ts#linkOrganizationWorkspace` | organization:workspace:link | organization-owner | organization-owner | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
+| `organization-workspaces.ts#unlinkOrganizationWorkspace` | organization:workspace:link | organization-owner | organization-owner | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organizations.ts#listOrganizations` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/organizations.ts authorization call |
 | `organizations.ts#getOrganization` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |
 | `organizations.ts#listOrganizationMembers` | organization:member:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |

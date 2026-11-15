@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ok } from '#core/domain/index.js';
 
-import { resolveOrganizationId } from './organization-commands.js';
+import { resolveOrganizationId, resolveWorkspaceId } from './organization-commands.js';
 
 const api = () => ({
   listOrganizations: vi.fn(async () => ok({
@@ -22,5 +22,25 @@ describe('organization CLI selection', () => {
     expect(await resolveOrganizationId(client, undefined, {})).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(client.listOrganizations).not.toHaveBeenCalled();
     expect(await resolveOrganizationId(client, 'elsewhere', {})).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
+describe('organization CLI workspace selection', () => {
+  const tenants = () => ({
+    listTenants: vi.fn(async () => ok({
+      tenants: [{ tenant: { id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' as const, plan: 'hosted' as const, contentVersion: 1 }, staffRole: 'owner' as const }],
+      memberTenants: [],
+      canCreateTenant: false,
+      dataResetEnvironment: null,
+    })),
+  });
+
+  it('resolves a workspace slug or id from the caller staff workspaces', async () => {
+    expect(await resolveWorkspaceId(tenants(), 'ACME')).toEqual({ ok: true, value: 'tenant-acme' });
+    expect(await resolveWorkspaceId(tenants(), 'tenant-acme')).toEqual({ ok: true, value: 'tenant-acme' });
+    expect(await resolveWorkspaceId(tenants(), 'studio')).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    const client = tenants();
+    expect(await resolveWorkspaceId(client, ' ')).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(client.listTenants).not.toHaveBeenCalled();
   });
 });

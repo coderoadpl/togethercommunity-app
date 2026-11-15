@@ -142,3 +142,20 @@ pnpm --silent run cli org audit --org holding --limit 50
 
 Organization owners and admins can read; an organization that the caller does
 not belong to answers `not_found`, whether or not it exists.
+
+An organization owner links a workspace in which they also hold a direct owner
+grant. The workspace is named by its slug and resolved from the caller's staff
+workspaces:
+
+```bash
+pnpm --silent run cli org workspace list --org holding
+pnpm --silent run cli org workspace link acme --org holding
+pnpm --silent run cli org workspace unlink acme --org holding
+```
+
+Linking changes nothing in the workspace's settings, secrets, payments or
+checkout. Linking a workspace that is already in the organization, or unlinking
+one that is not linked, reports `changed: false`. A workspace that belongs to
+another organization is a `conflict`; an organization admin, or an owner who is
+only a workspace admin, is `forbidden`. Both changes are recorded in the
+organization audit and in the workspace audit.

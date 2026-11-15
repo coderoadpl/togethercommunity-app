@@ -202,6 +202,8 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.marketingStaffSuppressionsCreate,
     API_ROUTES.tenantTeamAdd,
     API_ROUTES.tenantTeamRemove,
+    API_ROUTES.organizationWorkspaceLink,
+    API_ROUTES.organizationWorkspaceUnlink,
     API_ROUTES.tenantRedirectCreate,
     API_ROUTES.tenantRedirectUpdate,
     API_ROUTES.tenantRedirectDelete,

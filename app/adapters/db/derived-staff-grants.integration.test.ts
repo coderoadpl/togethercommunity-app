@@ -25,7 +25,11 @@ import { addTenantAdmin, listTenantTeam, removeTenantAdmin, type TenantTeamDeps 
 
 import { createApiKeyCrypto } from '../auth/api-key-crypto.js';
 import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from './shop-management-keys.js';
-import { createOrganizationMemberRepository, createOrganizationWorkspaceRepository } from './organizations.js';
+import {
+  createOrganizationMemberRepository,
+  createOrganizationRepository,
+  createOrganizationWorkspaceRepository,
+} from './organizations.js';
 import {
   createAccountIdentityReader,
   createMemberRepository,
@@ -235,9 +239,12 @@ describe('derived workspace roles', () => {
 
     const organizationCtx = async (userId: string, organizationId: string): Promise<OrganizationCtx> => {
       const membership = await createOrganizationMemberRepository(database.db).find(organizationId, userId);
+      const organization = await createOrganizationRepository(database.db).findById(organizationId);
       return {
         identity: { userId, email: accountOf(userId).email, emailVerified: true },
-        membership: membership === null ? null : { organizationId, role: membership.role },
+        membership: membership === null || organization === null
+          ? null
+          : { organizationId, role: membership.role, organizationStatus: organization.status },
       };
     };
 

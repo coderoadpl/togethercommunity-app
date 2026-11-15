@@ -4,6 +4,7 @@ import {
   forbidden,
   impersonationReadOnly,
   isImpersonationReadCapability,
+  isOrganizationReadCapability,
   notFound,
   ok,
   requiresVerifiedEmail,
@@ -129,5 +130,8 @@ export const authorizeOrganization = (
   const roleGrants = capabilitiesForPrincipal(membership.role === 'owner' ? 'organization-owner' : 'organization-admin');
   const granted = roleGrants.includes(capability) && (octx.capabilities?.includes(capability) ?? true);
   if (!granted) return err(forbidden(`${capability} is not permitted`));
+  if (membership.organizationStatus === 'suspended' && !isOrganizationReadCapability(capability)) {
+    return err(forbidden('This organization is suspended; only reads are allowed until it is reactivated'));
+  }
   return ok({ organizationId, role: membership.role });
 };

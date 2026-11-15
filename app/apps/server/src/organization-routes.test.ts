@@ -318,3 +318,45 @@ describe('organization session routes', () => {
     expect((await h.read(sourcesPath('acme'), 'other-1')).status).toBe(404);
   });
 });
+
+describe('suspended organization routes', () => {
+  it('refuses session writes, keeps session reads and operator limits, and accepts writes again after reactivation', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    const path = (template: string) => template.replace(':organizationId', organizationId);
+    const setStatus = (status: 'active' | 'suspended') => {
+      for (const row of h.organizationRows) if (row.id === organizationId) row.status = status;
+    };
+    setStatus('suspended');
+
+    const limits = await h.app.request(path(API_PATHS.operatorOrganizationLimits), {
+      method: 'POST', headers: operatorHeaders, body: JSON.stringify({ maxWorkspaces: 2 }),
+    });
+    expect(limits.status).toBe(200);
+    expect(await limits.json()).toMatchObject({ ok: true, data: { organization: { maxWorkspaces: 2, status: 'suspended' } } });
+
+    const refusal = { ok: false, error: { code: 'forbidden', message: 'This organization is suspended; only reads are allowed until it is reactivated' } };
+    for (const response of [
+      await h.post(path(API_PATHS.organizationUpdate), 'owner-1', { legalName: 'Holding Ltd' }),
+      await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' }),
+      await h.post(path(API_PATHS.organizationMemberRemove), 'owner-1', { email: 'admin-1@example.test' }),
+      await h.post(path(API_PATHS.organizationSecrets), 'owner-1', { key: 'ifirma.invoiceApiKey', value: 'invoice-secret-abcd' }),
+      await h.remove(path(API_PATHS.organizationSecretDelete).replace(':key', 'ifirma.invoiceApiKey'), 'owner-1'),
+    ]) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual(refusal);
+    }
+    expect(h.workspaceRows.map(({ organizationId: linked }) => linked)).toEqual([null]);
+
+    expect(envelopeSchema(organizationOutputSchema).parse(await (await h.read(path(API_PATHS.organization), 'admin-1')).json()))
+      .toMatchObject({ ok: true, data: { organization: { id: organizationId, status: 'suspended' }, role: 'admin' } });
+    for (const template of [API_PATHS.organizationMembers, API_PATHS.organizationWorkspaces, API_PATHS.organizationSecrets, API_PATHS.organizationAuditEvents]) {
+      expect((await h.read(path(template), 'owner-1')).status, template).toBe(200);
+    }
+
+    setStatus('active');
+    const linked = await h.post(path(API_PATHS.organizationWorkspaceLink), 'owner-1', { tenantId: 'acme' });
+    expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await linked.json()))
+      .toMatchObject({ ok: true, data: { workspace: { id: 'acme' }, changed: true } });
+  });
+});

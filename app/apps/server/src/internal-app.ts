@@ -2191,6 +2191,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             currency: product.currency,
             purchasable: product.purchasable,
             ...(product.shippedTo == null ? {} : { shippedTo: product.shippedTo }),
+            ...(product.fulfilment === undefined ? {} : { fulfilment: product.fulfilment }),
             ...(product.quantity === undefined ? {} : { quantity: product.quantity }),
             grantStatus: product.grantStatus,
             grantStartsAt: product.grantStartsAt,

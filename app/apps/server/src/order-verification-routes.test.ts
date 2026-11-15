@@ -40,6 +40,42 @@ describe('order verification HTTP routes', () => {
     expect(invalid.status).toBe(400);
     expect(h.issueLine).toHaveBeenCalledTimes(1);
   });
+  it('issues one unit for a bodyless request with or without a JSON content type', async () => {
+    const h = harness(identity);
+    for (const headers of [{}, { 'content-type': 'application/json' }, { 'content-type': 'application/json', 'content-length': '0' }]) {
+      const issue = await h.app.request('/api/orders/order-number/lines/physical/issue', { method: 'POST', headers, body: '' });
+      expect(issue.status).toBe(200);
+    }
+    expect(h.issueLine).toHaveBeenCalledTimes(3);
+    expect(h.issueLine).toHaveBeenLastCalledWith('workspace', { orderId: 'order-number', productId: 'physical', count: 1, staffUserId: 'staff', occurredAt: now });
+  });
+  it.each([
+    ['truncated JSON', '{"count":2'],
+    ['whitespace only', '  \n'],
+    ['null', 'null'],
+    ['an array', '[]'],
+    ['a string', '"x"'],
+    ['a number', '5'],
+    ['a string count', '{"count":"2"}'],
+    ['a zero count', '{"count":0}'],
+    ['a fractional count', '{"count":1.5}'],
+    ['a negative count', '{"count":-1}'],
+    ['a null count', '{"count":null}'],
+    ['an unknown field', '{"count":2,"force":true}'],
+  ])('refuses a body with %s and issues nothing', async (_form, body) => {
+    const h = harness(identity);
+    const issue = await h.app.request('/api/orders/order-number/lines/physical/issue', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    expect(issue.status).toBe(400);
+    expect(await issue.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.issueLine).not.toHaveBeenCalled();
+  });
+  it('refuses a non-empty body that is not sent as JSON and issues nothing', async () => {
+    const h = harness(identity);
+    const issue = await h.app.request('/api/orders/order-number/lines/physical/issue', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{"count":2}' });
+    expect(issue.status).toBe(400);
+    expect(await issue.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.issueLine).not.toHaveBeenCalled();
+  });
   it('returns HTTP 409 when a physical line was already issued', async () => {
     const app = new Hono<AppVars>();
     app.use('*', async (c, next) => { c.set('identity', identity); await next(); });

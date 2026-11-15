@@ -530,10 +530,15 @@ For pickup, staff can `GET /api/orders/verify/<order-number-or-opaque-token>`
 (`data.order`) or run `orders verify '<reference>'`. Check the live mode, payment,
 items and prior issue state, then record each physical line's handover with
 `POST /api/orders/<order-id>/lines/<product-id>/issue`, returning `data.order`.
-The request needs no body; an optional JSON body `{ "count": 2 }` hands over
-several units of a line at once. Each order line in `data.order.lines` carries
-`quantity` (1 for lines stored without one) and `issuedCount`; a request that
-would issue more than the units left returns `conflict`. CLI:
+The request needs no body; an empty body issues one unit, and an optional JSON
+body `{ "count": 2 }` hands over several units of a line at once. A non-empty body
+must be an `application/json` object whose `count`, when present, is a positive
+integer (the path identifiers win over `orderId` and `productId` in the body);
+invalid or whitespace-only JSON, `null`, arrays, other values or other fields
+return `validation` (HTTP 400) and issue nothing. Each order line in
+`data.order.lines` carries `quantity` (1 for lines stored without one) and
+`issuedCount`; a request that would issue more than the units left returns
+`conflict`. CLI:
 `orders issue '<order-id>' '<product-id>' [--count 2]`. Record handover
 only when the goods actually change hands; neither verification nor the buyer's
 QR image alone records collection.

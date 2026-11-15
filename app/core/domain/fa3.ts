@@ -51,6 +51,16 @@ const escaped = (value: string): string =>
 
 const money = (cents: number): string => `${Math.trunc(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 
+const UNIT_PRICE_SUBUNITS_PER_CENT = 1_000_000n;
+const UNIT_PRICE_SUBUNITS_PER_PLN = 100n * UNIT_PRICE_SUBUNITS_PER_CENT;
+
+const unitPrice = (totalCents: number, quantity: number): string => {
+  const divisor = 2n * BigInt(quantity);
+  const subunits = (2n * BigInt(totalCents) * UNIT_PRICE_SUBUNITS_PER_CENT + BigInt(quantity)) / divisor;
+  const fraction = String(subunits % UNIT_PRICE_SUBUNITS_PER_PLN).padStart(8, '0').replace(/0{1,6}$/u, '');
+  return `${String(subunits / UNIT_PRICE_SUBUNITS_PER_PLN)}.${fraction}`;
+};
+
 const vatSummarySuffix = (rate: 5 | 8 | 23): '1' | '2' | '3' => {
   if (rate === 23) return '1';
   if (rate === 8) return '2';
@@ -91,7 +101,7 @@ export const renderFa3Invoice = (input: Fa3InvoiceInput): string => {
   const exemption = bases.length > 0
     ? `<P_19>1</P_19><${exemptionKind}>${escaped(bases.join('; ').trim().replace(/\s+/gu, ' ').slice(0, 256))}</${exemptionKind}>`
     : '<P_19N>1</P_19N>';
-  const rows = positions.map((position, index) => `<FaWiersz><NrWierszaFa>${String(index + 1)}</NrWierszaFa><P_7>${escaped(position.name)}</P_7><P_8A>szt.</P_8A><P_8B>${String(invoicePositionQuantity(position))}</P_8B><P_9A>${money(invoicePositionUnitCents(position, position.netCents))}</P_9A><P_11>${money(position.netCents)}</P_11><P_12>${position.vat.kind === 'exempt' ? 'zw' : String(position.vat.percent)}</P_12></FaWiersz>`).join('');
+  const rows = positions.map((position, index) => `<FaWiersz><NrWierszaFa>${String(index + 1)}</NrWierszaFa><P_7>${escaped(position.name)}</P_7><P_8A>szt.</P_8A><P_8B>${String(invoicePositionQuantity(position))}</P_8B><P_9A>${unitPrice(position.netCents, invoicePositionQuantity(position))}</P_9A><P_11>${money(position.netCents)}</P_11><P_12>${position.vat.kind === 'exempt' ? 'zw' : String(position.vat.percent)}</P_12></FaWiersz>`).join('');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Naglowek><KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza><WariantFormularza>3</WariantFormularza><DataWytworzeniaFa>${escaped(input.generatedAt)}</DataWytworzeniaFa><SystemInfo>Together</SystemInfo></Naglowek><Podmiot1><DaneIdentyfikacyjne><NIP>${escaped(input.seller.nip)}</NIP><Nazwa>${escaped(input.seller.name)}</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>${escaped(input.seller.addressLine)}</AdresL1></Adres></Podmiot1>${buyerXml(input.buyer)}<Fa><KodWaluty>PLN</KodWaluty><P_1>${escaped(input.issueDate)}</P_1><P_2>${escaped(input.invoiceNumber)}</P_2>${input.saleDate === undefined ? '' : `<P_6>${escaped(input.saleDate)}</P_6>`}${summary}<P_15>${money(input.grossAmountCents)}</P_15><Adnotacje><P_16>2</P_16><P_17>2</P_17><P_18>2</P_18><P_18A>2</P_18A><Zwolnienie>${exemption}</Zwolnienie><NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu><P_23>2</P_23><PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy></Adnotacje><RodzajFaktury>VAT</RodzajFaktury>${rows}</Fa></Faktura>\n`;
 };
 

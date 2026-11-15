@@ -1,11 +1,25 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { newProductSchema, newProductPriceSchema, provisionTenantInputSchema, updateTenantSettingsInputSchema } from '#core/domain/index.js';
+import { API_ROUTES, checkoutSessionOutputSchema, checkoutSessionRequestSchema, publicOfferOutputSchema } from '#core/contract/index.js';
+import { instanceDescriptionSchema, newProductSchema, newProductPriceSchema, provisionTenantInputSchema, updateTenantSettingsInputSchema } from '#core/domain/index.js';
 import { effectiveShopIntegrations, effectiveShopSettings, manifestWorkspaceSlug, productMetadata, shopManifestSchema } from '#core/domain/shop-manifest.js';
 import { resolveManifestIntegrations } from './integrations.js';
 import { driftManifest } from './drift.js';
 import { applyManifest } from './apply.js';
 import { createManifestFake } from './fake-client.js';
+
+const checkoutRequestBodyOf = (example: string, placeholders: Record<string, string>): unknown => {
+  const literal = /body: JSON\.stringify\((\{[\s\S]*?\n {2}\})\),/u.exec(example)?.[1];
+  if (literal === undefined) throw new Error('Expected a JSON.stringify request body in the example');
+  const substituted = Object.entries(placeholders)
+    .reduce((text, [expression, value]) => text.replaceAll(`: ${expression},`, `: ${JSON.stringify(value)},`), literal);
+  const json = substituted
+    .replace(/'([^'\\]*)'/gu, (_match, text: string) => JSON.stringify(text))
+    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/gu, '$1"$2":')
+    .replace(/,(\s*[}\]])/gu, '$1');
+  const parsed: unknown = JSON.parse(json);
+  return parsed;
+};
 
 describe('shop manifest documentation', () => {
   it('keeps the complete JSON example valid against the manifest and existing write boundaries', async () => {
@@ -48,6 +62,51 @@ describe('shop manifest documentation', () => {
     expect(await applyManifest(input, clientFor)).toMatchObject({ ok: true, value: { applied: [] } });
     expect(await driftManifest(input, clientFor)).toMatchObject({ ok: true, value: { drifted: false } });
     for (const fake of fakes.values()) expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
+  });
+
+  it('states what the instance check compares, the single-tenant refusal and the older-release fallback', async () => {
+    const document = (await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
+    expect(document).toContain('an `instance` object with the same `baseDomain` and the same non-null `databaseIdentity`');
+    expect(document).toContain('A single-tenant instance (`singleTenant: true`, an instance started without `APP_BASE_DOMAIN`) is refused');
+    expect(document).toContain('the workspace routing answer is not used');
+    expect(document).toContain('which states that the stronger instance check is unavailable until the instance is upgraded');
+    expect(document).toContain('A single-tenant instance is not detected on an older release.');
+    expect(document).not.toContain('The tool supports multi-tenant instances only');
+  });
+
+  it('documents the instance description of the health answer next to the unchanged database fingerprint', async () => {
+    const document = (await readFile(new URL('../../../../docs/observability.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
+    expect(document).toContain('## `GET /api/health` instance description');
+    for (const field of Object.keys(instanceDescriptionSchema.shape)) expect(document).toContain(`\`${field}\``);
+    expect(document).toContain('`databaseFingerprint` keeps its value');
+  });
+
+  it('states that the public-token comparison does not cover carrier credentials stored earlier', async () => {
+    const document = (await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
+    expect(document).toContain('The comparison covers only credentials referenced by the manifest and the operator secret.');
+    expect(document).toContain('also when `--shop` selects only one of them');
+    expect(document).toContain('Carrier credentials stored earlier in a workspace');
+    expect(document).toContain('are not compared');
+    expect(document).toContain('A server-side check is a later change.');
+  });
+
+  it('gives external sites a plain fetch storefront example that matches the public contract', async () => {
+    const document = await readFile(new URL('../../../../docs/shop-integration.md', import.meta.url), 'utf8');
+    const plain = /```js\n([\s\S]*?)\n```/u.exec(document)?.[1];
+    if (plain === undefined) throw new Error('Expected a plain JavaScript storefront example');
+    expect(plain).not.toMatch(/\bimport\b|#core\//u);
+    expect(plain).toContain(`\${workspaceOrigin}${API_ROUTES.publicOffer.path}?productRef=paperback`);
+    expect(plain).toContain(`\${workspaceOrigin}${API_ROUTES.checkoutSession.path}\``);
+    expect(plain).toContain(`method: '${API_ROUTES.checkoutSession.method}'`);
+    const offerProduct = publicOfferOutputSchema.shape.products.element.shape;
+    for (const field of ['id', 'slug', 'prices', 'stock', 'coverUrl'] as const) expect(plain).toContain(`.${field}`);
+    expect(Object.keys(offerProduct)).toEqual(expect.arrayContaining(['id', 'slug', 'prices', 'stock', 'coverUrl']));
+    expect(Object.keys(checkoutSessionOutputSchema.shape)).toContain('url');
+    const body = checkoutRequestBodyOf(plain, { 'product.id': 'product-fixture', 'price.id': 'price-fixture' });
+    expect(checkoutSessionRequestSchema.strict().parse(body)).toMatchObject({ productId: 'product-fixture', priceId: 'price-fixture' });
+    const typedStart = document.indexOf('```ts\nimport');
+    expect(document.slice(document.lastIndexOf('```\n', typedStart), typedStart)).toContain('Inside this repository only');
+    expect(document.slice(typedStart)).toContain("from '#core/contract/index.js'");
   });
 
   it.each(['shop-manifest.md', 'shop-integration.md'])('runs every --json example in %s without the script banner', async (name) => {

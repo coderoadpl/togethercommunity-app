@@ -382,19 +382,11 @@ describe('shop management key attribution', () => {
 });
 
 describe('recordShopManagementKeyRequest', () => {
-  it.each([
-    [200, 'succeeded'],
-    [204, 'succeeded'],
-    [400, 'refused'],
-    [401, 'refused'],
-    [403, 'refused'],
-    [429, 'refused'],
-    [500, 'failed'],
-  ] as const)('records one request row for status %i as %s', async (status, outcome) => {
+  it('records one request row with the key, issuer, route and resource', async () => {
     const recorded: Array<{ tenantId: string; event: ShopManagementKeyEvent }> = [];
     await recordShopManagementKeyRequest(TENANT.id, {
       apiKeyId: 'shop-key-1', actorUserId: OWNER_ID, method: 'POST', route: '/api/m2m/shop/products/update',
-      resourceId: 'product-1', status,
+      resourceId: 'product-1',
     }, {
       shopManagementKeyEvents: { record: async (tenantId, event) => { recorded.push({ tenantId, event }); } },
       ids: { nextId: () => 'event-1' },
@@ -404,7 +396,7 @@ describe('recordShopManagementKeyRequest', () => {
       tenantId: TENANT.id,
       event: {
         id: 'event-1', tenantId: TENANT.id, apiKeyId: 'shop-key-1', kind: 'request', actorUserId: OWNER_ID, method: 'POST',
-        route: '/api/m2m/shop/products/update', resourceId: 'product-1', status, outcome, at: NOW,
+        route: '/api/m2m/shop/products/update', resourceId: 'product-1', at: NOW,
       },
     }]);
   });

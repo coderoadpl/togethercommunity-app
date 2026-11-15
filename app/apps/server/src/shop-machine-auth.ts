@@ -7,8 +7,10 @@ import {
   err,
   notFound,
   ok,
+  shopManagementKeyEventResourceId,
   tenantNotFound,
   unauthorized,
+  unavailable,
   type AppError,
   type Result,
   type ShopManagementKeysSwitch,
@@ -30,10 +32,11 @@ import type { AppVars } from './app-vars.js';
 import { isSafeMethod, requestOriginPolicy } from './request-origin-policy.js';
 import { respond } from './respond.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
-import type { ApiKeyAttribution } from './telemetry.js';
+import { recordException, type ApiKeyAttribution } from './telemetry.js';
 
 export const SHOP_MACHINE_PATH_PREFIX = '/api/m2m/shop/';
 const SHOP_MACHINE_MECHANISM = 'Shop management key';
+const HISTORY_RETRY_AFTER_SECONDS = 5;
 
 const isShopMachinePath = (path: string): boolean =>
   path === SHOP_MACHINE_PATH_PREFIX.slice(0, -1) || path.startsWith(SHOP_MACHINE_PATH_PREFIX);
@@ -104,13 +107,15 @@ const requestBodySchema = z.record(z.string(), z.unknown());
 
 const resourceIdOf = async (c: Context<AppVars>, body: Request): Promise<string | null> => {
   const fromPath = Object.values(c.req.param()).find((value) => value.length > 0);
-  if (fromPath !== undefined) return fromPath;
+  if (fromPath !== undefined) return shopManagementKeyEventResourceId(fromPath);
   const parsed = requestBodySchema.safeParse(await body.json().catch(() => null));
   if (!parsed.success) return null;
   const candidates = [parsed.data['id'], ...Object.entries(parsed.data)
     .filter(([name]) => name.endsWith('Id'))
     .map(([, value]) => value)];
-  return candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
+  return shopManagementKeyEventResourceId(
+    candidates.find((value): value is string => typeof value === 'string' && value.length > 0),
+  );
 };
 
 export const registerShopMachineRoute = (
@@ -125,28 +130,27 @@ export const registerShopMachineRoute = (
     const body = c.req.raw.clone();
     const { result, attribution } = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     c.set('apiKeyAttribution', attribution);
-    const recordRequest = async (status: number): Promise<void> => {
-      if (route.method === 'GET' || attribution.match !== 'matched' || attribution.tenantId === undefined) return;
-      await recordShopManagementKeyRequest(attribution.tenantId, {
-        apiKeyId: attribution.apiKeyId,
-        actorUserId: attribution.issuerUserId,
-        method: route.method,
-        route: route.path,
-        resourceId: await resourceIdOf(c, body),
-        status,
-      }, deps);
-    };
-    const answer = async (): Promise<Response> => {
-      if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
-      c.set('identity', result.value.ctx.identity);
-      return route.handler(c, result.value);
-    };
-    const response = await answer().catch(async (error: unknown) => {
-      await recordRequest(500);
-      throw error;
+    if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
+    c.set('identity', result.value.ctx.identity);
+    const { method } = route;
+    if (method === 'GET') return route.handler(c, result.value);
+    const recorded = await recordShopManagementKeyRequest(result.value.tenant.id, {
+      apiKeyId: result.value.apiKey.id,
+      actorUserId: result.value.ctx.identity.userId,
+      method,
+      route: route.path,
+      resourceId: await resourceIdOf(c, body),
+    }, deps).then(() => true, (error: unknown) => {
+      recordException(error);
+      return false;
     });
-    await recordRequest(response.status);
-    return response;
+    if (!recorded) {
+      return respond(
+        err(unavailable('The shop management key history is unavailable; nothing was changed, retry the request')),
+        { headers: { 'retry-after': String(HISTORY_RETRY_AFTER_SECONDS) } },
+      );
+    }
+    return route.handler(c, result.value);
   });
 };
 

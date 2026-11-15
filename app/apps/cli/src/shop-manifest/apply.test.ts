@@ -99,6 +99,25 @@ describe('shop apply', () => {
     expect(writes(state.requests)).toEqual(['POST /api/products/prices']);
   });
 
+  it('keeps stored values of metadata fields an existing product entry omits and applies defaults only on creation', async () => {
+    const { api, state } = createManifestFake();
+    state.products = [existingProduct({ title: 'Old title', description: 'Stored description', deliveryMethod: 'shipping', parcelTemplate: 'large' })];
+    state.prices = [existingPrice()];
+    const entry = (slug: string, title: string) => ({ slug, title, price: { amountCents: 4900, currency: 'PLN' }, published: false });
+    const input = { version: 1, shops: [{ workspace: 'acme', products: [entry('paperback', 'New title'), entry('hardback', 'Hardback')] }] };
+    const plan = await planManifest(input, () => api);
+    expect(plan).toMatchObject({ ok: true, value: { shops: [{ products: [
+      { slug: 'paperback', product: 'update', fields: ['title'], managedFields: ['title'] },
+      { slug: 'hardback', product: 'create', managedFields: ['title'] },
+    ] }] } });
+    expect((await applyManifest(input, () => api)).ok).toBe(true);
+    expect(state.products[0]).toMatchObject({ title: 'New title', description: 'Stored description', deliveryMethod: 'shipping', parcelTemplate: 'large' });
+    expect(state.products[1]).toMatchObject({ slug: 'hardback', description: '', deliveryMethod: 'pickup', parcelTemplate: 'medium' });
+    state.requests.length = 0;
+    expect(await applyManifest(input, () => api)).toMatchObject({ ok: true, value: { applied: [] } });
+    expect(writes(state.requests)).toEqual([]);
+  });
+
   it('finishes all products in each phase before starting the next phase', async () => {
     const { api, state } = createManifestFake();
     const input = { version: 1, shops: [{ workspace: 'acme', products: ['paperback', 'hardback'].map((slug) => ({ slug, title: slug, price: { amountCents: 4900, currency: 'PLN' }, published: true })) }] };

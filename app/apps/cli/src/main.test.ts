@@ -1350,13 +1350,13 @@ describe('activity report CLI parsing', () => {
   it('lists the shop management key history for one key with paging options', async () => {
     const event = {
       id: 'event-1', tenantId: 'acme', apiKeyId: 'shop-key', kind: 'request', actorUserId: 'owner-1', method: 'POST',
-      route: '/api/m2m/shop/products/update', resourceId: 'product-1', status: 403, outcome: 'refused', at: '1998-08-08T00:00:00.000Z',
+      route: '/api/m2m/shop/products/update', resourceId: 'product-1', at: '1998-08-08T00:00:00.000Z',
     };
     h.listShopManagementKeyEvents.mockReset().mockResolvedValue(ok({ events: [event], nextCursor: 'event-1' }));
     await run('api-key', 'shop-events', '--key', 'shop-key', '--limit', '1', '--cursor', 'event-0');
     expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({ keyId: 'shop-key', cursor: 'event-0', limit: 1 });
     expect(logSpy).toHaveBeenCalledWith(
-      '1998-08-08T00:00:00.000Z\trequest\tshop-key\towner-1\tPOST /api/m2m/shop/products/update\tproduct-1\t403 refused\nnext: --cursor event-1',
+      '1998-08-08T00:00:00.000Z\trequest\tshop-key\towner-1\tPOST /api/m2m/shop/products/update\tproduct-1\nnext: --cursor event-1',
     );
   });
   it('lists the whole workspace shop management key history without a key filter', async () => {

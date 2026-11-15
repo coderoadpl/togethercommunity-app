@@ -1079,12 +1079,10 @@ export const shopManagementKeyEvents = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     apiKeyId: text('api_key_id').notNull(),
     kind: text('kind', { enum: ['created', 'revoked', 'purged', 'request'] }).notNull(),
-    actorUserId: text('actor_user_id'),
+    actorUserId: text('actor_user_id').notNull(),
     method: text('method', { enum: ['POST', 'PUT', 'PATCH', 'DELETE'] }),
     route: text('route'),
     resourceId: text('resource_id'),
-    status: integer('status'),
-    outcome: text('outcome', { enum: ['succeeded', 'refused', 'failed'] }).notNull(),
     at: text('at').notNull(),
   },
   (table) => [
@@ -1092,11 +1090,10 @@ export const shopManagementKeyEvents = pgTable(
     index('shop_management_key_events_tenant_key_at_idx').on(table.tenantId, table.apiKeyId, table.at),
     check('shop_management_key_events_kind_check', sql`${table.kind} IN ('created', 'revoked', 'purged', 'request')`),
     check('shop_management_key_events_method_check', sql`${table.method} IN ('POST', 'PUT', 'PATCH', 'DELETE')`),
-    check('shop_management_key_events_status_check', sql`${table.status} BETWEEN 100 AND 599`),
-    check('shop_management_key_events_outcome_check', sql`${table.outcome} IN ('succeeded', 'refused', 'failed')`),
+    check('shop_management_key_events_resource_id_length_check', sql`char_length(${table.resourceId}) <= 200`),
     check(
       'shop_management_key_events_shape_check',
-      sql`(${table.kind} = 'request' AND ${table.method} IS NOT NULL AND ${table.route} IS NOT NULL AND ${table.status} IS NOT NULL) OR (${table.kind} <> 'request' AND ${table.actorUserId} IS NOT NULL AND ${table.method} IS NULL AND ${table.route} IS NULL AND ${table.resourceId} IS NULL AND ${table.status} IS NULL AND ${table.outcome} = 'succeeded')`,
+      sql`(${table.kind} = 'request' AND ${table.method} IS NOT NULL AND ${table.route} IS NOT NULL) OR (${table.kind} <> 'request' AND ${table.method} IS NULL AND ${table.route} IS NULL AND ${table.resourceId} IS NULL)`,
     ),
   ],
 );

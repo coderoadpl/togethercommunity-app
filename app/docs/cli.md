@@ -99,7 +99,7 @@ scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 workspace, revoked or not, and prints the count; it refuses without `--yes`.
 `api-keys shop-events [--key <id>] [--cursor <event-id>] [--limit <n>]` lists
 the workspace's shop management key history (creation, revocation, purge and
-keyed mutating requests), newest first.
+keyed mutating requests handed to a shop route handler), newest first.
 The `shop products|prices|stock` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list.

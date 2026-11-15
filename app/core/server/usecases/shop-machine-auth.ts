@@ -4,7 +4,6 @@ import {
   forbidden,
   ok,
   shopManagementCapabilitiesForApiKey,
-  shopManagementKeyEventOutcomeForStatus,
   shopManagementScopeSchema,
   unauthorized,
   type AppError,
@@ -203,11 +202,10 @@ export const authenticateShopManagementKey = async (
 
 export interface ShopManagementKeyRequest {
   apiKeyId: string;
-  actorUserId: string | null;
+  actorUserId: string;
   method: NonNullable<ShopManagementKeyEvent['method']>;
   route: string;
   resourceId: string | null;
-  status: number;
 }
 
 export interface ShopManagementKeyRequestDeps {
@@ -226,7 +224,6 @@ export const recordShopManagementKeyRequest = async (
     tenantId,
     kind: 'request',
     ...request,
-    outcome: shopManagementKeyEventOutcomeForStatus(request.status),
     at: deps.clock.nowIso(),
   });
 };

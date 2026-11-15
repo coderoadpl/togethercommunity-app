@@ -1,6 +1,6 @@
 import type { ApiClient } from '#core/client/index.js';
 import { err, internal, ok, validation, updateProductInputSchema, type AppError, type Result } from '#core/domain/index.js';
-import { productMetadata } from '#core/domain/shop-manifest.js';
+import { productMetadata, SHOP_OPERATOR_SECRET_ENV } from '#core/domain/shop-manifest.js';
 import { resolveManifestIntegrations, type ResolvedManifestIntegrations } from './integrations.js';
 import {
   manifestOperationError, manifestPlanReport, prepareManifest,
@@ -12,7 +12,6 @@ type ManifestWriteClient = ManifestReadClient & Pick<ApiClient,
   'enableProductStock' | 'adjustProductStock' | 'publishProduct' | 'unpublishProduct' | 'configureStripe' | 'shipxConfigure'>;
 type AppliedOperation = { workspace: string; operation: string; slug?: string };
 
-export const SHOP_OPERATOR_SECRET_ENV = 'TOGETHER_SHOP_OPERATOR_SECRET';
 export type ManifestApplyOptions = {
   integrations?: boolean;
   environment?: Readonly<Record<string, string | undefined>>;

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '#core/client/index.js';
 import { forbidden, provisionTenantInputSchema } from '#core/domain/index.js';
-import { applyManifest, SHOP_OPERATOR_SECRET_ENV } from './apply.js';
+import { SHOP_OPERATOR_SECRET_ENV } from '#core/domain/shop-manifest.js';
+import { applyManifest } from './apply.js';
 import { planManifest } from './plan.js';
 import { createManifestFake, manifestFixture } from './fake-client.js';
 

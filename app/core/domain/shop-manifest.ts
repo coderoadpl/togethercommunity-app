@@ -41,17 +41,48 @@ export const shopManifestProductSchema = newProductSchema.omit({
   published: z.boolean(),
 }).strict();
 
-const environmentNameSchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
-export const shopManifestIntegrationsSchema = z.object({
-  stripe: z.object({ restrictedKeyEnv: environmentNameSchema, mode: stripeModeSchema }).strict().nullable().optional(),
+export const SHOP_OPERATOR_SECRET_ENV = 'TOGETHER_SHOP_OPERATOR_SECRET';
+const SHOP_ENVIRONMENT_NAME = /^SHOP_[A-Z0-9_]+$/;
+const PUBLIC_ENVIRONMENT_NAME = /^SHOP_[A-Z0-9_]+_PUBLIC_TOKEN$/;
+const PUBLIC_MARKER = /(^|_)PUBLIC(_|$)/;
+
+const secretEnvironmentNameSchema = z.string()
+  .regex(SHOP_ENVIRONMENT_NAME, 'Integration variables must be named SHOP_<NAME>')
+  .refine((name) => !PUBLIC_MARKER.test(name), 'Secret integration variables must not carry the PUBLIC marker');
+const publicEnvironmentNameSchema = z.string()
+  .regex(PUBLIC_ENVIRONMENT_NAME, 'The parcel-locker token variable must be named SHOP_<NAME>_PUBLIC_TOKEN');
+
+const shopManifestIntegrationsShape = z.object({
+  stripe: z.object({ restrictedKeyEnv: secretEnvironmentNameSchema, mode: stripeModeSchema }).strict().nullable().optional(),
   shipx: z.object({
     environment: configureShipxInputSchema.shape.environment,
     sender: shipxSenderSchema.strict().nullable().optional(),
-    organizationIdEnv: environmentNameSchema.optional(),
-    tokenEnv: environmentNameSchema.optional(),
+    organizationIdEnv: secretEnvironmentNameSchema.optional(),
+    tokenEnv: secretEnvironmentNameSchema.optional(),
   }).strict().refine((value) => Object.values(value).some((field) => field !== undefined), 'ShipX settings must not be empty').nullable().optional(),
-  parcelLocker: z.object({ tokenEnv: environmentNameSchema }).strict().nullable().optional(),
+  parcelLocker: z.object({ tokenEnv: publicEnvironmentNameSchema }).strict().nullable().optional(),
 }).strict();
+
+export const integrationReferenceError = (integrations: z.output<typeof shopManifestIntegrationsShape>): string | null => {
+  const secret = [integrations.stripe?.restrictedKeyEnv, integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv]
+    .filter((name) => name !== undefined);
+  const publicToken = integrations.parcelLocker?.tokenEnv;
+  const references = publicToken === undefined ? secret : [...secret, publicToken];
+  if (references.includes(SHOP_OPERATOR_SECRET_ENV)) return 'Integration variables must not reference the operator secret';
+  if (secret.some((name) => !SHOP_ENVIRONMENT_NAME.test(name) || PUBLIC_MARKER.test(name))) {
+    return 'Secret integration variables must be named SHOP_<NAME> without the PUBLIC marker';
+  }
+  if (publicToken !== undefined && !PUBLIC_ENVIRONMENT_NAME.test(publicToken)) {
+    return 'The parcel-locker token variable must be named SHOP_<NAME>_PUBLIC_TOKEN';
+  }
+  if (new Set(references).size !== references.length) return 'Each integration variable may be referenced by one provider field only';
+  return null;
+};
+
+export const shopManifestIntegrationsSchema = shopManifestIntegrationsShape.superRefine((integrations, context) => {
+  const message = integrationReferenceError(integrations);
+  if (message !== null) context.addIssue({ code: z.ZodIssueCode.custom, message });
+});
 
 const workspaceSchema = z.union([
   productSlugSchema,
@@ -102,7 +133,7 @@ export const effectiveShopSettings = (
 
 export const effectiveShopIntegrations = (
   company: ShopManifestIntegrations = {}, shop: ShopManifestIntegrations = {},
-): ShopManifestIntegrations => shopManifestIntegrationsSchema.parse(mergeFields(company, shop));
+): ShopManifestIntegrations => shopManifestIntegrationsShape.parse(mergeFields(company, shop));
 
 export const manifestValuesEqual = (left: unknown, right: unknown): boolean => {
   if (left === right) return true;

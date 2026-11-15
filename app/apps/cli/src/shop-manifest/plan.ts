@@ -1,7 +1,7 @@
 import type { ApiClient } from '#core/client/index.js';
 import { err, ok, validation, type AppError, type Product, type ProductPrice, type ProductStock, type ProvisionTenantInput, type Result } from '#core/domain/index.js';
 import {
-  diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, manifestWorkspaceSlug, shopManifestSchema,
+  diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, integrationReferenceError, manifestWorkspaceSlug, shopManifestSchema,
   type ShopManifestIntegrations, type ShopManifestProduct, type ShopManifestSettings,
 } from '#core/domain/shop-manifest.js';
 
@@ -41,15 +41,22 @@ export const prepareManifest = async <C extends ManifestReadClient>(
   }));
   const shops = parsed.data.shops.filter((shop) => workspace === undefined || manifestWorkspaceSlug(shop.workspace) === workspace);
   if (shops.length === 0) return err(validation('Selected shop is not in the manifest'));
-  const prepared: PreparedShop<C>[] = [];
-  for (const shop of shops) {
-    const slug = manifestWorkspaceSlug(shop.workspace);
-    const api = clientFor(slug);
-    const desired = effectiveShopSettings(parsed.data.company?.settings, shop.settings);
-    const integrations = effectiveShopIntegrations(parsed.data.company?.integrations, shop.integrations);
+  const effective = shops.map((shop) => ({
+    shop,
+    slug: manifestWorkspaceSlug(shop.workspace),
+    desired: effectiveShopSettings(parsed.data.company?.settings, shop.settings),
+    integrations: effectiveShopIntegrations(parsed.data.company?.integrations, shop.integrations),
+  }));
+  for (const { slug, desired, integrations } of effective) {
     if (integrations.parcelLocker != null && desired.inpostGeowidgetToken !== undefined) {
       return err(validation('Manage the parcel locker token through settings or integrations, not both'));
     }
+    const referenceError = integrationReferenceError(integrations);
+    if (referenceError !== null) return err(validation(referenceError, { workspace: slug }));
+  }
+  const prepared: PreparedShop<C>[] = [];
+  for (const { shop, slug, desired, integrations } of effective) {
+    const api = clientFor(slug);
     const identity = await api.me();
     if (!identity.ok) {
       if (identity.error.code !== 'tenant_not_found' || typeof shop.workspace === 'string') {

@@ -108,7 +108,7 @@ format, not a tax recommendation.
           "postCode": "00-001"
         }
       },
-      "parcelLocker": { "tokenEnv": "SHOP_GEOWIDGET_TOKEN" }
+      "parcelLocker": { "tokenEnv": "SHOP_GEOWIDGET_PUBLIC_TOKEN" }
     }
   },
   "shops": [
@@ -308,7 +308,25 @@ Company integration objects merge recursively with shop overrides, just like
 settings. Shop references win. Set a provider (`stripe`, `shipx` or
 `parcelLocker`) to `null` to opt that shop out; this skips configuration and does
 not delete an existing provider or its credentials. Omitted providers are
-unmanaged. Environment names must match `[A-Z_][A-Z0-9_]*`.
+unmanaged.
+
+Environment references follow strict naming rules, because the server publishes
+the parcel-locker token to anonymous checkout visitors and a wrong reference
+would publish a secret:
+
+- Every integration variable is named `SHOP_` followed by upper-case letters,
+  digits and underscores. Other variables, including database, session and
+  provider variables of the deployment, cannot be referenced.
+- `TOGETHER_SHOP_OPERATOR_SECRET` can never be referenced by a manifest.
+- One variable name can be referenced by only one provider field in the
+  effective configuration of a shop, after company and shop settings merge.
+- `parcelLocker.tokenEnv` must match `SHOP_<NAME>_PUBLIC_TOKEN`, for example
+  `SHOP_GEOWIDGET_PUBLIC_TOKEN`. The Stripe and ShipX fields are secret and must
+  not use a name containing the `PUBLIC` marker as a separate segment.
+
+The manifest parser enforces these rules, and the tool checks them again on the
+merged configuration of every selected shop before the first request and again
+before reading any value. Error messages name the rule, never a value.
 
 | Manifest input | Environment value / accepted setting | Existing write route |
 | --- | --- | --- |
@@ -330,8 +348,9 @@ both `settings.inpostGeowidgetToken` and `integrations.parcelLocker` in the same
 effective shop. Existing vendor-script document and load conditions are unchanged.
 
 The example uses `SHOP_STRIPE_TEST_KEY`, `SHOP_SHIPX_ORGANIZATION_ID`,
-`SHOP_SHIPX_TOKEN`, and `SHOP_GEOWIDGET_TOKEN`. Load their values from protected
-runtime configuration, not arguments, JSON, shell history or printed output.
+`SHOP_SHIPX_TOKEN`, and `SHOP_GEOWIDGET_PUBLIC_TOKEN`. Load their values from
+protected runtime configuration, not arguments, JSON, shell history or printed
+output.
 All selected shops' references, resolved route inputs, and Stripe key/mode
 compatibility are checked before any provisioning, settings or provider write.
 Missing variables and invalid values fail with sanitized validation errors.

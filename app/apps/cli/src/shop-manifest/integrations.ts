@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { configureShipxInputSchema, configureStripeInputSchema, err, ok, stripeModeFromKey, validation, type AppError, type Result } from '#core/domain/index.js';
 import { inpostGeowidgetTokenSchema } from '#core/domain/shipping.js';
-import type { ShopManifestIntegrations } from '#core/domain/shop-manifest.js';
+import { integrationReferenceError, type ShopManifestIntegrations } from '#core/domain/shop-manifest.js';
 
 const resolvedIntegrationsSchema = z.object({
   stripe: configureStripeInputSchema.optional(),
@@ -13,6 +13,8 @@ export type ResolvedManifestIntegrations = z.output<typeof resolvedIntegrationsS
 export const resolveManifestIntegrations = (
   integrations: ShopManifestIntegrations, environment: Readonly<Record<string, string | undefined>>,
 ): Result<ResolvedManifestIntegrations, AppError> => {
+  const referenceError = integrationReferenceError(integrations);
+  if (referenceError !== null) return err(validation(referenceError));
   const references = [integrations.stripe?.restrictedKeyEnv, integrations.shipx?.organizationIdEnv,
     integrations.shipx?.tokenEnv, integrations.parcelLocker?.tokenEnv];
   for (const name of references) {

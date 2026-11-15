@@ -21,7 +21,7 @@ describe('shop manifest documentation', () => {
       }
       expect(resolveManifestIntegrations(effectiveShopIntegrations(manifest.company?.integrations, shop.integrations), {
         SHOP_STRIPE_TEST_KEY: 'rk_test_fixture', SHOP_SHIPX_ORGANIZATION_ID: '123',
-        SHOP_SHIPX_TOKEN: 'shipx-fixture', SHOP_GEOWIDGET_TOKEN: 'geowidget-fixture',
+        SHOP_SHIPX_TOKEN: 'shipx-fixture', SHOP_GEOWIDGET_PUBLIC_TOKEN: 'geowidget-fixture',
       }).ok).toBe(true);
       expect(updateTenantSettingsInputSchema.safeParse(effectiveShopSettings(manifest.company?.settings, shop.settings)).success).toBe(true);
       for (const product of shop.products) {

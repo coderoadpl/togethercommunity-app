@@ -698,6 +698,8 @@ pnpm --silent run cli --tenant acme product create --title 'Printed holder' \
 pnpm --silent run cli --tenant acme product update <id> --delivery-method pickup
 pnpm --silent run cli --tenant acme checkout session --product <id> \
   --shipping-rate locker --pickup-point WAW01M
+pnpm --silent run cli --tenant acme checkout session --line <id>:2 --line <other-id>:1 \
+  --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com \
   --product <id> --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme orders list --fulfilment to_pack
@@ -722,7 +724,11 @@ pnpm --silent run cli --tenant acme product update <id> \
 
 `--shipping-rates` replaces the whole list; an empty string for
 `--inpost-geowidget-token` clears the token. `--pickup-point` needs
-`--shipping-rate`. `--compliance null` removes the safety information and
+`--shipping-rate`. `checkout session --line <product-id>:<quantity>` posts a
+cart; repeat it once per product and leave out `--product` and `--sales-link`
+(see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
+For an order with a line above one unit, `orders list` shows its product lines
+as `2 × Title; Title`; other orders keep the product title. `--compliance null` removes the safety information and
 `--clear-variant` removes the variant group and label. `order` is an alias of
 `orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
 id and token; `--sender null` removes the sender. Passing the token as a flag
@@ -759,13 +765,15 @@ example damaged goods); a later commit then records `oversold` and alerts.
 
 ### Checkout
 
-1. `validateCheckoutSelection` reads the stock of the selected products and
-   returns `sold_out` early when any tracked product has fewer available pieces
-   than requested (one per product today). This read is advisory only.
+1. `validateCheckoutSelection` (`validateCartSelection` for a cart) reads the
+   stock of the selected products and returns `sold_out` early when any tracked
+   product has fewer available pieces than requested (the line quantity of a
+   cart, one per product otherwise). This read is advisory only.
 2. After the checkout snapshot is captured and before the Stripe session is
    created, `StockRepository.reserve` reserves the quantity of every tracked
-   product line of the snapshot (a line without a quantity counts as one piece,
-   and every checkout today has one piece per product) in one transaction,
+   product line of the snapshot (a line without a quantity counts as one piece;
+   only a cart request sets a quantity, at most 10 per physical line while this
+   hold applies) in one transaction,
    updating products in product-id order so concurrent multi-product
    reservations cannot deadlock. Repeated products in one call are merged into
    one reservation of the summed quantity. The conditional update is the only

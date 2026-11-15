@@ -2611,14 +2611,12 @@ type OrganizationCreationResult =
   | { status: 'owner_unverified' };
 
 export interface OrganizationRepository {
-  create(organization: Organization): Promise<Organization | null>;
   /**
    * One transaction: the organization, its owner membership and the audit rows.
    * A slug that already exists returns it when the owner is one of its owners.
    */
   createWithOwner(input: OrganizationCreationInput): Promise<OrganizationCreationResult>;
   findById(organizationId: string): Promise<Organization | null>;
-  findBySlug(slug: string): Promise<Organization | null>;
   setMaxWorkspaces(
     organizationId: string,
     input: { maxWorkspaces: number; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId'> },
@@ -2626,16 +2624,13 @@ export interface OrganizationRepository {
 }
 
 export interface OrganizationMemberRepository {
-  add(organizationId: string, member: Omit<OrganizationMember, 'organizationId'>): Promise<boolean>;
   find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
-  list(organizationId: string): Promise<OrganizationMember[]>;
   listAccounts(organizationId: string): Promise<OrganizationMemberAccount[]>;
   listForUser(userId: string): Promise<OrganizationMember[]>;
 }
 
 /** Append-only organization audit trail; entries are never updated or deleted. */
 export interface OrganizationAuditRepository {
-  record(organizationId: string, event: Omit<OrganizationAuditEvent, 'organizationId'>): Promise<void>;
   list(organizationId: string, query: { limit: number }): Promise<OrganizationAuditEvent[]>;
 }
 

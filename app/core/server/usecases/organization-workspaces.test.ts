@@ -21,21 +21,19 @@ const identity = (userId: string): Identity => ({
   memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
 });
 
-const harness = async () => {
+const harness = () => {
   const fakes = createOrganizationFakes([], [
     workspace('acme', [{ userId: 'owner-1', role: 'owner' }, { userId: 'org-admin', role: 'owner' }, { userId: 'ws-admin', role: 'admin' }]),
     workspace('studio', [{ userId: 'outsider', role: 'owner' }]),
     workspace('akademia', [{ userId: 'owner-1', role: 'owner' }, { userId: 'other-owner', role: 'owner' }], 'org-2'),
   ]);
-  const { organizations, organizationMembers } = fakes.repositories;
-  await organizations.create(organization('org-1', 'holding'));
-  await organizations.create(organization('org-2', 'other'));
+  fakes.organizationRows.push(organization('org-1', 'holding'), organization('org-2', 'other'));
   const member = (organizationId: string, userId: string, role: 'owner' | 'admin') =>
-    organizationMembers.add(organizationId, { id: `${organizationId}-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
-  await member('org-1', 'owner-1', 'owner');
-  await member('org-1', 'ws-admin', 'owner');
-  await member('org-1', 'org-admin', 'admin');
-  await member('org-2', 'other-owner', 'owner');
+    fakes.memberRows.push({ organizationId, id: `${organizationId}-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
+  member('org-1', 'owner-1', 'owner');
+  member('org-1', 'ws-admin', 'owner');
+  member('org-1', 'org-admin', 'admin');
+  member('org-2', 'other-owner', 'owner');
   let next = 0;
   const deps = { ...fakes.repositories, ids: { nextId: () => `id-${++next}` }, clock: { nowIso: () => at } };
   const octx = async (userId: string, organizationId = 'org-1') => {
@@ -46,11 +44,11 @@ const harness = async () => {
   return { ...fakes, deps, octx };
 };
 
-const linkOf = (h: Awaited<ReturnType<typeof harness>>, tenantId: string) => h.workspaceRows.find((row) => row.id === tenantId)?.organizationId;
+const linkOf = (h: ReturnType<typeof harness>, tenantId: string) => h.workspaceRows.find((row) => row.id === tenantId)?.organizationId;
 
 describe('organization workspace link and unlink', () => {
   it('links a workspace that the organization owner also owns directly, once, with both audit rows', async () => {
-    const h = await harness();
+    const h = harness();
     const octx = await h.octx('owner-1');
     expect(await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps)).toEqual({
       ok: true, value: { workspace: { id: 'acme', slug: 'acme', name: 'Workspace acme', status: 'active' }, changed: true },
@@ -72,7 +70,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('refuses an organization owner who is only a workspace admin', async () => {
-    const h = await harness();
+    const h = harness();
     expect(await linkOrganizationWorkspace(await h.octx('ws-admin'), { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(linkOf(h, 'acme')).toBeNull();
@@ -81,14 +79,14 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('refuses an organization owner who has no grant in a foreign workspace', async () => {
-    const h = await harness();
+    const h = harness();
     expect(await linkOrganizationWorkspace(await h.octx('owner-1'), { organizationId: 'org-1', tenantId: 'studio' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(linkOf(h, 'studio')).toBeNull();
   });
 
   it('refuses an organization admin even when that admin owns the workspace directly', async () => {
-    const h = await harness();
+    const h = harness();
     const octx = await h.octx('org-admin');
     expect(await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
       .toEqual({ ok: false, error: { code: 'forbidden', message: 'organization:workspace:link is not permitted' } });
@@ -98,7 +96,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('answers not_found to a caller outside the organization', async () => {
-    const h = await harness();
+    const h = harness();
     expect(await linkOrganizationWorkspace(await h.octx('outsider'), { organizationId: 'org-1', tenantId: 'studio' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await listOrganizationWorkspaces(await h.octx('outsider'), { organizationId: 'org-1' }, h.deps))
@@ -106,7 +104,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('refuses a workspace that already belongs to another organization, for link and unlink', async () => {
-    const h = await harness();
+    const h = harness();
     const octx = await h.octx('owner-1');
     expect(await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'akademia' }, h.deps))
       .toEqual({ ok: false, error: { code: 'conflict', message: 'Workspace belongs to another organization' } });
@@ -117,7 +115,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('unlinks with both audit rows and treats a second unlink as unchanged', async () => {
-    const h = await harness();
+    const h = harness();
     const octx = await h.octx('owner-1');
     await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps);
     expect(await unlinkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
@@ -134,7 +132,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('refuses to unlink while the workspace takes configuration from the organization', async () => {
-    const h = await harness();
+    const h = harness();
     const octx = await h.octx('owner-1');
     await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps);
     h.configSourceTenantIds.add('acme');
@@ -145,7 +143,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('refuses a link past the workspace limit with workspace_quota_exceeded and links once the limit is raised', async () => {
-    const h = await harness();
+    const h = harness();
     const octx = await h.octx('owner-1');
     const limit = (maxWorkspaces: number) => h.repositories.organizations.setMaxWorkspaces('org-1', {
       maxWorkspaces, updatedAt: at,
@@ -170,7 +168,7 @@ describe('organization workspace link and unlink', () => {
   });
 
   it('rejects an empty workspace selection before touching the store', async () => {
-    const h = await harness();
+    const h = harness();
     expect(await linkOrganizationWorkspace(await h.octx('owner-1'), { organizationId: 'org-1', tenantId: ' ' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
   });

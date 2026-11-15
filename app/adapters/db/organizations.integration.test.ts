@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { Organization } from '#core/domain/index.js';
+import type { Organization, OrganizationMember } from '#core/domain/index.js';
 
 import {
   createOrganizationAuditRepository,
@@ -34,42 +34,42 @@ describe('organization repositories', () => {
 
   afterAll(async () => { await database?.close(); });
 
-  it('round-trips an organization and refuses a second one with the same slug', async () => {
+  const insertOrganization = async (value: Organization) => { await database.db.insert(organizations).values(value); };
+  const insertMember = async (organizationId: string, member: Omit<OrganizationMember, 'organizationId'>) => {
+    await database.db.insert(organizationMembers).values({ ...member, organizationId });
+  };
+
+  it('reads an organization by id and refuses a second one with the same slug', async () => {
     const repository = createOrganizationRepository(database.db);
 
-    expect(await repository.create(organization('org-1', 'holding'))).toEqual(organization('org-1', 'holding'));
-    expect(await repository.create(organization('org-2', 'holding'))).toBeNull();
+    await insertOrganization(organization('org-1', 'holding'));
+    await expect(insertOrganization(organization('org-2', 'holding'))).rejects.toThrow();
     expect(await repository.findById('org-1')).toEqual(organization('org-1', 'holding'));
-    expect(await repository.findBySlug('holding')).toEqual(organization('org-1', 'holding'));
     expect(await repository.findById('org-2')).toBeNull();
   });
 
-  it('round-trips members once per organization and user', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-members', 'members'));
-    await createOrganizationRepository(database.db).create(organization('org-other', 'other'));
+  it('reads members once per organization and user', async () => {
+    await insertOrganization(organization('org-members', 'members'));
+    await insertOrganization(organization('org-other', 'other'));
     const repository = createOrganizationMemberRepository(database.db);
     const owner = { id: 'member-owner', userId: 'user-owner', role: 'owner' as const, createdAt: at, createdByUserId: 'operator' };
     const admin = { id: 'member-admin', userId: 'user-admin', role: 'admin' as const, createdAt: later, createdByUserId: 'user-owner' };
 
-    expect(await repository.add('org-members', owner)).toBe(true);
-    expect(await repository.add('org-members', admin)).toBe(true);
-    expect(await repository.add('org-members', { ...admin, id: 'member-duplicate', role: 'owner' })).toBe(false);
-    expect(await repository.add('org-other', { ...owner, id: 'member-other' })).toBe(true);
+    await insertMember('org-members', owner);
+    await insertMember('org-members', admin);
+    await expect(insertMember('org-members', { ...admin, id: 'member-duplicate', role: 'owner' })).rejects.toThrow();
+    await insertMember('org-other', { ...owner, id: 'member-other' });
 
     expect(await repository.find('org-members', 'user-admin')).toEqual({ ...admin, organizationId: 'org-members' });
     expect(await repository.find('org-other', 'user-admin')).toBeNull();
-    expect(await repository.list('org-members')).toEqual([
-      { ...owner, organizationId: 'org-members' },
-      { ...admin, organizationId: 'org-members' },
-    ]);
     expect(await repository.listForUser('user-owner')).toEqual([
       { ...owner, organizationId: 'org-members' },
       { ...owner, id: 'member-other', organizationId: 'org-other' },
     ]);
   });
 
-  it('round-trips audit events newest first within one organization', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-audit', 'audit'));
+  it('lists audit events newest first within one organization', async () => {
+    await insertOrganization(organization('org-audit', 'audit'));
     const repository = createOrganizationAuditRepository(database.db);
     const created = {
       id: 'audit-created', kind: 'organization.created' as const, actorUserId: 'operator', actorEmail: 'operator@example.test',
@@ -81,9 +81,11 @@ describe('organization repositories', () => {
       data: { key: 'ifirma.invoiceKey', preview: '••••abcd', groups: ['invoicing'], inherited: false, previous: null }, at: later,
     };
 
-    await repository.record('org-audit', created);
-    await repository.record('org-audit', secret);
-    await repository.record('org-members', { ...created, id: 'audit-elsewhere' });
+    await database.db.insert(organizationAuditEvents).values([
+      { ...created, organizationId: 'org-audit' },
+      { ...secret, organizationId: 'org-audit' },
+      { ...created, id: 'audit-elsewhere', organizationId: 'org-members' },
+    ]);
 
     expect(await repository.list('org-audit', { limit: 10 })).toEqual([
       { ...secret, organizationId: 'org-audit' },
@@ -103,7 +105,7 @@ describe('organization repositories', () => {
     });
     const before = await read();
 
-    await createOrganizationRepository(database.db).create(organization('org-link', 'link'));
+    await insertOrganization(organization('org-link', 'link'));
     await database.db.update(tenants).set({ organizationId: 'org-link' }).where(eq(tenants.id, 'acme'));
     const after = await read();
 
@@ -167,8 +169,8 @@ describe('organization repositories', () => {
   });
 
   it('links and unlinks only for a direct workspace owner who owns the organization, auditing both sides in one transaction', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-ws', 'workspaces'));
-    await createOrganizationRepository(database.db).create(organization('org-ws-other', 'workspaces-other'));
+    await insertOrganization(organization('org-ws', 'workspaces'));
+    await insertOrganization(organization('org-ws-other', 'workspaces-other'));
     await database.db.insert(tenants).values([
       { id: 'ws-own', slug: 'ws-own', name: 'Own', createdAt: at },
       { id: 'ws-taken', slug: 'ws-taken', name: 'Taken', createdAt: at, organizationId: 'org-ws-other' },
@@ -179,9 +181,8 @@ describe('organization repositories', () => {
       { id: 'grant-org-admin', tenantId: 'ws-own', userId: 'ws-org-admin', role: 'owner' },
       { id: 'grant-taken', tenantId: 'ws-taken', userId: 'ws-owner', role: 'owner' },
     ]);
-    const members = createOrganizationMemberRepository(database.db);
     for (const [userId, role] of [['ws-owner', 'owner'], ['ws-admin', 'owner'], ['ws-org-admin', 'admin']] as const) {
-      await members.add('org-ws', { id: `org-ws-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
+      await insertMember('org-ws', { id: `org-ws-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
     }
     const repository = createOrganizationWorkspaceRepository(database.db);
     const change = (actorUserId: string, id: string, linked: boolean) => ({
@@ -233,11 +234,10 @@ describe('organization repositories', () => {
 
   describe('workspace limit on link', () => {
     const quotaOrganization = async (organizationId: string, tenantIds: string[]) => {
-      await createOrganizationRepository(database.db).create({ ...organization(organizationId, organizationId), maxWorkspaces: 1 });
+      await insertOrganization({ ...organization(organizationId, organizationId), maxWorkspaces: 1 });
       await database.db.insert(tenants).values(tenantIds.map((id) => ({ id, slug: id, name: id, createdAt: at })));
       await database.db.insert(tenantAdmins).values(tenantIds.map((id) => ({ id: `grant-${id}`, tenantId: id, userId: 'quota-owner', role: 'owner' as const })));
-      await createOrganizationMemberRepository(database.db)
-        .add(organizationId, { id: `${organizationId}-owner`, userId: 'quota-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      await insertMember(organizationId, { id: `${organizationId}-owner`, userId: 'quota-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
     };
     const change = (organizationId: string, tenantId: string, id: string) => ({
       organizationId,

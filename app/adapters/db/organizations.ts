@@ -21,11 +21,6 @@ import { tenantAdmins, tenantAuditEvents, tenants } from './app-schema.js';
 import { organizationAuditEvents, organizationMembers, organizations } from './organization-schema.js';
 
 export const createOrganizationRepository = (db: Db): OrganizationRepository => ({
-  create: async (organization) => {
-    const rows = await db.insert(organizations).values(organization)
-      .onConflictDoNothing({ target: organizations.slug }).returning();
-    return rows[0] === undefined ? null : organizationSchema.parse(rows[0]);
-  },
   createWithOwner: async ({ organization, owner, audit }) => db.transaction(async (tx) => {
     const verifiedOwner = await tx.select({ id: user.id }).from(user)
       .where(and(eq(user.id, owner.userId), eq(user.emailVerified, true))).for('share');
@@ -54,10 +49,6 @@ export const createOrganizationRepository = (db: Db): OrganizationRepository => 
     const rows = await db.select().from(organizations).where(eq(organizations.id, organizationId)).limit(1);
     return rows[0] === undefined ? null : organizationSchema.parse(rows[0]);
   },
-  findBySlug: async (slug) => {
-    const rows = await db.select().from(organizations).where(eq(organizations.slug, slug)).limit(1);
-    return rows[0] === undefined ? null : organizationSchema.parse(rows[0]);
-  },
   setMaxWorkspaces: async (organizationId, { maxWorkspaces, updatedAt, audit }) => db.transaction(async (tx) => {
     const rows = await tx.update(organizations).set({ maxWorkspaces, updatedAt })
       .where(eq(organizations.id, organizationId)).returning();
@@ -68,22 +59,12 @@ export const createOrganizationRepository = (db: Db): OrganizationRepository => 
 });
 
 export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRepository => ({
-  add: async (organizationId, member) => {
-    const rows = await db.insert(organizationMembers).values({ ...member, organizationId })
-      .onConflictDoNothing({ target: [organizationMembers.organizationId, organizationMembers.userId] })
-      .returning({ id: organizationMembers.id });
-    return rows.length > 0;
-  },
   find: async (organizationId, userId) => {
     const rows = await db.select().from(organizationMembers)
       .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, userId)))
       .limit(1);
     return rows[0] === undefined ? null : organizationMemberSchema.parse(rows[0]);
   },
-  list: async (organizationId) => (await db.select().from(organizationMembers)
-    .where(eq(organizationMembers.organizationId, organizationId))
-    .orderBy(asc(organizationMembers.createdAt), asc(organizationMembers.id)))
-    .map((row) => organizationMemberSchema.parse(row)),
   listAccounts: async (organizationId) => (await db.select({
     userId: organizationMembers.userId,
     email: user.email,
@@ -101,9 +82,6 @@ export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRe
 });
 
 export const createOrganizationAuditRepository = (db: Db): OrganizationAuditRepository => ({
-  record: async (organizationId, event) => {
-    await db.insert(organizationAuditEvents).values({ ...event, organizationId });
-  },
   list: async (organizationId, query) => (await db.select().from(organizationAuditEvents)
     .where(eq(organizationAuditEvents.organizationId, organizationId))
     .orderBy(desc(organizationAuditEvents.at), desc(organizationAuditEvents.id))

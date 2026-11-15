@@ -37,11 +37,6 @@ export const createOrganizationFakes = (
   const isVerified = (userId: string) => accounts.some((account) => account.userId === userId && account.emailVerified);
 
   const organizations: OrganizationRepository = {
-    create: async (organization) => {
-      if (organizationRows.some((row) => row.slug === organization.slug)) return null;
-      organizationRows.push(organization);
-      return organization;
-    },
     createWithOwner: async ({ organization, owner, audit }) => {
       if (!isVerified(owner.userId)) return { status: 'owner_unverified' };
       const existing = organizationRows.find((row) => row.slug === organization.slug);
@@ -56,7 +51,6 @@ export const createOrganizationFakes = (
       return { status: 'created', organization };
     },
     findById: async (organizationId) => organizationRows.find((row) => row.id === organizationId) ?? null,
-    findBySlug: async (slug) => organizationRows.find((row) => row.slug === slug) ?? null,
     setMaxWorkspaces: async (organizationId, { maxWorkspaces, updatedAt, audit }) => {
       const index = organizationRows.findIndex((row) => row.id === organizationId);
       const current = organizationRows[index];
@@ -69,14 +63,8 @@ export const createOrganizationFakes = (
   };
 
   const organizationMembers: OrganizationMemberRepository = {
-    add: async (organizationId, member) => {
-      if (memberRows.some((row) => row.organizationId === organizationId && row.userId === member.userId)) return false;
-      memberRows.push({ ...member, organizationId });
-      return true;
-    },
     find: async (organizationId, userId) =>
       memberRows.find((row) => row.organizationId === organizationId && row.userId === userId) ?? null,
-    list: async (organizationId) => memberRows.filter((row) => row.organizationId === organizationId),
     listAccounts: async (organizationId) => memberRows
       .filter((row) => row.organizationId === organizationId)
       .flatMap((row) => {
@@ -87,7 +75,6 @@ export const createOrganizationFakes = (
   };
 
   const organizationAudit: OrganizationAuditRepository = {
-    record: async (organizationId, event) => { auditRows.push({ ...event, organizationId }); },
     list: async (organizationId, query) => auditRows
       .filter((row) => row.organizationId === organizationId)
       .toSorted((left, right) => right.at.localeCompare(left.at) || right.id.localeCompare(left.id))

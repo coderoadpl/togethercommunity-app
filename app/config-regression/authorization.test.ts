@@ -9,12 +9,14 @@ import { schedulerContext, snsWebhookContext } from '../apps/server/src/marketin
 import { collectPermissionInventory } from '../scripts/permission-inventory.js';
 import { collectRuntimeRoutes } from '../scripts/generate-route-table.mjs';
 import {
+  TENANT_SCOPE_EXCEPTIONS,
   auditTenantRepositoryScopes,
   collectTenantScopeSources,
 } from '../scripts/tenant-scope-check.js';
 
 const appRoot = join(import.meta.dirname, '..');
-const useCasesRoot = join(appRoot, 'core', 'server', 'usecases');
+const coreServerRoot = join(appRoot, 'core', 'server');
+const useCasesRoot = join(coreServerRoot, 'usecases');
 const internalAppPath = join(appRoot, 'apps', 'server', 'src', 'internal-app.ts');
 const compositionPath = join(appRoot, 'apps', 'server', 'src', 'composition.ts');
 const exportedCtxUseCase = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*(?:ctx:\s*Ctx|octx:\s*OrganizationCtx)\b/g;
@@ -84,6 +86,44 @@ const routeHandlersAfterIdentity = (): Array<{ subject: string; body: string }> 
   };
   visit(sourceFile);
   return found;
+};
+
+const productionServerSources = (directory = coreServerRoot): string[] =>
+  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return entry.name === 'testing' ? [] : productionServerSources(path);
+    return entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') ? [path] : [];
+  });
+
+const calledPortMethods = (portMethods: ReadonlyMap<string, readonly string[]>): Set<string> => {
+  const called = new Set<string>();
+  for (const path of productionServerSources()) {
+    const source = readFileSync(path, 'utf8');
+    const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const dependedOn = new Set<string>();
+    const visit = (node: ts.Node): void => {
+      if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+        const [port, picked] = node.typeName.text === 'Pick' ? node.typeArguments ?? [] : [];
+        if (port !== undefined && ts.isTypeReferenceNode(port) && ts.isIdentifier(port.typeName) && picked !== undefined) {
+          const literals = ts.isUnionTypeNode(picked) ? picked.types : [picked];
+          for (const literal of literals) {
+            if (ts.isLiteralTypeNode(literal) && ts.isStringLiteral(literal.literal)) {
+              dependedOn.add(`${port.typeName.text}.${literal.literal.text}`);
+            }
+          }
+          return;
+        }
+        for (const method of portMethods.get(node.typeName.text) ?? []) dependedOn.add(`${node.typeName.text}.${method}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    for (const subject of dependedOn) {
+      const method = subject.slice(subject.indexOf('.') + 1);
+      if (new RegExp(`\\.${method}\\(`).test(source)) called.add(subject);
+    }
+  }
+  return called;
 };
 
 describe('authorization fail-closed probes', () => {
@@ -160,6 +200,17 @@ describe('authorization fail-closed probes', () => {
     expect(audit.violations).toEqual([]);
     expect(audit.staleExceptions).toEqual([]);
     expect(audit.staleExcludedPorts).toEqual([]);
+  });
+
+  it('keeps every organization and account identity exception on a method that a core server module depends on and calls', () => {
+    const audit = auditTenantRepositoryScopes(collectTenantScopeSources());
+    const portMethods = new Map<string, string[]>();
+    for (const method of audit.methods) portMethods.set(method.repository, [...portMethods.get(method.repository) ?? [], method.method]);
+    const called = calledPortMethods(portMethods);
+    const subjects = Object.keys(TENANT_SCOPE_EXCEPTIONS)
+      .filter((subject) => subject.startsWith('Organization') || subject.startsWith('AccountIdentityReader.'));
+    expect(subjects.length).toBeGreaterThanOrEqual(8);
+    expect(subjects.filter((subject) => !called.has(subject))).toEqual([]);
   });
 
   it('rejects unscoped interface and type-alias ports in a standalone source', () => {

@@ -8,6 +8,19 @@ import { driftManifest } from './drift.js';
 import { applyManifest } from './apply.js';
 import { createManifestFake } from './fake-client.js';
 
+const checkoutRequestBodyOf = (example: string, placeholders: Record<string, string>): unknown => {
+  const literal = /body: JSON\.stringify\((\{[\s\S]*?\n {2}\})\),/u.exec(example)?.[1];
+  if (literal === undefined) throw new Error('Expected a JSON.stringify request body in the example');
+  const substituted = Object.entries(placeholders)
+    .reduce((text, [expression, value]) => text.replaceAll(`: ${expression},`, `: ${JSON.stringify(value)},`), literal);
+  const json = substituted
+    .replace(/'([^'\\]*)'/gu, (_match, text: string) => JSON.stringify(text))
+    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/gu, '$1"$2":')
+    .replace(/,(\s*[}\]])/gu, '$1');
+  const parsed: unknown = JSON.parse(json);
+  return parsed;
+};
+
 describe('shop manifest documentation', () => {
   it('keeps the complete JSON example valid against the manifest and existing write boundaries', async () => {
     const document = await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8');
@@ -69,9 +82,8 @@ describe('shop manifest documentation', () => {
     for (const field of ['id', 'slug', 'prices', 'stock', 'coverUrl'] as const) expect(plain).toContain(`.${field}`);
     expect(Object.keys(offerProduct)).toEqual(expect.arrayContaining(['id', 'slug', 'prices', 'stock', 'coverUrl']));
     expect(Object.keys(checkoutSessionOutputSchema.shape)).toContain('url');
-    const body = { productId: 'p1', priceId: 'price1', termsAccepted: true, language: 'en', shipping: { rateId: 'courier' } };
-    for (const key of Object.keys(body)) expect(plain).toContain(`${key}: `);
-    expect(checkoutSessionRequestSchema.strict().safeParse(body).success).toBe(true);
+    const body = checkoutRequestBodyOf(plain, { 'product.id': 'product-fixture', 'price.id': 'price-fixture' });
+    expect(checkoutSessionRequestSchema.strict().parse(body)).toMatchObject({ productId: 'product-fixture', priceId: 'price-fixture' });
     const typedStart = document.indexOf('```ts\nimport');
     expect(document.slice(document.lastIndexOf('```\n', typedStart), typedStart)).toContain('Inside this repository only');
     expect(document.slice(typedStart)).toContain("from '#core/contract/index.js'");

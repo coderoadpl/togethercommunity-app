@@ -12,7 +12,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { AccountIdentity, ApiKeyRateLimitRepository } from '../ports.js';
-import { authenticateShopManagementKey, type ShopMachineAuthDeps } from './shop-machine-auth.js';
+import { authenticateShopManagementKey, identifyShopManagementKey, type ShopMachineAuthDeps } from './shop-machine-auth.js';
 
 const NOW = '1998-08-03T10:00:30.000Z';
 const TENANT: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1 };
@@ -101,7 +101,7 @@ const harness = (options: {
   const rateLimits = createRateLimits();
   const deps: ShopMachineAuthDeps = {
     tenantApiKeys: {
-      findActiveByHash: async (tenantId, keyHash) =>
+      findByHash: async (tenantId, keyHash) =>
         keys.find((key) => key.tenantId === tenantId && key.keyHash === keyHash) ?? null,
     },
     apiKeyCrypto: { generateSecret: () => SECRET, hash: (value) => `hash:${value}` },
@@ -113,12 +113,15 @@ const harness = (options: {
   return { deps, state, findMember, rateLimits };
 };
 
-const authenticate = (
+const authenticateWithAttribution = (
   h: ReturnType<typeof harness>,
   scope: Parameters<typeof authenticateShopManagementKey>[2] = 'shop:catalog:read',
   tenant: Tenant = TENANT,
   secret = SECRET,
 ) => authenticateShopManagementKey(tenant, secret, scope, h.deps);
+
+const authenticate = async (...args: Parameters<typeof authenticateWithAttribution>) =>
+  (await authenticateWithAttribution(...args)).result;
 
 const invalidKey = { ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } };
 
@@ -242,7 +245,7 @@ describe('authenticateShopManagementKey', () => {
 
   it('rejects a row whose tenant does not match the requested tenant', async () => {
     const h = harness({ keys: [shopKey()] });
-    h.deps.tenantApiKeys.findActiveByHash = async () => shopKey({ tenantId: OTHER_TENANT.id });
+    h.deps.tenantApiKeys.findByHash = async () => shopKey({ tenantId: OTHER_TENANT.id });
     expect(await authenticate(h)).toMatchObject(invalidKey);
   });
 
@@ -323,6 +326,51 @@ describe('authenticateShopManagementKey', () => {
       ok: false,
       error: { code: 'rate_limited', details: { period: 'day', retryAfterSeconds: 50_370 } },
     });
+    expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(0);
+  });
+});
+
+describe('shop management key attribution', () => {
+  const matched = (apiKeyId: string, kind: 'legacy' | 'shop_management' = 'shop_management', issuerUserId: string | null = OWNER_ID) =>
+    ({ match: 'matched', apiKeyId, kind, issuerUserId });
+
+  it('attributes an accepted request to its key and issuer', async () => {
+    expect((await authenticateWithAttribution(harness())).attribution).toEqual(matched('shop-key-1'));
+  });
+
+  it.each([
+    ['a revoked key', { keys: [shopKey({ revokedAt: '1998-08-02T00:00:00.000Z' })] }, matched('shop-key-1')],
+    ['an expired key', { keys: [shopKey({ expiresAt: '1998-08-03T00:00:00.000Z' })] }, matched('shop-key-1')],
+    ['a legacy key', { keys: [shopKey({ id: 'legacy-1', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })] }, matched('legacy-1', 'legacy', null)],
+    ['a key whose issuer lost owner standing', { staffRole: 'admin' as const }, matched('shop-key-1')],
+  ])('attributes the 401 refusal of %s to the stored row', async (_label, options, expected) => {
+    const outcome = await authenticateWithAttribution(harness(options));
+    expect(outcome.result).toMatchObject(invalidKey);
+    expect(outcome.attribution).toEqual(expected);
+  });
+
+  it('attributes a scope refusal and a rate-limit refusal to the key', async () => {
+    const h = harness();
+    const refused = await authenticateWithAttribution(h, 'shop:catalog:write');
+    expect(refused.result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(refused.attribution).toEqual(matched('shop-key-1'));
+    h.deps.apiKeyRateLimits.claim = async () => false;
+    const limited = await authenticateWithAttribution(h);
+    expect(limited.result).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(limited.attribution).toEqual(matched('shop-key-1'));
+  });
+
+  it('records that no key matched an unknown secret or a row from another tenant, and a missing secret', async () => {
+    expect((await authenticateWithAttribution(harness(), 'shop:catalog:read', TENANT, 'unknown')).attribution).toEqual({ match: 'none' });
+    expect((await authenticateWithAttribution(harness(), 'shop:catalog:read', OTHER_TENANT)).attribution).toEqual({ match: 'none' });
+    expect((await authenticateWithAttribution(harness(), 'shop:catalog:read', TENANT, '  ')).attribution).toEqual({ match: 'missing' });
+  });
+
+  it('identifies a key without authenticating it or claiming its rate limit', async () => {
+    const h = harness({ keys: [shopKey({ revokedAt: '1998-08-02T00:00:00.000Z' })] });
+    expect(await identifyShopManagementKey(TENANT.id, SECRET, h.deps)).toEqual(matched('shop-key-1'));
+    expect(await identifyShopManagementKey(TENANT.id, 'unknown', h.deps)).toEqual({ match: 'none' });
+    expect(await identifyShopManagementKey(TENANT.id, '', h.deps)).toEqual({ match: 'missing' });
     expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(0);
   });
 });

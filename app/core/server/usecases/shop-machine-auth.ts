@@ -28,7 +28,7 @@ import { apiKeyRateLimited, apiKeyRateLimitWindows, type ApiKeyRateLimitWindow }
 const SHOP_MANAGEMENT_KEY_RATE_LIMITS = { perMinute: 60, perDay: 10_000 } as const;
 
 export interface ShopMachineAuthDeps {
-  tenantApiKeys: Pick<TenantApiKeyRepository, 'findActiveByHash'>;
+  tenantApiKeys: Pick<TenantApiKeyRepository, 'findByHash'>;
   apiKeyCrypto: ApiKeyCrypto;
   accountIdentities: AccountIdentityReader;
   tenantAccess: Pick<TenantAccessReader, 'findStaffGrant' | 'findMember'>;
@@ -50,17 +50,47 @@ const hasOnlyShopScopes = (apiKey: TenantApiKey): boolean =>
   && apiKey.scopes.length > 0
   && apiKey.scopes.every((scope) => shopManagementScopeSchema.safeParse(scope).success);
 
-const findUsableShopKey = async (
+export type ShopKeyAttribution =
+  | { match: 'missing' }
+  | { match: 'none' }
+  | { match: 'matched'; apiKeyId: string; kind: TenantApiKey['kind']; issuerUserId: string | null };
+
+interface ShopMachineAuthOutcome {
+  result: Result<ShopMachineAuthentication, AppError>;
+  attribution: ShopKeyAttribution;
+}
+
+type KeyLookupDeps = Pick<ShopMachineAuthDeps, 'tenantApiKeys' | 'apiKeyCrypto'>;
+
+const findStoredKey = async (
+  tenantId: string,
+  secret: string,
+  deps: KeyLookupDeps,
+): Promise<TenantApiKey | null> => {
+  const found = await deps.tenantApiKeys.findByHash(tenantId, deps.apiKeyCrypto.hash(secret));
+  return found?.tenantId === tenantId ? found : null;
+};
+
+const attributionOf = (found: TenantApiKey | null): ShopKeyAttribution =>
+  found === null
+    ? { match: 'none' }
+    : { match: 'matched', apiKeyId: found.id, kind: found.kind, issuerUserId: found.issuedByUserId };
+
+export const identifyShopManagementKey = async (
   tenantId: string,
   presentedSecret: string,
-  deps: ShopMachineAuthDeps,
-): Promise<Result<TenantApiKey & { issuedByUserId: string }, AppError>> => {
+  deps: KeyLookupDeps,
+): Promise<ShopKeyAttribution> => {
   const secret = presentedSecret.trim();
-  if (!secret) return err(unauthorized('Missing API key'));
-  const found = await deps.tenantApiKeys.findActiveByHash(tenantId, deps.apiKeyCrypto.hash(secret));
+  return secret ? attributionOf(await findStoredKey(tenantId, secret, deps)) : { match: 'missing' };
+};
+
+const usableShopKey = (
+  found: TenantApiKey | null,
+  deps: Pick<ShopMachineAuthDeps, 'clock'>,
+): Result<TenantApiKey & { issuedByUserId: string }, AppError> => {
   if (
     found === null
-    || found.tenantId !== tenantId
     || found.kind !== 'shop_management'
     || found.revokedAt !== null
     || found.expiresAt === null
@@ -127,13 +157,13 @@ const shopManagementKeyCapabilities = (apiKey: TenantApiKey) => {
   return shopManagementCapabilitiesForApiKey(apiKey).filter((capability) => ownerCapabilities.includes(capability));
 };
 
-export const authenticateShopManagementKey = async (
+const authenticateStoredKey = async (
   tenant: ShopTenant,
-  presentedSecret: string,
+  found: TenantApiKey | null,
   requiredScope: ShopManagementScope,
   deps: ShopMachineAuthDeps,
 ): Promise<Result<ShopMachineAuthentication, AppError>> => {
-  const apiKey = await findUsableShopKey(tenant.id, presentedSecret, deps);
+  const apiKey = usableShopKey(found, deps);
   if (!apiKey.ok) return apiKey;
   const identity = await issuerIdentity(tenant, apiKey.value.issuedByUserId, deps);
   if (!identity.ok) return identity;
@@ -150,4 +180,19 @@ export const authenticateShopManagementKey = async (
       machineActor: { kind: 'shop_management_key', apiKeyId: apiKey.value.id },
     },
   });
+};
+
+export const authenticateShopManagementKey = async (
+  tenant: ShopTenant,
+  presentedSecret: string,
+  requiredScope: ShopManagementScope,
+  deps: ShopMachineAuthDeps,
+): Promise<ShopMachineAuthOutcome> => {
+  const secret = presentedSecret.trim();
+  if (!secret) return { result: err(unauthorized('Missing API key')), attribution: { match: 'missing' } };
+  const found = await findStoredKey(tenant.id, secret, deps);
+  return {
+    result: await authenticateStoredKey(tenant, found, requiredScope, deps),
+    attribution: attributionOf(found),
+  };
 };

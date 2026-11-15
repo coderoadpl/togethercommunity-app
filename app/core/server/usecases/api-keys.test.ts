@@ -68,6 +68,7 @@ const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKe
       store.push(apiKey);
     },
     findActiveByHash: async () => null,
+    findByHash: async () => null,
     revoke: async (tenantId, id, revokedAt) => revokeKind(tenantId, id, revokedAt, 'legacy'),
     createShopManagement: async (_t, apiKey, audit) => {
       store.push(apiKey);

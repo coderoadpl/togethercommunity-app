@@ -3962,6 +3962,15 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },
+  findByHash: async (tenantId, keyHash) => {
+    const rows = await db
+      .select()
+      .from(tenantApiKeys)
+      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.keyHash, keyHash)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseApiKey(row) : null;
+  },
   revoke: async (tenantId, id, revokedAt) => {
     const rows = await db
       .update(tenantApiKeys)

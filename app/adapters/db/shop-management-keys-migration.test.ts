@@ -230,6 +230,8 @@ describe('shop management key lifecycle', () => {
     expect(await repo.revokeShopManagement(TENANT, 'shop-key', NOW, audit({ id: 'audit-revoked', kind: 'api_key.shop_management_revoked' })))
       .toMatchObject({ id: 'shop-key', revokedAt: NOW });
     expect(await repo.findActiveByHash(TENANT, 'hash-shop')).toBeNull();
+    expect(await repo.findByHash(TENANT, 'hash-shop')).toMatchObject({ id: 'shop-key', revokedAt: NOW });
+    expect(await repo.findByHash(AUDIT_TENANT, 'hash-shop')).toBeNull();
     expect(await repo.revokeShopManagement(TENANT, 'shop-key', NOW, audit({ id: 'audit-revoked-twice', kind: 'api_key.shop_management_revoked' })))
       .toBeNull();
     expect(await auditIds()).toEqual(['audit-revoked', 'audit-shop-key', 'audit-taken']);

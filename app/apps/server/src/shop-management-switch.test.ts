@@ -1,3 +1,5 @@
+import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -157,6 +159,28 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
     expect(response.status).toBe(404);
     expect(await errorOf(response)).toMatchObject({ code: 'not_found' });
     expect(sessionLookups).toBe(0);
+  });
+
+  it('records the switch as the refusal reason on the request span without reading the key', async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
+    provider.register();
+    try {
+      const { secret } = await createShopKey();
+      exporter.reset();
+      const response = await disabledApp.request(`${baseUrl}${SHOP_CATALOG_ROUTES.listProducts.path}`, {
+        headers: { host: acmeHost, 'x-api-key': secret },
+      });
+      expect(response.status).toBe(404);
+      await provider.forceFlush();
+      const spans = exporter.getFinishedSpans();
+      expect(spans).toHaveLength(1);
+      expect(spans[0]?.attributes).toMatchObject({ 'app.api_key.match': 'switch_off', 'http.response.status_code': 404 });
+      expect(spans[0]?.attributes).not.toHaveProperty('app.api_key.id');
+      expect(JSON.stringify(spans[0]?.attributes)).not.toContain(secret);
+    } finally {
+      await provider.shutdown();
+    }
   });
 
   it('refuses to create a shop management key and names the switch state', async () => {

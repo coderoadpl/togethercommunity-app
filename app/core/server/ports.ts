@@ -866,6 +866,7 @@ export interface TenantApiKeyRepository {
   listByTenant(tenantId: string): Promise<TenantApiKey[]>;
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
+  findByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
   createShopManagement(tenantId: string, apiKey: TenantApiKey, audit: TenantAuditEventInput): Promise<void>;
   revokeShopManagement(

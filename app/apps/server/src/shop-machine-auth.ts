@@ -16,6 +16,7 @@ import {
 } from '#core/domain/index.js';
 import {
   authenticateShopManagementKey,
+  identifyShopManagementKey,
   resolveTenant,
   type ResolveTenantDeps,
   type ShopMachineAuthDeps,
@@ -26,6 +27,7 @@ import type { AppVars } from './app-vars.js';
 import { isSafeMethod, requestOriginPolicy } from './request-origin-policy.js';
 import { respond } from './respond.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
+import type { ApiKeyAttribution } from './telemetry.js';
 
 export const SHOP_MACHINE_PATH_PREFIX = '/api/m2m/shop/';
 const SHOP_MACHINE_MECHANISM = 'Shop management key';
@@ -36,6 +38,7 @@ const isShopMachinePath = (path: string): boolean =>
 export const shopManagementKeysSwitchMiddleware = (state: ShopManagementKeysSwitch): MiddlewareHandler<AppVars> =>
   async (c, next) => {
     if (state === 'disabled' && isShopMachinePath(c.req.path)) {
+      c.set('apiKeyAttribution', { match: 'switch_off' });
       return respond(err(notFound('Shop management keys are disabled on this deployment')));
     }
     await next();
@@ -52,21 +55,40 @@ export interface ShopMachineRoute {
   handler: (c: Context<AppVars>, request: ShopMachineRequest) => Response | Promise<Response>;
 }
 
+interface ShopMachineAttempt {
+  result: Result<ShopMachineRequest, AppError>;
+  attribution: ApiKeyAttribution;
+}
+
+const resolveShopTenant = async (headers: Headers, deps: ShopMachineDeps): Promise<Result<Tenant, AppError>> => {
+  const resolved = await resolveTenant(headers.get('host') ?? '', headers.get(TENANT_HEADER), deps);
+  if (!resolved.ok) return resolved;
+  return resolved.value === null ? err(tenantNotFound()) : ok(resolved.value.tenant);
+};
+
 const authenticateShopMachineRequest = async (
   headers: Headers,
   scope: ShopManagementScope,
   deps: ShopMachineDeps,
-): Promise<Result<ShopMachineRequest, AppError>> => {
-  if (headers.has('cookie') || headers.has('authorization')) {
-    return err(unauthorized('Shop management requests must not carry a cookie or an Authorization header'));
-  }
-  const resolved = await resolveTenant(headers.get('host') ?? '', headers.get(TENANT_HEADER), deps);
-  if (!resolved.ok) return resolved;
-  if (resolved.value === null) return err(tenantNotFound());
+): Promise<ShopMachineAttempt> => {
   const key = headers.get(API_KEY_HEADER);
-  if (key === null) return err(unauthorized('Missing API key'));
-  const authenticated = await authenticateShopManagementKey(resolved.value.tenant, key, scope, deps);
-  return authenticated.ok ? ok({ ...authenticated.value, tenant: resolved.value.tenant }) : authenticated;
+  const tenant = await resolveShopTenant(headers, deps);
+  const unidentified: ApiKeyAttribution = { match: key === null ? 'missing' : 'none' };
+  if (headers.has('cookie') || headers.has('authorization')) {
+    return {
+      result: err(unauthorized('Shop management requests must not carry a cookie or an Authorization header')),
+      attribution: tenant.ok && key !== null
+        ? { ...await identifyShopManagementKey(tenant.value.id, key, deps), tenantId: tenant.value.id }
+        : unidentified,
+    };
+  }
+  if (!tenant.ok) return { result: tenant, attribution: unidentified };
+  if (key === null) return { result: err(unauthorized('Missing API key')), attribution: { match: 'missing', tenantId: tenant.value.id } };
+  const { result, attribution } = await authenticateShopManagementKey(tenant.value, key, scope, deps);
+  return {
+    result: result.ok ? ok({ ...result.value, tenant: tenant.value }) : result,
+    attribution: { ...attribution, tenantId: tenant.value.id },
+  };
 };
 
 const retryAfterHeaders = (error: AppError): HeadersInit => {
@@ -84,11 +106,11 @@ export const registerShopMachineRoute = (
     throw new Error(`Shop management routes must live under ${SHOP_MACHINE_PATH_PREFIX}: ${route.path}`);
   }
   app.on(route.method, route.path, async (c) => {
-    const authenticated = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
-    if (!authenticated.ok) return respond(authenticated, { headers: retryAfterHeaders(authenticated.error) });
-    c.set('identity', authenticated.value.ctx.identity);
-    c.set('machineActor', authenticated.value.ctx.machineActor);
-    return route.handler(c, authenticated.value);
+    const { result, attribution } = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
+    c.set('apiKeyAttribution', attribution);
+    if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
+    c.set('identity', result.value.ctx.identity);
+    return route.handler(c, result.value);
   });
 };
 

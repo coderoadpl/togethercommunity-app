@@ -72,7 +72,8 @@ workspace exactly like the other API-key routes: by the workspace host
 between requests:
 
 1. A request that also carries a `Cookie` or an `Authorization` header is
-   refused with `401` before the key is read. A shop route never falls back to
+   refused with `401` before the key is checked; the key is only looked up to
+   attribute the refusal in telemetry (below). A shop route never falls back to
    a session, and a session never upgrades a key.
 2. The key must exist in the selected workspace, be of kind `shop_management`,
    be unrevoked, carry only shop scopes and expire strictly after the current
@@ -97,10 +98,23 @@ record.
 
 Request telemetry records the route template, status and resolved identity.
 For an accepted shop request that identity is the issuing owner
-(`app.user.id`, `app.user.email`, `app.tenant.id`, `app.tenant.slug`), and the
-span also carries the key id in `app.api_key.id` and the key kind in
-`app.api_key.kind`. Telemetry never records request headers, so the key secret
-does not reach traces or error reports.
+(`app.user.id`, `app.user.email`, `app.tenant.id`, `app.tenant.slug`).
+
+Every request to a shop route, accepted or refused, also records which key it
+presented in `app.api_key.match`:
+
+| `app.api_key.match` | Meaning | Also recorded |
+|---|---|---|
+| `matched` | The secret matches a stored key row in the selected workspace, whatever its state: usable, revoked, expired, of kind `legacy`, or with an issuer that is no longer a verified owner | `app.api_key.id`, `app.api_key.kind` (`legacy` or `shop_management`), `app.api_key.issuer.id` when the row has an issuer, `app.tenant.id` |
+| `none` | The secret matches no key row of the selected workspace, or no workspace was selected | `app.tenant.id` when a workspace was selected |
+| `missing` | The request carried no key | `app.tenant.id` when a workspace was selected |
+| `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else; the switch does not read the key |
+
+So a `401` for an unusable key, a `401` for mixed credentials, a `403` for a
+missing scope, a `429` and a failing handler each carry the id of the key that
+was presented. The secret, its hash and any part of either are never recorded,
+and telemetry never records request headers, so the key secret does not reach
+traces or error reports.
 
 Every workspace audit event records `actorApiKeyId`: the id of the shop
 management key behind the request that wrote it, or null for a session,
@@ -253,7 +267,9 @@ default) or `disabled`; any other value stops the server from booting. With
 
 - Every request under `/api/m2m/shop`, to a listed route or an unknown path,
   with any method, answers `404 not_found` before the server looks at a session,
-  a cookie or the key, so it never answers `401`.
+  a cookie or the key, so it never answers `401`. The request span records
+  `app.api_key.match=switch_off` and no key id: the switch stays a pure kill
+  path that never touches the database.
 - Creating a shop management key answers `403 forbidden` with the message
   `Shop management keys are disabled on this deployment
   (SHOP_MANAGEMENT_KEYS=disabled)`.

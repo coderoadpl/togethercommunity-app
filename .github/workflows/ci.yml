@@ -396,9 +396,25 @@ jobs:
           VERSION: ${{ steps.derive.outputs.version }}
         run: |
           tag="v$VERSION"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-            echo "$tag already exists — release tags are immutable, nothing to do"
+          response="$RUNNER_TEMP/existing-tag.http"
+          if gh api --include "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > "$response"; then
+            object="$(sed '1,/^\r\{0,1\}$/d' "$response" | jq -ce '.object')"
+            type="$(jq -er '.type' <<< "$object")"
+            sha="$(jq -er '.sha' <<< "$object")"
+            while [ "$type" = "tag" ]; do
+              object="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object)"
+              type="$(jq -er '.type' <<< "$object")"
+              sha="$(jq -er '.sha' <<< "$object")"
+            done
+            if [ "$type" != "commit" ] || [ "$sha" != "$GITHUB_SHA" ]; then
+              echo "::error::$tag resolves to $type $sha, not commit $GITHUB_SHA; release tags are immutable"
+              exit 1
+            fi
+            echo "$tag already exists at $GITHUB_SHA — nothing to do"
             exit 0
+          elif ! head -n 1 "$response" | grep -Eq '^HTTP/[0-9.]+ 404([[:space:]]|$)'; then
+            echo "::error::Could not check whether $tag exists"
+            exit 1
           fi
           changelog="$RUNNER_TEMP/CHANGELOG.md"
           pnpm --silent exec tsx scripts/changelog.ts --version "$VERSION" > "$changelog"

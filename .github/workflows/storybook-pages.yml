@@ -11,13 +11,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: storybook-pages
   cancel-in-progress: true
 jobs:
   build:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -52,6 +51,11 @@ jobs:
           path: app/storybook-static
           retention-days: 1
   publish:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10

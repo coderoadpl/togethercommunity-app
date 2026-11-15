@@ -1728,6 +1728,18 @@ describe('team CLI', () => {
     expect(process.exitCode).toBe(5);
   });
 
+  it('sends an organization-only address to the server, which answers organization_managed', async () => {
+    h.listTenantTeam.mockResolvedValue(ok({
+      members: [],
+      organization: { id: 'org-1', slug: 'holding', name: 'Holding', members: [{ userId: 'org-user', email: 'org@example.test', name: null, role: 'owner', source: 'organization' }] },
+    }));
+    h.removeTenantAdmin.mockResolvedValue(err(appError('organization_managed', 'This access comes from the organization')));
+    await run('--json', 'team', 'remove', 'org@example.test');
+    expect(h.removeTenantAdmin).toHaveBeenCalledWith({ userId: 'org-user' });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'organization_managed' } });
+    expect(process.exitCode).toBe(30);
+  });
+
   it('propagates owner-only authorization failures without attempting a removal', async () => {
     h.listTenantTeam.mockResolvedValue(err(appError('forbidden', 'Owner role required')));
     await run('--json', 'team', 'remove', 'admin@example.test');

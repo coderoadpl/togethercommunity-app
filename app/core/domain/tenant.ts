@@ -366,9 +366,14 @@ export const tenantSupportPublicSchema = z.object({
 
 export type TenantSupportPublic = z.infer<typeof tenantSupportPublicSchema>;
 
+const staffGrantSourceSchema = z.enum(['direct', 'organization']);
+
+export type StaffGrantSource = z.infer<typeof staffGrantSourceSchema>;
+
 export const membershipSchema = z.object({
   tenant: tenantSchema,
   staffRole: staffRoleSchema,
+  source: staffGrantSourceSchema,
 });
 
 export type Membership = z.infer<typeof membershipSchema>;

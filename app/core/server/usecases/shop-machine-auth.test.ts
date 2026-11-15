@@ -102,7 +102,7 @@ const harness = (options: {
   });
   const findStaffGrant = vi.fn(async (userId: string, lookup: { tenantId: string } | { tenantSlug: string }): Promise<Membership | null> =>
     state.staffRole !== null && userId === OWNER_ID && 'tenantId' in lookup && lookup.tenantId === TENANT.id
-      ? { tenant: TENANT, staffRole: state.staffRole }
+      ? { tenant: TENANT, staffRole: state.staffRole, source: 'direct' }
       : null);
   const rateLimits = createRateLimits();
   const deps: ShopMachineAuthDeps = {

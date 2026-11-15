@@ -473,6 +473,7 @@ const fixture = (input: {
                 contentVersion: 1,
               },
               staffRole: 'admin',
+              source: 'direct',
             }
           : null,
       findMember: async (tenantId, userId) => {

@@ -735,6 +735,7 @@ const fixture = (input: {
               id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
             },
             staffRole: 'admin',
+            source: 'direct',
           }
         : null,
     findMember: async (tenantId, userId) => {

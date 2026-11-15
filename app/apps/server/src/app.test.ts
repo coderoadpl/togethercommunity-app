@@ -407,7 +407,7 @@ const deps = (input: {
       endLapsed: async () => 0,
       listLapsedTenantIds: async () => [],
     },
-    team: { list: async () => [], inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
+    team: { list: async () => [], findOrganizationStaff: async () => null, inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
     auditEvents: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
@@ -1045,7 +1045,7 @@ const scopedApp = (
     bannedByUserId: null,
     dmOptOutAt: null,
   };
-  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin' };
+  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin', source: 'direct' };
   const post: Post = {
     id: 'post-1',
     tenantId: acme.id,
@@ -6333,7 +6333,7 @@ describe('single-tenant mode', () => {
       },
       tenantAccess: {
         ...base.tenantAccess,
-        findStaffGrant: async () => ({ tenant, staffRole: 'owner' }),
+        findStaffGrant: async () => ({ tenant, staffRole: 'owner', source: 'direct' }),
       },
     });
   };
@@ -9715,7 +9715,7 @@ describe('staff member self-service routes', () => {
       authPort: { ...base.authPort, getAuthenticatedUser: async () => user, ensureUser: async () => ({ userId: user.userId, created: false }) },
       tenantAccess: {
         ...base.tenantAccess,
-        findStaffGrant: async () => ({ tenant: acme, staffRole }),
+        findStaffGrant: async () => ({ tenant: acme, staffRole, source: 'direct' }),
         findMember: async (tenantId, userId) => rows.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null,
       },
       members: {
@@ -11071,7 +11071,7 @@ describe('direct public sales-link checkout', () => {
     const h = await directSalesLinkApp();
     const authenticated = vi.fn(async () => actor === 'anonymous' ? null : ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null }));
     h.base.authPort.getAuthenticatedUser = authenticated;
-    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const }));
+    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const, source: 'direct' as const }));
     h.base.tenantAccess.findStaffGrant = staffGrant;
     const decrypt = vi.fn((stored: { ciphertext: string }) => ok(stored.ciphertext));
     h.base.secretCrypto.decrypt = decrypt;
@@ -11265,7 +11265,7 @@ describe('direct public sales-link checkout', () => {
   it.each([false, true])('never provisions the supplied third-party identity with the staff test switch enabled: %s', async (enabled) => {
     const h = await directSalesLinkApp();
     h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
-    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin', source: 'direct' });
     h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
     h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
     h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });

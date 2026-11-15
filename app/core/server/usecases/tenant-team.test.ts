@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, StaffRole, TenantAuditEventInput, TenantTeamMember } from '#core/domain/index.js';
+import type { Identity, StaffRole, TenantAuditEventInput, TenantTeamMember, TenantTeamOrganization } from '#core/domain/index.js';
 
 import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 
@@ -25,6 +25,13 @@ const identity = (staffRole: StaffRole | null = 'owner'): Identity => ({
   memberVideoAutoplay: false,
 });
 
+const holding: TenantTeamOrganization = {
+  id: 'org-1',
+  slug: 'holding',
+  name: 'Holding',
+  members: [{ userId: 'org-admin', email: 'org-admin@acme.test', name: 'Org admin', role: 'admin', source: 'organization' }],
+};
+
 const harness = () => {
   const members: TenantTeamMember[] = [
     { userId: 'owner-1', email: 'owner@acme.test', name: 'Owner', role: 'owner', status: 'active' },
@@ -32,11 +39,13 @@ const harness = () => {
     { userId: 'owner-2', email: 'second-owner@acme.test', name: 'Second owner', role: 'owner', status: 'active' },
   ];
   const audit: TenantAuditEventInput[] = [];
+  let organization: TenantTeamOrganization | null = null;
   const ensured: string[] = [];
   const requestMagicLink = vi.fn<TenantTeamDeps['authPort']['requestMagicLink']>(async () => undefined);
   const deps: TenantTeamDeps = {
     team: {
       list: vi.fn(async () => members),
+      findOrganizationStaff: vi.fn(async () => organization),
       inviteAdmin: vi.fn(async (_tenantId, userId, email, _id, event) => {
         if (members.some((member) => member.userId === userId)) return false;
         members.push({ userId, email, name: null, role: 'admin', status: 'invited' });
@@ -75,14 +84,41 @@ const harness = () => {
     baseDomain: 'together.test',
     singleTenantMode: false,
   };
-  return { deps, members, audit, ensured, requestMagicLink };
+  const linkOrganization = (value: TenantTeamOrganization) => { organization = value; };
+  return { deps, members, audit, ensured, requestMagicLink, linkOrganization };
 };
 
 describe('tenant team', () => {
   it('allows an owner to list staff in the selected tenant', async () => {
     const h = harness();
-    expect(await listTenantTeam({ identity: identity() }, h.deps)).toEqual({ ok: true, value: { members: h.members } });
+    expect(await listTenantTeam({ identity: identity() }, h.deps)).toEqual({ ok: true, value: { members: h.members, organization: null } });
     expect(h.deps.team.list).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('lists the organization staff of a linked workspace next to the unchanged direct entries', async () => {
+    const h = harness();
+    const original = structuredClone(h.members);
+    h.linkOrganization(holding);
+    expect(await listTenantTeam({ identity: identity() }, h.deps)).toEqual({ ok: true, value: { members: original, organization: holding } });
+    expect(h.deps.team.findOrganizationStaff).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('refuses to remove a user whose only access comes from the organization', async () => {
+    const h = harness();
+    h.linkOrganization(holding);
+    expect(await removeTenantAdmin({ identity: identity() }, { userId: 'org-admin' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'organization_managed' } });
+    expect(h.deps.team.removeAdmin).not.toHaveBeenCalled();
+    expect(h.deps.team.revokeInvitation).not.toHaveBeenCalled();
+    expect(h.audit).toEqual([]);
+  });
+
+  it('removes the direct grant of an administrator who also has an organization role', async () => {
+    const h = harness();
+    h.linkOrganization({ ...holding, members: [...holding.members, { userId: 'admin-1', email: 'admin@acme.test', name: null, role: 'owner', source: 'organization' }] });
+    expect(await removeTenantAdmin({ identity: identity() }, { userId: 'admin-1' }, h.deps))
+      .toEqual({ ok: true, value: { userId: 'admin-1' } });
+    expect(h.deps.team.removeAdmin).toHaveBeenCalledWith('tenant-1', 'admin-1', expect.objectContaining({ kind: 'team.admin_removed' }));
   });
 
   it('normalizes the email, records an invitation, audits, and queues the sign-in email', async () => {

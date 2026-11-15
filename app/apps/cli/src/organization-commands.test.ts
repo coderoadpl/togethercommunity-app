@@ -28,7 +28,7 @@ describe('organization CLI selection', () => {
 describe('organization CLI workspace selection', () => {
   const tenants = () => ({
     listTenants: vi.fn(async () => ok({
-      tenants: [{ tenant: { id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' as const, plan: 'hosted' as const, contentVersion: 1 }, staffRole: 'owner' as const }],
+      tenants: [{ tenant: { id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' as const, plan: 'hosted' as const, contentVersion: 1 }, staffRole: 'owner' as const, source: 'direct' as const }],
       memberTenants: [],
       canCreateTenant: false,
       dataResetEnvironment: null,

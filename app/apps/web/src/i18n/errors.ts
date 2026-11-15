@@ -59,6 +59,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'invalid_credentials':
       return t.errors.messageInvalidCredentials;
     case 'forbidden':
+    case 'organization_managed':
       return t.errors.messageForbidden;
     case 'banned':
       return t.errors.messageBanned;
@@ -145,6 +146,7 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'fulfilment_conflict':
     case 'shipx_unavailable':
     case 'shipx_rejected':
+    case 'organization_managed':
     case 'internal':
       return null;
   }

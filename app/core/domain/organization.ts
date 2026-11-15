@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
+import type { StaffRole } from './identity.js';
 import { operatorTenantSlugSchema } from './operator-tenant.js';
 import { shipxEnvironmentSchema, shipxSenderSchema } from './shipx.js';
-import { isReservedTenantSlug, tenantSchema } from './tenant.js';
+import { isReservedTenantSlug, tenantSchema, type StaffGrantSource } from './tenant.js';
 import { tenantSecretKeySchema } from './tenant-secret.js';
 
 const organizationSlugSchema = operatorTenantSlugSchema
@@ -23,6 +24,24 @@ export type Organization = z.infer<typeof organizationSchema>;
 export const organizationRoleSchema = z.enum(['owner', 'admin']);
 
 export type OrganizationRole = z.infer<typeof organizationRoleSchema>;
+
+export const ORGANIZATION_DERIVED_STAFF_ROLE: Readonly<Record<OrganizationRole, StaffRole>> = {
+  owner: 'owner',
+  admin: 'admin',
+};
+
+const STAFF_ROLE_RANK: Readonly<Record<StaffRole, number>> = { admin: 1, owner: 2 };
+
+export const effectiveStaffGrant = (
+  direct: StaffRole | null,
+  organization: OrganizationRole | null,
+): { staffRole: StaffRole; source: StaffGrantSource } | null => {
+  const derived = organization === null ? null : ORGANIZATION_DERIVED_STAFF_ROLE[organization];
+  if (direct !== null && (derived === null || STAFF_ROLE_RANK[direct] >= STAFF_ROLE_RANK[derived])) {
+    return { staffRole: direct, source: 'direct' };
+  }
+  return derived === null ? null : { staffRole: derived, source: 'organization' };
+};
 
 export const organizationMemberSchema = z.object({
   id: z.string().min(1),

@@ -1,4 +1,4 @@
-import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
+import { tenantTeamMemberSchema, tenantTeamOrganizationSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { shopManagementKeyEventSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
@@ -1541,7 +1541,10 @@ export const tenantRoutingOutputSchema = z.object({
   routing: tenantRoutingSchema,
 });
 
-export const tenantTeamOutputSchema = z.object({ members: z.array(tenantTeamMemberSchema) });
+export const tenantTeamOutputSchema = z.object({
+  members: z.array(tenantTeamMemberSchema),
+  organization: tenantTeamOrganizationSchema.nullable(),
+});
 export const tenantTeamAddSchema = addTenantAdminInputSchema;
 export const tenantTeamRemoveSchema = removeTenantAdminInputSchema;
 export const tenantTeamInvitationOutputSchema = z.object({ status: z.literal('invitation_sent') });

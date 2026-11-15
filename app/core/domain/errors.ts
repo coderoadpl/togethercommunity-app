@@ -29,6 +29,7 @@ export const ERROR_CODES = [
   'fulfilment_conflict',
   'shipx_unavailable',
   'shipx_rejected',
+  'organization_managed',
   'internal',
 ] as const;
 

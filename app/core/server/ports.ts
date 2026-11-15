@@ -3,6 +3,7 @@ import type {
   StorageListPage,
   StorageReferenceInventory,
   TenantTeamMember,
+  TenantTeamOrganization,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
   ActivitySummaryQuery,
@@ -2779,6 +2780,7 @@ export interface LessonEditionTransaction {
 
 export interface TenantTeamRepository {
   list(tenantId: string): Promise<TenantTeamMember[]>;
+  findOrganizationStaff(tenantId: string): Promise<TenantTeamOrganization | null>;
   inviteAdmin(tenantId: string, userId: string, email: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   activateInvitation(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   revokeInvitation(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;

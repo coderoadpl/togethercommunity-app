@@ -13,6 +13,7 @@ const acme: Membership = {
     id: 't-acme', slug: 'acme', name: 'Acme Inc', status: 'active', plan: 'hosted', contentVersion: 1,
   },
   staffRole: 'owner',
+  source: 'direct',
 };
 
 const member: Member = {

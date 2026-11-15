@@ -17,7 +17,9 @@ import {
   SMOKE_TENANT_ID,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
+  effectiveStaffGrant,
   orderBillingDataSchema,
+  organizationRoleSchema,
   courseLessonSchema,
   lessonAttachmentSchema,
   courseModuleSchema,
@@ -56,6 +58,8 @@ import {
   tenantApiKeySchema,
   tenantSecretSchema,
   tenantTeamMemberSchema,
+  tenantTeamOrganizationSchema,
+  ORGANIZATION_DERIVED_STAFF_ROLE,
   termsConsentSchema,
   type Course,
   type CourseLesson,
@@ -218,6 +222,8 @@ import {
   spaceEvents,
   spaceSeenMarks,
   spaceSubscriptions,
+  organizationMembers,
+  organizations,
   tenantAdmins,
   tenantAdminInvitations,
   tenantApiKeys,
@@ -4928,6 +4934,28 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
       ...invited.map((row) => tenantTeamMemberSchema.parse({ ...row, name: null, role: 'admin', status: 'invited' })),
     ];
   },
+  findOrganizationStaff: async (tenantId) => {
+    const linked = await db.select({ id: organizations.id, slug: organizations.slug, name: organizations.name })
+      .from(tenants)
+      .innerJoin(organizations, and(eq(organizations.id, tenants.organizationId), eq(organizations.status, 'active')))
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const organization = linked[0];
+    if (organization === undefined) return null;
+    const rows = await db.select({
+      userId: organizationMembers.userId,
+      email: user.email,
+      name: user.name,
+      role: organizationMembers.role,
+    }).from(organizationMembers)
+      .innerJoin(user, eq(organizationMembers.userId, user.id))
+      .where(eq(organizationMembers.organizationId, organization.id))
+      .orderBy(desc(organizationMembers.role), asc(user.email));
+    return tenantTeamOrganizationSchema.parse({
+      ...organization,
+      members: rows.map(({ role, ...row }) => ({ ...row, role: ORGANIZATION_DERIVED_STAFF_ROLE[role], source: 'organization' })),
+    });
+  },
   inviteAdmin: async (tenantId, userId, email, id, audit) => db.transaction(async (tx) => {
     await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for('update');
     const active = await tx.select({ id: tenantAdmins.id }).from(tenantAdmins).where(and(
@@ -4981,7 +5009,7 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
 });
 
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {
-  const baseQuery = () =>
+  const grantQuery = (userId: string) =>
     db
       .select({
         id: tenants.id,
@@ -4990,14 +5018,28 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         status: tenants.status,
         plan: tenants.plan,
         contentVersion: tenants.contentVersion,
-        staffRole: tenantAdmins.role,
+        directRole: tenantAdmins.role,
+        organizationRole: organizationMembers.role,
       })
-      .from(tenantAdmins)
-      .innerJoin(tenants, eq(tenantAdmins.tenantId, tenants.id));
+      .from(tenants)
+      .leftJoin(tenantAdmins, and(eq(tenantAdmins.tenantId, tenants.id), eq(tenantAdmins.userId, userId)))
+      .leftJoin(organizations, and(eq(organizations.id, tenants.organizationId), eq(organizations.status, 'active')))
+      .leftJoin(organizationMembers, and(
+        eq(organizationMembers.organizationId, organizations.id),
+        eq(organizationMembers.organizationId, tenants.organizationId),
+        eq(organizationMembers.userId, userId),
+      ));
+  const hasGrant = or(isNotNull(tenantAdmins.id), isNotNull(organizationMembers.id));
 
-  const toMembership = (row: Tenant & { staffRole: string }): Membership | null => {
-    const staffRole = parseStaffRole(row.staffRole);
-    return staffRole
+  const toMembership = (
+    row: Tenant & { directRole: string | null; organizationRole: string | null },
+  ): Membership | null => {
+    const organizationRole = organizationRoleSchema.safeParse(row.organizationRole);
+    const grant = effectiveStaffGrant(
+      row.directRole === null ? null : parseStaffRole(row.directRole),
+      organizationRole.success ? organizationRole.data : null,
+    );
+    return grant
       ? {
           tenant: {
             id: row.id,
@@ -5007,14 +5049,14 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
             plan: row.plan,
             contentVersion: row.contentVersion,
           },
-          staffRole,
+          ...grant,
         }
       : null;
   };
 
   return {
     listTenantsForStaff: async (userId) => {
-      const rows = await baseQuery().where(eq(tenantAdmins.userId, userId));
+      const rows = await grantQuery(userId).where(hasGrant);
       const memberships: Membership[] = [];
       for (const row of rows) {
         const membership = toMembership(row);
@@ -5051,8 +5093,8 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
     findStaffGrant: async (userId, lookup) => {
       const tenantCondition =
         'tenantId' in lookup ? eq(tenants.id, lookup.tenantId) : eq(tenants.slug, lookup.tenantSlug);
-      const rows = await baseQuery()
-        .where(and(eq(tenantAdmins.userId, userId), tenantCondition))
+      const rows = await grantQuery(userId)
+        .where(and(tenantCondition, hasGrant))
         .limit(1);
       const row = rows[0];
       return row ? toMembership(row) : null;

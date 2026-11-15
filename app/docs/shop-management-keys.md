@@ -388,35 +388,24 @@ deleted keys, stays.
 
 ## Rollback
 
-The schema and migration `0155_shop_management_keys` stay in place. The
-previous release ignores the `kind` and `issued_by_user_id` columns of
-`tenant_api_keys` and inserts its keys with the `legacy` default, and it never
-reads the `shop_management_key_events` table, which keeps the whole key
-history. Its `/api/health` reports `schemaFingerprintMatch: false`, which is
-expected while the newer schema remains.
+A retreat to the previous release needs no purge and no data step. Migration
+`0155_shop_management_keys` only adds the tables `shop_management_keys`,
+`shop_management_key_rate_limit_buckets` and `shop_management_key_events`; it
+does not change `tenant_api_keys` or any other existing table. The previous
+release reads `tenant_api_keys` exactly as before, and nothing in it reads the
+three new tables, so its key list, import audit and API-key authentication
+answer as they did before this release, whatever shop management keys exist.
+Its `/api/health` reports `schemaFingerprintMatch: false`, which is expected
+while the newer schema remains.
 
-Shop management keys write nothing to the workspace audit list, so the
-previous release's audit list keeps working with no purge of history.
+Keep the schema and the migration when rolling back the binary. The shop
+management keys, their buckets and their history stay in place, unused by the
+previous release, for a later return to this release; a key that has not
+expired by then works again.
 
-The previous release reads every key row through its own key schema, which
-knows only the legacy scopes, so it fails to parse a shop management key row.
-While a workspace still holds a shop management key, revoked or not, that
-release answers `500` on the workspace's key list (`GET /api/api-keys`) and
-import-audit routes, and on every API-key request made with the shop key
-itself; it never authenticates a shop management key. Its revoke route revokes
-such a key but then answers `500`. So purge before rolling back:
-
-1. Set `SHOP_MANAGEMENT_KEYS=disabled` and deploy. Shop backends now get `404`
-   and nobody can create a new shop key.
-2. In every workspace that has shop management keys, sign in as its owner and
-   purge them: `pnpm --silent run cli --tenant <slug> api-key purge-shop-management --yes`
-   (or `POST /api/api-keys/shop-management/purge`). Each deleted key gets a
-   `purged` event in its history.
-3. Verify each workspace: `GET /api/api-keys` (CLI `api-key list`) lists only
-   keys of kind `legacy`.
-4. Roll back the binary. Keep the schema and the migration: the
-   `shop_management_key_events` table stays, is ignored by the previous
-   release and keeps every key's creation, revocation and purge events and its
-   accepted keyed requests for a later return to this release.
+The off switch (`SHOP_MANAGEMENT_KEYS=disabled`) and the purge remain owner
+controls, not rollback steps: the switch stops every shop route on a
+deployment, and the purge deletes a workspace's shop management keys, for
+example when a key may have leaked.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).

@@ -476,3 +476,23 @@ describe('shop management key purge', () => {
     expect(await eventIds(PURGE_TENANT)).toEqual([]);
   });
 });
+
+describe('shop management key rollback guide', () => {
+  const guide = readFileSync('docs/shop-management-keys.md', 'utf8');
+  const rollback = /## Rollback\n([\s\S]*?)(?=\n## |\nSee also)/u.exec(guide)?.[1] ?? '';
+  const migration = readFileSync('drizzle/0155_shop_management_keys.sql', 'utf8');
+
+  it('names every table the migration adds, and the migration changes no existing table', () => {
+    const created = [...migration.matchAll(/CREATE TABLE "?(\w+)"?/gu)].map((match) => match[1]);
+    expect(created).toEqual(['shop_management_keys', 'shop_management_key_rate_limit_buckets', 'shop_management_key_events']);
+    expect(migration).not.toMatch(/^\s*(ALTER|DROP|UPDATE|DELETE|INSERT|TRUNCATE)\b/mu);
+    for (const name of created) expect(rollback).toContain(`\`${String(name)}\``);
+  });
+
+  it('needs no purge before a retreat and keeps the switch and the purge as owner controls', () => {
+    expect(rollback).toMatch(/needs no purge/u);
+    expect(rollback).toMatch(/reads `tenant_api_keys` exactly as before/u);
+    expect(rollback).not.toMatch(/^\d\. /mu);
+    expect(rollback).toMatch(/owner\s+controls, not rollback steps/u);
+  });
+});

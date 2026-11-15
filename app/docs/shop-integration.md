@@ -54,9 +54,9 @@ a substitute for selecting the correct workspace host.
 CLI reads using the saved origin profile are:
 
 ```sh
-pnpm run cli --api-url https://acme.togethercommunity.app --tenant acme --json tenant settings
-pnpm run cli --api-url https://acme.togethercommunity.app --tenant acme --json tenant-secret list
-pnpm run cli --api-url https://acme.togethercommunity.app --tenant acme --json public payment-config
+pnpm --silent run cli --api-url https://acme.togethercommunity.app --tenant acme --json tenant settings
+pnpm --silent run cli --api-url https://acme.togethercommunity.app --tenant acme --json tenant-secret list
+pnpm --silent run cli --api-url https://acme.togethercommunity.app --tenant acme --json public payment-config
 ```
 
 Equivalent configuration reads include:
@@ -382,7 +382,7 @@ ledger, not from a caller-supplied paid flag or a browser redirect.
 Always request live mode explicitly for operational automation:
 
 ```sh
-pnpm run cli --api-url https://acme.togethercommunity.app --tenant acme --json orders list --mode live --status paid --page 1 --page-size 100
+pnpm --silent run cli --api-url https://acme.togethercommunity.app --tenant acme --json orders list --mode live --status paid --page 1 --page-size 100
 ```
 
 The corresponding staff-session read is

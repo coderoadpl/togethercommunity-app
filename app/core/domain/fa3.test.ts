@@ -59,6 +59,15 @@ describe('FA(3) renderer', () => {
     expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
   });
 
+  it('renders the quantity, unit net and position net of a multi-unit position', () => {
+    const xml = renderFa3Invoice({ ...input, grossAmountCents: 9000, discountCents: 0, positions: [
+      { name: 'Poster', quantity: 3, grossCents: 9000, netCents: 7317, vatCents: 1683, vat: { kind: 'rate', percent: 23 } },
+    ] });
+    expect(xml).toContain('<P_7>Poster</P_7><P_8A>szt.</P_8A><P_8B>3</P_8B><P_9A>24.39</P_9A><P_11>73.17</P_11><P_12>23</P_12>');
+    expect(xml).toContain('<P_13_1>73.17</P_13_1><P_14_1>16.83</P_14_1>');
+    expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
+  });
+
   it('is deterministic and emits the official FA(3) identity in schema order', () => {
     const first = renderFa3Invoice(input);
     const second = renderFa3Invoice(input);

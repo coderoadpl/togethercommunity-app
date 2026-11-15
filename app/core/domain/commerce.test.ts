@@ -4,7 +4,10 @@ import {
   SUBSCRIPTION_GRACE_DAYS,
   allocateOrderLineGross,
   billingDataSchema,
+  checkoutSnapshotSchema,
   orderBillingDataSchema,
+  orderLineQuantity,
+  orderLineSchema,
   orderSchema,
   orderListItemSchema,
   exportOrdersQuerySchema,
@@ -29,6 +32,28 @@ describe('allocateOrderLineGross', () => {
   it('returns zeros for a zero total', () => {
     expect(allocateOrderLineGross([{ grossCents: 0 }, { grossCents: 0 }], 100)).toEqual([0, 0]);
     expect(allocateOrderLineGross([], 100)).toEqual([]);
+  });
+});
+
+describe('order line quantity', () => {
+  const line = { productId: 'p1', name: 'Poster', productType: 'physical', grossCents: 9000, netCents: 7317, vatCents: 1683, vatRate: 23, vatExemptionBasis: null, issuedCount: 0 } as const;
+
+  it('reads a stored line without a quantity as one unit', () => {
+    const parsed = orderLineSchema.parse(line);
+    expect(parsed).not.toHaveProperty('quantity');
+    expect(orderLineQuantity(parsed)).toBe(1);
+  });
+
+  it('keeps a positive integer quantity on order and checkout snapshot lines', () => {
+    expect(orderLineQuantity(orderLineSchema.parse({ ...line, quantity: 3 }))).toBe(3);
+    expect(checkoutSnapshotSchema.parse({
+      id: 'snapshot-1', tenantId: 'tenant-1', salesLinkId: null, currency: 'PLN', createdAt: '2026-11-15T10:00:00.000Z',
+      lines: [{ ...line, quantity: 3 }],
+    }).lines[0]?.quantity).toBe(3);
+  });
+
+  it.each([0, -1, 1.5])('rejects quantity %s', (quantity) => {
+    expect(orderLineSchema.safeParse({ ...line, quantity }).success).toBe(false);
   });
 });
 

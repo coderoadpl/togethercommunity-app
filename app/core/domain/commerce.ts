@@ -127,6 +127,7 @@ export const orderLineSchema = z.object({
   productId: z.string().min(1),
   name: z.string().min(1),
   productType: orderLineTypeSchema,
+  quantity: z.number().int().min(1).optional(),
   grossCents: z.number().int().nonnegative(),
   netCents: z.number().int().nonnegative(),
   vatRate: productVatRateSchema.nullable(),
@@ -139,6 +140,8 @@ export const orderLineSchema = z.object({
 });
 
 export type OrderLine = z.infer<typeof orderLineSchema>;
+
+export const orderLineQuantity = (line: { quantity?: number | undefined }): number => line.quantity ?? 1;
 
 export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCents: number): number[] => {
   const total = lines.reduce((sum, line) => sum + line.grossCents, 0);

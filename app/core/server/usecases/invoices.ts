@@ -6,12 +6,14 @@ import {
   forbidden,
   integrationNotConfigured,
   invoiceVatTreatmentsEqual,
+  lineInvoicePositions,
+  linesNeedInvoicePositions,
   notFound,
   ok,
   orderBillingDataSchema,
+  orderLineQuantity,
   renderFa3Invoice,
   resolveOrderVat,
-  splitProductGross,
   validateFa3Structure,
   validation,
   type AppError,
@@ -52,14 +54,15 @@ const invoicePositions = (order: Order, fallback: InvoiceVatTreatment): InvoiceP
   const lines = order.lines;
   if (lines === undefined) return undefined;
   const amounts = allocatePaidOrderLineGross(lines, order.amountCents);
-  return lines.map((line, index) => {
-    const grossCents = amounts[index] ?? 0;
+  return lines.flatMap((line, index) => {
     const vat: InvoiceVatTreatment = line.vatRate === 'exempt'
       ? { kind: 'exempt', basisKind: line.vatExemptionBasisKind ?? (fallback.kind === 'exempt' ? fallback.basisKind : 'other'), basis: line.vatExemptionBasis ?? (fallback.kind === 'exempt' ? fallback.basis : '') }
       : line.vatRate === null ? fallback : { kind: 'rate', percent: line.vatRate };
-    return { name: line.name, ...splitProductGross(grossCents, vat.kind === 'exempt' ? 'exempt' : vat.percent), vat };
+    return lineInvoicePositions({ name: line.name, quantity: orderLineQuantity(line), grossCents: amounts[index] ?? 0, vat });
   });
 };
+
+const itemizedInvoice = (order: Order): boolean => linesNeedInvoicePositions(order.lines ?? []);
 
 export interface InvoiceDeps {
   invoices: InvoiceRepository;
@@ -225,7 +228,7 @@ const issueIfirma = async (
     billing,
     productName: order.lines?.length === 1 ? order.lines[0]?.name ?? order.productTitle : order.productTitle,
     vat: vatResolution.treatment,
-    ...((order.lines?.length ?? 0) > 1 ? { positions: invoicePositions(order, vatResolution.treatment) ?? [] } : {}),
+    ...(itemizedInvoice(order) ? { positions: invoicePositions(order, vatResolution.treatment) ?? [] } : {}),
     providerInvoiceId: invoice.providerInvoiceId,
     onProviderInvoiceCreateUncertain: async () => {
       providerCreateUncertain = true;
@@ -353,7 +356,7 @@ const issueKsef = async (
   const xml = renderFa3Invoice({
     invoiceNumber: allocated.p2,
     issueDate,
-    ...((order.lines?.length ?? 0) > 1 ? { saleDate: warsawDate(order.createdAt) } : {}),
+    ...(itemizedInvoice(order) ? { saleDate: warsawDate(order.createdAt) } : {}),
     generatedAt: createdAt,
     seller: {
       nip: credentials.value.contextNip,
@@ -372,7 +375,7 @@ const issueKsef = async (
     grossAmountCents: order.amountCents,
     discountCents: order.discountCents,
     vat: vatResolution.treatment,
-    ...((order.lines?.length ?? 0) > 1 ? { positions: invoicePositions(order, vatResolution.treatment) ?? [] } : {}),
+    ...(itemizedInvoice(order) ? { positions: invoicePositions(order, vatResolution.treatment) ?? [] } : {}),
   });
   const structural = validateFa3Structure(xml);
   if (!structural.ok) return err(validation('Generated FA(3) failed local validation', structural.errors));

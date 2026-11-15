@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderFa3Invoice } from '#core/domain/index.js';
+import { lineInvoicePositions, renderFa3Invoice } from '#core/domain/index.js';
 
 import { createFa3XsdValidator } from './fa3-validator.js';
 
@@ -57,6 +57,20 @@ describe('FA(3) XSD validator', () => {
       vat: { kind: 'exempt', basisKind, basis: 'art. 113 ust. 1' },
     });
     expect(await createFa3XsdValidator().validate(exemptXml)).toEqual({ ok: true, value: undefined });
+  });
+
+  it('accepts multi-unit and split positions of a discounted line', async () => {
+    const positions = lineInvoicePositions({ name: 'Poster', quantity: 3, grossCents: 10001, vat: { kind: 'rate', percent: 23 } });
+    const quantityXml = renderFa3Invoice({
+      invoiceNumber: 'FV/2026/000005', issueDate: '2026-11-15', saleDate: '2026-11-15', generatedAt: '2026-11-15T10:00:00Z',
+      seller: { nip: '5555555555', name: 'Seller', addressLine: '1 Simple St' },
+      buyer: null, productName: 'Poster', grossAmountCents: 10001, discountCents: 1999, vat: { kind: 'rate', percent: 23 },
+      positions,
+    });
+
+    expect(quantityXml).toContain('<P_8B>2</P_8B><P_9A>27.10</P_9A><P_11>54.20</P_11>');
+    expect(quantityXml).toContain('<P_8B>1</P_8B><P_9A>27.11</P_9A><P_11>27.11</P_11>');
+    expect(await createFa3XsdValidator().validate(quantityXml)).toEqual({ ok: true, value: undefined });
   });
 
   it('rejects a structurally plausible schema violation', async () => {

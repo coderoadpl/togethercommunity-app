@@ -365,3 +365,16 @@ it('sends the shipping fee as one more iFirma position without new payload field
   ]);
   expect(payload.Zaplacono).toBe(63.99);
 });
+
+it('sends the quantity and the unit gross of multi-unit iFirma positions', () => {
+  const payload = ifirmaInvoicePayload({ ...input, order: { ...input.order, amountCents: 10001 }, positions: [
+    { name: 'Poster', quantity: 2, grossCents: 6666, netCents: 5420, vatCents: 1246, vat: { kind: 'rate', percent: 23 } },
+    { name: 'Poster', grossCents: 3335, netCents: 2711, vatCents: 624, vat: { kind: 'rate', percent: 23 } },
+    { name: 'Workshop', quantity: 3, grossCents: 9000, netCents: 9000, vatCents: 0, vat: { kind: 'exempt', basisKind: 'art_113_1', basis: 'art. 113 ust. 1' } },
+  ] }, '2026-11-15');
+  expect(payload.Pozycje).toEqual([
+    { StawkaVat: 0.23, Ilosc: 2, CenaJednostkowa: 33.33, NazwaPelna: 'Poster', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
+    { StawkaVat: 0.23, Ilosc: 1, CenaJednostkowa: 33.35, NazwaPelna: 'Poster', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
+    { StawkaVat: null, Ilosc: 3, CenaJednostkowa: 30, NazwaPelna: 'Workshop', Jednostka: 'szt.', TypStawkiVat: 'ZW', PodstawaPrawna: 'art. 113 ust. 1' },
+  ]);
+});

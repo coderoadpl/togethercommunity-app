@@ -53,6 +53,7 @@ const shopManagementKeyDenial = (ctx: Ctx): AppError | null =>
     && ctx.identity.emailVerified
     && ctx.impersonation === undefined
     && ctx.capabilities === undefined
+    && ctx.machineActor === undefined
     ? null
     : forbidden('Shop management keys require a verified owner session');
 
@@ -169,6 +170,27 @@ export const revokeTenantApiKey = async (
     : await deps.tenantApiKeys.revoke(tenant.value, input.id, deps.clock.nowIso());
   if (!revoked) return err(notFound(`No API key "${input.id}" in this tenant`));
   return ok(toTenantApiKeyPublic(revoked));
+};
+
+export const purgeShopManagementKeys = async (
+  ctx: Ctx,
+  deps: Pick<ApiKeyDeps, 'tenantApiKeys' | 'ids' | 'clock'>,
+): Promise<Result<{ purged: number }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'api-key:write');
+  if (!tenant.ok) return tenant;
+  const denial = shopManagementKeyDenial(ctx);
+  if (denial !== null) return err(denial);
+
+  const purged = await deps.tenantApiKeys.purgeShopManagement(tenant.value, (count) => ({
+    id: deps.ids.nextId(),
+    tenantId: tenant.value,
+    kind: 'api_key.shop_management_purged',
+    ...tenantAuditActor(ctx),
+    subjectMemberId: null,
+    reason: `${String(count)} shop management keys purged`,
+    at: deps.clock.nowIso(),
+  }));
+  return ok({ purged });
 };
 
 export const listImportAuditForApiKey = async (

@@ -61,6 +61,7 @@ export const tenantAuditEventSchema = z.object({
     'team.admin_removed',
     'api_key.shop_management_created',
     'api_key.shop_management_revoked',
+    'api_key.shop_management_purged',
   ]),
   actorUserId: z.string().min(1),
   actorEmail: z.string().min(1),

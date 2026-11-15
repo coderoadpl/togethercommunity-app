@@ -31,6 +31,7 @@ import {
   apiKeyImportAuditOutputSchema,
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
+  apiKeysShopManagementPurgeOutputSchema,
   authConfigOutputSchema,
   authResolveOutputSchema,
   avatarRemoveOutputSchema,
@@ -2456,6 +2457,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.apiKeyRevoke.method,
       API_ROUTES.apiKeyRevoke.path.replace(':id', encodeURIComponent(input.id)),
       apiKeyRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
+  purgeShopManagementKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementPurge.method,
+      API_ROUTES.apiKeysShopManagementPurge.path,
+      apiKeysShopManagementPurgeOutputSchema,
       undefined,
       signal,
     ),

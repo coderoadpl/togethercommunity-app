@@ -2356,6 +2356,7 @@ export const tenantAuditEvents = pgTable(
         'team.admin_removed',
         'api_key.shop_management_created',
         'api_key.shop_management_revoked',
+        'api_key.shop_management_purged',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

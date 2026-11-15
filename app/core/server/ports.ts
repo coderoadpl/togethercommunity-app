@@ -874,6 +874,7 @@ export interface TenantApiKeyRepository {
     revokedAt: string,
     audit: TenantAuditEventInput,
   ): Promise<TenantApiKey | null>;
+  purgeShopManagement(tenantId: string, audit: (purged: number) => TenantAuditEventInput): Promise<number>;
 }
 
 export interface ImportAuditEventRepository {

@@ -340,6 +340,7 @@ const deps = (input: {
       revoke: async () => null,
       createShopManagement: async () => undefined,
       revokeShopManagement: async () => null,
+      purgeShopManagement: async () => 0,
     },
     importAuditEvents: {
       append: async () => undefined,
@@ -1238,6 +1239,7 @@ const marketingApp = (
     revoke: async () => null,
     createShopManagement: async () => undefined,
     revokeShopManagement: async () => null,
+    purgeShopManagement: async () => 0,
   };
   return buildApp(configured);
 };
@@ -1276,6 +1278,7 @@ const transactionalM2mApp = (options: {
     revoke: async () => null,
     createShopManagement: async () => undefined,
     revokeShopManagement: async () => null,
+    purgeShopManagement: async () => 0,
   };
   configured.emailTransports = {
     resolve: async () => options.transport === false ? null : configured.email,
@@ -1322,6 +1325,7 @@ const importM2mApp = (options: {
     revoke: async () => null,
     createShopManagement: async () => undefined,
     revokeShopManagement: async () => null,
+    purgeShopManagement: async () => 0,
   };
   configured.importContent = {
     commit: async (_tenantId, mutation) => {
@@ -1957,6 +1961,7 @@ describe('marketing HTTP surfaces', () => {
       revoke: async () => null,
       createShopManagement: async () => undefined,
       revokeShopManagement: async () => null,
+      purgeShopManagement: async () => 0,
     };
     const authenticated = await authenticateMarketingApiKey(new Headers({
       host: 'acme.localhost:48730',

@@ -10,6 +10,7 @@ import {
   apiKeyCreateOutputSchema,
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
+  apiKeysShopManagementPurgeOutputSchema,
   SHOP_CATALOG_ROUTES,
 } from '#core/contract/index.js';
 
@@ -29,6 +30,39 @@ let enabledApp: ReturnType<typeof buildApp>;
 let disabledApp: ReturnType<typeof buildApp>;
 let ownerToken: string;
 let sessionLookups = 0;
+
+const previousReleaseApiKeySchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  name: z.string(),
+  keyHash: z.string(),
+  scopes: z.array(z.enum([
+    'report:read',
+    'enrollment',
+    'subscriptions:read',
+    'subscriptions:adopt',
+    'marketing',
+    'transactional',
+    'import:content',
+    'import:users',
+  ])).min(1).nullable(),
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime().nullable(),
+  revokedAt: z.string().datetime().nullable(),
+});
+
+const previousReleaseKeyRows = () => database.db
+  .select({
+    id: tenantApiKeys.id,
+    tenantId: tenantApiKeys.tenantId,
+    name: tenantApiKeys.name,
+    keyHash: tenantApiKeys.keyHash,
+    scopes: tenantApiKeys.scopes,
+    createdAt: tenantApiKeys.createdAt,
+    expiresAt: tenantApiKeys.expiresAt,
+    revokedAt: tenantApiKeys.revokedAt,
+  })
+  .from(tenantApiKeys);
 
 const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal(true), data: schema });
 const errorOf = async (response: Response) =>
@@ -158,5 +192,37 @@ describe('SHOP_MANAGEMENT_KEYS=enabled', () => {
     });
     expect(response.status).toBe(200);
     expect(sessionLookups).toBe(0);
+  });
+});
+
+describe('shop management key purge route', () => {
+  it.each(['enabled', 'disabled'] as const)('lets the owner purge every shop management key while the switch is %s', async (switchState) => {
+    const app = switchState === 'enabled' ? enabledApp : disabledApp;
+    await createShopKey();
+    const legacy = await ownerRequest(enabledApp, API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, { name: `Legacy ${switchState}` });
+    expect(legacy.status).toBe(200);
+
+    const purged = await ownerRequest(app, API_ROUTES.apiKeysShopManagementPurge.method, API_ROUTES.apiKeysShopManagementPurge.path);
+    expect(purged.status).toBe(200);
+    expect(envelope(apiKeysShopManagementPurgeOutputSchema).parse(await purged.json()).data.purged).toBeGreaterThan(0);
+
+    const listed = await ownerRequest(app, API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path);
+    const kinds = envelope(apiKeysListOutputSchema).parse(await listed.json()).data.apiKeys.map((key) => key.kind);
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds.every((kind) => kind === 'legacy')).toBe(true);
+  });
+
+  it('leaves only rows that the previous release parses as its own keys', async () => {
+    const { apiKey: revokedShopKey } = await createShopKey();
+    await ownerRequest(enabledApp, API_ROUTES.apiKeyRevoke.method, API_PATHS.apiKeyRevoke.replace(':id', revokedShopKey.id));
+    await createShopKey();
+    expect((await previousReleaseKeyRows()).some((row) => !previousReleaseApiKeySchema.safeParse(row).success)).toBe(true);
+
+    const purged = await ownerRequest(disabledApp, API_ROUTES.apiKeysShopManagementPurge.method, API_ROUTES.apiKeysShopManagementPurge.path);
+    expect(envelope(apiKeysShopManagementPurgeOutputSchema).parse(await purged.json()).data.purged).toBe(2);
+
+    const remaining = await previousReleaseKeyRows();
+    expect(remaining.length).toBeGreaterThan(0);
+    for (const row of remaining) expect(previousReleaseApiKeySchema.safeParse(row)).toMatchObject({ success: true });
   });
 });

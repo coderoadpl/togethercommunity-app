@@ -3876,6 +3876,22 @@ apiKey
     }),
   );
 
+apiKey
+  .command('purge-shop-management')
+  .description('Delete every shop management key of the workspace, revoked or not (retreat before a rollback)')
+  .option('--yes', 'confirm the permanent deletion')
+  .action(
+    withInput(z.tuple([z.object({ yes: z.boolean().optional() })]), async (ctx, [options]) => {
+      if (options.yes !== true) {
+        emit(err(validation('Purging shop management keys requires --yes')), ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.purgeShopManagementKeys(), ctx.json, (data) =>
+        `purged ${String(data.purged)} shop management keys`,
+      );
+    }),
+  );
+
 const tenantSecret = program
   .command('tenant-secret')
   .description('Encrypted BYO integration secrets (owner only)');

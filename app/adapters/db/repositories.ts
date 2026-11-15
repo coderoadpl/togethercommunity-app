@@ -3996,6 +3996,14 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
     return parseApiKey(row);
   }),
+  purgeShopManagement: async (tenantId, audit) => db.transaction(async (tx) => {
+    const purged = await tx
+      .delete(tenantApiKeys)
+      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.kind, 'shop_management')))
+      .returning({ id: tenantApiKeys.id });
+    if (purged.length > 0) await tx.insert(tenantAuditEvents).values({ ...audit(purged.length), tenantId });
+    return purged.length;
+  }),
 });
 
 export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitRepository => ({

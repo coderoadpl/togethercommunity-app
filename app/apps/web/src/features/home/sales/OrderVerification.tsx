@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Chip, Stack, TextField, Typography } from '@mui/material';
-import { orderLineQuantity, SALES_LINK_TIME_ZONE, type OrderListItem } from '#core/domain/index.js';
+import { orderLineLabel, orderLineQuantity, SALES_LINK_TIME_ZONE, type OrderListItem } from '#core/domain/index.js';
 import { SectionCard } from '../../../components/layout/index.js';
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -49,7 +49,7 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
       {order.salesLinkTitle === undefined ? null : <Typography>{t.salesLinks.salesLink}: {order.salesLinkTitle}</Typography>}
     </SectionCard>
     <SectionCard title={t.salesLinks.products}>
-      <OfferLines lines={lines} currency={order.currency} />
+      <OfferLines lines={lines} currency={order.currency} lineName={orderLineLabel} />
     </SectionCard>
     {!paid ? <Alert severity="warning">{t.orderVerification.unpaidHelp}</Alert> : null}
     {lines.filter((line) => line.productType === 'physical').map((line) => <SectionCard key={line.productId} title={line.name}>

@@ -203,6 +203,11 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: '`shop:settings:read` grants `tenant:settings:read`',
     reason: 'must state that the shop settings read scope grants the settings read capability',
   },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'A call refused before the handler (an invalid key, an issuer who no longer qualifies, the rate limit, a missing scope, mixed credentials, the off switch or the body size limit) has no row',
+    reason: 'must state that a carrier call refused before its handler has no key history row',
+  },
 ];
 
 export const shopKeyDoctrineContradictions: readonly DoctrineRequirement[] = [
@@ -210,6 +215,11 @@ export const shopKeyDoctrineContradictions: readonly DoctrineRequirement[] = [
     file: 'app/docs/observability.md',
     text: 'none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow',
     reason: 'must not claim that no key grants the settings read capability',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'the refused ones included, has its key history `request` row',
+    reason: 'must not claim that every refused carrier call has a key history row',
   },
 ];
 

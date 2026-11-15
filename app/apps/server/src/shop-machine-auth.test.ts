@@ -1,10 +1,12 @@
 import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { Hono, type Context } from 'hono';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
+import { createDb } from '#adapters/db/client.js';
+import { createTenantApiKeyRepository } from '#adapters/db/repositories.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { apiKeyRateLimitBuckets, shopManagementKeyEvents, tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
 import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
@@ -16,6 +18,7 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import { buildApp } from './app.js';
+import { DEFAULT_API_BODY_LIMIT } from './body-limits.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
 import { telemetryMiddleware } from './telemetry.js';
@@ -345,6 +348,14 @@ describe('shop management keys on existing routes of the real app', () => {
     expect(keys.some((key) => key.name === 'Minted by a key')).toBe(false);
   });
 
+  it('writes no request row for a keyed mutation refused by the body size limit', async () => {
+    const before = (await database.db.select().from(shopManagementKeyEvents)).length;
+    const response = await keyed(SHOP_CATALOG_ROUTES.updateProduct.path, 'POST', { id: 'product-1', description: 'x'.repeat(DEFAULT_API_BODY_LIMIT) });
+    expect(response.status).toBe(400);
+    expect(await errorOf(response)).toMatchObject({ code: 'validation' });
+    expect(await database.db.select().from(shopManagementKeyEvents)).toHaveLength(before);
+  });
+
   it.each([
     ['POST', API_PATHS.m2mEnroll, { email: 'buyer@example.test', productId: 'product' }],
     ['GET', API_PATHS.activitySummary, undefined],
@@ -359,6 +370,9 @@ describe('shop management keys on existing routes of the real app', () => {
 
 describe('shop management key secrecy in telemetry', () => {
   const exporter = new InMemorySpanExporter();
+  const rowsSeenByThrowingHandler: number[] = [];
+  const throwingRows = async () => (await database.db.select().from(shopManagementKeyEvents))
+    .filter((event) => event.route === THROWING_PATH);
   const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
   let app: Hono<AppVars>;
 
@@ -370,12 +384,22 @@ describe('shop management key secrecy in telemetry', () => {
       method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
     });
     registerShopMachineRoute(app, deps, {
-      method: 'POST', path: THROWING_PATH, scope: 'shop:catalog:read', handler: () => { throw new Error('handler failed'); },
+      method: 'POST',
+      path: THROWING_PATH,
+      scope: 'shop:catalog:read',
+      handler: async () => {
+        rowsSeenByThrowingHandler.push((await throwingRows()).length);
+        throw new Error('handler failed');
+      },
+    });
+    registerShopMachineRoute(app, deps, {
+      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
     });
   });
   beforeAll(async () => {
     await insertKey({ id: 'shop-span-rate', secret: 'shop-span-rate-secret', scopes: ['shop:catalog:read'] });
     await insertKey({ id: 'shop-span-expired', secret: 'shop-span-expired-secret', scopes: ['shop:catalog:read'], expiresAt: '2026-11-02T00:00:00.000Z' });
+    await insertKey({ id: 'shop-row-rate', secret: 'shop-row-rate-secret', scopes: ['shop:catalog:read'] });
   });
   afterAll(async () => { await provider.shutdown(); });
   beforeEach(() => { exporter.reset(); });
@@ -411,12 +435,12 @@ describe('shop management key secrecy in telemetry', () => {
     expect(JSON.stringify(spans[0]?.attributes)).not.toContain('shop-read-secret');
   });
 
-  const spanOf = async (headers: Record<string, string>, path = PROBE_PATH, method = 'GET') => {
+  const spanOf = async (headers: Record<string, string>, path = PROBE_PATH, method = 'GET', body: unknown = {}) => {
     exporter.reset();
     const response = await app.request(`${baseUrl}${path}`, {
       method,
       headers: { host: acmeHost, ...headers },
-      ...(method === 'GET' ? {} : { body: '{}' }),
+      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
     });
     await provider.forceFlush();
     const spans = exporter.getFinishedSpans();
@@ -483,15 +507,154 @@ describe('shop management key secrecy in telemetry', () => {
     expect(attributes).toMatchObject({ ...keyAttributes('shop-read'), 'app.user.id': issuers.owner });
   });
 
-  it('writes one failed request row when a keyed mutation handler throws', async () => {
-    await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
-    const rows = (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH);
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((event) => event.apiKeyId === 'shop-read' && event.status === 500 && event.outcome === 'failed')).toBe(true);
-    const before = rows.length;
-    await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
-    expect((await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH))
-      .toHaveLength(before + 1);
+  it('writes the request row before a keyed mutation handler runs and answers the handler error when it throws', async () => {
+    const before = (await throwingRows()).length;
+    const { status, attributes } = await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST', { id: 'product-1' });
+    expect(status).toBe(500);
+    expect(attributes).toMatchObject(keyAttributes('shop-read'));
+    expect(rowsSeenByThrowingHandler.at(-1)).toBe(before + 1);
+    const rows = await throwingRows();
+    expect(rows).toHaveLength(before + 1);
+    expect(rows).toContainEqual(expect.objectContaining({ apiKeyId: 'shop-read', actorUserId: issuers.owner, resourceId: 'product-1' }));
+  });
+
+  it('refuses a keyed mutation with a retryable 503 before its handler when the history write fails', async () => {
+    const handler = vi.fn((c: Context<AppVars>) => c.json({ ok: true }));
+    const historyDown = new Hono<AppVars>();
+    historyDown.use('*', telemetryMiddleware);
+    registerShopMachineRoute(historyDown, {
+      ...deps,
+      shopManagementKeyEvents: { record: async () => { throw new Error('history unavailable'); } },
+    }, { method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler });
+    exporter.reset();
+    const response = await historyDown.request(`${baseUrl}${PROBE_PATH}`, {
+      method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' }, body: '{}',
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toMatch(/^[1-9]\d*$/);
+    expect(await errorOf(response)).toMatchObject({ code: 'unavailable' });
+    expect(handler).not.toHaveBeenCalled();
+    await provider.forceFlush();
+    const [span] = exporter.getFinishedSpans();
+    expect(span?.attributes).toMatchObject(keyAttributes('shop-read'));
+    expect(span?.events.map((event) => event.name)).toContain('exception');
+  });
+
+  it('answers a committed keyed mutation with the handler response because no history write follows the handler', async () => {
+    const steps: string[] = [];
+    const recordOnce = vi.fn(async (...args: Parameters<typeof deps.shopManagementKeyEvents.record>) => {
+      steps.push('history');
+      if (recordOnce.mock.calls.length > 1) throw new Error('history unavailable');
+      await deps.shopManagementKeyEvents.record(...args);
+    });
+    const committed = new Hono<AppVars>();
+    registerShopMachineRoute(committed, { ...deps, shopManagementKeyEvents: { record: recordOnce } }, {
+      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => { steps.push('handler'); return c.json({ ok: true }); },
+    });
+    const response = await committed.request(`${baseUrl}${PROBE_PATH}`, {
+      method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' }, body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect(steps).toEqual(['history', 'handler']);
+  });
+
+  const probeRows = async () => (await database.db.select().from(shopManagementKeyEvents))
+    .filter((event) => event.route === PROBE_PATH);
+
+  it.each([
+    ['a revoked key', { 'x-api-key': 'shop-revoked-secret' }, 401, keyAttributes('shop-revoked')],
+    ['an expired key', { 'x-api-key': 'shop-span-expired-secret' }, 401, keyAttributes('shop-span-expired')],
+    ['a legacy key', { 'x-api-key': 'legacy-null-secret' }, 401, keyAttributes('legacy-null', 'legacy', null)],
+    ['mixed credentials', { 'x-api-key': 'shop-read-secret', cookie: 'session=x' }, 401, keyAttributes('shop-read')],
+    ['a missing scope', { 'x-api-key': 'shop-orders-secret' }, 403, keyAttributes('shop-orders')],
+  ])('writes no request row for a keyed mutation refused for %s and still attributes its span', async (_label, headers, expectedStatus, expected) => {
+    const before = await probeRows();
+    const { status, attributes } = await spanOf(headers, PROBE_PATH, 'POST', { id: 'product-1' });
+    expect(status).toBe(expectedStatus);
+    expect(attributes).toMatchObject(expected);
+    expect(await probeRows()).toEqual(before);
+  });
+
+  it('writes no request row for a keyed mutation refused by the rate limit and still attributes its span', async () => {
+    for (let request = 0; request < 60; request += 1) {
+      await app.request(`${baseUrl}${PROBE_PATH}`, { method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-row-rate-secret' }, body: '{}' });
+    }
+    const before = await probeRows();
+    const { status, attributes } = await spanOf({ 'x-api-key': 'shop-row-rate-secret' }, PROBE_PATH, 'POST', { id: 'product-1' });
+    expect(status).toBe(429);
+    expect(attributes).toMatchObject(keyAttributes('shop-row-rate'));
+    expect(await probeRows()).toEqual(before);
+  });
+
+  it('writes exactly one request row with the key, issuer, route and resource id for an accepted keyed mutation', async () => {
+    const before = await probeRows();
+    const longestId = `p${'x'.repeat(199)}`;
+    const { status } = await spanOf({ 'x-api-key': 'shop-read-secret' }, PROBE_PATH, 'POST', { id: longestId });
+    expect(status).toBe(200);
+    const added = (await probeRows()).filter((row) => !before.some((earlier) => earlier.id === row.id));
+    expect(added).toEqual([expect.objectContaining({
+      apiKeyId: 'shop-read', kind: 'request', actorUserId: issuers.owner, method: 'POST', route: PROBE_PATH, resourceId: longestId,
+    })]);
+  });
+
+  it.each([
+    ['an over-long id', { id: `p${'x'.repeat(200)}` }],
+    ['an id that is not an identifier', { id: 'product 1; drop table' }],
+    ['an id starting with a separator', { productId: '-product-1' }],
+  ])('stores %s as no resource id', async (_label, body) => {
+    const before = await probeRows();
+    const { status } = await spanOf({ 'x-api-key': 'shop-read-secret' }, PROBE_PATH, 'POST', body);
+    expect(status).toBe(200);
+    const added = (await probeRows()).filter((row) => !before.some((earlier) => earlier.id === row.id));
+    expect(added).toEqual([expect.objectContaining({ apiKeyId: 'shop-read', resourceId: null })]);
+  });
+
+  it.each([
+    ['a shop route', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', {}],
+    ['a shop route with mixed credentials', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', { cookie: 'session=x' }],
+    ['a legacy API-key route', API_PATHS.m2mListStripeSubscriptions, 'legacy-subscriptions:read-secret', {}],
+  ])('keeps the key and its hash out of the span, the logs and the response when the key lookup fails on %s', async (_label, path, secret, extraHeaders) => {
+    const brokenDb = createDb('node-postgres', `${database.url.replace(/\/[^/?]+(\?|$)/, '/together_missing_hash_lookup_db$1')}`, { connectionTimeoutMillis: 5_000 });
+    const failingLookups = buildApp({ ...deps, tenantApiKeys: createTenantApiKeyRepository(brokenDb) });
+    const logged: unknown[] = [];
+    const consoleSpies = (['error', 'warn', 'log', 'info', 'debug'] as const)
+      .map((level) => vi.spyOn(console, level).mockImplementation((...args: unknown[]) => { logged.push(args); }));
+    exporter.reset();
+    try {
+      const response = await failingLookups.request(`${baseUrl}${path}`, { headers: { host: acmeHost, 'x-api-key': secret, ...extraHeaders } });
+      expect(response.status).toBe(500);
+      const body = await response.text();
+      await provider.forceFlush();
+      const spans = exporter.getFinishedSpans();
+      expect(spans.length).toBeGreaterThan(0);
+      const exceptions = spans.flatMap((span) => span.events.filter((event) => event.name === 'exception'));
+      expect(exceptions.length).toBeGreaterThan(0);
+      const recorded = JSON.stringify({
+        spans: spans.map((span) => ({ name: span.name, attributes: span.attributes, events: span.events, status: span.status })),
+        logged: logged.map((args) => String(args)),
+        body,
+      });
+      const hash = deps.apiKeyCrypto.hash(secret);
+      expect(recorded).not.toContain(hash);
+      expect(recorded).not.toContain(secret);
+      expect(recorded).not.toContain(hash.slice(0, 16));
+    } finally {
+      for (const spy of consoleSpies) spy.mockRestore();
+    }
+  });
+
+  it('attributes no key to a keyed mutation refused by the body size limit', async () => {
+    exporter.reset();
+    const response = await realApp.request(`${baseUrl}${SHOP_CATALOG_ROUTES.updateProduct.path}`, {
+      method: 'POST',
+      headers: { host: acmeHost, 'x-api-key': 'shop-all-secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'product-1', description: 'x'.repeat(DEFAULT_API_BODY_LIMIT) }),
+    });
+    expect(response.status).toBe(400);
+    await provider.forceFlush();
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(Object.keys(spans[0]?.attributes ?? {}).filter((name) => name.startsWith('app.api_key.'))).toEqual([]);
   });
 
   it('never records the key hash or a prefix of the secret', async () => {

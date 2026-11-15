@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { provisionTenantInputSchema, tenantSettingsSchema } from '#core/domain/index.js';
+import { configureStripeInputSchema, provisionTenantInputSchema, tenantSettingsSchema } from '#core/domain/index.js';
 
 export type FakeInstance = {
   baseDomain: string;
@@ -7,6 +7,12 @@ export type FakeInstance = {
   port?: string;
   customDomains?: Record<string, string>;
   tenantHost?: string;
+  secretKeys?: Record<string, string[]>;
+  databaseFingerprint?: string | null;
+  environment?: string;
+  databaseName?: string;
+  description?: 'multi-tenant' | 'single-tenant' | 'absent';
+  reportedBaseDomain?: string;
 };
 type FakeInstanceRequest = {
   origin: string; path: string; method: string; tenant: string | null; authorization: string | null; secret: string | null; body: string | null;
@@ -14,6 +20,30 @@ type FakeInstanceRequest = {
 
 const json = (data: unknown, status = 200) => Response.json(status < 400 ? { ok: true, data } : { ok: false, error: data }, { status });
 const hostnameOf = (url: URL) => url.hostname.replace(/\.+$/, '');
+
+const FINGERPRINT_MODULUS = 2 ** 48;
+const fixtureFingerprint = (text: string, length = 12): string => Array.from(text)
+  .reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) % FINGERPRINT_MODULUS, 7)
+  .toString(16).padStart(length, '0');
+
+const instanceDescription = (instance: FakeInstance, databaseFingerprint: string | null) => {
+  const databaseIdentity = databaseFingerprint === null ? null : fixtureFingerprint(`${databaseFingerprint}/${instance.databaseName ?? 'together'}`, 16);
+  switch (instance.description ?? 'multi-tenant') {
+    case 'absent': return {};
+    case 'single-tenant': return { instance: { baseDomain: null, singleTenant: true, databaseIdentity } };
+    case 'multi-tenant': return { instance: { baseDomain: instance.reportedBaseDomain ?? instance.baseDomain, singleTenant: false, databaseIdentity } };
+  }
+};
+
+const instanceHealth = (instance: FakeInstance) => {
+  const databaseFingerprint = instance.databaseFingerprint === undefined ? fixtureFingerprint(instance.baseDomain) : instance.databaseFingerprint;
+  return {
+    status: 'ok', version: '1.0.0', sha: 'fixture-sha', database: 'up', environment: instance.environment ?? instance.baseDomain, production: true,
+    commit: 'fixture-commit', databaseFingerprint,
+    expectedMigrations: 1, appliedMigrations: 1, schemaCurrent: true, schemaFingerprint: null, schemaFingerprintMatch: null,
+    ...instanceDescription(instance, databaseFingerprint),
+  };
+};
 
 const resolveWorkspace = (instances: FakeInstance[], url: URL, tenantHeader: string | null) => {
   const host = hostnameOf(url);
@@ -42,10 +72,19 @@ export const createInstanceFetch = (instances: FakeInstance[]) => {
       body: typeof init?.body === 'string' ? init.body : null,
     };
     requests.push(request);
-    if (request.authorization === null && request.secret === null) return json({ code: 'unauthorized', message: 'Sign in' }, 401);
     const resolved = resolveWorkspace(instances, url, request.tenant);
+    if (request.path === '/api/health' && resolved !== null) return json(instanceHealth(resolved.instance));
+    if (request.authorization === null && request.secret === null) return json({ code: 'unauthorized', message: 'Sign in' }, 401);
     if (resolved === null) throw new TypeError('fetch failed');
     const { instance, slug } = resolved;
+    if (request.path === '/api/tenants') {
+      return json({
+        tenants: instance.workspaces.map((workspace) => ({
+          tenant: { id: `t-${workspace}`, slug: workspace, name: workspace, status: 'active', plan: 'hosted', contentVersion: 1 }, staffRole: 'owner',
+        })),
+        memberTenants: [], canCreateTenant: false,
+      });
+    }
     if (request.path === '/api/internal/tenants/provision') {
       const input: unknown = JSON.parse(z.string().parse(request.body));
       const body = provisionTenantInputSchema.parse(input);
@@ -75,8 +114,18 @@ export const createInstanceFetch = (instances: FakeInstance[]) => {
         return json({ settings: tenantSettingsSchema.parse({ name: slug, billingPortalUrl: null, bunnyStreamLibraryId: null }) });
       case '/api/products':
         return json({ products: [] });
-      case '/api/integrations/stripe/configure':
-        return json({ mode: 'test', webhookUrl: `${url.protocol}//${tenantHost}/api/stripe/webhook?mode=test` });
+      case '/api/tenant-secrets':
+        return json({
+          secrets: (instance.secretKeys?.[slug] ?? []).map((key) => ({ key, maskedPreview: '••••xxxx', updatedAt: '2026-01-01T00:00:00Z' })),
+          stripeMode: null, stripeWebhookUrl: `${url.protocol}//${tenantHost}/api/webhooks/stripe/t-${slug}`,
+        });
+      case '/api/integrations/stripe/configure': {
+        const input: unknown = JSON.parse(z.string().parse(request.body));
+        const { mode } = configureStripeInputSchema.parse(input);
+        const keys = mode === 'test' ? ['stripe.testRestrictedKey', 'stripe.testWebhookSecret', 'stripe.testWebhookEndpointId'] : ['stripe.restrictedKey', 'stripe.webhookSecret', 'stripe.webhookEndpointId'];
+        instance.secretKeys = { ...instance.secretKeys, [slug]: keys };
+        return json({ mode, webhookUrl: `${url.protocol}//${tenantHost}/api/stripe/webhook?mode=${mode}` });
+      }
       default:
         throw new Error(`Unexpected fake instance request: ${request.method} ${request.path}`);
     }

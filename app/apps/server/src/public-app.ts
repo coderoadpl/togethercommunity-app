@@ -83,6 +83,7 @@ import {
   getPublicSpaceEvents,
   getPublicSpaceFeed,
   getPublicSpaceThread,
+  describeInstance,
   resolveIdentity,
   resolveSignInMethods,
   resolveTenant,
@@ -333,6 +334,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         database: (await deps.health.pingDatabase()) ? ('up' as const) : ('down' as const),
         ...deps.deploymentIdentity,
         ...(await deps.health.schemaStatus()),
+        instance: describeInstance(deps),
       }),
     ),
   );

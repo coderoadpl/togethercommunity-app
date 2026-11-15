@@ -342,6 +342,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   registerOpenCors(app, API_PATHS.getPublicSurvey, 'GET');
   registerTenantScopedCors(app, API_PATHS.submitSurvey, deps);
   registerOpenCors(app, API_PATHS.publicOffer, 'GET');
+  registerOpenCors(app, API_PATHS.getPublicSalesLink, 'GET');
   registerOpenCors(app, API_PATHS.publicNavigation, 'GET');
   registerOpenCors(app, API_PATHS.publicCourseStructure, 'GET');
   registerOpenCors(app, API_PATHS.publicSpaceFeed, 'GET');

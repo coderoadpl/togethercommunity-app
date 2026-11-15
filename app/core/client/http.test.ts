@@ -222,6 +222,23 @@ describe('createApiClient', () => {
     expect(seen?.get('x-email-dispatch-secret')).toBe('shhh');
   });
 
+  it('leaves redirect handling to the transport unless the client opts into refusal', async () => {
+    const seen: Array<RequestRedirect | undefined> = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      seen.push(init?.redirect);
+      return jsonResponse({ ok: true, data: { status: 'ok' } });
+    };
+    await createApiClient({ baseUrl: 'https://api.example.test', fetchImpl }).health();
+    await createApiClient({ baseUrl: 'https://api.example.test', fetchImpl, refuseRedirects: true }).health();
+    expect(seen).toEqual([undefined, 'error']);
+  });
+
+  it('fails closed when a refusing client still receives a redirect answer', async () => {
+    const fetchImpl: typeof fetch = async () => new Response(null, { status: 308, headers: { location: 'https://other.example.test/api/health' } });
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl, refuseRedirects: true });
+    await expect(client.health()).resolves.toEqual({ ok: false, error: { code: 'internal', message: 'Request refused a redirect' } });
+  });
+
   it('sends the scheduler operator secret on bodyless GET requests', async () => {
     const fetchImpl: typeof fetch = async (_input, init) => {
       expect(init?.method).toBe('GET');

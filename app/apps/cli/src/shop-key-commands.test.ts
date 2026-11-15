@@ -196,6 +196,12 @@ describe('shop key CLI', () => {
     expect(calls).toEqual([]);
   });
 
+  it('shares the shop command with the manifest plan, apply and drift commands', async () => {
+    await run('shop', 'plan', '--manifest', '/nonexistent/shop-manifest.json');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Could not read the manifest file' } });
+    expect(calls).toEqual([]);
+  });
+
   it('reads the key from the variable named by --api-key-env', async () => {
     vi.stubEnv('WAREHOUSE_SHOP_KEY', 'warehouse-secret');
     await run('shop', 'stock', 'show', 'product-1', '--api-key-env', 'WAREHOUSE_SHOP_KEY');

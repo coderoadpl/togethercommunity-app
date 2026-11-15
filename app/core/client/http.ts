@@ -392,6 +392,8 @@ export interface ApiClientOptions {
   /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;
   fetchImpl?: typeof fetch;
+  /** Never follow a redirect: the extra headers carry a credential that must not reach another URL. */
+  refuseRedirects?: boolean | { label: string };
   /** Extra headers per request: Authorization bearer token, X-Tenant, ... */
   headers?: () => Record<string, string>;
   /**
@@ -401,8 +403,6 @@ export interface ApiClientOptions {
    * SDK-free and makes propagation trivially testable by passing a stub.
    */
   traceparent?: () => string | undefined;
-  /** Never follow a redirect: the extra headers carry a credential that must not reach another URL. */
-  refuseRedirects?: { label: string };
 }
 
 export interface LessonAttachmentFileUpload extends LessonAttachmentUploadRequest {
@@ -425,6 +425,12 @@ const isRedirectFailure = (cause: unknown): boolean => {
   return cause.cause instanceof Error && cause.cause.message.toLowerCase().includes('redirect');
 };
 
+const OPERATOR_REDIRECT_REFUSED = 'Operator request refused a redirect';
+const REDIRECT_REFUSED = 'Request refused a redirect';
+
+export const isRedirectRefusal = (error: AppError): boolean =>
+  error.code === 'internal' && (error.message === REDIRECT_REFUSED || error.message === OPERATOR_REDIRECT_REFUSED);
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -436,6 +442,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
+  const refuseRedirects = options.refuseRedirects !== undefined && options.refuseRedirects !== false;
+  const redirectRefused = typeof options.refuseRedirects === 'object'
+    ? `${options.refuseRedirects.label} request to ${path} refused a redirect`
+    : REDIRECT_REFUSED;
   let response: Response;
   try {
     const headers: Record<string, string> = {
@@ -449,21 +459,24 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
       headers,
       body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
-      ...(headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined && options.refuseRedirects === undefined
+      ...(!refuseRedirects && headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined
         ? {}
         : { redirect: 'error' as const }),
       signal: signal ?? null,
     });
   } catch (cause) {
-    if (options.refuseRedirects !== undefined && isRedirectFailure(cause)) {
-      return err(internal(`${options.refuseRedirects.label} request to ${path} refused a redirect`));
-    }
     const message = raw?.redactErrors === true
       ? isRedirectFailure(cause)
-        ? 'Operator request refused a redirect'
+        ? OPERATOR_REDIRECT_REFUSED
         : 'Operator request failed'
-      : `Network error calling ${path}: ${String(cause)}`;
+      : refuseRedirects && isRedirectFailure(cause)
+        ? redirectRefused
+        : `Network error calling ${path}: ${String(cause)}`;
     return err(internal(message));
+  }
+
+  if (refuseRedirects && (response.redirected || (response.status >= 300 && response.status < 400))) {
+    return err(internal(redirectRefused));
   }
 
   if (response.ok && raw?.responseFilename !== undefined) {

@@ -427,12 +427,17 @@ error; the tool does not convert product types or rename slugs.
 
 The metadata fields follow the existing physical product routes: `description`,
 `vatRate`, `vatExemptionBasis`, `deliveryMethod`, `parcelTemplate`, `compliance`,
-`variantGroup`, `variantLabel`, and `coverUrl`. Description defaults to an empty
-string, delivery method to `pickup`, and parcel template to `medium`; these
-defaults are managed values, including for existing products. Other omitted
-optional metadata fields are preserved on existing products. Use `null` to clear
-nullable metadata. Omitted product VAT inherits the workspace treatment on new
-products; use an explicit `null` to return an existing product to inheritance.
+`variantGroup`, `variantLabel`, and `coverUrl`. Only the metadata fields an
+entry specifies are managed: an omitted field of an existing product is not
+compared or written and keeps its stored value. When the tool creates a product,
+the product route's defaults fill omitted fields: an empty description, delivery
+method `pickup` and parcel template `medium`. The plan lists the managed
+metadata field names of every product under `managedFields` and those that
+differ under `fields`. Use `null` to clear nullable metadata. Omitted product VAT
+inherits the workspace treatment on new products; use an explicit `null` to
+return an existing product to inheritance. `compliance` is managed as a whole
+object: when it is specified, an omitted `safetyWarnings` inside it is written
+as an empty string.
 
 `vatExemptionBasis` must describe the value the product routes store, so that a
 second apply finds nothing to change. A string basis requires `"vatRate":

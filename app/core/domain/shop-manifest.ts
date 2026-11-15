@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
 import { provisionTenantInputSchema } from './operator-tenant.js';
 import { stripeModeSchema } from './integration.js';
-import { configureShipxInputSchema, shipxSenderSchema } from './shipx.js';
+import { configureShipxInputSchema, DEFAULT_PARCEL_TEMPLATE, shipxSenderSchema } from './shipx.js';
 import type { ProductPrice } from './commerce.js';
 import { newProductSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
@@ -35,6 +35,9 @@ export const shopManifestProductSchema = newProductSchema.omit({
 }).extend({
   type: z.literal('physical').default('physical'),
   slug: productSlugSchema,
+  description: newProductSchema.shape.description.removeDefault().optional(),
+  deliveryMethod: newProductSchema.shape.deliveryMethod.removeDefault().optional(),
+  parcelTemplate: newProductSchema.shape.parcelTemplate.removeDefault().optional(),
   coverUrl: newProductSchema.shape.coverUrl.removeDefault().optional(),
   price: z.object({ amountCents: z.number().int().nonnegative(), currency: newProductSchema.shape.currency.removeDefault() }).strict(),
   stock: z.object({ onHand: z.number().int().min(0).max(MAX_STOCK_QUANTITY) }).strict().optional(),
@@ -203,11 +206,11 @@ export const diffManifestProduct = (
   desired: ShopManifestProduct,
   current: { product: Product; prices: ProductPrice[]; stock: ProductStock | null } | null,
 ) => {
-  const fields = Object.entries(productMetadata(desired)).filter(([key, value]) => {
-    const stored = current?.product;
-    const record: Record<string, unknown> = stored ?? {};
-    return value !== undefined && !manifestValuesEqual(value, record[key] ?? (key === 'parcelTemplate' ? 'medium' : null));
-  }).map(([key]) => key);
+  const stored: Record<string, unknown> = current?.product ?? {};
+  const managed = Object.entries(productMetadata(desired)).filter(([, value]) => value !== undefined);
+  const fields = managed
+    .filter(([key, value]) => !manifestValuesEqual(value, stored[key] ?? (key === 'parcelTemplate' ? DEFAULT_PARCEL_TEMPLATE : null)))
+    .map(([key]) => key);
   const active = current?.prices.filter((price) => price.active) ?? [];
   const matching = active.find((price) => price.kind === 'one_time' && !price.imported &&
     price.amountCents === desired.price.amountCents && price.currency === desired.price.currency);
@@ -216,6 +219,7 @@ export const diffManifestProduct = (
     slug: desired.slug,
     product: current === null ? 'create' as const : fields.length > 0 ? 'update' as const : 'unchanged' as const,
     fields,
+    managedFields: managed.map(([key]) => key),
     price: matching ? 'unchanged' as const : 'add' as const,
     deactivatePriceIds,
     stock: desired.stock === undefined ? 'unmanaged' as const : current?.stock?.onHand === desired.stock.onHand

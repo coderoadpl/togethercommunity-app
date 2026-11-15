@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { provisionTenantInputSchema, tenantSettingsSchema } from '#core/domain/index.js';
+import { configureStripeInputSchema, provisionTenantInputSchema, tenantSettingsSchema } from '#core/domain/index.js';
 
 export type FakeInstance = {
   baseDomain: string;
@@ -7,6 +7,7 @@ export type FakeInstance = {
   port?: string;
   customDomains?: Record<string, string>;
   tenantHost?: string;
+  secretKeys?: Record<string, string[]>;
 };
 type FakeInstanceRequest = {
   origin: string; path: string; method: string; tenant: string | null; authorization: string | null; secret: string | null; body: string | null;
@@ -83,8 +84,18 @@ export const createInstanceFetch = (instances: FakeInstance[]) => {
         return json({ settings: tenantSettingsSchema.parse({ name: slug, billingPortalUrl: null, bunnyStreamLibraryId: null }) });
       case '/api/products':
         return json({ products: [] });
-      case '/api/integrations/stripe/configure':
-        return json({ mode: 'test', webhookUrl: `${url.protocol}//${tenantHost}/api/stripe/webhook?mode=test` });
+      case '/api/tenant-secrets':
+        return json({
+          secrets: (instance.secretKeys?.[slug] ?? []).map((key) => ({ key, maskedPreview: '••••xxxx', updatedAt: '2026-01-01T00:00:00Z' })),
+          stripeMode: null, stripeWebhookUrl: `${url.protocol}//${tenantHost}/api/webhooks/stripe/t-${slug}`,
+        });
+      case '/api/integrations/stripe/configure': {
+        const input: unknown = JSON.parse(z.string().parse(request.body));
+        const { mode } = configureStripeInputSchema.parse(input);
+        const keys = mode === 'test' ? ['stripe.testRestrictedKey', 'stripe.testWebhookSecret', 'stripe.testWebhookEndpointId'] : ['stripe.restrictedKey', 'stripe.webhookSecret', 'stripe.webhookEndpointId'];
+        instance.secretKeys = { ...instance.secretKeys, [slug]: keys };
+        return json({ mode, webhookUrl: `${url.protocol}//${tenantHost}/api/stripe/webhook?mode=${mode}` });
+      }
       default:
         throw new Error(`Unexpected fake instance request: ${request.method} ${request.path}`);
     }

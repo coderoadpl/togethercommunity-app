@@ -13,7 +13,8 @@ import { confirmingOperator, readConfirmedWorkspaces } from './workspaces.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
 const optionsSchema = z.object({
-  manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
+  manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional(),
+  reconfigurePayments: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
 }).strict();
 
 const sessionClient = (baseUrl: string, token: string | null, workspace: string | null) => createApiClient({
@@ -44,7 +45,10 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       .description(descriptions[command])
       .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace')
       .option('--base-domain <domain>', 'Instance base domain, needed when the API origin does not report it (the platform host)');
-    if (command === 'apply') subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks');
+    if (command === 'apply') {
+      subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks')
+        .option('--reconfigure-payments', 'With --integrations, configure Stripe again even when the workspace reports that mode as configured; registers a new webhook endpoint and signing secret');
+    }
     subcommand.action(async (raw: unknown) => {
       const ctx = context();
       if (!ctx.ok) {
@@ -75,7 +79,7 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {
-          integrations: options.data.integrations, environment: process.env,
+          integrations: options.data.integrations, reconfigurePayments: options.data.reconfigurePayments, environment: process.env,
           operator: confirmingOperator(createApiClient({ baseUrl: apiUrl, refuseRedirects: true }), confirmed.value),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));

@@ -217,6 +217,7 @@ describe('shop manifest command boundary', () => {
         const tenant = { id: 't1', slug: 'acme', name: 'acme', status: 'active', plan: 'hosted', contentVersion: 1 };
         return jsonAnswer(200, { ok: true, data: { tenants: [{ tenant, staffRole: 'owner' }], memberTenants: [], canCreateTenant: false } });
       }
+      if (path === '/api/tenant-secrets') return jsonAnswer(200, { ok: true, data: { secrets: [], stripeMode: null, stripeWebhookUrl: 'https://acme.togethercommunity.app/api/webhooks/stripe/t1' } });
       if (path === redirectPath) return { status: 307, headers: { location: `http://127.0.0.1:${String(target.port)}${path}` }, body: '' };
       if (path === '/api/me' && slug === 'studio') return jsonAnswer(404, { ok: false, error: { code: 'tenant_not_found', message: 'No tenant' } });
       const data = path === '/api/me' ? { userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug, name: slug, staffRole: 'owner', memberId: null, banned: false } }
@@ -277,6 +278,25 @@ describe('shop manifest command boundary', () => {
     expect(writes.map((request) => `${request.method} ${request.origin}${request.path}`)).toEqual(['POST https://acme.togethercommunity.app/api/integrations/stripe/configure']);
     expect(JSON.parse(String(writes[0]?.body))).toEqual({ mode: 'test', restrictedKey: 'rk_test_private-fixture' });
     expect(log).toHaveBeenCalledTimes(2);
+    for (const call of log.mock.calls) expect(String(call[0])).not.toContain('rk_test_private-fixture');
+  });
+
+  it('repeats the payment configure request only with --reconfigure-payments once the workspace reports the mode as configured', async () => {
+    vi.stubEnv('SHOP_STRIPE_KEY', 'rk_test_private-fixture');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const fake = createInstanceFetch(hostedInstances());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+    const path = await inputFile(JSON.stringify({ version: 1, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_KEY', mode: 'test' } } }, shops: [{ workspace: 'acme', products: [] }] }));
+    const configureRequests = () => fake.requests.filter((request) => request.path === '/api/integrations/stripe/configure').length;
+    await runCli(['shop', 'apply', '--manifest', path, '--integrations']);
+    expect(configureRequests()).toBe(1);
+    await runCli(['shop', 'apply', '--manifest', path, '--integrations']);
+    expect(configureRequests()).toBe(1);
+    expect(JSON.parse(String(log.mock.calls[1]?.[0]))).toMatchObject({ ok: true, data: { applied: [], shops: [{ integrations: [{ provider: 'stripe', configured: true, action: 'unchanged' }] }] } });
+    await runCli(['shop', 'apply', '--manifest', path, '--reconfigure-payments']);
+    expect(JSON.parse(String(log.mock.calls[2]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
+    await runCli(['shop', 'apply', '--manifest', path, '--integrations', '--reconfigure-payments']);
+    expect(configureRequests()).toBe(2);
     for (const call of log.mock.calls) expect(String(call[0])).not.toContain('rk_test_private-fixture');
   });
 

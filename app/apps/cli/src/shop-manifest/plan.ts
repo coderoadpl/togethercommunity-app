@@ -1,11 +1,14 @@
 import { isRedirectRefusal, type ApiClient } from '#core/client/index.js';
-import { err, ok, validation, type AppError, type Product, type ProductPrice, type ProductStock, type ProvisionTenantInput, type Result } from '#core/domain/index.js';
+import {
+  err, ok, validation,
+  type AppError, type Product, type ProductPrice, type ProductStock, type ProvisionTenantInput, type Result, type StripeMode, type TenantSecretKey,
+} from '#core/domain/index.js';
 import {
   diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, integrationReferenceError, manifestWorkspaceSlug, productVatConvergenceError, shopManifestSchema,
   type ShopManifestIntegrations, type ShopManifestProduct, type ShopManifestSettings,
 } from '#core/domain/shop-manifest.js';
 
-export type ManifestReadClient = Pick<ApiClient, 'me' | 'getTenantSettings' | 'listProducts' | 'listProductPrices' | 'getProductStock'>;
+export type ManifestReadClient = Pick<ApiClient, 'me' | 'getTenantSettings' | 'listProducts' | 'listProductPrices' | 'getProductStock' | 'listTenantSecrets'>;
 export type ManifestClientFactory<C extends ManifestReadClient = ManifestReadClient> = (workspace: string) => C | null;
 type CurrentManifestProduct = { product: Product; prices: ProductPrice[]; stock: ProductStock | null };
 export type PreparedProduct = { desired: ShopManifestProduct; current: CurrentManifestProduct | null; diff: ReturnType<typeof diffManifestProduct> };
@@ -17,9 +20,19 @@ export type PreparedShop<C extends ManifestReadClient = ManifestReadClient> = {
   workspace: string;
   access: WorkspaceAccess<C>;
   integrations: ShopManifestIntegrations;
+  paymentConfigured: boolean;
   settings: ReturnType<typeof diffShopSettings>;
   products: PreparedProduct[];
 };
+export type ManifestReportOptions = { integrations?: boolean | undefined; reconfigurePayments?: boolean | undefined };
+
+const STRIPE_SLOT_KEYS = {
+  live: ['stripe.restrictedKey', 'stripe.webhookSecret', 'stripe.webhookEndpointId'],
+  test: ['stripe.testRestrictedKey', 'stripe.testWebhookSecret', 'stripe.testWebhookEndpointId'],
+} as const satisfies Record<StripeMode, readonly TenantSecretKey[]>;
+
+export const paymentConfigurationDue = (shop: Pick<PreparedShop, 'paymentConfigured'>, options: ManifestReportOptions): boolean =>
+  !shop.paymentConfigured || options.reconfigurePayments === true;
 
 export const manifestOperationError = (error: AppError, workspace: string | null, operation: string): AppError => ({
   code: error.code,
@@ -74,7 +87,7 @@ export const prepareManifest = async <C extends ManifestReadClient>(
       const coherent = validateVatSettings(desired, {});
       if (!coherent.ok) return coherent;
       return ok({
-        workspace: slug, access, integrations,
+        workspace: slug, access, integrations, paymentConfigured: false,
         settings: diffShopSettings(desired, {}),
         products: shop.products.map((product) => ({ desired: product, current: null, diff: diffManifestProduct(product, null) })),
       });
@@ -102,6 +115,13 @@ export const prepareManifest = async <C extends ManifestReadClient>(
     if (!settings.ok) return err(manifestOperationError(settings.error, slug, 'settings:read'));
     const coherent = validateVatSettings(desired, settings.value.settings);
     if (!coherent.ok) return coherent;
+    let paymentConfigured = false;
+    if (integrations.stripe != null) {
+      const secrets = await api.listTenantSecrets();
+      if (!secrets.ok) return err(manifestOperationError(secrets.error, slug, 'payment:read'));
+      const stored = new Set(secrets.value.secrets.map((secret) => secret.key));
+      paymentConfigured = STRIPE_SLOT_KEYS[integrations.stripe.mode].every((key) => stored.has(key));
+    }
     const products = await api.listProducts();
     if (!products.ok) return err(manifestOperationError(products.error, slug, 'products:read'));
     const preparedProducts: PreparedProduct[] = [];
@@ -118,20 +138,25 @@ export const prepareManifest = async <C extends ManifestReadClient>(
       }
       preparedProducts.push({ desired: desiredProduct, current, diff: diffManifestProduct(desiredProduct, current) });
     }
-    prepared.push({ workspace: slug, access: { state: 'ready', api }, integrations, settings: diffShopSettings(desired, settings.value.settings), products: preparedProducts });
+    prepared.push({ workspace: slug, access: { state: 'ready', api }, integrations, paymentConfigured, settings: diffShopSettings(desired, settings.value.settings), products: preparedProducts });
   }
   return ok(prepared);
 };
 
 const PROVISIONING_BY_ACCESS = { ready: 'unchanged', provision: 'create', missing: 'missing' } as const;
 
-export const manifestPlanReport = (shops: PreparedShop[], integrations = false) => ({
+const integrationReport = (provider: string, shop: PreparedShop, options: ManifestReportOptions) => {
+  const configure = options.integrations === true ? 'configure' : 'skipped without --integrations';
+  if (provider !== 'stripe') return { provider, action: configure };
+  return { provider, configured: shop.paymentConfigured, action: paymentConfigurationDue(shop, options) ? configure : 'unchanged' };
+};
+
+export const manifestPlanReport = (shops: PreparedShop[], options: ManifestReportOptions = {}) => ({
   shops: shops.map((shop) => ({
     workspace: shop.workspace,
     provisioning: PROVISIONING_BY_ACCESS[shop.access.state],
-    integrations: Object.entries(shop.integrations).filter(([, value]) => value != null).map(([provider]) => ({
-      provider, action: integrations ? 'configure' : 'skipped without --integrations',
-    })),
+    integrations: Object.entries(shop.integrations).filter(([, value]) => value != null)
+      .map(([provider]) => integrationReport(provider, shop, options)),
     settings: { change: Object.keys(shop.settings.changes), unchanged: shop.settings.unchanged },
     products: shop.products.map(({ desired, diff }) => ({
       ...diff,

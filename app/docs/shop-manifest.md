@@ -340,9 +340,15 @@ when all selected workspaces already exist and are accessible.
 
 Only `shop apply --integrations` resolves integration environment references or
 calls integration configure routes. Without that flag, apply leaves integrations
-alone; plan and drift always list each selected provider as
-`"skipped without --integrations"`. They do not inspect environment values,
-retrieve stored secrets, compare credential values, or contact providers.
+alone, and plan and drift list ShipX and the parcel-locker token as
+`"skipped without --integrations"`. For Stripe, plan, drift and apply read the
+workspace's masked secret listing (`GET /api/tenant-secrets`, key names and
+masked previews only) and report `configured: true` when the restricted key,
+webhook signing secret and webhook endpoint ID of the manifest's mode are all
+stored; such a Stripe entry is reported as `"unchanged"`, otherwise as
+`"skipped without --integrations"` or, with the flag, `"configure"`. The tool
+never reads a secret value back, does not inspect environment values without the
+flag, does not compare credential values, and does not contact providers.
 
 Company integration objects merge recursively with shop overrides, just like
 settings. Shop references win. Set a provider (`stripe`, `shipx` or
@@ -424,11 +430,19 @@ endpoint ID, customer, subscription or ledger is copied between shops or read
 back by the tool. Stripe permissions, endpoint capacity and credentials remain
 external preflight requirements, not guarantees made by this manifest.
 
-Every explicit integration apply calls configure again. In particular, Stripe
-configure can replace the selected workspace/slot endpoint and rotate its
-signing secret. It is not a read-only check or a credential-equality no-op.
-Use the flag deliberately for approved provider setup/rotation, not in a drift
-job or every catalogue update. On failure, completed operations remain applied;
+Stripe configure registers the workspace's webhook endpoint again and replaces
+its signing secret on every call, so `shop apply --integrations` calls it only
+for a mode the workspace does not report as configured. A configured mode is
+reported as `"unchanged"` and nothing is sent, even when the referenced key has
+changed, because the tool cannot compare stored credential values. To rotate
+the key or register the endpoint again, add `--reconfigure-payments`; it is
+accepted only together with `--integrations` and forces the Stripe configure
+call for every selected shop with a Stripe entry. The ShipX configure route
+stores the supplied environment, sender and credentials and registers nothing
+with the provider, so a repeated call writes the same values again; ShipX and
+the parcel-locker token are therefore configured on every
+`--integrations` apply. Use the flag deliberately for approved provider
+setup/rotation, not in a drift job or every catalogue update. On failure, completed operations remain applied;
 a provider transport failure can leave an uncertain external outcome. Inspect
 the provider/workspace state through the approved operational process before
 retrying. Never copy an old webhook secret into another workspace.
@@ -500,6 +514,7 @@ environment variables in a protected environment:
 
 ```bash
 pnpm --silent run cli --json --api-url http://localhost:48730 shop apply --manifest ./shop.json --integrations
+pnpm --silent run cli --json --api-url http://localhost:48730 shop apply --manifest ./shop.json --integrations --reconfigure-payments
 ```
 
 `plan` only reads. Its per-shop report includes settings field names to change
@@ -527,8 +542,9 @@ order:
 A successful apply returns the executed plan and an `applied` operation list.
 Run apply again without `--integrations` or external changes and every managed
 item is unchanged, with an empty `applied` list and no writes. There is no extra
-price or workspace on rerun. Explicit integration configuration is deliberately
-repeated whenever its flag is present.
+price or workspace on rerun. With `--integrations`, ShipX and parcel-locker
+configuration are repeated on every run, and Stripe configuration only for a
+mode that is not yet configured or with `--reconfigure-payments`.
 
 On the first API error, apply stops immediately. The ordinary failure envelope
 retains the existing error code, identifies the failed operation/workspace under
@@ -564,9 +580,9 @@ ordinary drift is a successful read (`ok: true`), not an API failure.
   Treat these as failed checks, not evidence that state is synchronized.
 
 This lets a scheduled job detect unapplied company changes without reapplying
-secrets or contacting payment/shipping providers. Integrations remain listed as
-skipped and do not make `drifted` true: the tool intentionally cannot compare
-stored credential values. Omitted fields and products absent from the manifest
+secrets or contacting payment/shipping providers. Integrations do not make
+`drifted` true, including a Stripe mode that is not configured: the tool
+intentionally cannot compare stored credential values. Omitted fields and products absent from the manifest
 are also unmanaged, not drift. A converged drift report is not payment-provider
 readiness evidence. Keep the owner session fresh and store the manifest and
 session profile in protected automation storage.

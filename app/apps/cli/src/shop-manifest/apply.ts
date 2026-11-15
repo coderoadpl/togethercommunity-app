@@ -3,8 +3,8 @@ import { err, internal, ok, validation, updateProductInputSchema, type AppError,
 import { productMetadata, SHOP_OPERATOR_SECRET_ENV } from '#core/domain/shop-manifest.js';
 import { resolveManifestIntegrations, type ResolvedManifestIntegrations } from './integrations.js';
 import {
-  manifestOperationError, manifestPlanReport, prepareManifest,
-  type ManifestClientFactory, type ManifestReadClient, type PreparedProduct,
+  manifestOperationError, manifestPlanReport, paymentConfigurationDue, prepareManifest,
+  type ManifestClientFactory, type ManifestReadClient, type ManifestReportOptions, type PreparedProduct,
 } from './plan.js';
 
 type ManifestWriteClient = ManifestReadClient & Pick<ApiClient,
@@ -12,8 +12,7 @@ type ManifestWriteClient = ManifestReadClient & Pick<ApiClient,
   'enableProductStock' | 'adjustProductStock' | 'publishProduct' | 'unpublishProduct' | 'configureStripe' | 'shipxConfigure'>;
 type AppliedOperation = { workspace: string; operation: string; slug?: string };
 
-export type ManifestApplyOptions = {
-  integrations?: boolean | undefined;
+export type ManifestApplyOptions = ManifestReportOptions & {
   environment?: Readonly<Record<string, string | undefined>>;
   operator?: Pick<ApiClient, 'provisionOperatorTenant'>;
 };
@@ -27,6 +26,7 @@ export const applyManifest = async (
     message: `${error.message}. Applied: ${applied.length === 0 ? 'nothing' : applied.map((entry) => `${entry.workspace}/${entry.slug ?? 'settings'} ${entry.operation}`).join(', ')}`,
     details: { failure: error.details, applied: [...applied] },
   });
+  if (options.reconfigurePayments === true && options.integrations !== true) return fail(validation('--reconfigure-payments requires --integrations'));
   let prepared = await prepareManifest(input, clientFor, workspace);
   if (!prepared.ok) return fail(prepared.error);
   const integrationsByWorkspace = new Map<string, ResolvedManifestIntegrations>();
@@ -74,7 +74,7 @@ export const applyManifest = async (
         try { return await write(operation, action); }
         catch { return err(manifestOperationError(internal(), shop.workspace, operation)); }
       };
-      if (integrations.stripe !== undefined) {
+      if (integrations.stripe !== undefined && paymentConfigurationDue(shop, options)) {
         const stripe = integrations.stripe;
         const result = await configure('integration:stripe', () => api.configureStripe(stripe));
         if (!result.ok) return fail(result.error);
@@ -150,5 +150,5 @@ export const applyManifest = async (
       if (!result.ok) return fail(result.error);
     }
   }
-  return ok({ ...manifestPlanReport(prepared.value, options.integrations), applied });
+  return ok({ ...manifestPlanReport(prepared.value, options), applied });
 };

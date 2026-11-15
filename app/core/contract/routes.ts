@@ -1545,7 +1545,7 @@ export const tenantRoutingOutputSchema = z.object({
 
 export const tenantTeamOutputSchema = z.object({
   members: z.array(tenantTeamMemberSchema),
-  organization: tenantTeamOrganizationSchema.nullable(),
+  organization: tenantTeamOrganizationSchema.nullable().default(null),
 });
 export const tenantTeamAddSchema = addTenantAdminInputSchema;
 export const tenantTeamRemoveSchema = removeTenantAdminInputSchema;

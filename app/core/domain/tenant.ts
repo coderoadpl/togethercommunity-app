@@ -373,7 +373,7 @@ export type StaffGrantSource = z.infer<typeof staffGrantSourceSchema>;
 export const membershipSchema = z.object({
   tenant: tenantSchema,
   staffRole: staffRoleSchema,
-  source: staffGrantSourceSchema,
+  source: staffGrantSourceSchema.default('direct'),
 });
 
 export type Membership = z.infer<typeof membershipSchema>;

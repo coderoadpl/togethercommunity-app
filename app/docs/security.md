@@ -530,7 +530,9 @@ scopes on every shop key.
   `SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`,
   checked in `core/server/authorize.ts`; a grant naming any other field is
   refused, and the settings update refuses a change to a field its grant does
-  not name. Every other use-case that needs `tenant:settings:write` (team,
+  not name. `POST /api/m2m/shop/settings` names exactly the fields present in
+  its body, and its strict body schema is derived from that same allow-list.
+  Every other use-case that needs `tenant:settings:write` (team,
   domains, redirects, Meta Conversions API settings, telemetry store) refuses
   a key ctx; owner and admin sessions are unchanged.
 

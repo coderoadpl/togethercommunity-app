@@ -10,7 +10,7 @@ import {
   SHOP_SETTINGS_ROUTES,
   shopSettingsContracts,
 } from '#core/contract/index.js';
-import { err, notFound, ok, shopSettingsSchema } from '#core/domain/index.js';
+import { err, notFound, ok, SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS, shopSettingsPatchSchema, shopSettingsSchema } from '#core/domain/index.js';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
@@ -243,6 +243,25 @@ describe('shop settings routes with a shop management key', () => {
     });
     expect(branding.status).toBe(400);
     expect((await errorOf(branding)).code).toBe('validation');
+  });
+
+  it('updates an allow-listed field through the settings grant and answers 400 for an unknown top-level field', async () => {
+    expect(Object.keys(shopSettingsPatchSchema.shape).toSorted())
+      .toEqual(Object.keys(SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS).toSorted());
+    const secret = await createShopKey([READ, WRITE]);
+
+    const allowed = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { supportEmail: 'orders@example.test' });
+    expect(allowed.status).toBe(200);
+    const before = await readSettings(secret);
+    expect(before.supportEmail).toBe('orders@example.test');
+
+    const unknown = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, {
+      supportEmail: 'other@example.test', analyticsTagId: 'G-ABCDEF1234',
+    });
+    expect(unknown.status).toBe(400);
+    expect((await errorOf(unknown)).code).toBe('validation');
+    expect(await readSettings(secret)).toEqual(before);
+    expect(await sessionSettings()).not.toMatchObject({ analyticsTagId: 'G-ABCDEF1234' });
   });
 
   it('keeps VAT coherent through the reused settings update', async () => {

@@ -13,6 +13,6 @@ describe('shop management key settings grant', () => {
         const source = readFileSync(join(usecases, file), 'utf8');
         return source.includes("'tenant:settings:write'") && source.includes('ShopManagementKeySettingsGrant');
       });
-    expect(naming).toEqual(['image-assets.ts', 'tenant-settings.ts']);
+    expect(naming).toEqual(['image-assets.ts', 'shop-settings.ts', 'tenant-settings.ts']);
   });
 });

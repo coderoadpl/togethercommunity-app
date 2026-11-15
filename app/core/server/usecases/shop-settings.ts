@@ -5,6 +5,7 @@ import {
   validation,
   type AppError,
   type Result,
+  type ShopManagementKeySettingsGrant,
   type ShopSettings,
   type ShopSettingsPatch,
   type TenantSettings,
@@ -55,15 +56,21 @@ export const getShopSettings = async (
   return result.ok ? ok(projectShopSettings(result.value.settings)) : result;
 };
 
+const shopSettingsUpdateGrant = (patch: ShopSettingsPatch): ShopManagementKeySettingsGrant => ({
+  operation: 'shop-settings:update',
+  fields: Object.keys(patch),
+});
+
 export const updateShopSettings = async (
   ctx: Ctx,
   input: ShopSettingsPatch,
   deps: TenantSettingsDeps,
 ): Promise<Result<ShopSettings, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
-  if (!tenant.ok) return tenant;
   const parsed = shopSettingsPatchSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid shop settings', parsed.error.flatten()));
-  const result = await updateTenantSettings(ctx, parsed.data, deps);
+  const shopManagementKeyGrant = shopSettingsUpdateGrant(parsed.data);
+  const tenant = authorizeTenant(ctx, 'tenant:settings:write', { shopManagementKeyGrant });
+  if (!tenant.ok) return tenant;
+  const result = await updateTenantSettings(ctx, parsed.data, deps, { shopManagementKeyGrant });
   return result.ok ? ok(projectShopSettings(result.value)) : result;
 };

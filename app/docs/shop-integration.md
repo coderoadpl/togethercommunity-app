@@ -580,9 +580,14 @@ Never copy these between workspaces:
 
 Seller/legal/delivery values may be applied deliberately as independent settings
 copies. For a reviewed declarative settings/catalogue plan and application flow,
-use the [shop manifest tool](shop-manifest.md) after provisioning and configuring
-integrations. It does not provision workspaces, carry credentials or turn company
-settings into server-side inheritance.
+use the [shop manifest tool](shop-manifest.md). It can also provision missing
+workspaces through the operator route (see
+[Missing workspaces and operator provisioning](shop-manifest.md#missing-workspaces-and-operator-provisioning))
+and configure integrations from environment references with
+`shop apply --integrations` (see
+[Explicit integration configuration](shop-manifest.md#explicit-integration-configuration)).
+Its company settings are copied into each workspace on apply; they do not
+become server-side inheritance.
 
 **Invoice numbering requires a separate decision.** KSeF sequences are scoped to
 the workspace, invoice type and year, but the printed number is

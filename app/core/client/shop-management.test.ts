@@ -4,6 +4,28 @@ import { SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
 
 import { createShopManagementClient } from './http.js';
 
+const { createServer } = process.getBuiltinModule('node:http');
+
+const listen = async (
+  server: ReturnType<typeof createServer>,
+): Promise<{ baseUrl: string; close: () => Promise<void> }> => {
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('Expected a TCP test server');
+  return {
+    baseUrl: `http://127.0.0.1:${String(address.port)}`,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => error === undefined ? resolve() : reject(error));
+    }),
+  };
+};
+
 const product = {
   id: 'product-1', tenantId: 'acme', type: 'physical', slug: 'printed-handbook', title: 'Printed handbook', description: '',
   coverUrl: null, priceCents: 4900, currency: 'PLN', published: false, visibility: 'listed', deliveryMethod: 'pickup',
@@ -77,5 +99,63 @@ describe('shop management client', () => {
     const headers = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers);
     expect(headers.has('x-tenant')).toBe(false);
     expect(headers.has('authorization')).toBe(false);
+  });
+
+  it.each([302, 307])('refuses a %i redirect to another origin on every method without sending the key there', async (status) => {
+    const targetKeys: Array<string | undefined> = [];
+    const target = await listen(createServer((request, response) => {
+      const key = request.headers['x-api-key'];
+      targetKeys.push(typeof key === 'string' ? key : undefined);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, data: { products: [], stock: [] } }));
+    }));
+    const sourceMethods: string[] = [];
+    const source = await listen(createServer((request, response) => {
+      sourceMethods.push(request.method ?? '');
+      response.writeHead(status, { location: `${target.baseUrl}/collected` });
+      response.end();
+    }));
+    try {
+      const client = createShopManagementClient({ baseUrl: source.baseUrl, apiKey: 'shop-secret', tenant: 'acme' });
+      const results = [
+        await client.listProducts(),
+        await client.createProduct({ title: 'Printed handbook', type: 'physical', priceCents: 4900 }),
+        await client.getProductStock('product-1'),
+        await client.deleteProductDraft({ productId: 'product-1' }),
+      ];
+      expect(results).toEqual([
+        { ok: false, error: { code: 'internal', message: `Shop management request to ${SHOP_CATALOG_ROUTES.listProducts.path} refused a redirect` } },
+        { ok: false, error: { code: 'internal', message: `Shop management request to ${SHOP_CATALOG_ROUTES.createProduct.path} refused a redirect` } },
+        { ok: false, error: { code: 'internal', message: 'Shop management request to /api/m2m/shop/products/product-1/stock refused a redirect' } },
+        { ok: false, error: { code: 'internal', message: `Shop management request to ${SHOP_CATALOG_ROUTES.deleteProductDraft.path} refused a redirect` } },
+      ]);
+      expect(sourceMethods).toEqual(['GET', 'POST', 'GET', 'POST']);
+      expect(targetKeys).toEqual([]);
+      expect(JSON.stringify(results)).not.toContain('shop-secret');
+    } finally {
+      await source.close();
+      await target.close();
+    }
+  });
+
+  it('refuses a same-origin redirect too', async () => {
+    const paths: string[] = [];
+    const server = await listen(createServer((request, response) => {
+      paths.push(request.url ?? '');
+      if (request.url === '/elsewhere') {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: true, data: { products: [], stock: [] } }));
+        return;
+      }
+      response.writeHead(307, { location: '/elsewhere' });
+      response.end();
+    }));
+    try {
+      const client = createShopManagementClient({ baseUrl: server.baseUrl, apiKey: 'shop-secret' });
+      expect(await client.listProducts()).toMatchObject({ ok: false, error: { code: 'internal' } });
+      expect(paths).toEqual([SHOP_CATALOG_ROUTES.listProducts.path]);
+    } finally {
+      await server.close();
+    }
   });
 });

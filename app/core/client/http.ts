@@ -396,6 +396,8 @@ export interface ApiClientOptions {
    * SDK-free and makes propagation trivially testable by passing a stub.
    */
   traceparent?: () => string | undefined;
+  /** Never follow a redirect: the extra headers carry a credential that must not reach another URL. */
+  refuseRedirects?: { label: string };
 }
 
 export interface LessonAttachmentFileUpload extends LessonAttachmentUploadRequest {
@@ -442,12 +444,15 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
       headers,
       body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
-      ...(headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined
+      ...(headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined && options.refuseRedirects === undefined
         ? {}
         : { redirect: 'error' as const }),
       signal: signal ?? null,
     });
   } catch (cause) {
+    if (options.refuseRedirects !== undefined && isRedirectFailure(cause)) {
+      return err(internal(`${options.refuseRedirects.label} request to ${path} refused a redirect`));
+    }
     const message = raw?.redactErrors === true
       ? isRedirectFailure(cause)
         ? 'Operator request refused a redirect'
@@ -2859,6 +2864,7 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     baseUrl: shopOptions.baseUrl,
     ...(shopOptions.fetchImpl === undefined ? {} : { fetchImpl: shopOptions.fetchImpl }),
     ...(shopOptions.traceparent === undefined ? {} : { traceparent: shopOptions.traceparent }),
+    refuseRedirects: { label: 'Shop management' },
     headers: () => ({
       [API_KEY_HEADER]: shopOptions.apiKey,
       ...(shopOptions.tenant === undefined ? {} : { [TENANT_HEADER]: shopOptions.tenant }),

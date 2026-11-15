@@ -40,7 +40,7 @@ access.
 | `shop:catalog:read` | Read products, prices and stock |
 | `shop:catalog:write` | Create, edit, publish and delete product drafts; manage prices and stock |
 | `shop:orders:read` | Read and export orders |
-| `shop:fulfilment:write` | Fulfil orders, including configured paid shipment creation |
+| `shop:fulfilment:write` | Fulfil orders, including creating carrier shipments (a paid action at the carrier) |
 | `shop:settings:read` | Read shop settings |
 | `shop:settings:write` | Change the constrained shop settings |
 | `shop:integrations:read` | Read masked integration configuration |
@@ -48,7 +48,10 @@ access.
 
 Write scopes do not include the matching read scope. A key with
 `shop:integrations:write` carries financial and configuration power: keep it
-short-lived and separate from catalog or warehouse keys.
+short-lived and separate from catalog or warehouse keys. A key with
+`shop:fulfilment:write` can create carrier shipments, a paid action at the
+carrier: the scope grants `order:write`, which the InPost ShipX shipment
+creation requires.
 
 ## Who can create one
 

@@ -415,6 +415,9 @@ scopes on every shop key.
   acts as the issuer's real account with the capabilities of its scopes
   intersected with the owner's, so `authorize()` stays default-deny and a key
   never exceeds its issuer.
+- **Fulfilment scope.** `shop:fulfilment:write` grants `order:write`, which
+  includes creating carrier shipments (InPost ShipX), a paid action at the
+  carrier charged to the workspace's carrier account.
 - **Uniform refusal.** A missing key answers `401 Missing API key`; an unknown,
   revoked, expired, legacy or other-workspace key and an issuer who no longer
   qualifies all answer the same `401 Invalid API key`. A missing scope answers

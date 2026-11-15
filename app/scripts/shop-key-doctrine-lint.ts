@@ -53,6 +53,17 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     reason: 'must state the per-key history bound and the missing retention job',
   },
   {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`shop:fulfilment:write` grants `order:write`, which includes creating carrier shipments (InPost ShipX), a paid action at the carrier',
+    reason: 'must state that the fulfilment scope can create paid carrier shipments',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'A key with `shop:fulfilment:write` can create carrier shipments, a paid action at the carrier',
+    reason: 'must state that the fulfilment scope can create paid carrier shipments',
+  },
+  {
     file: 'app/docs/shop-management-keys.md',
     text: 'a retention job for `shop_management_key_events` is a follow-up',
     reason: 'must state that the key history has no retention job yet',

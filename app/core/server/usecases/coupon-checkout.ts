@@ -34,7 +34,7 @@ export interface CouponCheckoutInput {
   email?: string;
   productId: string;
   productIds?: string[];
-  products?: { productId: string; priceId?: string | null; amountCents: number }[];
+  products?: { productId: string; priceId?: string | null; amountCents: number; quantity?: number }[];
   priceId: string | null;
   priceKind: PriceKind;
   amountCents: number;
@@ -84,7 +84,7 @@ export const evaluateCouponForCheckout = async (
     since,
     through: now,
     currentAmountCents: input.amountCents,
-  }) : (await Promise.all(input.products.map((product) => deps.priceHistory.lowestSince(tenantId, {
+  }) : (await Promise.all(input.products.map(async (product) => (product.quantity ?? 1) * await deps.priceHistory.lowestSince(tenantId, {
     productId: product.productId, priceId: product.priceId ?? null, since, through: now, currentAmountCents: product.amountCents,
   })))).reduce((total, amount) => total + amount, 0);
   const breakdown = couponCheckoutBreakdownSchema.parse({

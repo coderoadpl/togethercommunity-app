@@ -1,6 +1,6 @@
 import { err, ok, validation, type Coupon, type CouponCheckoutBreakdown } from '#core/domain/index.js';
 import type { Clock, CouponCheckoutSessionRepository, CouponRedemptionRepository, CouponRepository, IdGenerator, PaymentProvider, ProductPriceHistoryRepository } from '../ports.js';
-import type { CheckoutSelection } from './checkout-selection.js';
+import { selectionLineQuantity, type CheckoutSelection } from './checkout-selection.js';
 import { evaluateCouponForCheckout, requireCouponEmail } from './coupon-checkout.js';
 
 interface CheckoutCouponDeps {
@@ -29,7 +29,7 @@ export const evaluateSelectionCoupon = async (
     productId: selection.product.id,
     ...(selection.productPrices === undefined ? {} : {
       productIds: selection.productPrices.map((item) => item.productId),
-      products: selection.productPrices.map((item) => ({ productId: item.productId, priceId: item.id, amountCents: item.amountCents })),
+      products: selection.productPrices.map((item) => ({ productId: item.productId, priceId: item.id, amountCents: item.amountCents, quantity: selectionLineQuantity(selection, item.productId) })),
     }),
     priceId: selection.price?.id ?? null,
     priceKind: selection.price?.kind ?? 'one_time',

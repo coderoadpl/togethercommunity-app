@@ -70,7 +70,7 @@ jobs:
             echo "No workflow changes; ruleset drift check skipped"
           fi
       - run: pnpm run db:migrate
-      - run: TOGETHER_TEST_SERIAL=1 pnpm run check
+      - run: pnpm run check
       - name: Determine whether the dependency audit is required
         id: audit-policy
         env:

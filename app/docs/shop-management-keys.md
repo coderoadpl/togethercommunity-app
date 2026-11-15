@@ -114,7 +114,11 @@ So a `401` for an unusable key, a `401` for mixed credentials, a `403` for a
 missing scope, a `429` and a failing handler each carry the id of the key that
 was presented. The secret, its hash and any part of either are never recorded,
 and telemetry never records request headers, so the key secret does not reach
-traces or error reports.
+traces or error reports. A database failure while looking a key up by its hash
+(on a shop route or a legacy API-key route) or while storing a new key answers
+`500 internal` and is reported as `API key lookup failed` or `API key write
+failed` without the query or its parameters, so the hash never reaches a trace,
+a log or a response.
 
 ## Key history
 

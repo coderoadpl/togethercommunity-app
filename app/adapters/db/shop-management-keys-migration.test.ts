@@ -253,6 +253,22 @@ describe('shop management key lifecycle', () => {
       .rejects.toThrow();
   });
 
+  it('keeps the key hash out of the error of a failing key write', async () => {
+    const repo = createTenantApiKeyRepository(db);
+    const keyHash = 'collision-hash-0123456789abcdef0123456789abcdef';
+    await repo.create(TENANT, shopKey({ id: 'collision-a', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null, keyHash }));
+    const failures = await Promise.all([
+      repo.create(TENANT, shopKey({ id: 'collision-b', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null, keyHash })),
+      repo.createShopManagement(TENANT, shopKey({ id: 'collision-c', keyHash }), keyEvent({ id: 'event-collision', apiKeyId: 'collision-c' })),
+    ].map((write) => write.then(() => null, (error: unknown) => error)));
+    for (const failure of failures) {
+      expect(failure).toBeInstanceOf(Error);
+      const chain: unknown[] = [];
+      for (let link: unknown = failure; link instanceof Error; link = link.cause) chain.push(link.message, link.stack, Reflect.get(link, 'params'));
+      expect(JSON.stringify(chain)).not.toContain(keyHash);
+    }
+  });
+
   it('refuses an event of another tenant through a tenant-scoped write', async () => {
     await expect(createShopManagementKeyEventRepository(db).record(TENANT, keyEvent({ id: 'event-foreign', tenantId: AUDIT_TENANT })))
       .rejects.toThrow();

@@ -454,6 +454,12 @@ scope array.
   row, `app.api_key.id`, `app.api_key.kind` and `app.api_key.issuer.id`.
   Changes the reused use-cases record elsewhere (product versions, stock) are
   attributed to the issuing owner's account.
+- **Hash secrecy on failure.** A database driver error carries the query's
+  bound parameters, and the key hash is one of them. Every query that takes a
+  key hash (the shop and legacy lookups and the key inserts) replaces a
+  database error with a parameter-free `API key lookup failed` or `API key
+  write failed` in the repository, before it can reach the error handler,
+  telemetry, a log or a response.
 - **Integration scope.** `shop:integrations:write` grants `tenant:secret:write`
   and `integration:test`: within its workspace it may configure the payment
   account, including the live Stripe slot, the storage connection and the

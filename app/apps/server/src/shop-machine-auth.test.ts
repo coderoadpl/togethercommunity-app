@@ -5,6 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { z } from 'zod';
 
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
+import { createDb } from '#adapters/db/client.js';
+import { createTenantApiKeyRepository } from '#adapters/db/repositories.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { apiKeyRateLimitBuckets, shopManagementKeyEvents, tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
 import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
@@ -605,6 +607,40 @@ describe('shop management key secrecy in telemetry', () => {
     expect(status).toBe(200);
     const added = (await probeRows()).filter((row) => !before.some((earlier) => earlier.id === row.id));
     expect(added).toEqual([expect.objectContaining({ apiKeyId: 'shop-read', resourceId: null })]);
+  });
+
+  it.each([
+    ['a shop route', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', {}],
+    ['a shop route with mixed credentials', SHOP_CATALOG_ROUTES.listProducts.path, 'shop-read-secret', { cookie: 'session=x' }],
+    ['a legacy API-key route', API_PATHS.m2mListStripeSubscriptions, 'legacy-subscriptions:read-secret', {}],
+  ])('keeps the key and its hash out of the span, the logs and the response when the key lookup fails on %s', async (_label, path, secret, extraHeaders) => {
+    const brokenDb = createDb('node-postgres', `${database.url.replace(/\/[^/?]+(\?|$)/, '/together_missing_hash_lookup_db$1')}`, { connectionTimeoutMillis: 5_000 });
+    const failingLookups = buildApp({ ...deps, tenantApiKeys: createTenantApiKeyRepository(brokenDb) });
+    const logged: unknown[] = [];
+    const consoleSpies = (['error', 'warn', 'log', 'info', 'debug'] as const)
+      .map((level) => vi.spyOn(console, level).mockImplementation((...args: unknown[]) => { logged.push(args); }));
+    exporter.reset();
+    try {
+      const response = await failingLookups.request(`${baseUrl}${path}`, { headers: { host: acmeHost, 'x-api-key': secret, ...extraHeaders } });
+      expect(response.status).toBe(500);
+      const body = await response.text();
+      await provider.forceFlush();
+      const spans = exporter.getFinishedSpans();
+      expect(spans.length).toBeGreaterThan(0);
+      const exceptions = spans.flatMap((span) => span.events.filter((event) => event.name === 'exception'));
+      expect(exceptions.length).toBeGreaterThan(0);
+      const recorded = JSON.stringify({
+        spans: spans.map((span) => ({ name: span.name, attributes: span.attributes, events: span.events, status: span.status })),
+        logged: logged.map((args) => String(args)),
+        body,
+      });
+      const hash = deps.apiKeyCrypto.hash(secret);
+      expect(recorded).not.toContain(hash);
+      expect(recorded).not.toContain(secret);
+      expect(recorded).not.toContain(hash.slice(0, 16));
+    } finally {
+      for (const spy of consoleSpies) spy.mockRestore();
+    }
   });
 
   it('never records the key hash or a prefix of the secret', async () => {

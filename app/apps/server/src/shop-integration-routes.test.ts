@@ -426,4 +426,13 @@ describe('shop integration routes with a shop management key', () => {
     const keys = await ownerRequest(API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path);
     expect(JSON.stringify(await keys.json())).not.toContain('Escalated');
   });
+
+  it('lets an integrations-write key replace the live Stripe slot by owner decision', async () => {
+    const { secret } = await createShopKey([WRITE]);
+    const configured = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { mode: 'live', restrictedKey: 'rk_live_acme_provisioning' });
+    expect(configured.status).toBe(200);
+    expect(envelope(shopIntegrationContracts.stripeConfigure.output).parse(await configured.json()).data)
+      .toEqual({ mode: 'live', webhookUrl: 'http://acme.localhost:48730/api/webhooks/stripe/acme' });
+    expect(await storedSecret('acme', 'stripe.restrictedKey')).toBe('rk_live_acme_provisioning');
+  });
 });

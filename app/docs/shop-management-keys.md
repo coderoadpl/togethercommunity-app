@@ -74,6 +74,16 @@ Write scopes do not include the matching read scope. A key with
 `shop:integrations:write` carries financial and configuration power: keep it
 short-lived and separate from catalog or warehouse keys.
 
+> **Warning: a `shop:integrations:write` key can configure the live payment
+> slot.** It may replace the restricted key of the **live** Stripe slot, the
+> one anonymous buyers pay through, not only the test slot. Real payments then
+> go to whichever Stripe account the new restricted key belongs to. This is
+> deliberate, so that payments can be provisioned with a key, and no extra
+> confirmation is asked. Treat such a key like the owner's own payment
+> credentials: issue it only to a provisioning backend, with the shortest
+> expiry, and revoke it as soon as provisioning ends. See
+> [Integration routes](#integration-routes).
+
 ## Who can create one
 
 Only the workspace owner, signed in with a verified e-mail address, in their
@@ -510,8 +520,9 @@ The typed client exposes `getSettings`, `updateSettings` and
 ## Integration routes
 
 > **An integrations key carries financial power.** A key with
-> `shop:integrations:write` can replace the workspace's Stripe account, so
-> payments go to whoever controls the new restricted key, and it can point file
+> `shop:integrations:write` can replace the workspace's Stripe account in the
+> **live** slot as well as the test slot, so real payments go to whoever
+> controls the new restricted key, and it can point file
 > storage, InPost shipping and invoicing at other accounts. Create it only for a
 > provisioning backend, with the shortest expiry that covers the setup, never
 > in a browser, a storefront or a warehouse tool, and never together with
@@ -550,8 +561,10 @@ Automatic KSeF submission for several workspaces that share one seller is not
 supported; set `ksefSubmissionMode` to `manual` on such workspaces before
 storing their KSeF credentials.
 
-- **Stripe** `configure` takes `{"mode":"test","restrictedKey":"rk_test_..."}`;
-  the key prefix must match the mode or the call answers `400 validation`
+- **Stripe** `configure` takes `{"mode":"test","restrictedKey":"rk_test_..."}`,
+  or `{"mode":"live","restrictedKey":"rk_live_..."}` for the live slot that
+  takes real payments (see the warning above); the key prefix must match the
+  mode or the call answers `400 validation`
   before Stripe is contacted. It registers this workspace's webhook endpoint
   with the new key, stores the key, a fresh signing secret and the endpoint id
   in the slot of that mode, and answers `{ "mode", "webhookUrl" }`. The other

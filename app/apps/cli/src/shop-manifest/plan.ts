@@ -7,7 +7,7 @@ import {
 
 export type ManifestReadClient = Pick<ApiClient, 'me' | 'getTenantSettings' | 'listProducts' | 'listProductPrices' | 'getProductStock'>;
 export type ManifestClientFactory<C extends ManifestReadClient = ManifestReadClient> = (workspace: string) => C;
-export type CurrentManifestProduct = { product: Product; prices: ProductPrice[]; stock: ProductStock | null };
+type CurrentManifestProduct = { product: Product; prices: ProductPrice[]; stock: ProductStock | null };
 export type PreparedProduct = { desired: ShopManifestProduct; current: CurrentManifestProduct | null; diff: ReturnType<typeof diffManifestProduct> };
 export type PreparedShop<C extends ManifestReadClient = ManifestReadClient> = {
   workspace: string;

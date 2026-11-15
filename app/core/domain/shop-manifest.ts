@@ -16,7 +16,7 @@ const manifestShippingRatesSchema = z.array(shippingRateSchema.extend({
 }).strict()).max(SHIPPING_RATES_MAX)
   .refine((rates) => new Set(rates.map((rate) => rate.id)).size === rates.length, 'Shipping rate ids must be unique');
 
-export const shopManifestSettingsSchema = updateTenantSettingsInputSchema.pick({
+const shopManifestSettingsSchema = updateTenantSettingsInputSchema.pick({
   name: true, defaultLanguage: true, logoUrl: true, logoDarkUrl: true, faviconUrl: true,
   accentColor: true, accentLight: true, ogTitle: true, ogDescription: true, ogImageUrl: true,
   supportEmail: true, supportUrl: true, termsUrl: true, privacyUrl: true,
@@ -79,7 +79,7 @@ export const integrationReferenceError = (integrations: z.output<typeof shopMani
   return null;
 };
 
-export const shopManifestIntegrationsSchema = shopManifestIntegrationsShape.superRefine((integrations, context) => {
+const shopManifestIntegrationsSchema = shopManifestIntegrationsShape.superRefine((integrations, context) => {
   const message = integrationReferenceError(integrations);
   if (message !== null) context.addIssue({ code: z.ZodIssueCode.custom, message });
 });
@@ -110,7 +110,6 @@ export const shopManifestSchema = z.object({
 }).strict().refine((manifest) => new Set(manifest.shops.map((shop) => manifestWorkspaceSlug(shop.workspace))).size === manifest.shops.length,
   'Shop workspaces must be unique');
 
-export type ShopManifest = z.output<typeof shopManifestSchema>;
 export type ShopManifestProduct = z.output<typeof shopManifestProductSchema>;
 export type ShopManifestSettings = z.output<typeof shopManifestSettingsSchema>;
 export type ShopManifestIntegrations = z.output<typeof shopManifestIntegrationsSchema>;

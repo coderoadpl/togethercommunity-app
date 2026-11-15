@@ -22,6 +22,7 @@ import {
   productsUpdateInputSchema,
   productsUpdateOutputSchema,
 } from './routes.js';
+import { strictInput } from './strict-input.js';
 
 const READ = 'shop:catalog:read' satisfies ShopManagementScope;
 const WRITE = 'shop:catalog:write' satisfies ShopManagementScope;
@@ -44,16 +45,16 @@ export const SHOP_CATALOG_ROUTES = {
 
 export const shopCatalogContracts = {
   listProducts: { output: productsListOutputSchema },
-  createProduct: { input: productsCreateInputSchema, output: productsCreateOutputSchema },
-  updateProduct: { input: productsUpdateInputSchema, output: productsUpdateOutputSchema },
-  publishProduct: { input: productsPublishInputSchema, output: productsPublishOutputSchema },
-  unpublishProduct: { input: productsUnpublishInputSchema, output: productsUnpublishOutputSchema },
-  deleteProductDraft: { input: productDeleteInputSchema, output: productDeleteOutputSchema },
+  createProduct: { input: strictInput(productsCreateInputSchema), output: productsCreateOutputSchema },
+  updateProduct: { input: strictInput(productsUpdateInputSchema), output: productsUpdateOutputSchema },
+  publishProduct: { input: strictInput(productsPublishInputSchema), output: productsPublishOutputSchema },
+  unpublishProduct: { input: strictInput(productsUnpublishInputSchema), output: productsUnpublishOutputSchema },
+  deleteProductDraft: { input: strictInput(productDeleteInputSchema), output: productDeleteOutputSchema },
   listProductPrices: { output: productPricesListOutputSchema },
-  createProductPrice: { input: productPriceCreateInputSchema, output: productPriceCreateOutputSchema },
-  deactivateProductPrice: { input: productPriceDeactivateInputSchema, output: productPriceDeactivateOutputSchema },
+  createProductPrice: { input: strictInput(productPriceCreateInputSchema), output: productPriceCreateOutputSchema },
+  deactivateProductPrice: { input: strictInput(productPriceDeactivateInputSchema), output: productPriceDeactivateOutputSchema },
   getProductStock: { output: productStockOutputSchema },
-  enableProductStock: { input: productStockEnableInputSchema, output: productStockWriteOutputSchema },
-  adjustProductStock: { input: productStockAdjustInputSchema, output: productStockWriteOutputSchema },
-  setProductStockThreshold: { input: productStockThresholdInputSchema, output: productStockWriteOutputSchema },
+  enableProductStock: { input: strictInput(productStockEnableInputSchema), output: productStockWriteOutputSchema },
+  adjustProductStock: { input: strictInput(productStockAdjustInputSchema), output: productStockWriteOutputSchema },
+  setProductStockThreshold: { input: strictInput(productStockThresholdInputSchema), output: productStockWriteOutputSchema },
 } as const;

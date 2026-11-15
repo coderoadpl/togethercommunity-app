@@ -36,6 +36,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { tenantAuditActor } from '../tenant-audit.js';
 import {
   renderPostContent,
   toRenderedPublicPost,
@@ -418,8 +419,8 @@ export const purgePost = async (
     id: deps.ids.nextId(),
     tenantId: actor.value.tenantId,
     kind: 'post_purged',
+    ...tenantAuditActor(ctx),
     actorUserId: actor.value.userId,
-    actorEmail: ctx.identity.email,
     subjectMemberId: null,
     reason: parsed.data.id,
     at: deps.clock.nowIso(),

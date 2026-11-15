@@ -7,6 +7,7 @@ import {
   type Identity,
   type ImpersonationPrincipal,
   type ImportAuditEvent,
+  type ShopManagementKeysSwitch,
   type StaffRole,
   type TenantApiKey,
   type TenantAuditEventInput,
@@ -18,6 +19,7 @@ import {
   createTenantApiKey,
   listImportAuditForApiKey,
   listTenantApiKeys,
+  purgeShopManagementKeys,
   revokeTenantApiKey,
   type ApiKeyDeps,
 } from './api-keys.js';
@@ -46,7 +48,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   return { identity };
 };
 
-const harness = (rows: TenantApiKey[] = []): {
+const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKeysSwitch = 'enabled'): {
   deps: ApiKeyDeps;
   rows: TenantApiKey[];
   audits: TenantAuditEventInput[];
@@ -76,6 +78,12 @@ const harness = (rows: TenantApiKey[] = []): {
       if (row) audits.push(audit);
       return row;
     },
+    purgeShopManagement: async (tenantId, audit) => {
+      const purged = store.filter((r) => r.tenantId === tenantId && r.kind === 'shop_management');
+      for (const row of purged) store.splice(store.indexOf(row), 1);
+      if (purged.length > 0) audits.push(audit(purged.length));
+      return purged.length;
+    },
   };
   const apiKeyCrypto: ApiKeyCrypto = {
     generateSecret: () => 'super-secret-value',
@@ -84,7 +92,13 @@ const harness = (rows: TenantApiKey[] = []): {
   return {
     rows: store,
     audits,
-    deps: { tenantApiKeys, apiKeyCrypto, ids: { nextId: () => `key-${(seq += 1)}` }, clock: { nowIso: () => NOW } },
+    deps: {
+      tenantApiKeys,
+      apiKeyCrypto,
+      ids: { nextId: () => `key-${(seq += 1)}` },
+      clock: { nowIso: () => NOW },
+      shopManagementKeys,
+    },
   };
 };
 
@@ -378,7 +392,7 @@ describe('shop management keys', () => {
     expect(h.rows).toEqual([expect.objectContaining({ kind: 'shop_management', issuedByUserId: 'u1', keyHash: 'hash:super-secret-value' })]);
     expect(h.audits).toEqual([{
       id: 'key-2', tenantId: 't1', kind: 'api_key.shop_management_created', actorUserId: 'u1',
-      actorEmail: 'owner@together.dev', subjectMemberId: null, reason: 'Shop backend (key-1)', at: NOW,
+      actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null, reason: 'Shop backend (key-1)', at: NOW,
     }]);
     expect(JSON.stringify(h.audits)).not.toContain('super-secret-value');
 
@@ -455,5 +469,74 @@ describe('shop management keys', () => {
     const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'legacy-key' }, h.deps)).toMatchObject({ ok: true });
     expect(h.audits).toEqual([]);
+  });
+
+  describe('while SHOP_MANAGEMENT_KEYS is disabled', () => {
+    it('refuses shop management key creation and names the switch state', async () => {
+      const h = harness([], 'disabled');
+      const result = await createTenantApiKey(ctx('owner'), shopInput, h.deps);
+      expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      expect(result.ok ? '' : result.error.message).toContain('SHOP_MANAGEMENT_KEYS=disabled');
+      expect(h.rows).toHaveLength(0);
+      expect(h.audits).toHaveLength(0);
+    });
+
+    it('keeps legacy key creation, key listing and shop key revocation working', async () => {
+      const h = harness([shopRow()], 'disabled');
+      expect(await createTenantApiKey(ctx('owner'), { name: 'CI key' }, h.deps))
+        .toMatchObject({ ok: true, value: { apiKey: { kind: 'legacy' } } });
+      expect(await listTenantApiKeys(ctx('owner'), h.deps))
+        .toMatchObject({ ok: true, value: [{ id: 'shop-key', kind: 'shop_management' }, { kind: 'legacy' }] });
+      expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
+        .toMatchObject({ ok: true, value: { id: 'shop-key', revokedAt: NOW } });
+      expect(h.audits).toEqual([expect.objectContaining({ kind: 'api_key.shop_management_revoked' })]);
+    });
+  });
+
+  describe('purgeShopManagementKeys', () => {
+    const workspaceRows = () => [
+      shopRow({ id: 'shop-active' }),
+      shopRow({ id: 'shop-revoked', revokedAt: NOW }),
+      shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null }),
+      shopRow({ id: 'other-workspace-shop', tenantId: 't2' }),
+    ];
+    const machineCtx: Ctx = {
+      ...ctx('owner'),
+      capabilities: ['api-key:write', 'api-key:read'],
+      machineActor: { kind: 'shop_management_key', apiKeyId: 'shop-active' },
+    };
+
+    it.each<ShopManagementKeysSwitch>(['enabled', 'disabled'])(
+      'deletes every shop management key of the workspace with one audit event while the switch is %s',
+      async (switchState) => {
+        const h = harness(workspaceRows(), switchState);
+        expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 2 } });
+        expect(h.rows.map((row) => row.id)).toEqual(['legacy-key', 'other-workspace-shop']);
+        expect(h.audits).toEqual([{
+          id: 'key-1', tenantId: 't1', kind: 'api_key.shop_management_purged', actorUserId: 'u1',
+          actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null,
+          reason: '2 shop management keys purged', at: NOW,
+        }]);
+      },
+    );
+
+    it('records nothing when the workspace has no shop management key', async () => {
+      const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
+      expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 0 } });
+      expect(h.rows).toHaveLength(1);
+      expect(h.audits).toEqual([]);
+    });
+
+    const purgeDenials: [string, Ctx][] = [...denyingContexts, ['a shop management key context', machineCtx]];
+
+    it.each(purgeDenials)(
+      'refuses the purge to %s',
+      async (_label, denied) => {
+        const h = harness(workspaceRows());
+        expect(await purgeShopManagementKeys(denied, h.deps)).toMatchObject({ ok: false });
+        expect(h.rows).toHaveLength(4);
+        expect(h.audits).toHaveLength(0);
+      },
+    );
   });
 });

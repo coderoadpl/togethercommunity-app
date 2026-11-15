@@ -2033,6 +2033,7 @@ export const en: Messages = {
       redirect_deleted: 'Redirect deleted',
       'api_key.shop_management_created': 'Shop management key created',
       'api_key.shop_management_revoked': 'Shop management key revoked',
+      'api_key.shop_management_purged': 'Shop management keys purged',
     },
     auditLogEntry: ({ actor, subject }) => format('{actor} → {subject}', { actor, subject }),
     erasureRequestsEmpty: 'No erasure requests.',

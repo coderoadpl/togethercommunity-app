@@ -10,7 +10,11 @@ import { matchedRoutes } from 'hono/route';
 import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 
 type TelemetryVars = {
-  Variables: { identity?: Identity; impersonation?: ImpersonationPrincipal };
+  Variables: {
+    identity?: Identity;
+    impersonation?: ImpersonationPrincipal;
+    machineActor?: { kind: string; apiKeyId: string } | undefined;
+  };
 };
 
 const tracer = trace.getTracer('apps/server');
@@ -51,6 +55,11 @@ const annotateImpersonation = (span: Span, impersonation: ImpersonationPrincipal
   span.setAttribute('app.impersonation.actor.email', impersonation.actorEmail);
 };
 
+const annotateMachineActor = (span: Span, machineActor: { kind: string; apiKeyId: string }): void => {
+  span.setAttribute('app.api_key.id', machineActor.apiKeyId);
+  span.setAttribute('app.api_key.kind', machineActor.kind);
+};
+
 const matchedConcreteRoutePath = (c: Context<TelemetryVars>): string | undefined => {
   const routes = matchedRoutes(c);
   for (let index = routes.length - 1; index >= 0; index -= 1) {
@@ -87,6 +96,8 @@ export const telemetryMiddleware = async (c: Context<TelemetryVars>, next: Next)
       if (identity) annotateIdentity(span, identity);
       const impersonation = c.get('impersonation');
       if (impersonation) annotateImpersonation(span, impersonation);
+      const machineActor = c.get('machineActor');
+      if (machineActor) annotateMachineActor(span, machineActor);
       if (status >= SERVER_ERROR_STATUS) span.setStatus({ code: SpanStatusCode.ERROR });
       span.end();
     }

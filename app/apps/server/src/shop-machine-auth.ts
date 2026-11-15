@@ -1,14 +1,16 @@
-import type { Context, Hono } from 'hono';
+import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { RouterRoute } from 'hono/types';
 
 import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
   err,
+  notFound,
   ok,
   tenantNotFound,
   unauthorized,
   type AppError,
   type Result,
+  type ShopManagementKeysSwitch,
   type ShopManagementScope,
   type Tenant,
 } from '#core/domain/index.js';
@@ -27,6 +29,17 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 
 export const SHOP_MACHINE_PATH_PREFIX = '/api/m2m/shop/';
 const SHOP_MACHINE_MECHANISM = 'Shop management key';
+
+const isShopMachinePath = (path: string): boolean =>
+  path === SHOP_MACHINE_PATH_PREFIX.slice(0, -1) || path.startsWith(SHOP_MACHINE_PATH_PREFIX);
+
+export const shopManagementKeysSwitchMiddleware = (state: ShopManagementKeysSwitch): MiddlewareHandler<AppVars> =>
+  async (c, next) => {
+    if (state === 'disabled' && isShopMachinePath(c.req.path)) {
+      return respond(err(notFound('Shop management keys are disabled on this deployment')));
+    }
+    await next();
+  };
 
 type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps;
 
@@ -73,6 +86,8 @@ export const registerShopMachineRoute = (
   app.on(route.method, route.path, async (c) => {
     const authenticated = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     if (!authenticated.ok) return respond(authenticated, { headers: retryAfterHeaders(authenticated.error) });
+    c.set('identity', authenticated.value.ctx.identity);
+    c.set('machineActor', authenticated.value.ctx.machineActor);
     return route.handler(c, authenticated.value);
   });
 };

@@ -49,6 +49,10 @@ export const IMPORT_API_KEY_MAX_LIFETIME_MS = IMPORT_API_KEY_MAX_LIFETIME_DAYS *
 
 export const SHOP_MANAGEMENT_KEY_MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
+export const shopManagementKeysSwitchSchema = z.enum(['enabled', 'disabled']);
+
+export type ShopManagementKeysSwitch = z.output<typeof shopManagementKeysSwitchSchema>;
+
 export const isImportApiKeyScope = (scope: TenantApiKeyStoredScope): boolean =>
   scope === 'import:content' || scope === 'import:users';
 

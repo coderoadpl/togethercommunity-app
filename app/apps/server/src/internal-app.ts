@@ -367,6 +367,7 @@ import {
   listSpacesForStaff,
   listTenantApiKeys,
   listImportAuditForApiKey,
+  purgeShopManagementKeys,
   listTenantDocuments,
   m2mEnroll,
   createEvent,
@@ -2346,6 +2347,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const result = await revokeTenantApiKey(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
   });
+
+  app.post(API_PATHS.apiKeysShopManagementPurge, async (c) =>
+    respond(await purgeShopManagementKeys(ctxOf(c), deps)));
 
   app.get(API_PATHS.apiKeyImportAudit, async (c) => {
     const parsed = apiKeyImportAuditQuerySchema.safeParse({

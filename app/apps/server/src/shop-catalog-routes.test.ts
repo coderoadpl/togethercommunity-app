@@ -282,6 +282,42 @@ describe('shop catalog routes with a shop management key', () => {
     expect(untouched).toMatchObject({ title: 'Studio print', published: false });
   });
 
+  it('rejects unknown body fields at the top level and in nested objects and persists nothing', async () => {
+    const { secret } = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
+    const created = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Strict body', type: 'physical', priceCents: 700 });
+    const { product } = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data;
+    const compliance = {
+      manufacturerName: 'Acme Print', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'print@example.test', modelIdentifier: 'HB-1',
+    };
+
+    for (const [path, body] of [
+      [SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Typo product', type: 'physical', priceCents: 700, pricecents: 700 }],
+      [SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, title: 'Renamed', descripton: 'typo' }],
+      [SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, compliance: { ...compliance, manufacturerPhone: '000' } }],
+      [SHOP_CATALOG_ROUTES.publishProduct.path, { id: product.id, force: true }],
+      [SHOP_CATALOG_ROUTES.createProductPrice.path, { productId: product.id, kind: 'one_time', amountCents: 700, curency: 'PLN' }],
+      [SHOP_CATALOG_ROUTES.deleteProductDraft.path, { productId: product.id, cascade: true }],
+    ] as const) {
+      const response = await keyed(secret, 'POST', path, body);
+      expect(response.status, path).toBe(400);
+      expect((await errorOf(response)).code, path).toBe('validation');
+    }
+
+    const listed = envelope(shopCatalogContracts.listProducts.output)
+      .parse(await (await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).json()).data.products;
+    expect(listed.map((entry) => entry.title)).not.toContain('Typo product');
+    expect(listed.find((entry) => entry.id === product.id)).toMatchObject({ title: 'Strict body', description: '', published: false, compliance: null });
+    const prices = await keyed(secret, 'GET', productPath(SHOP_CATALOG_ROUTES.listProductPrices.path, product.id));
+    expect(envelope(shopCatalogContracts.listProductPrices.output).parse(await prices.json()).data.prices).toEqual([]);
+  });
+
+  it('keeps the session product route tolerant of unknown fields', async () => {
+    const response = await ownerRequest(API_ROUTES.productsCreate.method, API_ROUTES.productsCreate.path, {
+      title: 'Session product', type: 'physical', priceCents: 300, pricecents: 300,
+    });
+    expect(response.status).toBe(200);
+  });
+
   it('blocks the very next call once the owner revokes the key', async () => {
     const { apiKey, secret } = await createShopKey(['shop:catalog:read']);
     expect((await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).status).toBe(200);

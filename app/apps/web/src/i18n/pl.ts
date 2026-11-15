@@ -2053,6 +2053,7 @@ export const pl: Messages = {
       redirect_deleted: 'Usunięcie przekierowania',
       'api_key.shop_management_created': 'Utworzenie klucza zarządzania sklepem',
       'api_key.shop_management_revoked': 'Unieważnienie klucza zarządzania sklepem',
+      'api_key.shop_management_purged': 'Usunięcie kluczy zarządzania sklepem',
     },
     auditLogEntry: ({ actor, subject }) => format('{actor} → {subject}', { actor, subject }),
     erasureRequestsEmpty: 'Brak wniosków o usunięcie danych.',

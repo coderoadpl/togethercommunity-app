@@ -9,6 +9,10 @@ export type FakeInstance = {
   tenantHost?: string;
   secretKeys?: Record<string, string[]>;
   databaseFingerprint?: string | null;
+  environment?: string;
+  databaseName?: string;
+  description?: 'multi-tenant' | 'single-tenant' | 'absent';
+  reportedBaseDomain?: string;
 };
 type FakeInstanceRequest = {
   origin: string; path: string; method: string; tenant: string | null; authorization: string | null; secret: string | null; body: string | null;
@@ -18,15 +22,28 @@ const json = (data: unknown, status = 200) => Response.json(status < 400 ? { ok:
 const hostnameOf = (url: URL) => url.hostname.replace(/\.+$/, '');
 
 const FINGERPRINT_MODULUS = 2 ** 48;
-const fixtureFingerprint = (text: string): string => Array.from(text)
+const fixtureFingerprint = (text: string, length = 12): string => Array.from(text)
   .reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) % FINGERPRINT_MODULUS, 7)
-  .toString(16).padStart(12, '0');
+  .toString(16).padStart(length, '0');
 
-const instanceHealth = (instance: FakeInstance) => ({
-  status: 'ok', version: '1.0.0', sha: 'fixture-sha', database: 'up', environment: instance.baseDomain, production: true, commit: 'fixture-commit',
-  databaseFingerprint: instance.databaseFingerprint === undefined ? fixtureFingerprint(instance.baseDomain) : instance.databaseFingerprint,
-  expectedMigrations: 1, appliedMigrations: 1, schemaCurrent: true, schemaFingerprint: null, schemaFingerprintMatch: null,
-});
+const instanceDescription = (instance: FakeInstance, databaseFingerprint: string | null) => {
+  const databaseIdentity = databaseFingerprint === null ? null : fixtureFingerprint(`${databaseFingerprint}/${instance.databaseName ?? 'together'}`, 16);
+  switch (instance.description ?? 'multi-tenant') {
+    case 'absent': return {};
+    case 'single-tenant': return { instance: { baseDomain: null, singleTenant: true, databaseIdentity } };
+    case 'multi-tenant': return { instance: { baseDomain: instance.reportedBaseDomain ?? instance.baseDomain, singleTenant: false, databaseIdentity } };
+  }
+};
+
+const instanceHealth = (instance: FakeInstance) => {
+  const databaseFingerprint = instance.databaseFingerprint === undefined ? fixtureFingerprint(instance.baseDomain) : instance.databaseFingerprint;
+  return {
+    status: 'ok', version: '1.0.0', sha: 'fixture-sha', database: 'up', environment: instance.environment ?? instance.baseDomain, production: true,
+    commit: 'fixture-commit', databaseFingerprint,
+    expectedMigrations: 1, appliedMigrations: 1, schemaCurrent: true, schemaFingerprint: null, schemaFingerprintMatch: null,
+    ...instanceDescription(instance, databaseFingerprint),
+  };
+};
 
 const resolveWorkspace = (instances: FakeInstance[], url: URL, tenantHeader: string | null) => {
   const host = hostnameOf(url);

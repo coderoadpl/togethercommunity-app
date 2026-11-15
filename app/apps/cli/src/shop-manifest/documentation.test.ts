@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { API_ROUTES, checkoutSessionOutputSchema, checkoutSessionRequestSchema, publicOfferOutputSchema } from '#core/contract/index.js';
-import { newProductSchema, newProductPriceSchema, provisionTenantInputSchema, updateTenantSettingsInputSchema } from '#core/domain/index.js';
+import { instanceDescriptionSchema, newProductSchema, newProductPriceSchema, provisionTenantInputSchema, updateTenantSettingsInputSchema } from '#core/domain/index.js';
 import { effectiveShopIntegrations, effectiveShopSettings, manifestWorkspaceSlug, productMetadata, shopManifestSchema } from '#core/domain/shop-manifest.js';
 import { resolveManifestIntegrations } from './integrations.js';
 import { driftManifest } from './drift.js';
@@ -64,10 +64,21 @@ describe('shop manifest documentation', () => {
     for (const fake of fakes.values()) expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
   });
 
-  it('limits the tool to multi-tenant instances because no response identifies a single-tenant one', async () => {
-    const document = await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8');
-    expect(document.replace(/\s+/gu, ' ')).toContain('The tool supports multi-tenant instances only');
-    expect(document).toContain('APP_BASE_DOMAIN');
+  it('states what the instance check compares, the single-tenant refusal and the older-release fallback', async () => {
+    const document = (await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
+    expect(document).toContain('an `instance` object with the same `baseDomain` and the same non-null `databaseIdentity`');
+    expect(document).toContain('A single-tenant instance (`singleTenant: true`, an instance started without `APP_BASE_DOMAIN`) is refused');
+    expect(document).toContain('the workspace routing answer is not used');
+    expect(document).toContain('which states that the stronger instance check is unavailable until the instance is upgraded');
+    expect(document).toContain('A single-tenant instance is not detected on an older release.');
+    expect(document).not.toContain('The tool supports multi-tenant instances only');
+  });
+
+  it('documents the instance description of the health answer next to the unchanged database fingerprint', async () => {
+    const document = (await readFile(new URL('../../../../docs/observability.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
+    expect(document).toContain('## `GET /api/health` instance description');
+    for (const field of Object.keys(instanceDescriptionSchema.shape)) expect(document).toContain(`\`${field}\``);
+    expect(document).toContain('`databaseFingerprint` keeps its value');
   });
 
   it('states that the public-token comparison does not cover carrier credentials stored earlier', async () => {

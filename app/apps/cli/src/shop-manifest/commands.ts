@@ -8,7 +8,7 @@ import { emit } from '../output.js';
 import { planManifest, preflightManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 import { driftManifest } from './drift.js';
-import { baseDomainSchema, manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
+import { baseDomainSchema, cachedHealthReader, manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
 import { confirmingOperator, readConfirmedWorkspaces } from './workspaces.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
@@ -53,7 +53,7 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
     const subcommand = shop.command(command)
       .description(descriptions[command])
       .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace')
-      .option('--base-domain <domain>', 'Instance base domain, needed when the API origin does not report it (the platform host)');
+      .option('--base-domain <domain>', 'Instance base domain, needed only when an API origin of an older release does not report it (its platform host)');
     if (command === 'apply') {
       subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks')
         .option('--reconfigure-payments', 'With --integrations, configure Stripe again even when the workspace reports that mode as configured; registers a new webhook endpoint and signing secret');
@@ -74,10 +74,12 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const { apiUrl, profile } = ctx.value;
       const confirmed = await readConfirmedWorkspaces(sessionClient(apiUrl, profile.token, null));
       if (!confirmed.ok) { emit(confirmed, ctx.value.json, () => ''); return; }
+      const healthOf = cachedHealthReader((origin) => createApiClient({ baseUrl: origin, refuseRedirects: true }));
       const workspaceOrigin = await manifestWorkspaceOrigins(apiUrl, (workspace) => sessionClient(apiUrl, profile.token, workspace),
-        preflight.value.map((shop) => shop.slug).filter((slug) => confirmed.value.has(slug)), options.data.baseDomain);
+        preflight.value.map((shop) => shop.slug).filter((slug) => confirmed.value.has(slug)),
+        { baseDomain: options.data.baseDomain, healthOf }, (message) => { process.stderr.write(`Warning: ${message}\n`); });
       if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
-      const hostServedByInstance = workspaceHostGuard(new URL(apiUrl).origin, (origin) => createApiClient({ baseUrl: origin, refuseRedirects: true }));
+      const hostServedByInstance = workspaceHostGuard(new URL(apiUrl).origin, healthOf);
       const clientFor = (workspace: string) => {
         if (!confirmed.value.has(workspace)) return null;
         const origin = workspaceOrigin.value(workspace);

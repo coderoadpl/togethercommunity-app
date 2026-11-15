@@ -7,7 +7,7 @@ import { tenantSettingsSchema } from '#core/domain/index.js';
 import type * as ConfigModule from '../config.js';
 import { readManifestFile } from './commands.js';
 import { createInstanceFetch, type FakeInstance } from './fake-instance.js';
-import { manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
+import { cachedHealthReader, INSTANCE_DESCRIPTION_UNAVAILABLE_WARNING, manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
 
 const h = vi.hoisted(() => ({ apiUrl: 'https://togethercommunity.app' }));
 vi.mock('../config.js', async (importOriginal) => ({
@@ -66,6 +66,11 @@ const listen = async (handler: (request: TestRequest) => TestResponse) => {
   };
 };
 const jsonAnswer = (status: number, body: unknown): TestResponse => ({ status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const olderRelease = (setup: FakeInstance[]): FakeInstance[] => setup.map((instance) => ({ ...instance, description: 'absent' }));
+const stderrLines = () => {
+  const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  return () => write.mock.calls.map((call) => String(call[0]));
+};
 
 describe('shop manifest command boundary', () => {
   const hostedInstances = (): FakeInstance[] => [
@@ -85,7 +90,7 @@ describe('shop manifest command boundary', () => {
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
     await runCli(['shop', command, '--manifest', path], 'https://shop.acme.example.test');
     expect(fake.requests.map((request) => `${request.origin} ${request.path}`))
-      .toEqual(['https://shop.acme.example.test /api/tenants', 'https://shop.acme.example.test /api/me', 'https://shop.acme.example.test /api/tenant/routing']);
+      .toEqual(['https://shop.acme.example.test /api/tenants', 'https://shop.acme.example.test /api/health']);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
   });
@@ -189,6 +194,22 @@ describe('shop manifest command boundary', () => {
       expect(process.exitCode).toBe(2);
     });
 
+    it.each(['plan', 'apply', 'drift'])('%s sends no token to another instance of the same release, environment and database host that uses another database', async (command) => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const shared = { environment: 'production', databaseFingerprint: 'abcdefabcdef' };
+      const fake = createInstanceFetch([
+        { baseDomain: 'togethercommunity.app', workspaces: ['acme', 'preview'], ...shared, databaseName: 'together' },
+        { baseDomain: 'preview.togethercommunity.app', workspaces: ['preview'], ...shared, databaseName: 'together_preview', reportedBaseDomain: 'togethercommunity.app' },
+      ]);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+      const input = { version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace: 'preview', products: [] }] };
+      await runCli(['shop', command, '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+      expect(tokenRequestsTo(fake.requests, 'https://preview.togethercommunity.app')).toEqual([]);
+      expect(fake.requests.filter((request) => request.origin === 'https://preview.togethercommunity.app').map((request) => request.path)).toEqual(['/api/health']);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('does not serve') } });
+      expect(process.exitCode).toBe(2);
+    });
+
     it.each(['plan', 'drift'])('%s sends no token to the host of a listed workspace when another instance serves that host', async (command) => {
       const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
       const fake = createInstanceFetch([
@@ -213,9 +234,51 @@ describe('shop manifest command boundary', () => {
     expect(fake.requests.filter((request) => !new URL(request.origin).hostname.endsWith('preview.togethercommunity.app'))).toEqual([]);
   });
 
-  it('requires an explicit base domain on the platform host and then stays on that instance', async () => {
+  it('refuses a single-tenant instance before any workspace request', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const fake = createInstanceFetch([{ baseDomain: 'togethercommunity.app', workspaces: ['acme', 'studio'], description: 'single-tenant' }]);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+    const input = { version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace: 'studio', products: [] }] };
+    await runCli(['shop', 'apply', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+    expect(fake.requests.map((request) => `${request.origin} ${request.path}`))
+      .toEqual(['https://acme.togethercommunity.app /api/tenants', 'https://acme.togethercommunity.app /api/health']);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('single-tenant instance') } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('uses the base domain that the platform host reports and checks an explicit one against it', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const fake = createInstanceFetch(hostedInstances());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+    const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
+    await runCli(['shop', 'plan', '--manifest', path], 'https://start.staging.togethercommunity.app');
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme' }] } });
+    await runCli(['shop', 'plan', '--manifest', path, '--base-domain', 'togethercommunity.app'], 'https://start.staging.togethercommunity.app');
+    expect(JSON.parse(String(log.mock.calls[1]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('does not match') } });
+    expect(fake.requests.every((request) => new URL(request.origin).hostname.endsWith('.staging.togethercommunity.app'))).toBe(true);
+  });
+
+  it('keeps working against an older release with one warning that the stronger check is unavailable', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnings = stderrLines();
+    const fake = createInstanceFetch(olderRelease(hostedInstances()));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+    await runCli(['shop', 'plan', '--manifest', await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }))]);
+    expect(fake.requests.map((request) => `${request.method} ${request.origin}${request.path}`)).toEqual([
+      'GET https://togethercommunity.app/api/tenants', 'GET https://togethercommunity.app/api/health',
+      'GET https://togethercommunity.app/api/me', 'GET https://togethercommunity.app/api/tenant/routing',
+      'GET https://acme.togethercommunity.app/api/health',
+      'GET https://acme.togethercommunity.app/api/me', 'GET https://acme.togethercommunity.app/api/tenant/settings', 'GET https://acme.togethercommunity.app/api/products',
+    ]);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme', provisioning: 'unchanged' }] } });
+    expect(warnings()).toEqual([`Warning: ${INSTANCE_DESCRIPTION_UNAVAILABLE_WARNING}\n`]);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('requires an explicit base domain on the platform host of an older release and then stays on that instance', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    stderrLines();
+    const fake = createInstanceFetch(olderRelease(hostedInstances()));
     vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
     await runCli(['shop', 'plan', '--manifest', path], 'https://start.staging.togethercommunity.app');
@@ -356,17 +419,18 @@ describe('shop manifest command boundary', () => {
     const fake = createInstanceFetch(hostedInstances());
     vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
+    const warnings = stderrLines();
     await runCli(['--json', 'shop', command, '--manifest', path, '--shop', 'acme']);
     expect(fake.requests.map((request) => `${request.method} ${request.origin}${request.path}`)).toEqual([
       'GET https://togethercommunity.app/api/tenants',
-      'GET https://togethercommunity.app/api/me', 'GET https://togethercommunity.app/api/tenant/routing',
       'GET https://togethercommunity.app/api/health', 'GET https://acme.togethercommunity.app/api/health',
       'GET https://acme.togethercommunity.app/api/me', 'GET https://acme.togethercommunity.app/api/tenant/settings', 'GET https://acme.togethercommunity.app/api/products',
     ]);
     const [health, authenticated] = [fake.requests.filter((request) => request.path === '/api/health'), fake.requests.filter((request) => request.path !== '/api/health')];
     expect(health.map((request) => [request.authorization, request.tenant])).toEqual([[null, null], [null, null]]);
     expect(authenticated.every((request) => request.authorization === 'Bearer session-fixture')).toBe(true);
-    expect(authenticated.map((request) => request.tenant)).toEqual([null, 'acme', 'acme', 'acme', 'acme', 'acme']);
+    expect(authenticated.map((request) => request.tenant)).toEqual([null, 'acme', 'acme', 'acme']);
+    expect(warnings()).toEqual([]);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme', products: [] }] } });
     expect(String(log.mock.calls[0]?.[0])).not.toContain('session-fixture');
@@ -380,21 +444,37 @@ const instances = (): FakeInstance[] => [
   { baseDomain: 'localhost', port: '48730', workspaces: ['acme', 'studio'] },
 ];
 
-const discover = async (apiUrl: string, setup: FakeInstance[] = instances(), workspaces = ['acme', 'studio'], baseDomain?: string, signedIn = true) => {
+const healthReaderOn = (fetchImpl: typeof fetch) => cachedHealthReader((origin) => createApiClient({ baseUrl: origin, fetchImpl, refuseRedirects: true }));
+
+const discoverOn = async (apiUrl: string, setup: FakeInstance[], workspaces = ['acme', 'studio'], baseDomain?: string, signedIn = true) => {
   const fake = createInstanceFetch(setup);
+  const warnings: string[] = [];
   const probeFor = (workspace: string) => createApiClient({
     baseUrl: apiUrl, fetchImpl: fake.fetchImpl, refuseRedirects: true,
     headers: () => ({ ...(signedIn ? { authorization: 'Bearer session-fixture' } : {}), 'x-tenant': workspace }),
   });
-  return { result: await manifestWorkspaceOrigins(apiUrl, probeFor, workspaces, baseDomain), requests: fake.requests };
+  const result = await manifestWorkspaceOrigins(apiUrl, probeFor, workspaces, { baseDomain, healthOf: healthReaderOn(fake.fetchImpl) }, (message) => {
+    warnings.push(message);
+  });
+  return { result, requests: fake.requests, warnings };
 };
+const discover = (apiUrl: string, setup: FakeInstance[] = instances(), workspaces?: string[], baseDomain?: string, signedIn?: boolean) =>
+  discoverOn(apiUrl, olderRelease(setup), workspaces, baseDomain, signedIn);
 
 describe('workspace host guard', () => {
   const guardOn = (setup: FakeInstance[], profileOrigin = 'https://acme.togethercommunity.app') => {
     const fake = createInstanceFetch(setup);
-    const guard = workspaceHostGuard(profileOrigin, (origin) => createApiClient({ baseUrl: origin, fetchImpl: fake.fetchImpl, refuseRedirects: true }));
+    const guard = workspaceHostGuard(profileOrigin, healthReaderOn(fake.fetchImpl));
     return { guard, requests: fake.requests };
   };
+  const guardAcross = (profileInstance: FakeInstance, otherInstance: FakeInstance) => {
+    const profile = createInstanceFetch([profileInstance]);
+    const other = createInstanceFetch([otherInstance]);
+    const fetchImpl: typeof fetch = (input, init) =>
+      new URL(String(input)).origin === 'https://acme.togethercommunity.app' ? profile.fetchImpl(input, init) : other.fetchImpl(input, init);
+    return workspaceHostGuard('https://acme.togethercommunity.app', healthReaderOn(fetchImpl));
+  };
+  const sameRelease = { environment: 'production', databaseFingerprint: 'abcdefabcdef' };
 
   it('accepts a host that the same instance serves after asking both hosts without credentials once', async () => {
     const { guard, requests } = guardOn(instances());
@@ -422,16 +502,106 @@ describe('workspace host guard', () => {
   });
 
   it('refuses a host of the same base domain that reports another database', async () => {
-    const profile = createInstanceFetch([{ baseDomain: 'togethercommunity.app', workspaces: ['acme'] }]);
-    const other = createInstanceFetch([{ baseDomain: 'togethercommunity.app', workspaces: ['studio'], databaseFingerprint: 'abcdefabcdef' }]);
-    const guard = workspaceHostGuard('https://acme.togethercommunity.app', (origin) => createApiClient({
-      baseUrl: origin, refuseRedirects: true, fetchImpl: origin === 'https://acme.togethercommunity.app' ? profile.fetchImpl : other.fetchImpl,
-    }));
+    const guard = guardAcross(
+      { baseDomain: 'togethercommunity.app', workspaces: ['acme'] },
+      { baseDomain: 'togethercommunity.app', workspaces: ['studio'], databaseFingerprint: 'abcdefabcdef' },
+    );
     expect((await guard('https://studio.togethercommunity.app')).ok).toBe(false);
+  });
+
+  it('refuses a host of the same release, environment, database host and reported base domain that uses another database', async () => {
+    const guard = guardAcross(
+      { baseDomain: 'togethercommunity.app', workspaces: ['acme'], ...sameRelease, databaseName: 'together' },
+      { baseDomain: 'togethercommunity.app', workspaces: ['studio'], ...sameRelease, databaseName: 'together_copy' },
+    );
+    expect(await guard('https://studio.togethercommunity.app')).toMatchObject({ ok: false, error: { message: expect.stringContaining('not served by the instance') } });
+  });
+
+  it('accepts a host of the same instance description', async () => {
+    const guard = guardAcross(
+      { baseDomain: 'togethercommunity.app', workspaces: ['acme'], ...sameRelease },
+      { baseDomain: 'togethercommunity.app', workspaces: ['studio'], ...sameRelease },
+    );
+    expect(await guard('https://studio.togethercommunity.app')).toEqual({ ok: true, value: true });
+  });
+
+  it('refuses a host that reports another base domain even when every release field and the database match', async () => {
+    const guard = guardAcross(
+      { baseDomain: 'togethercommunity.app', workspaces: ['acme'], ...sameRelease },
+      { baseDomain: 'togethercommunity.app', workspaces: ['studio'], ...sameRelease, reportedBaseDomain: 'staging.togethercommunity.app' },
+    );
+    expect((await guard('https://studio.togethercommunity.app')).ok).toBe(false);
+  });
+
+  it('refuses a host without an instance description when the profile origin describes its instance', async () => {
+    const guard = guardAcross(
+      { baseDomain: 'togethercommunity.app', workspaces: ['acme'], ...sameRelease },
+      { baseDomain: 'togethercommunity.app', workspaces: ['studio'], ...sameRelease, description: 'absent' },
+    );
+    expect((await guard('https://studio.togethercommunity.app')).ok).toBe(false);
+  });
+
+  it('accepts hosts of an older release by the release, environment and database host comparison', async () => {
+    const { guard } = guardOn(olderRelease(instances()));
+    expect((await guard('https://studio.togethercommunity.app')).ok).toBe(true);
+    expect((await guard('https://acme.preview.togethercommunity.app')).ok).toBe(false);
   });
 });
 
-describe('manifest instance discovery', () => {
+describe('manifest workspace origins from the instance description', () => {
+  it.each([
+    ['https://togethercommunity.app', 'https://studio.togethercommunity.app'],
+    ['https://acme.togethercommunity.app', 'https://studio.togethercommunity.app'],
+    ['https://start.togethercommunity.app', 'https://studio.togethercommunity.app'],
+    ['https://acme.staging.togethercommunity.app.', 'https://studio.staging.togethercommunity.app'],
+    ['https://staging.togethercommunity.app', 'https://studio.staging.togethercommunity.app'],
+    ['http://acme.localhost:48730', 'http://studio.localhost:48730'],
+  ])('maps %s to <workspace>.<reported base domain> after one health request and no routing request', async (apiUrl, expected) => {
+    const { result, requests, warnings } = await discoverOn(apiUrl, instances());
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value('studio')).toBe(expected);
+    expect(requests.map((request) => `${request.origin}${request.path} ${String(request.authorization)}`)).toEqual([`${new URL(apiUrl).origin}/api/health null`]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('ignores a routing answer that would point elsewhere because it no longer derives the base domain from routing', async () => {
+    const { result } = await discoverOn('https://acme.togethercommunity.app', [{ baseDomain: 'togethercommunity.app', workspaces: ['acme'], tenantHost: 'acme.example.test' }]);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value('studio')).toBe('https://studio.togethercommunity.app');
+  });
+
+  it('refuses a single-tenant instance with a clear message', async () => {
+    const { result, requests } = await discoverOn('https://acme.togethercommunity.app', [{ baseDomain: 'togethercommunity.app', workspaces: ['acme'], description: 'single-tenant' }]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('single-tenant instance') } });
+    expect(requests.map((request) => request.path)).toEqual(['/api/health']);
+  });
+
+  it.each([
+    ['a custom workspace domain', 'https://shop.acme.example.test', instances()],
+    ['an origin two labels below the reported base domain', 'https://acme.staging.togethercommunity.app',
+      [{ baseDomain: 'staging.togethercommunity.app', workspaces: ['acme'], reportedBaseDomain: 'togethercommunity.app' }]],
+    ['a reported base domain that is not a host name', 'https://acme.togethercommunity.app',
+      [{ baseDomain: 'togethercommunity.app', workspaces: ['acme'], reportedBaseDomain: 'not a host' }]],
+  ])('refuses %s', async (_case, apiUrl, setup) => {
+    const { result } = await discoverOn(apiUrl, setup);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('Cannot use this API origin') } });
+  });
+
+  it('refuses an explicit base domain that contradicts the reported one', async () => {
+    const { result } = await discoverOn('https://start.staging.togethercommunity.app', instances(), ['acme'], 'togethercommunity.app');
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('does not match') } });
+  });
+
+  it('warns once and falls back to routing discovery when the instance runs an older release', async () => {
+    const { result, requests, warnings } = await discover('https://acme.togethercommunity.app');
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value('studio')).toBe('https://studio.togethercommunity.app');
+    expect(requests.map((request) => request.path)).toEqual(['/api/health', '/api/me', '/api/tenant/routing']);
+    expect(warnings).toEqual([INSTANCE_DESCRIPTION_UNAVAILABLE_WARNING]);
+  });
+});
+
+describe('manifest instance discovery on an older release', () => {
   it.each([
     ['https://togethercommunity.app', 'https://studio.togethercommunity.app'],
     ['https://acme.togethercommunity.app', 'https://studio.togethercommunity.app'],
@@ -445,7 +615,7 @@ describe('manifest instance discovery', () => {
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value('studio')).toBe(expected);
     expect(new Set(requests.map((request) => request.origin))).toEqual(new Set([new URL(apiUrl).origin]));
-    expect(requests.map((request) => request.path)).toEqual(['/api/me', '/api/tenant/routing']);
+    expect(requests.map((request) => request.path)).toEqual(['/api/health', '/api/me', '/api/tenant/routing']);
   });
 
   it('never maps the bare host of another instance onto production workspace hosts', async () => {
@@ -465,7 +635,7 @@ describe('manifest instance discovery', () => {
     const { result, requests } = await discover('https://togethercommunity.app', instances(), ['newshop', 'studio']);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value('newshop')).toBe('https://newshop.togethercommunity.app');
-    expect(requests.map((request) => `${request.tenant} ${request.path}`)).toEqual(['newshop /api/me', 'studio /api/me', 'studio /api/tenant/routing']);
+    expect(requests.map((request) => `${request.tenant} ${request.path}`)).toEqual(['null /api/health', 'newshop /api/me', 'studio /api/me', 'studio /api/tenant/routing']);
   });
 
   it.each([
@@ -488,7 +658,7 @@ describe('manifest instance discovery', () => {
   it('stops on an authentication failure of the origin instead of guessing or using the explicit value', async () => {
     const { result, requests } = await discover('https://start.togethercommunity.app', instances(), ['acme', 'studio'], 'togethercommunity.app', false);
     expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized', details: { operation: 'instance:identity' } } });
-    expect(requests).toHaveLength(1);
+    expect(requests.map((request) => request.path)).toEqual(['/api/health', '/api/me']);
   });
 
   describe('explicit base domain', () => {

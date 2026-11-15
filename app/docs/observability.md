@@ -90,6 +90,28 @@ runs. A link rejected by origin validation remains usable after recovery.
 Unknown origins remain rejected. These diagnostics do not change alerts;
 owner-side monitors follow the observe-only doctrine above.
 
+## `GET /api/health` instance description
+
+Besides the attestation fields (`version`, `sha`, `commit`, `environment`,
+`production`, `databaseFingerprint`, the migration and schema fields), the
+unauthenticated health answer carries one `instance` object that lets a client
+tell instances of the same release apart:
+
+- `baseDomain`: the configured `APP_BASE_DOMAIN`, or `null` on a single-tenant
+  instance, which runs without it.
+- `singleTenant`: `true` when the instance runs without `APP_BASE_DOMAIN`.
+- `databaseIdentity`: the first 16 hex characters of a SHA-256 hash of the
+  database host, port (5432 when the URL names none) and database name taken
+  from `DATABASE_URL`, or `null` when the URL names no host or database. It
+  never contains a credential or the connection string, and unlike
+  `databaseFingerprint` it differs for two databases on one server.
+
+The object is additive: `databaseFingerprint` keeps its value (a hash of the
+database host name only), so monitors that pin it are unaffected. Releases
+before this field answer without `instance`. `shop plan`, `shop apply` and
+`shop drift` use it to derive and verify workspace hosts
+([shop-manifest.md](shop-manifest.md)).
+
 ## `GET /api/health/deep`
 
 Unauthenticated, rate-limited to 12 requests per minute per address

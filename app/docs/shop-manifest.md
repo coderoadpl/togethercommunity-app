@@ -51,66 +51,98 @@ validation code `2` and drift with `1`, and an unconfirmed provisioning entry as
 `provisioning: "create"`; `shop apply` stops with a validation error that lists
 the unconfirmed string-form workspaces before any write.
 
-Confirmation alone does not prove that the derived host belongs to the same
-instance: a provisioned slug, or a listed one, can equal a host label that a
-separate instance serves. Before the first request that carries the session
-token to a derived workspace host whose origin differs from the selected
-origin, the command reads `GET /api/health` without credentials or a workspace
-header from both the selected origin and that host, once per host in a run. It
-sends the token only when both answer and report the same `version`, `sha`,
-`commit`, `environment`, `production` and a non-null `databaseFingerprint` (a
-hash of the database host name). When the host does not answer, answers
-without a database fingerprint or reports any other value, the command stops
-with a validation error naming the workspace and the operation, before any
-authenticated request to that host. Two deployments of the same release that
-share the same environment name and database host are indistinguishable to
-this check.
+The command then needs each confirmed workspace's host on the selected origin's
+instance. `http://localhost:<port>` is kept as it is and selects each workspace
+with the workspace header, without the requests described below, so every
+request stays on that origin. For any other origin, the command first reads
+`GET /api/health` from the selected origin, without credentials or a workspace
+header. Instances of the current release answer with an `instance` object (see
+[observability.md](observability.md#get-apihealth-instance-description)): the
+configured base domain, whether the instance runs in single-tenant mode, and a
+database identity, a hash of the database host, port and database name.
 
-The command does not guess the instance from the host name: before any
-workspace request it asks the selected origin itself, with the profile's
-session, for its identity (`GET /api/me`) and its workspace routing
-(`GET /api/tenant/routing`, available to the workspace's owners and admins),
-selecting the first confirmed manifest workspace with the workspace header. The routing answer names the workspace host the instance itself builds
-from its configured base domain. The command accepts it only when that host is
-`<workspace>.<base domain>` for the workspace the origin resolved, uses the
-origin's port, and the selected origin is the base domain itself or a host one
-label below it. Every workspace client then uses
-`<scheme>://<workspace>.<base domain>[:<port>]` after the health comparison
-above, and the operator client uses the selected origin, so the operator secret
-goes only to the selected origin and the session token only to hosts that
-report the selected origin's instance identity. For example `https://acme.staging.togethercommunity.app`
-and `https://staging.togethercommunity.app` lead to
-`https://studio.staging.togethercommunity.app` for the `studio` shop when that
-instance's base domain is `staging.togethercommunity.app`, and
-`https://togethercommunity.app` leads to `https://studio.togethercommunity.app`.
-`http://localhost:48730` is kept as it is and selects each workspace with the
-workspace header, without discovery requests.
+When the selected origin reports the `instance` object:
 
-Two origins do not report a base domain: the platform host (`start.<domain>`),
-which resolves no workspace, and a bare base-domain origin when none of the
-selected workspaces is confirmed yet. For those, pass `--base-domain <domain>` to
-`shop plan`, `shop apply` or `shop drift`; the command then requires the selected
-origin to be exactly `start.<domain>` or `<domain>`. When the origin does report
-a base domain, `--base-domain` must match it. Any other origin is refused before
-the first workspace request: a custom workspace domain, an IP address, or a host
-whose reported workspace routing points elsewhere. An authentication or
-permission failure of the discovery requests stops the command; it is never
-replaced by a guess or by `--base-domain`. Before reading settings or catalogue
-data, the command also checks `/api/me` on each workspace host and refuses a
-workspace mismatch.
+- A single-tenant instance (`singleTenant: true`, an instance started without
+  `APP_BASE_DOMAIN`) is refused with a validation error before any workspace
+  request. The tool supports only multi-tenant instances, where each workspace
+  is served on `<workspace>.<base domain>`.
+- Every workspace client uses `<scheme>://<workspace>.<base domain>[:<port>]`
+  with the reported base domain and the selected origin's scheme and port; the
+  workspace routing answer is not used. The selected origin must be the base
+  domain itself, its platform host (`start.<domain>`) or a host one label below
+  the base domain. Any other origin, such as a custom workspace domain or an IP
+  address, is refused before the first workspace request. `--base-domain` is not
+  needed; when it is given, it must equal the reported base domain. For example
+  `https://acme.staging.togethercommunity.app`,
+  `https://start.staging.togethercommunity.app` and
+  `https://staging.togethercommunity.app` lead to
+  `https://studio.staging.togethercommunity.app` for the `studio` shop when that
+  instance reports the base domain `staging.togethercommunity.app`.
+- Confirmation alone does not prove that a derived host belongs to the same
+  instance: a provisioned slug, or a listed one, can equal a host label that a
+  separate instance serves. Before the first request that carries the session
+  token to a derived workspace host whose origin differs from the selected
+  origin, the command reads that host's own `GET /api/health`, once per host in
+  a run, without credentials or a workspace header. It sends the token only when
+  the host answers and reports the same `version`, `sha`, `commit`,
+  `environment`, `production` and non-null `databaseFingerprint` as the
+  selected origin, and an `instance` object with the same `baseDomain` and the
+  same non-null `databaseIdentity`. Two deployments of the same release,
+  environment and database server that use different databases are therefore
+  told apart. When the host does not answer, answers without the `instance`
+  object or reports any other value, the command stops with a validation error
+  naming the workspace and the operation, before any authenticated request to
+  that host. When the selected origin reports no database identity (its database
+  URL names no host or no database), every derived host is refused.
 
-The tool supports multi-tenant instances only, where each workspace is served
-on `<workspace>.<base domain>`. Do not use it against a single-tenant
-self-hosted instance (one started without `APP_BASE_DOMAIN`). Such an instance
-serves its workspace on its own application host, and no existing response
-distinguishes it reliably from a multi-tenant instance: if that host's first
-label happens to equal the workspace slug, the routing answer looks like a
-workspace host and the derived base domain is a parent domain that the instance
-does not serve, so another workspace, including one provisioned by the same run,
-would be addressed on a host of that parent domain. The health comparison
-above withholds the session token from such a host unless it reports the same
-instance identity. In every other case the routing check above already refuses
-such an origin.
+The operator client always uses the selected origin, so the operator secret goes
+only to the selected origin and the session token only to hosts that pass the
+comparison above.
+
+When the selected origin answers without the `instance` object, it runs an older
+release, or its health answer could not be read. The command prints one warning
+on standard error, `Warning: The API origin does not describe its instance in
+GET /api/health (it runs an older release), ...`, which states that the stronger
+instance check is unavailable until the instance is upgraded, and keeps the
+earlier behaviour:
+
+- It asks the selected origin, with the profile's session, for its identity
+  (`GET /api/me`) and its workspace routing (`GET /api/tenant/routing`,
+  available to the workspace's owners and admins), selecting the first
+  confirmed manifest workspace with the workspace header. The routing answer
+  names the workspace host the instance builds from its configured base domain.
+  The command accepts it only when that host is `<workspace>.<base domain>` for
+  the workspace the origin resolved, uses the origin's port, and the selected
+  origin is the base domain itself or a host one label below it; workspace
+  clients then use `<scheme>://<workspace>.<base domain>[:<port>]`.
+- Two origins do not report a base domain this way: the platform host
+  (`start.<domain>`), which resolves no workspace, and a bare base-domain origin
+  when none of the selected workspaces is confirmed yet. For those, pass
+  `--base-domain <domain>` to `shop plan`, `shop apply` or `shop drift`; the
+  command then requires the selected origin to be exactly `start.<domain>` or
+  `<domain>`. When the origin does report a base domain, `--base-domain` must
+  match it. Any other origin is refused before the first workspace request: a
+  custom workspace domain, an IP address, or a host whose reported workspace
+  routing points elsewhere. An authentication or permission failure of the
+  discovery requests stops the command; it is never replaced by a guess or by
+  `--base-domain`.
+- Before the session token goes to a derived host, the command compares only
+  `version`, `sha`, `commit`, `environment`, `production` and a non-null
+  `databaseFingerprint` (a hash of the database host name) of both health
+  answers. Two deployments of the same release that share the same environment
+  name and database host are indistinguishable to this comparison.
+- A single-tenant instance is not detected on an older release. It serves its
+  workspace on its own application host; if that host's first label happens to
+  equal the workspace slug, the routing answer looks like a workspace host and
+  the derived base domain is a parent domain that the instance does not serve.
+  The health comparison withholds the session token from a host of that parent
+  domain unless it reports the same values; in every other case the routing
+  check already refuses such an origin. Do not use the tool against a
+  single-tenant instance of an older release.
+
+Before reading settings or catalogue data, the command also checks `/api/me` on
+each workspace host and refuses a workspace mismatch.
 
 Every request the tool sends refuses HTTP redirects: workspace requests carrying
 the session token, integration configure requests carrying provider

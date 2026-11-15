@@ -170,7 +170,7 @@ import {
 import { createAuth, createAuthPort, type Auth } from '#adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
-import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
+import { databaseHostFingerprint, databaseIdentityFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
@@ -587,6 +587,7 @@ export interface AppDeps {
   appVersion: string;
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
+  databaseIdentity: string | null;
   tenantCreationMode: TenantCreationMode;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
@@ -1627,6 +1628,7 @@ export const createDeps = (
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
     deploymentIdentity: selectDeploymentIdentity(env),
+    databaseIdentity: databaseIdentityFingerprint(env.DATABASE_URL),
     tenantCreationMode,
     ids,
     clock,

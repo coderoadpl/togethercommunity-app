@@ -327,6 +327,15 @@ describe('Stripe subscriptions in an account shared by two workspaces', () => {
     h.remote.metadataTenantId = tenantB;
     expect(await m2mAdoptStripeSubscription(tenantB, inputB, h.deps)).toMatchObject(conflict);
     expectNoRowsWrittenFor(h, tenantB);
+    expect(await h.listFor(tenantB)).toEqual(ok({ subscriptions: [], nextCursor: null }));
+  });
+
+  it('lists a subscription whose metadata names this workspace when no other workspace owns it', async () => {
+    const h = harness();
+    h.remote.metadataTenantId = tenantB;
+    expect(await h.listFor(tenantB)).toEqual(ok({ subscriptions: [
+      { id: input.subscriptionId, status: 'active', providerPriceId: 'price_existing', adopted: false },
+    ], nextCursor: null }));
   });
 
   it('adopts and lists a legacy subscription without metadata or any owner', async () => {
@@ -345,5 +354,6 @@ describe('Stripe subscriptions in an account shared by two workspaces', () => {
     expect(await m2mListStripeSubscriptions(tenantB, {},
       { payment: { listStripeSubscriptions: list }, subscriptions: h.adoptedIds, stripeWebhookOwnership: h.ownership }))
       .toEqual(ok({ subscriptions: [], nextCursor: 'sub_foreign' }));
+    expect(h.ownership.hasForeignOwner).not.toHaveBeenCalled();
   });
 });

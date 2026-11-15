@@ -34,14 +34,6 @@ const adoptableByTenant = async (
 ): Promise<boolean> => (remote.metadataTenantId === null || remote.metadataTenantId === tenantId)
   && !await hasForeignOwner(tenantId, remote, ownership);
 
-const listedForTenant = async (
-  tenantId: string,
-  remote: RemoteOwnership,
-  ownership: StripeWebhookOwnershipReader,
-): Promise<boolean> => remote.metadataTenantId === null
-  ? !await hasForeignOwner(tenantId, remote, ownership)
-  : remote.metadataTenantId === tenantId;
-
 const foreignOwnerRefusal = () =>
   err(adoptionRefusal('conflict', 'conflict', 'Stripe subscription belongs to another workspace'));
 
@@ -257,7 +249,7 @@ export const m2mListStripeSubscriptions = async (
   const remote = await deps.payment.listStripeSubscriptions(tenantId, parsed.data);
   if (!remote.ok) return remote;
   const owned = await Promise.all(remote.value.subscriptions.map((subscription) =>
-    listedForTenant(tenantId, subscription, deps.stripeWebhookOwnership)));
+    adoptableByTenant(tenantId, subscription, deps.stripeWebhookOwnership)));
   const visible = remote.value.subscriptions.filter((_subscription, index) => owned[index] === true);
   const adopted = new Set(await deps.subscriptions.listKnownProviderSubscriptionIds(
     tenantId, visible.map((subscription) => subscription.id),

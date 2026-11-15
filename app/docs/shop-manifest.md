@@ -82,6 +82,17 @@ replaced by a guess or by `--base-domain`. Before reading settings or catalogue
 data, the command also checks `/api/me` on each workspace host and refuses a
 workspace mismatch.
 
+The tool supports multi-tenant instances only, where each workspace is served
+on `<workspace>.<base domain>`. Do not use it against a single-tenant
+self-hosted instance (one started without `APP_BASE_DOMAIN`). Such an instance
+serves its workspace on its own application host, and no existing response
+distinguishes it reliably from a multi-tenant instance: if that host's first
+label happens to equal the workspace slug, the routing answer looks like a
+workspace host and the derived base domain is a parent domain that the instance
+does not serve, so another workspace, including one provisioned by the same run,
+would be addressed on a host of that parent domain. In every other case the
+routing check above already refuses such an origin.
+
 Every request the tool sends refuses HTTP redirects: workspace requests carrying
 the session token, integration configure requests carrying provider
 credentials, and the operator provisioning request. A redirect answer stops the

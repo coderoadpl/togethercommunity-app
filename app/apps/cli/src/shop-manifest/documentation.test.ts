@@ -50,6 +50,12 @@ describe('shop manifest documentation', () => {
     for (const fake of fakes.values()) expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
   });
 
+  it('limits the tool to multi-tenant instances because no response identifies a single-tenant one', async () => {
+    const document = await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8');
+    expect(document.replace(/\s+/gu, ' ')).toContain('The tool supports multi-tenant instances only');
+    expect(document).toContain('APP_BASE_DOMAIN');
+  });
+
   it.each(['shop-manifest.md', 'shop-integration.md'])('runs every --json example in %s without the script banner', async (name) => {
     const document = await readFile(new URL(`../../../../docs/${name}`, import.meta.url), 'utf8');
     const jsonExamples = document.split('\n').filter((line) => line.includes('--json') && line.includes('run cli'));

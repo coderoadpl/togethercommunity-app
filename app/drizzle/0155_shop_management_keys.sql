@@ -35,7 +35,8 @@ CREATE TABLE "shop_management_key_events" (
   "actor_user_id" text NOT NULL,
   "method" text CONSTRAINT "shop_management_key_events_method_check" CHECK ("method" IN ('POST', 'PUT', 'PATCH', 'DELETE')),
   "route" text,
-  "resource_id" text CONSTRAINT "shop_management_key_events_resource_id_length_check" CHECK (char_length("resource_id") <= 200),
+  "resource_id" text CONSTRAINT "shop_management_key_events_resource_id_length_check" CHECK (char_length("resource_id") <= 200)
+    CONSTRAINT "shop_management_key_events_resource_id_pattern_check" CHECK ("resource_id" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'),
   "at" text NOT NULL,
   CONSTRAINT "shop_management_key_events_shape_check" CHECK (
     ("kind" = 'request' AND "method" IS NOT NULL AND "route" IS NOT NULL)

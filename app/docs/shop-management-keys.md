@@ -150,8 +150,10 @@ creation). It records no status or outcome: what the handler then did, a
 change, a validation error or a failure, is in request telemetry only. The
 resource id is kept only when it looks like an identifier: at most 200
 characters, starting with a letter or digit and continuing with letters,
-digits, `.`, `_`, `:` or `-`. Anything else is stored as no resource id, and
-the database refuses a resource id longer than 200 characters. The shared shop
+digits, `.`, `_`, `:` or `-` (ASCII only). Anything else is stored as no
+resource id, and the database enforces both rules with its own checks: a length
+check of at most 200 characters and the pattern `^[A-Za-z0-9][A-Za-z0-9._:-]*$`.
+The shared shop
 route helper writes the row, so every shop route inherits it.
 
 The row is written before the handler runs, so no keyed change commits without

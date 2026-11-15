@@ -452,9 +452,9 @@ scopes on every shop key.
   never answered as an error. A refused request writes no row and is recorded
   in its request span only, so refusals cannot grow the table, and the rate
   limits bound the rows of one key to 10,000 a day. A row keeps a resource id
-  only when it is an identifier of at most 200 characters (also a database
-  check). Every shop
-  request span records `app.api_key.match` and, when the secret matched a key
+  only when it is an identifier of at most 200 characters matching
+  `^[A-Za-z0-9][A-Za-z0-9._:-]*$`; the database enforces the length and the
+  pattern with its own checks. Every shop request span records `app.api_key.match` and, when the secret matched a key
   row, `app.api_key.id` and `app.api_key.issuer.id`.
   Changes the reused use-cases record elsewhere (product versions, stock) are
   attributed to the issuing owner's account.

@@ -14,7 +14,12 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { shopManagementScopeSchema, type ShopManagementKey, type ShopManagementKeyEvent } from '#core/domain/index.js';
+import {
+  shopManagementKeyEventResourceId,
+  shopManagementScopeSchema,
+  type ShopManagementKey,
+  type ShopManagementKeyEvent,
+} from '#core/domain/index.js';
 
 import type { Db } from './client.js';
 import { runMigrations } from './migration-runner.js';
@@ -296,6 +301,31 @@ describe('shop management key lifecycle', () => {
     await expect(createShopManagementKeyEventRepository(db).record(TENANT, event)).rejects.toThrow();
     expect(await eventIds(TENANT)).not.toContain('bad-resource');
   });
+});
+
+it.each([
+  ['a space', 'product 1'],
+  ['a leading separator', '-product-1'],
+  ['a slash', 'product/1'],
+  ['a quote', "product'1"],
+  ['a non-ASCII letter', 'produkt-\u0142'],
+  ['a trailing newline', 'product-1\n'],
+  ['an empty string', ''],
+])('rejects a resource id with %s at the database with the event schema pattern', async (_label, resourceId) => {
+  const event = requestEvent({ id: `bad-pattern-${String(resourceId.length)}-${resourceId.charCodeAt(0)}`, resourceId });
+  await expect(pool.query(
+    `insert into shop_management_key_events (id, tenant_id, api_key_id, kind, actor_user_id, method, route, resource_id, at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [event.id, event.tenantId, event.apiKeyId, event.kind, event.actorUserId, event.method, event.route, event.resourceId, event.at],
+  )).rejects.toThrow(/shop_management_key_events_resource_id_pattern_check/);
+  expect(shopManagementKeyEventResourceId(resourceId)).toBeNull();
+});
+
+it('accepts every identifier shape the event schema keeps at the database', async () => {
+  const resourceId = `A0._:-${'z'.repeat(194)}`;
+  expect(shopManagementKeyEventResourceId(resourceId)).toBe(resourceId);
+  await insertEvent(requestEvent({ id: 'good-pattern', resourceId }));
+  expect(await eventIds()).toContain('good-pattern');
 });
 
 describe('shop management key rate limits', () => {

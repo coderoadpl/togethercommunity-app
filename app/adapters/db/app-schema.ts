@@ -1117,6 +1117,7 @@ export const shopManagementKeyEvents = pgTable(
     check('shop_management_key_events_kind_check', sql`${table.kind} IN ('created', 'revoked', 'purged', 'request')`),
     check('shop_management_key_events_method_check', sql`${table.method} IN ('POST', 'PUT', 'PATCH', 'DELETE')`),
     check('shop_management_key_events_resource_id_length_check', sql`char_length(${table.resourceId}) <= 200`),
+    check('shop_management_key_events_resource_id_pattern_check', sql`${table.resourceId} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'`),
     check(
       'shop_management_key_events_shape_check',
       sql`(${table.kind} = 'request' AND ${table.method} IS NOT NULL AND ${table.route} IS NOT NULL) OR (${table.kind} <> 'request' AND ${table.method} IS NULL AND ${table.route} IS NULL AND ${table.resourceId} IS NULL)`,

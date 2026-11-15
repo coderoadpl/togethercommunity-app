@@ -1,6 +1,6 @@
 {
-  "hash": "b3f74fa61cdbafe136b51321d59d35a5bfd0aae8654b1f19ff47389062c8c617",
-  "shortId": "b3f74fa61cdb",
+  "hash": "3ca2bb25261fb34adfd46f6016d3da0282da8efc3309c5d26a18af6f7445f50c",
+  "shortId": "3ca2bb25261f",
   "schema": {
     "constraints": [
       {
@@ -217,6 +217,11 @@
         "definition": "CHECK ((reserved >= 0))",
         "name": "product_stock_reserved_check",
         "table": "product_stock"
+      },
+      {
+        "definition": "CHECK ((resource_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'::text))",
+        "name": "shop_management_key_events_resource_id_pattern_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((revision > 0))",

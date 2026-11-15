@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   ok,
   isShippingLine,
+  orderLineQuantity,
   orderProviderIdentifiers,
   orderShippingFrom,
   productLines,
@@ -261,6 +262,18 @@ const couponPaymentContext = async (
   return { coupon, session, price, memberEmail };
 };
 
+const snapshotCouponProducts = (snapshot: CheckoutSnapshot | null) => {
+  const lines = snapshot === null ? [] : productLines(snapshot.lines);
+  if (snapshot?.salesLinkId == null && lines.every((line) => line.quantity === undefined)) return {};
+  return {
+    productIds: lines.map((line) => line.productId),
+    products: lines.map((line) => ({
+      productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents / orderLineQuantity(line),
+      ...(line.quantity === undefined ? {} : { quantity: line.quantity }),
+    })),
+  };
+};
+
 const couponStillAttributable = async (
   tenant: Tenant,
   context: CouponPaymentContext,
@@ -280,7 +293,7 @@ const couponStillAttributable = async (
       code: context.coupon.code,
       email: context.memberEmail,
       productId: context.session.productId,
-      ...(snapshot?.salesLinkId == null ? {} : { productIds: productLines(snapshot.lines).map((line) => line.productId), products: productLines(snapshot.lines).map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
+      ...snapshotCouponProducts(snapshot),
       priceId: context.session.priceId,
       priceKind: context.price?.kind ?? 'one_time',
       amountCents: context.session.originalCents,

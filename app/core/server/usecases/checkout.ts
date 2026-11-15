@@ -14,6 +14,7 @@ import {
   stripeKeyModeConflicts,
   validation,
   type AppError,
+  type CheckoutCartInput,
   type CheckoutSessionInput,
   type CouponCheckoutBreakdown,
   type Product,
@@ -196,7 +197,7 @@ const freeShippedOrder = async (
 export const startCheckoutSession = async (
   tenant: Tenant,
   tenantBaseUrl: string,
-  input: CheckoutSessionInput,
+  input: CheckoutSessionInput | CheckoutCartInput,
   selection: CheckoutSelection,
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,

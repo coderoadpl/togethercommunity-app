@@ -231,7 +231,9 @@ import {
   type ApiKeyRevokeInput,
   type AuthResolveRequest,
   type CourseCreateInput,
+  type CheckoutCartSessionRequest,
   type CheckoutSessionRequest,
+  type CouponCartCheckoutValidationRequest,
   type CouponCheckoutValidationRequest,
   type CouponArchiveRequest,
   type ContentVersionRestoreInput,
@@ -1068,6 +1070,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  createCartCheckoutSession: (input: CheckoutCartSessionRequest, signal?: AbortSignal) =>
+    request(options, API_ROUTES.checkoutSession.method, API_ROUTES.checkoutSession.path, checkoutSessionOutputSchema, input, signal),
+  validateCartCouponForCheckout: (input: CouponCartCheckoutValidationRequest, signal?: AbortSignal) =>
+    request(options, API_ROUTES.couponCheckoutValidation.method, API_ROUTES.couponCheckoutValidation.path, couponCheckoutValidationOutputSchema, input, signal),
   recordTermsConsent: (input: TermsConsentRequest, signal?: AbortSignal) =>
     request(
       options,

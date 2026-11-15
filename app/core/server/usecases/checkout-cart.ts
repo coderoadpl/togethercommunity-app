@@ -13,9 +13,10 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
-import type { ProductPriceRepository, ProductRepository, TenantRepository } from '../ports.js';
+import type { Clock, CouponRedemptionRepository, CouponRepository, PaymentProvider, ProductPriceHistoryRepository, ProductPriceRepository, ProductRepository, TenantRepository } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
-import { resolveCartPrices, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
+import { validateSelectionCoupon } from './checkout-coupon.js';
+import { resolveCartPrices, selectionLineQuantity, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
 import { ensureProductsInStock } from './stock.js';
 
 interface CartSelectionDeps {
@@ -65,4 +66,27 @@ export const validateCartSelection = async (
   const selection = await selectCartProducts(tenantId, lines.data, deps);
   if (!selection.ok || options.shipping === 'ignore') return selection;
   return withCheckoutShipping(tenantId, selection.value, input.shipping, deps);
+};
+
+export const validateCartCoupon = async (
+  tenantId: string,
+  input: { code: string; email?: string | undefined },
+  selection: CheckoutSelection,
+  deps: {
+    coupons: CouponRepository;
+    couponRedemptions: CouponRedemptionRepository;
+    priceHistory: ProductPriceHistoryRepository;
+    clock: Clock;
+    payment: PaymentProvider;
+  },
+) => {
+  const prices = selection.productPrices ?? [];
+  const [first] = prices;
+  if (selection.cartLines === undefined || first === undefined) return err(validation('Invalid cart'));
+  return validateSelectionCoupon(tenantId, {
+    code: input.code,
+    ...(input.email === undefined ? {} : { email: input.email }),
+    amountCents: prices.reduce((total, price) => total + price.amountCents * selectionLineQuantity(selection, price.productId), 0),
+    currency: first.currency,
+  }, selection, deps);
 };

@@ -10553,6 +10553,90 @@ it('uses current bundle price amounts, currencies and identifiers for coupon pre
 });
 
 
+describe('cart checkout over the public checkout routes', () => {
+  const poster = '00000000-0000-4000-8000-0000000000a1';
+  const mug = '00000000-0000-4000-8000-0000000000a2';
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+  const cartApp = () => {
+    const products: Product[] = [
+      { ...product({ id: poster, tenantId: acme.id, title: 'Poster', published: true }), type: 'physical', vatRate: 8 },
+      { ...product({ id: mug, tenantId: acme.id, title: 'Mug', published: true }), type: 'physical', vatRate: 23 },
+    ];
+    const base = deps({ products });
+    const now = base.clock.nowIso();
+    const amounts: Record<string, number> = { [poster]: 3500, [mug]: 2500 };
+    base.prices.listActiveByProducts = async (tenantId, productIds) => products
+      .filter((item) => item.tenantId === tenantId && productIds.includes(item.id))
+      .map((item): ProductPrice => ({ id: `price-${item.title.toLowerCase()}`, productId: item.id, tenantId: acme.id, amountCents: amounts[item.id] ?? 0, currency: 'PLN', kind: 'one_time', interval: null, active: true, createdAt: now }));
+    const snapshots = new Map<string, CheckoutSnapshot>();
+    base.checkoutSnapshots = {
+      create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); },
+      attachProviderSession: async () => undefined,
+      findById: async (_, id) => snapshots.get(id) ?? null,
+    };
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, poster, 5);
+    base.stock = stock.repository;
+    const coupon = couponSchema.parse({ id: 'coupon', tenantId: acme.id, code: 'CART', kind: 'percent', value: 10, scope: { kind: 'all' }, appliesTo: 'one_time', recurringDuration: 'first_invoice', startsAt: null, endsAt: null, maxRedemptions: null, maxRedemptionsPerMember: null, status: 'active', partnerLabel: null, stripeCouponId: null, stripePromotionCodeId: null, createdAt: now });
+    base.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon, create: async () => coupon, archive: async () => coupon };
+    base.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+    base.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
+    base.tenantSecrets = { ...base.tenantSecrets, findByKey: async (tenantId, key) => ({ id: `secret-${key}`, tenantId, key, ciphertext: 'ciphertext', iv: 'iv', authTag: 'auth-tag', maskedPreview: '••••text', updatedAt: now }) };
+    const createCheckoutSession = vi.fn(base.payment.createCheckoutSession);
+    base.payment = { ...base.payment, createCheckoutSession };
+    const post = (path: string, body: Record<string, unknown>) => buildApp(base).request(path, { method: 'POST', headers, body: JSON.stringify(body) });
+    return { post, createCheckoutSession, snapshots, stock };
+  };
+  const cartLines = [{ productId: poster, quantity: 2 }, { productId: mug, quantity: 1 }];
+
+  it('starts one payment for the cart lines at their quantities and holds stock per line quantity', async () => {
+    const h = cartApp();
+    const response = await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { url: 'https://checkout.local/cs', free: false } });
+    expect(h.createCheckoutSession).toHaveBeenCalledOnce();
+    expect(h.createCheckoutSession.mock.calls[0]?.[0]).toMatchObject({
+      productId: poster, priceCents: 9500, currency: 'PLN', customerEmail: 'buyer@example.test',
+      lines: [{ productId: poster, quantity: 2, grossCents: 7000 }, { productId: mug, quantity: 1, grossCents: 2500 }],
+    });
+    expect([...h.snapshots.values()].map((snapshot) => snapshot.lines.map((line) => [line.productId, line.quantity]))).toEqual([[[poster, 2], [mug, 1]]]);
+    expect(h.stock.reservations.map((row) => [row.productId, row.quantity])).toEqual([[poster, 2]]);
+  });
+
+  it.each([
+    ['a product ID', { productId: poster }],
+    ['a price ID', { priceId: 'price-poster' }],
+    ['a sales-link slug', { salesLinkSlug: 'bundle' }],
+    ['a sales-link ID', { salesLinkId: 'bundle-link' }],
+    ['variant selections', { variantSelections: [] }],
+    ['an unknown field', { amountCents: 1 }],
+  ])('rejects lines together with %s', async (_case, extra) => {
+    const h = cartApp();
+    for (const path of [API_PATHS.checkoutSession, API_PATHS.couponCheckoutValidation]) {
+      const response = await h.post(path, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART', ...extra });
+      expect(response.status).toBe(400);
+    }
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects a price sent inside a cart line', async () => {
+    const h = cartApp();
+    const response = await h.post(API_PATHS.checkoutSession, { lines: [{ productId: poster, quantity: 1, grossCents: 1 }], termsAccepted: true });
+    expect(response.status).toBe(400);
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('returns the coupon discount for the cart subtotal', async () => {
+    const h = cartApp();
+    const response = await h.post(API_PATHS.couponCheckoutValidation, { lines: cartLines, email: 'buyer@example.test', couponCode: 'CART' });
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toEqual({
+      breakdown: { couponId: 'coupon', code: 'CART', originalCents: 9500, discountCents: 950, finalCents: 8550, lowestPriceLast30DaysCents: 9500, currency: 'PLN' },
+      recurringDuration: 'first_invoice',
+    });
+  });
+});
+
 describe('public order QR response', () => {
   const token = 'b'.repeat(64);
   const storedOrder = orderListItemSchema.parse({ id: 'order-number', tenantId: acme.id, memberId: 'member', productId: 'physical', priceId: null, kind: 'one_time', status: 'paid', amountCents: 10500, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: '2026-10-08T12:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed material', couponCode: null, verificationToken: token });

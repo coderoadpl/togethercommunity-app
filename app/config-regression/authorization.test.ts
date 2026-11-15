@@ -17,7 +17,7 @@ const appRoot = join(import.meta.dirname, '..');
 const useCasesRoot = join(appRoot, 'core', 'server', 'usecases');
 const internalAppPath = join(appRoot, 'apps', 'server', 'src', 'internal-app.ts');
 const compositionPath = join(appRoot, 'apps', 'server', 'src', 'composition.ts');
-const exportedCtxUseCase = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*ctx:\s*Ctx\b/g;
+const exportedCtxUseCase = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*(?:ctx:\s*Ctx|octx:\s*OrganizationCtx)\b/g;
 const SCHEDULED_STEP_CAPABILITIES: readonly Capability[] = [
   'scheduler:dispatch',
   'marketing:campaign:dispatch',

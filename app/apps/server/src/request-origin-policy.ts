@@ -19,6 +19,8 @@ const classify = (policy: RequestOriginPolicy, routes: readonly Route[]): Entry[
 const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
   ...classify('secret', [
     API_ROUTES.operatorTenantProvision,
+    API_ROUTES.operatorOrganizationCreate,
+    API_ROUTES.operatorOrganizationLimits,
     API_ROUTES.emailDispatch,
     API_ROUTES.autoInvoiceDispatch,
     API_ROUTES.tenantDomainDispatch,

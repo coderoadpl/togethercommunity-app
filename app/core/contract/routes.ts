@@ -2,6 +2,7 @@ import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInp
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
+import { ORGANIZATION_ROUTES } from './organizations.js';
 import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
 import { SHIPX_ROUTES } from './shipx.js';
@@ -1930,6 +1931,7 @@ export const API_ROUTES = {
   ...META_CAPI_ROUTES,
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
+  ...ORGANIZATION_ROUTES,
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
@@ -2643,6 +2645,12 @@ export const API_PATHS = {
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,
+  operatorOrganizationCreate: API_ROUTES.operatorOrganizationCreate.path,
+  operatorOrganizationLimits: API_ROUTES.operatorOrganizationLimits.path,
+  organizations: API_ROUTES.organizations.path,
+  organization: API_ROUTES.organization.path,
+  organizationMembers: API_ROUTES.organizationMembers.path,
+  organizationAuditEvents: API_ROUTES.organizationAuditEvents.path,
 } as const;
 
 /**

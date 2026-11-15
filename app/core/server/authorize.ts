@@ -4,15 +4,17 @@ import {
   forbidden,
   impersonationReadOnly,
   isImpersonationReadCapability,
+  notFound,
   ok,
   requiresVerifiedEmail,
   tenantNotFound,
   type AppError,
   type Capability,
+  type OrganizationRole,
   type Result,
 } from '#core/domain/index.js';
 
-import type { Ctx } from './context.js';
+import type { Ctx, OrganizationCtx } from './context.js';
 
 const principalFor = (ctx: Ctx) => {
   if (ctx.identity.staffRole === 'owner') return 'owner';
@@ -88,4 +90,19 @@ export const authorizeRequiredTenant = (
   return ctx.identity.tenantId === null
     ? err(forbidden('Tenant context is required'))
     : ok(ctx.identity.tenantId);
+};
+
+export const authorizeOrganization = (
+  octx: OrganizationCtx,
+  organizationId: string,
+  capability: Capability,
+): Result<{ organizationId: string; role: OrganizationRole }, AppError> => {
+  const membership = octx.membership;
+  if (membership === null || membership.organizationId !== organizationId) {
+    return err(notFound('Organization not found'));
+  }
+  const roleGrants = capabilitiesForPrincipal(membership.role === 'owner' ? 'organization-owner' : 'organization-admin');
+  const granted = roleGrants.includes(capability) && (octx.capabilities?.includes(capability) ?? true);
+  if (!granted) return err(forbidden(`${capability} is not permitted`));
+  return ok({ organizationId, role: membership.role });
 };

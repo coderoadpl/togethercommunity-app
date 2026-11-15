@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
@@ -403,6 +404,7 @@ const deps = (input: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
     },
+    ...createOrganizationFakes().repositories,
     impersonationTokens: {
       issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
       verify: (token) => token.startsWith('token:')
@@ -9472,7 +9474,7 @@ describe('impersonation HTTP surface', () => {
     expect(mutations.length).toBeGreaterThan(100);
     for (const route of mutations) {
       const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
-      const requestHeaders = route.path === API_PATHS.operatorTenantProvision
+      const requestHeaders = [API_PATHS.operatorTenantProvision, API_PATHS.operatorOrganizationCreate, API_PATHS.operatorOrganizationLimits].some((operatorPath) => operatorPath === route.path)
         ? { ...impersonated, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }
         : impersonated;
       const response = await app.request(path, { method: route.method, headers: requestHeaders });

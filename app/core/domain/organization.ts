@@ -18,7 +18,9 @@ export const organizationSchema = z.object({
 
 export type Organization = z.infer<typeof organizationSchema>;
 
-const organizationRoleSchema = z.enum(['owner', 'admin']);
+export const organizationRoleSchema = z.enum(['owner', 'admin']);
+
+export type OrganizationRole = z.infer<typeof organizationRoleSchema>;
 
 export const organizationMemberSchema = z.object({
   id: z.string().min(1),
@@ -30,6 +32,42 @@ export const organizationMemberSchema = z.object({
 });
 
 export type OrganizationMember = z.infer<typeof organizationMemberSchema>;
+
+export const organizationMembershipSchema = organizationSchema
+  .pick({ id: true, slug: true, name: true, status: true })
+  .extend({ role: organizationRoleSchema });
+
+export type OrganizationMembership = z.infer<typeof organizationMembershipSchema>;
+
+export const organizationMemberAccountSchema = z.object({
+  userId: z.string().min(1),
+  email: z.string().min(1),
+  role: organizationRoleSchema,
+  createdAt: z.string().datetime(),
+});
+
+export type OrganizationMemberAccount = z.infer<typeof organizationMemberAccountSchema>;
+
+const maxWorkspacesSchema = z.number().int().min(0).max(10_000);
+
+export const createOrganizationInputSchema = z.object({
+  slug: operatorTenantSlugSchema,
+  name: tenantSchema.shape.name,
+  ownerEmail: z.string().trim().toLowerCase().email(),
+  maxWorkspaces: maxWorkspacesSchema.optional(),
+}).strict();
+
+export type CreateOrganizationInput = z.infer<typeof createOrganizationInputSchema>;
+
+export const organizationLimitsSchema = z.object({ maxWorkspaces: maxWorkspacesSchema }).strict();
+
+export type OrganizationLimits = z.infer<typeof organizationLimitsSchema>;
+
+export const organizationAuditEventListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+export type OrganizationAuditEventListQuery = z.infer<typeof organizationAuditEventListQuerySchema>;
 
 const organizationAuditEventKindSchema = z.enum([
   'organization.created',

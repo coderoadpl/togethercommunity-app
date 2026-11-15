@@ -8,6 +8,7 @@ import {
   PRINCIPALS,
   ROLE_CAPABILITIES,
 } from '#core/contract/index.js';
+import { ORGANIZATION_PRINCIPALS } from '#core/domain/index.js';
 import type { Capability, Principal } from '#core/domain/index.js';
 
 import { publicRouteManifestEntry } from '../apps/server/src/public-route-manifest.js';
@@ -74,6 +75,10 @@ const effectiveAfter = (
 const capabilityForRoute = (method: string, path: string): Capability | null => {
   const declared = selfAuthenticatingRouteManifestEntry({ method, path })?.capability;
   if (declared !== undefined) return declared;
+  if (path === '/api/organizations') return 'tenant:list-own';
+  if (path === '/api/organizations/:organizationId') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/members') return 'organization:member:read';
+  if (path === '/api/organizations/:organizationId/audit-events') return 'organization:audit:read';
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
@@ -308,7 +313,11 @@ const beforeForRoute = (
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;
   }
-  if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/me' || path === '/api/tenants' || path === '/api/organizations') return allHumans;
+  if (path.startsWith('/api/organizations/')) {
+    const capability = capabilityForRoute(method, path);
+    return capability === null ? [] : principalsForCapability(capability);
+  }
   if (path === '/api/meta-capi/events') return owner;
   if (path.startsWith('/api/me/meta-capi/')) return tenantActors;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
@@ -358,7 +367,8 @@ const reachableForRoute = (
   if (publicEntry !== undefined) return beforeForRoute(method, path);
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) return beforeForRoute(method, path);
-  if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/me' || path === '/api/tenants' || path === '/api/organizations') return allHumans;
+  if (path.startsWith('/api/organizations/')) return ORGANIZATION_PRINCIPALS;
   if (path === '/api/platform/data-reset') return platformOwner;
   return tenantActors;
 };
@@ -391,6 +401,7 @@ export interface CollectedUseCase {
   name: string;
   file: string;
   capability: Capability;
+  organizationContext?: true;
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
@@ -404,6 +415,7 @@ const authorizationCallNames = new Set([
   'authorize',
   'authorizeRequiredTenant',
   'authorizeTenant',
+  'authorizeOrganization',
   'requireActor',
   'requireMember',
   'requireMemberOrStaff',
@@ -415,6 +427,8 @@ const authorizationCallNames = new Set([
   'tenantIdFrom',
 ]);
 
+const capabilityArgumentIndex = (callName: string): number => callName === 'authorizeOrganization' ? 2 : 1;
+
 const capabilityFromBody = (
   body: ts.ConciseBody,
   subject: string,
@@ -422,7 +436,7 @@ const capabilityFromBody = (
   const capabilities: Capability[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && authorizationCallNames.has(node.expression.text)) {
-      const argument = node.arguments[1];
+      const argument = node.arguments[capabilityArgumentIndex(node.expression.text)];
       if (argument !== undefined && ts.isStringLiteral(argument)) {
         const capability = CAPABILITIES.find((candidate) => candidate === argument.text);
         if (capability === undefined) {
@@ -468,6 +482,14 @@ const isBareCtxType = (
   && parameter.type.typeName.text === 'Ctx'
   && parameter.type.typeArguments === undefined;
 
+const isOrganizationCtxType = (
+  parameter: ts.ParameterDeclaration | undefined,
+): boolean =>
+  parameter?.type !== undefined
+  && ts.isTypeReferenceNode(parameter.type)
+  && ts.isIdentifier(parameter.type.typeName)
+  && parameter.type.typeName.text === 'OrganizationCtx';
+
 const isCtxTypedParameter = (
   parameter: ts.ParameterDeclaration | undefined,
   sourceFile: ts.SourceFile,
@@ -503,6 +525,15 @@ export const collectUseCasesInSource = (
       const subject = `${file}#${declaration.name.text}`;
       if (AUTHORIZATION_UTILITIES.has(subject)) return;
       const firstParameter = initializer.parameters[0];
+      if (isOrganizationCtxType(firstParameter)) {
+        found.push({
+          name: declaration.name.text,
+          file,
+          capability: capabilityFromBody(initializer.body, subject),
+          organizationContext: true,
+        });
+        return;
+      }
       if (!isBareCtxType(firstParameter)) {
         if (
           isCtxShapedParameter(firstParameter, sourceFile)
@@ -559,7 +590,7 @@ const beforeForUseCase = (
   if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts' || file === 'm2m-import-redirects.ts') {
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
-  if (file === 'provision-tenant.ts' || file === 'operator-tenant-readiness.ts') return operatorSecret;
+  if (file === 'provision-tenant.ts' || file === 'operator-tenant-readiness.ts' || file === 'operator-organizations.ts') return operatorSecret;
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'account-sessions.ts') return tenantActors;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return tenantActors;
@@ -613,7 +644,18 @@ const beforeForUseCase = (
 };
 
 const useCaseRows = (): PermissionRow[] =>
-  collectCtxUseCases().map(({ file, name, capability }) => {
+  collectCtxUseCases().map(({ file, name, capability, organizationContext }) => {
+    if (organizationContext === true) {
+      const before = principalsForCapability(capability);
+      return {
+        subject: `${file}#${name}`,
+        capability,
+        before,
+        after: effectiveAfter(ORGANIZATION_PRINCIPALS, capability),
+        derivable: true,
+        evidence: `${relative(appRoot, join(useCasesRoot, file))} organization authorization call`,
+      };
+    }
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
     const reachable = directory || before === reportApiKey || before === operatorSecret ? before : before === allHumans
@@ -739,6 +781,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
     '',
     '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
+    '',
+    'The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller\'s own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

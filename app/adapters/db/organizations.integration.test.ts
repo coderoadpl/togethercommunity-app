@@ -9,7 +9,7 @@ import {
   createOrganizationRepository,
 } from './organizations.js';
 import { createTenantDirectory, createTenantRepository } from './repositories.js';
-import { organizations, tenants } from './schema.js';
+import { organizationAuditEvents, organizationMembers, organizations, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -117,5 +117,51 @@ describe('organization repositories', () => {
   it('refuses to delete an organization that still has workspaces', async () => {
     await expect(database.db.delete(organizations).where(eq(organizations.id, 'org-link'))).rejects.toThrow();
     expect(await createOrganizationRepository(database.db).findById('org-link')).not.toBeNull();
+  });
+
+  it('creates an organization with its owner and audit atomically, replays for the same owner and refuses others', async () => {
+    await database.db.insert(user).values([
+      { id: 'creator', email: 'creator@example.test', name: 'Creator', emailVerified: true },
+      { id: 'rival', email: 'rival@example.test', name: 'Rival', emailVerified: true },
+      { id: 'pending', email: 'pending@example.test', name: 'Pending', emailVerified: false },
+    ]);
+    const repository = createOrganizationRepository(database.db);
+    const input = (id: string, userId: string) => ({
+      organization: organization(id, 'created'),
+      owner: { id: `${id}-owner`, userId, role: 'owner' as const, createdAt: at, createdByUserId: 'operator-secret' },
+      audit: [{
+        id: `${id}-audit`, kind: 'organization.created' as const, actorUserId: 'operator-secret', actorEmail: 'operator@together.invalid',
+        actorKeyId: null, subjectTenantId: null, subjectUserId: null, data: { slug: 'created' }, at,
+      }],
+    });
+    const rows = async () => ({
+      organizations: await database.db.select().from(organizations).where(eq(organizations.slug, 'created')),
+      members: await database.db.select().from(organizationMembers).where(eq(organizationMembers.organizationId, 'org-created')),
+      audit: await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-created')),
+    });
+
+    expect(await repository.createWithOwner(input('org-pending', 'pending'))).toEqual({ status: 'owner_unverified' });
+    expect(await repository.createWithOwner(input('org-created', 'creator'))).toEqual({ status: 'created', organization: organization('org-created', 'created') });
+    expect(await repository.createWithOwner(input('org-replay', 'creator'))).toEqual({ status: 'existing', organization: organization('org-created', 'created') });
+    expect(await repository.createWithOwner(input('org-rival', 'rival'))).toEqual({ status: 'conflict' });
+    const stored = await rows();
+    expect(stored.organizations.map((row) => row.id)).toEqual(['org-created']);
+    expect(stored.members.map((row) => [row.userId, row.role])).toEqual([['creator', 'owner']]);
+    expect(stored.audit.map((row) => row.id)).toEqual(['org-created-audit']);
+  });
+
+  it('sets the workspace limit with its audit row and lists member accounts', async () => {
+    const repository = createOrganizationRepository(database.db);
+    const audit = {
+      id: 'audit-limits', kind: 'organization.updated' as const, actorUserId: 'operator-secret', actorEmail: 'operator@together.invalid',
+      actorKeyId: null, subjectTenantId: null, subjectUserId: null, data: { maxWorkspaces: 7 }, at: later,
+    };
+    expect(await repository.setMaxWorkspaces('org-created', { maxWorkspaces: 7, updatedAt: later, audit }))
+      .toEqual({ ...organization('org-created', 'created'), maxWorkspaces: 7, updatedAt: later });
+    expect(await repository.setMaxWorkspaces('org-unknown', { maxWorkspaces: 7, updatedAt: later, audit: { ...audit, id: 'audit-unknown' } })).toBeNull();
+    expect(await createOrganizationAuditRepository(database.db).list('org-created', { limit: 1 })).toEqual([{ ...audit, organizationId: 'org-created' }]);
+    expect(await createOrganizationMemberRepository(database.db).listAccounts('org-created')).toEqual([
+      { userId: 'creator', email: 'creator@example.test', role: 'owner', createdAt: at },
+    ]);
   });
 });

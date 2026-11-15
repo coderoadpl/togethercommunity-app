@@ -64,6 +64,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerTeamCommands } from './team-commands.js';
+import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
@@ -730,6 +731,7 @@ registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
+registerOrganizationCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
 

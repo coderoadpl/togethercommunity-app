@@ -7,6 +7,16 @@ import { consumerSalesSummarySchema } from '#core/contract/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
+import {
+  operatorCreateOrganizationOutputSchema,
+  operatorOrganizationLimitsOutputSchema,
+  organizationAuditEventsOutputSchema,
+  organizationListOutputSchema,
+  organizationMembersOutputSchema,
+  organizationOutputSchema,
+  type CreateOrganizationInput,
+  type OrganizationLimits,
+} from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
@@ -568,6 +578,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.operatorTenantReadiness.method,
       API_ROUTES.operatorTenantReadiness.path.replace(':slug', encodeURIComponent(slug)),
       operatorTenantReadinessSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  operatorCreateOrganization: (input: CreateOrganizationInput, secret: string) =>
+    request(options, API_ROUTES.operatorOrganizationCreate.method, API_ROUTES.operatorOrganizationCreate.path,
+      operatorCreateOrganizationOutputSchema, input, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  operatorSetOrganizationLimits: (input: { organizationId: string } & OrganizationLimits, secret: string) =>
+    request(options, API_ROUTES.operatorOrganizationLimits.method,
+      API_ROUTES.operatorOrganizationLimits.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      operatorOrganizationLimitsOutputSchema, { maxWorkspaces: input.maxWorkspaces }, undefined,
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  listOrganizations: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizations.method, API_ROUTES.organizations.path, organizationListOutputSchema, undefined, signal),
+  getOrganization: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organization.method,
+      API_ROUTES.organization.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationOutputSchema, undefined, signal),
+  listOrganizationMembers: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMembers.method,
+      API_ROUTES.organizationMembers.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMembersOutputSchema, undefined, signal),
+  listOrganizationAuditEvents: (input: { organizationId: string; limit?: number }, signal?: AbortSignal) => {
+    const path = API_ROUTES.organizationAuditEvents.path.replace(':organizationId', encodeURIComponent(input.organizationId));
+    return request(options, API_ROUTES.organizationAuditEvents.method,
+      input.limit === undefined ? path : `${path}?${new URLSearchParams({ limit: String(input.limit) }).toString()}`,
+      organizationAuditEventsOutputSchema, undefined, signal);
+  },
 
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),

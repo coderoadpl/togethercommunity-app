@@ -8,6 +8,7 @@ import {
   API_PATHS,
   API_ROUTES,
   apiKeyCreateOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
   apiKeysShopManagementEventsOutputSchema,
   apiKeysShopManagementPurgeOutputSchema,
   publicOfferOutputSchema,
@@ -53,8 +54,16 @@ const createKey = async (input: Record<string, unknown>, host = acmeHost) => {
   return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
 };
 
-const createShopKey = (scopes: string[], host = acmeHost) =>
-  createKey({ name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt }, host);
+const createShopKey = async (scopes: string[], host = acmeHost) => {
+  const response = await ownerRequest(
+    API_ROUTES.apiKeysShopManagementCreate.method,
+    API_ROUTES.apiKeysShopManagementCreate.path,
+    { name: `Shop ${scopes.join(' ')}`, scopes, expiresAt },
+    host,
+  );
+  expect(response.status).toBe(200);
+  return envelope(apiKeysShopManagementCreateOutputSchema).parse(await response.json()).data;
+};
 
 const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
   method,
@@ -239,7 +248,7 @@ describe('shop catalog routes with a shop management key', () => {
     }), { db: database.db });
     await database.db.insert(tenantApiKeys).values({
       id: 'legacy-unscoped', tenantId: 'acme', name: 'Legacy', keyHash: deps.apiKeyCrypto.hash(unscopedSecret),
-      kind: 'legacy', scopes: null, issuedByUserId: null, createdAt: now, expiresAt: null, revokedAt: null,
+      scopes: null, createdAt: now, expiresAt: null, revokedAt: null,
     });
     for (const secret of [importSecret, unscopedSecret]) {
       for (const [method, path, body] of [
@@ -324,7 +333,10 @@ describe('shop catalog routes with a shop management key', () => {
   it('blocks the very next call once the owner revokes the key', async () => {
     const { apiKey, secret } = await createShopKey(['shop:catalog:read']);
     expect((await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).status).toBe(200);
-    const revoked = await ownerRequest(API_ROUTES.apiKeyRevoke.method, API_PATHS.apiKeyRevoke.replace(':id', apiKey.id));
+    const revoked = await ownerRequest(
+      API_ROUTES.apiKeysShopManagementRevoke.method,
+      API_PATHS.apiKeysShopManagementRevoke.replace(':id', apiKey.id),
+    );
     expect(revoked.status).toBe(200);
     const refused = await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path);
     expect(refused.status).toBe(401);

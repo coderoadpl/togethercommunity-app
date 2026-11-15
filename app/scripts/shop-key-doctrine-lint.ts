@@ -12,6 +12,11 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     reason: 'must record the dated owner decision on shop management keys',
   },
   {
+    file: 'app/CLAUDE.md',
+    text: 'A key with `shop:fulfilment:write` can create carrier shipments (InPost ShipX) for its workspace\'s orders, which the carrier charges for.',
+    reason: 'must state in the owner decision that the fulfilment scope can buy carrier shipments',
+  },
+  {
     file: 'app/docs/security.md',
     section: '## Tenant API keys',
     text: 'owner decision 2026-11-14',
@@ -20,8 +25,8 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
   {
     file: 'app/docs/security.md',
     section: '## Tenant API keys',
-    text: '`shop_management`',
-    reason: 'must describe the shop management key kind',
+    text: '`shop_management_keys`',
+    reason: 'must describe the separate shop management key table',
   },
   {
     file: 'app/docs/security.md',
@@ -55,6 +60,24 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
   },
   {
     file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'A refusal returned by the handler (a validation error, an id of another workspace, a conflict) does have a request row',
+    reason: 'must state that a refusal returned by a shop route handler has a key history row',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'the bound multiplies by the number of keys, which is not capped per workspace, and a retention job for `shop_management_key_events` is a follow-up',
+    reason: 'must state the per-key history bound and the missing retention job',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`shop:fulfilment:write` grants `order:write`, which includes creating carrier shipments (InPost ShipX), a paid action at the carrier',
+    reason: 'must state that the fulfilment scope can create paid carrier shipments',
+  },
+  {
+    file: 'app/docs/security.md',
     section: '## InPost ShipX credentials',
     text: '`POST /api/m2m/shop/integrations/shipx/configure`',
     reason: 'must name the keyed ShipX credential write route',
@@ -77,7 +100,24 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: "act as the key's issuer",
     reason: "must state that the keyed ShipX routes act as the key's issuer",
   },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'A key with `shop:fulfilment:write` can create carrier shipments, a paid action at the carrier',
+    reason: 'must state that the fulfilment scope can create paid carrier shipments',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'a retention job for `shop_management_key_events` is a follow-up',
+    reason: 'must state that the key history has no retention job yet',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'The bound multiplies by the number of keys, and the number of shop management keys per workspace is not capped.',
+    reason: 'must state that the history bound multiplies by the uncapped number of keys',
+  },
 ];
+
+const singleSpaced = (text: string): string => text.replace(/\s+/gu, ' ');
 
 const sectionOf = (text: string, heading: string): string | null => {
   const lines = text.split('\n');
@@ -93,7 +133,7 @@ const requirementProblem = (files: ReadonlyMap<string, string>, requirement: Doc
   if (text === undefined) return `[shop-key-doctrine] ${requirement.file} is not tracked markdown`;
   const scope = requirement.section === undefined ? text : sectionOf(text, requirement.section);
   if (scope === null) return `[shop-key-doctrine] ${requirement.file} has no "${requirement.section ?? ''}" section`;
-  if (scope.includes(requirement.text)) return null;
+  if (singleSpaced(scope).includes(singleSpaced(requirement.text))) return null;
   const where = requirement.section === undefined ? requirement.file : `${requirement.file} "${requirement.section}"`;
   return `[shop-key-doctrine] ${where} ${requirement.reason} (expected "${requirement.text}")`;
 };

@@ -10,7 +10,7 @@ import { matchedRoutes } from 'hono/route';
 import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 import type { ShopKeyAttribution } from '#core/server/index.js';
 
-export type ApiKeyAttribution = (ShopKeyAttribution | { match: 'switch_off' }) & { tenantId?: string };
+export type ApiKeyAttribution = (ShopKeyAttribution | { match: 'switch_off' | 'mixed_credentials' }) & { tenantId?: string };
 
 type TelemetryVars = {
   Variables: {
@@ -63,8 +63,7 @@ const annotateApiKey = (span: Span, attribution: ApiKeyAttribution): void => {
   if (attribution.tenantId !== undefined) span.setAttribute('app.tenant.id', attribution.tenantId);
   if (attribution.match !== 'matched') return;
   span.setAttribute('app.api_key.id', attribution.apiKeyId);
-  span.setAttribute('app.api_key.kind', attribution.kind);
-  if (attribution.issuerUserId !== null) span.setAttribute('app.api_key.issuer.id', attribution.issuerUserId);
+  span.setAttribute('app.api_key.issuer.id', attribution.issuerUserId);
 };
 
 const matchedConcreteRoutePath = (c: Context<TelemetryVars>): string | undefined => {

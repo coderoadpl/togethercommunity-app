@@ -64,6 +64,7 @@ import { createActivityReportRepository } from '#adapters/db/activity-reports.js
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
 import { createShopManagementKeyEventRepository } from '#adapters/db/shop-management-key-events.js';
+import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import {
   createImpersonationSessionRepository,
   createTenantAuditEventRepository,
@@ -266,6 +267,8 @@ import type {
   TenantAuditEventRepository,
   ImportAuditEventRepository,
   ShopManagementKeyEventRepository,
+  ShopManagementKeyRateLimitRepository,
+  ShopManagementKeyRepository,
   ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -526,6 +529,8 @@ export interface AppDeps {
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
   shopManagementKeyEvents: ShopManagementKeyEventRepository;
+  shopManagementKeys: ShopManagementKeyRepository;
+  shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -596,7 +601,7 @@ export interface AppDeps {
   deploymentIdentity: DeploymentIdentity;
   databaseIdentity: string | null;
   tenantCreationMode: TenantCreationMode;
-  shopManagementKeys: ShopManagementKeysSwitch;
+  shopManagementKeysSwitch: ShopManagementKeysSwitch;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
   clock: Clock;
@@ -1553,6 +1558,8 @@ export const createDeps = (
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
+    shopManagementKeys: createShopManagementKeyRepository(db),
+    shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1640,7 +1647,7 @@ export const createDeps = (
     deploymentIdentity: selectDeploymentIdentity(env),
     databaseIdentity: databaseIdentityFingerprint(env.DATABASE_URL),
     tenantCreationMode,
-    shopManagementKeys: env.SHOP_MANAGEMENT_KEYS,
+    shopManagementKeysSwitch: env.SHOP_MANAGEMENT_KEYS,
     ids,
     clock,
     logger,

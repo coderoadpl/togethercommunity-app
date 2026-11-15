@@ -18,23 +18,30 @@ describe('shop management key doctrine lint', () => {
     'reports a doctrine without %s',
     (text, requirement) => {
       const files = readSurfaces();
-      files.set(requirement.file, (files.get(requirement.file) ?? '').replaceAll(text, ''));
+      const spaced = new RegExp(text.split(/\s+/u).map((word) => word.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+'), 'gu');
+      files.set(requirement.file, (files.get(requirement.file) ?? '').replace(spaced, ''));
       expect(collectShopKeyDoctrineProblems(files)).toEqual([
         expect.stringMatching(new RegExp(`^\\[shop-key-doctrine\\] ${requirement.file.replaceAll('.', '\\.')} .*${requirement.reason}`)),
       ]);
     },
   );
 
-  it('does not accept the key class or the keyed ShipX routes described outside their sections', () => {
-    const everything = shopKeyDoctrineRequirements
-      .filter((requirement) => requirement.file === 'app/docs/security.md')
-      .map((requirement) => requirement.text)
-      .join(' ');
-    const files = new Map([
-      ['app/CLAUDE.md', 'Shop management keys (owner decision 2026-11-14): text'],
-      ['app/docs/security.md', `## Tenant API keys\n\nNothing.\n\n## InPost ShipX credentials\n\nNothing.\n\n## Other\n\n${everything}\n`],
-    ]);
-    expect(collectShopKeyDoctrineProblems(files)).toHaveLength(shopKeyDoctrineRequirements.length - 1);
+  it('does not accept the security doctrine described outside its sections', () => {
+    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+    const files = readSurfaces();
+    files.set('app/docs/security.md', `## Tenant API keys\n\nNothing.\n\n## InPost ShipX credentials\n\nNothing.\n\n## Other\n\n${sectioned.map((requirement) => requirement.text).join('\n')}\n`);
+    expect(collectShopKeyDoctrineProblems(files)).toHaveLength(sectioned.length);
+  });
+
+  it('accepts the required security doctrine wrapped across lines', () => {
+    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+    const sections = [...new Set(sectioned.map((requirement) => requirement.section))];
+    const files = readSurfaces();
+    files.set('app/docs/security.md', sections.map((section) => `${section ?? ''}\n\n${sectioned
+      .filter((requirement) => requirement.section === section)
+      .map((requirement) => requirement.text.replaceAll(' ', '\n  '))
+      .join('\n')}\n`).join('\n'));
+    expect(collectShopKeyDoctrineProblems(files)).toEqual([]);
   });
 
   it('requires the keyed ShipX routes in the carrier credentials section', () => {
@@ -52,6 +59,7 @@ describe('shop management key doctrine lint', () => {
     expect(collectShopKeyDoctrineProblems(new Map())).toEqual([
       '[shop-key-doctrine] app/CLAUDE.md is not tracked markdown',
       '[shop-key-doctrine] app/docs/security.md is not tracked markdown',
+      '[shop-key-doctrine] app/docs/shop-management-keys.md is not tracked markdown',
     ]);
   });
 });

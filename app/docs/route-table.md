@@ -349,6 +349,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/api-keys` | authenticated | read | api keys |
 | `POST /api/api-keys` | authenticated | mutating | api keys create |
 | `DELETE /api/api-keys/:id` | authenticated | mutating | api key revoke |
+| `GET /api/api-keys/shop-management` | authenticated | read | api keys shop management |
+| `POST /api/api-keys/shop-management` | authenticated | mutating | api keys shop management create |
+| `DELETE /api/api-keys/shop-management/:id` | authenticated | mutating | api keys shop management revoke |
 | `POST /api/api-keys/shop-management/purge` | authenticated | mutating | api keys shop management purge |
 | `GET /api/api-keys/shop-management/events` | authenticated | read | api keys shop management events |
 | `GET /api/api-keys/:id/import-audit` | authenticated | read | api key import audit |

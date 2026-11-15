@@ -22,6 +22,7 @@ export * from './stock.js';
 export * from './grant.js';
 export * from './api-key.js';
 export * from './import-audit.js';
+export * from './shop-management-key-event.js';
 export * from './import.js';
 export * from './course.js';
 export * from './lesson-links.js';

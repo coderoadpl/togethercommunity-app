@@ -10,7 +10,7 @@ import {
   type ShopManagementKeysSwitch,
   type StaffRole,
   type TenantApiKey,
-  type TenantAuditEventInput,
+  type ShopManagementKeyEvent,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -51,10 +51,10 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
 const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKeysSwitch = 'enabled'): {
   deps: ApiKeyDeps;
   rows: TenantApiKey[];
-  audits: TenantAuditEventInput[];
+  events: ShopManagementKeyEvent[];
 } => {
   const store = [...rows];
-  const audits: TenantAuditEventInput[] = [];
+  const events: ShopManagementKeyEvent[] = [];
   let seq = 0;
   const revokeKind = (tenantId: string, id: string, revokedAt: string, kind: TenantApiKey['kind']) => {
     const row = store.find((r) => r.tenantId === tenantId && r.id === id && r.kind === kind && r.revokedAt === null);
@@ -70,19 +70,21 @@ const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKe
     findActiveByHash: async () => null,
     findByHash: async () => null,
     revoke: async (tenantId, id, revokedAt) => revokeKind(tenantId, id, revokedAt, 'legacy'),
-    createShopManagement: async (_t, apiKey, audit) => {
+    createShopManagement: async (_t, apiKey, event) => {
       store.push(apiKey);
-      audits.push(audit);
+      events.push(event);
     },
-    revokeShopManagement: async (tenantId, id, revokedAt, audit) => {
+    revokeShopManagement: async (tenantId, id, revokedAt, event) => {
       const row = revokeKind(tenantId, id, revokedAt, 'shop_management');
-      if (row) audits.push(audit);
+      if (row) events.push(event);
       return row;
     },
-    purgeShopManagement: async (tenantId, audit) => {
+    purgeShopManagement: async (tenantId, event) => {
       const purged = store.filter((r) => r.tenantId === tenantId && r.kind === 'shop_management');
-      for (const row of purged) store.splice(store.indexOf(row), 1);
-      if (purged.length > 0) audits.push(audit(purged.length));
+      for (const row of purged) {
+        store.splice(store.indexOf(row), 1);
+        events.push(event(row.id));
+      }
       return purged.length;
     },
   };
@@ -92,7 +94,7 @@ const harness = (rows: TenantApiKey[] = [], shopManagementKeys: ShopManagementKe
   };
   return {
     rows: store,
-    audits,
+    events,
     deps: {
       tenantApiKeys,
       apiKeyCrypto,
@@ -391,11 +393,11 @@ describe('shop management keys', () => {
       },
     });
     expect(h.rows).toEqual([expect.objectContaining({ kind: 'shop_management', issuedByUserId: 'u1', keyHash: 'hash:super-secret-value' })]);
-    expect(h.audits).toEqual([{
-      id: 'key-2', tenantId: 't1', kind: 'api_key.shop_management_created', actorUserId: 'u1',
-      actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null, reason: 'Shop backend (key-1)', at: NOW,
+    expect(h.events).toEqual([{
+      id: 'key-2', tenantId: 't1', apiKeyId: 'key-1', kind: 'created', actorUserId: 'u1',
+      method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
     }]);
-    expect(JSON.stringify(h.audits)).not.toContain('super-secret-value');
+    expect(JSON.stringify(h.events)).not.toContain('super-secret-value');
 
     const listed = await listTenantApiKeys(ctx('admin'), h.deps);
     expect(listed).toMatchObject({ ok: true, value: [{ id: 'key-1', kind: 'shop_management', issuedByUserId: 'u1' }] });
@@ -403,18 +405,18 @@ describe('shop management keys', () => {
     expect(JSON.stringify(listed)).not.toContain('keyHash');
   });
 
-  it('creates legacy keys without issuer or lifecycle audit', async () => {
+  it('creates legacy keys without issuer or lifecycle event', async () => {
     const h = harness();
     expect(await createTenantApiKey(ctx('owner'), { name: 'CI key', kind: 'legacy' }, h.deps))
       .toMatchObject({ ok: true, value: { apiKey: { kind: 'legacy', issuedByUserId: null } } });
-    expect(h.audits).toEqual([]);
+    expect(h.events).toEqual([]);
   });
 
   it.each(denyingContexts)('denies creation to %s', async (_label, denied) => {
     const h = harness();
     expect(await createTenantApiKey(denied, shopInput, h.deps)).toMatchObject({ ok: false });
     expect(h.rows).toHaveLength(0);
-    expect(h.audits).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
   });
 
   it.each<[string, CreateApiKeyInput]>([
@@ -430,7 +432,7 @@ describe('shop management keys', () => {
     const h = harness();
     expect(await createTenantApiKey(ctx('owner'), input, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.rows).toHaveLength(0);
-    expect(h.audits).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
   });
 
   it('accepts an expiry of exactly 30 days', async () => {
@@ -446,30 +448,29 @@ describe('shop management keys', () => {
     expect(h.rows).toHaveLength(0);
   });
 
-  it('revokes with an audit event for a verified owner session', async () => {
+  it('revokes with a lifecycle event for a verified owner session', async () => {
     const h = harness([shopRow()]);
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
       .toMatchObject({ ok: true, value: { id: 'shop-key', kind: 'shop_management', revokedAt: NOW } });
-    expect(h.audits).toEqual([expect.objectContaining({
-      kind: 'api_key.shop_management_revoked', actorUserId: 'u1', actorEmail: 'owner@together.dev',
-      reason: 'Shop backend (shop-key)',
+    expect(h.events).toEqual([expect.objectContaining({
+      kind: 'revoked', apiKeyId: 'shop-key', actorUserId: 'u1', outcome: 'succeeded',
     })]);
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(h.audits).toHaveLength(1);
+    expect(h.events).toHaveLength(1);
   });
 
   it.each(denyingContexts)('denies revocation to %s', async (_label, denied) => {
     const h = harness([shopRow()]);
     expect(await revokeTenantApiKey(denied, { id: 'shop-key' }, h.deps)).toMatchObject({ ok: false });
     expect(h.rows[0]?.revokedAt).toBeNull();
-    expect(h.audits).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
   });
 
   it('keeps legacy revocation unaudited', async () => {
     const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'legacy-key' }, h.deps)).toMatchObject({ ok: true });
-    expect(h.audits).toEqual([]);
+    expect(h.events).toEqual([]);
   });
 
   describe('while SHOP_MANAGEMENT_KEYS is disabled', () => {
@@ -479,7 +480,7 @@ describe('shop management keys', () => {
       expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
       expect(result.ok ? '' : result.error.message).toContain('SHOP_MANAGEMENT_KEYS=disabled');
       expect(h.rows).toHaveLength(0);
-      expect(h.audits).toHaveLength(0);
+      expect(h.events).toHaveLength(0);
     });
 
     it('keeps legacy key creation, key listing and shop key revocation working', async () => {
@@ -490,7 +491,7 @@ describe('shop management keys', () => {
         .toMatchObject({ ok: true, value: [{ id: 'shop-key', kind: 'shop_management' }, { kind: 'legacy' }] });
       expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
         .toMatchObject({ ok: true, value: { id: 'shop-key', revokedAt: NOW } });
-      expect(h.audits).toEqual([expect.objectContaining({ kind: 'api_key.shop_management_revoked' })]);
+      expect(h.events).toEqual([expect.objectContaining({ kind: 'revoked', apiKeyId: 'shop-key' })]);
     });
   });
 
@@ -508,16 +509,16 @@ describe('shop management keys', () => {
     };
 
     it.each<ShopManagementKeysSwitch>(['enabled', 'disabled'])(
-      'deletes every shop management key of the workspace with one audit event while the switch is %s',
+      'deletes every shop management key of the workspace with one purge event per key while the switch is %s',
       async (switchState) => {
         const h = harness(workspaceRows(), switchState);
         expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 2 } });
         expect(h.rows.map((row) => row.id)).toEqual(['legacy-key', 'other-workspace-shop']);
-        expect(h.audits).toEqual([{
-          id: 'key-1', tenantId: 't1', kind: 'api_key.shop_management_purged', actorUserId: 'u1',
-          actorEmail: 'owner@together.dev', actorApiKeyId: null, subjectMemberId: null,
-          reason: '2 shop management keys purged', at: NOW,
-        }]);
+        const purgeEvent = (id: string, apiKeyId: string): ShopManagementKeyEvent => ({
+          id, tenantId: 't1', apiKeyId, kind: 'purged', actorUserId: 'u1',
+          method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
+        });
+        expect(h.events).toEqual([purgeEvent('key-1', 'shop-active'), purgeEvent('key-2', 'shop-revoked')]);
       },
     );
 
@@ -525,7 +526,7 @@ describe('shop management keys', () => {
       const h = harness([shopRow({ id: 'legacy-key', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null })]);
       expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 0 } });
       expect(h.rows).toHaveLength(1);
-      expect(h.audits).toEqual([]);
+      expect(h.events).toEqual([]);
     });
 
     const purgeDenials: [string, Ctx][] = [...denyingContexts, ['a shop management key context', machineCtx]];
@@ -536,7 +537,7 @@ describe('shop management keys', () => {
         const h = harness(workspaceRows());
         expect(await purgeShopManagementKeys(denied, h.deps)).toMatchObject({ ok: false });
         expect(h.rows).toHaveLength(4);
-        expect(h.audits).toHaveLength(0);
+        expect(h.events).toHaveLength(0);
       },
     );
   });

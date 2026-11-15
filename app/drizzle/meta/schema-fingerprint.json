@@ -1,12 +1,17 @@
 {
-  "hash": "a7ff830d961501e987aaeb5dca5955a9b78bcc26a81ab6278b4f94b4ef4c4189",
-  "shortId": "a7ff830d9615",
+  "hash": "3fc6772fdbcd61eed031105fa0add4e3363e3fa20b8efadd1609d35c2fd0710d",
+  "shortId": "3fc6772fdbcd",
   "schema": {
     "constraints": [
       {
         "definition": "CHECK ((((kind = 'amount'::text) AND (currency ~ '^[A-Z]{3}$'::text)) OR ((kind = 'percent'::text) AND (currency IS NULL))))",
         "name": "coupons_amount_currency_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK ((((kind = 'request'::text) AND (method IS NOT NULL) AND (route IS NOT NULL) AND (status IS NOT NULL)) OR ((kind <> 'request'::text) AND (actor_user_id IS NOT NULL) AND (method IS NULL) AND (route IS NULL) AND (resource_id IS NULL) AND (status IS NULL) AND (outcome = 'succeeded'::text))))",
+        "name": "shop_management_key_events_shape_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
@@ -62,6 +67,11 @@
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
         "name": "coupons_validity_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK (((status >= 100) AND (status <= 599)))",
+        "name": "shop_management_key_events_status_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
@@ -124,6 +134,11 @@
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
+        "name": "shop_management_key_events_kind_check",
+        "table": "shop_management_key_events"
+      },
+      {
         "definition": "CHECK ((kind = ANY (ARRAY['legacy'::text, 'shop_management'::text])))",
         "name": "tenant_api_keys_kind_check",
         "table": "tenant_api_keys"
@@ -142,6 +157,11 @@
         "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
         "name": "orders_meta_capi_consent_check",
         "table": "orders"
+      },
+      {
+        "definition": "CHECK ((method = ANY (ARRAY['POST'::text, 'PUT'::text, 'PATCH'::text, 'DELETE'::text])))",
+        "name": "shop_management_key_events_method_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -167,6 +187,11 @@
         "definition": "CHECK ((on_hand >= 0))",
         "name": "product_stock_on_hand_check",
         "table": "product_stock"
+      },
+      {
+        "definition": "CHECK ((outcome = ANY (ARRAY['succeeded'::text, 'refused'::text, 'failed'::text])))",
+        "name": "shop_management_key_events_outcome_check",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((parcel_template = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])))",
@@ -975,6 +1000,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "shop_management_key_events_tenant_id_fkey",
+        "table": "shop_management_key_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
         "table": "sns_webhook_deliveries"
       },
@@ -1687,6 +1717,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "session_pkey",
         "table": "session"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "shop_management_key_events_pkey",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2636,6 +2671,16 @@
         "definition": "CREATE INDEX scheduler_runs_status_started_idx ON scheduler_runs USING btree (status, started_at)",
         "name": "scheduler_runs_status_started_idx",
         "table": "scheduler_runs"
+      },
+      {
+        "definition": "CREATE INDEX shop_management_key_events_tenant_at_idx ON shop_management_key_events USING btree (tenant_id, at)",
+        "name": "shop_management_key_events_tenant_at_idx",
+        "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CREATE INDEX shop_management_key_events_tenant_key_at_idx ON shop_management_key_events USING btree (tenant_id, api_key_id, at)",
+        "name": "shop_management_key_events_tenant_key_at_idx",
+        "table": "shop_management_key_events"
       },
       {
         "definition": "CREATE INDEX space_event_rsvps_tenant_event_idx ON space_event_rsvps USING btree (tenant_id, event_id)",
@@ -9595,14 +9640,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "actor_api_key_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "actor_email",
             "notNull": true,
             "type": "text"
@@ -9750,6 +9787,99 @@
           }
         ],
         "name": "impersonation_sessions"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "method",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "outcome",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "resource_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "route",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "shop_management_key_events"
       },
       {
         "columns": [

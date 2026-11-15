@@ -35,7 +35,7 @@ const post = (id: string, overrides: Partial<Post> = {}): Post => ({
 });
 const audit = (id: string): TenantAuditEventInput => ({
   id: `audit-${id}`, tenantId: TENANT, kind: 'post_purged', actorUserId: 'staff',
-  actorEmail: 'staff@example.test', actorApiKeyId: null, subjectMemberId: null, reason: id, at: NOW,
+  actorEmail: 'staff@example.test', subjectMemberId: null, reason: id, at: NOW,
 });
 
 describe('post purge and visibility', () => {

@@ -349,6 +349,10 @@ const deps = (input: {
       findLatestByImportKey: async () => null,
       listByApiKey: async () => ({ events: [], nextCursor: null }),
     },
+    shopManagementKeyEvents: {
+      record: async () => undefined,
+      list: async () => ({ events: [], nextCursor: null }),
+    },
     importContent: {
       commit: async () => 'saved',
     },

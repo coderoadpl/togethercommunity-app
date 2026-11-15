@@ -16,7 +16,7 @@ API key` for it, and no session route accepts it.
 
 | Surface | Status |
 |---|---|
-| Key kind, scopes, issuer, expiry, lifecycle audit | Available |
+| Key kind, scopes, issuer, expiry, key history | Available |
 | Owner-session creation, listing and revocation (`/api/api-keys`, CLI `api-key`) | Available |
 | Kill switch `SHOP_MANAGEMENT_KEYS` and owner-session purge | Available |
 | Request authentication, issuer revalidation and rate limits | Available |
@@ -55,13 +55,13 @@ The key records the issuing owner. Every request made with it will act with at
 most the issuer's current authority, so a key stops working when its issuer is
 no longer a verified owner of the workspace.
 
-Creation and revocation each write a workspace audit event
-(`api_key.shop_management_created`, `api_key.shop_management_revoked`) in the
-same transaction as the key change. The event carries the owner's account and
-e-mail and the key name and id, never the secret or its hash. A purge (below)
-writes one `api_key.shop_management_purged` event with the number of deleted
-keys. These events are written by the owner's session, so their
-`actorApiKeyId` is null.
+Creation and revocation each write a key event (`created`, `revoked`) to the
+dedicated shop management key history (below) in the same transaction as the
+key change. A purge writes one `purged` event per deleted key in the same
+transaction as the deletion. These events carry the key id and the owner's
+account id, never the secret or its hash. They are not workspace audit events:
+the workspace audit list (`GET /api/tenant/audit-events`) is unchanged by shop
+management keys.
 
 ## Authenticating a request
 
@@ -116,10 +116,21 @@ was presented. The secret, its hash and any part of either are never recorded,
 and telemetry never records request headers, so the key secret does not reach
 traces or error reports.
 
-Every workspace audit event records `actorApiKeyId`: the id of the shop
-management key behind the request that wrote it, or null for a session,
-operator or sign-in event. None of the catalog routes writes an audit event
-today; any audit event a keyed route writes later carries its key id.
+## Key history
+
+Every workspace keeps a durable history of its shop management keys in its own
+table, separate from the workspace audit list. Each row carries the key id, the
+kind of event, the acting account and the time:
+
+| Kind | Written | Acting account |
+|---|---|---|
+| `created` | with the key, in the same transaction | the owner who created it |
+| `revoked` | with the revocation, in the same transaction | the owner who revoked it |
+| `purged` | one row per deleted key, in the purge transaction | the owner who purged |
+
+A history row stores the key id as plain text and is never deleted with its
+key, so the history of a revoked or purged key stays readable. It goes away only
+with the workspace itself.
 
 ## Catalog routes
 
@@ -283,14 +294,14 @@ The switch is read at boot: change it and redeploy (or restart) the server.
 
 `POST /api/api-keys/shop-management/purge` (CLI
 `api-key purge-shop-management --yes`) deletes every shop management key of
-the workspace, revoked or not, in one transaction with one
-`api_key.shop_management_purged` audit event whose reason carries the count, and
-answers `{"purged": <count>}`. It needs the same verified owner session as
+the workspace, revoked or not, in one transaction with one `purged` key event
+per deleted key, and answers `{"purged": <count>}`. It needs the same verified owner session as
 creation, refuses an admin, an unverified owner, an owner viewing as a member
 and any API key, and works with the switch in either state. Legacy keys and
 other workspaces' keys are untouched, and the keys' rate-limit buckets go with
 them. A workspace without shop management keys answers `{"purged": 0}` and gets
-no audit event. Existing creation and revocation audit events stay.
+no event. The key history, including the creation and revocation events of the
+deleted keys, stays.
 
 ## Rollback
 

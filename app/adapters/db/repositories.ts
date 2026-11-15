@@ -2,6 +2,7 @@ import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-era
 import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
+import { insertShopManagementKeyEvent } from './shop-management-key-events.js';
 import { surveyResponses } from './survey-schema.js';
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
@@ -3940,11 +3941,11 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     if (apiKey.kind !== 'legacy') throw new Error('Only legacy API keys are created without a lifecycle audit event');
     await db.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
   },
-  createShopManagement: async (tenantId, apiKey, audit) => {
+  createShopManagement: async (tenantId, apiKey, event) => {
     if (apiKey.kind !== 'shop_management') throw new Error('Expected a shop management API key');
     await db.transaction(async (tx) => {
       await tx.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
-      await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+      await insertShopManagementKeyEvent(tx, tenantId, event);
     });
   },
   findActiveByHash: async (tenantId, keyHash) => {
@@ -3987,7 +3988,7 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },
-  revokeShopManagement: async (tenantId, id, revokedAt, audit) => db.transaction(async (tx) => {
+  revokeShopManagement: async (tenantId, id, revokedAt, event) => db.transaction(async (tx) => {
     const rows = await tx
       .update(tenantApiKeys)
       .set({ revokedAt })
@@ -4002,15 +4003,15 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
       .returning();
     const row = rows[0];
     if (!row) return null;
-    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    await insertShopManagementKeyEvent(tx, tenantId, event);
     return parseApiKey(row);
   }),
-  purgeShopManagement: async (tenantId, audit) => db.transaction(async (tx) => {
+  purgeShopManagement: async (tenantId, event) => db.transaction(async (tx) => {
     const purged = await tx
       .delete(tenantApiKeys)
       .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.kind, 'shop_management')))
       .returning({ id: tenantApiKeys.id });
-    if (purged.length > 0) await tx.insert(tenantAuditEvents).values({ ...audit(purged.length), tenantId });
+    for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
     return purged.length;
   }),
 });

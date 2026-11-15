@@ -71,7 +71,7 @@ it('activates invitations only after invalidating pre-proof passwords, passkeys,
       if (new URL(request.url).hostname !== 'acme.localhost') return;
       await team.activateInvitation('acme', userId, ids.nextId(), {
         id: ids.nextId(), tenantId: 'acme', kind: 'team.admin_activated',
-        actorUserId: userId, actorEmail: email, actorApiKeyId: null, subjectMemberId: null, reason: userId, at: occurredAt,
+        actorUserId: userId, actorEmail: email, subjectMemberId: null, reason: userId, at: occurredAt,
       });
     },
   });
@@ -192,7 +192,7 @@ it('activates invitations only after invalidating pre-proof passwords, passkeys,
   }
   await team.inviteAdmin('studio', 'invitee', 'invitee@example.test', ids.nextId(), {
     id: ids.nextId(), tenantId: 'studio', kind: 'team.admin_invited', actorUserId: 'owner',
-    actorEmail: 'owner@example.test', actorApiKeyId: null, subjectMemberId: null, reason: 'invitee', at: clock.nowIso(),
+    actorEmail: 'owner@example.test', subjectMemberId: null, reason: 'invitee', at: clock.nowIso(),
   });
   const link = await createDevMagicLinkReader(database.db).findByEmail('invitee@example.test');
   expect(link).not.toBeNull();
@@ -293,7 +293,7 @@ it('preserves the password and sessions on email verification and activates invi
       if (new URL(request.url).origin !== origin) return;
       await team.activateInvitation('akademia', userId, ids.nextId(), {
         id: ids.nextId(), tenantId: 'akademia', kind: 'team.admin_activated',
-        actorUserId: userId, actorEmail: email, actorApiKeyId: null, subjectMemberId: null, reason: userId, at: occurredAt,
+        actorUserId: userId, actorEmail: email, subjectMemberId: null, reason: userId, at: occurredAt,
       });
     },
   });

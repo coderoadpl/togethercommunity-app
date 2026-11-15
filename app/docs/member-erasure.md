@@ -82,8 +82,11 @@ follow the same member-erasure selection as live orders.
 The erasure response reports `deletedTeamInvitations`, the number of pending
 invitations deleted in the current tenant only. Invitations in other tenants
 remain unchanged and are never included in that count. Other memberships,
-staff grants, or pending administrator invitations retain the auth user; the
-transaction deletes the auth user only when none of these links remain.
+staff grants, pending administrator invitations, or organization memberships
+(`organization_members`, owner or admin) retain the auth user; the transaction
+deletes the auth user only when none of these links remain. An organization
+owner or admin who was also a buyer in a workspace therefore keeps the account
+and the workspace roles derived from the organization.
 Erasing a member therefore cannot silently revoke another tenant's pending
 administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign

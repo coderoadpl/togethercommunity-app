@@ -3070,8 +3070,12 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .select({ value: sql<number>`count(*)::int` })
         .from(tenantAdminInvitations)
         .where(eq(tenantAdminInvitations.userId, member.userId));
+      const organizationLinks = await tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, member.userId));
       const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0)
-        + (invitationLinks[0]?.value ?? 0);
+        + (invitationLinks[0]?.value ?? 0) + (organizationLinks[0]?.value ?? 0);
       if (openErasureRequest !== undefined) {
         await tx
           .update(memberErasureRequests)

@@ -20,6 +20,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/surveys/:slug` | public | read | Active workspace survey definition without an account |
 | `OPTIONS /api/public/surveys/:slug/submit` | public | read | Tenant-origin survey submission preflight |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
+| `OPTIONS /api/public/sales-links/:slug` | public | read | Active workspace sales-link offer and product VAT lines |
 | `OPTIONS /api/public/navigation` | public | read | Anonymous tenant-home navigation |
 | `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
 | `OPTIONS /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |

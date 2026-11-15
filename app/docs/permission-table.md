@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 124. Route rows: 466. Exported `Ctx` use-case rows: 356.
+Closed capability count: 124. Route rows: 467. Exported `Ctx` use-case rows: 356.
 
 ## Human-readable diff
 
@@ -43,6 +43,7 @@ no changes
 | `OPTIONS /api/public/surveys/:slug` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/surveys/:slug/submit` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/offer` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/sales-links/:slug` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/navigation` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/spaces/:spaceId/feed` | offer:read | public | public | yes | public route manifest |
@@ -880,7 +881,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:660` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:661` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
 | api-key | `apps/server/src/shop-machine-auth.ts:66` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |

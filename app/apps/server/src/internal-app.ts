@@ -2834,6 +2834,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.get(API_PATHS.orders, async (c) => {
     const query = {
+      ...(c.req.query('mode') === undefined ? {} : { mode: c.req.query('mode') }),
       ...(c.req.query('source') === undefined ? {} : { source: c.req.query('source') }),
       ...(c.req.query('sourceMatch') === undefined ? {} : { sourceMatch: c.req.query('sourceMatch') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ok, tenantSettingsSchema } from '#core/domain/index.js';
-import { manifestApiUrl, readManifestFile, registerShopManifestCommands } from './commands.js';
+import { manifestWorkspaceOrigins, readManifestFile, registerShopManifestCommands } from './commands.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -30,11 +30,83 @@ describe('shop manifest command boundary', () => {
   it.each([
     ['https://togethercommunity.app', 'https://studio.togethercommunity.app'],
     ['https://acme.togethercommunity.app', 'https://studio.togethercommunity.app'],
+    ['https://start.togethercommunity.app', 'https://studio.togethercommunity.app'],
+    ['https://acme.staging.togethercommunity.app', 'https://studio.staging.togethercommunity.app'],
+    ['https://start.staging.togethercommunity.app', 'https://studio.staging.togethercommunity.app'],
+    ['https://acme.staging.togethercommunity.app.', 'https://studio.staging.togethercommunity.app'],
     ['http://localhost:9876', 'http://localhost:9876'],
-    ['http://acme.localhost:9876', 'http://studio.localhost:9876'],
-    ['https://custom.example.test', 'https://custom.example.test'],
-  ])('routes %s to the selected workspace', (url, expected) => {
-    expect(manifestApiUrl(url, 'studio')).toBe(expected);
+    ['http://acme.localhost:48730', 'http://studio.localhost:48730'],
+    ['http://start.localhost:48730', 'http://studio.localhost:48730'],
+  ])('routes %s to the selected workspace on the same instance', (url, expected) => {
+    const origins = manifestWorkspaceOrigins(url);
+    if (!origins.ok) throw new Error('Expected a derivable origin');
+    expect(origins.value('studio')).toBe(expected);
+  });
+
+  it.each([
+    'https://custom.example.test',
+    'https://shop.acme.example.test',
+    'https://staging.togethercommunity.app',
+    'https://www.togethercommunity.app',
+    'https://togethercommunity.app.example.test',
+    'https://eviltogethercommunity.app',
+    'http://127.0.0.1:48730',
+    'not a url',
+  ])('refuses %s because workspace hosts cannot be derived from it', (url) => {
+    expect(manifestWorkspaceOrigins(url)).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('Cannot derive workspace hosts') } });
+  });
+
+  it.each(['plan', 'apply', 'drift'])('%s refuses an underivable origin before any request', async (command) => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const cli = new Command().option('--json');
+    registerShopManifestCommands(cli, () => ok({ apiUrl: 'https://shop.acme.example.test', profile: { token: 'session-fixture' }, json: true }));
+    const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
+    await cli.parseAsync(['--json', 'shop', command, '--manifest', path], { from: 'user' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('keeps the session, workspace reads and operator provisioning on the staging instance of the profile', async () => {
+    vi.stubEnv('TOGETHER_SHOP_OPERATOR_SECRET', 'operator-fixture');
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const requests: Array<{ host: string; path: string; authorization: string | null }> = [];
+    let provisioned = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      const headers = new Headers(init?.headers);
+      requests.push({ host: url.host, path: url.pathname, authorization: headers.get('authorization') });
+      const slug = url.hostname.split('.')[0] ?? '';
+      if (url.pathname === '/api/internal/tenants/provision') {
+        provisioned = true;
+        return Response.json({ ok: true, data: {
+          tenant: { id: 't2', slug: 'studio', name: 'Studio' }, created: true, ownerUserId: 'u1',
+          readiness: { tenantExists: true, ownerGrantPresent: true, storageConfigured: false, lastProbeOk: false,
+            lastProbeAt: null, stripeConfigured: false, mode: null, webhookEndpointRegistered: false, legalUrlsSet: false, publishedProducts: 0 },
+        } });
+      }
+      if (url.pathname === '/api/me' && slug === 'studio' && !provisioned) {
+        return Response.json({ ok: false, error: { code: 'tenant_not_found', message: 'No tenant' } }, { status: 404 });
+      }
+      const data = url.pathname === '/api/me' ? { userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug, name: slug, staffRole: 'owner', memberId: null, banned: false } }
+        : url.pathname === '/api/tenant/settings' ? { settings: tenantSettingsSchema.parse({ name: slug, billingPortalUrl: null, bunnyStreamLibraryId: null }) } : { products: [] };
+      return Response.json({ ok: true, data });
+    });
+    const cli = new Command().option('--json');
+    registerShopManifestCommands(cli, () => ok({ apiUrl: 'https://acme.staging.togethercommunity.app', profile: { token: 'session-fixture' }, json: true }));
+    const path = await inputFile(JSON.stringify({ version: 1, shops: [
+      { workspace: 'acme', products: [] },
+      { workspace: { slug: 'studio', provision: { name: 'Studio', ownerEmail: 'owner@togethercommunity.app' } }, products: [] },
+    ] }));
+    await cli.parseAsync(['--json', 'shop', 'apply', '--manifest', path], { from: 'user' });
+    expect(provisioned).toBe(true);
+    expect(requests.find((request) => request.path === '/api/internal/tenants/provision')).toEqual({
+      host: 'acme.staging.togethercommunity.app', path: '/api/internal/tenants/provision', authorization: null,
+    });
+    expect(new Set(requests.filter((request) => request.authorization !== null).map((request) => request.host)))
+      .toEqual(new Set(['acme.staging.togethercommunity.app', 'studio.staging.togethercommunity.app']));
+    expect(requests.every((request) => request.host.endsWith('.staging.togethercommunity.app'))).toBe(true);
   });
 
   it('does not print JSON parser input or file errors', async () => {

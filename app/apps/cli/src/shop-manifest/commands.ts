@@ -3,7 +3,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 import { createApiClient } from '#core/client/index.js';
 import { TENANT_HEADER } from '#core/contract/index.js';
-import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import { err, isReservedTenantSlug, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import { emit } from '../output.js';
 import { planManifest } from './plan.js';
 import { applyManifest } from './apply.js';
@@ -12,14 +12,32 @@ import { driftManifest } from './drift.js';
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
 const optionsSchema = z.object({ manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional() }).strict();
 
-export const manifestApiUrl = (baseUrl: string, workspace: string): string => {
-  const url = new URL(baseUrl);
-  if (url.hostname === 'togethercommunity.app' || url.hostname.endsWith('.togethercommunity.app')) {
-    url.hostname = `${workspace}.togethercommunity.app`;
-  } else if (url.hostname.endsWith('.localhost')) {
-    url.hostname = `${workspace}.localhost`;
-  }
-  return url.origin;
+const PLATFORM_DOMAIN = 'togethercommunity.app';
+const LOOPBACK_HOST = 'localhost';
+const PLATFORM_HOST_LABEL = 'start';
+
+const instanceDomainOf = (host: string): string | null => {
+  if (host === PLATFORM_DOMAIN) return host;
+  if (![PLATFORM_DOMAIN, LOOPBACK_HOST].some((domain) => host.endsWith(`.${domain}`))) return null;
+  const [label = '', ...instance] = host.split('.');
+  return label === PLATFORM_HOST_LABEL || !isReservedTenantSlug(label) ? instance.join('.') : null;
+};
+
+export const manifestWorkspaceOrigins = (apiUrl: string): Result<(workspace: string) => string, AppError> => {
+  const refused = err(validation(
+    'Cannot derive workspace hosts from this API origin. Use a togethercommunity.app or localhost origin: the platform host (start.<domain>), a workspace host (<workspace>.<domain>) or localhost',
+  ));
+  if (!URL.canParse(apiUrl)) return refused;
+  const url = new URL(apiUrl);
+  const host = url.hostname.replace(/\.+$/, '');
+  if (host === LOOPBACK_HOST) return ok(() => url.origin);
+  const instanceDomain = instanceDomainOf(host);
+  if (instanceDomain === null) return refused;
+  return ok((workspace) => {
+    const target = new URL(url.origin);
+    target.hostname = `${workspace}.${instanceDomain}`;
+    return target.origin;
+  });
 };
 
 export const readManifestFile = async (path: string): Promise<Result<unknown, AppError>> => {
@@ -51,12 +69,14 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
         emit(ctx, globals.success && globals.data.json, () => '');
         return;
       }
+      const workspaceOrigin = manifestWorkspaceOrigins(ctx.value.apiUrl);
+      if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
       const options = optionsSchema.safeParse(raw);
       if (!options.success) { emit(err(validation('Invalid shop command options')), ctx.value.json, () => ''); return; }
       const input = await readManifestFile(options.data.manifest);
       if (!input.ok) { emit(input, ctx.value.json, () => ''); return; }
       const clientFor = (workspace: string) => createApiClient({
-        baseUrl: manifestApiUrl(ctx.value.apiUrl, workspace),
+        baseUrl: workspaceOrigin.value(workspace),
         headers: () => ({
           ...(ctx.value.profile.token ? { authorization: `Bearer ${ctx.value.profile.token}` } : {}),
           [TENANT_HEADER]: workspace,

@@ -36,14 +36,27 @@ session is not a permanent automation key. Sign in again if it expires. Use the
 same `--api-url` for login and the manifest commands; `--tenant` does not override
 workspace slugs in the manifest.
 
-On `togethercommunity.app`, the command targets each workspace's subdomain using
-the session from that selected API origin. An existing `.localhost` subdomain is
-similarly replaced for each shop. Other API origins are retained and receive the
-workspace header. Before reading settings or catalogue data, the command checks
-`/api/me` and refuses a workspace mismatch. A custom workspace domain that takes
-precedence over the header therefore works only for its matching shop: use the
-correct origin and `--shop` for each workspace. Self-hosted multi-workspace API
-origins must support the workspace selector.
+Each shop's requests go to that workspace's subdomain on the same instance as
+the selected API origin: the command replaces only the leading workspace label
+and keeps the rest of the host, the scheme and the port. For example
+`https://acme.staging.togethercommunity.app` and
+`https://start.staging.togethercommunity.app` both lead to
+`https://studio.staging.togethercommunity.app` for the `studio` shop,
+`https://togethercommunity.app` and `https://acme.togethercommunity.app` lead to
+`https://studio.togethercommunity.app`, and `http://acme.localhost:48730` leads to
+`http://studio.localhost:48730`. `http://localhost:48730` is kept as it is and
+selects each workspace with the workspace header. The session token therefore
+never leaves the instance of the selected profile, and the operator client uses
+the selected origin itself.
+
+Any other origin is refused before the first request, because its workspace
+hosts cannot be derived unambiguously: a custom workspace domain, an IP address,
+a host outside `togethercommunity.app` and `localhost`, or a bare environment
+host such as `https://staging.togethercommunity.app` whose leading label is a
+reserved name rather than a workspace. Use the instance's platform host
+(`start.<domain>`) or one of its workspace hosts instead. Before reading
+settings or catalogue data, the command also checks `/api/me` and refuses a
+workspace mismatch.
 
 ## Manifest version 1
 

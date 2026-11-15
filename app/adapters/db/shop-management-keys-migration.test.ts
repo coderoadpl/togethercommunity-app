@@ -400,3 +400,35 @@ describe('shop management key purge', () => {
     expect(await eventIds(PURGE_TENANT)).toEqual([]);
   });
 });
+
+describe('shop management key rollback guide', () => {
+  const guide = readFileSync('docs/shop-management-keys.md', 'utf8');
+  const rollback = /## Rollback\n([\s\S]*?)(?=\n## |\nSee also)/u.exec(guide)?.[1] ?? '';
+  const migration = readFileSync('drizzle/0155_shop_management_keys.sql', 'utf8');
+
+  it('names every column and table the migration adds as kept and ignored by the previous release', () => {
+    const added = [
+      ...[...migration.matchAll(/ADD COLUMN "?(\w+)"?/gu)].map((match) => match[1]),
+      ...[...migration.matchAll(/CREATE TABLE "?(\w+)"?/gu)].map((match) => match[1]),
+    ];
+    expect(added).toEqual(['kind', 'issued_by_user_id', 'shop_management_key_events']);
+    for (const name of added) expect(rollback).toContain(`\`${String(name)}\``);
+  });
+
+  it('no longer describes a workspace audit list limitation', () => {
+    expect(rollback).not.toMatch(/actor_api_key_id|api_key\.shop_management_|audit-events/u);
+    expect(rollback).toMatch(/audit list keeps working/u);
+  });
+
+  it('keeps the purge before the binary rollback because the previous release cannot parse shop key rows', () => {
+    expect(rollback).toMatch(/fails to parse/u);
+    const steps = [...rollback.matchAll(/^(\d)\. ([\s\S]*?)(?=^\d\. |^$)/gmu)].map((match) => match[2] ?? '');
+    expect(steps).toHaveLength(4);
+    expect(steps[0]).toContain('SHOP_MANAGEMENT_KEYS=disabled');
+    expect(steps[1]).toContain('purge-shop-management');
+    expect(steps[2]).toContain('api-key list');
+    expect(steps[3]).toContain('Roll back the binary');
+    expect(steps[3]).toContain('shop_management_key_events');
+  });
+});
+

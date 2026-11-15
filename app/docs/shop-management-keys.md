@@ -93,7 +93,7 @@ The request then acts as the issuing owner's real account, never as a
 synthetic API-key user, so product versions, stock and fulfilment changes are
 attributed to that account. Its permissions are the capabilities of the key's
 scopes intersected with the owner's, never more; the key id travels with the
-request for audit and diagnostics. The request never creates or edits a member
+request for its key history and diagnostics. The request never creates or edits a member
 record.
 
 Request telemetry records the route template, status and resolved identity.
@@ -332,36 +332,35 @@ deleted keys, stays.
 
 ## Rollback
 
-The schema and migration `0155_shop_management_keys` stay in place: the
-previous release ignores the `kind`, `issued_by_user_id` and
-`actor_api_key_id` columns and inserts its keys with the `legacy` default. Its
-`/api/health` reports `schemaFingerprintMatch: false`, which is expected while
-the newer schema remains.
+The schema and migration `0155_shop_management_keys` stay in place. The
+previous release ignores the `kind` and `issued_by_user_id` columns of
+`tenant_api_keys` and inserts its keys with the `legacy` default, and it never
+reads the `shop_management_key_events` table, which keeps the whole key
+history. Its `/api/health` reports `schemaFingerprintMatch: false`, which is
+expected while the newer schema remains.
+
+Shop management keys write nothing to the workspace audit list, so the
+previous release's audit list keeps working with no purge of history.
 
 The previous release reads every key row through its own key schema, which
-knows only the legacy scopes. While a workspace still holds a shop management
-key, revoked or not, that release answers `500` on the workspace's key list
-(`GET /api/api-keys`) and import-audit routes, and on every API-key request
-made with the shop key itself; it never authenticates a shop management key.
-Its revoke route revokes such a key but then answers `500` and writes no audit
-event. So purge before rolling back:
+knows only the legacy scopes, so it fails to parse a shop management key row.
+While a workspace still holds a shop management key, revoked or not, that
+release answers `500` on the workspace's key list (`GET /api/api-keys`) and
+import-audit routes, and on every API-key request made with the shop key
+itself; it never authenticates a shop management key. Its revoke route revokes
+such a key but then answers `500`. So purge before rolling back:
 
 1. Set `SHOP_MANAGEMENT_KEYS=disabled` and deploy. Shop backends now get `404`
    and nobody can create a new shop key.
 2. In every workspace that has shop management keys, sign in as its owner and
    purge them: `pnpm --silent run cli --tenant <slug> api-key purge-shop-management --yes`
-   (or `POST /api/api-keys/shop-management/purge`).
+   (or `POST /api/api-keys/shop-management/purge`). Each deleted key gets a
+   `purged` event in its history.
 3. Verify each workspace: `GET /api/api-keys` (CLI `api-key list`) lists only
    keys of kind `legacy`.
-4. Roll back the binary. Keep the schema and the migration.
-
-One limitation remains after the purge. The previous release lists workspace
-audit events through a schema that knows only its own event kinds, so
-`GET /api/tenant/audit-events` answers `500` for any page that contains a
-`api_key.shop_management_created`, `api_key.shop_management_revoked` or
-`api_key.shop_management_purged` event. Keys, key authentication and every
-other route work. The purge keeps the audit history instead of deleting it; a
-workspace that never held a shop management key has none of these events and
-keeps a working audit log.
+4. Roll back the binary. Keep the schema and the migration: the
+   `shop_management_key_events` table stays, is ignored by the previous
+   release and keeps every key's creation, revocation, purge and request
+   history for a later return to this release.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).

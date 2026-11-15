@@ -55,6 +55,7 @@ export interface ShopMachineRoute {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   scope: ShopManagementScope;
+  resourceIdField?: string;
   handler: (c: Context<AppVars>, request: ShopMachineRequest) => Response | Promise<Response>;
 }
 
@@ -102,15 +103,19 @@ const retryAfterHeaders = (error: AppError): HeadersInit => {
 
 const requestBodySchema = z.record(z.string(), z.unknown());
 
-const resourceIdOf = async (c: Context<AppVars>, body: Request): Promise<string | null> => {
-  const fromPath = Object.values(c.req.param()).find((value) => value.length > 0);
+const RESOURCE_ID_BODY_FIELDS = ['id', 'productId'] as const;
+
+const pathParamNames = (path: string): string[] =>
+  path.split('/').filter((segment) => segment.startsWith(':')).map((segment) => segment.slice(1));
+
+const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: Request): Promise<string | null> => {
+  const fromPath = pathParamNames(route.path).map((name) => c.req.param(name)).find((value) => value !== undefined && value.length > 0);
   if (fromPath !== undefined) return fromPath;
   const parsed = requestBodySchema.safeParse(await body.json().catch(() => null));
   if (!parsed.success) return null;
-  const candidates = [parsed.data['id'], ...Object.entries(parsed.data)
-    .filter(([name]) => name.endsWith('Id'))
-    .map(([, value]) => value)];
-  return candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
+  const fields = route.resourceIdField === undefined ? RESOURCE_ID_BODY_FIELDS : [route.resourceIdField];
+  return fields.map((field) => parsed.data[field])
+    .find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
 };
 
 export const registerShopMachineRoute = (
@@ -132,7 +137,7 @@ export const registerShopMachineRoute = (
         actorUserId: attribution.issuerUserId,
         method: route.method,
         route: route.path,
-        resourceId: await resourceIdOf(c, body),
+        resourceId: await resourceIdOf(c, route, body),
         status,
       }, deps);
     };

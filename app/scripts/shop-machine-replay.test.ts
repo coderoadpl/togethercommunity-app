@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
-import { emailOutbox, orders, tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { emailOutbox, orders, shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createShopManagementClient, type ShopManagementClient } from '#core/client/index.js';
 import {
@@ -14,6 +14,9 @@ import {
   checkoutSessionOutputSchema,
   publicOfferOutputSchema,
   SHOP_CATALOG_ROUTES,
+  SHOP_INTEGRATION_ROUTES,
+  SHOP_ORDER_ROUTES,
+  SHOP_SETTINGS_ROUTES,
 } from '#core/contract/index.js';
 import { err, notFound, ok, type AppError, type Result } from '#core/domain/index.js';
 
@@ -294,5 +297,26 @@ describe('shop management key replay on a clean workspace', () => {
     expect(revoked.status).toBe(200);
     expect(await warehouse.listOrders({ mode: 'live' })).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } });
     expect(unwrapped(await catalog.getProductStock(draft.id)).stock).toEqual(settled);
+
+    const history = await database.db.select().from(shopManagementKeyEvents);
+    const requestsOf = (apiKeyId: string) => history
+      .filter((event) => event.apiKeyId === apiKeyId && event.kind === 'request')
+      .map(({ route, resourceId, status }) => `${route ?? ''} ${resourceId ?? '-'} ${String(status)}`)
+      .toSorted();
+    expect(requestsOf(warehouseKey.apiKey.id)).toEqual([
+      `${SHOP_ORDER_ROUTES.shipOrder.path} ${order.id} 200`,
+      `${SHOP_ORDER_ROUTES.shipOrder.path} ${order.id} 409`,
+    ]);
+    expect(requestsOf(provisioningKey.apiKey.id)).toEqual([
+      `${SHOP_INTEGRATION_ROUTES.shipxConfigure.path} - 200`,
+      `${SHOP_INTEGRATION_ROUTES.storageConfigure.path} - 200`,
+      `${SHOP_INTEGRATION_ROUTES.stripeConfigure.path} - 200`,
+      `${SHOP_INTEGRATION_ROUTES.stripeConfigure.path} - 200`,
+      `${SHOP_SETTINGS_ROUTES.updateSettings.path} - 200`,
+    ]);
+    const recorded = JSON.stringify(history.map(({ route, resourceId }) => ({ route, resourceId })));
+    for (const secret of ['rk_test_replay_fixture', 'rk_live_replay_fixture', 'access-key-id', 'secret-access-key', '12345', 'shipx-token-abcd']) {
+      expect(recorded).not.toContain(secret);
+    }
   });
 });

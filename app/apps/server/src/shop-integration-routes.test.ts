@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import {
   API_PATHS,
   API_ROUTES,
@@ -40,6 +40,7 @@ let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
 let deps: ReturnType<typeof createDeps>;
 let ownerToken: string;
+let ownerId: string;
 const registeredWebhooks: { tenantId: string; restrictedKey: string; webhookUrl: string }[] = [];
 const deletedWebhooks: string[] = [];
 const storageProbes: { input: StorageConfiguration; corsOrigins: string[] | undefined }[] = [];
@@ -139,7 +140,7 @@ beforeAll(async () => {
     body: JSON.stringify({ name: 'Shop Integrations Owner', email, password }),
   });
   expect(signup.status).toBe(200);
-  const ownerId = z.object({ user: z.object({ id: z.string() }) }).parse(await signup.json()).user.id;
+  ownerId = z.object({ user: z.object({ id: z.string() }) }).parse(await signup.json()).user.id;
   await database.db.execute(`update "user" set email_verified = true where id = '${ownerId}'`);
   for (const tenantId of ['acme', 'studio']) {
     await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Workspace', createdAt: now });
@@ -434,5 +435,45 @@ describe('shop integration routes with a shop management key', () => {
     expect(envelope(shopIntegrationContracts.stripeConfigure.output).parse(await configured.json()).data)
       .toEqual({ mode: 'live', webhookUrl: 'http://acme.localhost:48730/api/webhooks/stripe/acme' });
     expect(await storedSecret('acme', 'stripe.restrictedKey')).toBe('rk_live_acme_provisioning');
+  });
+});
+
+describe('shop management key history of keyed integration writes', () => {
+  const requestRows = async (apiKeyId: string) => (await database.db.select().from(shopManagementKeyEvents))
+    .filter((event) => event.apiKeyId === apiKeyId && event.kind === 'request');
+  const byRoute = <T extends { method: string | null; route: string | null }>(rows: T[]): T[] =>
+    rows.toSorted((left, right) => `${left.route ?? ''} ${left.method ?? ''}`.localeCompare(`${right.route ?? ''} ${right.method ?? ''}`));
+
+  it('writes one row per write with the route and the secret key name as the only resource, never a credential', async () => {
+    const { apiKey, secret } = await createShopKey([READ, WRITE]);
+    const credentials = ['ksef-history-token-4242', 'rk_test_history_4242', 'history-access-key-id', 'history-secret-access-key', '54321', 'shipx-history-token'];
+    const calls = [
+      ['POST', SHOP_INTEGRATION_ROUTES.setSecret.path, SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'ksef.test.token', value: 'ksef-history-token-4242' }, 'ksef.test.token'],
+      ['DELETE', secretPath('ksef.test.token'), SHOP_INTEGRATION_ROUTES.deleteSecret.path, undefined, 'ksef.test.token'],
+      ['POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { mode: 'test', restrictedKey: 'rk_test_history_4242' }, null],
+      ['POST', SHOP_INTEGRATION_ROUTES.stripeProbe.path, SHOP_INTEGRATION_ROUTES.stripeProbe.path, { mode: 'test' }, null],
+      ['POST', SHOP_INTEGRATION_ROUTES.storageConfigure.path, SHOP_INTEGRATION_ROUTES.storageConfigure.path, { ...storage, accessKeyId: 'history-access-key-id', secretAccessKey: 'history-secret-access-key' }, null],
+      ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { organizationId: '54321', token: 'shipx-history-token' }, null],
+    ] as const;
+    const expected = [];
+    for (const [method, path, route, body, resourceId] of calls) {
+      const response = await keyed(secret, method, path, body);
+      expect(response.status, path).toBe(200);
+      expected.push({ apiKeyId: apiKey.id, actorUserId: ownerId, method, route, resourceId, status: 200, outcome: 'succeeded' });
+    }
+    const rows = await requestRows(apiKey.id);
+    expect(byRoute(rows.map(({ apiKeyId, actorUserId, method, route, resourceId, status, outcome }) =>
+      ({ apiKeyId, actorUserId, method, route, resourceId, status, outcome })))).toEqual(byRoute(expected));
+    const recorded = JSON.stringify(rows.map(({ route, resourceId }) => ({ route, resourceId })));
+    for (const credential of credentials) expect(recorded).not.toContain(credential);
+  });
+
+  it('writes one refused row for a write the key scope does not allow', async () => {
+    const { apiKey, secret } = await createShopKey([READ]);
+    const refused = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'ifirma.username', value: 'refused-login' });
+    expect(refused.status).toBe(403);
+    expect((await requestRows(apiKey.id)).map(({ route, resourceId, status, outcome }) => ({ route, resourceId, status, outcome })))
+      .toEqual([{ route: SHOP_INTEGRATION_ROUTES.setSecret.path, resourceId: 'ifirma.username', status: 403, outcome: 'refused' }]);
+    expect(JSON.stringify((await requestRows(apiKey.id)).map(({ route, resourceId }) => ({ route, resourceId })))).not.toContain('refused-login');
   });
 });

@@ -168,9 +168,11 @@ kind of event, the acting account and the time:
 
 A `request` row also records the method, the route template (for example
 `/api/m2m/shop/products/update`), the id of the resource the request names
-(a path parameter, else the body's `id`, else the first body field ending in
-`Id`; none when the request names no existing resource, such as a product
-creation), the HTTP status and an outcome: `succeeded` (2xx), `refused` (4xx,
+(the first path parameter, else the body's `id` or `productId`; for
+`POST /api/m2m/shop/integrations/secrets` the body's `key`, the name of the
+secret and never its value; none when the request names no existing resource,
+such as a product or sales-link creation, a settings change or a payment,
+storage or carrier configure call), the HTTP status and an outcome: `succeeded` (2xx), `refused` (4xx,
 including `401`, `403`, `429` and validation errors) or `failed` (5xx or a
 handler error). The shared shop route helper writes it after the handler or the
 refusal, so every shop route inherits it. Reads (`GET`) write no row; they are

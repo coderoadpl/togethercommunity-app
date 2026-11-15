@@ -9,6 +9,7 @@ import {
   orderIssueEvents,
   orderShipmentEvents,
   products,
+  shopManagementKeyEvents,
   tenantAdmins,
   tenantApiKeys,
   tenants,
@@ -51,14 +52,17 @@ const ownerRequest = (method: string, path: string, body: unknown, host: string)
   body: JSON.stringify(body),
 });
 
-const createKey = async (input: Record<string, unknown>, host = acmeHost) => {
+const createKeyRecord = async (input: Record<string, unknown>, host = acmeHost) => {
   const response = await ownerRequest(API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, input, host);
   expect(response.status).toBe(200);
-  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data.secret;
+  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
 };
 
-const createShopKey = (scopes: string[], host = acmeHost) =>
-  createKey({ name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt }, host);
+const createKey = async (input: Record<string, unknown>, host = acmeHost) => (await createKeyRecord(input, host)).secret;
+
+const shopKeyInput = (scopes: string[]) => ({ name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt });
+
+const createShopKey = (scopes: string[], host = acmeHost) => createKey(shopKeyInput(scopes), host);
 
 const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
   method,
@@ -400,5 +404,32 @@ describe('shop order routes with a shop management key', () => {
     }
     const untouched = await keyed(await createShopKey([READ]), 'GET', orderPath(SHOP_ORDER_ROUTES.getOrder.path, 'acme-test-locker'));
     expect(envelope(shopOrderContracts.getOrder.output).parse(await untouched.json()).data.order).toMatchObject({ fulfilmentStatus: 'to_pack', shipment: null });
+  });
+});
+
+describe('shop management key history of keyed order writes', () => {
+  it('writes one row per fulfilment call with the route template and the order id', async () => {
+    const orderId = 'acme-history-courier';
+    await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: courierShipping }));
+    const { apiKey, secret } = await createKeyRecord(shopKeyInput([READ, FULFIL]));
+    const templates = [
+      SHOP_ORDER_ROUTES.shipOrder.path,
+      SHOP_ORDER_ROUTES.issueOrderLine.path,
+      SHOP_ORDER_ROUTES.shipxCreate.path,
+      SHOP_ORDER_ROUTES.shipxRefresh.path,
+      SHOP_ORDER_ROUTES.shipxDiscard.path,
+      SHOP_ORDER_ROUTES.shipxLabel.path,
+    ];
+    const expected = [];
+    for (const [index, [path, body]] of writeRoutes(orderId, 'book-acme').entries()) {
+      const response = await keyed(secret, 'POST', path, body === undefined ? undefined : { ...body, trackingNumber: 'HISTORY01' });
+      expected.push({ actorUserId: ownerId, method: 'POST', route: templates[index], resourceId: orderId, status: response.status });
+    }
+    expect(expected[0]?.status).toBe(200);
+    const rows = (await database.db.select().from(shopManagementKeyEvents))
+      .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')
+      .map(({ actorUserId, method, route, resourceId, status }) => ({ actorUserId, method, route, resourceId, status }));
+    const byRoute = <T extends { route: string | null | undefined }>(entries: T[]) => entries.toSorted((left, right) => (left.route ?? '').localeCompare(right.route ?? ''));
+    expect(byRoute(rows)).toEqual(byRoute(expected));
   });
 });

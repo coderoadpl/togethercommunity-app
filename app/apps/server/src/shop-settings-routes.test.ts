@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import {
   API_ROUTES,
   apiKeyCreateOutputSchema,
@@ -47,13 +47,15 @@ const ownerRequest = (method: string, path: string, body: unknown, host = acmeHo
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
-const createShopKey = async (scopes: string[], host = acmeHost) => {
+const createShopKeyRecord = async (scopes: string[], host = acmeHost) => {
   const response = await ownerRequest(API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, {
     name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt,
   }, host);
   expect(response.status).toBe(200);
-  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data.secret;
+  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
 };
+
+const createShopKey = async (scopes: string[], host = acmeHost) => (await createShopKeyRecord(scopes, host)).secret;
 
 const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
   method,
@@ -367,5 +369,30 @@ describe('shop settings routes with a shop management key', () => {
     const applied = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { logoUrl: published });
     expect(applied.status).toBe(200);
     expect((await readSettings(secret)).logoUrl).toBe(published);
+  });
+});
+
+describe('shop management key history of keyed settings writes', () => {
+  it('writes one row per settings and branding write with the route template and no resource', async () => {
+    const { apiKey, secret } = await createShopKeyRecord([READ, WRITE]);
+    const updated = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { supportUrl: null });
+    const upload = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, {
+      kind: 'logo', fileName: 'history.png', contentType: 'image/png', sizeBytes: png.byteLength,
+    });
+    const started = envelope(shopSettingsContracts.brandingAssetUpload.output).parse(await upload.json()).data;
+    objects.set(unsignedUrl(started.upload.url), new Uint8Array(png));
+    const completed = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetComplete.path, { key: started.key });
+    expect([updated.status, upload.status, completed.status]).toEqual([200, 200, 200]);
+
+    const rows = (await database.db.select().from(shopManagementKeyEvents))
+      .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')
+      .map(({ method, route, resourceId, status, outcome }) => ({ method, route, resourceId, status, outcome }))
+      .toSorted((left, right) => (left.route ?? '').localeCompare(right.route ?? ''));
+    expect(rows).toEqual([
+      SHOP_SETTINGS_ROUTES.brandingAssetComplete.path,
+      SHOP_SETTINGS_ROUTES.brandingAssetUpload.path,
+      SHOP_SETTINGS_ROUTES.updateSettings.path,
+    ].map((route) => ({ method: 'POST', route, resourceId: null, status: 200, outcome: 'succeeded' })));
+    expect(JSON.stringify(rows)).not.toContain(started.upload.url);
   });
 });

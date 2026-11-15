@@ -38,6 +38,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.setSecret,
+    resourceIdField: 'key',
     handler: async (c, { ctx }) => {
       const parsed = shopIntegrationContracts.setSecret.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid integration secret', parsed.error.flatten())));

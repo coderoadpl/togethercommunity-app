@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import {
   API_ROUTES,
   apiKeyCreateOutputSchema,
@@ -47,13 +47,15 @@ const ownerRequest = (method: string, path: string, body: unknown, host = acmeHo
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
-const createShopKey = async (scopes: string[], host = acmeHost) => {
+const createShopKeyRecord = async (scopes: string[], host = acmeHost) => {
   const response = await ownerRequest(API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, {
     name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt,
   }, host);
   expect(response.status).toBe(200);
-  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data.secret;
+  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
 };
+
+const createShopKey = async (scopes: string[], host = acmeHost) => (await createShopKeyRecord(scopes, host)).secret;
 
 const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
   method,
@@ -277,5 +279,36 @@ describe('shop asset routes with shop management keys', () => {
         expect((await errorOf(response)).code).toBe(code);
       }
     }
+  });
+});
+
+describe('shop management key history of keyed asset writes', () => {
+  it('writes one row per cover and sales-link write with the route template and the sales-link id when the path names it', async () => {
+    const { apiKey, secret } = await createShopKeyRecord([READ, WRITE]);
+    const product = await createProduct(secret);
+    const candidate = await beginCover(secret);
+    objects.set(unsignedUrl(candidate.upload.url), png);
+    const completed = await keyed(secret, 'POST', SHOP_ASSETS_ROUTES.productCoverComplete.path, { key: candidate.key });
+    const fields = { ...linkFields(product.id), slug: 'history-bundle' };
+    const created = await keyed(secret, 'POST', SHOP_ASSETS_ROUTES.createSalesLink.path, fields);
+    const { salesLink } = envelope(shopAssetsContracts.createSalesLink.output).parse(await created.json()).data;
+    const updated = await keyed(secret, 'POST', linkPath(salesLink.id), { ...fields, id: salesLink.id, expectedRevision: 1, heading: 'History edition' });
+    const deleted = await keyed(secret, 'DELETE', linkPath(salesLink.id));
+    expect([completed.status, created.status, updated.status, deleted.status]).toEqual([200, 201, 200, 200]);
+
+    const rows = (await database.db.select().from(shopManagementKeyEvents))
+      .filter((event) => event.apiKeyId === apiKey.id && event.kind === 'request')
+      .map(({ method, route, resourceId, status }) => ({ method, route, resourceId, status }));
+    const key = (row: { method: string | null; route: string | null }) => `${row.route ?? ''} ${row.method ?? ''}`;
+    const byRoute = <T extends { method: string | null; route: string | null }>(entries: T[]) => entries.toSorted((left, right) => key(left).localeCompare(key(right)));
+    expect(byRoute(rows)).toEqual(byRoute([
+      { method: 'POST', route: SHOP_CATALOG_ROUTES.createProduct.path, resourceId: null, status: 200 },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.productCoverUpload.path, resourceId: null, status: 200 },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.productCoverComplete.path, resourceId: null, status: 200 },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.createSalesLink.path, resourceId: null, status: 201 },
+      { method: 'POST', route: SHOP_ASSETS_ROUTES.updateSalesLink.path, resourceId: salesLink.id, status: 200 },
+      { method: 'DELETE', route: SHOP_ASSETS_ROUTES.deleteSalesLink.path, resourceId: salesLink.id, status: 200 },
+    ]));
+    expect(JSON.stringify(rows)).not.toContain(candidate.upload.url);
   });
 });

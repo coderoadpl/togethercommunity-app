@@ -1086,6 +1086,13 @@
       "when": 1790964000061,
       "tag": "0154_meta_capi",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1790964000071,
+      "tag": "0156_organizations_core",
+      "breakpoints": true
     }
   ]
 }

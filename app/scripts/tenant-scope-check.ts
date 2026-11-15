@@ -83,6 +83,15 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TenantSesSettingsRepository.findByWebhookToken': 'The signed provider webhook token resolves the owning tenant.',
   'TenantAccessReader.findStaffGrant': 'Tenant resolution may start from a slug before a tenant ID exists.',
   'TenantAccessReader.listTenantsForStaff': 'Sign-in discovers the tenants available to a platform user.',
+  'OrganizationRepository.create': 'Operator organisation creation establishes the organisation boundary before any organisation or tenant ID exists.',
+  'OrganizationRepository.findById': 'Organisation boundary, verified by authorizeOrganization before the call.',
+  'OrganizationRepository.findBySlug': 'Operator organisation creation looks up the platform-unique slug before an organisation ID exists.',
+  'OrganizationMemberRepository.add': 'Organisation boundary, verified by authorizeOrganization before the call.',
+  'OrganizationMemberRepository.find': 'Organisation boundary, verified by authorizeOrganization before the call.',
+  'OrganizationMemberRepository.list': 'Organisation boundary, verified by authorizeOrganization before the call.',
+  'OrganizationMemberRepository.listForUser': 'Sign-in discovers the organisations available to a platform user.',
+  'OrganizationAuditRepository.record': 'Organisation boundary, verified by authorizeOrganization before the call.',
+  'OrganizationAuditRepository.list': 'Organisation boundary, verified by authorizeOrganization before the call.',
 };
 
 export const NON_DATA_PORTS: Readonly<Record<string, string>> = {

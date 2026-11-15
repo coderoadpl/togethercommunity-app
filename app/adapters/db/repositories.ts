@@ -6,7 +6,7 @@ import { surveyResponses } from './survey-schema.js';
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
-import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
@@ -4446,20 +4446,27 @@ export const createTenantDomainEventRepository = (db: Db): TenantDomainEventRepo
   },
 });
 
+// Organization links stay out of tenant reads until the organization layer exposes them deliberately.
+const tenantColumnsWithoutOrganization = (): Omit<typeof tenants._.columns, 'organizationId'> => {
+  const columns = { ...getTableColumns(tenants) };
+  Reflect.deleteProperty(columns, 'organizationId');
+  return columns;
+};
+
 export const createTenantRepository = (
   db: Db,
   options: { onMultipleTenants?(): void } = {},
 ): TenantRepository => ({
   findById: async (tenantId) => {
-    const rows = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const rows = await db.select(tenantColumnsWithoutOrganization()).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     return rows[0] ?? null;
   },
   findBySlug: async (slug) => {
-    const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    const rows = await db.select(tenantColumnsWithoutOrganization()).from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
   findSole: async () => {
-    const rows = await db.select().from(tenants).limit(2);
+    const rows = await db.select(tenantColumnsWithoutOrganization()).from(tenants).limit(2);
     if (rows.length > 1) options.onMultipleTenants?.();
     return rows.length === 1 ? rows[0] ?? null : null;
   },
@@ -4747,7 +4754,7 @@ export const createTenantRepository = (
  */
 export const createTenantDirectory = (db: Db, hideSmokeTenant = false): TenantDirectory => ({
   listAll: () => db
-    .select()
+    .select(tenantColumnsWithoutOrganization())
     .from(tenants)
     .where(hideSmokeTenant ? ne(tenants.id, SMOKE_TENANT_ID) : undefined)
     .orderBy(asc(tenants.slug)),

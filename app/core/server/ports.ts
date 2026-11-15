@@ -77,6 +77,9 @@ import type {
   StorageConfiguration,
   StorageCorsCacheEntry,
   StorageCorsProbeResult,
+  Organization,
+  OrganizationAuditEvent,
+  OrganizationMember,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -2542,6 +2545,25 @@ export interface ImpersonationSessionRepository {
 export interface TenantAuditEventRepository {
   list(tenantId: string, query: TenantAuditEventListQuery): Promise<TenantAuditEventPage>;
   record(tenantId: string, event: TenantAuditEventInput): Promise<void>;
+}
+
+export interface OrganizationRepository {
+  create(organization: Organization): Promise<Organization | null>;
+  findById(organizationId: string): Promise<Organization | null>;
+  findBySlug(slug: string): Promise<Organization | null>;
+}
+
+export interface OrganizationMemberRepository {
+  add(organizationId: string, member: Omit<OrganizationMember, 'organizationId'>): Promise<boolean>;
+  find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
+  list(organizationId: string): Promise<OrganizationMember[]>;
+  listForUser(userId: string): Promise<OrganizationMember[]>;
+}
+
+/** Append-only organization audit trail; entries are never updated or deleted. */
+export interface OrganizationAuditRepository {
+  record(organizationId: string, event: Omit<OrganizationAuditEvent, 'organizationId'>): Promise<void>;
+  list(organizationId: string, query: { limit: number }): Promise<OrganizationAuditEvent[]>;
 }
 
 export interface ImpersonationTokenCodec {

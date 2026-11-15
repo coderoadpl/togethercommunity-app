@@ -6,6 +6,7 @@ import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, 
 import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 
 import { user } from './auth-schema.js';
+import { organizations } from './organization-schema.js';
 
 import type {
   OrderShipment,
@@ -112,9 +113,11 @@ export const tenants = pgTable(
     ksefSubmissionMode: text('ksef_submission_mode', { enum: ['automatic', 'manual'] }).notNull().default('automatic'),
     invoiceSellerName: text('invoice_seller_name'),
     invoiceSellerAddress: text('invoice_seller_address'),
+    organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'restrict' }),
   },
   (table) => [
     uniqueIndex('tenants_slug_uidx').on(table.slug),
+    index('tenants_organization_idx').on(table.organizationId),
     check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
     check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
     check('tenants_default_language_check', sql`${table.defaultLanguage} IN ('pl', 'en')`),
@@ -2347,6 +2350,9 @@ export const tenantAuditEvents = pgTable(
         'team.admin_activated',
         'team.invitation_revoked',
         'team.admin_removed',
+        'organization.linked',
+        'organization.unlinked',
+        'config_source.changed',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

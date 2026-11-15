@@ -6,22 +6,25 @@ import {
 } from '#core/domain/shop-manifest.js';
 
 export type ManifestReadClient = Pick<ApiClient, 'me' | 'getTenantSettings' | 'listProducts' | 'listProductPrices' | 'getProductStock'>;
-export type ManifestClientFactory<C extends ManifestReadClient = ManifestReadClient> = (workspace: string) => C;
+export type ManifestClientFactory<C extends ManifestReadClient = ManifestReadClient> = (workspace: string) => C | null;
 type CurrentManifestProduct = { product: Product; prices: ProductPrice[]; stock: ProductStock | null };
 export type PreparedProduct = { desired: ShopManifestProduct; current: CurrentManifestProduct | null; diff: ReturnType<typeof diffManifestProduct> };
+type WorkspaceAccess<C extends ManifestReadClient = ManifestReadClient> =
+  | { state: 'ready'; api: C }
+  | { state: 'provision'; input: ProvisionTenantInput }
+  | { state: 'missing' };
 export type PreparedShop<C extends ManifestReadClient = ManifestReadClient> = {
   workspace: string;
-  api: C;
-  provision: ProvisionTenantInput | null;
+  access: WorkspaceAccess<C>;
   integrations: ShopManifestIntegrations;
   settings: ReturnType<typeof diffShopSettings>;
   products: PreparedProduct[];
 };
 
-export const manifestOperationError = (error: AppError, workspace: string, operation: string): AppError => ({
+export const manifestOperationError = (error: AppError, workspace: string | null, operation: string): AppError => ({
   code: error.code,
   message: isRedirectRefusal(error) ? `Shop operation refused a redirect: ${operation}` : `Shop operation failed: ${operation}`,
-  details: { workspace, operation },
+  details: workspace === null ? { operation } : { workspace, operation },
 });
 
 const validateVatSettings = (desired: ShopManifestSettings, current: Record<string, unknown>): Result<true, AppError> => {
@@ -67,19 +70,31 @@ export const prepareManifest = async <C extends ManifestReadClient>(
   if (!effective.ok) return effective;
   const prepared: PreparedShop<C>[] = [];
   for (const { shop, slug, desired, integrations } of effective.value) {
-    const api = clientFor(slug);
-    const identity = await api.me();
-    if (!identity.ok) {
-      if (identity.error.code !== 'tenant_not_found' || typeof shop.workspace === 'string') {
-        return err(manifestOperationError(identity.error, slug, 'identity:read'));
-      }
+    const unavailable = (access: Exclude<WorkspaceAccess, { state: 'ready' }>): Result<PreparedShop<C>, AppError> => {
       const coherent = validateVatSettings(desired, {});
       if (!coherent.ok) return coherent;
-      prepared.push({
-        workspace: slug, api, integrations, provision: { slug, ...shop.workspace.provision },
+      return ok({
+        workspace: slug, access, integrations,
         settings: diffShopSettings(desired, {}),
         products: shop.products.map((product) => ({ desired: product, current: null, diff: diffManifestProduct(product, null) })),
       });
+    };
+    const provisioning = typeof shop.workspace === 'string' ? null : { slug, ...shop.workspace.provision };
+    const api = clientFor(slug);
+    if (api === null) {
+      const entry = unavailable(provisioning === null ? { state: 'missing' } : { state: 'provision', input: provisioning });
+      if (!entry.ok) return entry;
+      prepared.push(entry.value);
+      continue;
+    }
+    const identity = await api.me();
+    if (!identity.ok) {
+      if (identity.error.code !== 'tenant_not_found' || provisioning === null) {
+        return err(manifestOperationError(identity.error, slug, 'identity:read'));
+      }
+      const entry = unavailable({ state: 'provision', input: provisioning });
+      if (!entry.ok) return entry;
+      prepared.push(entry.value);
       continue;
     }
     if (identity.value.tenant?.slug !== slug) return err(validation('API workspace does not match the manifest', { workspace: slug }));
@@ -103,15 +118,17 @@ export const prepareManifest = async <C extends ManifestReadClient>(
       }
       preparedProducts.push({ desired: desiredProduct, current, diff: diffManifestProduct(desiredProduct, current) });
     }
-    prepared.push({ workspace: slug, api, integrations, provision: null, settings: diffShopSettings(desired, settings.value.settings), products: preparedProducts });
+    prepared.push({ workspace: slug, access: { state: 'ready', api }, integrations, settings: diffShopSettings(desired, settings.value.settings), products: preparedProducts });
   }
   return ok(prepared);
 };
 
+const PROVISIONING_BY_ACCESS = { ready: 'unchanged', provision: 'create', missing: 'missing' } as const;
+
 export const manifestPlanReport = (shops: PreparedShop[], integrations = false) => ({
   shops: shops.map((shop) => ({
     workspace: shop.workspace,
-    provisioning: shop.provision === null ? 'unchanged' : 'create',
+    provisioning: PROVISIONING_BY_ACCESS[shop.access.state],
     integrations: Object.entries(shop.integrations).filter(([, value]) => value != null).map(([provider]) => ({
       provider, action: integrations ? 'configure' : 'skipped without --integrations',
     })),

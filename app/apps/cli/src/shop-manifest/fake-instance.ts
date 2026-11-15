@@ -46,6 +46,14 @@ export const createInstanceFetch = (instances: FakeInstance[]) => {
     const resolved = resolveWorkspace(instances, url, request.tenant);
     if (resolved === null) throw new TypeError('fetch failed');
     const { instance, slug } = resolved;
+    if (request.path === '/api/tenants') {
+      return json({
+        tenants: instance.workspaces.map((workspace) => ({
+          tenant: { id: `t-${workspace}`, slug: workspace, name: workspace, status: 'active', plan: 'hosted', contentVersion: 1 }, staffRole: 'owner',
+        })),
+        memberTenants: [], canCreateTenant: false,
+      });
+    }
     if (request.path === '/api/internal/tenants/provision') {
       const input: unknown = JSON.parse(z.string().parse(request.body));
       const body = provisionTenantInputSchema.parse(input);

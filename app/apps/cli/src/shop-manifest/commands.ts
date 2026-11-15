@@ -9,16 +9,17 @@ import { planManifest, preflightManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 import { driftManifest } from './drift.js';
 import { baseDomainSchema, manifestWorkspaceOrigins } from './instance.js';
+import { confirmingOperator, readConfirmedWorkspaces } from './workspaces.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
 const optionsSchema = z.object({
   manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
 }).strict();
 
-const sessionClient = (baseUrl: string, token: string | null, workspace: string) => createApiClient({
+const sessionClient = (baseUrl: string, token: string | null, workspace: string | null) => createApiClient({
   baseUrl,
   refuseRedirects: true,
-  headers: () => ({ ...(token ? { authorization: `Bearer ${token}` } : {}), [TENANT_HEADER]: workspace }),
+  headers: () => ({ ...(token ? { authorization: `Bearer ${token}` } : {}), ...(workspace === null ? {} : { [TENANT_HEADER]: workspace }) }),
 });
 
 export const readManifestFile = async (path: string): Promise<Result<unknown, AppError>> => {
@@ -58,10 +59,13 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const preflight = preflightManifest(input.value, options.data.shop);
       if (!preflight.ok) { emit(preflight, ctx.value.json, () => ''); return; }
       const { apiUrl, profile } = ctx.value;
+      const confirmed = await readConfirmedWorkspaces(sessionClient(apiUrl, profile.token, null));
+      if (!confirmed.ok) { emit(confirmed, ctx.value.json, () => ''); return; }
       const workspaceOrigin = await manifestWorkspaceOrigins(apiUrl, (workspace) => sessionClient(apiUrl, profile.token, workspace),
-        preflight.value.map((shop) => shop.slug), options.data.baseDomain);
+        preflight.value.map((shop) => shop.slug).filter((slug) => confirmed.value.has(slug)), options.data.baseDomain);
       if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
-      const clientFor = (workspace: string) => sessionClient(workspaceOrigin.value(workspace), profile.token, workspace);
+      const clientFor = (workspace: string) => confirmed.value.has(workspace)
+        ? sessionClient(workspaceOrigin.value(workspace), profile.token, workspace) : null;
       if (command === 'drift') {
         const result = await driftManifest(input.value, clientFor, options.data.shop);
         emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
@@ -71,7 +75,8 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {
-          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: apiUrl, refuseRedirects: true }),
+          integrations: options.data.integrations, environment: process.env,
+          operator: confirmingOperator(createApiClient({ baseUrl: apiUrl, refuseRedirects: true }), confirmed.value),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
     });

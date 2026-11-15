@@ -85,7 +85,7 @@ describe('shop manifest command boundary', () => {
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
     await runCli(['shop', command, '--manifest', path], 'https://shop.acme.example.test');
     expect(fake.requests.map((request) => `${request.origin} ${request.path}`))
-      .toEqual(['https://shop.acme.example.test /api/me', 'https://shop.acme.example.test /api/tenant/routing']);
+      .toEqual(['https://shop.acme.example.test /api/tenants', 'https://shop.acme.example.test /api/me', 'https://shop.acme.example.test /api/tenant/routing']);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
   });
@@ -107,6 +107,50 @@ describe('shop manifest command boundary', () => {
     expect(new Set(fake.requests.filter((request) => request.authorization !== null).map((request) => request.origin)))
       .toEqual(new Set([apiUrl, `https://acme.${baseDomain}`, `https://studio.${baseDomain}`]));
     expect(fake.requests.every((request) => new URL(request.origin).hostname.endsWith(baseDomain))).toBe(true);
+  });
+
+  describe('workspaces the API origin has not confirmed', () => {
+    const separateInstances = (): FakeInstance[] => [
+      { baseDomain: 'togethercommunity.app', workspaces: ['acme'] },
+      { baseDomain: 'preview.togethercommunity.app', workspaces: ['preview'] },
+    ];
+    const manifest = { version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace: 'preview', products: [] }] };
+    const separateHostRequests = (requests: ReturnType<typeof createInstanceFetch>['requests']) =>
+      requests.filter((request) => request.origin === 'https://preview.togethercommunity.app');
+
+    it.each([['plan', 0], ['drift', 1]] as const)('%s reports a slug that names another instance host as missing without a request to it', async (command, exitCode) => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const fake = createInstanceFetch(separateInstances());
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+      await runCli(['shop', command, '--manifest', await inputFile(JSON.stringify(manifest))], 'https://acme.togethercommunity.app');
+      expect(separateHostRequests(fake.requests)).toEqual([]);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [
+        { workspace: 'acme', provisioning: 'unchanged' }, { workspace: 'preview', provisioning: 'missing' },
+      ] } });
+      expect(process.exitCode).toBe(exitCode);
+    });
+
+    it('apply stops before any write or request to the unconfirmed workspace', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const fake = createInstanceFetch(separateInstances());
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+      const input = { ...manifest, company: { settings: { invoiceSellerName: 'Acme' } } };
+      await runCli(['shop', 'apply', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+      expect(separateHostRequests(fake.requests)).toEqual([]);
+      expect(fake.requests.every((request) => request.method === 'GET')).toBe(true);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation', details: { failure: { workspaces: ['preview'] }, applied: [] } } });
+      expect(process.exitCode).toBe(2);
+    });
+
+    it('plans an unconfirmed provisioning entry as a creation without a request to its host', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const fake = createInstanceFetch(separateInstances());
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fake.fetchImpl);
+      const input = { version: 1, shops: [{ workspace: 'acme', products: [] }, { workspace: { slug: 'preview', provision: { name: 'Preview', ownerEmail: 'owner@togethercommunity.app' } }, products: [] }] };
+      await runCli(['shop', 'plan', '--manifest', await inputFile(JSON.stringify(input))], 'https://acme.togethercommunity.app');
+      expect(separateHostRequests(fake.requests)).toEqual([]);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ provisioning: 'unchanged' }, { workspace: 'preview', provisioning: 'create' }] } });
+    });
   });
 
   it('never sends the token of a bare environment host to production workspace hosts', async () => {
@@ -169,6 +213,10 @@ describe('shop manifest command boundary', () => {
     const source = await listen((request) => {
       const path = new URL(request.path, 'http://localhost').pathname;
       const slug = String(request.headers['x-tenant']);
+      if (path === '/api/tenants') {
+        const tenant = { id: 't1', slug: 'acme', name: 'acme', status: 'active', plan: 'hosted', contentVersion: 1 };
+        return jsonAnswer(200, { ok: true, data: { tenants: [{ tenant, staffRole: 'owner' }], memberTenants: [], canCreateTenant: false } });
+      }
       if (path === redirectPath) return { status: 307, headers: { location: `http://127.0.0.1:${String(target.port)}${path}` }, body: '' };
       if (path === '/api/me' && slug === 'studio') return jsonAnswer(404, { ok: false, error: { code: 'tenant_not_found', message: 'No tenant' } });
       const data = path === '/api/me' ? { userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug, name: slug, staffRole: 'owner', memberId: null, banned: false } }
@@ -239,10 +287,12 @@ describe('shop manifest command boundary', () => {
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
     await runCli(['--json', 'shop', command, '--manifest', path, '--shop', 'acme']);
     expect(fake.requests.map((request) => `${request.method} ${request.origin}${request.path}`)).toEqual([
+      'GET https://togethercommunity.app/api/tenants',
       'GET https://togethercommunity.app/api/me', 'GET https://togethercommunity.app/api/tenant/routing',
       'GET https://acme.togethercommunity.app/api/me', 'GET https://acme.togethercommunity.app/api/tenant/settings', 'GET https://acme.togethercommunity.app/api/products',
     ]);
-    expect(fake.requests.every((request) => request.authorization === 'Bearer session-fixture' && request.tenant === 'acme')).toBe(true);
+    expect(fake.requests.every((request) => request.authorization === 'Bearer session-fixture')).toBe(true);
+    expect(fake.requests.map((request) => request.tenant)).toEqual([null, 'acme', 'acme', 'acme', 'acme', 'acme']);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme', products: [] }] } });
     expect(String(log.mock.calls[0]?.[0])).not.toContain('session-fixture');

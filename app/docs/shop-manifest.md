@@ -37,12 +37,24 @@ same `--api-url` for login and the manifest commands; `--tenant` does not overri
 workspace slugs in the manifest.
 
 Each shop's requests go to that workspace's subdomain on the same instance as
-the selected API origin. The command does not guess the instance from the host
-name: before any workspace request it asks the selected origin itself, with the
-profile's session, for its identity (`GET /api/me`) and its workspace routing
+the selected API origin, and only for workspaces that origin has confirmed. The
+command first reads the signed-in account's workspace list from the selected
+origin (`GET /api/tenants`, without a workspace header). A manifest workspace is
+confirmed when that list contains it, as a staff or member workspace, or when
+this same `shop apply` run has just provisioned it through the selected origin's
+operator route. An unconfirmed workspace never receives a request on a derived
+host, so a slug that happens to equal a host label of a separate instance (for
+example `preview` next to `preview.togethercommunity.app`) does not receive the
+session token. `shop plan` and `shop drift` report an unconfirmed string-form
+workspace as `provisioning: "missing"` and an unconfirmed provisioning entry as
+`provisioning: "create"`; `shop apply` stops with a validation error that lists
+the unconfirmed string-form workspaces before any write.
+
+The command does not guess the instance from the host name: before any
+workspace request it asks the selected origin itself, with the profile's
+session, for its identity (`GET /api/me`) and its workspace routing
 (`GET /api/tenant/routing`, available to the workspace's owners and admins),
-selecting the first selected manifest workspace that exists with the workspace
-header. The routing answer names the workspace host the instance itself builds
+selecting the first confirmed manifest workspace with the workspace header. The routing answer names the workspace host the instance itself builds
 from its configured base domain. The command accepts it only when that host is
 `<workspace>.<base domain>` for the workspace the origin resolved, uses the
 origin's port, and the selected origin is the base domain itself or a host one
@@ -59,7 +71,7 @@ workspace header, without discovery requests.
 
 Two origins do not report a base domain: the platform host (`start.<domain>`),
 which resolves no workspace, and a bare base-domain origin when none of the
-selected workspaces exists yet. For those, pass `--base-domain <domain>` to
+selected workspaces is confirmed yet. For those, pass `--base-domain <domain>` to
 `shop plan`, `shop apply` or `shop drift`; the command then requires the selected
 origin to be exactly `start.<domain>` or `<domain>`. When the origin does report
 a base domain, `--base-domain` must match it. Any other origin is refused before
@@ -282,14 +294,17 @@ are outside this manifest's allow-list.
 
 ### Missing workspaces and operator provisioning
 
-Use `"workspace": "acme"` when creation is not allowed. If that workspace cannot
-be read, the command fails; it never silently provisions a string-only entry.
+Use `"workspace": "acme"` when creation is not allowed. If the signed-in
+account's workspace list does not contain it, plan and drift report it as
+`"missing"` and apply stops before any write; if it is listed but cannot be
+read, the command fails. It never silently provisions a string-only entry.
 For deliberate creation, use the object form from the complete example:
 `workspace.slug` plus `workspace.provision.name`, `ownerEmail`, and optional
 `defaultLanguage`. These are bootstrap inputs, not ongoing owner/team or name
 reconciliation. Manage the current name with `settings.name`.
 
-A `tenant_not_found` identity result for a provisioning entry is reported as
+A provisioning entry that is not in the account's workspace list, or whose
+identity read returns `tenant_not_found`, is reported as
 `provisioning: "create"`; an accessible existing workspace is `"unchanged"`.
 Plan and drift need no operator secret. Authentication failures, permission
 failures, generic 404 errors and workspace mismatches are not converted into
@@ -541,7 +556,8 @@ accepts `--integrations`. In JSON mode it emits exactly one normal envelope;
 ordinary drift is a successful read (`ok: true`), not an API failure.
 
 - Exit `0`: every managed workspace setting/product is at its target.
-- Exit `1`: at least one workspace needs provisioning, a settings field differs,
+- Exit `1`: at least one workspace needs provisioning or is missing from the
+  account's workspace list, a settings field differs,
   or a managed product/price/stock/cover/publication action is pending.
 - Read, authentication and validation errors retain the existing CLI taxonomy
   (for example validation `2`, authentication required `3`), with `ok: false`.

@@ -22,6 +22,7 @@ import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
 import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
 import { z } from 'zod';
+import { instanceDescriptionSchema } from '#core/domain/index.js';
 
 import {
   signInNoticeSchema,
@@ -276,6 +277,7 @@ export const healthOutputSchema = attestationSchema.extend({
   schemaCurrent: z.boolean(),
   schemaFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
   schemaFingerprintMatch: z.boolean().nullable(),
+  instance: instanceDescriptionSchema.optional(),
 });
 
 export const deepHealthOutputSchema = deepHealthReportSchema;

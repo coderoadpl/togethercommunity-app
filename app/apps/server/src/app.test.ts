@@ -24,6 +24,7 @@ import {
   capabilitiesForPrincipal,
   deepHealthOutputSchema,
   envelopeSchema,
+  healthOutputSchema,
   imageAssetUploadOutputSchema,
   ordersListOutputSchema,
   salesLinkContracts,
@@ -949,6 +950,7 @@ const deps = (input: {
       commit: 'test-sha',
       databaseFingerprint: 'b1bfbb98b4f7',
     },
+    databaseIdentity: '0123456789abcdef',
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
     consentTokens: { nextToken: () => `confirmation-${String(++nextId)}` },
@@ -3620,11 +3622,22 @@ describe('health route', () => {
         schemaCurrent: true,
         schemaFingerprint: 'c087b16a6bb6',
         schemaFingerprintMatch: true,
+        instance: { baseDomain: 'localhost', singleTenant: false, databaseIdentity: '0123456789abcdef' },
       },
     });
 
     const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.health);
     expect(await down.json()).toMatchObject({ ok: true, data: { database: 'down' } });
+  });
+
+  it('describes a single-tenant instance without a base domain', async () => {
+    const response = await buildApp({ ...deps(), baseDomain: 'courses.acme.test', singleTenantMode: true }).request(API_PATHS.health);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      data: { databaseFingerprint: 'b1bfbb98b4f7', instance: { baseDomain: null, singleTenant: true, databaseIdentity: '0123456789abcdef' } },
+    });
+    expect(envelopeSchema(healthOutputSchema).parse(body)).toMatchObject({ data: { instance: { singleTenant: true } } });
   });
 
   it('surfaces schema drift without flipping health status', async () => {

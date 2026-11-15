@@ -30,3 +30,4 @@ export * from './shipx.js';
 export * from './consumer-sales.js';
 
 export * from './catalog-cleanup.js';
+export * from './shop-catalog.js';

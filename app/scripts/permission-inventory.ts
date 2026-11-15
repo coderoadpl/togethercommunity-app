@@ -304,6 +304,7 @@ const beforeForRoute = (
       if (path.startsWith('/api/m2m/import/')) return importContentApiKey;
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
+    if (selfAuthenticatingEntry.mechanism === 'Shop management key') return owner;
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;

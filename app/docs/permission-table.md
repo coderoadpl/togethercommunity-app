@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 124. Route rows: 452. Exported `Ctx` use-case rows: 355.
+Closed capability count: 124. Route rows: 465. Exported `Ctx` use-case rows: 355.
 
 ## Human-readable diff
 
@@ -178,6 +178,19 @@ no changes
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
+| `GET /api/m2m/shop/products` | product:read | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products` | product:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/update` | product:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/publish` | product:publish | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/unpublish` | product:publish | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/delete` | product:write | owner | owner | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/prices` | product:price:read | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/prices` | product:price:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/prices/deactivate` | product:price:write | owner | owner | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/stock` | product:read | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/enable` | product:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/adjust` | product:write | owner | owner | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/threshold` | product:write | owner | owner | yes | Shop management key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -851,12 +864,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:31` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:211` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1254` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1256` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1278` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1292` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1819` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1819` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1255` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1257` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1279` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1293` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1820` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1820` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -867,7 +880,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:660` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:55` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:53` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

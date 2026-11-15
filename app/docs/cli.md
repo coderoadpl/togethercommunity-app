@@ -95,6 +95,9 @@ scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `api-keys create --kind shop_management` creates a
 [shop management key](shop-management-keys.md); it requires `shop:*` scopes and
 `--expires-at` at most 30 days ahead. `api-keys list` prints each key's kind.
+The `shop products|prices|stock` commands use such a key from the environment
+variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
+the stored session; see the guide for the full command list.
 
 Supply the secret through an environment variable, using the same
 `--api-key-env <name>` mechanism as marketing commands. Reports default to

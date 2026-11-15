@@ -32,14 +32,12 @@ type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps;
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-interface ShopMachineRoute {
+export interface ShopMachineRoute {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   scope: ShopManagementScope;
   handler: (c: Context<AppVars>, request: ShopMachineRequest) => Response | Promise<Response>;
 }
-
-const SHOP_MACHINE_ROUTES: readonly ShopMachineRoute[] = [];
 
 const authenticateShopMachineRequest = async (
   headers: Headers,
@@ -89,7 +87,11 @@ export const assertShopMachineRouteCoverage = (routes: readonly Pick<RouterRoute
   );
 };
 
-export const registerShopMachineRoutes = (app: Hono<AppVars>, deps: ShopMachineDeps): void => {
-  for (const route of SHOP_MACHINE_ROUTES) registerShopMachineRoute(app, deps, route);
-  assertShopMachineRouteCoverage(SHOP_MACHINE_ROUTES);
+export const registerShopMachineRoutes = (
+  app: Hono<AppVars>,
+  deps: ShopMachineDeps,
+  routes: readonly ShopMachineRoute[],
+): void => {
+  assertShopMachineRouteCoverage(routes);
+  for (const route of routes) registerShopMachineRoute(app, deps, route);
 };

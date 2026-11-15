@@ -19,10 +19,9 @@ API key` for it, and no session route accepts it.
 | Key kind, scopes, issuer, expiry, lifecycle audit | Available |
 | Owner-session creation, listing and revocation (`/api/api-keys`, CLI `api-key`) | Available |
 | Request authentication, issuer revalidation and rate limits | Available |
-| Shop resource routes under `/api/m2m/shop` | Not yet available |
-
-Until the resource routes ship, a newly created shop management key reaches no
-endpoint.
+| Catalog routes: products, prices and stock (below) | Available |
+| Typed client `createShopManagementClient` and CLI `shop` commands | Available |
+| Image, sales-link, order, fulfilment, settings and integration routes | Not yet available |
 
 ## Scopes
 
@@ -34,8 +33,8 @@ access.
 
 | Scope | Grants on the shop routes |
 |---|---|
-| `shop:catalog:read` | Read products and prices |
-| `shop:catalog:write` | Create and edit products and prices, publish |
+| `shop:catalog:read` | Read products, prices and stock |
+| `shop:catalog:write` | Create, edit, publish and delete product drafts; manage prices and stock |
 | `shop:orders:read` | Read and export orders |
 | `shop:fulfilment:write` | Fulfil orders, including configured paid shipment creation |
 | `shop:settings:read` | Read shop settings |
@@ -94,6 +93,95 @@ record.
 Request telemetry records the route template, status and resolved identity;
 it never records request headers, so the key secret does not reach traces or
 error reports.
+
+## Catalog routes
+
+Each route reuses the request body, response envelope, validation and
+use-case of its session counterpart under `/api/products`, including body field
+names (`id` for update, publish and unpublish and for price deactivation;
+`productId` for draft deletion, price creation and stock). The route checks the
+scope, and the reused use-case checks the matching capability again. A product
+or price id from another workspace answers `404 not_found`.
+
+| Method and path | Scope | Session counterpart |
+|---|---|---|
+| `GET /api/m2m/shop/products` | `shop:catalog:read` | `GET /api/products` |
+| `POST /api/m2m/shop/products` | `shop:catalog:write` | `POST /api/products` |
+| `POST /api/m2m/shop/products/update` | `shop:catalog:write` | `POST /api/products/update` |
+| `POST /api/m2m/shop/products/publish` | `shop:catalog:write` | `POST /api/products/publish` |
+| `POST /api/m2m/shop/products/unpublish` | `shop:catalog:write` | `POST /api/products/unpublish` |
+| `POST /api/m2m/shop/products/delete` | `shop:catalog:write` | `POST /api/products/delete` (existing draft-only policy) |
+| `GET /api/m2m/shop/products/:productId/prices` | `shop:catalog:read` | `GET /api/products/:productId/prices` |
+| `POST /api/m2m/shop/products/prices` | `shop:catalog:write` | `POST /api/products/prices` |
+| `POST /api/m2m/shop/products/prices/deactivate` | `shop:catalog:write` | `POST /api/products/prices/deactivate` |
+| `GET /api/m2m/shop/products/:productId/stock` | `shop:catalog:read` | `GET /api/products/:productId/stock` |
+| `POST /api/m2m/shop/products/stock/enable` | `shop:catalog:write` | `POST /api/products/stock/enable` |
+| `POST /api/m2m/shop/products/stock/adjust` | `shop:catalog:write` | `POST /api/products/stock/adjust` |
+| `POST /api/m2m/shop/products/stock/threshold` | `shop:catalog:write` | `POST /api/products/stock/threshold` |
+
+The examples below use the workspace host and read the key from the
+environment; `<product-id>` and `<price-id>` are placeholders. On the platform
+host, add `-H 'x-tenant: <workspace-slug>'`. Never send a cookie or an
+`Authorization` header with the key.
+
+```bash
+SHOP=https://<workspace-host>/api/m2m/shop
+KEY="x-api-key: $TOGETHER_SHOP_KEY"
+JSON='content-type: application/json'
+
+curl -s -H "$KEY" "$SHOP/products"
+curl -s -H "$KEY" -H "$JSON" -d '{"title":"Printed handbook","type":"physical","priceCents":4900,"currency":"PLN"}' "$SHOP/products"
+curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>","description":"Second edition"}' "$SHOP/products/update"
+curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>","kind":"one_time","amountCents":4900,"currency":"PLN"}' "$SHOP/products/prices"
+curl -s -H "$KEY" "$SHOP/products/<product-id>/prices"
+curl -s -H "$KEY" -H "$JSON" -d '{"id":"<price-id>"}' "$SHOP/products/prices/deactivate"
+curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>","onHand":20,"lowStockThreshold":5}' "$SHOP/products/stock/enable"
+curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>","delta":-2,"reason":"damaged"}' "$SHOP/products/stock/adjust"
+curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>","lowStockThreshold":3}' "$SHOP/products/stock/threshold"
+curl -s -H "$KEY" "$SHOP/products/<product-id>/stock"
+curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>"}' "$SHOP/products/publish"
+curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>"}' "$SHOP/products/unpublish"
+curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>"}' "$SHOP/products/delete"
+```
+
+A physical product publishes once it has an active one-time price; the
+anonymous `GET /api/public/offer` then lists it.
+
+### CLI
+
+The `shop` command group reads the key from the environment variable named by
+`--api-key-env` (default `TOGETHER_SHOP_KEY`), never from the command line, and
+answers with a validation error (exit code of `validation`) when the variable is
+empty. It sends the key and the selected workspace (`--tenant`) only, never the
+signed-in session. Options mirror `product`, `price` and `product stock`.
+
+```bash
+export TOGETHER_SHOP_KEY=<secret from api-key create>
+pnpm --silent run cli --tenant acme shop products list
+pnpm --silent run cli --tenant acme shop products create --title 'Printed handbook' --type physical --price 49
+pnpm --silent run cli --tenant acme shop products update <product-id> --description 'Second edition'
+pnpm --silent run cli --tenant acme shop prices add --product <product-id> --kind one_time --price 49
+pnpm --silent run cli --tenant acme shop prices list --product <product-id>
+pnpm --silent run cli --tenant acme shop prices deactivate <price-id>
+pnpm --silent run cli --tenant acme shop stock enable <product-id> --on-hand 20 --threshold 5
+pnpm --silent run cli --tenant acme shop stock adjust <product-id> --delta -2 --reason damaged
+pnpm --silent run cli --tenant acme shop stock threshold <product-id> --value none
+pnpm --silent run cli --tenant acme shop stock show <product-id>
+pnpm --silent run cli --tenant acme shop products publish <product-id>
+pnpm --silent run cli --tenant acme shop products unpublish <product-id>
+pnpm --silent run cli --tenant acme shop products delete <product-id> --confirm
+```
+
+### Typed client
+
+`createShopManagementClient({ baseUrl, apiKey, tenant })` from `core/client`
+exposes the thirteen calls with the same method names as the session client
+(`listProducts`, `createProduct`, `updateProduct`, `publishProduct`,
+`unpublishProduct`, `deleteProductDraft`, `listProductPrices`,
+`createProductPrice`, `deactivateProductPrice`, `getProductStock`,
+`enableProductStock`, `adjustProductStock`, `setProductStockThreshold`). It
+sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
+`Authorization` header. Use it only from a backend.
 
 ## Rate limits
 

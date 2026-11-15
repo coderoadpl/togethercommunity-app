@@ -9,6 +9,7 @@ import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
+import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, shopCatalogContracts, TENANT_HEADER } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
@@ -2841,6 +2842,62 @@ export const createApiClient = (options: ApiClientOptions) => ({
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+export interface ShopManagementClientOptions {
+  baseUrl: string;
+  apiKey: string;
+  tenant?: string;
+  fetchImpl?: typeof fetch;
+  traceparent?: () => string | undefined;
+}
+
+type ShopCatalogInput<K extends keyof typeof shopCatalogContracts> =
+  (typeof shopCatalogContracts)[K] extends { input: infer S extends z.ZodTypeAny } ? z.input<S> : never;
+
+export const createShopManagementClient = (shopOptions: ShopManagementClientOptions) => {
+  const options: ApiClientOptions = {
+    baseUrl: shopOptions.baseUrl,
+    ...(shopOptions.fetchImpl === undefined ? {} : { fetchImpl: shopOptions.fetchImpl }),
+    ...(shopOptions.traceparent === undefined ? {} : { traceparent: shopOptions.traceparent }),
+    headers: () => ({
+      [API_KEY_HEADER]: shopOptions.apiKey,
+      ...(shopOptions.tenant === undefined ? {} : { [TENANT_HEADER]: shopOptions.tenant }),
+    }),
+  };
+  const routes = SHOP_CATALOG_ROUTES;
+  const contracts = shopCatalogContracts;
+  const productPath = (path: string, productId: string): string => path.replace(':productId', encodeURIComponent(productId));
+  return {
+    listProducts: (signal?: AbortSignal) =>
+      request(options, routes.listProducts.method, routes.listProducts.path, contracts.listProducts.output, undefined, signal),
+    createProduct: (input: ShopCatalogInput<'createProduct'>, signal?: AbortSignal) =>
+      request(options, routes.createProduct.method, routes.createProduct.path, contracts.createProduct.output, input, signal),
+    updateProduct: (input: ShopCatalogInput<'updateProduct'>, signal?: AbortSignal) =>
+      request(options, routes.updateProduct.method, routes.updateProduct.path, contracts.updateProduct.output, input, signal),
+    publishProduct: (input: ShopCatalogInput<'publishProduct'>, signal?: AbortSignal) =>
+      request(options, routes.publishProduct.method, routes.publishProduct.path, contracts.publishProduct.output, input, signal),
+    unpublishProduct: (input: ShopCatalogInput<'unpublishProduct'>, signal?: AbortSignal) =>
+      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, contracts.unpublishProduct.output, input, signal),
+    deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal) =>
+      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, contracts.deleteProductDraft.output, input, signal),
+    listProductPrices: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
+    createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal) =>
+      request(options, routes.createProductPrice.method, routes.createProductPrice.path, contracts.createProductPrice.output, input, signal),
+    deactivateProductPrice: (input: ShopCatalogInput<'deactivateProductPrice'>, signal?: AbortSignal) =>
+      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, contracts.deactivateProductPrice.output, input, signal),
+    getProductStock: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.getProductStock.method, productPath(routes.getProductStock.path, productId), contracts.getProductStock.output, undefined, signal),
+    enableProductStock: (input: ShopCatalogInput<'enableProductStock'>, signal?: AbortSignal) =>
+      request(options, routes.enableProductStock.method, routes.enableProductStock.path, contracts.enableProductStock.output, input, signal),
+    adjustProductStock: (input: ShopCatalogInput<'adjustProductStock'>, signal?: AbortSignal) =>
+      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, contracts.adjustProductStock.output, input, signal),
+    setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
+      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
+  };
+};
+
+export type ShopManagementClient = ReturnType<typeof createShopManagementClient>;
 
 /** For TanStack Query: converts a Result into value-or-throw at the query boundary. */
 export const unwrap = <T>(result: Result<T, AppError>): T => {

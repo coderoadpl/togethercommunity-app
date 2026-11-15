@@ -89,6 +89,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
 export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   AuthenticationMethodsProps: 'UI component callbacks with no persistence access.',
   ApiClientOptions: 'HTTP client callback configuration with no persistence access.',
+  ShopManagementClientOptions: 'Shop management HTTP client configuration with no persistence access.',
   ApiKeyCrypto: 'Cryptographic primitive with no persistence access.',
   AppDeps: 'Server composition callbacks with no direct persistence access.',
   AppErrorTelemetry: 'Request telemetry boundary with no persistence access.',

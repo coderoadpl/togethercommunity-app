@@ -63,6 +63,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
+import { registerShopKeyCommands } from './shop-key-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
 import { emit } from './output.js';
@@ -732,6 +733,7 @@ registerMarketingCommands(program, cliCtx);
 registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
+registerShopKeyCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 

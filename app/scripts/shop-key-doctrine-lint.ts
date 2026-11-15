@@ -17,6 +17,16 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     reason: 'must state in the owner decision that the fulfilment scope can buy carrier shipments',
   },
   {
+    file: 'app/CLAUDE.md',
+    text: 'its invoicing credentials and its object storage connection, and nothing else',
+    reason: 'must name the object storage connection and close the integration scope in the owner decision',
+  },
+  {
+    file: 'app/CLAUDE.md',
+    text: 'a key never writes webhook signing secrets or webhook endpoint ids directly',
+    reason: 'must state in the owner decision what the integration scope can never write',
+  },
+  {
     file: 'app/docs/security.md',
     section: '## Tenant API keys',
     text: 'owner decision 2026-11-14',
@@ -72,6 +82,51 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     file: 'app/docs/shop-management-keys.md',
     text: 'The bound multiplies by the number of keys, and the number of shop management keys per workspace is not capped.',
     reason: 'must state that the history bound multiplies by the uncapped number of keys',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: '`shop:integrations:write` reaches only an allow-list kept in `core/domain/shop-management-key.ts`',
+    reason: 'must state that the integration write scope reaches only the domain allow-list',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'storage configure (the object storage connection)',
+    reason: 'must name the object storage connection among the allow-listed operations',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'A key never writes a webhook signing secret or endpoint id directly, the Meta Conversions API token',
+    reason: 'must state what the integration write scope can never write',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'a key ctx holds that capability only for an operation on the allow-list in `core/domain/shop-management-key.ts`',
+    reason: 'must state that the integration write scope holds the secret write capability only for allow-listed operations',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'the storage configure use-case (the object storage connection)',
+    reason: 'must name the object storage connection among the allow-listed operations',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'A key never writes a webhook signing secret or endpoint id directly, the Meta Conversions API token',
+    reason: 'must state what the integration write scope can never write',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Meta conversions credentials',
+    text: 'A shop management key never writes or removes it',
+    reason: 'must state that a shop management key never writes the Meta Conversions API token',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: 'A shop management key may write them only through the ShipX configure use-case, never through the generic tenant-secret write',
+    reason: 'must state how a shop management key may write the carrier credentials',
   },
   {
     file: 'app/docs/observability.md',

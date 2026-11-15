@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { Capability } from './authorization.js';
+import type { TenantSecretKey } from './tenant-secret.js';
 
 export const shopManagementScopeSchema = z.enum([
   'shop:catalog:read',
@@ -66,8 +67,46 @@ const capabilitiesByShopManagementScope: Record<ShopManagementScope, readonly Ca
   'shop:settings:read': ['tenant:settings:read'],
   'shop:settings:write': ['tenant:settings:write'],
   'shop:integrations:read': ['tenant:secret:read'],
-  'shop:integrations:write': ['tenant:secret:write', 'integration:test'],
+  'shop:integrations:write': ['tenant:secret:write'],
 };
 
 export const shopManagementCapabilities = (scopes: readonly ShopManagementScope[]): readonly Capability[] =>
   [...new Set(scopes.flatMap((scope) => capabilitiesByShopManagementScope[scope]))];
+
+export const SHOP_MANAGEMENT_KEY_SECRET_KEYS = [
+  'ifirma.invoiceApiKey',
+  'ifirma.username',
+  'ksef.token',
+  'ksef.contextNip',
+  'ksef.test.token',
+  'ksef.test.contextNip',
+] as const satisfies readonly TenantSecretKey[];
+
+export const SHOP_MANAGEMENT_KEY_INTEGRATION_OPERATIONS = [
+  'stripe:configure',
+  'stripe:probe',
+  'shipx:configure',
+  'storage:configure',
+] as const;
+
+type ShopManagementKeyIntegrationOperation = (typeof SHOP_MANAGEMENT_KEY_INTEGRATION_OPERATIONS)[number];
+
+export type ShopManagementKeyIntegrationGrant =
+  | { operation: ShopManagementKeyIntegrationOperation }
+  | { secretKey: string };
+
+const integrationCapabilitiesNeedingGrant: readonly Capability[] = ['tenant:secret:write', 'integration:test'];
+
+export const shopManagementKeyMayWriteSecret = (key: string): boolean =>
+  SHOP_MANAGEMENT_KEY_SECRET_KEYS.some((allowed) => allowed === key);
+
+export const shopManagementKeyGrantCovers = (
+  capability: Capability,
+  grant: ShopManagementKeyIntegrationGrant | undefined,
+): boolean => {
+  if (!integrationCapabilitiesNeedingGrant.includes(capability)) return true;
+  if (capability !== 'tenant:secret:write' || grant === undefined) return false;
+  return 'operation' in grant
+    ? SHOP_MANAGEMENT_KEY_INTEGRATION_OPERATIONS.includes(grant.operation)
+    : shopManagementKeyMayWriteSecret(grant.secretKey);
+};

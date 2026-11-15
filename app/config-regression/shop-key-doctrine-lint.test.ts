@@ -37,17 +37,24 @@ describe('shop management key doctrine lint', () => {
     },
   );
 
-  it('does not accept the security doctrine described outside the Tenant API keys section', () => {
-    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+  const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+  const sections = [...new Set(sectioned.map((requirement) => requirement.section))];
+
+  it('does not accept the security doctrine described outside its sections', () => {
     const files = readSurfaces();
-    files.set('app/docs/security.md', `## Tenant API keys\n\nNothing.\n\n## Other\n\n${sectioned.map((requirement) => requirement.text).join('\n')}\n`);
+    const empty = sections.map((section) => `${section ?? ''}\n\nNothing.\n`).join('\n');
+    files.set('app/docs/security.md', `${empty}\n## Other\n\n${sectioned.map((requirement) => requirement.text).join('\n')}\n`);
     expect(collectShopKeyDoctrineProblems(files)).toHaveLength(sectioned.length);
   });
 
   it('accepts the required security doctrine wrapped across lines', () => {
-    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
     const files = readSurfaces();
-    files.set('app/docs/security.md', `## Tenant API keys\n\n${sectioned.map((requirement) => requirement.text.replaceAll(' ', '\n  ')).join('\n')}\n`);
+    files.set('app/docs/security.md', sections.map((section) => [
+      `${section ?? ''}\n`,
+      ...sectioned
+        .filter((requirement) => requirement.section === section)
+        .map((requirement) => requirement.text.replaceAll(' ', '\n  ')),
+    ].join('\n')).join('\n\n'));
     expect(collectShopKeyDoctrineProblems(files)).toEqual([]);
   });
 

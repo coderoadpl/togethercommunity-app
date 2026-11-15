@@ -44,7 +44,7 @@ access.
 | `shop:settings:read` | Read shop settings |
 | `shop:settings:write` | Change the constrained shop settings |
 | `shop:integrations:read` | Read masked integration configuration |
-| `shop:integrations:write` | Configure and probe integrations |
+| `shop:integrations:write` | Configure the payment account (including the live slot), the carrier credentials and sender, the invoicing credentials and the object storage connection |
 
 Write scopes do not include the matching read scope. A key with
 `shop:integrations:write` carries financial and configuration power: keep it
@@ -52,6 +52,16 @@ short-lived and separate from catalog or warehouse keys. A key with
 `shop:fulfilment:write` can create carrier shipments, a paid action at the
 carrier: the scope grants `order:write`, which the InPost ShipX shipment
 creation requires.
+
+`shop:integrations:write` reaches only an allow-list kept in
+`core/domain/shop-management-key.ts` and checked in the use-cases, below every
+route: Stripe configure and permission probe, ShipX configure, storage
+configure (the object storage connection) and the iFirma and KSeF credentials
+(`ifirma.invoiceApiKey`, `ifirma.username`, `ksef.token`, `ksef.contextNip`,
+`ksef.test.token`, `ksef.test.contextNip`). A key never writes a webhook
+signing secret or endpoint id directly, the Meta Conversions API token,
+video-hosting, marketing, mail or telemetry credentials or any other secret,
+and never runs a connection test; those stay with the owner's session.
 
 ## Who can create one
 

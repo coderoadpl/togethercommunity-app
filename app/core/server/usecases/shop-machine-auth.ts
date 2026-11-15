@@ -45,9 +45,6 @@ type ShopTenant = Pick<Tenant, 'id' | 'slug' | 'name'>;
 
 const invalidKey = (): AppError => unauthorized('Invalid API key');
 
-const issuerNotOwner = (): AppError =>
-  forbidden('The API key issuer is no longer a verified owner of this workspace');
-
 const hasOnlyShopScopes = (apiKey: TenantApiKey): boolean =>
   apiKey.scopes !== null
   && apiKey.scopes.length > 0
@@ -82,9 +79,9 @@ const issuerIdentity = async (
   deps: ShopMachineAuthDeps,
 ): Promise<Result<Identity, AppError>> => {
   const account = await deps.accountIdentities.findById(issuerUserId);
-  if (account === null || !account.emailVerified) return err(issuerNotOwner());
+  if (account === null || !account.emailVerified) return err(invalidKey());
   const grant = await deps.tenantAccess.findStaffGrant(issuerUserId, { tenantId: tenant.id });
-  if (grant?.staffRole !== 'owner' || grant.tenant.id !== tenant.id) return err(issuerNotOwner());
+  if (grant?.staffRole !== 'owner' || grant.tenant.id !== tenant.id) return err(invalidKey());
   const member = await deps.tenantAccess.findMember(tenant.id, issuerUserId);
   return ok({
     userId: account.userId,

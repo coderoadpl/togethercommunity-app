@@ -76,9 +76,10 @@ between requests:
    expired, legacy or other-workspace key answers the same `401 Invalid API
    key`.
 3. The issuing account must still exist, have a verified e-mail address and
-   hold the owner role in that workspace. Otherwise the request answers `403`;
-   demoting or removing the issuer, or deleting the account, takes effect on
-   the next request.
+   hold the owner role in that workspace. Otherwise the request answers the
+   same `401 Invalid API key` as every other unusable key, so a caller cannot
+   tell an issuer change from a revoked or unknown key; demoting or removing
+   the issuer, or deleting the account, takes effect on the next request.
 4. The request is counted against the key's rate limits (below).
 5. The key must carry the route's scope, otherwise `403 <scope> is not
    permitted`.

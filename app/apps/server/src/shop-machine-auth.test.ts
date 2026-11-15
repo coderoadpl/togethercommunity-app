@@ -262,11 +262,8 @@ describe('shop management key authentication over HTTP', () => {
     await database.db.execute(`delete from "user" where id = '${issuers.deleted}'`);
     for (const name of ['demoted', 'removed', 'unverified', 'deleted'] as const) {
       const response = await probe({ 'x-api-key': `shop-${name}-secret` });
-      expect(response.status).toBe(403);
-      expect(await errorOf(response)).toEqual({
-        code: 'forbidden',
-        message: 'The API key issuer is no longer a verified owner of this workspace',
-      });
+      expect(response.status).toBe(401);
+      expect(await errorOf(response)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
     }
   });
 

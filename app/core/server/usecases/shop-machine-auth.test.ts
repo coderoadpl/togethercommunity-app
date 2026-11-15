@@ -121,10 +121,6 @@ const authenticate = (
 ) => authenticateShopManagementKey(tenant, secret, scope, h.deps);
 
 const invalidKey = { ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } };
-const issuerDenied = {
-  ok: false,
-  error: { code: 'forbidden', message: 'The API key issuer is no longer a verified owner of this workspace' },
-};
 
 const LEGACY_SCOPE_FAMILIES: readonly TenantApiKeyStoredScope[][] = [
   ['report:read'],
@@ -266,17 +262,17 @@ describe('authenticateShopManagementKey', () => {
     ['with an unverified email', { account: { userId: OWNER_ID, email: 'owner@example.test', name: 'Owner', emailVerified: false } }],
     ['whose account was deleted', { account: null }],
   ])('rejects a key whose issuer is %s', async (_label, options) => {
-    expect(await authenticate(harness(options))).toMatchObject(issuerDenied);
+    expect(await authenticate(harness(options))).toEqual(invalidKey);
   });
 
   it('revalidates the issuer on every request', async () => {
     const h = harness();
     expect(await authenticate(h)).toMatchObject({ ok: true });
     h.state.staffRole = 'admin';
-    expect(await authenticate(h)).toMatchObject(issuerDenied);
+    expect(await authenticate(h)).toEqual(invalidKey);
     h.state.staffRole = 'owner';
     h.state.account = null;
-    expect(await authenticate(h)).toMatchObject(issuerDenied);
+    expect(await authenticate(h)).toEqual(invalidKey);
   });
 
   it('allows 60 requests a minute per key and rejects the 61st with a retry-after', async () => {

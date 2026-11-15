@@ -96,7 +96,7 @@ const createLegacyKey = async (input: Record<string, unknown>) => {
   return z.object({ ok: z.literal(true), data: apiKeyCreateOutputSchema }).parse(await response.json()).data;
 };
 
-const answer = async (response: Promise<Response>) => {
+const answer = async (response: Response | Promise<Response>) => {
   const settled = await response;
   return { status: settled.status, body: await settled.text() };
 };
@@ -190,10 +190,11 @@ describe('legacy API keys next to a stored shop management key', () => {
 
   it('leaves every tenant_api_keys row parseable by the previous release, column for column', async () => {
     expect(await database.db.select().from(shopManagementKeys)).toHaveLength(1);
-    const rows = (await database.db.execute('select * from tenant_api_keys')).rows;
+    const { rows } = z.object({ rows: z.array(storedApiKeyRowSchema) })
+      .parse(await database.db.execute('select * from tenant_api_keys'));
     expect(rows.length).toBeGreaterThanOrEqual(4);
     for (const row of rows) {
-      expect(previousReleaseApiKeySchema.safeParse(storedApiKeyRowSchema.parse(row))).toMatchObject({ success: true });
+      expect(previousReleaseApiKeySchema.safeParse(row)).toMatchObject({ success: true });
     }
   });
 });

@@ -73,6 +73,24 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: 'The bound multiplies by the number of keys, and the number of shop management keys per workspace is not capped.',
     reason: 'must state that the history bound multiplies by the uncapped number of keys',
   },
+  {
+    file: 'app/docs/observability.md',
+    text: 'Shop management keys are a separate credential class',
+    reason: 'must tell shop management keys apart from tenant API keys in the skipped settings check',
+  },
+  {
+    file: 'app/docs/observability.md',
+    text: '`shop:settings:read` grants `tenant:settings:read`',
+    reason: 'must state that the shop settings read scope grants the settings read capability',
+  },
+];
+
+export const shopKeyDoctrineContradictions: readonly DoctrineRequirement[] = [
+  {
+    file: 'app/docs/observability.md',
+    text: 'none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow',
+    reason: 'must not claim that no key grants the settings read capability',
+  },
 ];
 
 const singleSpaced = (text: string): string => text.replace(/\s+/gu, ' ');
@@ -96,10 +114,15 @@ const requirementProblem = (files: ReadonlyMap<string, string>, requirement: Doc
   return `[shop-key-doctrine] ${where} ${requirement.reason} (expected "${requirement.text}")`;
 };
 
+const contradictionProblem = (files: ReadonlyMap<string, string>, contradiction: DoctrineRequirement): string | null => {
+  const text = files.get(contradiction.file);
+  if (text === undefined || !singleSpaced(text).includes(singleSpaced(contradiction.text))) return null;
+  return `[shop-key-doctrine] ${contradiction.file} ${contradiction.reason} (found "${contradiction.text}")`;
+};
+
 export const collectShopKeyDoctrineProblems = (files: ReadonlyMap<string, string>): string[] => [
-  ...new Set(
-    shopKeyDoctrineRequirements
-      .map((requirement) => requirementProblem(files, requirement))
-      .filter((problem): problem is string => problem !== null),
-  ),
+  ...new Set([
+    ...shopKeyDoctrineRequirements.map((requirement) => requirementProblem(files, requirement)),
+    ...shopKeyDoctrineContradictions.map((contradiction) => contradictionProblem(files, contradiction)),
+  ].filter((problem): problem is string => problem !== null)),
 ];

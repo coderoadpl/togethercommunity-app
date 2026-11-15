@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { collectShopKeyDoctrineProblems, shopKeyDoctrineRequirements } from '../scripts/shop-key-doctrine-lint.js';
+import { collectShopKeyDoctrineProblems, shopKeyDoctrineContradictions, shopKeyDoctrineRequirements } from '../scripts/shop-key-doctrine-lint.js';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const surfaces = [...new Set(shopKeyDoctrineRequirements.map((requirement) => requirement.file))];
@@ -22,6 +22,17 @@ describe('shop management key doctrine lint', () => {
       files.set(requirement.file, (files.get(requirement.file) ?? '').replace(spaced, ''));
       expect(collectShopKeyDoctrineProblems(files)).toEqual([
         expect.stringMatching(new RegExp(`^\\[shop-key-doctrine\\] ${requirement.file.replaceAll('.', '\\.')} .*${requirement.reason}`)),
+      ]);
+    },
+  );
+
+  it.each(shopKeyDoctrineContradictions.map((contradiction) => [contradiction.text, contradiction] as const))(
+    'reports a doctrine that says %s',
+    (text, contradiction) => {
+      const files = readSurfaces();
+      files.set(contradiction.file, `${files.get(contradiction.file) ?? ''}\n${text.replaceAll(' ', '\n')}\n`);
+      expect(collectShopKeyDoctrineProblems(files)).toEqual([
+        `[shop-key-doctrine] ${contradiction.file} ${contradiction.reason} (found "${text}")`,
       ]);
     },
   );
@@ -45,6 +56,7 @@ describe('shop management key doctrine lint', () => {
       '[shop-key-doctrine] app/CLAUDE.md is not tracked markdown',
       '[shop-key-doctrine] app/docs/security.md is not tracked markdown',
       '[shop-key-doctrine] app/docs/shop-management-keys.md is not tracked markdown',
+      '[shop-key-doctrine] app/docs/observability.md is not tracked markdown',
     ]);
   });
 });

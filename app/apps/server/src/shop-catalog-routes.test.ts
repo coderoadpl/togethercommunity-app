@@ -3,11 +3,13 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { entityVersions, stockEvents, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
+import { entityVersions, shopManagementKeyEvents, stockEvents, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
 import {
   API_PATHS,
   API_ROUTES,
   apiKeyCreateOutputSchema,
+  apiKeysShopManagementEventsOutputSchema,
+  apiKeysShopManagementPurgeOutputSchema,
   publicOfferOutputSchema,
   SHOP_CATALOG_ROUTES,
   shopCatalogContracts,
@@ -326,5 +328,94 @@ describe('shop catalog routes with a shop management key', () => {
     const refused = await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path);
     expect(refused.status).toBe(401);
     expect(await errorOf(refused)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
+  });
+});
+
+describe('shop management key history of keyed requests', () => {
+  const requestRows = async (apiKeyId: string) => (await database.db.select().from(shopManagementKeyEvents))
+    .filter((event) => event.apiKeyId === apiKeyId && event.kind === 'request')
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((event) => ({
+      actorUserId: event.actorUserId, method: event.method, route: event.route,
+      resourceId: event.resourceId, status: event.status, outcome: event.outcome,
+    }));
+  let writer: Awaited<ReturnType<typeof createShopKey>>;
+  let reader: Awaited<ReturnType<typeof createShopKey>>;
+  let productId: string;
+
+  beforeAll(async () => {
+    writer = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
+    reader = await createShopKey(['shop:catalog:read']);
+    const created = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, {
+      title: 'History handbook', type: 'physical', priceCents: 4900, currency: 'PLN',
+    });
+    expect(created.status).toBe(200);
+    productId = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data.product.id;
+  });
+
+  it('writes exactly one row per keyed mutation, succeeded, refused or invalid, with the key, issuer, route, resource and outcome', async () => {
+    const updated = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, description: 'Second edition' });
+    expect(updated.status).toBe(200);
+    const invalid = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, misspelt: true });
+    expect(invalid.status).toBe(400);
+    const refused = await keyed(reader.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, title: 'Refused' });
+    expect(refused.status).toBe(403);
+
+    const row = (status: number, outcome: string, resourceId: string | null, route: string = SHOP_CATALOG_ROUTES.updateProduct.path) =>
+      ({ actorUserId: ownerId, method: 'POST', route, resourceId, status, outcome });
+    expect(await requestRows(writer.apiKey.id)).toEqual(expect.arrayContaining([
+      row(200, 'succeeded', null, SHOP_CATALOG_ROUTES.createProduct.path),
+      row(200, 'succeeded', productId),
+      row(400, 'refused', productId),
+    ]));
+    expect(await requestRows(writer.apiKey.id)).toHaveLength(3);
+    expect(await requestRows(reader.apiKey.id)).toEqual([row(403, 'refused', productId)]);
+  });
+
+  it('writes no row for a keyed read', async () => {
+    const before = await requestRows(reader.apiKey.id);
+    expect((await keyed(reader.secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).status).toBe(200);
+    expect((await keyed(reader.secret, 'GET', productPath(SHOP_CATALOG_ROUTES.listProductPrices.path, productId))).status).toBe(200);
+    expect(await requestRows(reader.apiKey.id)).toEqual(before);
+  });
+
+  it('writes no row when the presented secret matches no key', async () => {
+    const before = (await database.db.select().from(shopManagementKeyEvents)).length;
+    expect((await keyed('never-issued-secret', 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId })).status).toBe(401);
+    expect(await database.db.select().from(shopManagementKeyEvents)).toHaveLength(before);
+  });
+
+  it('lists the history to the owner page by page, per key, and only for the selected workspace', async () => {
+    const listed = await ownerRequest('GET', `${API_PATHS.apiKeysShopManagementEvents}?keyId=${writer.apiKey.id}&limit=2`);
+    expect(listed.status).toBe(200);
+    const page = envelope(apiKeysShopManagementEventsOutputSchema).parse(await listed.json()).data;
+    expect(page.events).toHaveLength(2);
+    expect(page.nextCursor).toBe(page.events[1]?.id);
+    const rest = await ownerRequest('GET', `${API_PATHS.apiKeysShopManagementEvents}?keyId=${writer.apiKey.id}&cursor=${page.nextCursor ?? ''}`);
+    const remaining = envelope(apiKeysShopManagementEventsOutputSchema).parse(await rest.json()).data;
+    expect(remaining.nextCursor).toBeNull();
+    const all = [...page.events, ...remaining.events];
+    expect(all.every((event) => event.apiKeyId === writer.apiKey.id && event.tenantId === 'acme')).toBe(true);
+    expect(all.map((event) => `${event.kind} ${String(event.status)}`).sort())
+      .toEqual(['created null', 'request 200', 'request 200', 'request 400']);
+
+    const otherWorkspace = await ownerRequest('GET', API_PATHS.apiKeysShopManagementEvents, undefined, studioHost);
+    expect(otherWorkspace.status).toBe(200);
+    expect(envelope(apiKeysShopManagementEventsOutputSchema).parse(await otherWorkspace.json()).data.events
+      .some((event) => event.apiKeyId === writer.apiKey.id || event.tenantId === 'acme')).toBe(false);
+  });
+
+  it('refuses the history to a shop management key', async () => {
+    expect((await keyed(writer.secret, 'GET', API_PATHS.apiKeysShopManagementEvents)).status).toBe(401);
+  });
+
+  it('keeps the request rows after the keys are purged', async () => {
+    const before = await requestRows(writer.apiKey.id);
+    const purged = await ownerRequest(API_ROUTES.apiKeysShopManagementPurge.method, API_ROUTES.apiKeysShopManagementPurge.path);
+    expect(envelope(apiKeysShopManagementPurgeOutputSchema).parse(await purged.json()).data.purged).toBeGreaterThan(0);
+    expect(await requestRows(writer.apiKey.id)).toEqual(before);
+    const listed = await ownerRequest('GET', `${API_PATHS.apiKeysShopManagementEvents}?keyId=${writer.apiKey.id}`);
+    expect(envelope(apiKeysShopManagementEventsOutputSchema).parse(await listed.json()).data.events.map((event) => event.kind))
+      .toContain('purged');
   });
 });

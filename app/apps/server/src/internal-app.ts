@@ -39,6 +39,7 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
+  apiKeysShopManagementEventsQuerySchema,
   authSendLogLatestOutputSchema,
   authSendLogLatestQuerySchema,
   bunnyVideosInputSchema,
@@ -369,6 +370,7 @@ import {
   listTenantApiKeys,
   listImportAuditForApiKey,
   purgeShopManagementKeys,
+  listShopManagementKeyEvents,
   listTenantDocuments,
   m2mEnroll,
   createEvent,
@@ -2349,6 +2351,24 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.apiKeysShopManagementPurge, async (c) =>
     respond(await purgeShopManagementKeys(ctxOf(c), deps)));
+
+  app.get(API_PATHS.apiKeysShopManagementEvents, async (c) => {
+    const parsed = apiKeysShopManagementEventsQuerySchema.safeParse({
+      keyId: c.req.query('keyId'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid shop management key event query', parsed.error.flatten())));
+    return respond(await listShopManagementKeyEvents(
+      ctxOf(c),
+      {
+        limit: parsed.data.limit,
+        ...(parsed.data.keyId === undefined ? {} : { apiKeyId: parsed.data.keyId }),
+        ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
+      },
+      deps,
+    ));
+  });
 
   app.get(API_PATHS.apiKeyImportAudit, async (c) => {
     const parsed = apiKeyImportAuditQuerySchema.safeParse({

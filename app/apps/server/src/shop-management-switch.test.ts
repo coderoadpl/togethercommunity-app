@@ -1,9 +1,11 @@
+import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
+import { shopManagementKeyEvents, tenantAdmins, tenantApiKeys, tenantAuditEvents, tenants } from '#adapters/db/schema.js';
 import {
   API_PATHS,
   API_ROUTES,
@@ -50,6 +52,35 @@ const previousReleaseApiKeySchema = z.object({
   expiresAt: z.string().datetime().nullable(),
   revokedAt: z.string().datetime().nullable(),
 });
+
+const previousReleaseAuditEventSchema = z.object({
+  id: z.string().min(1),
+  tenantId: z.string().min(1),
+  kind: z.enum([
+    'impersonation_started',
+    'impersonation_ended',
+    'content_version_restored',
+    'redirect_created',
+    'redirect_updated',
+    'redirect_deleted',
+    'post_purged',
+    'tenant_provisioned',
+    'team.admin_added',
+    'team.admin_invited',
+    'team.admin_activated',
+    'team.invitation_revoked',
+    'team.admin_removed',
+  ]),
+  actorUserId: z.string().min(1),
+  actorEmail: z.string().min(1),
+  subjectMemberId: z.string().nullable(),
+  subjectLabel: z.string().nullable(),
+  reason: z.string().nullable(),
+  at: z.string().datetime(),
+});
+
+const previousReleaseAuditRows = async () => (await database.db.select().from(tenantAuditEvents))
+  .map((row) => ({ ...row, subjectLabel: null }));
 
 const previousReleaseKeyRows = () => database.db
   .select({
@@ -159,6 +190,28 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
     expect(sessionLookups).toBe(0);
   });
 
+  it('records the switch as the refusal reason on the request span without reading the key', async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
+    provider.register();
+    try {
+      const { secret } = await createShopKey();
+      exporter.reset();
+      const response = await disabledApp.request(`${baseUrl}${SHOP_CATALOG_ROUTES.listProducts.path}`, {
+        headers: { host: acmeHost, 'x-api-key': secret },
+      });
+      expect(response.status).toBe(404);
+      await provider.forceFlush();
+      const spans = exporter.getFinishedSpans();
+      expect(spans).toHaveLength(1);
+      expect(spans[0]?.attributes).toMatchObject({ 'app.api_key.match': 'switch_off', 'http.response.status_code': 404 });
+      expect(spans[0]?.attributes).not.toHaveProperty('app.api_key.id');
+      expect(JSON.stringify(spans[0]?.attributes)).not.toContain(secret);
+    } finally {
+      await provider.shutdown();
+    }
+  });
+
   it('refuses to create a shop management key and names the switch state', async () => {
     const before = await database.db.select().from(tenantApiKeys);
     const response = await ownerRequest(disabledApp, API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, shopKeyInput);
@@ -224,5 +277,41 @@ describe('shop management key purge route', () => {
     const remaining = await previousReleaseKeyRows();
     expect(remaining.length).toBeGreaterThan(0);
     for (const row of remaining) expect(previousReleaseApiKeySchema.safeParse(row)).toMatchObject({ success: true });
+  });
+});
+
+describe('retreat to the previous release', () => {
+  it('leaves workspace audit events and key rows that the previous release parses after a full create, use, revoke and purge cycle', async () => {
+    await database.db.insert(tenantAuditEvents).values({
+      id: 'audit-retreat-redirect', tenantId: 'acme', kind: 'redirect_created', actorUserId: 'someone',
+      actorEmail: 'someone@example.test', subjectMemberId: null, reason: '/old to /new', at: now,
+    });
+    const created = await ownerRequest(enabledApp, API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, {
+      ...shopKeyInput, scopes: ['shop:catalog:read', 'shop:catalog:write'],
+    });
+    const { apiKey, secret } = envelope(apiKeyCreateOutputSchema).parse(await created.json()).data;
+    const used = await enabledApp.request(`${baseUrl}${SHOP_CATALOG_ROUTES.createProduct.path}`, {
+      method: 'POST',
+      headers: { host: acmeHost, 'x-api-key': secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Retreat handbook', type: 'physical', priceCents: 4900, currency: 'PLN' }),
+    });
+    expect(used.status).toBe(200);
+    expect((await ownerRequest(enabledApp, API_ROUTES.apiKeyRevoke.method, API_PATHS.apiKeyRevoke.replace(':id', apiKey.id))).status).toBe(200);
+    await createShopKey();
+    const purged = await ownerRequest(disabledApp, API_ROUTES.apiKeysShopManagementPurge.method, API_ROUTES.apiKeysShopManagementPurge.path);
+    expect(purged.status).toBe(200);
+
+    const auditRows = await previousReleaseAuditRows();
+    expect(auditRows.map((row) => row.id)).toContain('audit-retreat-redirect');
+    for (const row of auditRows) expect(previousReleaseAuditEventSchema.safeParse(row)).toMatchObject({ success: true });
+    const keyRows = await previousReleaseKeyRows();
+    expect(keyRows.length).toBeGreaterThan(0);
+    for (const row of keyRows) expect(previousReleaseApiKeySchema.safeParse(row)).toMatchObject({ success: true });
+
+    const history = (await database.db.select().from(shopManagementKeyEvents))
+      .filter((event) => event.apiKeyId === apiKey.id)
+      .map((event) => event.kind)
+      .sort();
+    expect(history).toEqual(expect.arrayContaining(['created', 'purged', 'request', 'revoked']));
   });
 });

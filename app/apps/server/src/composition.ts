@@ -75,6 +75,7 @@ import { createMemberErasureRequestRepository } from '#adapters/db/member-erasur
 import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import { createShopManagementKeyEventRepository } from '#adapters/db/shop-management-key-events.js';
 import {
   createImpersonationSessionRepository,
   createTenantAuditEventRepository,
@@ -276,6 +277,7 @@ import type {
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
   ImportAuditEventRepository,
+  ShopManagementKeyEventRepository,
   ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -539,6 +541,7 @@ export interface AppDeps {
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
+  shopManagementKeyEvents: ShopManagementKeyEventRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -1398,7 +1401,7 @@ export const createDeps = (
       const tenantId = resolved.value.tenant.id;
       await team.activateInvitation(tenantId, userId, ids.nextId(), {
         id: ids.nextId(), tenantId, kind: 'team.admin_activated',
-        actorUserId: userId, actorEmail: email, actorApiKeyId: null, subjectMemberId: null,
+        actorUserId: userId, actorEmail: email, subjectMemberId: null,
         reason: userId, at: occurredAt,
       });
     },
@@ -1568,6 +1571,7 @@ export const createDeps = (
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
+    shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,

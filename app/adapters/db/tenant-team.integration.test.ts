@@ -14,7 +14,7 @@ const audit = (
   userId: string,
   kind: TenantAuditEventInput['kind'] = 'team.admin_invited',
 ): TenantAuditEventInput => ({
-  id, tenantId: 'acme', kind, actorUserId: 'owner', actorEmail: 'owner@example.test', actorApiKeyId: null,
+  id, tenantId: 'acme', kind, actorUserId: 'owner', actorEmail: 'owner@example.test',
   subjectMemberId: null, reason: userId, at,
 });
 

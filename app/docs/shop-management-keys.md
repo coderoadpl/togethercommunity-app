@@ -18,6 +18,7 @@ API key` for it, and no session route accepts it.
 |---|---|
 | Key kind, scopes, issuer, expiry, lifecycle audit | Available |
 | Owner-session creation, listing and revocation (`/api/api-keys`, CLI `api-key`) | Available |
+| Kill switch `SHOP_MANAGEMENT_KEYS` and owner-session purge | Available |
 | Request authentication, issuer revalidation and rate limits | Available |
 | Catalog routes: products, prices and stock (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
@@ -57,8 +58,10 @@ no longer a verified owner of the workspace.
 Creation and revocation each write a workspace audit event
 (`api_key.shop_management_created`, `api_key.shop_management_revoked`) in the
 same transaction as the key change. The event carries the owner's account and
-e-mail and the key name and id, never the secret or its hash. These two events
-are written by the owner's session, so their `actorApiKeyId` is null.
+e-mail and the key name and id, never the secret or its hash. A purge (below)
+writes one `api_key.shop_management_purged` event with the number of deleted
+keys. These events are written by the owner's session, so their
+`actorApiKeyId` is null.
 
 ## Authenticating a request
 
@@ -242,11 +245,69 @@ the secret. The same operations are available over HTTP with the owner session:
 Revocation takes effect on the next request; keys are not cached between
 requests.
 
+## Kill switch
+
+The server environment variable `SHOP_MANAGEMENT_KEYS` takes `enabled` (the
+default) or `disabled`; any other value stops the server from booting. With
+`disabled`:
+
+- Every request under `/api/m2m/shop`, to a listed route or an unknown path,
+  with any method, answers `404 not_found` before the server looks at a session,
+  a cookie or the key, so it never answers `401`.
+- Creating a shop management key answers `403 forbidden` with the message
+  `Shop management keys are disabled on this deployment
+  (SHOP_MANAGEMENT_KEYS=disabled)`.
+- Existing keys stay listable (`GET /api/api-keys`), revocable
+  (`DELETE /api/api-keys/:id`) and purgeable (below) through the owner session.
+- Legacy keys behave exactly as with `enabled`.
+
+The switch is read at boot: change it and redeploy (or restart) the server.
+
+## Purge
+
+`POST /api/api-keys/shop-management/purge` (CLI
+`api-key purge-shop-management --yes`) deletes every shop management key of
+the workspace, revoked or not, in one transaction with one
+`api_key.shop_management_purged` audit event whose reason carries the count, and
+answers `{"purged": <count>}`. It needs the same verified owner session as
+creation, refuses an admin, an unverified owner, an owner viewing as a member
+and any API key, and works with the switch in either state. Legacy keys and
+other workspaces' keys are untouched, and the keys' rate-limit buckets go with
+them. A workspace without shop management keys answers `{"purged": 0}` and gets
+no audit event. Existing creation and revocation audit events stay.
+
 ## Rollback
 
-Retain the schema on rollback. After shop management scopes have been
-persisted, do not roll back to a binary whose key schema cannot parse them.
-If a retreat is needed, disable only the new route registration and revoke the
-shop management keys.
+The schema and migration `0155_shop_management_keys` stay in place: the
+previous release ignores the `kind`, `issued_by_user_id` and
+`actor_api_key_id` columns and inserts its keys with the `legacy` default. Its
+`/api/health` reports `schemaFingerprintMatch: false`, which is expected while
+the newer schema remains.
+
+The previous release reads every key row through its own key schema, which
+knows only the legacy scopes. While a workspace still holds a shop management
+key, revoked or not, that release answers `500` on the workspace's key list
+(`GET /api/api-keys`) and import-audit routes, and on every API-key request
+made with the shop key itself; it never authenticates a shop management key.
+Its revoke route revokes such a key but then answers `500` and writes no audit
+event. So purge before rolling back:
+
+1. Set `SHOP_MANAGEMENT_KEYS=disabled` and deploy. Shop backends now get `404`
+   and nobody can create a new shop key.
+2. In every workspace that has shop management keys, sign in as its owner and
+   purge them: `pnpm --silent run cli --tenant <slug> api-key purge-shop-management --yes`
+   (or `POST /api/api-keys/shop-management/purge`).
+3. Verify each workspace: `GET /api/api-keys` (CLI `api-key list`) lists only
+   keys of kind `legacy`.
+4. Roll back the binary. Keep the schema and the migration.
+
+One limitation remains after the purge. The previous release lists workspace
+audit events through a schema that knows only its own event kinds, so
+`GET /api/tenant/audit-events` answers `500` for any page that contains a
+`api_key.shop_management_created`, `api_key.shop_management_revoked` or
+`api_key.shop_management_purged` event. Keys, key authentication and every
+other route work. The purge keeps the audit history instead of deleting it; a
+workspace that never held a shop management key has none of these events and
+keeps a working audit log.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).

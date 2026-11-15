@@ -11,7 +11,7 @@ import {
   type AppError,
   type Capability,
   type Result,
-  type ShopManagementKeyIntegrationGrant,
+  type ShopManagementKeyGrant,
 } from '#core/domain/index.js';
 
 import type { Ctx } from './context.js';
@@ -33,10 +33,11 @@ interface AuthorizeOptions {
    */
   asImpersonationActor?: boolean;
   /**
-   * Required for a shop management key ctx to use `tenant:secret:write`, so a
-   * future use-case that names no allow-listed grant stays closed to keys.
+   * Required for a shop management key ctx to use `tenant:secret:write` or
+   * `tenant:settings:write`, so a future use-case that names no allow-listed
+   * grant stays closed to keys.
    */
-  shopManagementKeyGrant?: ShopManagementKeyIntegrationGrant;
+  shopManagementKeyGrant?: ShopManagementKeyGrant;
 }
 
 export const authorize = (

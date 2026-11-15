@@ -63,6 +63,23 @@ signing secret or endpoint id directly, the Meta Conversions API token,
 video-hosting, marketing, mail or telemetry credentials or any other secret,
 and never runs a connection test; those stay with the owner's session.
 
+`shop:settings:write` reaches only the shop settings fields on the allow-list
+`SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`,
+checked in `core/server/authorize.ts` below every route: a key ctx holds
+`tenant:settings:write` only when the use-case names the shop settings update
+or the branding asset upload with fields from that list, and the settings
+update refuses a change to any field its grant does not name. The list is the
+workspace name and default language, the logo, dark logo, favicon, accent
+colours and share image, the share title and description, the social links,
+the checkout appearance, the support e-mail and URL, the terms and privacy
+URLs, the invoice seller, VAT treatment, invoicing provider, automatic
+invoicing and KSeF submission settings, the shipping rates and the InPost
+Geowidget token. A key never changes analytics, the Meta Conversions API
+settings, video hosting, the billing portal, the home space, member messaging
+or autoplay settings, the sign-in notice, the team, domains, redirects or the
+telemetry store; those stay with the owner's session, which keeps every
+settings write it has.
+
 ## Who can create one
 
 Only the workspace owner, signed in with a verified e-mail address, in their

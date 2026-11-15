@@ -493,7 +493,16 @@ scopes on every shop key.
   endpoint id directly, the Meta Conversions API token, a video-hosting,
   marketing, mail or telemetry credential or any other secret name, and never
   runs a connection test (`integration:test`), whichever route calls the
-  use-case; owner sessions keep every write they have. On this change only the catalog routes (products,
+  use-case; owner sessions keep every write they have.
+  `shop:settings:write` grants `tenant:settings:write`, and a key ctx holds
+  that capability only when the use-case names the shop settings update or
+  the branding asset upload with fields from the allow-list
+  `SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`,
+  checked in `core/server/authorize.ts`; a grant naming any other field is
+  refused, and the settings update refuses a change to a field its grant does
+  not name. Every other use-case that needs `tenant:settings:write` (team,
+  domains, redirects, Meta Conversions API settings, telemetry store) refuses a
+  key ctx; owner and admin sessions are unchanged. On this change only the catalog routes (products,
   prices and stock) exist; the order, settings and integration routes,
   including the payment, storage and carrier configure routes, arrive in the
   stacked change, so a key with that scope can reach no route here yet.

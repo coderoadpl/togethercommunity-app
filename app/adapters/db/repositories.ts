@@ -3928,6 +3928,15 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
   };
 };
 
+const withoutKeyHashInErrors = async <T>(message: string, query: () => PromiseLike<T>): Promise<T> => {
+  try {
+    return await query();
+  } catch {
+    // The driver error and its cause carry the bound key hash, which must never reach telemetry, logs or a response.
+    throw new Error(message);
+  }
+};
+
 export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => ({
   listByTenant: async (tenantId) =>
     (
@@ -3939,17 +3948,17 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     ).map(parseApiKey),
   create: async (tenantId, apiKey) => {
     if (apiKey.kind !== 'legacy') throw new Error('Only legacy API keys are created without a lifecycle audit event');
-    await db.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
+    await withoutKeyHashInErrors('API key write failed', () => db.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey)));
   },
   createShopManagement: async (tenantId, apiKey, event) => {
     if (apiKey.kind !== 'shop_management') throw new Error('Expected a shop management API key');
-    await db.transaction(async (tx) => {
+    await withoutKeyHashInErrors('API key write failed', () => db.transaction(async (tx) => {
       await tx.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
       await insertShopManagementKeyEvent(tx, tenantId, event);
-    });
+    }));
   },
   findActiveByHash: async (tenantId, keyHash) => {
-    const rows = await db
+    const rows = await withoutKeyHashInErrors('API key lookup failed', () => db
       .select()
       .from(tenantApiKeys)
       .where(
@@ -3959,16 +3968,16 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
           sql`${tenantApiKeys.revokedAt} is null`,
         ),
       )
-      .limit(1);
+      .limit(1));
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },
   findByHash: async (tenantId, keyHash) => {
-    const rows = await db
+    const rows = await withoutKeyHashInErrors('API key lookup failed', () => db
       .select()
       .from(tenantApiKeys)
       .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.keyHash, keyHash)))
-      .limit(1);
+      .limit(1));
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },

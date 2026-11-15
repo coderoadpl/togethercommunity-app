@@ -145,13 +145,22 @@ presented in `app.api_key.match`:
 | `matched` | The secret matches a stored key row in the selected workspace, whatever its state: usable, revoked, expired, of kind `legacy`, or with an issuer that is no longer a verified owner | `app.api_key.id`, `app.api_key.kind` (`legacy` or `shop_management`), `app.api_key.issuer.id` when the row has an issuer, `app.tenant.id` |
 | `none` | The secret matches no key row of the selected workspace, or no workspace was selected | `app.tenant.id` when a workspace was selected |
 | `missing` | The request carried no key | `app.tenant.id` when a workspace was selected |
-| `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else; the switch does not read the key |
+| `switch_off` | `SHOP_MANAGEMENT_KEYS=disabled` answered the request (see the kill switch below) | nothing else: the switch records only its state and performs no key lookup |
+
+A request refused by the body size limit (`400 validation`, checked before the
+shop route runs) is not attributed to a key: its span carries no
+`app.api_key.*` attribute, the key is not looked up and no key history row is
+written.
 
 So a `401` for an unusable key, a `401` for mixed credentials, a `403` for a
 missing scope, a `429` and a failing handler each carry the id of the key that
 was presented. The secret, its hash and any part of either are never recorded,
 and telemetry never records request headers, so the key secret does not reach
-traces or error reports.
+traces or error reports. A database failure while looking a key up by its hash
+(on a shop route or a legacy API-key route) or while storing a new key answers
+`500 internal` and is reported as `API key lookup failed` or `API key write
+failed` without the query or its parameters, so the hash never reaches a trace,
+a log or a response.
 
 ## Key history
 
@@ -164,24 +173,43 @@ kind of event, the acting account and the time:
 | `created` | with the key, in the same transaction | the owner who created it |
 | `revoked` | with the revocation, in the same transaction | the owner who revoked it |
 | `purged` | one row per deleted key, in the purge transaction | the owner who purged |
-| `request` | after every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route whose secret matched a key row of the workspace, accepted or refused | the key's issuer (none for a legacy key presented to a shop route) |
+| `request` | before the handler of every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route that passed the key, issuer, rate-limit and scope checks | the key's issuer |
 
-A `request` row also records the method, the route template (for example
-`/api/m2m/shop/products/update`), the id of the resource the request names
+A `request` row means the key surface accepted the request and handed it to the
+route's handler. It records the method, the route template (for example
+`/api/m2m/shop/products/update`) and the id of the resource the request names
 (the first path parameter, else the body's `id` or `productId`; for
 `POST /api/m2m/shop/integrations/secrets` the body's `key`, the name of the
 secret and never its value; none when the request names no existing resource,
 such as a product or sales-link creation, a settings change or a payment,
-storage or carrier configure call), the HTTP status and an outcome: `succeeded` (2xx), `refused` (4xx,
-including `401`, `403`, `429` and validation errors) or `failed` (5xx or a
-handler error). The shared shop route helper writes it after the handler or the
-refusal, so every shop route inherits it. Reads (`GET`) write no row; they are
-attributed in request telemetry only. A request whose secret matches no key
-writes no row.
+storage or carrier configure call). It records no status or outcome: what the
+handler then did, a change, a validation error or a failure, is in request
+telemetry only. The resource id is kept only when it looks like an identifier:
+at most 200 characters, starting with a letter or digit and continuing with
+letters, digits, `.`, `_`, `:` or `-`. Anything else is stored as no resource
+id, and the database refuses a resource id longer than 200 characters. The
+shared shop route helper writes the row, so every shop route inherits it.
+
+The row is written before the handler runs, so no keyed change commits without
+its history row, and nothing is written after the handler, so a committed
+change is never answered with an error because of its history. When the row
+cannot be written, the request is refused with `503 unavailable` and a
+`Retry-After` header, the handler does not run and nothing is changed; the
+request still counts against the rate limits, and the failure is recorded in
+request telemetry. Retrying is safe.
+
+A refused request writes no row: a missing, unknown, revoked, expired, legacy
+or other-workspace key, an issuer who no longer qualifies, mixed credentials, a
+missing scope (`403`), a rate-limit refusal (`429`) and a request refused before
+the shop route runs (such as the body size limit) are recorded in request
+telemetry only (above). Reads (`GET`) write no row either; they are attributed
+in request telemetry only.
 
 A history row stores the key id as plain text and is never deleted with its
 key, so the history of a revoked or purged key stays readable. It goes away only
-with the workspace itself.
+with the workspace itself; there is no retention purge of key history. The rate
+limits bound its growth: a key makes at most 10,000 requests a day, so it adds
+at most 10,000 `request` rows a day.
 
 The owner reads the history with the same verified owner session as creation
 (an admin, an unverified owner, an owner viewing as a member and any API key
@@ -1121,8 +1149,9 @@ default) or `disabled`; any other value stops the server from booting. With
 - Every request under `/api/m2m/shop`, to a listed route or an unknown path,
   with any method, answers `404 not_found` before the server looks at a session,
   a cookie or the key, so it never answers `401`. The request span records
-  `app.api_key.match=switch_off` and no key id: the switch stays a pure kill
-  path that never touches the database.
+  only the switch state, `app.api_key.match=switch_off`, and no key id: the
+  switch performs no key lookup and stays a pure kill path that never touches
+  the database.
 - Creating a shop management key answers `403 forbidden` with the message
   `Shop management keys are disabled on this deployment
   (SHOP_MANAGEMENT_KEYS=disabled)`.
@@ -1175,7 +1204,7 @@ such a key but then answers `500`. So purge before rolling back:
    keys of kind `legacy`.
 4. Roll back the binary. Keep the schema and the migration: the
    `shop_management_key_events` table stays, is ignored by the previous
-   release and keeps every key's creation, revocation, purge and request
-   history for a later return to this release.
+   release and keeps every key's creation, revocation and purge events and its
+   accepted keyed requests for a later return to this release.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).

@@ -66,13 +66,13 @@ const shopKey = (overrides: Partial<TenantApiKey> = {}): TenantApiKey => ({
 
 const keyEvent = (overrides: Partial<ShopManagementKeyEvent> = {}): ShopManagementKeyEvent => ({
   id: 'event-created', tenantId: TENANT, apiKeyId: 'shop-key', kind: 'created', actorUserId: 'user-owner',
-  method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
+  method: null, route: null, resourceId: null, at: NOW,
   ...overrides,
 });
 
 const requestEvent = (overrides: Partial<ShopManagementKeyEvent> = {}): ShopManagementKeyEvent => keyEvent({
   id: 'event-request', kind: 'request', method: 'POST', route: '/api/m2m/shop/products/update',
-  resourceId: 'product-1', status: 200, ...overrides,
+  resourceId: 'product-1', ...overrides,
 });
 
 const eventIds = async (tenantId = TENANT): Promise<string[]> =>
@@ -253,6 +253,22 @@ describe('shop management key lifecycle', () => {
       .rejects.toThrow();
   });
 
+  it('keeps the key hash out of the error of a failing key write', async () => {
+    const repo = createTenantApiKeyRepository(db);
+    const keyHash = 'collision-hash-0123456789abcdef0123456789abcdef';
+    await repo.create(TENANT, shopKey({ id: 'collision-a', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null, keyHash }));
+    const failures = await Promise.all([
+      repo.create(TENANT, shopKey({ id: 'collision-b', kind: 'legacy', scopes: null, issuedByUserId: null, expiresAt: null, keyHash })),
+      repo.createShopManagement(TENANT, shopKey({ id: 'collision-c', keyHash }), keyEvent({ id: 'event-collision', apiKeyId: 'collision-c' })),
+    ].map((write) => write.then(() => null, (error: unknown) => error)));
+    for (const failure of failures) {
+      expect(failure).toBeInstanceOf(Error);
+      const chain: unknown[] = [];
+      for (let link: unknown = failure; link instanceof Error; link = link.cause) chain.push(link.message, link.stack, Reflect.get(link, 'params'));
+      expect(JSON.stringify(chain)).not.toContain(keyHash);
+    }
+  });
+
   it('refuses an event of another tenant through a tenant-scoped write', async () => {
     await expect(createShopManagementKeyEventRepository(db).record(TENANT, keyEvent({ id: 'event-foreign', tenantId: AUDIT_TENANT })))
       .rejects.toThrow();
@@ -262,16 +278,36 @@ describe('shop management key lifecycle', () => {
   it.each([
     ['a request without a method', requestEvent({ id: 'bad-1', method: null })],
     ['a request without a route', requestEvent({ id: 'bad-2', route: null })],
-    ['a request without a status', requestEvent({ id: 'bad-3', status: null })],
-    ['a lifecycle event without an actor', keyEvent({ id: 'bad-4', actorUserId: null })],
     ['a lifecycle event with a route', keyEvent({ id: 'bad-5', route: '/api/api-keys' })],
-    ['a lifecycle event with a refused outcome', keyEvent({ id: 'bad-6', outcome: 'refused' })],
+    ['a lifecycle event with a resource id', keyEvent({ id: 'bad-6', resourceId: 'product-1' })],
   ])('rejects %s at the database', async (_label, event) => {
     await expect(pool.query(
-      `insert into shop_management_key_events (id, tenant_id, api_key_id, kind, actor_user_id, method, route, resource_id, status, outcome, at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [event.id, event.tenantId, event.apiKeyId, event.kind, event.actorUserId, event.method, event.route, event.resourceId, event.status, event.outcome, event.at],
+      `insert into shop_management_key_events (id, tenant_id, api_key_id, kind, actor_user_id, method, route, resource_id, at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [event.id, event.tenantId, event.apiKeyId, event.kind, event.actorUserId, event.method, event.route, event.resourceId, event.at],
     )).rejects.toThrow(/shop_management_key_events_shape_check/);
+  });
+
+  it.each([
+    ['a lifecycle event', keyEvent({ id: 'bad-actor-1' })],
+    ['a request', requestEvent({ id: 'bad-actor-2' })],
+  ])('rejects %s without an acting account at the database', async (_label, event) => {
+    await expect(pool.query(
+      `insert into shop_management_key_events (id, tenant_id, api_key_id, kind, actor_user_id, method, route, resource_id, at)
+       values ($1, $2, $3, $4, null, $5, $6, $7, $8)`,
+      [event.id, event.tenantId, event.apiKeyId, event.kind, event.method, event.route, event.resourceId, event.at],
+    )).rejects.toThrow(/actor_user_id/);
+  });
+
+  it('rejects a resource id longer than 200 characters at the database and in the event schema', async () => {
+    const event = requestEvent({ id: 'bad-resource', resourceId: 'r'.repeat(201) });
+    await expect(pool.query(
+      `insert into shop_management_key_events (id, tenant_id, api_key_id, kind, actor_user_id, method, route, resource_id, at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [event.id, event.tenantId, event.apiKeyId, event.kind, event.actorUserId, event.method, event.route, event.resourceId, event.at],
+    )).rejects.toThrow(/shop_management_key_events_resource_id_length_check/);
+    await expect(createShopManagementKeyEventRepository(db).record(TENANT, event)).rejects.toThrow();
+    expect(await eventIds(TENANT)).not.toContain('bad-resource');
   });
 
   it('leaves tenant_audit_events in the shape of the previous release', async () => {
@@ -299,7 +335,7 @@ describe('shop management key events', () => {
       keyEvent({ id: 'list-a-created', tenantId: LIST_TENANT, apiKeyId: 'key-a', at: at(1) }),
       requestEvent({ id: 'list-a-request', tenantId: LIST_TENANT, apiKeyId: 'key-a', at: at(2) }),
       keyEvent({ id: 'list-b-created', tenantId: LIST_TENANT, apiKeyId: 'key-b', at: at(3) }),
-      requestEvent({ id: 'list-b-refused', tenantId: LIST_TENANT, apiKeyId: 'key-b', status: 403, outcome: 'refused', resourceId: null, at: at(4) }),
+      requestEvent({ id: 'list-b-request', tenantId: LIST_TENANT, apiKeyId: 'key-b', resourceId: null, at: at(4) }),
       keyEvent({ id: 'list-a-revoked', tenantId: LIST_TENANT, apiKeyId: 'key-a', kind: 'revoked', at: at(5) }),
       keyEvent({ id: 'other-a-created', tenantId: OTHER_TENANT, apiKeyId: 'key-a', at: at(6) }),
     ]) await insertEvent(event);
@@ -308,7 +344,7 @@ describe('shop management key events', () => {
   it('lists a workspace history newest first, page by page', async () => {
     const repo = createShopManagementKeyEventRepository(db);
     const first = await repo.list(LIST_TENANT, { limit: 3 });
-    expect(first.events.map((event) => event.id)).toEqual(['list-a-revoked', 'list-b-refused', 'list-b-created']);
+    expect(first.events.map((event) => event.id)).toEqual(['list-a-revoked', 'list-b-request', 'list-b-created']);
     expect(first.nextCursor).toBe('list-b-created');
     const second = await repo.list(LIST_TENANT, { limit: 3, cursor: 'list-b-created' });
     expect(second.events.map((event) => event.id)).toEqual(['list-a-request', 'list-a-created']);

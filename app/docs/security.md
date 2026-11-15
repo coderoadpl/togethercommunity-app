@@ -433,15 +433,24 @@ scope array.
   unit.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
-  cookie or key is read and refuses key creation; existing keys stay listable,
+  cookie or key is read, records only the switch state on the span, performs
+  no key lookup and refuses key creation; existing keys stay listable,
   revocable and purgeable. An unknown value stops the server from booting.
 - **Purge.** `POST /api/api-keys/shop-management/purge` deletes every shop key
   of the workspace, revoked or not, with its rate-limit buckets, in one
   transaction.
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
-  `PATCH` or `DELETE` to a shop route, accepted or refused, write a row to the
-  dedicated `shop_management_key_events` table with the key id, never the
-  secret or its hash; the workspace audit list is unchanged. Every shop
+  `PATCH` or `DELETE` to a shop route that passed every check write a row to
+  the dedicated `shop_management_key_events` table with the key id, never the
+  secret or its hash; the workspace audit list is unchanged. A request row is
+  written before the handler runs: if it cannot be written the request answers
+  `503` with `Retry-After` and nothing changes, so no keyed change commits
+  without its row, and no write follows the handler, so a committed change is
+  never answered as an error. A refused request writes no row and is recorded
+  in its request span only, so refusals cannot grow the table, and the rate
+  limits bound the rows of one key to 10,000 a day. A row keeps a resource id
+  only when it is an identifier of at most 200 characters (also a database
+  check). Every shop
   request span records `app.api_key.match` and, when the secret matched a key
   row, `app.api_key.id`, `app.api_key.kind` and `app.api_key.issuer.id`.
   Changes the reused use-cases record elsewhere (product versions, stock
@@ -452,6 +461,12 @@ scope array.
   generic secret route the secret's name; it never copies a credential, a
   credential identifier such as the storage access key id or the ShipX
   organization id, or a signed storage URL.
+- **Hash secrecy on failure.** A database driver error carries the query's
+  bound parameters, and the key hash is one of them. Every query that takes a
+  key hash (the shop and legacy lookups and the key inserts) replaces a
+  database error with a parameter-free `API key lookup failed` or `API key
+  write failed` in the repository, before it can reach the error handler,
+  telemetry, a log or a response.
 - **Integration scope.** `shop:integrations:write` grants `tenant:secret:write`
   and `integration:test`. Within its workspace a key with it may:
   configure the payment account with

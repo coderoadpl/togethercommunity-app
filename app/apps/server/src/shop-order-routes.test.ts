@@ -19,7 +19,13 @@ import {
 import { createShipxShipmentRepository } from '#adapters/db/shipx.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { fakeShipxShipmentId, fakeShipxTrackingNumber } from '#adapters/shipx/fake.js';
-import { API_ROUTES, apiKeyCreateOutputSchema, SHOP_ORDER_ROUTES, shopOrderContracts } from '#core/contract/index.js';
+import {
+  API_ROUTES,
+  apiKeyCreateOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
+  SHOP_ORDER_ROUTES,
+  shopOrderContracts,
+} from '#core/contract/index.js';
 import { orderSchema } from '#core/domain/index.js';
 
 import { buildApp } from './app.js';
@@ -61,9 +67,18 @@ const createKeyRecord = async (input: Record<string, unknown>, host = acmeHost) 
 
 const createKey = async (input: Record<string, unknown>, host = acmeHost) => (await createKeyRecord(input, host)).secret;
 
-const shopKeyInput = (scopes: string[]) => ({ name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt });
+const createShopKeyRecord = async (scopes: string[], host = acmeHost) => {
+  const response = await ownerRequest(
+    API_ROUTES.apiKeysShopManagementCreate.method,
+    API_ROUTES.apiKeysShopManagementCreate.path,
+    { name: `Shop ${scopes.join(' ')}`, scopes, expiresAt },
+    host,
+  );
+  expect(response.status).toBe(200);
+  return envelope(apiKeysShopManagementCreateOutputSchema).parse(await response.json()).data;
+};
 
-const createShopKey = (scopes: string[], host = acmeHost) => createKey(shopKeyInput(scopes), host);
+const createShopKey = async (scopes: string[], host = acmeHost) => (await createShopKeyRecord(scopes, host)).secret;
 
 const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
   method,
@@ -391,7 +406,7 @@ describe('shop order routes with a shop management key', () => {
     }), { db: database.db });
     await database.db.insert(tenantApiKeys).values({
       id: 'legacy-unscoped-orders', tenantId: 'acme', name: 'Legacy', keyHash: deps.apiKeyCrypto.hash(unscopedSecret),
-      kind: 'legacy', scopes: null, issuedByUserId: null, createdAt: now, expiresAt: null, revokedAt: null,
+      scopes: null, createdAt: now, expiresAt: null, revokedAt: null,
     });
     for (const secret of [importSecret, unscopedSecret]) {
       for (const [method, path, body] of [
@@ -412,7 +427,7 @@ describe('shop management key history of keyed order writes', () => {
   it('writes one row per fulfilment call that reaches its handler, with the route template and the order id', async () => {
     const orderId = 'acme-history-courier';
     await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: courierShipping }));
-    const { apiKey, secret } = await createKeyRecord(shopKeyInput([READ, FULFIL]));
+    const { apiKey, secret } = await createShopKeyRecord([READ, FULFIL]);
     const templates = [
       SHOP_ORDER_ROUTES.shipOrder.path,
       SHOP_ORDER_ROUTES.issueOrderLine.path,
@@ -440,7 +455,7 @@ describe('shop management key history of keyed order writes', () => {
   it('refuses a keyed ship with a retryable 503 and leaves the order unshipped when its history row cannot be written', async () => {
     const orderId = 'acme-history-down-courier';
     await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: courierShipping }));
-    const { apiKey, secret } = await createKeyRecord(shopKeyInput([READ, FULFIL]));
+    const { apiKey, secret } = await createShopKeyRecord([READ, FULFIL]);
     const historyDown = buildApp({
       ...deps,
       shopManagementKeyEvents: { ...deps.shopManagementKeyEvents, record: async () => { throw new Error('history unavailable'); } },

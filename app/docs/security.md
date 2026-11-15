@@ -417,7 +417,9 @@ scopes on every shop key.
   never exceeds its issuer.
 - **Fulfilment scope.** `shop:fulfilment:write` grants `order:write`, which
   includes creating carrier shipments (InPost ShipX), a paid action at the
-  carrier charged to the workspace's carrier account.
+  carrier charged to the workspace's carrier account. A key reaches it through
+  `POST /api/m2m/shop/orders/<orderId>/shipx` (see
+  [InPost ShipX credentials](#inpost-shipx-credentials)).
 - **Uniform refusal.** A missing key answers `401 Missing API key`; an unknown,
   revoked, expired, legacy or other-workspace key and an issuer who no longer
   qualifies all answer the same `401 Invalid API key`. A missing scope answers
@@ -636,9 +638,14 @@ cookie or an `Authorization` header, run the same use-cases with the same lease
 rules, and act as the key's issuer: each stored change records
 an `order_shipment_events` row with the issuing owner as the staff user, and
 the key history records the key id, the route and the order id of every call
-that passed the key checks, before the use-case runs. A call refused by those
-checks writes no history row, and when the row cannot be written the call
-answers `503` with `Retry-After` without calling ShipX or changing the order.
+that passed the key checks, before the use-case runs, so a call the use-case
+then refuses (a lease conflict, a missing configuration, an order of another
+workspace) keeps its history row. A call refused by the key checks writes no
+history row, and when the row cannot be written the call answers `503` with
+`Retry-After` without calling ShipX or changing the order. `POST` to create
+buys the shipment at InPost, charged to the workspace's carrier account, so
+a key with `shop:fulfilment:write` can spend carrier money (owner decision
+2026-11-14).
 `GET /api/m2m/shop/orders/<orderId>/shipx` (`shop:orders:read`) is read-only
 like its session twin.
 

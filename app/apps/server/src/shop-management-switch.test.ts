@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { shopManagementKeys, tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import {
   API_PATHS,
   API_ROUTES,

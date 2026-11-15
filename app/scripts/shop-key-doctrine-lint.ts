@@ -101,6 +101,18 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     reason: "must state that the keyed ShipX routes act as the key's issuer",
   },
   {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: "buys the shipment at InPost, charged to the workspace's carrier account, so a key with `shop:fulfilment:write` can spend carrier money",
+    reason: 'must state that a keyed ShipX shipment creation is paid at the carrier',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: 'so a call the use-case then refuses (a lease conflict, a missing configuration, an order of another workspace) keeps its history row',
+    reason: 'must state that a keyed ShipX call refused by its use-case keeps its key history row',
+  },
+  {
     file: 'app/docs/shop-management-keys.md',
     text: 'A key with `shop:fulfilment:write` can create carrier shipments, a paid action at the carrier',
     reason: 'must state that the fulfilment scope can create paid carrier shipments',

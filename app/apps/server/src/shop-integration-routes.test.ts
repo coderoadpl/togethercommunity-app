@@ -7,7 +7,7 @@ import { shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/sch
 import {
   API_PATHS,
   API_ROUTES,
-  apiKeyCreateOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
   SHOP_INTEGRATION_ROUTES,
   shopIntegrationContracts,
 } from '#core/contract/index.js';
@@ -56,11 +56,11 @@ const ownerRequest = (method: string, path: string, body?: unknown, host = acmeH
 });
 
 const createShopKey = async (scopes: string[], host = acmeHost) => {
-  const response = await ownerRequest(API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, {
-    name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt,
+  const response = await ownerRequest(API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, {
+    name: `Shop ${scopes.join(' ')}`, scopes, expiresAt,
   }, host);
   expect(response.status).toBe(200);
-  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
+  return envelope(apiKeysShopManagementCreateOutputSchema).parse(await response.json()).data;
 };
 
 const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
@@ -399,8 +399,11 @@ describe('shop integration routes with a shop management key', () => {
     const before = await deps.tenantSecrets.listByTenant('acme');
     for (const [method, path, body] of [
       [API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path, undefined],
-      [API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, { name: 'Escalated', kind: 'shop_management', scopes: [READ, WRITE], expiresAt }],
+      [API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, { name: 'Escalated' }],
       [API_ROUTES.apiKeyRevoke.method, API_PATHS.apiKeyRevoke.replace(':id', apiKey.id), undefined],
+      [API_ROUTES.apiKeysShopManagement.method, API_ROUTES.apiKeysShopManagement.path, undefined],
+      [API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, { name: 'Escalated', scopes: [READ, WRITE], expiresAt }],
+      [API_ROUTES.apiKeysShopManagementRevoke.method, API_PATHS.apiKeysShopManagementRevoke.replace(':id', apiKey.id), undefined],
       [API_ROUTES.tenantTeam.method, API_ROUTES.tenantTeam.path, undefined],
       [API_ROUTES.tenantTeamAdd.method, API_ROUTES.tenantTeamAdd.path, { email: 'intruder@example.test' }],
       [API_ROUTES.tenantSecrets.method, API_ROUTES.tenantSecrets.path, undefined],
@@ -424,8 +427,11 @@ describe('shop integration routes with a shop management key', () => {
     expect(foreign.status).toBe(401);
     expect(await deps.tenantSecrets.listByTenant('acme')).toEqual(before);
     expect(await storedKeys('studio')).not.toContain('ifirma.username');
-    const keys = await ownerRequest(API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path);
-    expect(JSON.stringify(await keys.json())).not.toContain('Escalated');
+    for (const route of [API_ROUTES.apiKeys, API_ROUTES.apiKeysShopManagement]) {
+      const keys = await ownerRequest(route.method, route.path);
+      expect(keys.status, route.path).toBe(200);
+      expect(JSON.stringify(await keys.json()), route.path).not.toContain('Escalated');
+    }
   });
 
   it('lets an integrations-write key replace the live Stripe slot by owner decision', async () => {

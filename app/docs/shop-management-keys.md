@@ -455,7 +455,9 @@ buyer the tracking number for a live order. `POST .../shipx` creates and pays
 a real InPost shipment when the workspace's ShipX integration is configured for
 production, so automate it only with explicit operational approval; a request
 that finds another request working on the same shipment answers
-`409 fulfilment_conflict` and should be retried later. `POST .../shipx/discard`
+`409 fulfilment_conflict` and should be retried later. Every such call, the
+refused ones included, has its key history `request` row, written before the
+handler ran (see [Key history](#key-history)). `POST .../shipx/discard`
 only forgets an attempt that ShipX did not confirm; it never cancels a shipment
 in ShipX.
 
@@ -1213,7 +1215,9 @@ release reads `tenant_api_keys` exactly as before, and nothing in it reads the
 three new tables, so its key list, import audit and API-key authentication
 answer as they did before this release, whatever shop management keys exist.
 Its `/api/health` reports `schemaFingerprintMatch: false`, which is expected
-while the newer schema remains.
+while the newer schema remains. The order, settings, asset and integration
+routes add no migration, so a retreat from them to the release with only the
+catalog routes needs no data step either.
 
 Keep the schema and the migration when rolling back the binary. The shop
 management keys, their buckets and their history stay in place, unused by the

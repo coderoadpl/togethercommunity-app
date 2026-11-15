@@ -52,6 +52,8 @@ describe('shop management key doctrine lint', () => {
       '`/api/m2m/shop/orders/<orderId>/shipx`',
       'classified `api-key`',
       "act as the key's issuer",
+      "buys the shipment at InPost, charged to the workspace's carrier account, so a key with `shop:fulfilment:write` can spend carrier money",
+      'so a call the use-case then refuses (a lease conflict, a missing configuration, an order of another workspace) keeps its history row',
     ]);
   });
 

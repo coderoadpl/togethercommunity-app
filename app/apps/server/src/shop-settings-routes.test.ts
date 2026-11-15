@@ -6,7 +6,7 @@ import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import {
   API_ROUTES,
-  apiKeyCreateOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
   SHOP_SETTINGS_ROUTES,
   shopSettingsContracts,
 } from '#core/contract/index.js';
@@ -48,11 +48,11 @@ const ownerRequest = (method: string, path: string, body: unknown, host = acmeHo
 });
 
 const createShopKeyRecord = async (scopes: string[], host = acmeHost) => {
-  const response = await ownerRequest(API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, {
-    name: `Shop ${scopes.join(' ')}`, kind: 'shop_management', scopes, expiresAt,
+  const response = await ownerRequest(API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, {
+    name: `Shop ${scopes.join(' ')}`, scopes, expiresAt,
   }, host);
   expect(response.status).toBe(200);
-  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
+  return envelope(apiKeysShopManagementCreateOutputSchema).parse(await response.json()).data;
 };
 
 const createShopKey = async (scopes: string[], host = acmeHost) => (await createShopKeyRecord(scopes, host)).secret;

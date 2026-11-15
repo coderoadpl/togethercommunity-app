@@ -4,13 +4,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
-import { emailOutbox, orders, shopManagementKeyEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { emailOutbox, orders, shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createShopManagementClient, type ShopManagementClient } from '#core/client/index.js';
 import {
   API_PATHS,
   API_ROUTES,
-  apiKeyCreateOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
   checkoutSessionOutputSchema,
   publicOfferOutputSchema,
   SHOP_CATALOG_ROUTES,
@@ -85,9 +85,9 @@ const ownerRequest = (method: string, path: string, body?: unknown) => app.reque
 });
 
 const issueKey = async (name: string, scopes: string[]) => {
-  const response = await ownerRequest(API_ROUTES.apiKeysCreate.method, API_ROUTES.apiKeysCreate.path, { name, kind: 'shop_management', scopes, expiresAt });
+  const response = await ownerRequest(API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, { name, scopes, expiresAt });
   expect(response.status).toBe(200);
-  return envelope(apiKeyCreateOutputSchema).parse(await response.json()).data;
+  return envelope(apiKeysShopManagementCreateOutputSchema).parse(await response.json()).data;
 };
 
 const outboxRows = async () => (await database.db.select().from(emailOutbox)).filter((row) => row.tenantId === 'acme');
@@ -156,6 +156,9 @@ describe('shop management key replay on a clean workspace', () => {
     const provisioningKey = await issueKey('Provisioning', ['shop:settings:read', 'shop:settings:write', 'shop:integrations:read', 'shop:integrations:write']);
     const catalogKey = await issueKey('Catalog', ['shop:catalog:read', 'shop:catalog:write']);
     const warehouseKey = await issueKey('Warehouse', ['shop:orders:read', 'shop:fulfilment:write']);
+    expect((await database.db.select().from(shopManagementKeys)).map((key) => key.id).toSorted())
+      .toEqual([provisioningKey, catalogKey, warehouseKey].map((key) => key.apiKey.id).toSorted());
+    expect(await database.db.select().from(tenantApiKeys)).toEqual([]);
     const provisioning = shopClient(provisioningKey.secret);
     const catalog = shopClient(catalogKey.secret);
     const warehouse = shopClient(warehouseKey.secret);
@@ -293,7 +296,7 @@ describe('shop management key replay on a clean workspace', () => {
     expect(tracking).toHaveLength(1);
     expect(tracking[0]?.payload).toMatchObject({ shipment: { orderNumber: order.id, carrier: 'other', trackingNumber: 'TRACK0001' } });
 
-    const revoked = await ownerRequest(API_ROUTES.apiKeyRevoke.method, API_PATHS.apiKeyRevoke.replace(':id', warehouseKey.apiKey.id));
+    const revoked = await ownerRequest(API_ROUTES.apiKeysShopManagementRevoke.method, API_PATHS.apiKeysShopManagementRevoke.replace(':id', warehouseKey.apiKey.id));
     expect(revoked.status).toBe(200);
     expect(await warehouse.listOrders({ mode: 'live' })).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid API key' } });
     expect(unwrapped(await catalog.getProductStock(draft.id)).stock).toEqual(settled);

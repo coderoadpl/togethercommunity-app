@@ -256,7 +256,7 @@ export const createOrganizationFakes = (
       const stored = existing === undefined ? { ...secret, organizationId } : { ...secret, id: existing.id, organizationId };
       if (existing === undefined) secretRows.push(stored);
       else secretRows[index] = stored;
-      auditRows.push({ ...audit, organizationId, data: { key: secret.key, maskedPreview: secret.maskedPreview, group } });
+      auditRows.push({ ...audit, organizationId, data: { key: secret.key, group } });
       return stored;
     },
     delete: async (organizationId, { key, group, audit }) => {
@@ -267,7 +267,7 @@ export const createOrganizationFakes = (
         && workspaceRows.some((workspace) => workspace.id === row.tenantId && workspace.organizationId === organizationId));
       if (inheriting) return { status: 'config_inherited' };
       secretRows.splice(index, 1);
-      auditRows.push({ ...audit, organizationId, data: { key, maskedPreview: current.maskedPreview, group } });
+      auditRows.push({ ...audit, organizationId, data: { key, group } });
       return { status: 'deleted', secret: current };
     },
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type Identity, type Organization } from '#core/domain/index.js';
+import { ok, type Identity, type Organization, type OrganizationSecretKey } from '#core/domain/index.js';
 
 import { organizationContext } from '../organization-context.js';
 import type { SecretCrypto } from '../ports.js';
@@ -62,8 +62,39 @@ describe('organization secrets', () => {
     expect(h.auditRows).toEqual([{
       id: 'id-1', organizationId: 'org-1', kind: 'secret.set', actorUserId: 'owner-1', actorEmail: 'owner-1@example.test',
       actorKeyId: null, subjectTenantId: null, subjectUserId: null,
-      data: { key: 'ifirma.invoiceApiKey', maskedPreview: '••••abcd', group: 'invoicing' }, at,
+      data: { key: 'ifirma.invoiceApiKey', group: 'invoicing' }, at,
     }]);
+  });
+
+  it('masks a value shorter than twelve characters completely in the response, the stored row and the audit row', async () => {
+    const h = await harness();
+    const owner = await h.octx('owner-1');
+    const values: ReadonlyArray<readonly [OrganizationSecretKey, string]> = [['smtp.port', '2525'], ['smtp.password', 'a7Q!'], ['smtp.user', 'mailer-1234']];
+    for (const [key, value] of values) {
+      expect(await setOrganizationSecret(owner, { organizationId: 'org-1', key, value }, h.deps), key)
+        .toEqual({ ok: true, value: { secret: { key, maskedPreview: '••••', updatedAt: at } } });
+    }
+    const listed = await listOrganizationSecrets(owner, { organizationId: 'org-1' }, h.deps);
+    expect(listed).toEqual({ ok: true, value: { secrets: ['smtp.password', 'smtp.port', 'smtp.user'].map((key) => ({ key, maskedPreview: '••••', updatedAt: at })) } });
+    expect(h.secretRows.map((row) => [row.key, row.maskedPreview])).toEqual([
+      ['smtp.port', '••••'], ['smtp.password', '••••'], ['smtp.user', '••••'],
+    ]);
+    await deleteOrganizationSecret(owner, { organizationId: 'org-1', key: 'smtp.password' }, h.deps);
+    expect(h.auditRows.map((event) => [event.kind, event.data])).toEqual([
+      ['secret.set', { key: 'smtp.port', group: 'email_transport' }],
+      ['secret.set', { key: 'smtp.password', group: 'email_transport' }],
+      ['secret.set', { key: 'smtp.user', group: 'email_transport' }],
+      ['secret.deleted', { key: 'smtp.password', group: 'email_transport' }],
+    ]);
+  });
+
+  it('shows only the last four characters of a value of at least twelve characters', async () => {
+    const h = await harness();
+    const owner = await h.octx('owner-1');
+    expect(await setOrganizationSecret(owner, { organizationId: 'org-1', key: 'smtp.password', value: 'Pa55word-xyz' }, h.deps))
+      .toMatchObject({ ok: true, value: { secret: { maskedPreview: '••••-xyz' } } });
+    expect(h.secretRows.map((row) => row.maskedPreview)).toEqual(['••••-xyz']);
+    expect(JSON.stringify(h.auditRows)).not.toContain('xyz');
   });
 
   it('rejects keys outside the allow-list and the dedicated-flow keys through the generic setter', async () => {
@@ -113,8 +144,8 @@ describe('organization secrets', () => {
       .toEqual({ ok: true, value: { key: 'shipx.token' } });
     expect(h.secretRows).toEqual([]);
     expect(h.auditRows.filter((event) => event.kind === 'secret.deleted').map((event) => event.data)).toEqual([
-      { key: 'resend.apiKey', maskedPreview: '••••4321', group: 'email_transport' },
-      { key: 'shipx.token', maskedPreview: '••••9876', group: 'shipping_carrier' },
+      { key: 'resend.apiKey', group: 'email_transport' },
+      { key: 'shipx.token', group: 'shipping_carrier' },
     ]);
   });
 });

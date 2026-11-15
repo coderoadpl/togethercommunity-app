@@ -420,11 +420,11 @@ describe('organization repositories', () => {
     expect(await database.db.select().from(organizationSecrets).where(eq(organizationSecrets.organizationId, 'org-secrets'))).toEqual([]);
     expect((await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-secrets')))
       .map((row) => [row.id, row.kind, row.data])).toEqual([
-      ['sa-1', 'secret.set', { key: 'ksef.token', maskedPreview: '••••1111', group: 'invoicing' }],
-      ['sa-2', 'secret.set', { key: 'ksef.token', maskedPreview: '••••2222', group: 'invoicing' }],
-      ['sa-3', 'secret.set', { key: 'smtp.password', maskedPreview: '••••3333', group: 'email_transport' }],
-      ['sa-5', 'secret.deleted', { key: 'smtp.password', maskedPreview: '••••3333', group: 'email_transport' }],
-      ['sa-7', 'secret.deleted', { key: 'ksef.token', maskedPreview: '••••2222', group: 'invoicing' }],
+      ['sa-1', 'secret.set', { key: 'ksef.token', group: 'invoicing' }],
+      ['sa-2', 'secret.set', { key: 'ksef.token', group: 'invoicing' }],
+      ['sa-3', 'secret.set', { key: 'smtp.password', group: 'email_transport' }],
+      ['sa-5', 'secret.deleted', { key: 'smtp.password', group: 'email_transport' }],
+      ['sa-7', 'secret.deleted', { key: 'ksef.token', group: 'invoicing' }],
     ]);
   });
 

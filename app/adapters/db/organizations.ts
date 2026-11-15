@@ -145,7 +145,7 @@ export const createOrganizationSecretRepository = (db: Db): OrganizationSecretRe
       .returning();
     if (rows[0] === undefined) throw new Error('organization_secrets upsert returned no row');
     await tx.insert(organizationAuditEvents).values({
-      ...audit, organizationId, data: { key: secret.key, maskedPreview: secret.maskedPreview, group },
+      ...audit, organizationId, data: { key: secret.key, group },
     });
     return organizationSecretSchema.parse(rows[0]);
   }),
@@ -160,7 +160,7 @@ export const createOrganizationSecretRepository = (db: Db): OrganizationSecretRe
     if (inheriting.length > 0) return { status: 'config_inherited' } as const;
     await tx.delete(organizationSecrets).where(secretRow(organizationId, key));
     await tx.insert(organizationAuditEvents).values({
-      ...audit, organizationId, data: { key, maskedPreview: current.maskedPreview, group },
+      ...audit, organizationId, data: { key, group },
     });
     return { status: 'deleted', secret: organizationSecretSchema.parse(current) } as const;
   }),

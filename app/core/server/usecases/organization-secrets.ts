@@ -19,7 +19,6 @@ import {
 import { authorizeOrganization } from '../authorize.js';
 import type { OrganizationCtx } from '../context.js';
 import type { Clock, IdGenerator, OrganizationSecretRepository, SecretCrypto } from '../ports.js';
-import { maskValue } from './tenant-secrets.js';
 
 export interface OrganizationSecretDeps {
   organizationSecrets: OrganizationSecretRepository;
@@ -27,6 +26,12 @@ export interface OrganizationSecretDeps {
   ids: IdGenerator;
   clock: Clock;
 }
+
+const MASK = '••••';
+const MIN_LENGTH_WITH_VISIBLE_SUFFIX = 12;
+
+const maskOrganizationSecretValue = (value: string): string =>
+  value.length >= MIN_LENGTH_WITH_VISIBLE_SUFFIX ? `${MASK}${value.slice(-4)}` : MASK;
 
 const masked = (secret: OrganizationSecret): OrganizationSecretMasked => ({
   key: secret.key,
@@ -76,7 +81,7 @@ export const setOrganizationSecret = async (
       id: deps.ids.nextId(),
       key,
       ...deps.secretCrypto.encrypt(value),
-      maskedPreview: maskValue(value),
+      maskedPreview: maskOrganizationSecretValue(value),
       updatedAt: audit.at,
     },
     group: ORGANIZATION_SECRET_GROUP[key],

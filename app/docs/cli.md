@@ -257,4 +257,6 @@ dedicated flows, and webhook secrets, endpoint ids, storage, video and Meta
 conversions credentials stay per workspace, so these are `validation` errors.
 Deleting a secret is a `conflict` while a workspace of the organization takes
 that key's group from the organization. Each change is recorded as `secret.set`
-or `secret.deleted` with the key name and the masked preview, never the value.
+or `secret.deleted` with the key name and its configuration group, never any
+character of the value. A masked preview shows the last four characters only
+for a value of at least twelve characters; a shorter value shows only the mask.

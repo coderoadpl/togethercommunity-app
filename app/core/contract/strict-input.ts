@@ -42,10 +42,7 @@ const strictTwin = (schema: z.ZodTypeAny): z.ZodTypeAny => {
   return schema;
 };
 
-/**
- * Rejects unknown fields at every nesting level while parsing exactly like `schema`, so a misspelt field fails
- * validation instead of being dropped. The original schema is left untouched for callers that tolerate extras.
- */
+// The strict twin only detects unknown keys; `schema` still does the parsing, so input and output types stay its own.
 export const strictInput = <T extends z.ZodTypeAny>(schema: T): z.ZodEffects<T> => {
   const twin = strictTwin(schema);
   return new z.ZodEffects<T>({

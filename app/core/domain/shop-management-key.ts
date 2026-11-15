@@ -92,7 +92,7 @@ export const SHOP_MANAGEMENT_KEY_INTEGRATION_OPERATIONS = [
 
 type ShopManagementKeyIntegrationOperation = (typeof SHOP_MANAGEMENT_KEY_INTEGRATION_OPERATIONS)[number];
 
-export type ShopManagementKeyIntegrationGrant =
+type ShopManagementKeyIntegrationGrant =
   | { operation: ShopManagementKeyIntegrationOperation }
   | { secretKey: string };
 

@@ -2962,9 +2962,9 @@ it('renews and cancels an adopted subscription without Together checkout metadat
     email: 'buyer@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: now, deletedAt: null });
   h.members.set(member.id, member);
   const adopted = await m2mAdoptStripeSubscription(tenantA.id, { subscriptionId: 'sub_existing', email: member.email, productId: price.productId }, {
-    clock: h.deps.clock, ids: h.deps.ids,
+    clock: h.deps.clock, ids: h.deps.ids, stripeWebhookOwnership: h.deps.stripeWebhookOwnership,
     payment: { retrieveStripeSubscription: async () => ok({ id: 'sub_existing', status: 'active',
-      customerEmail: member.email, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
+      customerId: 'cus_existing', customerEmail: member.email, metadataTenantId: null, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
       price: { id: 'price_existing', amountCents: price.amountCents, currency: price.currency, interval: 'month', intervalCount: 1 } }) },
     subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation({ ...h.deps, memberEvents: { append: async () => undefined } }) },
   });

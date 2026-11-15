@@ -15,6 +15,7 @@ import {
   stripeCancelErrorSchema,
   stripeCheckoutShippingSchema,
   stripeAdoptionObjectSchema,
+  stripeSubscriptionListEntrySchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
@@ -242,6 +243,11 @@ export const stripeCheckoutSessionParams = (
 
 const epochToIso = (seconds: number | null | undefined): string | null =>
   seconds == null ? null : new Date(seconds * 1000).toISOString();
+
+const metadataTenantId = (metadata: Record<string, string> | null | undefined): string | null => {
+  const tenantId = metadata?.['tenantId'];
+  return tenantId === undefined || tenantId.length === 0 ? null : tenantId;
+};
 
 const idOrNull = (value: unknown): string | null => {
   if (typeof value === 'string') return value;
@@ -520,7 +526,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       return ok(stripeSubscriptionSnapshotSchema.parse({
         id: parsed.data.id, status: parsed.data.status,
         currentPeriodEnd: epochToIso(periodEnd), cancelAtPeriodEnd: parsed.data.cancel_at_period_end,
+        customerId: parsed.data.customer.id,
         customerEmail: parsed.data.customer.email ?? null,
+        metadataTenantId: metadataTenantId(parsed.data.metadata),
         price: { id: item.price.id, amountCents: item.price.unit_amount,
           currency: item.price.currency.toUpperCase(), interval: item.price.recurring.interval,
           intervalCount: item.price.recurring.interval_count },
@@ -534,9 +542,11 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           status: input.status ?? 'all', limit: 100,
           ...(input.startingAfter === undefined ? {} : { starting_after: input.startingAfter }),
         });
-        return ok({ subscriptions: page.data.map((subscription) => ({
+        return ok({ subscriptions: page.data.map((subscription) => stripeSubscriptionListEntrySchema.parse({
           id: subscription.id, status: subscription.status,
           providerPriceId: subscription.items.data[0]?.price.id ?? null,
+          customerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+          metadataTenantId: metadataTenantId(subscription.metadata),
         })), nextCursor: page.has_more ? page.data.at(-1)?.id ?? null : null });
       } catch (cause) {
         return err(asDiagnostic('Stripe rejected the subscription listing', cause));

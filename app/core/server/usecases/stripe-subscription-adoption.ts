@@ -3,23 +3,44 @@ import {
   normalizeEmail, notFound, ok, productPriceSchema, validation,
   type AdoptStripeSubscriptionInput, type AdoptStripeSubscriptionResult,
   type AppError, type ListStripeSubscriptionsInput, type Member, type MemberSubscription,
-  type Product, type ProductPrice, type Result, type StripeSubscriptionSnapshot,
+  type Product, type ProductPrice, type Result, type StripeSubscriptionListEntry, type StripeSubscriptionSnapshot,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type {
   Clock, IdGenerator, MemberSubscriptionRepository, PaymentProvider,
-  SubscriptionAdoptionRepositories, SubscriptionAdoptionTransaction,
+  StripeWebhookOwnershipReader, SubscriptionAdoptionRepositories, SubscriptionAdoptionTransaction,
 } from '../ports.js';
 import { requireLiveMember } from './member-status.js';
 
 export interface StripeSubscriptionAdoptionDeps {
   payment: Pick<PaymentProvider, 'retrieveStripeSubscription' | 'listStripeSubscriptions'>;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
   subscriptionAdoptionTransaction: SubscriptionAdoptionTransaction;
   clock: Clock;
   ids: IdGenerator;
 }
+
+type RemoteOwnership = Pick<StripeSubscriptionListEntry, 'id' | 'customerId' | 'metadataTenantId'>;
+
+const hasForeignOwner = (tenantId: string, remote: RemoteOwnership, ownership: StripeWebhookOwnershipReader) =>
+  ownership.hasForeignOwner(tenantId, { subscription: remote.id, customer: remote.customerId });
+
+const adoptableByTenant = async (
+  tenantId: string,
+  remote: RemoteOwnership,
+  ownership: StripeWebhookOwnershipReader,
+): Promise<boolean> => (remote.metadataTenantId === null || remote.metadataTenantId === tenantId)
+  && !await hasForeignOwner(tenantId, remote, ownership);
+
+const listedForTenant = async (
+  tenantId: string,
+  remote: RemoteOwnership,
+  ownership: StripeWebhookOwnershipReader,
+): Promise<boolean> => remote.metadataTenantId === null
+  ? !await hasForeignOwner(tenantId, remote, ownership)
+  : remote.metadataTenantId === tenantId;
 
 type AdoptionRepositories = SubscriptionAdoptionRepositories
   & Pick<StripeSubscriptionAdoptionDeps, 'clock' | 'ids'>;
@@ -192,6 +213,9 @@ export const m2mAdoptStripeSubscription = async (
   const remote = await deps.payment.retrieveStripeSubscription(tenantId, parsed.data.subscriptionId);
   if (!remote.ok) return remote;
   if (remote.value.id !== parsed.data.subscriptionId) return err(validation('Stripe returned a different subscription'));
+  if (!await adoptableByTenant(tenantId, remote.value, deps.stripeWebhookOwnership)) {
+    return err(adoptionRefusal('conflict', 'conflict', 'Stripe subscription belongs to another workspace'));
+  }
   return deps.subscriptionAdoptionTransaction.run(tenantId, (repositories) =>
     saveAdoption(tenantId, parsed.data, remote.value, { ...repositories, clock: deps.clock, ids: deps.ids }));
 };
@@ -209,6 +233,7 @@ export const adoptStripeSubscription = async (
 interface ListStripeSubscriptionsDeps {
   payment: Pick<PaymentProvider, 'retrieveStripeSubscription' | 'listStripeSubscriptions'>;
   subscriptions: Pick<MemberSubscriptionRepository, 'listKnownProviderSubscriptionIds'>;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
 }
 
 export const m2mListStripeSubscriptions = async (
@@ -221,11 +246,14 @@ export const m2mListStripeSubscriptions = async (
   if (deps.payment.listStripeSubscriptions === undefined) return err(validation('Stripe subscription listing is unavailable'));
   const remote = await deps.payment.listStripeSubscriptions(tenantId, parsed.data);
   if (!remote.ok) return remote;
+  const owned = await Promise.all(remote.value.subscriptions.map((subscription) =>
+    listedForTenant(tenantId, subscription, deps.stripeWebhookOwnership)));
+  const visible = remote.value.subscriptions.filter((_subscription, index) => owned[index] === true);
   const adopted = new Set(await deps.subscriptions.listKnownProviderSubscriptionIds(
-    tenantId, remote.value.subscriptions.map((subscription) => subscription.id),
+    tenantId, visible.map((subscription) => subscription.id),
   ));
-  const subscriptions = remote.value.subscriptions.map((subscription) => ({
-    ...subscription, adopted: adopted.has(subscription.id),
+  const subscriptions = visible.map(({ id, status, providerPriceId }) => ({
+    id, status, providerPriceId, adopted: adopted.has(id),
   }));
   return ok({ subscriptions: parsed.data.unadopted === true ? subscriptions.filter((subscription) => !subscription.adopted) : subscriptions,
     nextCursor: remote.value.nextCursor });

@@ -10098,12 +10098,12 @@ describe('Stripe subscription adoption authorization', () => {
       });
       const retrieve = vi.fn(async () => ok({
         id: payload.subscriptionId, status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
-        cancelAtPeriodEnd: false, customerEmail: 'buyer@example.com',
+        cancelAtPeriodEnd: false, customerId: 'cus_existing', customerEmail: 'buyer@example.com', metadataTenantId: null,
         price: { id: 'price_existing', amountCents: 3500, currency: 'EUR' as const, interval: 'month' as const, intervalCount: 1 },
       }));
       const list = vi.fn(async () => ok({ subscriptions: [
-        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing' },
-        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other' },
+        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing', customerId: 'cus_existing', metadataTenantId: null },
+        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other', customerId: 'cus_other', metadataTenantId: acme.id },
       ], nextCursor: null }));
       base.payment.retrieveStripeSubscription = retrieve;
       base.payment.listStripeSubscriptions = list;

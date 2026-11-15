@@ -140,6 +140,7 @@ import type {
   ListStripeSubscriptionsInput,
   MemberActivity,
   MemberActivityQuery,
+  StripeSubscriptionListEntry,
   StripeSubscriptionSnapshot,
   StripeMode,
   StripePermissionCheck,
@@ -1125,7 +1126,7 @@ export interface PaymentProvider {
     checkoutBranding?: CheckoutBranding;
   }): Promise<Result<StripePermissionCheck[], AppError>>;
   retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
-  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
+  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: StripeSubscriptionListEntry[]; nextCursor: string | null }, AppError>>;
   configureWebhook?(input: {
     tenantId: string;
     restrictedKey: string;

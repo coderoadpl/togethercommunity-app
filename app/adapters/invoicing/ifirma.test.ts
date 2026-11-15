@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { lineInvoicePositions, type InvoiceVatTreatment } from '#core/domain/index.js';
 import type { InvoicingPort } from '#core/server/index.js';
 
 import {
@@ -377,4 +378,30 @@ it('sends the quantity and the unit gross of multi-unit iFirma positions', () =>
     { StawkaVat: 0.23, Ilosc: 1, CenaJednostkowa: 33.35, NazwaPelna: 'Poster', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
     { StawkaVat: null, Ilosc: 3, CenaJednostkowa: 30, NazwaPelna: 'Workshop', Jednostka: 'szt.', TypStawkiVat: 'ZW', PodstawaPrawna: 'art. 113 ust. 1' },
   ]);
+});
+
+it('sends whole-grosz unit gross prices that multiply back to every position gross', () => {
+  const treatments: InvoiceVatTreatment[] = [
+    { kind: 'rate', percent: 5 },
+    { kind: 'rate', percent: 8 },
+    { kind: 'rate', percent: 23 },
+    { kind: 'exempt', basisKind: 'art_113_1', basis: 'art. 113 ust. 1' },
+  ];
+  for (const vat of treatments) {
+    for (let quantity = 1; quantity <= 99; quantity += 1) {
+      for (const grossCents of [1, 99, 300, 7999, 9999, 10001, 123457]) {
+        const positions = lineInvoicePositions({ name: 'Item', quantity, grossCents, vat });
+        const payload = ifirmaInvoicePayload({ ...input, order: { ...input.order, amountCents: grossCents }, positions }, '2026-11-15');
+        const label = `${String(grossCents)} x ${String(quantity)}`;
+        const unitCents = payload.Pozycje.map((position) => Math.round(position.CenaJednostkowa * 100));
+        payload.Pozycje.forEach((position, index) => {
+          expect(Math.abs(position.CenaJednostkowa * 100 - (unitCents[index] ?? 0)), label).toBeLessThan(1e-6);
+          expect(position.Ilosc * (unitCents[index] ?? 0), label).toBe(positions[index]?.grossCents);
+        });
+        expect(payload.Pozycje.reduce((total, position, index) => total + position.Ilosc * (unitCents[index] ?? 0), 0), label).toBe(grossCents);
+        expect(payload.LiczOd).toBe('BRT');
+        expect(payload.Zaplacono * 100, label).toBeCloseTo(grossCents, 6);
+      }
+    }
+  }
 });

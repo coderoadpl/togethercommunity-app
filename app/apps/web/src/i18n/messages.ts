@@ -2746,6 +2746,23 @@ export interface Messages {
     retry: string;
     paymentUnavailable: string;
     soldOut: string;
+    cartTitle: string;
+    cartInvalidTitle: string;
+    cartInvalidBody: string;
+    cartEmptyTitle: string;
+    cartEmptyBody: string;
+    cartQuantity: (params: { title: string }) => string;
+    cartIncrease: (params: { title: string }) => string;
+    cartDecrease: (params: { title: string }) => string;
+    cartRemove: (params: { title: string }) => string;
+    cartRemoveLine: string;
+    cartQuantityLimit: (params: { max: number }) => string;
+    cartUnitPrice: (params: { price: string }) => string;
+    cartLineTotal: (params: { price: string }) => string;
+    cartSubtotal: (params: { price: string }) => string;
+    cartDelivery: (params: { price: string }) => string;
+    cartLineUnavailable: string;
+    cartProductMissing: string;
   };
   directory: {
     activeConsent: string;

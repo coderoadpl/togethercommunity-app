@@ -57,7 +57,7 @@ import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { TenantGate } from './features/tenant-not-found/TenantNotFoundPage.js';
-import { CheckoutRoute, SalesLinkOfferRoute } from './routes/checkout.js';
+import { CartCheckoutRoute, CheckoutRoute, SalesLinkOfferRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute, validateLoginSearch } from './routes/login.js';
 import {
@@ -175,6 +175,11 @@ const loginRoute = createRoute({
   component: LoginRoute,
 });
 const salesLinkOfferRoute = createRoute({ getParentRoute: () => rootRoute, path: '/offer/$slug', component: SalesLinkOfferRoute });
+const cartCheckoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/checkout/cart',
+  component: CartCheckoutRoute,
+});
 const checkoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/checkout/$productRef',
@@ -550,6 +555,7 @@ const router = createRouter({
     indexRoute,
     publicSurveyRoute,
     loginRoute,
+    cartCheckoutRoute,
     checkoutRoute,
     salesLinkOfferRoute,
     registerRoute,

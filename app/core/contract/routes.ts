@@ -462,6 +462,8 @@ export const publicOfferOutputSchema = z.object({
   inpostGeowidgetToken: z.string().nullable().default(null),
 });
 
+export type PublicOfferOutput = z.infer<typeof publicOfferOutputSchema>;
+
 export const publicNavigationOutputSchema = z.object({
   navigation: publicNavigationSchema,
 });

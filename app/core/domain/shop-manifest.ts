@@ -107,8 +107,13 @@ const workspaceFormsSchema = z.union([
 export const manifestWorkspaceSlug = (workspace: z.output<typeof workspaceFormsSchema>): string =>
   typeof workspace === 'string' ? workspace : workspace.slug;
 
-const workspaceSchema = workspaceFormsSchema.refine((workspace) => !isReservedTenantSlug(manifestWorkspaceSlug(workspace)),
-  'Workspace slug is a reserved platform name');
+const HOST_LABEL_MAX_LENGTH = 63;
+
+const workspaceSchema = workspaceFormsSchema
+  .refine((workspace) => manifestWorkspaceSlug(workspace).length <= HOST_LABEL_MAX_LENGTH,
+    `Workspace slug must not exceed ${HOST_LABEL_MAX_LENGTH} characters, the limit of a host label`)
+  .refine((workspace) => !isReservedTenantSlug(manifestWorkspaceSlug(workspace)),
+    'Workspace slug is a reserved platform name');
 
 const shopSchema = z.object({
   workspace: workspaceSchema,

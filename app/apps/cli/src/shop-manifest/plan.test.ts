@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { forbidden } from '#core/domain/index.js';
+import { shopManifestSchema } from '#core/domain/shop-manifest.js';
 import { planManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 import { driftManifest } from './drift.js';
@@ -41,6 +42,15 @@ describe('shop plan', () => {
     expect(await planManifest({ ...manifestFixture, password: 'never-echo-this' }, () => api)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(state.requests).toEqual([]);
     expect(JSON.stringify(await planManifest({ password: 'never-echo-this' }, () => api))).not.toContain('never-echo-this');
+  });
+
+  it('refuses a workspace slug longer than a host label before any request', async () => {
+    const { api, state } = createManifestFake();
+    const label = 'a'.repeat(63);
+    expect(shopManifestSchema.safeParse({ version: 1, shops: [{ workspace: label, products: [] }] }).success).toBe(true);
+    const result = await planManifest({ version: 1, shops: [{ workspace: `${label}b`, products: [] }] }, () => api);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', details: { issues: [{ path: ['shops', 0, 'workspace'] }] } } });
+    expect(state.requests).toEqual([]);
   });
 
   it('refuses a mismatched host workspace before reading catalogue data', async () => {

@@ -240,7 +240,9 @@ slug must not be one of the platform's reserved names (for example `start`,
 `staging`, `status`, `docs` or `www`) in either form: a manifest that contains
 one anywhere is refused before the first request, even when `--shop` selects
 another workspace, because such a name addresses platform or environment hosts
-rather than a workspace.
+rather than a workspace. A workspace slug also must not exceed 63 characters,
+the length limit of a host label, because it becomes the first label of the
+workspace host.
 
 Effective settings merge company fields with shop fields. Shop values win,
 nested objects merge by field, arrays replace in full, and an explicit `null`

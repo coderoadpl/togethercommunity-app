@@ -176,9 +176,11 @@ attributed in request telemetry only.
 
 A history row stores the key id as plain text and is never deleted with its
 key, so the history of a revoked or purged key stays readable. It goes away only
-with the workspace itself; there is no retention purge of key history. The rate
-limits bound its growth: a key makes at most 10,000 requests a day, so it adds
-at most 10,000 `request` rows a day.
+with the workspace itself: a retention job for `shop_management_key_events` is a
+follow-up and does not exist yet. The rate limits bound its growth per key: a
+key makes at most 10,000 requests a day, so it adds at most 10,000 `request`
+rows a day. The bound multiplies by the number of keys, and the number of shop
+management keys per workspace is not capped.
 
 The owner reads the history with the same verified owner session as creation
 (an admin, an unverified owner, an owner viewing as a member and any API key

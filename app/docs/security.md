@@ -456,7 +456,10 @@ scopes on every shop key.
   span only, so those refusals cannot grow the table. A refusal returned by the
   handler (a validation error, an id of another workspace, a conflict) does
   have a request row, written before the handler ran, which does not record
-  the refusal. The rate limits bound the rows of one key to 10,000 a day. A row keeps a resource id
+  the refusal. The rate limits bound the rows of one key to 10,000 a day; the
+  bound multiplies by the number of keys, which is not capped per workspace,
+  and a retention job for `shop_management_key_events` is a follow-up, so the
+  history grows until its workspace is deleted. A row keeps a resource id
   only when it is an identifier of at most 200 characters matching
   `^[A-Za-z0-9][A-Za-z0-9._:-]*$`; the database enforces the length and the
   pattern with its own checks. Every shop request span records `app.api_key.match` and, when the secret matched a key

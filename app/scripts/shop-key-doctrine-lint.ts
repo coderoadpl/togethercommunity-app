@@ -41,6 +41,22 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: 'A refusal returned by the handler (a validation error, an id of another workspace, a conflict) does have a request row',
     reason: 'must state that a refusal returned by a shop route handler has a key history row',
   },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: 'the bound multiplies by the number of keys, which is not capped per workspace, and a retention job for `shop_management_key_events` is a follow-up',
+    reason: 'must state the per-key history bound and the missing retention job',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'a retention job for `shop_management_key_events` is a follow-up',
+    reason: 'must state that the key history has no retention job yet',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'The bound multiplies by the number of keys, and the number of shop management keys per workspace is not capped.',
+    reason: 'must state that the history bound multiplies by the uncapped number of keys',
+  },
 ];
 
 const singleSpaced = (text: string): string => text.replace(/\s+/gu, ' ');

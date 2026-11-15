@@ -44,6 +44,7 @@ describe('shop management key doctrine lint', () => {
     expect(collectShopKeyDoctrineProblems(new Map())).toEqual([
       '[shop-key-doctrine] app/CLAUDE.md is not tracked markdown',
       '[shop-key-doctrine] app/docs/security.md is not tracked markdown',
+      '[shop-key-doctrine] app/docs/shop-management-keys.md is not tracked markdown',
     ]);
   });
 });

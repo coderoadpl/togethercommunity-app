@@ -73,6 +73,8 @@ export const registerShopMachineRoute = (
   app.on(route.method, route.path, async (c) => {
     const authenticated = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     if (!authenticated.ok) return respond(authenticated, { headers: retryAfterHeaders(authenticated.error) });
+    c.set('identity', authenticated.value.ctx.identity);
+    c.set('machineActor', authenticated.value.ctx.machineActor);
     return route.handler(c, authenticated.value);
   });
 };

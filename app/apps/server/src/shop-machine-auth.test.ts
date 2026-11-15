@@ -357,31 +357,49 @@ describe('shop management keys on existing routes of the real app', () => {
 });
 
 describe('shop management key secrecy in telemetry', () => {
-  it('keeps presented key secrets out of request spans on success and on every refusal', async () => {
-    const exporter = new InMemorySpanExporter();
-    const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
+  const exporter = new InMemorySpanExporter();
+  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
+  let app: Hono<AppVars>;
+
+  beforeAll(() => {
     provider.register();
-    try {
-      const app = new Hono<AppVars>();
-      app.use('*', telemetryMiddleware);
-      registerShopMachineRoute(app, deps, {
-        method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
-      });
-      const secrets = ['shop-read-secret', 'shop-orders-secret', 'shop-revoked-secret', 'never-issued-secret'];
-      for (const secret of secrets) {
-        await app.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': secret } });
-      }
-      await app.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': 'cookie-mixed-secret', cookie: 'session=x' } });
-      await provider.forceFlush();
-      const spans = exporter.getFinishedSpans();
-      expect(spans).toHaveLength(secrets.length + 1);
-      const recorded = JSON.stringify(spans.map((span) => ({
-        name: span.name, attributes: span.attributes, events: span.events, status: span.status,
-      })));
-      for (const secret of [...secrets, 'cookie-mixed-secret']) expect(recorded).not.toContain(secret);
-      expect(recorded).not.toContain('x-api-key');
-    } finally {
-      await provider.shutdown();
+    app = new Hono<AppVars>();
+    app.use('*', telemetryMiddleware);
+    registerShopMachineRoute(app, deps, {
+      method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
+    });
+  });
+  afterAll(async () => { await provider.shutdown(); });
+  beforeEach(() => { exporter.reset(); });
+
+  it('keeps presented key secrets out of request spans on success and on every refusal', async () => {
+    const secrets = ['shop-read-secret', 'shop-orders-secret', 'shop-revoked-secret', 'never-issued-secret'];
+    for (const secret of secrets) {
+      await app.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': secret } });
     }
+    await app.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': 'cookie-mixed-secret', cookie: 'session=x' } });
+    await provider.forceFlush();
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(secrets.length + 1);
+    const recorded = JSON.stringify(spans.map((span) => ({
+      name: span.name, attributes: span.attributes, events: span.events, status: span.status,
+    })));
+    for (const secret of [...secrets, 'cookie-mixed-secret']) expect(recorded).not.toContain(secret);
+    expect(recorded).not.toContain('x-api-key');
+  });
+
+  it('records the key id and the issuer identity on the request span of a keyed request', async () => {
+    const response = await app.request(`${baseUrl}${PROBE_PATH}`, { headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' } });
+    expect(response.status).toBe(200);
+    await provider.forceFlush();
+    const spans = exporter.getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.attributes).toMatchObject({
+      'app.api_key.id': 'shop-read',
+      'app.user.id': issuers.owner,
+      'app.user.email': 'shop-owner@example.test',
+      'app.tenant.id': 'acme',
+    });
+    expect(JSON.stringify(spans[0]?.attributes)).not.toContain('shop-read-secret');
   });
 });

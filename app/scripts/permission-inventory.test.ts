@@ -13,7 +13,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(481);
+    expect(inventory.routes).toHaveLength(488);
     expect(inventory.useCases).toHaveLength(357);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
@@ -21,7 +21,7 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(29);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(36);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: ['owner'], after: ['owner'] });
     for (const row of [

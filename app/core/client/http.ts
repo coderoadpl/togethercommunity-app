@@ -10,6 +10,7 @@ import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type Provis
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
+import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
 import type { ShopSettingsPatch } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
@@ -2907,6 +2908,7 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
       request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
     ...shopOrderMethods(options),
     ...shopSettingsMethods(options),
+    ...shopAssetsMethods(options),
   };
 };
 
@@ -2952,6 +2954,28 @@ const shopSettingsMethods = (options: ApiClientOptions) => {
       request(options, routes.updateSettings.method, routes.updateSettings.path, contracts.updateSettings.output, input, signal),
     uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
       uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, input, signal),
+  };
+};
+
+type ShopAssetsInput<K extends keyof typeof shopAssetsContracts> = z.input<(typeof shopAssetsContracts)[K]['input']>;
+
+const shopAssetsMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_ASSETS_ROUTES;
+  const contracts = shopAssetsContracts;
+  const linkPath = (path: string, id: string): string => path.replace(':id', encodeURIComponent(id));
+  return {
+    uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+      uploadImageAsset(options, routes.productCoverUpload, routes.productCoverComplete, input, signal),
+    listSalesLinks: (signal?: AbortSignal) =>
+      request(options, routes.listSalesLinks.method, routes.listSalesLinks.path, contracts.listSalesLinks.output, undefined, signal),
+    getSalesLink: (input: ShopAssetsInput<'getSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.getSalesLink.method, linkPath(routes.getSalesLink.path, input.id), contracts.getSalesLink.output, undefined, signal),
+    createSalesLink: (input: ShopAssetsInput<'createSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.createSalesLink.method, routes.createSalesLink.path, contracts.createSalesLink.output, input, signal),
+    updateSalesLink: (input: ShopAssetsInput<'updateSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), contracts.updateSalesLink.output, input, signal),
+    deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), contracts.deleteSalesLink.output, undefined, signal),
   };
 };
 

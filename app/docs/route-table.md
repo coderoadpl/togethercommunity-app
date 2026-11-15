@@ -184,6 +184,13 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/settings` | self-authenticating | mutating | api m2m shop settings |
 | `POST /api/m2m/shop/image-assets/branding/upload` | self-authenticating | mutating | api m2m shop image-assets branding upload |
 | `POST /api/m2m/shop/image-assets/branding/complete` | self-authenticating | mutating | api m2m shop image-assets branding complete |
+| `POST /api/m2m/shop/image-assets/product-cover/upload` | self-authenticating | mutating | api m2m shop image-assets product-cover upload |
+| `POST /api/m2m/shop/image-assets/product-cover/complete` | self-authenticating | mutating | api m2m shop image-assets product-cover complete |
+| `GET /api/m2m/shop/sales-links` | self-authenticating | read | api m2m shop sales-links |
+| `GET /api/m2m/shop/sales-links/:id` | self-authenticating | read | api m2m shop sales-links id |
+| `POST /api/m2m/shop/sales-links` | self-authenticating | mutating | api m2m shop sales-links |
+| `POST /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
+| `DELETE /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

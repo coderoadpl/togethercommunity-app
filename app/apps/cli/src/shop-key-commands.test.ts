@@ -77,6 +77,9 @@ const shopSettings = {
   socialLinks: [], supportEmail: null, supportUrl: null, termsUrl: 'https://brand.example.test/terms', privacyUrl: null,
 };
 
+const salesLinkFields = { slug: 'handbook', title: 'Handbook', heading: 'Buy the handbook', productIds: ['product-1'] };
+const salesLink = { ...salesLinkFields, id: 'link-1', tenantId: 'acme', revision: 1, createdAt: product.createdAt, updatedAt: product.createdAt };
+
 const orderData = (pathname: string, method: string): unknown => {
   if (pathname === '/api/m2m/shop/orders') return { sources: [], orders: [order], total: 1, page: 1, pageSize: 20 };
   if (pathname.endsWith('/export') || pathname.endsWith('/packing-list')) return { filename: 'orders.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number\norder-1' };
@@ -102,6 +105,16 @@ const fetchImpl: typeof fetch = async (input, init) => {
     return new Response(JSON.stringify({ ok: true, data: url.pathname.endsWith('/upload')
       ? { key: 'image-asset-candidates/acme/logo/1.png', servePath: '/api/public/assets/logo/1.png', upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
       : { url: '/api/public/assets/logo/1.png' } }), { headers: { 'content-type': 'application/json' } });
+  }
+  if (url.pathname.startsWith('/api/m2m/shop/image-assets/product-cover/')) {
+    return Response.json({ ok: true, data: url.pathname.endsWith('/upload')
+      ? { key: 'image-asset-candidates/acme/product-cover/1.png', servePath: '/api/public/assets/product-cover/1.png', upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+      : { url: '/api/public/assets/product-cover/1.png' } });
+  }
+  if (url.pathname.startsWith('/api/m2m/shop/sales-links')) {
+    return Response.json({ ok: true, data: method === 'DELETE' ? { deleted: true }
+      : method === 'GET' && url.pathname === '/api/m2m/shop/sales-links' ? { salesLinks: [salesLink] }
+        : { salesLink } });
   }
   if (url.pathname === '/api/m2m/shop/settings') {
     return new Response(JSON.stringify({ ok: true, data: { settings: shopSettings } }), { headers: { 'content-type': 'application/json' } });
@@ -346,5 +359,95 @@ describe('shop settings and branding CLI', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(calls).toEqual([]);
     await rm(directory, { recursive: true });
+  });
+});
+
+describe('shop cover and sales-links CLI', () => {
+  it('uploads, PUTs, completes and attaches a cover using the environment key only on API calls', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-cover-cli-'));
+    try {
+      const file = join(directory, 'cover.png');
+      await writeFile(file, new Uint8Array([137, 80, 78, 71]));
+      await run('shop', 'cover', 'upload', 'product-1', file);
+      expect(soleJson()).toMatchObject({ ok: true, data: { product: { id: 'product-1' } } });
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        'POST /api/m2m/shop/image-assets/product-cover/upload', 'PUT /candidate',
+        'POST /api/m2m/shop/image-assets/product-cover/complete', 'POST /api/m2m/shop/products/update',
+      ]);
+      expect(calls[0]?.body).toEqual({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4 });
+      expect(calls[1]?.headers.has('x-api-key')).toBe(false);
+      expect(calls[1]?.headers.has('authorization')).toBe(false);
+      expect(calls[1]?.headers.get('content-type')).toBe('image/png');
+      expect(calls[3]?.body).toEqual({ id: 'product-1', coverUrl: '/api/public/assets/product-cover/1.png' });
+      for (const call of calls.filter((call) => call.path.startsWith('/api/'))) {
+        expect(call.headers.get('x-api-key')).toBe('shop-secret-from-env');
+        expect(call.headers.has('authorization')).toBe(false);
+      }
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('does not update a product when upload completion fails', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-cover-cli-'));
+    try {
+      const file = join(directory, 'cover.png');
+      await writeFile(file, new Uint8Array([137, 80, 78, 71]));
+      h.fetchImpl = async (input, init) => String(input).endsWith('/complete')
+        ? Response.json({ ok: false, error: { code: 'validation', message: 'Invalid image signature' } }, { status: 400 })
+        : fetchImpl(input, init);
+      await run('shop', 'cover', 'upload', 'product-1', file);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/image-assets/product-cover/upload', '/candidate']);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it.each([
+    ['list', undefined, 'GET', '/api/m2m/shop/sales-links'],
+    ['show', 'link-1', 'GET', '/api/m2m/shop/sales-links/link-1'],
+    ['delete', 'link-1', 'DELETE', '/api/m2m/shop/sales-links/link-1'],
+  ] as const)('sends sales-links %s with only the environment key', async (command, id, method, path) => {
+    await run('shop', 'sales-links', command, ...(id === undefined ? [] : [id]));
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method, path });
+    expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it.each(['create', 'update'] as const)('sends sales-links %s JSON without inventing a revision', async (command) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-sales-links-cli-'));
+    try {
+      const file = join(directory, 'link.json');
+      const fields = { ...salesLinkFields, ...(command === 'update' ? { expectedRevision: 7 } : {}) };
+      await writeFile(file, JSON.stringify(fields));
+      await run('shop', 'sales-links', command, ...(command === 'update' ? ['link-1'] : []), '--json-file', file);
+      expect(soleJson()).toMatchObject({ ok: true, data: { salesLink: { id: 'link-1' } } });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ method: 'POST', path: `/api/m2m/shop/sales-links${command === 'update' ? '/link-1' : ''}` });
+      expect(calls[0]?.body).toMatchObject({ ...fields, ...(command === 'update' ? { id: 'link-1' } : {}) });
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it.each([
+    { ...salesLinkFields },
+    { ...salesLinkFields, expectedRevision: 0 },
+    { ...salesLinkFields, expectedRevision: 1, id: 'foreign-id' },
+    { ...salesLinkFields, expectedRevision: 1, unexpected: true },
+  ])('rejects an invalid sales-link update before any request: %j', async (fields) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-sales-links-cli-'));
+    try {
+      const file = join(directory, 'link.json');
+      await writeFile(file, JSON.stringify(fields));
+      await run('shop', 'sales-links', 'update', 'link-1', '--json-file', file);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(calls).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
   });
 });

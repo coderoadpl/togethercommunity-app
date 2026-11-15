@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 
 import { createShopManagementClient } from './http.js';
 
@@ -187,5 +187,80 @@ describe('shop management client settings calls', () => {
       expect(call.headers.get('x-tenant')).toBe('acme');
       expect(call.headers.has('authorization')).toBe(false);
     }
+  });
+});
+
+const salesLinkFields = { slug: 'handbook', title: 'Handbook', heading: 'Buy the handbook', productIds: ['product-1'] };
+const salesLink = { ...salesLinkFields, id: 'link/1', tenantId: 'acme', revision: 1, createdAt: product.createdAt, updatedAt: product.createdAt };
+
+describe('shop management client asset calls', () => {
+  it('sends sales-link operations to keyed routes with encoded ids and keeps expectedRevision', async () => {
+    const seen: { method: string; path: string; headers: Headers; body: unknown }[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      seen.push({ method, path: url.pathname, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+      const data = method === 'DELETE' ? { deleted: true }
+        : method === 'GET' && url.pathname === SHOP_ASSETS_ROUTES.listSalesLinks.path ? { salesLinks: [salesLink] }
+          : { salesLink };
+      return Response.json({ ok: true, data });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+    const results = [
+      await client.listSalesLinks(),
+      await client.createSalesLink(salesLinkFields),
+      await client.getSalesLink({ id: 'link/1' }),
+      await client.updateSalesLink({ ...salesLinkFields, id: 'link/1', expectedRevision: 1 }),
+      await client.deleteSalesLink({ id: 'link/1' }),
+    ];
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'GET /api/m2m/shop/sales-links', 'POST /api/m2m/shop/sales-links',
+      'GET /api/m2m/shop/sales-links/link%2F1', 'POST /api/m2m/shop/sales-links/link%2F1', 'DELETE /api/m2m/shop/sales-links/link%2F1',
+    ]);
+    expect(seen[3]?.body).toEqual({ ...salesLinkFields, id: 'link/1', expectedRevision: 1 });
+    expect(seen[4]?.body).toBe(null);
+    for (const call of seen) {
+      expect(call.headers.get('x-api-key')).toBe('shop-secret');
+      expect(call.headers.get('x-tenant')).toBe('acme');
+      expect(call.headers.has('authorization')).toBe(false);
+      expect(call.headers.has('cookie')).toBe(false);
+    }
+  });
+
+  it('uploads a cover with credentials only on API requests, then completes it', async () => {
+    const seen: { method: string; path: string; headers: Headers; body: unknown }[] = [];
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      seen.push({ method: init?.method ?? 'GET', path: url.pathname, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
+      if (url.hostname === 'storage.example.test') return new Response(null);
+      return Response.json({ ok: true, data: url.pathname.endsWith('/upload')
+        ? { key: 'image-asset-candidates/acme/product-cover/1.png', servePath: '/api/public/assets/product-cover/1.png', upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+        : { url: '/api/public/assets/product-cover/1.png' } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+    const result = await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: bytes.byteLength, body: bytes });
+    expect(result).toEqual({ ok: true, value: { url: '/api/public/assets/product-cover/1.png' } });
+    expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
+      `POST ${SHOP_ASSETS_ROUTES.productCoverUpload.path}`, 'PUT /candidate', `POST ${SHOP_ASSETS_ROUTES.productCoverComplete.path}`,
+    ]);
+    expect(seen[0]?.body).toEqual({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4 });
+    expect(seen[1]?.body).toBe(bytes);
+    expect(seen[1]?.headers.get('content-type')).toBe('image/png');
+    expect(seen[1]?.headers.has('x-api-key')).toBe(false);
+    expect(seen[1]?.headers.has('x-tenant')).toBe(false);
+    expect(seen[1]?.headers.has('authorization')).toBe(false);
+    expect(seen[2]?.body).toEqual({ key: 'image-asset-candidates/acme/product-cover/1.png' });
+    for (const call of [seen[0], seen[2]]) expect(call?.headers.get('x-api-key')).toBe('shop-secret');
+  });
+
+  it('does not complete an upload rejected by storage', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => init?.method === 'PUT'
+      ? new Response(null, { status: 403 })
+      : Response.json({ ok: true, data: { key: 'image-asset-candidates/acme/product-cover/1.png', servePath: '/api/public/assets/product-cover/1.png', upload: { url: 'https://storage.example.test/candidate', headers: {}, expiresAt: '2026-11-15T10:15:00.000Z' } } }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect(await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array(4) })).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

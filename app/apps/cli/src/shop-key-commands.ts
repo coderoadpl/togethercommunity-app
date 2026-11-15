@@ -9,7 +9,7 @@ import {
   type ShopManagementClient,
   type ShopManagementClientOptions,
 } from '#core/client/index.js';
-import { shopCatalogContracts, shopSettingsContracts } from '#core/contract/index.js';
+import { imageAssetUploadRequestSchema, shopAssetsContracts, shopCatalogContracts, shopSettingsContracts } from '#core/contract/index.js';
 import {
   currencySchema,
   deliveryMethodSchema,
@@ -134,7 +134,23 @@ const shopSettingsPatchInput = async (source: string) => {
   return parsed.ok ? contractInput(shopSettingsContracts.updateSettings.input, parsed.value, 'Invalid shop settings') : parsed;
 };
 
-const brandingUploadInput = async (kind: z.output<typeof brandingKindSchema>, file: string) => {
+const salesLinkFileInput = async <S extends z.ZodTypeAny>(source: string, schema: S, id?: string) => {
+  let raw: string;
+  try {
+    raw = source === '-' ? await readStdin() : await readFile(source, 'utf8');
+  } catch (cause) {
+    return err(validation(`Could not read the sales-link JSON from "${source}": ${String(cause)}`));
+  }
+  const parsed = inlineJson(raw, 'sales link');
+  if (!parsed.ok) return parsed;
+  if (id === undefined) return contractInput(schema, parsed.value, 'Invalid sales link');
+  const fields = z.record(z.unknown()).safeParse(parsed.value);
+  if (!fields.success) return err(validation('Invalid sales-link update'));
+  if (fields.data['id'] !== undefined && fields.data['id'] !== id) return err(validation('Sales-link id must match the command argument'));
+  return contractInput(schema, { ...fields.data, id }, 'Invalid sales-link update');
+};
+
+const imageUploadInput = async (kind: z.output<typeof brandingKindSchema> | 'product-cover', file: string) => {
   const contentType = imageExtensionSchema.safeParse(extname(file).slice(1).toLowerCase());
   if (!contentType.success) return err(validation('The image file must end in .png, .jpg, .jpeg, .webp, .svg or .ico'));
   let bytes: Uint8Array<ArrayBuffer>;
@@ -143,9 +159,9 @@ const brandingUploadInput = async (kind: z.output<typeof brandingKindSchema>, fi
   } catch (cause) {
     return err(validation(`Could not read the image file "${file}": ${String(cause)}`));
   }
-  const input = contractInput(shopSettingsContracts.brandingAssetUpload.input, {
+  const input = contractInput(imageAssetUploadRequestSchema, {
     kind, fileName: basename(file), contentType: contentType.data, sizeBytes: bytes.byteLength,
-  }, 'Invalid branding image');
+  }, kind === 'product-cover' ? 'Invalid product cover image' : 'Invalid branding image');
   return input.ok ? ok({ ...input.value, body: bytes }) : input;
 };
 
@@ -482,7 +498,37 @@ export const registerShopKeyCommands = (
   const branding = shop.command('branding').description('Brand images of the key\'s workspace');
   keyed(branding.command('upload <kind> <file>').description('Upload a logo, logo-dark, favicon or share-image file and print its URL for shop settings set'))
     .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema]), async (client, [kind, file]) => {
-      const input = await brandingUploadInput(kind, file);
+      const input = await imageUploadInput(kind, file);
       return input.ok ? client.uploadBrandingAsset(input.value) : input;
     }, (data) => data.url));
+
+  const cover = shop.command('cover').description('Product cover images');
+  keyed(cover.command('upload <productId> <file>').description('Upload a product cover and attach the completed image to the product'))
+    .action(run(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file]) => {
+      const input = await imageUploadInput('product-cover', file);
+      if (!input.ok) return input;
+      const uploaded = await client.uploadProductCover(input.value);
+      if (!uploaded.ok) return uploaded;
+      return client.updateProduct({ id, coverUrl: uploaded.value.url });
+    }, (data) => JSON.stringify(data.product, null, 2)));
+
+  const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');
+  keyed(salesLinks.command('list').description('List sales links'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.listSalesLinks(), (data) => JSON.stringify(data.salesLinks, null, 2)));
+  keyed(salesLinks.command('show <id>').description('Show a sales link and its current revision'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.getSalesLink({ id }), (data) => JSON.stringify(data.salesLink, null, 2)));
+  keyed(salesLinks.command('create').description('Create a sales link from a JSON object')
+    .requiredOption('--json-file <path>', 'JSON file with sales-link fields, or - for stdin'))
+    .action(run(z.tuple([settingsSetSchema]), async (client, [options]) => {
+      const input = await salesLinkFileInput(options.jsonFile, shopAssetsContracts.createSalesLink.input);
+      return input.ok ? client.createSalesLink(input.value) : input;
+    }, (data) => JSON.stringify(data.salesLink, null, 2)));
+  keyed(salesLinks.command('update <id>').description('Replace sales-link fields using expectedRevision from the JSON object')
+    .requiredOption('--json-file <path>', 'JSON file with all fields and expectedRevision, or - for stdin'))
+    .action(run(z.tuple([idSchema, settingsSetSchema]), async (client, [id, options]) => {
+      const input = await salesLinkFileInput(options.jsonFile, shopAssetsContracts.updateSalesLink.input, id);
+      return input.ok ? client.updateSalesLink(input.value) : input;
+    }, (data) => JSON.stringify(data.salesLink, null, 2)));
+  keyed(salesLinks.command('delete <id>').description('Delete a sales link'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deleteSalesLink({ id }), () => 'deleted'));
 };

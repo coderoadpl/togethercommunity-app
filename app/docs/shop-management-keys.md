@@ -23,7 +23,8 @@ API key` for it, and no session route accepts it.
 | Order and fulfilment routes, including InPost ShipX (below) | Available |
 | Shop settings and branding image routes (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
-| Product image, sales-link, invoice, refund and integration routes | Not yet available |
+| Product cover image and sales-link routes (below) | Available |
+| Invoice, refund and integration routes | Not yet available |
 
 ## Scopes
 
@@ -35,8 +36,8 @@ access.
 
 | Scope | Grants on the shop routes |
 |---|---|
-| `shop:catalog:read` | Read products, prices and stock |
-| `shop:catalog:write` | Create, edit, publish and delete product drafts; manage prices and stock |
+| `shop:catalog:read` | Read products, prices, stock and sales links |
+| `shop:catalog:write` | Create, edit, publish and delete product drafts; manage prices, stock, covers and sales links |
 | `shop:orders:read` | Read and export orders |
 | `shop:fulfilment:write` | Fulfil orders, including configured paid shipment creation |
 | `shop:settings:read` | Read shop settings |
@@ -184,6 +185,64 @@ exposes the thirteen calls with the same method names as the session client
 `enableProductStock`, `adjustProductStock`, `setProductStockThreshold`). It
 sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `Authorization` header. Use it only from a backend.
+
+## Product covers and sales links
+
+These routes reuse the session image-asset and sales-link schemas and use-cases.
+Cover upload and completion require `shop:catalog:write`. Completion checks the
+candidate workspace, size and image signature before publishing it; it returns a
+public asset URL without changing any product. Attach it with product update.
+The public asset URL retains its existing redirect to signed storage.
+
+| Method and path | Scope | Session counterpart |
+|---|---|---|
+| `POST /api/m2m/shop/image-assets/product-cover/upload` | `shop:catalog:write` | `POST /api/image-assets/product-cover/upload` |
+| `POST /api/m2m/shop/image-assets/product-cover/complete` | `shop:catalog:write` | `POST /api/image-assets/product-cover/complete` |
+| `GET /api/m2m/shop/sales-links` | `shop:catalog:read` | `GET /api/sales-links` |
+| `POST /api/m2m/shop/sales-links` | `shop:catalog:write` | `POST /api/sales-links` |
+| `GET /api/m2m/shop/sales-links/:id` | `shop:catalog:read` | `GET /api/sales-links/:id` |
+| `POST /api/m2m/shop/sales-links/:id` | `shop:catalog:write` | `POST /api/sales-links/:id` |
+| `DELETE /api/m2m/shop/sales-links/:id` | `shop:catalog:write` | `DELETE /api/sales-links/:id` |
+
+Sales-link creation returns `201`. Updates require the full editable fields,
+`id` matching the path, and `expectedRevision` from the latest read; a stale
+revision returns the existing `409 conflict`. Foreign sales-link ids return
+`404 not_found`. The same publication, product ownership, subscription and VAT
+checks apply as on session routes. Write scope does not grant read access.
+
+The typed client exposes `uploadProductCover`, `listSalesLinks`, `getSalesLink`,
+`createSalesLink`, `updateSalesLink` and `deleteSalesLink`. The cover helper runs
+upload → signed storage PUT → completion; only the two API requests carry the
+shop key, never the storage PUT. The CLI adds the product update after successful
+completion, and never updates the product when upload or completion fails.
+
+```bash
+pnpm --silent run cli --tenant acme shop cover upload <product-id> ./cover.png
+pnpm --silent run cli --tenant acme shop sales-links list
+pnpm --silent run cli --tenant acme shop sales-links show <sales-link-id>
+pnpm --silent run cli --tenant acme shop sales-links create --json-file ./sales-link.json
+pnpm --silent run cli --tenant acme shop sales-links update <sales-link-id> --json-file ./sales-link-update.json
+pnpm --silent run cli --tenant acme shop sales-links delete <sales-link-id>
+```
+
+Creation file example (replace the product id with a product of the workspace):
+
+```json
+{
+  "slug": "handbook-bundle",
+  "title": "Handbook bundle",
+  "heading": "Buy the printed handbook",
+  "productIds": ["<product-id>"],
+  "active": false
+}
+```
+
+For updates, include all editable fields and `expectedRevision` (for example,
+`1` after creation). The CLI inserts `id` from its argument; if the file also
+contains `id`, it must match. It never fetches or invents a revision. Both JSON
+commands accept `--json-file -` for stdin. As with the other shop commands,
+`--api-key-env <name>` selects the environment variable holding the key; a
+stored session is never used.
 
 ## Order and fulfilment routes
 

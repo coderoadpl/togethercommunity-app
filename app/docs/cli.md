@@ -191,3 +191,46 @@ one that is not linked, reports `changed: false`. A workspace that belongs to
 another organization is a `conflict`; an organization admin, or an owner who is
 only a workspace admin, is `forbidden`. Both changes are recorded in the
 organization audit and in the workspace audit.
+
+Unlinking is a `conflict` while the workspace takes any configuration group from
+the organization. `org workspace sources` lists the six groups of a linked
+workspace (`payments_live`, `payments_test`, `invoicing`, `email_transport`,
+`telemetry`, `shipping_carrier`) and whether each comes from the `workspace`
+(the default) or the `organization`; owners and admins can read it:
+
+```bash
+pnpm --silent run cli org workspace sources acme --org holding
+```
+
+Organization owners keep the company identity and the settings that inheriting
+workspaces will use. An empty `--legal-name` or `--legal-address`, and
+`--invoicing-provider none` or `--shipx-sender none`, clear the value; an update
+that changes nothing reports `changed: false`. Each change is recorded as
+`organization.updated` with the names of the changed fields only:
+
+```bash
+pnpm --silent run cli org update --org holding --legal-name "Holding Ltd" \
+  --legal-address "1 Main Street, Warsaw" --invoicing-provider ksef --ksef-submission-mode manual
+pnpm --silent run cli org update --org holding --shipx-environment production \
+  --shipx-sender '{"name":"Warehouse","email":"warehouse@example.test","phone":"500600700","street":"Main","buildingNumber":"1","city":"Warsaw","postCode":"00-001"}'
+```
+
+Organization secrets are encrypted like workspace secrets. Owners and admins
+list them with masked previews only; owners set and delete them. A value is
+read from the environment variable named by `--value-env` or, without it, from
+stdin, and never from a command-line argument:
+
+```bash
+pnpm --silent run cli org secret list --org holding
+pnpm --silent run cli org secret set ifirma.invoiceApiKey --value-env IFIRMA_INVOICE_KEY --org holding
+pnpm --silent run cli org secret set smtp.password --org holding < smtp-password.txt
+pnpm --silent run cli org secret delete smtp.password --org holding
+```
+
+The generic setter accepts the iFirma, KSeF, SES, SMTP, Resend and ShipX keys.
+The Stripe keys and the telemetry connection are stored only through their
+dedicated flows, and webhook secrets, endpoint ids, storage, video and Meta
+conversions credentials stay per workspace, so these are `validation` errors.
+Deleting a secret is a `conflict` while a workspace of the organization takes
+that key's group from the organization. Each change is recorded as `secret.set`
+or `secret.deleted` with the key name and the masked preview, never the value.

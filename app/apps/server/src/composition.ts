@@ -7,13 +7,17 @@ import {
   createOrganizationAuditRepository,
   createOrganizationMemberRepository,
   createOrganizationRepository,
+  createOrganizationSecretRepository,
   createOrganizationWorkspaceRepository,
+  createTenantConfigSourceRepository,
 } from '#adapters/db/organizations.js';
 import type {
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
+  OrganizationSecretRepository,
   OrganizationWorkspaceRepository,
+  TenantConfigSourceRepository,
 } from '#core/server/index.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -537,6 +541,8 @@ export interface AppDeps {
   organizationMembers: OrganizationMemberRepository;
   organizationAudit: OrganizationAuditRepository;
   organizationWorkspaces: OrganizationWorkspaceRepository;
+  organizationSecrets: OrganizationSecretRepository;
+  tenantConfigSources: TenantConfigSourceRepository;
   team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
@@ -1567,6 +1573,8 @@ export const createDeps = (
     organizationMembers: createOrganizationMemberRepository(db),
     organizationAudit: createOrganizationAuditRepository(db),
     organizationWorkspaces: createOrganizationWorkspaceRepository(db),
+    organizationSecrets: createOrganizationSecretRepository(db),
+    tenantConfigSources: createTenantConfigSourceRepository(db),
     team,
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,

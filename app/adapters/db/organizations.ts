@@ -5,20 +5,45 @@ import {
   organizationMemberAccountSchema,
   organizationMemberSchema,
   organizationSchema,
+  organizationSecretSchema,
+  organizationSettingsSchema,
   organizationWorkspaceSchema,
+  tenantConfigSourceSchema,
   type OrganizationWorkspace,
 } from '#core/domain/index.js';
 import type {
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
+  OrganizationSecretRepository,
   OrganizationWorkspaceRepository,
+  TenantConfigSourceRepository,
 } from '#core/server/index.js';
 
 import { user } from './auth-schema.js';
 import type { Db } from './client.js';
-import { tenantAdmins, tenantAuditEvents, tenants } from './app-schema.js';
-import { organizationAuditEvents, organizationMembers, organizations } from './organization-schema.js';
+import { tenantAdmins, tenantAuditEvents, tenantConfigSources, tenants } from './app-schema.js';
+import { organizationAuditEvents, organizationMembers, organizationSecrets, organizations } from './organization-schema.js';
+
+type OrganizationRow = typeof organizations.$inferSelect;
+
+const settingsOf = (row: OrganizationRow) => organizationSettingsSchema.parse({
+  legalName: row.legalName,
+  legalAddress: row.legalAddress,
+  invoicingProvider: row.invoicingProvider,
+  ksefSubmissionMode: row.ksefSubmissionMode,
+  shipxEnvironment: row.shipxEnvironment,
+  shipxSender: row.shipxSender,
+});
+
+// jsonb does not keep key order, so stored and submitted objects are compared with sorted keys.
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, nested: unknown) =>
+  typeof nested === 'object' && nested !== null && !Array.isArray(nested)
+    ? Object.fromEntries(Object.entries(nested).toSorted(([left], [right]) => left.localeCompare(right)))
+    : nested);
+
+const differs = <T>(next: T | undefined, stored: unknown): next is T =>
+  next !== undefined && canonical(next) !== canonical(stored);
 
 export const createOrganizationRepository = (db: Db): OrganizationRepository => ({
   create: async (organization) => {
@@ -65,6 +90,90 @@ export const createOrganizationRepository = (db: Db): OrganizationRepository => 
     await tx.insert(organizationAuditEvents).values({ ...audit, organizationId });
     return organizationSchema.parse(rows[0]);
   }),
+  findSettings: async (organizationId) => {
+    const rows = await db.select().from(organizations).where(eq(organizations.id, organizationId)).limit(1);
+    return rows[0] === undefined ? null : settingsOf(rows[0]);
+  },
+  updateSettings: async (organizationId, { update, updatedAt, audit }) => db.transaction(async (tx) => {
+    const rows = await tx.select().from(organizations).where(eq(organizations.id, organizationId)).for('no key update');
+    const current = rows[0];
+    if (current === undefined) return null;
+    const changes = {
+      ...(differs(update.name, current.name) ? { name: update.name } : {}),
+      ...(differs(update.legalName, current.legalName) ? { legalName: update.legalName } : {}),
+      ...(differs(update.legalAddress, current.legalAddress) ? { legalAddress: update.legalAddress } : {}),
+      ...(differs(update.invoicingProvider, current.invoicingProvider) ? { invoicingProvider: update.invoicingProvider } : {}),
+      ...(differs(update.ksefSubmissionMode, current.ksefSubmissionMode) ? { ksefSubmissionMode: update.ksefSubmissionMode } : {}),
+      ...(differs(update.shipxEnvironment, current.shipxEnvironment) ? { shipxEnvironment: update.shipxEnvironment } : {}),
+      ...(differs(update.shipxSender, current.shipxSender) ? { shipxSender: update.shipxSender } : {}),
+    };
+    const fields = Object.keys(changes);
+    if (fields.length === 0) {
+      return { organization: organizationSchema.parse(current), settings: settingsOf(current), changed: false };
+    }
+    const updated = await tx.update(organizations).set({ ...changes, updatedAt })
+      .where(eq(organizations.id, organizationId)).returning();
+    if (updated[0] === undefined) return null;
+    await tx.insert(organizationAuditEvents).values({ ...audit, organizationId, data: { fields } });
+    return { organization: organizationSchema.parse(updated[0]), settings: settingsOf(updated[0]), changed: true };
+  }),
+});
+
+const secretRow = (organizationId: string, key: string) =>
+  and(eq(organizationSecrets.organizationId, organizationId), eq(organizationSecrets.key, key));
+
+export const createOrganizationSecretRepository = (db: Db): OrganizationSecretRepository => ({
+  listByOrganization: async (organizationId) => (await db.select().from(organizationSecrets)
+    .where(eq(organizationSecrets.organizationId, organizationId))
+    .orderBy(asc(organizationSecrets.key)))
+    .map((row) => organizationSecretSchema.parse(row)),
+  set: async (organizationId, { secret, group, audit }) => db.transaction(async (tx) => {
+    const rows = await tx.insert(organizationSecrets).values({ ...secret, organizationId })
+      .onConflictDoUpdate({
+        target: [organizationSecrets.organizationId, organizationSecrets.key],
+        set: {
+          ciphertext: secret.ciphertext,
+          iv: secret.iv,
+          authTag: secret.authTag,
+          maskedPreview: secret.maskedPreview,
+          updatedAt: secret.updatedAt,
+        },
+      })
+      .returning();
+    if (rows[0] === undefined) throw new Error('organization_secrets upsert returned no row');
+    await tx.insert(organizationAuditEvents).values({
+      ...audit, organizationId, data: { key: secret.key, maskedPreview: secret.maskedPreview, group },
+    });
+    return organizationSecretSchema.parse(rows[0]);
+  }),
+  delete: async (organizationId, { key, group, audit }) => db.transaction(async (tx) => {
+    const rows = await tx.select().from(organizationSecrets).where(secretRow(organizationId, key)).for('update');
+    const current = rows[0];
+    if (current === undefined) return { status: 'not_found' } as const;
+    const inheriting = await tx.select({ tenantId: tenantConfigSources.tenantId }).from(tenantConfigSources)
+      .innerJoin(tenants, eq(tenants.id, tenantConfigSources.tenantId))
+      .where(and(eq(tenants.organizationId, organizationId), eq(tenantConfigSources.configGroup, group)))
+      .limit(1);
+    if (inheriting.length > 0) return { status: 'config_inherited' } as const;
+    await tx.delete(organizationSecrets).where(secretRow(organizationId, key));
+    await tx.insert(organizationAuditEvents).values({
+      ...audit, organizationId, data: { key, maskedPreview: current.maskedPreview, group },
+    });
+    return { status: 'deleted', secret: organizationSecretSchema.parse(current) } as const;
+  }),
+});
+
+export const createTenantConfigSourceRepository = (db: Db): TenantConfigSourceRepository => ({
+  listByTenant: async (tenantId) => (await db.select().from(tenantConfigSources)
+    .where(eq(tenantConfigSources.tenantId, tenantId))
+    .orderBy(asc(tenantConfigSources.configGroup)))
+    .map((row) => tenantConfigSourceSchema.parse({
+      tenantId: row.tenantId,
+      group: row.configGroup,
+      source: row.source,
+      updatedAt: row.updatedAt,
+      updatedByUserId: row.updatedByUserId,
+    })),
 });
 
 const memberAccountColumns = {
@@ -217,7 +326,9 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     if (checked.status !== 'allowed') return checked;
     if (checked.organizationId === null) return { status: 'not_linked', workspace: checked.workspace } as const;
     if (checked.organizationId !== input.organizationId) return { status: 'linked_elsewhere' } as const;
-    // TODO(O06): return config_sources_present while tenant_config_sources holds a row for this tenant (table arrives in O06).
+    const sources = await tx.select({ tenantId: tenantConfigSources.tenantId }).from(tenantConfigSources)
+      .where(eq(tenantConfigSources.tenantId, tenantId)).limit(1);
+    if (sources.length > 0) return { status: 'config_sources_present' } as const;
     await tx.update(tenants).set({ organizationId: null }).where(eq(tenants.id, tenantId));
     await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId: input.organizationId });
     await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId });

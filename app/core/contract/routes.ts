@@ -2671,6 +2671,7 @@ export const API_PATHS = {
   operatorOrganizationLimits: API_ROUTES.operatorOrganizationLimits.path,
   organizations: API_ROUTES.organizations.path,
   organization: API_ROUTES.organization.path,
+  organizationUpdate: API_ROUTES.organizationUpdate.path,
   organizationMembers: API_ROUTES.organizationMembers.path,
   organizationMemberAdd: API_ROUTES.organizationMemberAdd.path,
   organizationMemberRole: API_ROUTES.organizationMemberRole.path,
@@ -2679,6 +2680,9 @@ export const API_PATHS = {
   organizationWorkspaces: API_ROUTES.organizationWorkspaces.path,
   organizationWorkspaceLink: API_ROUTES.organizationWorkspaceLink.path,
   organizationWorkspaceUnlink: API_ROUTES.organizationWorkspaceUnlink.path,
+  organizationWorkspaceSources: API_ROUTES.organizationWorkspaceSources.path,
+  organizationSecrets: API_ROUTES.organizationSecrets.path,
+  organizationSecretDelete: API_ROUTES.organizationSecretDelete.path,
 } as const;
 
 /**

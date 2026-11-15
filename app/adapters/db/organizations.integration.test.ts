@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Organization } from '#core/domain/index.js';
@@ -7,10 +7,22 @@ import {
   createOrganizationAuditRepository,
   createOrganizationMemberRepository,
   createOrganizationRepository,
+  createOrganizationSecretRepository,
   createOrganizationWorkspaceRepository,
+  createTenantConfigSourceRepository,
 } from './organizations.js';
 import { createTenantDirectory, createTenantRepository } from './repositories.js';
-import { organizationAuditEvents, organizationMembers, organizations, tenantAdmins, tenantAuditEvents, tenants, user } from './schema.js';
+import {
+  organizationAuditEvents,
+  organizationMembers,
+  organizationSecrets,
+  organizations,
+  tenantAdmins,
+  tenantAuditEvents,
+  tenantConfigSources,
+  tenants,
+  user,
+} from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -315,5 +327,158 @@ describe('organization repositories', () => {
         await repository.add('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
       }
     }
+  });
+
+  it('reads default settings, updates only changed fields with one audit row and compares the sender regardless of key order', async () => {
+    const repository = createOrganizationRepository(database.db);
+    await repository.create(organization('org-settings', 'settings'));
+    const audit = (id: string) => ({
+      id, kind: 'organization.updated' as const, actorUserId: 'settings-owner', actorEmail: 'settings-owner@example.test',
+      actorKeyId: null, subjectTenantId: null, subjectUserId: null, at: later,
+    });
+    const sender = {
+      name: 'Warehouse', company: null, email: 'warehouse@example.test', phone: '500600700',
+      street: 'Main', buildingNumber: '1', city: 'Warsaw', postCode: '00-001',
+    };
+    const reordered = {
+      postCode: '00-001', city: 'Warsaw', buildingNumber: '1', street: 'Main',
+      phone: '500600700', email: 'warehouse@example.test', company: null, name: 'Warehouse',
+    };
+    const defaults = {
+      legalName: null, legalAddress: null, invoicingProvider: null, ksefSubmissionMode: 'automatic', shipxEnvironment: 'sandbox', shipxSender: null,
+    };
+
+    expect(await repository.findSettings('org-settings')).toEqual(defaults);
+    expect(await repository.findSettings('org-unknown')).toBeNull();
+    expect(await repository.updateSettings('org-unknown', { update: { legalName: 'Nobody' }, updatedAt: later, audit: audit('settings-unknown') })).toBeNull();
+    expect(await repository.updateSettings('org-settings', {
+      update: { name: 'Settings Group', legalName: 'Settings Ltd', invoicingProvider: 'ksef', shipxSender: sender },
+      updatedAt: later,
+      audit: audit('settings-1'),
+    })).toEqual({
+      organization: { ...organization('org-settings', 'settings'), name: 'Settings Group', updatedAt: later },
+      settings: { ...defaults, legalName: 'Settings Ltd', invoicingProvider: 'ksef', shipxSender: sender },
+      changed: true,
+    });
+    expect(await repository.updateSettings('org-settings', {
+      update: { legalName: 'Settings Ltd', shipxSender: reordered },
+      updatedAt: '2026-11-15T12:00:00.000Z',
+      audit: audit('settings-2'),
+    })).toMatchObject({ organization: { updatedAt: later }, changed: false });
+    expect(await repository.updateSettings('org-settings', {
+      update: { invoicingProvider: null, shipxEnvironment: 'production' }, updatedAt: later, audit: audit('settings-3'),
+    })).toMatchObject({ settings: { invoicingProvider: null, shipxEnvironment: 'production' }, changed: true });
+    expect((await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-settings')))
+      .map((row) => [row.id, row.data])).toEqual([
+      ['settings-1', { fields: ['name', 'legalName', 'invoicingProvider', 'shipxSender'] }],
+      ['settings-3', { fields: ['invoicingProvider', 'shipxEnvironment'] }],
+    ]);
+    await expect(database.db.execute(sql`UPDATE organizations SET shipx_environment = 'staging' WHERE id = 'org-settings'`)).rejects.toThrow();
+  });
+
+  it('upserts organization secrets with their audit rows and refuses deletion while a linked workspace inherits the group', async () => {
+    await createOrganizationRepository(database.db).create(organization('org-secrets', 'secrets'));
+    await createOrganizationRepository(database.db).create(organization('org-secrets-other', 'secrets-other'));
+    await database.db.insert(tenants).values([
+      { id: 'secrets-ws', slug: 'secrets-ws', name: 'Secrets workspace', createdAt: at, organizationId: 'org-secrets' },
+      { id: 'secrets-foreign', slug: 'secrets-foreign', name: 'Foreign workspace', createdAt: at, organizationId: 'org-secrets-other' },
+    ]);
+    const repository = createOrganizationSecretRepository(database.db);
+    const audit = (id: string, kind: 'secret.set' | 'secret.deleted') => ({
+      id, kind, actorUserId: 'secrets-owner', actorEmail: 'secrets-owner@example.test',
+      actorKeyId: null, subjectTenantId: null, subjectUserId: null, at: later,
+    });
+    const secret = (id: string, key: 'ksef.token' | 'smtp.password', preview: string) => ({
+      id, key, ciphertext: `cipher-${id}`, iv: `iv-${id}`, authTag: `tag-${id}`, maskedPreview: preview, updatedAt: later,
+    });
+
+    expect(await repository.set('org-secrets', { secret: secret('s-1', 'ksef.token', '••••1111'), group: 'invoicing', audit: audit('sa-1', 'secret.set') }))
+      .toEqual({ ...secret('s-1', 'ksef.token', '••••1111'), organizationId: 'org-secrets' });
+    expect(await repository.set('org-secrets', { secret: secret('s-2', 'ksef.token', '••••2222'), group: 'invoicing', audit: audit('sa-2', 'secret.set') }))
+      .toEqual({ ...secret('s-2', 'ksef.token', '••••2222'), id: 's-1', organizationId: 'org-secrets' });
+    await repository.set('org-secrets', { secret: secret('s-3', 'smtp.password', '••••3333'), group: 'email_transport', audit: audit('sa-3', 'secret.set') });
+    expect((await repository.listByOrganization('org-secrets')).map((row) => [row.key, row.maskedPreview])).toEqual([
+      ['ksef.token', '••••2222'], ['smtp.password', '••••3333'],
+    ]);
+    expect(await repository.listByOrganization('org-secrets-other')).toEqual([]);
+
+    await database.db.insert(tenantConfigSources).values([
+      { tenantId: 'secrets-ws', configGroup: 'invoicing', source: 'organization', updatedAt: later, updatedByUserId: 'secrets-owner' },
+      { tenantId: 'secrets-foreign', configGroup: 'email_transport', source: 'organization', updatedAt: later, updatedByUserId: 'secrets-owner' },
+    ]);
+    expect(await repository.delete('org-secrets', { key: 'ksef.token', group: 'invoicing', audit: audit('sa-4', 'secret.deleted') }))
+      .toEqual({ status: 'config_inherited' });
+    expect(await repository.delete('org-secrets', { key: 'smtp.password', group: 'email_transport', audit: audit('sa-5', 'secret.deleted') }))
+      .toMatchObject({ status: 'deleted', secret: { key: 'smtp.password' } });
+    expect(await repository.delete('org-secrets', { key: 'smtp.password', group: 'email_transport', audit: audit('sa-6', 'secret.deleted') }))
+      .toEqual({ status: 'not_found' });
+    expect((await repository.listByOrganization('org-secrets')).map((row) => row.key)).toEqual(['ksef.token']);
+
+    await database.db.delete(tenantConfigSources).where(eq(tenantConfigSources.tenantId, 'secrets-ws'));
+    expect(await repository.delete('org-secrets', { key: 'ksef.token', group: 'invoicing', audit: audit('sa-7', 'secret.deleted') }))
+      .toMatchObject({ status: 'deleted' });
+    expect(await database.db.select().from(organizationSecrets).where(eq(organizationSecrets.organizationId, 'org-secrets'))).toEqual([]);
+    expect((await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-secrets')))
+      .map((row) => [row.id, row.kind, row.data])).toEqual([
+      ['sa-1', 'secret.set', { key: 'ksef.token', maskedPreview: '••••1111', group: 'invoicing' }],
+      ['sa-2', 'secret.set', { key: 'ksef.token', maskedPreview: '••••2222', group: 'invoicing' }],
+      ['sa-3', 'secret.set', { key: 'smtp.password', maskedPreview: '••••3333', group: 'email_transport' }],
+      ['sa-5', 'secret.deleted', { key: 'smtp.password', maskedPreview: '••••3333', group: 'email_transport' }],
+      ['sa-7', 'secret.deleted', { key: 'ksef.token', maskedPreview: '••••2222', group: 'invoicing' }],
+    ]);
+  });
+
+  it('refuses to unlink a workspace while it has a configuration source row and lists its sources', async () => {
+    await createOrganizationRepository(database.db).create(organization('org-sources', 'sources'));
+    await database.db.insert(tenants).values({ id: 'sources-ws', slug: 'sources-ws', name: 'Sources', createdAt: at });
+    await database.db.insert(tenantAdmins).values({ id: 'sources-grant', tenantId: 'sources-ws', userId: 'sources-owner', role: 'owner' });
+    await createOrganizationMemberRepository(database.db)
+      .add('org-sources', { id: 'sources-member', userId: 'sources-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    const workspaces = createOrganizationWorkspaceRepository(database.db);
+    const sources = createTenantConfigSourceRepository(database.db);
+    const change = (id: string, linked: boolean) => ({
+      organizationId: 'org-sources',
+      actorUserId: 'sources-owner',
+      organizationAudit: {
+        id: `sources-org-${id}`, kind: linked ? 'workspace.linked' as const : 'workspace.unlinked' as const, actorUserId: 'sources-owner',
+        actorEmail: 'sources-owner@example.test', actorKeyId: null, subjectTenantId: 'sources-ws', subjectUserId: null, data: {}, at,
+      },
+      tenantAudit: {
+        id: `sources-tenant-${id}`, kind: linked ? 'organization.linked' as const : 'organization.unlinked' as const, actorUserId: 'sources-owner',
+        actorEmail: 'sources-owner@example.test', subjectMemberId: null, reason: 'org-sources', at,
+      },
+    });
+    expect(await workspaces.link('sources-ws', change('a', true))).toMatchObject({ status: 'linked' });
+    await database.db.insert(tenantConfigSources).values({
+      tenantId: 'sources-ws', configGroup: 'telemetry', source: 'organization', updatedAt: later, updatedByUserId: 'sources-owner',
+    });
+    expect(await sources.listByTenant('sources-ws')).toEqual([
+      { tenantId: 'sources-ws', group: 'telemetry', source: 'organization', updatedAt: later, updatedByUserId: 'sources-owner' },
+    ]);
+    expect(await sources.listByTenant('acme')).toEqual([]);
+
+    expect(await workspaces.unlink('sources-ws', change('b', false))).toEqual({ status: 'config_sources_present' });
+    expect((await database.db.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, 'sources-ws')))[0]?.organizationId)
+      .toBe('org-sources');
+    expect((await database.db.select().from(tenantAuditEvents).where(eq(tenantAuditEvents.tenantId, 'sources-ws'))).map((row) => row.id))
+      .toEqual(['sources-tenant-a']);
+
+    await database.db.delete(tenantConfigSources).where(eq(tenantConfigSources.tenantId, 'sources-ws'));
+    expect(await workspaces.unlink('sources-ws', change('c', false))).toMatchObject({ status: 'unlinked' });
+  });
+
+  it('accepts only known groups and the organization source in the source table', async () => {
+    const row = { tenantId: 'acme', configGroup: 'invoicing' as const, source: 'organization' as const, updatedAt: later, updatedByUserId: 'owner' };
+    await expect(database.db.execute(sql`
+      INSERT INTO tenant_config_sources (tenant_id, config_group, source, updated_at, updated_by_user_id)
+      VALUES ('acme', 'invoicing', 'workspace', ${later}, 'owner')
+    `)).rejects.toThrow();
+    await expect(database.db.execute(sql`
+      INSERT INTO tenant_config_sources (tenant_id, config_group, source, updated_at, updated_by_user_id)
+      VALUES ('acme', 'branding', 'organization', ${later}, 'owner')
+    `)).rejects.toThrow();
+    await database.db.insert(tenantConfigSources).values(row);
+    await expect(database.db.insert(tenantConfigSources).values(row)).rejects.toThrow();
+    await database.db.delete(tenantConfigSources).where(eq(tenantConfigSources.tenantId, 'acme'));
   });
 });

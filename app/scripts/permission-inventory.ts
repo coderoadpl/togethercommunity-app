@@ -77,6 +77,12 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (declared !== undefined) return declared;
   if (path === '/api/organizations') return 'tenant:list-own';
   if (path === '/api/organizations/:organizationId') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/update') return 'organization:settings:write';
+  if (path === '/api/organizations/:organizationId/secrets') {
+    return method === 'GET' ? 'organization:secret:read' : 'organization:secret:write';
+  }
+  if (path === '/api/organizations/:organizationId/secrets/:key') return 'organization:secret:write';
+  if (path === '/api/organizations/:organizationId/workspaces/:tenantId/sources') return 'organization:read';
   if (path === '/api/organizations/:organizationId/members') {
     return method === 'GET' ? 'organization:member:read' : 'organization:member:write';
   }

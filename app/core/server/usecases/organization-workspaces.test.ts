@@ -5,7 +5,12 @@ import type { Identity, Organization } from '#core/domain/index.js';
 import { organizationContext } from '../organization-context.js';
 import { createOrganizationFakes, type OrganizationFakeWorkspace } from '../testing/organization-fakes.js';
 
-import { linkOrganizationWorkspace, listOrganizationWorkspaces, unlinkOrganizationWorkspace } from './organization-workspaces.js';
+import {
+  getWorkspaceConfigSources,
+  linkOrganizationWorkspace,
+  listOrganizationWorkspaces,
+  unlinkOrganizationWorkspace,
+} from './organization-workspaces.js';
 
 const at = '2026-11-15T12:00:00.000Z';
 const organization = (id: string, slug: string): Organization => ({
@@ -137,7 +142,7 @@ describe('organization workspace link and unlink', () => {
     const h = await harness();
     const octx = await h.octx('owner-1');
     await linkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps);
-    h.configSourceTenantIds.add('acme');
+    h.configSourceRows.push({ tenantId: 'acme', group: 'telemetry', source: 'organization', updatedAt: '2026-11-15T12:00:00.000Z', updatedByUserId: 'owner-1' });
     expect(await unlinkOrganizationWorkspace(octx, { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(linkOf(h, 'acme')).toBe('org-1');
@@ -148,5 +153,34 @@ describe('organization workspace link and unlink', () => {
     const h = await harness();
     expect(await linkOrganizationWorkspace(await h.octx('owner-1'), { organizationId: 'org-1', tenantId: ' ' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('workspace configuration sources', () => {
+  it('reports every group of a linked workspace, workspace by default and organization where a source row exists', async () => {
+    const h = await harness();
+    await linkOrganizationWorkspace(await h.octx('owner-1'), { organizationId: 'org-1', tenantId: 'acme' }, h.deps);
+    const admin = await h.octx('org-admin');
+    const before = await getWorkspaceConfigSources(admin, { organizationId: 'org-1', tenantId: 'acme' }, h.deps);
+    expect(before).toMatchObject({ ok: true, value: { workspace: { id: 'acme', slug: 'acme' } } });
+    expect(before.ok && before.value.sources.map(({ group, source }) => [group, source])).toEqual([
+      ['payments_live', 'workspace'], ['payments_test', 'workspace'], ['invoicing', 'workspace'],
+      ['email_transport', 'workspace'], ['telemetry', 'workspace'], ['shipping_carrier', 'workspace'],
+    ]);
+    h.configSourceRows.push({ tenantId: 'acme', group: 'invoicing', source: 'organization', updatedAt: at, updatedByUserId: 'owner-1' });
+    const after = await getWorkspaceConfigSources(admin, { organizationId: 'org-1', tenantId: 'acme' }, h.deps);
+    expect(after.ok && after.value.sources.find(({ group }) => group === 'invoicing'))
+      .toEqual({ group: 'invoicing', source: 'organization', updatedAt: at, updatedByUserId: 'owner-1' });
+  });
+
+  it('answers not_found for a workspace outside the organization and for a non-member', async () => {
+    const h = await harness();
+    const owner = await h.octx('owner-1');
+    for (const tenantId of ['studio', 'akademia', 'missing']) {
+      expect(await getWorkspaceConfigSources(owner, { organizationId: 'org-1', tenantId }, h.deps), tenantId)
+        .toMatchObject({ ok: false, error: { code: 'not_found', message: 'Workspace not found in this organization' } });
+    }
+    expect(await getWorkspaceConfigSources(await h.octx('outsider'), { organizationId: 'org-1', tenantId: 'acme' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found', message: 'Organization not found' } });
   });
 });

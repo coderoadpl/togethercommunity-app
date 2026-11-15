@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ok } from '#core/domain/index.js';
 
-import { resolveOrganizationId, resolveWorkspaceId } from './organization-commands.js';
+import { readSecretValue, resolveOrganizationId, resolveWorkspaceId } from './organization-commands.js';
 
 const api = () => ({
   listOrganizations: vi.fn(async () => ok({
@@ -42,5 +42,24 @@ describe('organization CLI workspace selection', () => {
     const client = tenants();
     expect(await resolveWorkspaceId(client, ' ')).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(client.listTenants).not.toHaveBeenCalled();
+  });
+});
+
+describe('organization CLI secret input', () => {
+  const stdin = (text: string, isTTY = false) => ({
+    isTTY,
+    async *[Symbol.asyncIterator]() { yield new TextEncoder().encode(text); },
+  });
+
+  it('reads the named environment variable, trimmed, before stdin', async () => {
+    expect(await readSecretValue('ORG_SECRET', { env: { ORG_SECRET: ' value-1 ' }, stdin: stdin('ignored') })).toEqual({ ok: true, value: 'value-1' });
+    expect(await readSecretValue('ORG_SECRET', { env: { ORG_SECRET: ' ' }, stdin: stdin('ignored') }))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('reads piped stdin and refuses an interactive terminal or an empty value', async () => {
+    expect(await readSecretValue(undefined, { env: {}, stdin: stdin('piped-value\n') })).toEqual({ ok: true, value: 'piped-value' });
+    expect(await readSecretValue(undefined, { env: {}, stdin: stdin('typed', true) })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await readSecretValue(undefined, { env: {}, stdin: stdin('\n') })).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });

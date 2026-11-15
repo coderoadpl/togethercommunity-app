@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { organizationAuditEventSchema, organizationMemberSchema, organizationSchema } from './organization.js';
+import {
+  CONFIG_GROUPS,
+  configGroupSchema,
+  ORGANIZATION_SECRET_GROUP,
+  organizationAuditEventSchema,
+  organizationMemberSchema,
+  organizationSchema,
+  organizationSecretKeySchema,
+  setOrganizationSecretInputSchema,
+  updateOrganizationInputSchema,
+  workspaceConfigSourcesOf,
+} from './organization.js';
+import { tenantSecretKeySchema } from './tenant-secret.js';
 
 const organization = {
   id: 'org-1', slug: 'holding', name: 'Holding', status: 'active', maxWorkspaces: 2,
@@ -31,5 +43,62 @@ describe('organization schemas', () => {
     };
     expect(organizationAuditEventSchema.safeParse(event).success).toBe(true);
     expect(organizationAuditEventSchema.safeParse({ ...event, kind: 'tenant_provisioned' }).success).toBe(false);
+  });
+});
+
+describe('organization secret allow-list', () => {
+  it('rejects per-workspace callback identities, storage, video and analytics keys', () => {
+    const refused = tenantSecretKeySchema.options.filter((key) => !organizationSecretKeySchema.safeParse(key).success);
+    expect(refused.toSorted()).toEqual([
+      'analyticsMetaCapiAccessToken',
+      'bunny.apiKey',
+      'bunny.securityKey',
+      's3.accessKeyId',
+      's3.configuration',
+      's3.secretAccessKey',
+      'stripe.testLastEventAt',
+      'stripe.testWebhookEndpointId',
+      'stripe.testWebhookSecret',
+      'stripe.webhookEndpointId',
+      'stripe.webhookSecret',
+    ]);
+  });
+
+  it('maps every allowed key to the configuration group it feeds', () => {
+    expect(Object.keys(ORGANIZATION_SECRET_GROUP).toSorted()).toEqual([...organizationSecretKeySchema.options].toSorted());
+    expect(new Set(Object.values(ORGANIZATION_SECRET_GROUP))).toEqual(new Set(CONFIG_GROUPS));
+    expect(ORGANIZATION_SECRET_GROUP['ksef.test.token']).toBe('invoicing');
+    expect(ORGANIZATION_SECRET_GROUP['resend.apiKey']).toBe('email_transport');
+  });
+
+  it('keeps the dedicated-flow keys out of the generic setter', () => {
+    for (const key of ['stripe.restrictedKey', 'stripe.testRestrictedKey', 'telemetry.mongodb', 'stripe.webhookSecret', 's3.accessKeyId']) {
+      expect(setOrganizationSecretInputSchema.safeParse({ key, value: 'value-1234' }).success, key).toBe(false);
+    }
+    expect(setOrganizationSecretInputSchema.parse({ key: 'smtp.password', value: ' value-1234 ' })).toEqual({ key: 'smtp.password', value: 'value-1234' });
+  });
+});
+
+describe('organization settings input', () => {
+  it('needs at least one known field and validates enumerations', () => {
+    expect(updateOrganizationInputSchema.safeParse({}).success).toBe(false);
+    expect(updateOrganizationInputSchema.safeParse({ slug: 'renamed' }).success).toBe(false);
+    expect(updateOrganizationInputSchema.safeParse({ invoicingProvider: 'other' }).success).toBe(false);
+    expect(updateOrganizationInputSchema.safeParse({ legalName: '  ' }).success).toBe(false);
+    expect(updateOrganizationInputSchema.parse({ invoicingProvider: null, shipxEnvironment: 'production' }))
+      .toEqual({ invoicingProvider: null, shipxEnvironment: 'production' });
+  });
+
+  it('knows exactly the six inheritable configuration groups', () => {
+    expect(configGroupSchema.options).toEqual(['payments_live', 'payments_test', 'invoicing', 'email_transport', 'telemetry', 'shipping_carrier']);
+    for (const group of ['branding', 'vat', 'storage', 'analytics']) expect(configGroupSchema.safeParse(group).success, group).toBe(false);
+  });
+
+  it('reports every group, defaulting to the workspace source', () => {
+    expect(workspaceConfigSourcesOf([
+      { tenantId: 'acme', group: 'invoicing', source: 'organization', updatedAt: '2026-11-15T10:00:00.000Z', updatedByUserId: 'owner-1' },
+    ])).toEqual(CONFIG_GROUPS.map((group) => group === 'invoicing'
+      ? { group, source: 'organization', updatedAt: '2026-11-15T10:00:00.000Z', updatedByUserId: 'owner-1' }
+      : { group, source: 'workspace', updatedAt: null, updatedByUserId: null }));
   });
 });

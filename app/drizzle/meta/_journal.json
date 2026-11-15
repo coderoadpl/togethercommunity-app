@@ -1100,6 +1100,13 @@
       "when": 1790964000072,
       "tag": "0156_organizations_core",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1790964000073,
+      "tag": "0157_organization_settings_secrets_sources",
+      "breakpoints": true
     }
   ]
 }

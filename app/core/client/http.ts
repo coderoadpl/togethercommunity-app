@@ -15,13 +15,21 @@ import {
   organizationMemberChangeOutputSchema,
   organizationMembersOutputSchema,
   organizationOutputSchema,
+  organizationSecretDeleteOutputSchema,
+  organizationSecretSetOutputSchema,
+  organizationSecretsOutputSchema,
+  organizationUpdateOutputSchema,
   organizationWorkspaceChangeOutputSchema,
+  organizationWorkspaceSourcesOutputSchema,
   organizationWorkspacesOutputSchema,
   type CreateOrganizationInput,
   type OrganizationLimits,
   type OrganizationMemberInput,
   type OrganizationMemberSelection,
+  type OrganizationSecretKey,
   type OrganizationWorkspaceSelection,
+  type SetOrganizationSecretInput,
+  type UpdateOrganizationInput,
 } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
@@ -606,6 +614,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.organization.method,
       API_ROUTES.organization.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
       organizationOutputSchema, undefined, signal),
+  updateOrganization: (input: { organizationId: string; update: UpdateOrganizationInput }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationUpdate.method,
+      API_ROUTES.organizationUpdate.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationUpdateOutputSchema, input.update, signal),
+  listOrganizationSecrets: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationSecrets.method,
+      API_ROUTES.organizationSecrets.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationSecretsOutputSchema, undefined, signal),
+  setOrganizationSecret: (input: { organizationId: string } & SetOrganizationSecretInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationSecretSet.method,
+      API_ROUTES.organizationSecretSet.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationSecretSetOutputSchema, { key: input.key, value: input.value }, signal),
+  deleteOrganizationSecret: (input: { organizationId: string; key: OrganizationSecretKey }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationSecretDelete.method,
+      API_ROUTES.organizationSecretDelete.path
+        .replace(':organizationId', encodeURIComponent(input.organizationId))
+        .replace(':key', encodeURIComponent(input.key)),
+      organizationSecretDeleteOutputSchema, undefined, signal),
+  getWorkspaceConfigSources: (input: { organizationId: string } & OrganizationWorkspaceSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaceSources.method,
+      API_ROUTES.organizationWorkspaceSources.path
+        .replace(':organizationId', encodeURIComponent(input.organizationId))
+        .replace(':tenantId', encodeURIComponent(input.tenantId)),
+      organizationWorkspaceSourcesOutputSchema, undefined, signal),
   listOrganizationMembers: (input: { organizationId: string }, signal?: AbortSignal) =>
     request(options, API_ROUTES.organizationMembers.method,
       API_ROUTES.organizationMembers.path.replace(':organizationId', encodeURIComponent(input.organizationId)),

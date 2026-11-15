@@ -8,13 +8,19 @@ import {
   organizationLimitsSchema,
   organizationMemberInputSchema,
   organizationMemberSelectionSchema,
+  organizationSecretKeySchema,
   organizationWorkspaceSelectionSchema,
+  setOrganizationSecretInputSchema,
+  updateOrganizationInputSchema,
 } from '#core/contract/index.js';
 import { err, unauthorized, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
   addOrganizationMember,
   createOrganization,
+  deleteOrganizationSecret,
   getOrganization,
+  getWorkspaceConfigSources,
+  listOrganizationSecrets,
   listOrganizationAuditEvents,
   listOrganizationMembers,
   linkOrganizationWorkspace,
@@ -25,12 +31,17 @@ import {
   unlinkOrganizationWorkspace,
   setOrganizationLimits,
   setOrganizationMemberRole,
+  setOrganizationSecret,
+  updateOrganization,
   type OperatorOrganizationDeps,
   type OrganizationCtx,
   type OrganizationMemberDeps,
   type OrganizationMemberRepository,
   type OrganizationReadDeps,
+  type OrganizationSecretDeps,
+  type OrganizationSettingsDeps,
   type OrganizationWorkspaceDeps,
+  type WorkspaceConfigSourceDeps,
 } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -69,7 +80,8 @@ export const registerOperatorOrganizationRoutes = (
 
 export const registerOrganizationRoutes = (
   app: Hono<AppVars>,
-  deps: OrganizationReadDeps & OrganizationWorkspaceDeps & OrganizationMemberDeps
+  deps: OrganizationReadDeps & OrganizationSettingsDeps & OrganizationWorkspaceDeps & OrganizationMemberDeps
+    & OrganizationSecretDeps & WorkspaceConfigSourceDeps
     & { organizationMembers: Pick<OrganizationMemberRepository, 'find'> },
 ): void => {
   const withOrganization = async <T>(
@@ -85,6 +97,30 @@ export const registerOrganizationRoutes = (
   app.get(API_PATHS.organization, async (c) => {
     const organizationId = c.req.param('organizationId');
     return withOrganization(c, organizationId, (octx) => getOrganization(octx, { organizationId }, deps));
+  });
+  app.post(API_PATHS.organizationUpdate, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = updateOrganizationInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid organization settings', parsed.error.flatten())));
+    return withOrganization(c, organizationId, (octx) => updateOrganization(octx, { organizationId, update: parsed.data }, deps));
+  });
+  app.get(API_PATHS.organizationSecrets, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    return withOrganization(c, organizationId, (octx) => listOrganizationSecrets(octx, { organizationId }, deps));
+  });
+  app.post(API_PATHS.organizationSecrets, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = setOrganizationSecretInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid organization secret', parsed.error.flatten())));
+    return withOrganization(c, organizationId, (octx) => setOrganizationSecret(octx, { organizationId, ...parsed.data }, deps));
+  });
+  app.delete(API_PATHS.organizationSecretDelete, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    const key = organizationSecretKeySchema.safeParse(c.req.param('key'));
+    if (!key.success) return respond(err(validation('Invalid organization secret key', key.error.flatten())));
+    return withOrganization(c, organizationId, (octx) => deleteOrganizationSecret(octx, { organizationId, key: key.data }, deps));
   });
   app.get(API_PATHS.organizationMembers, async (c) => {
     const organizationId = c.req.param('organizationId');
@@ -134,4 +170,9 @@ export const registerOrganizationRoutes = (
       return withOrganization(c, organizationId, (octx) => change(octx, { organizationId, ...parsed.data }, deps));
     });
   }
+  app.get(API_PATHS.organizationWorkspaceSources, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    const tenantId = c.req.param('tenantId');
+    return withOrganization(c, organizationId, (octx) => getWorkspaceConfigSources(octx, { organizationId, tenantId }, deps));
+  });
 };

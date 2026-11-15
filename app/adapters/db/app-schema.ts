@@ -1157,6 +1157,29 @@ export const tenantSecrets = pgTable(
   ],
 );
 
+export const tenantConfigSources = pgTable(
+  'tenant_config_sources',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    configGroup: text('config_group', {
+      enum: ['payments_live', 'payments_test', 'invoicing', 'email_transport', 'telemetry', 'shipping_carrier'],
+    }).notNull(),
+    source: text('source', { enum: ['organization'] }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+    updatedByUserId: text('updated_by_user_id').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.configGroup] }),
+    check(
+      'tenant_config_sources_config_group_check',
+      sql`${table.configGroup} IN ('payments_live', 'payments_test', 'invoicing', 'email_transport', 'telemetry', 'shipping_carrier')`,
+    ),
+    check('tenant_config_sources_source_check', sql`${table.source} = 'organization'`),
+  ],
+);
+
 export const processedPaymentEvents = pgTable(
   'processed_events',
   {

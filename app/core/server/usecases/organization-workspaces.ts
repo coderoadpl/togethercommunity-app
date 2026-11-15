@@ -2,18 +2,21 @@ import {
   appError,
   err,
   forbidden,
+  notFound,
   ok,
   organizationWorkspaceSelectionSchema,
   validation,
+  workspaceConfigSourcesOf,
   type AppError,
   type OrganizationWorkspace,
   type OrganizationWorkspaceSelection,
   type Result,
+  type WorkspaceConfigSource,
 } from '#core/domain/index.js';
 
 import { authorizeOrganization } from '../authorize.js';
 import type { OrganizationCtx } from '../context.js';
-import type { Clock, IdGenerator, OrganizationWorkspaceRepository } from '../ports.js';
+import type { Clock, IdGenerator, OrganizationWorkspaceRepository, TenantConfigSourceRepository } from '../ports.js';
 
 export interface OrganizationWorkspaceDeps {
   organizationWorkspaces: OrganizationWorkspaceRepository;
@@ -102,4 +105,24 @@ export const unlinkOrganizationWorkspace = async (
     case 'config_sources_present':
       return err(appError('conflict', 'Workspace still takes configuration from the organization; switch every group back first'));
   }
+};
+
+export interface WorkspaceConfigSourceDeps {
+  organizationWorkspaces: Pick<OrganizationWorkspaceRepository, 'list'>;
+  tenantConfigSources: TenantConfigSourceRepository;
+}
+
+export const getWorkspaceConfigSources = async (
+  octx: OrganizationCtx,
+  input: { organizationId: string } & OrganizationWorkspaceSelection,
+  deps: WorkspaceConfigSourceDeps,
+): Promise<Result<{ workspace: OrganizationWorkspace; sources: WorkspaceConfigSource[] }, AppError>> => {
+  const access = authorizeOrganization(octx, input.organizationId, 'organization:read');
+  if (!access.ok) return access;
+  const selection = organizationWorkspaceSelectionSchema.safeParse({ tenantId: input.tenantId });
+  if (!selection.success) return err(validation('Invalid workspace selection'));
+  const workspaces = await deps.organizationWorkspaces.list(access.value.organizationId);
+  const workspace = workspaces.find((candidate) => candidate.id === selection.data.tenantId);
+  if (workspace === undefined) return err(notFound('Workspace not found in this organization'));
+  return ok({ workspace, sources: workspaceConfigSourcesOf(await deps.tenantConfigSources.listByTenant(workspace.id)) });
 };

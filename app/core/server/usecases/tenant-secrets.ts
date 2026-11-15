@@ -79,7 +79,7 @@ const masked = (secret: TenantSecret): TenantSecretMasked => ({
   updatedAt: secret.updatedAt,
 });
 
-const maskValue = (value: string): string => {
+export const maskValue = (value: string): string => {
   const suffix = value.slice(-4);
   return `••••${suffix}`;
 };

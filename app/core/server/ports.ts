@@ -82,7 +82,13 @@ import type {
   OrganizationMember,
   OrganizationMemberAccount,
   OrganizationRole,
+  OrganizationSecret,
+  OrganizationSecretKey,
+  OrganizationSettings,
+  OrganizationUpdate,
   OrganizationWorkspace,
+  ConfigGroup,
+  TenantConfigSource,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -2605,6 +2611,37 @@ export interface OrganizationRepository {
     organizationId: string,
     input: { maxWorkspaces: number; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId'> },
   ): Promise<Organization | null>;
+  findSettings(organizationId: string): Promise<OrganizationSettings | null>;
+  /**
+   * One transaction: fields equal to the stored values are dropped, and only a real change
+   * updates the row and writes its audit row, which names the changed fields.
+   */
+  updateSettings(
+    organizationId: string,
+    input: { update: OrganizationUpdate; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId' | 'data'> },
+  ): Promise<{ organization: Organization; settings: OrganizationSettings; changed: boolean } | null>;
+}
+
+type OrganizationSecretAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
+
+export interface OrganizationSecretRepository {
+  listByOrganization(organizationId: string): Promise<OrganizationSecret[]>;
+  set(
+    organizationId: string,
+    input: { secret: Omit<OrganizationSecret, 'organizationId'>; group: ConfigGroup; audit: OrganizationSecretAuditInput },
+  ): Promise<OrganizationSecret>;
+  /**
+   * Refuses while a workspace of the organization takes the key's group from the organization;
+   * otherwise deletes the secret and writes its secret.deleted audit row in the same transaction.
+   */
+  delete(
+    organizationId: string,
+    input: { key: OrganizationSecretKey; group: ConfigGroup; audit: OrganizationSecretAuditInput },
+  ): Promise<{ status: 'deleted'; secret: OrganizationSecret } | { status: 'not_found' } | { status: 'config_inherited' }>;
+}
+
+export interface TenantConfigSourceRepository {
+  listByTenant(tenantId: string): Promise<TenantConfigSource[]>;
 }
 
 type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;

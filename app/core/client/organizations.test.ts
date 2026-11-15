@@ -10,6 +10,10 @@ const organization: Organization = {
   createdAt: '2026-11-15T12:00:00.000Z', updatedAt: '2026-11-15T12:00:00.000Z',
 };
 
+const settings = {
+  legalName: 'Holding Ltd', legalAddress: null, invoicingProvider: 'ifirma', ksefSubmissionMode: 'automatic', shipxEnvironment: 'sandbox', shipxSender: null,
+};
+
 const recordingClient = (data: unknown) => {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const api = createApiClient({
@@ -45,8 +49,8 @@ describe('organization client', () => {
   it('reads organizations, members and audit events from their session routes', async () => {
     const list = recordingClient({ organizations: [{ id: 'org-1', slug: 'holding', name: 'Holding', status: 'active', role: 'admin' }] });
     expect(await list.api.listOrganizations()).toMatchObject({ ok: true, value: { organizations: [{ role: 'admin' }] } });
-    const show = recordingClient({ organization, role: 'admin' });
-    expect(await show.api.getOrganization({ organizationId: 'org-1' })).toEqual({ ok: true, value: { organization, role: 'admin' } });
+    const show = recordingClient({ organization, settings, role: 'admin' });
+    expect(await show.api.getOrganization({ organizationId: 'org-1' })).toEqual({ ok: true, value: { organization, settings, role: 'admin' } });
     const members = recordingClient({ members: [] });
     expect(await members.api.listOrganizationMembers({ organizationId: 'org-1' })).toEqual({ ok: true, value: { members: [] } });
     const audit = recordingClient({ events: [] });
@@ -93,5 +97,34 @@ describe('organization client', () => {
       ['POST', 'http://localhost:48730/api/organizations/org-1/members/role', JSON.stringify({ email: 'member@example.test', role: 'owner' })],
       ['POST', 'http://localhost:48730/api/organizations/org-1/members/remove', JSON.stringify({ email: 'member@example.test' })],
     ]);
+  });
+
+  it('updates settings and manages secrets and sources on their organization routes, with the secret only in the body', async () => {
+    const update = recordingClient({ organization, settings, changed: true });
+    expect(await update.api.updateOrganization({ organizationId: 'org/1', update: { legalName: 'Holding Ltd', invoicingProvider: 'ifirma' } }))
+      .toEqual({ ok: true, value: { organization, settings, changed: true } });
+    const secret = { key: 'ifirma.invoiceApiKey', maskedPreview: '••••cdef', updatedAt: '2026-11-15T12:00:00.000Z' };
+    const list = recordingClient({ secrets: [secret] });
+    expect(await list.api.listOrganizationSecrets({ organizationId: 'org-1' })).toEqual({ ok: true, value: { secrets: [secret] } });
+    const set = recordingClient({ secret });
+    expect(await set.api.setOrganizationSecret({ organizationId: 'org-1', key: 'ifirma.invoiceApiKey', value: 'hidden-abcdef' }))
+      .toEqual({ ok: true, value: { secret } });
+    const remove = recordingClient({ key: 'ifirma.invoiceApiKey' });
+    expect(await remove.api.deleteOrganizationSecret({ organizationId: 'org-1', key: 'ifirma.invoiceApiKey' }))
+      .toEqual({ ok: true, value: { key: 'ifirma.invoiceApiKey' } });
+    const sources = recordingClient({
+      workspace: { id: 'acme', slug: 'acme', name: 'Acme', status: 'active' },
+      sources: [{ group: 'invoicing', source: 'organization', updatedAt: '2026-11-15T12:00:00.000Z', updatedByUserId: 'owner-1' }],
+    });
+    expect(await sources.api.getWorkspaceConfigSources({ organizationId: 'org-1', tenantId: 'acme/x' }))
+      .toMatchObject({ ok: true, value: { sources: [{ group: 'invoicing', source: 'organization' }] } });
+    expect([update, list, set, remove, sources].map(({ calls }) => [calls[0]?.init?.method, calls[0]?.url, calls[0]?.init?.body])).toEqual([
+      ['POST', 'http://localhost:48730/api/organizations/org%2F1/update', JSON.stringify({ legalName: 'Holding Ltd', invoicingProvider: 'ifirma' })],
+      ['GET', 'http://localhost:48730/api/organizations/org-1/secrets', null],
+      ['POST', 'http://localhost:48730/api/organizations/org-1/secrets', JSON.stringify({ key: 'ifirma.invoiceApiKey', value: 'hidden-abcdef' })],
+      ['DELETE', 'http://localhost:48730/api/organizations/org-1/secrets/ifirma.invoiceApiKey', null],
+      ['GET', 'http://localhost:48730/api/organizations/org-1/workspaces/acme%2Fx/sources', null],
+    ]);
+    expect(set.calls[0]?.url).not.toContain('hidden');
   });
 });

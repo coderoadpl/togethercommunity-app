@@ -2,16 +2,32 @@ import type {
   Organization,
   OrganizationAuditEvent,
   OrganizationMember,
+  OrganizationSecret,
+  OrganizationSettings,
   OrganizationWorkspace,
   TenantAuditEventInput,
+  TenantConfigSource,
 } from '#core/domain/index.js';
 
 import type {
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
+  OrganizationSecretRepository,
   OrganizationWorkspaceRepository,
+  TenantConfigSourceRepository,
 } from '../ports.js';
+
+const keep = <T>(next: T | undefined, stored: T): T => next === undefined ? stored : next;
+
+const defaultSettings: OrganizationSettings = {
+  legalName: null,
+  legalAddress: null,
+  invoicingProvider: null,
+  ksefSubmissionMode: 'automatic',
+  shipxEnvironment: 'sandbox',
+  shipxSender: null,
+};
 
 export interface OrganizationFakeAccount {
   userId: string;
@@ -33,7 +49,9 @@ export const createOrganizationFakes = (
   const auditRows: OrganizationAuditEvent[] = [];
   const workspaceRows = workspaces.map((workspace) => ({ ...workspace, grants: [...workspace.grants] }));
   const tenantAuditRows: TenantAuditEventInput[] = [];
-  const configSourceTenantIds = new Set<string>();
+  const settingsRows = new Map<string, OrganizationSettings>();
+  const secretRows: OrganizationSecret[] = [];
+  const configSourceRows: TenantConfigSource[] = [];
   const isVerified = (userId: string) => accounts.some((account) => account.userId === userId && account.emailVerified);
   const isOwner = (organizationId: string, userId: string) =>
     memberRows.some((row) => row.organizationId === organizationId && row.userId === userId && row.role === 'owner');
@@ -75,6 +93,36 @@ export const createOrganizationFakes = (
       organizationRows[index] = updated;
       auditRows.push({ ...audit, organizationId });
       return updated;
+    },
+    findSettings: async (organizationId) => organizationRows.some((row) => row.id === organizationId)
+      ? settingsRows.get(organizationId) ?? defaultSettings
+      : null,
+    updateSettings: async (organizationId, { update, updatedAt, audit }) => {
+      const index = organizationRows.findIndex((row) => row.id === organizationId);
+      const current = organizationRows[index];
+      if (current === undefined) return null;
+      const settings = settingsRows.get(organizationId) ?? defaultSettings;
+      const nextSettings: OrganizationSettings = {
+        legalName: keep(update.legalName, settings.legalName),
+        legalAddress: keep(update.legalAddress, settings.legalAddress),
+        invoicingProvider: keep(update.invoicingProvider, settings.invoicingProvider),
+        ksefSubmissionMode: keep(update.ksefSubmissionMode, settings.ksefSubmissionMode),
+        shipxEnvironment: keep(update.shipxEnvironment, settings.shipxEnvironment),
+        shipxSender: keep(update.shipxSender, settings.shipxSender),
+      };
+      const before = new Map(Object.entries(settings));
+      const fields = [
+        ...(update.name !== undefined && update.name !== current.name ? ['name'] : []),
+        ...Object.entries(nextSettings)
+          .filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(before.get(field)))
+          .map(([field]) => field),
+      ];
+      if (fields.length === 0) return { organization: current, settings, changed: false };
+      const organization = { ...current, name: update.name ?? current.name, updatedAt };
+      organizationRows[index] = organization;
+      settingsRows.set(organizationId, nextSettings);
+      auditRows.push({ ...audit, organizationId, data: { fields } });
+      return { organization, settings: nextSettings, changed: true };
     },
   };
 
@@ -166,7 +214,7 @@ export const createOrganizationFakes = (
       const { workspace } = checked;
       if (workspace.organizationId === null) return { status: 'not_linked', workspace: workspaceOf(workspace) };
       if (workspace.organizationId !== organizationId) return { status: 'linked_elsewhere' };
-      if (configSourceTenantIds.has(tenantId)) return { status: 'config_sources_present' };
+      if (configSourceRows.some((row) => row.tenantId === tenantId)) return { status: 'config_sources_present' };
       workspace.organizationId = null;
       auditRows.push({ ...organizationAudit, organizationId });
       tenantAuditRows.push({ ...tenantAudit, tenantId });
@@ -178,6 +226,38 @@ export const createOrganizationFakes = (
       .map(workspaceOf),
   };
 
+  const organizationSecrets: OrganizationSecretRepository = {
+    listByOrganization: async (organizationId) => secretRows
+      .filter((row) => row.organizationId === organizationId)
+      .toSorted((left, right) => left.key.localeCompare(right.key)),
+    set: async (organizationId, { secret, group, audit }) => {
+      const index = secretRows.findIndex((row) => row.organizationId === organizationId && row.key === secret.key);
+      const existing = secretRows[index];
+      const stored = existing === undefined ? { ...secret, organizationId } : { ...secret, id: existing.id, organizationId };
+      if (existing === undefined) secretRows.push(stored);
+      else secretRows[index] = stored;
+      auditRows.push({ ...audit, organizationId, data: { key: secret.key, maskedPreview: secret.maskedPreview, group } });
+      return stored;
+    },
+    delete: async (organizationId, { key, group, audit }) => {
+      const index = secretRows.findIndex((row) => row.organizationId === organizationId && row.key === key);
+      const current = secretRows[index];
+      if (current === undefined) return { status: 'not_found' };
+      const inheriting = configSourceRows.some((row) => row.group === group
+        && workspaceRows.some((workspace) => workspace.id === row.tenantId && workspace.organizationId === organizationId));
+      if (inheriting) return { status: 'config_inherited' };
+      secretRows.splice(index, 1);
+      auditRows.push({ ...audit, organizationId, data: { key, maskedPreview: current.maskedPreview, group } });
+      return { status: 'deleted', secret: current };
+    },
+  };
+
+  const tenantConfigSources: TenantConfigSourceRepository = {
+    listByTenant: async (tenantId) => configSourceRows
+      .filter((row) => row.tenantId === tenantId)
+      .toSorted((left, right) => left.group.localeCompare(right.group)),
+  };
+
   const authPort = {
     findUserByEmail: async (email: string) => {
       const account = accounts.find((candidate) => candidate.email === email);
@@ -186,13 +266,15 @@ export const createOrganizationFakes = (
   };
 
   return {
-    repositories: { organizations, organizationMembers, organizationAudit, organizationWorkspaces },
+    repositories: { organizations, organizationMembers, organizationAudit, organizationWorkspaces, organizationSecrets, tenantConfigSources },
     authPort,
     organizationRows,
     memberRows,
     auditRows,
     workspaceRows,
     tenantAuditRows,
-    configSourceTenantIds,
+    settingsRows,
+    secretRows,
+    configSourceRows,
   };
 };

@@ -11,10 +11,13 @@ import {
   organizationMemberChangeOutputSchema,
   organizationMembersOutputSchema,
   organizationOutputSchema,
+  organizationSecretsOutputSchema,
+  organizationUpdateOutputSchema,
   organizationWorkspaceChangeOutputSchema,
+  organizationWorkspaceSourcesOutputSchema,
   organizationWorkspacesOutputSchema,
 } from '#core/contract/index.js';
-import type { Identity } from '#core/domain/index.js';
+import { ok, type Identity } from '#core/domain/index.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 
 import type { AppVars } from './app-vars.js';
@@ -54,13 +57,18 @@ const harness = () => {
     c.set('identity', identity(c.req.header('x-test-user') ?? 'anonymous'));
     await next();
   });
-  registerOrganizationRoutes(app, { ...fakes.repositories, authPort: fakes.authPort, ids, clock });
+  const secretCrypto = {
+    encrypt: (plaintext: string) => ({ ciphertext: `cipher:${plaintext}`, iv: 'iv-value', authTag: 'tag-value' }),
+    decrypt: (input: { ciphertext: string }) => ok(input.ciphertext.replace('cipher:', '')),
+  };
+  registerOrganizationRoutes(app, { ...fakes.repositories, authPort: fakes.authPort, secretCrypto, ids, clock });
   const create = (ownerEmail: string, headers: Record<string, string> = operatorHeaders) =>
     app.request(API_PATHS.operatorOrganizationCreate, { method: 'POST', headers, body: createBody(ownerEmail) });
   const read = (path: string, userId: string) => app.request(path, { headers: { 'x-test-user': userId } });
   const post = (path: string, userId: string, body: unknown) =>
     app.request(path, { method: 'POST', headers: { 'x-test-user': userId, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  return { ...fakes, app, create, read, post };
+  const remove = (path: string, userId: string) => app.request(path, { method: 'DELETE', headers: { 'x-test-user': userId } });
+  return { ...fakes, app, create, read, post, remove };
 };
 
 const created = async (h: ReturnType<typeof harness>) => {
@@ -136,7 +144,7 @@ describe('organization session routes', () => {
     expect(envelopeSchema(organizationListOutputSchema).parse(await (await h.read(API_PATHS.organizations, 'admin-1')).json()))
       .toMatchObject({ ok: true, data: { organizations: [{ id: organizationId, slug: 'holding', role: 'admin' }] } });
     expect(envelopeSchema(organizationOutputSchema).parse(await (await h.read(path(API_PATHS.organization), 'admin-1')).json()))
-      .toMatchObject({ ok: true, data: { organization: { id: organizationId }, role: 'admin' } });
+      .toMatchObject({ ok: true, data: { organization: { id: organizationId }, settings: { legalName: null, shipxEnvironment: 'sandbox' }, role: 'admin' } });
     expect(envelopeSchema(organizationMembersOutputSchema).parse(await (await h.read(path(API_PATHS.organizationMembers), 'admin-1')).json()))
       .toMatchObject({ ok: true, data: { members: [{ email: 'owner-1@example.test', role: 'owner' }, { email: 'admin-1@example.test', role: 'admin' }] } });
     const audit = await h.read(`${path(API_PATHS.organizationAuditEvents)}?limit=1`, 'admin-1');
@@ -197,5 +205,69 @@ describe('organization session routes', () => {
     expect(h.auditRows.map((event) => event.kind).slice(2)).toEqual([
       'member.added', 'member.role_changed', 'member.role_changed', 'member.removed',
     ]);
+  });
+
+  it('updates organization settings for an owner and validates the payload', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    const path = API_PATHS.organizationUpdate.replace(':organizationId', organizationId);
+    expect((await h.post(path, 'admin-1', { legalName: 'Holding Ltd' })).status).toBe(403);
+    expect((await h.post(path, 'other-1', { legalName: 'Holding Ltd' })).status).toBe(404);
+    for (const body of [{}, { invoicingProvider: 'other' }, { shipxEnvironment: 'staging' }, { slug: 'renamed' }, { maxWorkspaces: 9 }]) {
+      expect((await h.post(path, 'owner-1', body)).status, JSON.stringify(body)).toBe(400);
+    }
+    const updated = await h.post(path, 'owner-1', { legalName: 'Holding Ltd', ksefSubmissionMode: 'manual' });
+    expect(envelopeSchema(organizationUpdateOutputSchema).parse(await updated.json())).toMatchObject({
+      ok: true, data: { settings: { legalName: 'Holding Ltd', ksefSubmissionMode: 'manual' }, changed: true },
+    });
+    expect(h.auditRows.at(-1)).toMatchObject({ kind: 'organization.updated', data: { fields: ['legalName', 'ksefSubmissionMode'] } });
+  });
+
+  it('sets, lists and deletes organization secrets without ever returning stored ciphertext', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    const secrets = API_PATHS.organizationSecrets.replace(':organizationId', organizationId);
+    const secretPath = (key: string) => API_PATHS.organizationSecretDelete.replace(':organizationId', organizationId).replace(':key', key);
+    expect((await h.post(secrets, 'admin-1', { key: 'smtp.password', value: 'smtp-secret-1234' })).status).toBe(403);
+    for (const key of ['stripe.webhookSecret', 's3.accessKeyId', 'stripe.restrictedKey', 'telemetry.mongodb', 'bunny.apiKey']) {
+      const refused = await h.post(secrets, 'owner-1', { key, value: 'secret-value-1234' });
+      expect(refused.status, key).toBe(400);
+      expect(JSON.stringify(await refused.json()), key).not.toContain('secret-value-1234');
+    }
+    const stored = await h.post(secrets, 'owner-1', { key: 'smtp.password', value: 'smtp-secret-1234' });
+    expect(await stored.json()).toEqual({ ok: true, data: { secret: { key: 'smtp.password', maskedPreview: '••••1234', updatedAt: '2026-11-15T12:00:00.000Z' } } });
+    const listed = await h.read(secrets, 'admin-1');
+    const listedText = await listed.text();
+    expect(envelopeSchema(organizationSecretsOutputSchema).parse(JSON.parse(listedText))).toEqual({
+      ok: true, data: { secrets: [{ key: 'smtp.password', maskedPreview: '••••1234', updatedAt: '2026-11-15T12:00:00.000Z' }] },
+    });
+    expect(listedText).not.toMatch(/cipher|iv-value|tag-value|smtp-secret|ciphertext|authTag/);
+    expect((await h.remove(secretPath('s3.accessKeyId'), 'owner-1')).status).toBe(400);
+    expect((await h.remove(secretPath('smtp.password'), 'admin-1')).status).toBe(403);
+    expect(await (await h.remove(secretPath('smtp.password'), 'owner-1')).json()).toEqual({ ok: true, data: { key: 'smtp.password' } });
+    expect((await h.remove(secretPath('smtp.password'), 'owner-1')).status).toBe(404);
+    expect(h.auditRows.map((event) => event.kind).slice(-2)).toEqual(['secret.set', 'secret.deleted']);
+    expect(JSON.stringify(h.auditRows)).not.toMatch(/smtp-secret|cipher/);
+  });
+
+  it('refuses to delete a secret whose group a linked workspace inherits and reads the workspace sources', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    await h.post(API_PATHS.organizationWorkspaceLink.replace(':organizationId', organizationId), 'owner-1', { tenantId: 'acme' });
+    await h.post(API_PATHS.organizationSecrets.replace(':organizationId', organizationId), 'owner-1', { key: 'ksef.token', value: 'ksef-token-5678' });
+    h.configSourceRows.push({ tenantId: 'acme', group: 'invoicing', source: 'organization', updatedAt: '2026-11-15T12:00:00.000Z', updatedByUserId: 'owner-1' });
+    const refused = await h.remove(API_PATHS.organizationSecretDelete.replace(':organizationId', organizationId).replace(':key', 'ksef.token'), 'owner-1');
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(h.secretRows.map((row) => row.key)).toEqual(['ksef.token']);
+    const sourcesPath = (tenantId: string) =>
+      API_PATHS.organizationWorkspaceSources.replace(':organizationId', organizationId).replace(':tenantId', tenantId);
+    const sources = envelopeSchema(organizationWorkspaceSourcesOutputSchema).parse(await (await h.read(sourcesPath('acme'), 'admin-1')).json());
+    expect(sources.ok && sources.data.sources.map(({ group, source }) => `${group}:${source}`)).toEqual([
+      'payments_live:workspace', 'payments_test:workspace', 'invoicing:organization',
+      'email_transport:workspace', 'telemetry:workspace', 'shipping_carrier:workspace',
+    ]);
+    expect((await h.read(sourcesPath('studio'), 'admin-1')).status).toBe(404);
+    expect((await h.read(sourcesPath('acme'), 'other-1')).status).toBe(404);
   });
 });

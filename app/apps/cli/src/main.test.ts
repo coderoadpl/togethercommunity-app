@@ -85,6 +85,12 @@ interface Hoisted {
   addOrganizationMember: ReturnType<typeof vi.fn>;
   setOrganizationMemberRole: ReturnType<typeof vi.fn>;
   removeOrganizationMember: ReturnType<typeof vi.fn>;
+  updateOrganization: ReturnType<typeof vi.fn>;
+  listOrganizationSecrets: ReturnType<typeof vi.fn>;
+  setOrganizationSecret: ReturnType<typeof vi.fn>;
+  deleteOrganizationSecret: ReturnType<typeof vi.fn>;
+  listOrganizationWorkspaces: ReturnType<typeof vi.fn>;
+  getWorkspaceConfigSources: ReturnType<typeof vi.fn>;
   getTenantSettings: ReturnType<typeof vi.fn>;
   updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
@@ -174,6 +180,12 @@ const h = vi.hoisted(
     addOrganizationMember: vi.fn(),
     setOrganizationMemberRole: vi.fn(),
     removeOrganizationMember: vi.fn(),
+    updateOrganization: vi.fn(),
+    listOrganizationSecrets: vi.fn(),
+    setOrganizationSecret: vi.fn(),
+    deleteOrganizationSecret: vi.fn(),
+    listOrganizationWorkspaces: vi.fn(),
+    getWorkspaceConfigSources: vi.fn(),
     getTenantSettings: vi.fn(),
     updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
@@ -281,6 +293,12 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     addOrganizationMember: h.addOrganizationMember,
     setOrganizationMemberRole: h.setOrganizationMemberRole,
     removeOrganizationMember: h.removeOrganizationMember,
+    updateOrganization: h.updateOrganization,
+    listOrganizationSecrets: h.listOrganizationSecrets,
+    setOrganizationSecret: h.setOrganizationSecret,
+    deleteOrganizationSecret: h.deleteOrganizationSecret,
+    listOrganizationWorkspaces: h.listOrganizationWorkspaces,
+    getWorkspaceConfigSources: h.getWorkspaceConfigSources,
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
@@ -1762,6 +1780,67 @@ describe('organization member CLI', () => {
     await run('--json', 'org', 'member', 'remove', 'member@example.test', '--org', 'holding');
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(process.exitCode).toBe(6);
+  });
+});
+
+describe('organization settings, secrets and sources CLI', () => {
+  const secret = { key: 'smtp.password', maskedPreview: '••••1234', updatedAt: '2026-11-15T12:00:00.000Z' };
+  beforeEach(() => {
+    h.listOrganizations.mockReset().mockResolvedValue(ok({
+      organizations: [{ id: 'org-1', slug: 'holding', name: 'Holding', status: 'active', role: 'owner' }],
+    }));
+    h.updateOrganization.mockReset().mockResolvedValue(ok({ organization: { id: 'org-1' }, settings: {}, changed: true }));
+    h.listOrganizationSecrets.mockReset().mockResolvedValue(ok({ secrets: [secret] }));
+    h.setOrganizationSecret.mockReset().mockResolvedValue(ok({ secret }));
+    h.deleteOrganizationSecret.mockReset().mockResolvedValue(ok({ key: 'smtp.password' }));
+    h.listOrganizationWorkspaces.mockReset().mockResolvedValue(ok({ workspaces: [{ id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' }] }));
+    h.getWorkspaceConfigSources.mockReset().mockResolvedValue(ok({ workspace: { id: 'tenant-acme' }, sources: [] }));
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('reads a secret value from the named environment variable and never takes it from arguments', async () => {
+    vi.stubEnv('ORG_SMTP_PASSWORD', ' smtp-secret-1234 ');
+    await run('--json', 'org', 'secret', 'set', 'smtp.password', '--value-env', 'ORG_SMTP_PASSWORD', '--org', 'holding');
+    expect(h.setOrganizationSecret).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', key: 'smtp.password', value: 'smtp-secret-1234' });
+    expect(soleJson()).toEqual({ ok: true, data: { secret } });
+  });
+
+  it.each([
+    ['stripe.restrictedKey', '--value-env', 'ORG_SMTP_PASSWORD'],
+    ['s3.accessKeyId', '--value-env', 'ORG_SMTP_PASSWORD'],
+    ['smtp.password', '--value-env', 'ORG_UNSET_VARIABLE'],
+  ])('refuses secret set %s with %s before calling the API', async (...args) => {
+    vi.stubEnv('ORG_SMTP_PASSWORD', 'smtp-secret-1234');
+    await run('--json', 'org', 'secret', 'set', ...args, '--org', 'holding');
+    expect(h.setOrganizationSecret).not.toHaveBeenCalled();
+    const output = soleJson();
+    expect(output).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(JSON.stringify(output)).not.toContain('smtp-secret-1234');
+  });
+
+  it('lists and deletes secrets, updates settings and shows workspace sources', async () => {
+    await run('--json', 'org', 'secret', 'list', '--org', 'holding');
+    expect(soleJson()).toEqual({ ok: true, data: { secrets: [secret] } });
+    logSpy.mockClear();
+    await run('--json', 'org', 'secret', 'delete', 'smtp.password', '--org', 'holding');
+    expect(h.deleteOrganizationSecret).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', key: 'smtp.password' });
+    logSpy.mockClear();
+    await run('--json', 'org', 'update', '--org', 'holding', '--legal-name', 'Holding Ltd', '--legal-address', '', '--invoicing-provider', 'none', '--shipx-environment', 'production');
+    expect(h.updateOrganization).toHaveBeenCalledExactlyOnceWith({
+      organizationId: 'org-1', update: { legalName: 'Holding Ltd', legalAddress: null, invoicingProvider: null, shipxEnvironment: 'production' },
+    });
+    logSpy.mockClear();
+    await run('--json', 'org', 'workspace', 'sources', 'ACME', '--org', 'holding');
+    expect(h.getWorkspaceConfigSources).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', tenantId: 'tenant-acme' });
+  });
+
+  it('refuses an update without settings or with an invalid sender before calling the API', async () => {
+    await run('--json', 'org', 'update', '--org', 'holding');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    logSpy.mockClear();
+    await run('--json', 'org', 'update', '--org', 'holding', '--shipx-sender', '{not json');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.updateOrganization).not.toHaveBeenCalled();
   });
 });
 

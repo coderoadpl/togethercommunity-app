@@ -41,7 +41,16 @@ describe('order verification capabilities', () => {
   it('records the authenticated staff identity and clock value', async () => {
     const h = harness();
     expect(await issueOrderLine(ctx(['order:write']), { orderId: order.id, productId: 'physical' }, h.deps)).toEqual(ok({ order }));
-    expect(h.issueLine).toHaveBeenCalledWith('workspace', { orderId: order.id, productId: 'physical', staffUserId: 'staff', occurredAt: '2026-10-08T13:00:00.000Z' });
+    expect(h.issueLine).toHaveBeenCalledWith('workspace', { orderId: order.id, productId: 'physical', count: 1, staffUserId: 'staff', occurredAt: '2026-10-08T13:00:00.000Z' });
+  });
+  it('passes a positive integer count and rejects any other count before storage', async () => {
+    const h = harness();
+    expect(await issueOrderLine(ctx(['order:write']), { orderId: order.id, productId: 'physical', count: 2 }, h.deps)).toEqual(ok({ order }));
+    expect(h.issueLine).toHaveBeenCalledWith('workspace', expect.objectContaining({ count: 2 }));
+    for (const count of [0, -1, 1.5, '2', null]) {
+      expect(await issueOrderLine(ctx(['order:write']), { orderId: order.id, productId: 'physical', count }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect(h.issueLine).toHaveBeenCalledTimes(1);
   });
   it('propagates missing lines and rejects malformed issuance', async () => {
     const h = harness();

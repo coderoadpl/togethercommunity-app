@@ -12,7 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { orderLineLabel, SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import type {
   GrantWindowStatus,
   MemberFulfilment,
@@ -48,6 +48,7 @@ type GrantedProductRow = {
   purchasable: boolean;
   shippedTo?: string | null | undefined;
   fulfilment?: MemberFulfilment | null | undefined;
+  quantity?: number | undefined;
   grantStatus: GrantWindowStatus;
   grantStartsAt: string;
   grantExpiresAt: string | null;
@@ -122,7 +123,7 @@ const ProductRow = ({
       sx={{ p: '1.1rem 1.25rem', display: 'grid', gap: '0.6rem' }}
     >
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.75rem', flexWrap: 'wrap' }}>
-        {product.type === 'physical' ? <Typography variant="h3">{product.title}</Typography> : <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
+        {product.type === 'physical' ? <Typography variant="h3">{orderLineLabel({ name: product.title, quantity: product.quantity })}</Typography> : <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
           {product.title}
         </MemberProductLink>}
         {product.type === 'physical' || subscription !== null && product.grantStatus === 'active' ? null : (

@@ -143,6 +143,9 @@ export type OrderLine = z.infer<typeof orderLineSchema>;
 
 export const orderLineQuantity = (line: { quantity?: number | undefined }): number => line.quantity ?? 1;
 
+export const orderLineLabel = (line: { name: string; quantity?: number | undefined }): string =>
+  orderLineQuantity(line) > 1 ? `${orderLineQuantity(line)} × ${line.name}` : line.name;
+
 export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCents: number): number[] => {
   const total = lines.reduce((sum, line) => sum + line.grossCents, 0);
   let allocated = 0;
@@ -223,7 +226,11 @@ export const orderProviderIdentifiers = (providerObjectIds: Record<string, strin
 
 export const orderListItemSchema = orderSchema.extend({
   invoice: invoiceSchema.nullable().optional(),
-  lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
+  lines: z.array(orderLineSchema.extend({
+    // Typed as optional so order fixtures written before quantities compile; parsing always fills it.
+    quantity: orderLineSchema.shape.quantity.transform((quantity): number | undefined => quantity ?? 1),
+    issuedByDisplayName: z.string().min(1).optional(),
+  })).optional(),
   shipment: orderShipmentSchema.extend({ shippedByDisplayName: z.string().min(1).optional() }).nullable().optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
@@ -235,7 +242,7 @@ export const orderListItemSchema = orderSchema.extend({
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
 
 export const orderVerificationReferenceSchema = z.string().trim().min(1).max(256);
-export const issueOrderLineInputSchema = z.object({ orderId: z.string().min(1), productId: z.string().min(1) }).strict();
+export const issueOrderLineInputSchema = z.object({ orderId: z.string().min(1), productId: z.string().min(1), count: z.number().int().min(1).default(1) }).strict();
 
 const orderExportFormatSchema = z.enum(['csv', 'json']);
 

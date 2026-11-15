@@ -6,11 +6,13 @@ import {
   billingDataSchema,
   checkoutSnapshotSchema,
   orderBillingDataSchema,
+  orderLineLabel,
   orderLineQuantity,
   orderLineSchema,
   orderSchema,
   orderListItemSchema,
   exportOrdersQuerySchema,
+  issueOrderLineInputSchema,
   graceExpiresAt,
   listOrdersQuerySchema,
   newProductPriceSchema,
@@ -54,6 +56,29 @@ describe('order line quantity', () => {
 
   it.each([0, -1, 1.5])('rejects quantity %s', (quantity) => {
     expect(orderLineSchema.safeParse({ ...line, quantity }).success).toBe(false);
+  });
+
+  it('names the units only above one', () => {
+    expect(orderLineLabel({ name: 'Poster' })).toBe('Poster');
+    expect(orderLineLabel({ name: 'Poster', quantity: 1 })).toBe('Poster');
+    expect(orderLineLabel({ name: 'Poster', quantity: 2 })).toBe('2 × Poster');
+  });
+
+  it('always carries the quantity on order list item lines', () => {
+    const item = orderListItemSchema.parse({
+      id: 'order-1', tenantId: 'tenant-1', memberId: 'member-1', productId: 'p1', priceId: null, kind: 'one_time', status: 'paid',
+      amountCents: 9000, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: null, productTitle: 'Poster', couponCode: null,
+      lines: [line, { ...line, productId: 'p2', quantity: 3 }],
+    });
+    expect(item.lines?.map((entry) => entry.quantity)).toEqual([1, 3]);
+    expect(orderListItemSchema.safeParse({ ...item, lines: [{ ...line, quantity: 0 }] }).success).toBe(false);
+  });
+
+  it('defaults an issue to one unit and accepts only a positive integer count', () => {
+    expect(issueOrderLineInputSchema.parse({ orderId: 'order-1', productId: 'p1' })).toEqual({ orderId: 'order-1', productId: 'p1', count: 1 });
+    expect(issueOrderLineInputSchema.parse({ orderId: 'order-1', productId: 'p1', count: 2 }).count).toBe(2);
+    for (const count of [0, -1, 1.5, '2']) expect(issueOrderLineInputSchema.safeParse({ orderId: 'order-1', productId: 'p1', count }).success).toBe(false);
   });
 });
 

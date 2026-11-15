@@ -4,6 +4,8 @@ import {
   notFound,
   ok,
   orderDeliveryDetails,
+  orderLineLabel,
+  orderLineQuantity,
   orderShipmentAllowed,
   packingListQuerySchema,
   productLines,
@@ -36,9 +38,9 @@ export interface ShipOrderDeps extends TenantOriginDeps {
   dispatchEmail(): void;
 }
 
-const orderItemNames = (order: OrderListItem): string[] => {
-  const names = productLines(order.lines ?? []).map((line) => line.name);
-  return names.length > 0 ? names : [order.productTitle];
+const orderItems = (order: OrderListItem): { name: string; quantity: number }[] => {
+  const items = productLines(order.lines ?? []).map((line) => ({ name: line.name, quantity: orderLineQuantity(line) }));
+  return items.length > 0 ? items : [{ name: order.productTitle, quantity: 1 }];
 };
 
 const shipmentEmail = async (
@@ -64,7 +66,7 @@ const shipmentEmail = async (
       tenantName: ctx.identity.tenantName ?? '',
       shipment: {
         orderNumber: order.id,
-        items: orderItemNames(order),
+        items: orderItems(order).map(orderLineLabel),
         delivery: orderDeliveryDetails(order.shipping),
         carrier: shipment.carrier,
         trackingNumber: shipment.trackingNumber,
@@ -124,6 +126,7 @@ const PACKING_LIST_COLUMNS = [
   'country',
   'items',
   'notes',
+  'quantity',
 ];
 
 const warsawDateTime = new Intl.DateTimeFormat('sv-SE', {
@@ -140,6 +143,7 @@ const paidAtOf = (order: OrderListItem): string => order.paidAt ?? order.created
 const packingListRow = (order: OrderListItem): string[] => {
   const shipping = order.shipping ?? null;
   const address = shipping?.address ?? null;
+  const items = orderItems(order);
   return [
     order.id,
     warsawDateTime.format(new Date(paidAtOf(order))),
@@ -155,8 +159,9 @@ const packingListRow = (order: OrderListItem): string[] => {
     address?.postalCode ?? '',
     address?.city ?? '',
     address?.country ?? '',
-    orderItemNames(order).map((name) => `${name} × 1`).join('; '),
+    items.map((item) => `${item.name} × ${String(item.quantity)}`).join('; '),
     '',
+    String(items.reduce((units, item) => units + item.quantity, 0)),
   ];
 };
 

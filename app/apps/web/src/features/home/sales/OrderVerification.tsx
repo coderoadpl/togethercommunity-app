@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Chip, Stack, TextField, Typography } from '@mui/material';
-import type { OrderListItem } from '#core/domain/index.js';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { orderLineQuantity, SALES_LINK_TIME_ZONE, type OrderListItem } from '#core/domain/index.js';
 import { SectionCard } from '../../../components/layout/index.js';
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -54,10 +53,10 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
     </SectionCard>
     {!paid ? <Alert severity="warning">{t.orderVerification.unpaidHelp}</Alert> : null}
     {lines.filter((line) => line.productType === 'physical').map((line) => <SectionCard key={line.productId} title={line.name}>
-      <Typography variant="h3">{t.orderVerification.issued({ count: line.issuedCount ?? 0 })}</Typography>
+      <Typography variant="h3">{t.orderVerification.issued({ count: line.issuedCount ?? 0, quantity: orderLineQuantity(line) })}</Typography>
       {line.issuedAt == null ? null : <Typography>{t.orderVerification.firstIssued}: {formatDateTime(line.issuedAt, language)}</Typography>}
       {line.issuedByDisplayName == null ? null : <Typography color="text.secondary">{t.orderVerification.staff}: {line.issuedByDisplayName}</Typography>}
-      {canIssue && paid && line.issuedCount === 0 ? <Button variant="contained" disabled={pending} onClick={() => onIssue(line.productId)}>{pending ? t.orderVerification.issuing : t.orderVerification.markIssued}</Button> : null}
+      {canIssue && paid && line.issuedCount !== null && line.issuedCount < orderLineQuantity(line) ? <Button variant="contained" disabled={pending} onClick={() => onIssue(line.productId)}>{pending ? t.orderVerification.issuing : t.orderVerification.markIssued}</Button> : null}
     </SectionCard>)}
   </Stack>;
 };

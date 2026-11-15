@@ -128,6 +128,15 @@ it('pushes the exact GA4 purchase once per session', async () => {
   expect(window.dataLayer?.[4]).toEqual(expect.objectContaining({ 0: 'event', 1: 'purchase', 2: { ...payload, offer_slug: 'course-bundle' } }));
 });
 
+it('sends the units and the unit price of a line above one unit to GA4', async () => {
+  const analytics = await import('./analytics.js');
+  analytics.loadGoogleTag(config);
+  analytics.trackCheckoutPurchase(config, 'cs_live_units', { ...purchase, value: 135, items: [{ itemId: 'product-1', itemName: 'Workbook', price: 45, quantity: 3 }] });
+  expect(window.dataLayer?.[4]).toEqual(expect.objectContaining({ 0: 'event', 1: 'purchase', 2: expect.objectContaining({
+    items: [{ item_id: 'product-1', item_name: 'Workbook', price: 45, quantity: 3 }],
+  }) }));
+});
+
 it('sends nothing without a loaded tag or session ID', async () => {
   const analytics = await import('./analytics.js');
   analytics.trackCheckoutPurchase(config, 'cs_live_one', purchase);
@@ -405,6 +414,19 @@ describe('Meta Pixel', () => {
     if (window.fbq) window.fbq.callMethod = callMethod;
     analytics.trackCheckoutPurchase(meta, 'cs_live_meta_ordering', purchase);
     expect(callMethod).toHaveBeenCalledExactlyOnceWith('track', 'Purchase', metaPayload, { eventID: 'order-1' });
+  });
+
+  it('sends the units and the unit price of a line above one unit to the pixel', async () => {
+    const analytics = await import('./analytics.js');
+    analytics.loadMetaPixel(meta);
+    analytics.trackCheckoutPurchase(meta, 'cs_live_meta_units', { ...purchase, value: 159, items: [
+      { itemId: 'product-1', itemName: 'Workbook', price: 45, quantity: 3 },
+      { itemId: 'product-2', itemName: 'Course', price: 24 },
+    ] });
+    expect(window.fbq?.queue[3]).toEqual(expect.objectContaining({ 0: 'track', 1: 'Purchase', 2: expect.objectContaining({
+      contents: [{ id: 'product-1', quantity: 3, item_price: 45 }, { id: 'product-2', quantity: 1, item_price: 24 }],
+      num_items: 4,
+    }) }));
   });
 
   it('sends nothing without a loaded pixel, session ID or durable marker', async () => {

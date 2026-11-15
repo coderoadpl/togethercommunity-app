@@ -87,8 +87,9 @@ When session status becomes `paid` and either ID is configured, its response add
 ```
 
 The transaction ID is the order ID; the value is the gross order total in major
-currency units, and each item's price is the gross order-line amount in major
-units. `offerSlug` is the order's sales-link slug, or `null` when no link is
+currency units, and each item's price is the gross unit price in major units: the
+gross order-line amount divided by the line quantity. A line above one unit also
+carries `quantity`; a line of one unit omits it. `offerSlug` is the order's sales-link slug, or `null` when no link is
 available. `fbclid` and `attributionAt` come from the order's captured attribution,
 or are `null` when absent. Pending and unknown sessions retain identical responses without analytics.
 Unconfigured tenants receive no analytics payload even when paid. Rate limits
@@ -96,16 +97,17 @@ and `Cache-Control: no-store` remain unchanged.
 
 Once GA4 has loaded, the success card emits
 `gtag('event', 'purchase', { transaction_id, value, currency, items, offer_slug })`.
-Each item uses `item_id`, `item_name`, `price` and `quantity: 1`. The creator can
+Each item uses `item_id`, `item_name`, `price` (the unit price) and `quantity`
+(the line quantity, 1 when absent). The creator can
 register `offer_slug` as a custom dimension in GA4. The client writes
 `together.analytics.purchase.<session_id>` to local storage before emission,
 preventing another GA4 event for that session on reload.
 
 Once Meta has loaded, the card emits
 `fbq('track', 'Purchase', { value, currency, content_type: 'product', content_ids, contents, num_items }, { eventID: transactionId })`.
-`content_ids` lists the product IDs; each `contents` entry has `id`, `quantity: 1`
-and `item_price` in gross major currency units. `num_items` is the number of order
-lines. The order ID is the event ID for future server-side deduplication. The
+`content_ids` lists the product IDs; each `contents` entry has `id`, `quantity`
+(the line quantity) and `item_price`, the gross unit price in major currency units.
+`num_items` is the sum of the line quantities. The order ID is the event ID for future server-side deduplication. The
 separate local-storage key `together.analytics.meta-purchase.<session_id>` is set
 before emission, preventing another Meta event for that session on reload.
 Returns without a session ID, including free checkouts and legacy links, may load

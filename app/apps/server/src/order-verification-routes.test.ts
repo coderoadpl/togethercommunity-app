@@ -25,7 +25,20 @@ describe('order verification HTTP routes', () => {
     expect(h.findByReference).toHaveBeenCalledWith('workspace', 'opaque-token');
     const issue = await h.app.request('/api/orders/order-number/lines/physical/issue', { method: 'POST' });
     expect(issue.status).toBe(200);
-    expect(h.issueLine).toHaveBeenCalledWith('workspace', { orderId: 'order-number', productId: 'physical', staffUserId: 'staff', occurredAt: now });
+    expect(h.issueLine).toHaveBeenCalledWith('workspace', { orderId: 'order-number', productId: 'physical', count: 1, staffUserId: 'staff', occurredAt: now });
+  });
+  it('takes an optional count from a JSON body and keeps the path identifiers', async () => {
+    const h = harness(identity);
+    const issue = await h.app.request('/api/orders/order-number/lines/physical/issue', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: 'other-order', productId: 'other-product', count: 2 }),
+    });
+    expect(issue.status).toBe(200);
+    expect(h.issueLine).toHaveBeenCalledWith('workspace', { orderId: 'order-number', productId: 'physical', count: 2, staffUserId: 'staff', occurredAt: now });
+    const invalid = await h.app.request('/api/orders/order-number/lines/physical/issue', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ count: 0 }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(h.issueLine).toHaveBeenCalledTimes(1);
   });
   it('returns HTTP 409 when a physical line was already issued', async () => {
     const app = new Hono<AppVars>();

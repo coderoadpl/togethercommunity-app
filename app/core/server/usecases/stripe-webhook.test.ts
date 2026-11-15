@@ -3034,6 +3034,19 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
   expect(h.grants.size).toBe(2);
 });
 
+it('carries a line quantity above one into the purchase confirmation only for that line', async () => {
+  const h = bundlePayment();
+  h.lines[2] = { productId: 'product-3', name: 'Printed item', productType: 'physical', quantity: 2, grossCents: 2100, netCents: 2000, vatRate: 5, vatCents: 100, vatExemptionBasis: null, issuedCount: 0 };
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const payload = h.enrollmentEmails[0]?.payload;
+  if (payload?.kind !== 'welcome-sign-in' || payload.purchase === undefined) throw new Error('Expected a purchase confirmation');
+  expect(payload.purchase.lines).toEqual([
+    { name: 'Digital item', grossCents: 4900, vatRate: 23 },
+    { name: 'Course item', grossCents: 5400, vatRate: 8 },
+    { name: 'Printed item', quantity: 2, grossCents: 2100, vatRate: 5 },
+  ]);
+});
+
 const defaultVatSettings = tenantSettingsSchema.parse({
   name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null,
   invoiceVatMode: 'rate', invoiceVatRatePercent: 23,

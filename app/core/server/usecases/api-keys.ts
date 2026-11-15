@@ -77,8 +77,6 @@ const shopManagementLifecycleEvent = (
   method: null,
   route: null,
   resourceId: null,
-  status: null,
-  outcome: 'succeeded',
   at: deps.clock.nowIso(),
 });
 

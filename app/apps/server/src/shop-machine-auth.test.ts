@@ -1,7 +1,7 @@
 import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { Hono, type Context } from 'hono';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
@@ -368,6 +368,9 @@ describe('shop management keys on existing routes of the real app', () => {
 
 describe('shop management key secrecy in telemetry', () => {
   const exporter = new InMemorySpanExporter();
+  const rowsSeenByThrowingHandler: number[] = [];
+  const throwingRows = async () => (await database.db.select().from(shopManagementKeyEvents))
+    .filter((event) => event.route === THROWING_PATH);
   const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
   let app: Hono<AppVars>;
 
@@ -379,7 +382,13 @@ describe('shop management key secrecy in telemetry', () => {
       method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
     });
     registerShopMachineRoute(app, deps, {
-      method: 'POST', path: THROWING_PATH, scope: 'shop:catalog:read', handler: () => { throw new Error('handler failed'); },
+      method: 'POST',
+      path: THROWING_PATH,
+      scope: 'shop:catalog:read',
+      handler: async () => {
+        rowsSeenByThrowingHandler.push((await throwingRows()).length);
+        throw new Error('handler failed');
+      },
     });
     registerShopMachineRoute(app, deps, {
       method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
@@ -496,15 +505,55 @@ describe('shop management key secrecy in telemetry', () => {
     expect(attributes).toMatchObject({ ...keyAttributes('shop-read'), 'app.user.id': issuers.owner });
   });
 
-  it('writes one failed request row when a keyed mutation handler throws', async () => {
-    await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
-    const rows = (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH);
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((event) => event.apiKeyId === 'shop-read' && event.status === 500 && event.outcome === 'failed')).toBe(true);
-    const before = rows.length;
-    await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST');
-    expect((await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.route === THROWING_PATH))
-      .toHaveLength(before + 1);
+  it('writes the request row before a keyed mutation handler runs and answers the handler error when it throws', async () => {
+    const before = (await throwingRows()).length;
+    const { status, attributes } = await spanOf({ 'x-api-key': 'shop-read-secret' }, THROWING_PATH, 'POST', { id: 'product-1' });
+    expect(status).toBe(500);
+    expect(attributes).toMatchObject(keyAttributes('shop-read'));
+    expect(rowsSeenByThrowingHandler.at(-1)).toBe(before + 1);
+    const rows = await throwingRows();
+    expect(rows).toHaveLength(before + 1);
+    expect(rows).toContainEqual(expect.objectContaining({ apiKeyId: 'shop-read', actorUserId: issuers.owner, resourceId: 'product-1' }));
+  });
+
+  it('refuses a keyed mutation with a retryable 503 before its handler when the history write fails', async () => {
+    const handler = vi.fn((c: Context<AppVars>) => c.json({ ok: true }));
+    const historyDown = new Hono<AppVars>();
+    historyDown.use('*', telemetryMiddleware);
+    registerShopMachineRoute(historyDown, {
+      ...deps,
+      shopManagementKeyEvents: { record: async () => { throw new Error('history unavailable'); } },
+    }, { method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler });
+    exporter.reset();
+    const response = await historyDown.request(`${baseUrl}${PROBE_PATH}`, {
+      method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' }, body: '{}',
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toMatch(/^[1-9]\d*$/);
+    expect(await errorOf(response)).toMatchObject({ code: 'unavailable' });
+    expect(handler).not.toHaveBeenCalled();
+    await provider.forceFlush();
+    const [span] = exporter.getFinishedSpans();
+    expect(span?.attributes).toMatchObject(keyAttributes('shop-read'));
+    expect(span?.events.map((event) => event.name)).toContain('exception');
+  });
+
+  it('answers a committed keyed mutation with the handler response because no history write follows the handler', async () => {
+    const steps: string[] = [];
+    const recordOnce = vi.fn(async (...args: Parameters<typeof deps.shopManagementKeyEvents.record>) => {
+      steps.push('history');
+      if (recordOnce.mock.calls.length > 1) throw new Error('history unavailable');
+      await deps.shopManagementKeyEvents.record(...args);
+    });
+    const committed = new Hono<AppVars>();
+    registerShopMachineRoute(committed, { ...deps, shopManagementKeyEvents: { record: recordOnce } }, {
+      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => { steps.push('handler'); return c.json({ ok: true }); },
+    });
+    const response = await committed.request(`${baseUrl}${PROBE_PATH}`, {
+      method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' }, body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect(steps).toEqual(['history', 'handler']);
   });
 
   const probeRows = async () => (await database.db.select().from(shopManagementKeyEvents))

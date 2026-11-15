@@ -10,6 +10,7 @@ import {
   shopManagementKeyEventResourceId,
   tenantNotFound,
   unauthorized,
+  unavailable,
   type AppError,
   type Result,
   type ShopManagementKeysSwitch,
@@ -31,10 +32,11 @@ import type { AppVars } from './app-vars.js';
 import { isSafeMethod, requestOriginPolicy } from './request-origin-policy.js';
 import { respond } from './respond.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
-import type { ApiKeyAttribution } from './telemetry.js';
+import { recordException, type ApiKeyAttribution } from './telemetry.js';
 
 export const SHOP_MACHINE_PATH_PREFIX = '/api/m2m/shop/';
 const SHOP_MACHINE_MECHANISM = 'Shop management key';
+const HISTORY_RETRY_AFTER_SECONDS = 5;
 
 const isShopMachinePath = (path: string): boolean =>
   path === SHOP_MACHINE_PATH_PREFIX.slice(0, -1) || path.startsWith(SHOP_MACHINE_PATH_PREFIX);
@@ -132,23 +134,23 @@ export const registerShopMachineRoute = (
     c.set('identity', result.value.ctx.identity);
     const { method } = route;
     if (method === 'GET') return route.handler(c, result.value);
-    const recordRequest = async (status: number): Promise<void> => {
-      await recordShopManagementKeyRequest(result.value.tenant.id, {
-        apiKeyId: result.value.apiKey.id,
-        actorUserId: result.value.ctx.identity.userId,
-        method,
-        route: route.path,
-        resourceId: await resourceIdOf(c, body),
-        status,
-      }, deps);
-    };
-    const handle = async (): Promise<Response> => route.handler(c, result.value);
-    const response = await handle().catch(async (error: unknown) => {
-      await recordRequest(500);
-      throw error;
+    const recorded = await recordShopManagementKeyRequest(result.value.tenant.id, {
+      apiKeyId: result.value.apiKey.id,
+      actorUserId: result.value.ctx.identity.userId,
+      method,
+      route: route.path,
+      resourceId: await resourceIdOf(c, body),
+    }, deps).then(() => true, (error: unknown) => {
+      recordException(error);
+      return false;
     });
-    await recordRequest(response.status);
-    return response;
+    if (!recorded) {
+      return respond(
+        err(unavailable('The shop management key history is unavailable; nothing was changed, retry the request')),
+        { headers: { 'retry-after': String(HISTORY_RETRY_AFTER_SECONDS) } },
+      );
+    }
+    return route.handler(c, result.value);
   });
 };
 

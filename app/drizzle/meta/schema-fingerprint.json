@@ -1,6 +1,6 @@
 {
-  "hash": "c126420398855a56a06fed7420e5e070e9c82052c63d8562eb723ed9167ec939",
-  "shortId": "c12642039885",
+  "hash": "c74f8e0042ee8d71e678fd29a145a2bd50b89eb7549e15c09f2da1bc9c670a54",
+  "shortId": "c74f8e0042ee",
   "schema": {
     "constraints": [
       {
@@ -9,7 +9,7 @@
         "table": "coupons"
       },
       {
-        "definition": "CHECK ((((kind = 'request'::text) AND (method IS NOT NULL) AND (route IS NOT NULL) AND (status IS NOT NULL)) OR ((kind <> 'request'::text) AND (actor_user_id IS NOT NULL) AND (method IS NULL) AND (route IS NULL) AND (resource_id IS NULL) AND (status IS NULL) AND (outcome = 'succeeded'::text))))",
+        "definition": "CHECK ((((kind = 'request'::text) AND (method IS NOT NULL) AND (route IS NOT NULL)) OR ((kind <> 'request'::text) AND (method IS NULL) AND (route IS NULL) AND (resource_id IS NULL))))",
         "name": "shop_management_key_events_shape_check",
         "table": "shop_management_key_events"
       },
@@ -67,11 +67,6 @@
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
         "name": "coupons_validity_check",
         "table": "coupons"
-      },
-      {
-        "definition": "CHECK (((status >= 100) AND (status <= 599)))",
-        "name": "shop_management_key_events_status_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
@@ -192,11 +187,6 @@
         "definition": "CHECK ((on_hand >= 0))",
         "name": "product_stock_on_hand_check",
         "table": "product_stock"
-      },
-      {
-        "definition": "CHECK ((outcome = ANY (ARRAY['succeeded'::text, 'refused'::text, 'failed'::text])))",
-        "name": "shop_management_key_events_outcome_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((parcel_template = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])))",
@@ -9807,99 +9797,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "method",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "outcome",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "resource_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "route",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": false,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "shop_management_key_events"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "actor_user_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "at",
             "notNull": true,
             "type": "timestamp with time zone"
@@ -10015,6 +9912,83 @@
           }
         ],
         "name": "member_erasure_request_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "method",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "resource_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "route",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "shop_management_key_events"
       },
       {
         "columns": [

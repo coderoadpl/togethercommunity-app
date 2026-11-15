@@ -396,7 +396,7 @@ describe('shop management keys', () => {
     expect(h.rows).toEqual([expect.objectContaining({ kind: 'shop_management', issuedByUserId: 'u1', keyHash: 'hash:super-secret-value' })]);
     expect(h.events).toEqual([{
       id: 'key-2', tenantId: 't1', apiKeyId: 'key-1', kind: 'created', actorUserId: 'u1',
-      method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
+      method: null, route: null, resourceId: null, at: NOW,
     }]);
     expect(JSON.stringify(h.events)).not.toContain('super-secret-value');
 
@@ -454,7 +454,7 @@ describe('shop management keys', () => {
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
       .toMatchObject({ ok: true, value: { id: 'shop-key', kind: 'shop_management', revokedAt: NOW } });
     expect(h.events).toEqual([expect.objectContaining({
-      kind: 'revoked', apiKeyId: 'shop-key', actorUserId: 'u1', outcome: 'succeeded',
+      kind: 'revoked', apiKeyId: 'shop-key', actorUserId: 'u1',
     })]);
     expect(await revokeTenantApiKey(ctx('owner'), { id: 'shop-key' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
@@ -517,7 +517,7 @@ describe('shop management keys', () => {
         expect(h.rows.map((row) => row.id)).toEqual(['legacy-key', 'other-workspace-shop']);
         const purgeEvent = (id: string, apiKeyId: string): ShopManagementKeyEvent => ({
           id, tenantId: 't1', apiKeyId, kind: 'purged', actorUserId: 'u1',
-          method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
+          method: null, route: null, resourceId: null, at: NOW,
         });
         expect(h.events).toEqual([purgeEvent('key-1', 'shop-active'), purgeEvent('key-2', 'shop-revoked')]);
       },
@@ -553,7 +553,7 @@ describe('shop management keys', () => {
       const calls: Array<{ tenantId: string; query: unknown }> = [];
       const event: ShopManagementKeyEvent = {
         id: 'event-1', tenantId: 't1', apiKeyId: 'shop-key', kind: 'created', actorUserId: 'u1',
-        method: null, route: null, resourceId: null, status: null, outcome: 'succeeded', at: NOW,
+        method: null, route: null, resourceId: null, at: NOW,
       };
       return {
         calls,

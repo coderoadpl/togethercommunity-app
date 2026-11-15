@@ -29,6 +29,7 @@ const expiresAt = '2026-11-22T00:00:00.000Z';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
+let deps: ReturnType<typeof createDeps>;
 let ownerId: string;
 let ownerToken: string;
 
@@ -91,7 +92,7 @@ beforeAll(async () => {
     'together_shop_catalog_routes_test',
     process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/postgres',
   );
-  const deps = createDeps(envSchema.parse({
+  deps = createDeps(envSchema.parse({
     NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'shop-catalog-routes-test-secret-at-least-32-characters',
@@ -337,7 +338,7 @@ describe('shop management key history of keyed requests', () => {
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((event) => ({
       actorUserId: event.actorUserId, method: event.method, route: event.route,
-      resourceId: event.resourceId, status: event.status, outcome: event.outcome,
+      resourceId: event.resourceId,
     }));
   let writer: Awaited<ReturnType<typeof createShopKey>>;
   let reader: Awaited<ReturnType<typeof createShopKey>>;
@@ -353,7 +354,7 @@ describe('shop management key history of keyed requests', () => {
     productId = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data.product.id;
   });
 
-  it('writes exactly one row per keyed mutation that reaches the handler, with the key, issuer, route, resource and outcome, and none for a refused key', async () => {
+  it('writes exactly one row per keyed mutation handed to the handler, whatever the handler answers, and none for a refused key', async () => {
     const updated = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, description: 'Second edition' });
     expect(updated.status).toBe(200);
     const invalid = await keyed(writer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, misspelt: true });
@@ -361,15 +362,39 @@ describe('shop management key history of keyed requests', () => {
     const refused = await keyed(reader.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, title: 'Refused' });
     expect(refused.status).toBe(403);
 
-    const row = (status: number, outcome: string, resourceId: string | null, route: string = SHOP_CATALOG_ROUTES.updateProduct.path) =>
-      ({ actorUserId: ownerId, method: 'POST', route, resourceId, status, outcome });
+    const row = (resourceId: string | null, route: string = SHOP_CATALOG_ROUTES.updateProduct.path) =>
+      ({ actorUserId: ownerId, method: 'POST', route, resourceId });
     expect(await requestRows(writer.apiKey.id)).toEqual(expect.arrayContaining([
-      row(200, 'succeeded', null, SHOP_CATALOG_ROUTES.createProduct.path),
-      row(200, 'succeeded', productId),
-      row(400, 'refused', productId),
+      row(null, SHOP_CATALOG_ROUTES.createProduct.path),
+      row(productId),
+      row(productId),
     ]));
     expect(await requestRows(writer.apiKey.id)).toHaveLength(3);
     expect(await requestRows(reader.apiKey.id)).toEqual([]);
+  });
+
+  it('refuses a keyed mutation with a retryable 503 and changes nothing when its history row cannot be written', async () => {
+    const historyDown = buildApp({
+      ...deps,
+      shopManagementKeyEvents: { ...deps.shopManagementKeyEvents, record: async () => { throw new Error('history unavailable'); } },
+    });
+    const listedTitles = async () => envelope(shopCatalogContracts.listProducts.output)
+      .parse(await (await keyed(writer.secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).json()).data.products
+      .map((product) => product.title);
+    const titlesBefore = await listedTitles();
+    const rowsBefore = await requestRows(writer.apiKey.id);
+
+    const refused = await historyDown.request(`${baseUrl}${SHOP_CATALOG_ROUTES.createProduct.path}`, {
+      method: 'POST',
+      headers: { host: acmeHost, 'x-api-key': writer.secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Never created', type: 'physical', priceCents: 100, currency: 'PLN' }),
+    });
+
+    expect(refused.status).toBe(503);
+    expect(refused.headers.get('retry-after')).toMatch(/^[1-9]\d*$/);
+    expect(await errorOf(refused)).toMatchObject({ code: 'unavailable' });
+    expect(await listedTitles()).toEqual(titlesBefore);
+    expect(await requestRows(writer.apiKey.id)).toEqual(rowsBefore);
   });
 
   it('writes no row for a keyed read', async () => {
@@ -396,8 +421,7 @@ describe('shop management key history of keyed requests', () => {
     expect(remaining.nextCursor).toBeNull();
     const all = [...page.events, ...remaining.events];
     expect(all.every((event) => event.apiKeyId === writer.apiKey.id && event.tenantId === 'acme')).toBe(true);
-    expect(all.map((event) => `${event.kind} ${String(event.status)}`).sort())
-      .toEqual(['created null', 'request 200', 'request 200', 'request 400']);
+    expect(all.map((event) => event.kind).sort()).toEqual(['created', 'request', 'request', 'request']);
 
     const otherWorkspace = await ownerRequest('GET', API_PATHS.apiKeysShopManagementEvents, undefined, studioHost);
     expect(otherWorkspace.status).toBe(200);

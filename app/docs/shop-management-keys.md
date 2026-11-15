@@ -127,19 +127,28 @@ kind of event, the acting account and the time:
 | `created` | with the key, in the same transaction | the owner who created it |
 | `revoked` | with the revocation, in the same transaction | the owner who revoked it |
 | `purged` | one row per deleted key, in the purge transaction | the owner who purged |
-| `request` | after every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route that passed the key, issuer, rate-limit and scope checks and reached the route's handler | the key's issuer |
+| `request` | before the handler of every keyed `POST`, `PUT`, `PATCH` or `DELETE` to a shop route that passed the key, issuer, rate-limit and scope checks | the key's issuer |
 
-A `request` row also records the method, the route template (for example
-`/api/m2m/shop/products/update`), the id of the resource the request names
+A `request` row means the key surface accepted the request and handed it to the
+route's handler. It records the method, the route template (for example
+`/api/m2m/shop/products/update`) and the id of the resource the request names
 (a path parameter, else the body's `id`, else the first body field ending in
 `Id`; none when the request names no existing resource, such as a product
-creation), the HTTP status and an outcome: `succeeded` (2xx), `refused` (4xx,
-such as a validation error from the handler) or `failed` (5xx or a handler
-error). The resource id is kept only when it looks like an identifier: at most
-200 characters, starting with a letter or digit and continuing with letters,
+creation). It records no status or outcome: what the handler then did, a
+change, a validation error or a failure, is in request telemetry only. The
+resource id is kept only when it looks like an identifier: at most 200
+characters, starting with a letter or digit and continuing with letters,
 digits, `.`, `_`, `:` or `-`. Anything else is stored as no resource id, and
 the database refuses a resource id longer than 200 characters. The shared shop
-route helper writes the row after the handler, so every shop route inherits it.
+route helper writes the row, so every shop route inherits it.
+
+The row is written before the handler runs, so no keyed change commits without
+its history row, and nothing is written after the handler, so a committed
+change is never answered with an error because of its history. When the row
+cannot be written, the request is refused with `503 unavailable` and a
+`Retry-After` header, the handler does not run and nothing is changed; the
+request still counts against the rate limits, and the failure is recorded in
+request telemetry. Retrying is safe.
 
 A refused request writes no row: a missing, unknown, revoked, expired, legacy
 or other-workspace key, an issuer who no longer qualifies, mixed credentials, a
@@ -378,7 +387,7 @@ such a key but then answers `500`. So purge before rolling back:
    keys of kind `legacy`.
 4. Roll back the binary. Keep the schema and the migration: the
    `shop_management_key_events` table stays, is ignored by the previous
-   release and keeps every key's creation, revocation, purge and request
-   history for a later return to this release.
+   release and keeps every key's creation, revocation and purge events and its
+   accepted keyed requests for a later return to this release.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).

@@ -12,16 +12,14 @@ CREATE TABLE "shop_management_key_events" (
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
   "api_key_id" text NOT NULL,
   "kind" text NOT NULL CONSTRAINT "shop_management_key_events_kind_check" CHECK ("kind" IN ('created', 'revoked', 'purged', 'request')),
-  "actor_user_id" text,
+  "actor_user_id" text NOT NULL,
   "method" text CONSTRAINT "shop_management_key_events_method_check" CHECK ("method" IN ('POST', 'PUT', 'PATCH', 'DELETE')),
   "route" text,
   "resource_id" text CONSTRAINT "shop_management_key_events_resource_id_length_check" CHECK (char_length("resource_id") <= 200),
-  "status" integer CONSTRAINT "shop_management_key_events_status_check" CHECK ("status" BETWEEN 100 AND 599),
-  "outcome" text NOT NULL CONSTRAINT "shop_management_key_events_outcome_check" CHECK ("outcome" IN ('succeeded', 'refused', 'failed')),
   "at" text NOT NULL,
   CONSTRAINT "shop_management_key_events_shape_check" CHECK (
-    ("kind" = 'request' AND "method" IS NOT NULL AND "route" IS NOT NULL AND "status" IS NOT NULL)
-    OR ("kind" <> 'request' AND "actor_user_id" IS NOT NULL AND "method" IS NULL AND "route" IS NULL AND "resource_id" IS NULL AND "status" IS NULL AND "outcome" = 'succeeded')
+    ("kind" = 'request' AND "method" IS NOT NULL AND "route" IS NOT NULL)
+    OR ("kind" <> 'request' AND "method" IS NULL AND "route" IS NULL AND "resource_id" IS NULL)
   )
 );
 --> statement-breakpoint

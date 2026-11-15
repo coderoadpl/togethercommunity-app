@@ -180,6 +180,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/orders/:orderId/shipx/refresh` | self-authenticating | mutating | api m2m shop orders orderId shipx refresh |
 | `POST /api/m2m/shop/orders/:orderId/shipx/discard` | self-authenticating | mutating | api m2m shop orders orderId shipx discard |
 | `POST /api/m2m/shop/orders/:orderId/shipx/label` | self-authenticating | mutating | api m2m shop orders orderId shipx label |
+| `GET /api/m2m/shop/settings` | self-authenticating | read | api m2m shop settings |
+| `POST /api/m2m/shop/settings` | self-authenticating | mutating | api m2m shop settings |
+| `POST /api/m2m/shop/image-assets/branding/upload` | self-authenticating | mutating | api m2m shop image-assets branding upload |
+| `POST /api/m2m/shop/image-assets/branding/complete` | self-authenticating | mutating | api m2m shop image-assets branding complete |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

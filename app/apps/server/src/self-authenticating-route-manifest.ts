@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -107,6 +107,10 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_ORDER_ROUTES.shipxRefresh.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
   { path: SHOP_ORDER_ROUTES.shipxDiscard.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
   { path: SHOP_ORDER_ROUTES.shipxLabel.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_SETTINGS_ROUTES.getSettings.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:settings:read' },
+  { path: SHOP_SETTINGS_ROUTES.updateSettings.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
+  { path: SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
+  { path: SHOP_SETTINGS_ROUTES.brandingAssetComplete.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
 ] as const;
 
 export const selfAuthenticatingRouteManifestEntry = (

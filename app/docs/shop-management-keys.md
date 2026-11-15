@@ -21,8 +21,9 @@ API key` for it, and no session route accepts it.
 | Request authentication, issuer revalidation and rate limits | Available |
 | Catalog routes: products, prices and stock (below) | Available |
 | Order and fulfilment routes, including InPost ShipX (below) | Available |
+| Shop settings and branding image routes (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
-| Image, sales-link, invoice, refund, settings and integration routes | Not yet available |
+| Product image, sales-link, invoice, refund and integration routes | Not yet available |
 
 ## Scopes
 
@@ -295,6 +296,91 @@ The typed client exposes the twelve calls with the session client's names:
 `listOrders`, `exportOrders`, `ordersPackingList`, `verifyOrder`, `getOrder`,
 `shipOrder`, `issueOrderLine`, `shipxShipment`, `shipxCreate`, `shipxRefresh`,
 `shipxDiscard` and `shipxLabel`.
+
+## Shop settings and branding routes
+
+A settings key changes only the shop-facing part of the workspace settings
+through a fixed allow-list. It never reaches the session settings route
+`POST /api/tenant/settings`, which keeps answering `401` for a shop key.
+
+| Method and path | Scope | Session counterpart |
+|---|---|---|
+| `GET /api/m2m/shop/settings` | `shop:settings:read` | `GET /api/tenant/settings`, allow-listed fields only |
+| `POST /api/m2m/shop/settings` | `shop:settings:write` | `POST /api/tenant/settings`, allow-listed fields only |
+| `POST /api/m2m/shop/image-assets/branding/upload` | `shop:settings:write` | `POST /api/image-assets/branding/upload` |
+| `POST /api/m2m/shop/image-assets/branding/complete` | `shop:settings:write` | `POST /api/image-assets/branding/complete` |
+
+Both settings routes answer `{ "settings": { ... } }` with exactly these
+fields, which are also the only fields the write accepts:
+
+| Area | Fields |
+|---|---|
+| Name and language | `name`, `defaultLanguage` |
+| Brand | `logoUrl`, `logoDarkUrl`, `faviconUrl`, `accentColor`, `accentLight`, `ogImageUrl`, `socialLinks` |
+| Checkout | `checkoutAppearance` |
+| Support and legal | `supportEmail`, `supportUrl`, `termsUrl`, `privacyUrl` |
+| Seller and invoicing | `invoiceSellerName`, `invoiceSellerAddress`, `invoiceVatMode`, `invoiceVatRatePercent`, `invoiceExemptionBasisKind`, `invoiceExemptionBasis`, `invoicingProvider`, `autoIssueInvoices`, `autoIssueInvoiceScope`, `ksefSubmissionMode` |
+| Shipping | `shippingRates`, `inpostGeowidgetToken` |
+
+Team and permissions, workspace lifecycle and plan, the public home, course and
+video settings, the sign-in notice, direct messages, analytics and the Meta
+Conversions API stay on the owner session. A write that names any other field,
+including a misspelt one, answers `400 validation` and changes nothing; unknown
+fields are never silently dropped. Each field keeps the validation of the
+session settings route.
+
+Merge and clear semantics:
+
+- A field left out of the body keeps its stored value; `{}` changes nothing.
+- `null` clears a field where the session route allows clearing: the brand
+  image URLs, `accentColor`, `accentLight`, `supportEmail`, `supportUrl`,
+  `termsUrl`, `privacyUrl`, `checkoutAppearance`, `invoiceSellerName`,
+  `invoiceSellerAddress`, `invoiceVatRatePercent`, `invoiceExemptionBasisKind`,
+  `invoiceExemptionBasis` and `inpostGeowidgetToken`. An empty string clears
+  the same URL, e-mail, colour, exemption basis and Geowidget token fields.
+- `name`, `defaultLanguage`, `invoiceVatMode`, `invoicingProvider`,
+  `autoIssueInvoices`, `autoIssueInvoiceScope` and `ksefSubmissionMode` cannot
+  be cleared; `null` answers `400 validation`. Send `[]` to remove every social
+  link or shipping rate.
+- `socialLinks`, `shippingRates` and `checkoutAppearance` are replaced as a
+  whole, never merged entry by entry.
+- VAT stays coherent after the merge, as in the session route: `exempt` clears
+  the rate, `rate` clears the exemption basis, and `exempt` without a usable
+  legal basis answers `422 invoice_exemption_basis_missing`.
+
+A branding image upload works like the session flow. `upload` takes
+`{"kind":"logo","fileName":"logo.png","contentType":"image/png","sizeBytes":1234}`
+with kind `logo`, `logo-dark`, `favicon` or `share-image` and answers a
+private candidate `key` and a signed `upload.url`; `PUT` the bytes there with
+the returned headers and send `{"key":"<candidate-key>"}` to `complete`, which
+checks the workspace, size and image signature and answers the published
+`url`. Set that URL as `logoUrl`, `logoDarkUrl`, `faviconUrl` or `ogImageUrl`
+with a settings write. A candidate key of another workspace answers
+`404 not_found`.
+
+```bash
+curl -s -H "$KEY" "$SHOP/settings"
+curl -s -H "$KEY" -H "$JSON" -d '{"termsUrl":"https://brand.example.test/terms","invoiceSellerName":"Example Press","shippingRates":[{"id":"courier","label":"Courier","amountCents":1500,"vatRatePercent":23,"carrier":"other","pickupPoint":"none","active":true}]}' "$SHOP/settings"
+curl -s -H "$KEY" -H "$JSON" -d '{"supportUrl":null}' "$SHOP/settings"
+```
+
+### Settings CLI
+
+`shop settings set` reads the JSON object from `--json-file <path>`, or from
+stdin with `--json-file -`, and checks it against the allow-list before the
+request. `shop branding upload <kind> <file>` runs upload, the signed `PUT`
+and complete, and prints the published URL; the file extension selects the
+content type.
+
+```bash
+pnpm --silent run cli --tenant acme shop settings show
+pnpm --silent run cli --tenant acme shop settings set --json-file shop-settings.json
+echo '{"privacyUrl":"https://brand.example.test/privacy"}' | pnpm --silent run cli --tenant acme shop settings set --json-file -
+pnpm --silent run cli --tenant acme shop branding upload logo ./logo.png
+```
+
+The typed client exposes `getSettings`, `updateSettings` and
+`uploadBrandingAsset`.
 
 ## Rate limits
 

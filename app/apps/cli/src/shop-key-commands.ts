@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
 
 import type { Command } from 'commander';
 import { z } from 'zod';
@@ -8,12 +9,13 @@ import {
   type ShopManagementClient,
   type ShopManagementClientOptions,
 } from '#core/client/index.js';
-import { shopCatalogContracts } from '#core/contract/index.js';
+import { shopCatalogContracts, shopSettingsContracts } from '#core/contract/index.js';
 import {
   currencySchema,
   deliveryMethodSchema,
   err,
   fulfilmentStatusSchema,
+  IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   ok,
   parcelTemplateSchema,
   priceKindSchema,
@@ -110,6 +112,42 @@ const packingListSchema = z.object({
 });
 const shipSchema = keyOnlySchema.extend({ carrier: shippingCarrierSchema, tracking: z.string().min(1) });
 const labelSchema = keyOnlySchema.extend({ out: z.string().min(1) });
+const settingsSetSchema = keyOnlySchema.extend({ jsonFile: z.string().min(1) });
+const brandingKindSchema = z.enum(['logo', 'logo-dark', 'favicon', 'share-image']);
+const imageExtensionSchema = z.enum(['png', 'jpg', 'jpeg', 'webp', 'svg', 'ico'])
+  .transform((extension) => IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION[extension === 'jpeg' ? 'jpg' : extension]);
+
+const readStdin = async (): Promise<string> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  return Buffer.concat(chunks).toString('utf8');
+};
+
+const shopSettingsPatchInput = async (source: string) => {
+  let raw: string;
+  try {
+    raw = source === '-' ? await readStdin() : await readFile(source, 'utf8');
+  } catch (cause) {
+    return err(validation(`Could not read the shop settings JSON from "${source}": ${String(cause)}`));
+  }
+  const parsed = inlineJson(raw, 'shop settings');
+  return parsed.ok ? contractInput(shopSettingsContracts.updateSettings.input, parsed.value, 'Invalid shop settings') : parsed;
+};
+
+const brandingUploadInput = async (kind: z.output<typeof brandingKindSchema>, file: string) => {
+  const contentType = imageExtensionSchema.safeParse(extname(file).slice(1).toLowerCase());
+  if (!contentType.success) return err(validation('The image file must end in .png, .jpg, .jpeg, .webp, .svg or .ico'));
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = new Uint8Array(await readFile(file));
+  } catch (cause) {
+    return err(validation(`Could not read the image file "${file}": ${String(cause)}`));
+  }
+  const input = contractInput(shopSettingsContracts.brandingAssetUpload.input, {
+    kind, fileName: basename(file), contentType: contentType.data, sizeBytes: bytes.byteLength,
+  }, 'Invalid branding image');
+  return input.ok ? ok({ ...input.value, body: bytes }) : input;
+};
 
 const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
   ...(options.status === undefined ? {} : { status: options.status }),
@@ -240,7 +278,7 @@ export const registerShopKeyCommands = (
   context: () => Result<ShopCliContext, AppError>,
   createClient: ShopClientFactory = createShopManagementClient,
 ): void => {
-  const shop = program.command('shop').description(`Manage the shop catalog and orders with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
+  const shop = program.command('shop').description(`Manage the shop catalog, orders and settings with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
   const run = <S extends z.ZodTypeAny, T>(
     schema: S,
     action: (client: ShopManagementClient, input: z.output<S>) => Promise<Result<T, AppError>> | Result<T, AppError>,
@@ -430,4 +468,21 @@ export const registerShopKeyCommands = (
       await writeFile(options.out, result.value.bytes);
       return ok({ filename: result.value.filename, contentType: result.value.contentType, bytes: result.value.bytes.byteLength, out: options.out });
     }, (file) => `wrote ${file.filename} (${String(file.bytes)} bytes) to ${file.out}`));
+
+  const settings = shop.command('settings').description('Shop settings of the key\'s workspace: brand, legal, seller, invoicing and shipping');
+  keyed(settings.command('show').description('Show the shop settings'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.getSettings(), (data) => JSON.stringify(data.settings, null, 2)));
+  keyed(settings.command('set').description('Change the shop settings fields given in a JSON object; omitted fields keep their value and null clears a clearable field')
+    .requiredOption('--json-file <path>', 'JSON file with the changed fields, or - to read it from stdin'))
+    .action(run(z.tuple([settingsSetSchema]), async (client, [options]) => {
+      const input = await shopSettingsPatchInput(options.jsonFile);
+      return input.ok ? client.updateSettings(input.value) : input;
+    }, (data) => JSON.stringify(data.settings, null, 2)));
+
+  const branding = shop.command('branding').description('Brand images of the key\'s workspace');
+  keyed(branding.command('upload <kind> <file>').description('Upload a logo, logo-dark, favicon or share-image file and print its URL for shop settings set'))
+    .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema]), async (client, [kind, file]) => {
+      const input = await brandingUploadInput(kind, file);
+      return input.ok ? client.uploadBrandingAsset(input.value) : input;
+    }, (data) => data.url));
 };

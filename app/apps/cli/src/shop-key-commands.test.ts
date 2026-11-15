@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,6 +72,11 @@ const shipment = {
   labelFetchedAt: null, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: '2026-11-15T10:00:00.000Z',
 };
 
+const shopSettings = {
+  name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null, ogImageUrl: null,
+  socialLinks: [], supportEmail: null, supportUrl: null, termsUrl: 'https://brand.example.test/terms', privacyUrl: null,
+};
+
 const orderData = (pathname: string, method: string): unknown => {
   if (pathname === '/api/m2m/shop/orders') return { sources: [], orders: [order], total: 1, page: 1, pageSize: 20 };
   if (pathname.endsWith('/export') || pathname.endsWith('/packing-list')) return { filename: 'orders.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number\norder-1' };
@@ -91,7 +96,16 @@ let errorSpy: MockInstance<typeof console.error>;
 const fetchImpl: typeof fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   const method = init?.method ?? 'GET';
-  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+  if (url.hostname === 'storage.example.test') return new Response(null, { status: 200 });
+  if (url.pathname.startsWith('/api/m2m/shop/image-assets/branding/')) {
+    return new Response(JSON.stringify({ ok: true, data: url.pathname.endsWith('/upload')
+      ? { key: 'image-asset-candidates/acme/logo/1.png', servePath: '/api/public/assets/logo/1.png', upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+      : { url: '/api/public/assets/logo/1.png' } }), { headers: { 'content-type': 'application/json' } });
+  }
+  if (url.pathname === '/api/m2m/shop/settings') {
+    return new Response(JSON.stringify({ ok: true, data: { settings: shopSettings } }), { headers: { 'content-type': 'application/json' } });
+  }
   if (url.pathname.endsWith('/label')) {
     return new Response(new TextEncoder().encode('%PDF-1.4 label'), { headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="inpost-T1.pdf"' } });
   }
@@ -253,5 +267,84 @@ describe('shop orders CLI', () => {
     await run('shop', 'orders', 'list', '--mode', 'staging');
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(calls).toEqual([]);
+  });
+});
+
+describe('shop settings and branding CLI', () => {
+  it('shows the settings with the env key only', async () => {
+    await run('shop', 'settings', 'show');
+    expect(soleJson()).toEqual({ ok: true, data: { settings: shopSettings } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method: 'GET', path: '/api/m2m/shop/settings' });
+    expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('sends the settings JSON from a file and from stdin', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-settings-cli-'));
+    const file = join(directory, 'settings.json');
+    await writeFile(file, JSON.stringify({ termsUrl: 'https://brand.example.test/terms', supportUrl: null }));
+    await run('shop', 'settings', 'set', '--json-file', file);
+    expect(soleJson()).toMatchObject({ ok: true, data: { settings: { name: 'Example Press' } } });
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/settings', body: { termsUrl: 'https://brand.example.test/terms', supportUrl: null } });
+
+    logSpy.mockClear();
+    vi.spyOn(process.stdin, Symbol.asyncIterator).mockImplementation(async function* (): AsyncGenerator<Buffer, undefined> {
+      yield Buffer.from('{"privacyUrl":');
+      yield Buffer.from('"https://brand.example.test/privacy"}');
+      return undefined;
+    });
+    await run('shop', 'settings', 'set', '--json-file', '-');
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls[1]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/settings', body: { privacyUrl: 'https://brand.example.test/privacy' } });
+    await rm(directory, { recursive: true });
+  });
+
+  it.each([
+    ['{"analyticsTagId":"G-ABCDEF1234"}'],
+    ['{"defaultHomeSpaceId":"space-1"}'],
+    ['{"termsUrlTypo":"https://brand.example.test/terms"}'],
+    ['not json'],
+  ])('rejects the settings file %s before any request', async (content) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-settings-cli-'));
+    const file = join(directory, 'settings.json');
+    await writeFile(file, content);
+    await run('shop', 'settings', 'set', '--json-file', file);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    expect(calls).toEqual([]);
+    await rm(directory, { recursive: true });
+  });
+
+  it('uploads a branding image, PUTs the bytes without the key and completes it', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-branding-cli-'));
+    const file = join(directory, 'logo.png');
+    await writeFile(file, new Uint8Array([137, 80, 78, 71]));
+    await run('shop', 'branding', 'upload', 'logo', file);
+    expect(soleJson()).toEqual({ ok: true, data: { url: '/api/public/assets/logo/1.png' } });
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'POST /api/m2m/shop/image-assets/branding/upload',
+      'PUT /candidate',
+      'POST /api/m2m/shop/image-assets/branding/complete',
+    ]);
+    expect(calls[0]?.body).toEqual({ kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: 4 });
+    expect(calls[1]?.headers.has('x-api-key')).toBe(false);
+    expect(calls[1]?.headers.get('content-type')).toBe('image/png');
+    expect(calls[2]?.body).toEqual({ key: 'image-asset-candidates/acme/logo/1.png' });
+    await rm(directory, { recursive: true });
+  });
+
+  it.each([
+    ['product-cover', 'cover.png'],
+    ['logo', 'logo.gif'],
+    ['share-image', 'share.svg'],
+    ['logo', 'missing.png'],
+  ])('rejects a %s upload of %s before any request', async (kind, name) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-branding-cli-'));
+    if (name !== 'missing.png') await writeFile(join(directory, name), '<svg/>');
+    await run('shop', 'branding', 'upload', kind, join(directory, name));
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+    await rm(directory, { recursive: true });
   });
 });

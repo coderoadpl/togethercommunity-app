@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES } from '#core/contract/index.js';
+import { SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 
 import { createShopManagementClient } from './http.js';
 
@@ -135,6 +135,57 @@ describe('shop management client order calls', () => {
       expect(call.headers.get('x-api-key')).toBe('shop-secret');
       expect(call.headers.has('authorization')).toBe(false);
       expect(call.headers.has('cookie')).toBe(false);
+    }
+  });
+});
+
+const shopSettings = {
+  name: 'Example Press', defaultLanguage: 'en', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null,
+  ogImageUrl: null, socialLinks: [], supportEmail: null, supportUrl: null, termsUrl: 'https://brand.example.test/terms', privacyUrl: null,
+  shippingRates: [],
+};
+
+describe('shop management client settings calls', () => {
+  it('reads and writes settings and uploads a branding image with the key on the API calls only', async () => {
+    const seen: { method: string; url: URL; headers: Headers; body: unknown }[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      const method = init?.method ?? 'GET';
+      seen.push({ method, url, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+      if (url.hostname === 'storage.example.test') return new Response(null, { status: 200 });
+      const data = url.pathname === SHOP_SETTINGS_ROUTES.brandingAssetUpload.path
+        ? { key: 'image-asset-candidates/acme/logo/1.png', servePath: '/api/public/assets/logo/1.png', upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+        : url.pathname === SHOP_SETTINGS_ROUTES.brandingAssetComplete.path ? { url: '/api/public/assets/logo/1.png' }
+          : { settings: shopSettings };
+      return new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+
+    const results = [
+      await client.getSettings(),
+      await client.updateSettings({ termsUrl: 'https://brand.example.test/terms', supportUrl: null }),
+      await client.uploadBrandingAsset({ kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: bytes.byteLength, body: bytes }),
+    ];
+
+    expect(results.filter((result) => !result.ok)).toEqual([]);
+    expect(results[2]).toEqual({ ok: true, value: { url: '/api/public/assets/logo/1.png' } });
+    expect(seen.map((call) => `${call.method} ${call.url.origin}${call.url.pathname}`)).toEqual([
+      `GET https://platform.example.test${SHOP_SETTINGS_ROUTES.getSettings.path}`,
+      `POST https://platform.example.test${SHOP_SETTINGS_ROUTES.updateSettings.path}`,
+      `POST https://platform.example.test${SHOP_SETTINGS_ROUTES.brandingAssetUpload.path}`,
+      'PUT https://storage.example.test/candidate',
+      `POST https://platform.example.test${SHOP_SETTINGS_ROUTES.brandingAssetComplete.path}`,
+    ]);
+    expect(seen[1]?.body).toEqual({ termsUrl: 'https://brand.example.test/terms', supportUrl: null });
+    expect(seen[2]?.body).toEqual({ kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: 4 });
+    expect(seen[4]?.body).toEqual({ key: 'image-asset-candidates/acme/logo/1.png' });
+    expect(seen[3]?.headers.get('content-type')).toBe('image/png');
+    expect(seen[3]?.headers.has('x-api-key')).toBe(false);
+    for (const call of seen.filter((entry) => entry.url.hostname === 'platform.example.test')) {
+      expect(call.headers.get('x-api-key')).toBe('shop-secret');
+      expect(call.headers.get('x-tenant')).toBe('acme');
+      expect(call.headers.has('authorization')).toBe(false);
     }
   });
 });

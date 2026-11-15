@@ -10,6 +10,8 @@ import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type Provis
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
+import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
+import type { ShopSettingsPatch } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
@@ -2904,6 +2906,7 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
       request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
     ...shopOrderMethods(options),
+    ...shopSettingsMethods(options),
   };
 };
 
@@ -2936,6 +2939,19 @@ const shopOrderMethods = (options: ApiClientOptions) => {
       request(options, routes.shipxDiscard.method, orderPath(routes.shipxDiscard.path, input.orderId), contracts.shipxDiscard.output, {}, signal),
     shipxLabel: (input: ShopOrderInput<'shipxLabel'>, signal?: AbortSignal) =>
       request(options, routes.shipxLabel.method, orderPath(routes.shipxLabel.path, input.orderId), contracts.shipxLabel.output, {}, signal, { headers: {}, responseBinary: 'application/pdf' }),
+  };
+};
+
+const shopSettingsMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_SETTINGS_ROUTES;
+  const contracts = shopSettingsContracts;
+  return {
+    getSettings: (signal?: AbortSignal) =>
+      request(options, routes.getSettings.method, routes.getSettings.path, contracts.getSettings.output, undefined, signal),
+    updateSettings: (input: ShopSettingsPatch, signal?: AbortSignal) =>
+      request(options, routes.updateSettings.method, routes.updateSettings.path, contracts.updateSettings.output, input, signal),
+    uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+      uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, input, signal),
   };
 };
 

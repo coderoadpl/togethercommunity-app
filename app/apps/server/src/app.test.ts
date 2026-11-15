@@ -10709,6 +10709,16 @@ describe('cart checkout over the public checkout routes', () => {
       recurringDuration: 'first_invoice',
     });
   });
+
+  it('returns the buyer to the hosted cart page with its lines after a cancelled payment', async () => {
+    const h = cartApp();
+    const response = await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true });
+    expect(response.status).toBe(200);
+    expect(h.createCheckoutSession.mock.calls[0]?.[0]).toMatchObject({
+      successUrl: 'http://acme.localhost:48730/checkout/cart?status=success&purchase_kind=one_time&session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: `http://acme.localhost:48730/checkout/cart?status=cancelled&lines=${poster}.2~${mug}.1`,
+    });
+  });
 });
 
 describe('public order QR response', () => {

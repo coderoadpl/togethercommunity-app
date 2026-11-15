@@ -28,7 +28,7 @@ export const cartLinesSchema = z.array(cartLineSchema).min(1).max(CART_MAX_LINES
   }
 });
 
-const cartLineMaxQuantity = (
+export const cartLineMaxQuantity = (
   productType: ProductType,
   physicalMaxQuantity: number = CART_LINE_MAX_QUANTITY_WITH_HOLD,
 ): number => productType === 'physical' ? physicalMaxQuantity : 1;
@@ -40,4 +40,21 @@ export const cartLineQuantityError = (
 ): string | null => {
   const max = cartLineMaxQuantity(product.type, physicalMaxQuantity);
   return quantity <= max ? null : `"${product.title}" can be ordered in a quantity of at most ${String(max)}`;
+};
+
+export const CART_LINES_PARAM = 'lines';
+const CART_LINE_SEPARATOR = '~';
+const cartLineParamPattern = /^([0-9a-f-]{36})\.([1-9][0-9]?)$/iu;
+
+export const formatCartLinesParam = (lines: readonly { productId: string; quantity: number }[]): string =>
+  lines.map((line) => `${line.productId}.${String(line.quantity)}`).join(CART_LINE_SEPARATOR);
+
+export const parseCartLinesParam = (value: string | null): CartLine[] | null => {
+  if (value === null || value.length > 2000) return null;
+  const entries = value.split(CART_LINE_SEPARATOR).map((entry) => cartLineParamPattern.exec(entry));
+  const lines = entries.flatMap((match) => match?.[1] === undefined || match[2] === undefined
+    ? [] : [{ productId: match[1], quantity: Number(match[2]) }]);
+  if (lines.length !== entries.length) return null;
+  const parsed = cartLinesSchema.safeParse(lines);
+  return parsed.success ? parsed.data : null;
 };

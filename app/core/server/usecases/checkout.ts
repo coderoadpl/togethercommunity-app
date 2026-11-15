@@ -1,5 +1,7 @@
 import {
+  CART_LINES_PARAM,
   SALES_LINK_VARIANT_PARAM,
+  formatCartLinesParam,
   formatSalesLinkVariantParam,
   attributionSchema,
   attributionToSearchParams,
@@ -227,7 +229,9 @@ export const startCheckoutSession = async (
   if (testSession !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }
-  const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
+  const checkoutPath = selection.cartLines !== undefined ? `${tenantBaseUrl}/checkout/cart`
+    : selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
+  const cartQuery = selection.cartLines === undefined ? '' : `&${CART_LINES_PARAM}=${encodeURIComponent(formatCartLinesParam(selection.cartLines))}`;
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const campaignQuery = attributionToSearchParams(fields).toString();
   const variantQuery = new URLSearchParams((selection.variantSelections ?? []).map((item) => [SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam(item)])).toString();
@@ -323,7 +327,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${cartQuery}${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),

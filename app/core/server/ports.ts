@@ -2681,8 +2681,12 @@ export interface ActivityReportRepository {
   memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }
 
+export interface MemberStripeCustomerRepository {
+  recordStripeCustomerId(tenantId: string, memberId: string, customerId: string): Promise<boolean>;
+}
+
 export interface SubscriptionAdoptionRepositories {
-  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  members: Pick<MemberRepository, 'findById' | 'findByEmail'> & MemberStripeCustomerRepository;
   products: Pick<ProductRepository, 'findById'>;
   prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
   subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;

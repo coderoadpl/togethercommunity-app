@@ -135,6 +135,9 @@ const reconcileAdoption = async (
     ? await resolvePrice(tenantId, product.id, undefined, remote, now, deps)
     : ok({ price: known, created: false });
   if (!resolved.ok) return resolved;
+  if (member.externalCustomerIds['stripe'] === undefined) {
+    await deps.members.recordStripeCustomerId(tenantId, member.id, remote.customerId);
+  }
   const billable: Partial<Pick<MemberSubscription, 'status' | 'currentPeriodEnd' | 'cancelAtPeriodEnd'>> =
     remote.status === 'active' || remote.status === 'past_due'
       ? { status: remote.status, currentPeriodEnd: remote.currentPeriodEnd, cancelAtPeriodEnd: remote.cancelAtPeriodEnd }
@@ -181,6 +184,9 @@ const saveAdoption = async (
   if (input.allowEmailMismatch !== true && (remote.customerEmail === null
     || normalizeEmail(remote.customerEmail) !== normalizeEmail(member.value.email))) {
     return err(adoptionRefusal('validation', 'email-mismatch', 'Stripe customer email does not match the member'));
+  }
+  if (!await deps.members.recordStripeCustomerId(tenantId, member.value.id, remote.customerId)) {
+    return err(adoptionRefusal('conflict', 'conflict', 'Member is linked to a different Stripe customer'));
   }
   const now = deps.clock.nowIso();
   const resolved = await resolvePrice(tenantId, product.id, input.priceId, remote, now, deps);

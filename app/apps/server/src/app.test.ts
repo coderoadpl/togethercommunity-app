@@ -580,7 +580,8 @@ const deps = (input: {
         },
       }),
     },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) => operation(appDeps) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
+      operation({ ...appDeps, members: { ...appDeps.members, recordStripeCustomerId: async () => true } }) },
     paymentTransaction: {
       run: async (operation) =>
         operation({

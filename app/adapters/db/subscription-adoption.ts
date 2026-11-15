@@ -6,7 +6,7 @@ import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { createMemberEventRepository } from './member-events.js';
 import {
-  createMemberRepository, createMemberSubscriptionRepository, createProductGrantRepository,
+  createMemberRepository, createMemberStripeCustomerRepository, createMemberSubscriptionRepository, createProductGrantRepository,
   createProductPriceRepository, createProductRepository,
 } from './repositories.js';
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
@@ -25,7 +25,7 @@ export const createSubscriptionAdoptionTransaction = (db: Db): SubscriptionAdopt
         await lockKey(tx, `stripe-subscription:${stripe.subscriptionId}`);
         await lockKey(tx, `stripe-customer:${stripe.customerId}`);
         const result = await operation({
-          members: createMemberRepository(tx), products: createProductRepository(tx),
+          members: { ...createMemberRepository(tx), ...createMemberStripeCustomerRepository(tx) }, products: createProductRepository(tx),
           prices: createProductPriceRepository(tx), subscriptions: createMemberSubscriptionRepository(tx),
           grants: createProductGrantRepository(tx), memberEvents: createMemberEventRepository(tx),
           stripeWebhookOwnership: createStripeWebhookOwnershipReader(tx),

@@ -2645,6 +2645,13 @@ export interface TenantConfigSourceRepository {
   listByTenant(tenantId: string): Promise<TenantConfigSource[]>;
 }
 
+type InheritedConfig<Value> = { source: 'workspace' } | { source: 'organization'; value: Value | null };
+
+export interface EffectiveTenantConfigReader {
+  findInheritedSecret(tenantId: string, key: OrganizationSecretKey): Promise<InheritedConfig<OrganizationSecret>>;
+  findInheritedSettings(tenantId: string, group: ConfigGroup): Promise<InheritedConfig<OrganizationSettings>>;
+}
+
 type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
 
 type OrganizationMemberChangeResult<Done extends string> =

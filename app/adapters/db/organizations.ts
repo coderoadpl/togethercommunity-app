@@ -1,6 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 
 import {
+  ORGANIZATION_SECRET_GROUP,
   organizationAuditEventSchema,
   organizationMemberAccountSchema,
   organizationMemberSchema,
@@ -9,9 +10,11 @@ import {
   organizationSettingsSchema,
   organizationWorkspaceSchema,
   tenantConfigSourceSchema,
+  type ConfigGroup,
   type OrganizationWorkspace,
 } from '#core/domain/index.js';
 import type {
+  EffectiveTenantConfigReader,
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
@@ -174,6 +177,32 @@ export const createTenantConfigSourceRepository = (db: Db): TenantConfigSourceRe
       updatedAt: row.updatedAt,
       updatedByUserId: row.updatedByUserId,
     })),
+});
+
+const sourceRow = (tenantId: string, group: ConfigGroup) =>
+  and(eq(tenantConfigSources.tenantId, tenantId), eq(tenantConfigSources.configGroup, group));
+
+export const createEffectiveTenantConfigReader = (db: Db): EffectiveTenantConfigReader => ({
+  findInheritedSecret: async (tenantId, key) => {
+    const rows = await db.select({ secret: organizationSecrets }).from(tenantConfigSources)
+      .innerJoin(tenants, eq(tenants.id, tenantConfigSources.tenantId))
+      .leftJoin(organizationSecrets, and(eq(organizationSecrets.organizationId, tenants.organizationId), eq(organizationSecrets.key, key)))
+      .where(sourceRow(tenantId, ORGANIZATION_SECRET_GROUP[key]))
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined) return { source: 'workspace' };
+    return { source: 'organization', value: row.secret === null ? null : organizationSecretSchema.parse(row.secret) };
+  },
+  findInheritedSettings: async (tenantId, group) => {
+    const rows = await db.select({ organization: organizations }).from(tenantConfigSources)
+      .innerJoin(tenants, eq(tenants.id, tenantConfigSources.tenantId))
+      .leftJoin(organizations, eq(organizations.id, tenants.organizationId))
+      .where(sourceRow(tenantId, group))
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined) return { source: 'workspace' };
+    return { source: 'organization', value: row.organization === null ? null : settingsOf(row.organization) };
+  },
 });
 
 const memberAccountColumns = {

@@ -4,7 +4,7 @@ import type { StaffRole } from './identity.js';
 import { operatorTenantSlugSchema } from './operator-tenant.js';
 import { shipxEnvironmentSchema, shipxSenderSchema } from './shipx.js';
 import { isReservedTenantSlug, tenantSchema, type StaffGrantSource } from './tenant.js';
-import { tenantSecretKeySchema } from './tenant-secret.js';
+import { tenantSecretKeySchema, type TenantSecretKey } from './tenant-secret.js';
 
 const organizationSlugSchema = operatorTenantSlugSchema
   .refine((slug) => !isReservedTenantSlug(slug), 'Organization slug is reserved');
@@ -208,6 +208,24 @@ export const ORGANIZATION_SECRET_GROUP: Readonly<Record<OrganizationSecretKey, C
   'shipx.token': 'shipping_carrier',
   'telemetry.mongodb': 'telemetry',
 };
+
+export const CONFIG_GROUP_POLICY: Readonly<Record<TenantSecretKey, ConfigGroup | 'workspace'>> = {
+  ...ORGANIZATION_SECRET_GROUP,
+  analyticsMetaCapiAccessToken: 'workspace',
+  'stripe.webhookSecret': 'workspace',
+  'stripe.webhookEndpointId': 'workspace',
+  'stripe.testWebhookSecret': 'workspace',
+  'stripe.testWebhookEndpointId': 'workspace',
+  'stripe.testLastEventAt': 'workspace',
+  'bunny.apiKey': 'workspace',
+  'bunny.securityKey': 'workspace',
+  's3.accessKeyId': 'workspace',
+  's3.secretAccessKey': 'workspace',
+  's3.configuration': 'workspace',
+};
+
+export const NEVER_INHERIT_SECRET_KEYS: readonly TenantSecretKey[] = tenantSecretKeySchema.options
+  .filter((key) => CONFIG_GROUP_POLICY[key] === 'workspace');
 
 const DEDICATED_FLOW_SECRET_KEYS: Readonly<Partial<Record<OrganizationSecretKey, string>>> = {
   'stripe.restrictedKey': 'The organization Stripe live key is stored only by the organization Stripe configuration flow',

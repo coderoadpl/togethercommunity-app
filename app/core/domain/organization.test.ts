@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CONFIG_GROUP_POLICY,
   CONFIG_GROUPS,
   configGroupSchema,
+  NEVER_INHERIT_SECRET_KEYS,
   ORGANIZATION_SECRET_GROUP,
   organizationAuditEventSchema,
   organizationMemberSchema,
@@ -100,5 +102,69 @@ describe('organization settings input', () => {
     ])).toEqual(CONFIG_GROUPS.map((group) => group === 'invoicing'
       ? { group, source: 'organization', updatedAt: '2026-11-15T10:00:00.000Z', updatedByUserId: 'owner-1' }
       : { group, source: 'workspace', updatedAt: null, updatedByUserId: null }));
+  });
+});
+
+describe('configuration group policy', () => {
+  const expectedPolicy = {
+    analyticsMetaCapiAccessToken: 'workspace',
+    'stripe.restrictedKey': 'payments_live',
+    'stripe.webhookSecret': 'workspace',
+    'stripe.webhookEndpointId': 'workspace',
+    'stripe.testRestrictedKey': 'payments_test',
+    'stripe.testWebhookSecret': 'workspace',
+    'stripe.testWebhookEndpointId': 'workspace',
+    'stripe.testLastEventAt': 'workspace',
+    'bunny.apiKey': 'workspace',
+    'bunny.securityKey': 'workspace',
+    's3.accessKeyId': 'workspace',
+    's3.secretAccessKey': 'workspace',
+    's3.configuration': 'workspace',
+    'telemetry.mongodb': 'telemetry',
+    'ses.accessKeyId': 'email_transport',
+    'ses.secretAccessKey': 'email_transport',
+    'ses.region': 'email_transport',
+    'smtp.host': 'email_transport',
+    'smtp.port': 'email_transport',
+    'smtp.user': 'email_transport',
+    'smtp.password': 'email_transport',
+    'smtp.secure': 'email_transport',
+    'resend.apiKey': 'email_transport',
+    'ifirma.invoiceApiKey': 'invoicing',
+    'ifirma.username': 'invoicing',
+    'ksef.token': 'invoicing',
+    'ksef.contextNip': 'invoicing',
+    'ksef.test.token': 'invoicing',
+    'ksef.test.contextNip': 'invoicing',
+    'shipx.organizationId': 'shipping_carrier',
+    'shipx.token': 'shipping_carrier',
+  };
+
+  it('classifies every workspace secret key, so a new key fails until it is classified', () => {
+    expect(Object.keys(CONFIG_GROUP_POLICY).toSorted()).toEqual([...tenantSecretKeySchema.options].toSorted());
+    expect(Object.keys(expectedPolicy).toSorted()).toEqual([...tenantSecretKeySchema.options].toSorted());
+    expect(CONFIG_GROUP_POLICY).toEqual(expectedPolicy);
+  });
+
+  it('never inherits the webhook signing secrets, endpoint IDs and delivery evidence', () => {
+    expect(NEVER_INHERIT_SECRET_KEYS).toEqual(expect.arrayContaining([
+      'stripe.webhookSecret',
+      'stripe.webhookEndpointId',
+      'stripe.testWebhookSecret',
+      'stripe.testWebhookEndpointId',
+      'stripe.testLastEventAt',
+    ]));
+    expect([...NEVER_INHERIT_SECRET_KEYS].toSorted()).toEqual(
+      tenantSecretKeySchema.options.filter((key) => expectedPolicy[key] === 'workspace').toSorted(),
+    );
+  });
+
+  it('inherits exactly the organization allow-list, each key through its group', () => {
+    const inheritable = tenantSecretKeySchema.options.filter((key) => CONFIG_GROUP_POLICY[key] !== 'workspace');
+    expect(inheritable.toSorted()).toEqual([...organizationSecretKeySchema.options].toSorted());
+    for (const key of organizationSecretKeySchema.options) {
+      expect(CONFIG_GROUP_POLICY[key]).toBe(ORGANIZATION_SECRET_GROUP[key]);
+    }
+    expect(NEVER_INHERIT_SECRET_KEYS.filter((key) => organizationSecretKeySchema.safeParse(key).success)).toEqual([]);
   });
 });

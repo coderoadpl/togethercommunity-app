@@ -114,7 +114,6 @@ import type {
   EmailHmac,
   MemberErasurePort,
   MemberRepository,
-  MemberStripeCustomerRepository,
   MemberCourseProgressRepository,
   MemberSubscriptionRepository,
   NotificationRepository,
@@ -2616,21 +2615,6 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
       )
       .returning({ id: notifications.id });
     return rows.length;
-  },
-});
-
-export const createMemberStripeCustomerRepository = (db: Db): MemberStripeCustomerRepository => ({
-  recordStripeCustomerId: async (tenantId, memberId, customerId) => {
-    const rows = await db
-      .update(members)
-      .set({ externalCustomerIds: sql`${members.externalCustomerIds} || jsonb_build_object('stripe', ${customerId}::text)` })
-      .where(and(
-        eq(members.tenantId, tenantId),
-        eq(members.id, memberId),
-        sql`coalesce(${members.externalCustomerIds} ->> 'stripe', ${customerId}) = ${customerId}`,
-      ))
-      .returning({ id: members.id });
-    return rows.length > 0;
   },
 });
 

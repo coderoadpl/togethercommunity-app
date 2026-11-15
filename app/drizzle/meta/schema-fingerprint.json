@@ -1,6 +1,6 @@
 {
-  "hash": "acc66a06d4f40ba377e0f0a5ed84a880fe67c0efd80e188d879383c3549e0d93",
-  "shortId": "acc66a06d4f4",
+  "hash": "2f051c826a623328e1a23a478af4bc36903bcf968b5184b343380f0164333f6f",
+  "shortId": "2f051c826a62",
   "schema": {
     "constraints": [
       {
@@ -212,6 +212,11 @@
         "definition": "CHECK ((provider = 'inpost_shipx'::text))",
         "name": "order_shipments_provider_check",
         "table": "order_shipments"
+      },
+      {
+        "definition": "CHECK ((provider = 'stripe'::text))",
+        "name": "provider_customer_owners_provider_check",
+        "table": "provider_customer_owners"
       },
       {
         "definition": "CHECK ((quantity > 0))",
@@ -1012,6 +1017,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "products_tenant_id_tenants_id_fk",
         "table": "products"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "provider_customer_owners_tenant_id_fkey",
+        "table": "provider_customer_owners"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1904,6 +1914,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "PRIMARY KEY (provider, customer_id)",
+        "name": "provider_customer_owners_pkey",
+        "table": "provider_customer_owners"
+      },
+      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -2716,6 +2731,11 @@
         "definition": "CREATE INDEX products_tenant_variant_group_idx ON products USING btree (tenant_id, variant_group)",
         "name": "products_tenant_variant_group_idx",
         "table": "products"
+      },
+      {
+        "definition": "CREATE INDEX provider_customer_owners_tenant_idx ON provider_customer_owners USING btree (tenant_id)",
+        "name": "provider_customer_owners_tenant_idx",
+        "table": "provider_customer_owners"
       },
       {
         "definition": "CREATE INDEX rate_limit_buckets_expiry_idx ON rate_limit_buckets USING btree (expires_at)",
@@ -13574,6 +13594,43 @@
           }
         ],
         "name": "organization_members"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "customer_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "provider_customer_owners"
       },
       {
         "columns": [

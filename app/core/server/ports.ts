@@ -2701,12 +2701,13 @@ export interface ActivityReportRepository {
   memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }
 
-export interface MemberStripeCustomerRepository {
-  recordStripeCustomerId(tenantId: string, memberId: string, customerId: string): Promise<boolean>;
+export interface ProviderCustomerOwnerRepository {
+  claimStripeCustomer(tenantId: string, customerId: string, claimedAt: string): Promise<'this-workspace' | 'another-workspace'>;
 }
 
 export interface SubscriptionAdoptionRepositories {
-  members: Pick<MemberRepository, 'findById' | 'findByEmail'> & MemberStripeCustomerRepository;
+  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  customerOwners: ProviderCustomerOwnerRepository;
   products: Pick<ProductRepository, 'findById'>;
   prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
   subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;

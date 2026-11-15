@@ -41,3 +41,13 @@ CREATE TABLE organization_audit_events (
 );
 --> statement-breakpoint
 CREATE INDEX organization_audit_events_org_at_idx ON organization_audit_events (organization_id, at);
+--> statement-breakpoint
+CREATE TABLE provider_customer_owners (
+  provider text NOT NULL CONSTRAINT provider_customer_owners_provider_check CHECK (provider IN ('stripe')),
+  customer_id text NOT NULL,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_at text NOT NULL,
+  CONSTRAINT provider_customer_owners_pkey PRIMARY KEY (provider, customer_id)
+);
+--> statement-breakpoint
+CREATE INDEX provider_customer_owners_tenant_idx ON provider_customer_owners (tenant_id);

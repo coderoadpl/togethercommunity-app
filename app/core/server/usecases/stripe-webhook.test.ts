@@ -2966,7 +2966,7 @@ it('renews and cancels an adopted subscription without Together checkout metadat
     payment: { retrieveStripeSubscription: async () => ok({ id: 'sub_existing', status: 'active',
       customerId: 'cus_existing', customerEmail: member.email, metadataTenantId: null, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
       price: { id: 'price_existing', amountCents: price.amountCents, currency: price.currency, interval: 'month', intervalCount: 1 } }) },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) => operation({ ...h.deps, members: { ...h.deps.members, recordStripeCustomerId: async () => true },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) => operation({ ...h.deps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
       memberEvents: { append: async () => undefined } }) },
   });
   expect(adopted.ok).toBe(true);

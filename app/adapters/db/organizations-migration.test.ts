@@ -14,6 +14,7 @@ describe('0156 organizations core migration', () => {
     const database = await createTestDatabase('together_organizations_migration', databaseUrl);
     try {
       await database.db.execute(sql.raw(`
+        DROP TABLE provider_customer_owners;
         DROP TABLE organization_audit_events;
         DROP TABLE organization_members;
         ALTER TABLE tenants DROP COLUMN organization_id;

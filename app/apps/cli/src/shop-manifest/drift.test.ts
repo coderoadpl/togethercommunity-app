@@ -30,12 +30,15 @@ describe('shop drift', () => {
 
   it.each(['metadata', 'price', 'duplicate-price', 'stock', 'cover', 'publication'] as const)('detects %s drift read-only', async (kind) => {
     const fake = converged();
-    if (kind === 'metadata') fake.state.products[0]!.title = 'Changed';
-    if (kind === 'price') fake.state.prices[0]!.amountCents = 100;
+    const product = fake.state.products[0];
+    const price = fake.state.prices[0];
+    if (product === undefined || price === undefined) throw new Error('Expected a converged product and price');
+    if (kind === 'metadata') product.title = 'Changed';
+    if (kind === 'price') price.amountCents = 100;
     if (kind === 'duplicate-price') fake.state.prices.push(existingPrice({ id: 'price2' }));
     if (kind === 'stock') fake.state.stock = existingStock(5);
-    if (kind === 'cover') fake.state.products[0]!.coverUrl = null;
-    if (kind === 'publication') fake.state.products[0]!.published = false;
+    if (kind === 'cover') product.coverUrl = null;
+    if (kind === 'publication') product.published = false;
     expect(await driftManifest(manifestFixture, () => fake.api)).toMatchObject({ ok: true, value: { drifted: true } });
     expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
   });

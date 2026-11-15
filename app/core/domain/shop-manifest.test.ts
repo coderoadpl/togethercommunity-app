@@ -80,7 +80,9 @@ describe('shop manifest v1', () => {
 
   it('keeps one matching active non-imported price and retires alternatives', () => {
     const desired = shopManifestProductSchema.parse(productInput);
-    expect(diffManifestProduct(desired, { ...current, prices: [...current.prices, { ...current.prices[0]!, id: 'price2' }] }).deactivatePriceIds).toEqual(['price2']);
+    const price = current.prices[0];
+    if (price === undefined) throw new Error('Expected an active price');
+    expect(diffManifestProduct(desired, { ...current, prices: [...current.prices, { ...price, id: 'price2' }] }).deactivatePriceIds).toEqual(['price2']);
     expect(diffManifestProduct(desired, { ...current, prices: current.prices.map((price) => ({ ...price, imported: true })) }).price).toBe('add');
   });
 });

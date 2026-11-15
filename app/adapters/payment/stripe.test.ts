@@ -4,7 +4,6 @@ import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-f
 import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
-import { z } from 'zod';
 
 import {
   STRIPE_WEBHOOK_EVENTS,
@@ -201,12 +200,10 @@ describe('configureWebhook', () => {
   });
 
   it.each(['live', 'test'] as const)('preserves the neighboring workspace and other slot when reconfiguring %s on a shared account', async (mode) => {
-    const endpointSchema = z.object({
-      id: z.string(), object: z.literal('webhook_endpoint'), url: z.string().url(),
-      metadata: z.object({ tenantId: z.string() }), status: z.literal('enabled'),
-      secret: z.string(),
-    });
-    const registered: Array<z.infer<typeof endpointSchema>> = [];
+    const registered: Array<{
+      id: string; object: 'webhook_endpoint'; url: string;
+      metadata: { tenantId: string }; status: 'enabled'; secret: string;
+    }> = [];
     const deleted: string[] = [];
     const keys: string[] = [];
     let sequence = 0;
@@ -230,11 +227,14 @@ describe('configureWebhook', () => {
             }
             const body = new URLSearchParams(await request.text());
             sequence += 1;
-            const endpoint = endpointSchema.parse({
-              id: `we_${sequence}`, object: 'webhook_endpoint', url: body.get('url'),
-              metadata: { tenantId: body.get('metadata[tenantId]') }, status: 'enabled',
+            const url = body.get('url');
+            const tenantId = body.get('metadata[tenantId]');
+            if (url === null || !URL.canParse(url) || tenantId === null) throw new Error('Invalid webhook registration fields');
+            const endpoint = {
+              id: `we_${sequence}`, object: 'webhook_endpoint' as const, url,
+              metadata: { tenantId }, status: 'enabled' as const,
               secret: `whsec_${sequence}`,
-            });
+            };
             registered.push(endpoint);
             return stripeJson(endpoint);
           }),
@@ -259,7 +259,8 @@ describe('configureWebhook', () => {
         appBaseUrl: 'https://togethercommunity.app', baseDomain: 'togethercommunity.app', singleTenantMode: false,
       });
       if (!result.ok) throw new Error(result.error.message);
-      const endpoint = endpointSchema.parse(registered.find((candidate) => candidate.url === result.value.webhookUrl));
+      const endpoint = registered.find((candidate) => candidate.url === result.value.webhookUrl);
+      if (endpoint === undefined) throw new Error('Missing registered webhook endpoint');
       const stored = (await secrets.repository.listByTenant(tenantId)).filter((row) => row.key.startsWith(slot === 'test' ? 'stripe.test' : 'stripe.') &&
         (slot === 'test' || !row.key.startsWith('stripe.test')));
       expect(stored.map(({ key, ciphertext }) => ({ key, ciphertext }))).toEqual([

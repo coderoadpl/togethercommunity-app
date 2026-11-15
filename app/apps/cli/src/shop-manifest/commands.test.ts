@@ -1,16 +1,29 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ok, tenantSettingsSchema } from '#core/domain/index.js';
-import { manifestWorkspaceOrigins, readManifestFile, registerShopManifestCommands } from './commands.js';
+import { tenantSettingsSchema } from '#core/domain/index.js';
+import type * as ConfigModule from '../config.js';
+import { manifestWorkspaceOrigins, readManifestFile } from './commands.js';
 
+const h = vi.hoisted(() => ({ apiUrl: 'https://togethercommunity.app' }));
+vi.mock('../config.js', async (importOriginal) => ({
+  ...await importOriginal<typeof ConfigModule>(),
+  loadConfig: () => ({
+    version: 2,
+    currentOrigin: h.apiUrl,
+    profiles: { [h.apiUrl]: { token: 'session-fixture', tenant: null } },
+  }),
+  saveConfig: vi.fn(),
+}));
+
+const originalArgv = process.argv;
 const directories: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   process.exitCode = 0;
+  process.argv = originalArgv;
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 const inputFile = async (text: string) => {
@@ -20,10 +33,11 @@ const inputFile = async (text: string) => {
   await writeFile(path, text);
   return path;
 };
-const program = () => {
-  const cli = new Command().option('--json');
-  registerShopManifestCommands(cli, () => ok({ apiUrl: 'https://togethercommunity.app', profile: { token: 'session-fixture' }, json: true }));
-  return cli;
+const runCli = async (args: string[], apiUrl = 'https://togethercommunity.app') => {
+  h.apiUrl = apiUrl;
+  process.argv = ['node', 'together', '--api-url', apiUrl, '--json', ...args];
+  vi.resetModules();
+  await import('../main.js');
 };
 
 describe('shop manifest command boundary', () => {
@@ -59,10 +73,8 @@ describe('shop manifest command boundary', () => {
   it.each(['plan', 'apply', 'drift'])('%s refuses an underivable origin before any request', async (command) => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const fetch = vi.spyOn(globalThis, 'fetch');
-    const cli = new Command().option('--json');
-    registerShopManifestCommands(cli, () => ok({ apiUrl: 'https://shop.acme.example.test', profile: { token: 'session-fixture' }, json: true }));
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
-    await cli.parseAsync(['--json', 'shop', command, '--manifest', path], { from: 'user' });
+    await runCli(['shop', command, '--manifest', path], 'https://shop.acme.example.test');
     expect(fetch).not.toHaveBeenCalled();
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
@@ -93,13 +105,11 @@ describe('shop manifest command boundary', () => {
         : url.pathname === '/api/tenant/settings' ? { settings: tenantSettingsSchema.parse({ name: slug, billingPortalUrl: null, bunnyStreamLibraryId: null }) } : { products: [] };
       return Response.json({ ok: true, data });
     });
-    const cli = new Command().option('--json');
-    registerShopManifestCommands(cli, () => ok({ apiUrl: 'https://acme.staging.togethercommunity.app', profile: { token: 'session-fixture' }, json: true }));
     const path = await inputFile(JSON.stringify({ version: 1, shops: [
       { workspace: 'acme', products: [] },
       { workspace: { slug: 'studio', provision: { name: 'Studio', ownerEmail: 'owner@togethercommunity.app' } }, products: [] },
     ] }));
-    await cli.parseAsync(['--json', 'shop', 'apply', '--manifest', path], { from: 'user' });
+    await runCli(['shop', 'apply', '--manifest', path], 'https://acme.staging.togethercommunity.app');
     expect(provisioned).toBe(true);
     expect(requests.find((request) => request.path === '/api/internal/tenants/provision')).toEqual({
       host: 'acme.staging.togethercommunity.app', path: '/api/internal/tenants/provision', authorization: null,
@@ -118,7 +128,7 @@ describe('shop manifest command boundary', () => {
   it.each(['plan', 'apply', 'drift'])('%s emits one failure envelope and uses the validation exit code', async (command) => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const path = await inputFile('not JSON');
-    await program().parseAsync(['--json', 'shop', command, '--manifest', path], { from: 'user' });
+    await runCli(['--json', 'shop', command, '--manifest', path]);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
@@ -134,7 +144,7 @@ describe('shop manifest command boundary', () => {
       return Response.json({ ok: true, data });
     });
     const path = await inputFile(JSON.stringify({ version: 1, company: { settings: { invoiceSellerName: 'Studio' } }, shops: [{ workspace: 'acme', products: [] }] }));
-    await program().parseAsync(['shop', 'drift', '--manifest', path], { from: 'user' });
+    await runCli(['shop', 'drift', '--manifest', path]);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { drifted: true, shops: [{ settings: { change: ['invoiceSellerName'] } }] } });
     expect(process.exitCode).toBe(1);
@@ -157,9 +167,9 @@ describe('shop manifest command boundary', () => {
       return Response.json({ ok: true, data });
     });
     const path = await inputFile(JSON.stringify({ version: 1, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_KEY', mode: 'test' } } }, shops: [{ workspace: 'acme', products: [] }] }));
-    await program().parseAsync(['shop', 'apply', '--manifest', path], { from: 'user' });
+    await runCli(['shop', 'apply', '--manifest', path]);
     expect(calls.every((call) => call.startsWith('GET '))).toBe(true);
-    await program().parseAsync(['shop', 'apply', '--manifest', path, '--integrations'], { from: 'user' });
+    await runCli(['shop', 'apply', '--manifest', path, '--integrations']);
     expect(calls.filter((call) => call.startsWith('POST '))).toEqual(['POST /api/integrations/stripe/configure']);
     expect(log).toHaveBeenCalledTimes(2);
     for (const call of log.mock.calls) expect(String(call[0])).not.toContain('rk_test_private-fixture');
@@ -177,7 +187,7 @@ describe('shop manifest command boundary', () => {
       return new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
     });
     const path = await inputFile(JSON.stringify({ version: 1, shops: [{ workspace: 'acme', products: [] }] }));
-    await program().parseAsync(['--json', 'shop', command, '--manifest', path, '--shop', 'acme'], { from: 'user' });
+    await runCli(['--json', 'shop', command, '--manifest', path, '--shop', 'acme']);
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: true, data: { shops: [{ workspace: 'acme', products: [] }] } });

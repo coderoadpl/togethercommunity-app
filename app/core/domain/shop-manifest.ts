@@ -154,10 +154,11 @@ export const diffShopSettings = (desired: ShopManifestSettings, current: Record<
   return { changes: shopManifestSettingsSchema.parse(changed), unchanged: Object.keys(desired).filter((key) => !(key in changed)) };
 };
 
-export const productMetadata = (product: ShopManifestProduct) => {
-  const { slug: _slug, type: _type, price: _price, stock: _stock, published: _published, coverUrl: _coverUrl, ...metadata } = product;
-  return metadata;
-};
+const productMetadataSchema = shopManifestProductSchema.omit({
+  slug: true, type: true, price: true, stock: true, published: true, coverUrl: true,
+}).strip();
+
+export const productMetadata = (product: ShopManifestProduct) => productMetadataSchema.parse(product);
 
 export const productVatConvergenceError = (product: Pick<ShopManifestProduct, 'vatRate' | 'vatExemptionBasis'>): string | null => {
   if (product.vatExemptionBasis === undefined) return null;

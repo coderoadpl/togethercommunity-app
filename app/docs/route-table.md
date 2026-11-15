@@ -237,6 +237,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/organizations` | authenticated | read | organizations |
 | `GET /api/organizations/:organizationId` | authenticated | read | organization |
 | `GET /api/organizations/:organizationId/members` | authenticated | read | organization members |
+| `POST /api/organizations/:organizationId/members` | authenticated | mutating | organization member add |
+| `POST /api/organizations/:organizationId/members/role` | authenticated | mutating | organization member role |
+| `POST /api/organizations/:organizationId/members/remove` | authenticated | mutating | organization member remove |
 | `GET /api/organizations/:organizationId/audit-events` | authenticated | read | organization audit events |
 | `GET /api/organizations/:organizationId/workspaces` | authenticated | read | organization workspaces |
 | `POST /api/organizations/:organizationId/workspaces/link` | authenticated | mutating | organization workspace link |

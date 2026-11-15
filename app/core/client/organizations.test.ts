@@ -76,4 +76,22 @@ describe('organization client', () => {
       ['POST', 'http://localhost:48730/api/organizations/org-1/workspaces/unlink', JSON.stringify({ tenantId: 'acme' })],
     ]);
   });
+
+  it('adds, re-roles and removes members with the e-mail address in the body', async () => {
+    const member = { userId: 'user-1', email: 'member@example.test', role: 'admin', createdAt: '2026-11-15T12:00:00.000Z' };
+    const add = recordingClient({ member, changed: true });
+    expect(await add.api.addOrganizationMember({ organizationId: 'org/1', email: 'member@example.test', role: 'admin' }))
+      .toEqual({ ok: true, value: { member, changed: true } });
+    const role = recordingClient({ member: { ...member, role: 'owner' }, changed: true });
+    expect(await role.api.setOrganizationMemberRole({ organizationId: 'org-1', email: 'member@example.test', role: 'owner' }))
+      .toMatchObject({ ok: true, value: { member: { role: 'owner' } } });
+    const remove = recordingClient({ member, changed: true });
+    expect(await remove.api.removeOrganizationMember({ organizationId: 'org-1', email: 'member@example.test' }))
+      .toEqual({ ok: true, value: { member, changed: true } });
+    expect([add, role, remove].map(({ calls }) => [calls[0]?.init?.method, calls[0]?.url, calls[0]?.init?.body])).toEqual([
+      ['POST', 'http://localhost:48730/api/organizations/org%2F1/members', JSON.stringify({ email: 'member@example.test', role: 'admin' })],
+      ['POST', 'http://localhost:48730/api/organizations/org-1/members/role', JSON.stringify({ email: 'member@example.test', role: 'owner' })],
+      ['POST', 'http://localhost:48730/api/organizations/org-1/members/remove', JSON.stringify({ email: 'member@example.test' })],
+    ]);
+  });
 });

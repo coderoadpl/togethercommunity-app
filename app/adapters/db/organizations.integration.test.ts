@@ -230,4 +230,90 @@ describe('organization repositories', () => {
     expect(await linkOf('ws-own')).toBeNull();
     expect(await audits()).toEqual({ organization: ['org-e', 'org-h'], tenant: ['tenant-e', 'tenant-h'] });
   });
+
+  it('adds, re-roles and removes members with their audit rows and never leaves the organization without an owner', async () => {
+    await createOrganizationRepository(database.db).create(organization('org-team', 'team'));
+    await database.db.insert(user).values([
+      { id: 'team-owner', email: 'team-owner@example.test', name: 'Team owner', emailVerified: true },
+      { id: 'team-second', email: 'team-second@example.test', name: 'Team second', emailVerified: true },
+      { id: 'team-third', email: 'team-third@example.test', name: 'Team third', emailVerified: true },
+      { id: 'team-pending', email: 'team-pending@example.test', name: 'Team pending', emailVerified: false },
+    ]);
+    const repository = createOrganizationMemberRepository(database.db);
+    await repository.add('org-team', { id: 'team-m-owner', userId: 'team-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    let next = 0;
+    const audit = (kind: 'member.added' | 'member.role_changed' | 'member.removed', actorUserId: string, subjectUserId: string) => ({
+      id: `team-audit-${++next}`, kind, actorUserId, actorEmail: `${actorUserId}@example.test`, actorKeyId: null,
+      subjectTenantId: null, subjectUserId, at: later,
+    });
+    const member = (userId: string, role: 'owner' | 'admin') =>
+      ({ id: `team-m-${userId}`, userId, role, createdAt: later, createdByUserId: 'team-owner' });
+    const audits = async () => (await database.db.select().from(organizationAuditEvents)
+      .where(eq(organizationAuditEvents.organizationId, 'org-team')))
+      .map((row) => [row.kind, row.actorUserId, row.subjectUserId, row.data]);
+    const roles = async () => (await repository.list('org-team')).map((row) => [row.userId, row.role]);
+
+    expect(await repository.addAccount('org-team', { actorUserId: 'team-owner', member: member('team-pending', 'admin'), audit: audit('member.added', 'team-owner', 'team-pending') }))
+      .toEqual({ status: 'account_unverified' });
+    expect(await repository.addAccount('org-team', { actorUserId: 'team-second', member: member('team-third', 'admin'), audit: audit('member.added', 'team-second', 'team-third') }))
+      .toEqual({ status: 'organization_owner_required' });
+    expect(await repository.addAccount('org-team', { actorUserId: 'team-owner', member: member('team-second', 'admin'), audit: audit('member.added', 'team-owner', 'team-second') }))
+      .toEqual({ status: 'added', member: { userId: 'team-second', email: 'team-second@example.test', role: 'admin', createdAt: later } });
+    expect(await repository.addAccount('org-team', { actorUserId: 'team-owner', member: { ...member('team-second', 'owner'), id: 'team-m-dup' }, audit: audit('member.added', 'team-owner', 'team-second') }))
+      .toMatchObject({ status: 'already_member', member: { role: 'admin' } });
+    expect(await repository.addAccount('org-team', { actorUserId: 'team-second', member: member('team-third', 'admin'), audit: audit('member.added', 'team-second', 'team-third') }))
+      .toEqual({ status: 'organization_owner_required' });
+
+    expect(await repository.changeRole('org-team', { actorUserId: 'team-owner', userId: 'team-owner', role: 'admin', audit: audit('member.role_changed', 'team-owner', 'team-owner') }))
+      .toEqual({ status: 'last_owner' });
+    expect(await repository.remove('org-team', { actorUserId: 'team-owner', userId: 'team-owner', audit: audit('member.removed', 'team-owner', 'team-owner') }))
+      .toEqual({ status: 'last_owner' });
+    expect(await repository.changeRole('org-team', { actorUserId: 'team-owner', userId: 'team-third', role: 'admin', audit: audit('member.role_changed', 'team-owner', 'team-third') }))
+      .toEqual({ status: 'not_member' });
+    expect(await repository.changeRole('org-team', { actorUserId: 'team-owner', userId: 'team-second', role: 'admin', audit: audit('member.role_changed', 'team-owner', 'team-second') }))
+      .toMatchObject({ status: 'unchanged' });
+    expect(await repository.changeRole('org-team', { actorUserId: 'team-owner', userId: 'team-second', role: 'owner', audit: audit('member.role_changed', 'team-owner', 'team-second') }))
+      .toEqual({ status: 'changed', member: { userId: 'team-second', email: 'team-second@example.test', role: 'owner', createdAt: later } });
+    expect(await repository.remove('org-team', { actorUserId: 'team-second', userId: 'team-owner', audit: audit('member.removed', 'team-second', 'team-owner') }))
+      .toEqual({ status: 'removed', member: { userId: 'team-owner', email: 'team-owner@example.test', role: 'owner', createdAt: at } });
+    expect(await repository.find('org-team', 'team-owner')).toBeNull();
+    expect(await repository.remove('org-team', { actorUserId: 'team-second', userId: 'team-second', audit: audit('member.removed', 'team-second', 'team-second') }))
+      .toEqual({ status: 'last_owner' });
+
+    expect(await roles()).toEqual([['team-second', 'owner']]);
+    expect(await audits()).toEqual([
+      ['member.added', 'team-owner', 'team-second', { role: 'admin' }],
+      ['member.role_changed', 'team-owner', 'team-second', { from: 'admin', to: 'owner' }],
+      ['member.removed', 'team-second', 'team-owner', { role: 'owner' }],
+    ]);
+  });
+
+  it('keeps one owner when two owners are demoted and removed concurrently', async () => {
+    await createOrganizationRepository(database.db).create(organization('org-race', 'race'));
+    await database.db.insert(user).values([
+      { id: 'race-a', email: 'race-a@example.test', name: 'Race A', emailVerified: true },
+      { id: 'race-b', email: 'race-b@example.test', name: 'Race B', emailVerified: true },
+    ]);
+    const repository = createOrganizationMemberRepository(database.db);
+    for (const userId of ['race-a', 'race-b']) {
+      await repository.add('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    }
+    const audit = (id: string, kind: 'member.role_changed' | 'member.removed', actorUserId: string, subjectUserId: string) => ({
+      id, kind, actorUserId, actorEmail: `${actorUserId}@example.test`, actorKeyId: null, subjectTenantId: null, subjectUserId, at: later,
+    });
+
+    for (let round = 0; round < 5; round += 1) {
+      const results = await Promise.all([
+        repository.changeRole('org-race', { actorUserId: 'race-a', userId: 'race-a', role: 'admin', audit: audit(`race-${round}-a`, 'member.role_changed', 'race-a', 'race-a') }),
+        repository.remove('org-race', { actorUserId: 'race-b', userId: 'race-b', audit: audit(`race-${round}-b`, 'member.removed', 'race-b', 'race-b') }),
+      ]);
+      expect(results.filter((result) => result.status === 'last_owner'), `round ${round}`).toHaveLength(1);
+      const owners = (await repository.list('org-race')).filter((row) => row.role === 'owner');
+      expect(owners, `round ${round}`).toHaveLength(1);
+      await database.db.delete(organizationMembers).where(eq(organizationMembers.organizationId, 'org-race'));
+      for (const userId of ['race-a', 'race-b']) {
+        await repository.add('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      }
+    }
+  });
 });

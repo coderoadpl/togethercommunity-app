@@ -81,6 +81,10 @@ interface Hoisted {
   listTenantTeam: ReturnType<typeof vi.fn>;
   addTenantAdmin: ReturnType<typeof vi.fn>;
   removeTenantAdmin: ReturnType<typeof vi.fn>;
+  listOrganizations: ReturnType<typeof vi.fn>;
+  addOrganizationMember: ReturnType<typeof vi.fn>;
+  setOrganizationMemberRole: ReturnType<typeof vi.fn>;
+  removeOrganizationMember: ReturnType<typeof vi.fn>;
   getTenantSettings: ReturnType<typeof vi.fn>;
   updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
@@ -166,6 +170,10 @@ const h = vi.hoisted(
     listTenantTeam: vi.fn(),
     addTenantAdmin: vi.fn(),
     removeTenantAdmin: vi.fn(),
+    listOrganizations: vi.fn(),
+    addOrganizationMember: vi.fn(),
+    setOrganizationMemberRole: vi.fn(),
+    removeOrganizationMember: vi.fn(),
     getTenantSettings: vi.fn(),
     updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
@@ -269,6 +277,10 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listTenantTeam: h.listTenantTeam,
     addTenantAdmin: h.addTenantAdmin,
     removeTenantAdmin: h.removeTenantAdmin,
+    listOrganizations: h.listOrganizations,
+    addOrganizationMember: h.addOrganizationMember,
+    setOrganizationMemberRole: h.setOrganizationMemberRole,
+    removeOrganizationMember: h.removeOrganizationMember,
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
@@ -1704,6 +1716,52 @@ describe('team CLI', () => {
     expect(h.removeTenantAdmin).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(process.exitCode).toBe(4);
+  });
+});
+
+describe('organization member CLI', () => {
+  const member = { userId: 'member-user', email: 'member@example.test', role: 'owner', createdAt: '2026-11-15T12:00:00.000Z' };
+  beforeEach(() => {
+    h.listOrganizations.mockReset().mockResolvedValue(ok({
+      organizations: [{ id: 'org-1', slug: 'holding', name: 'Holding', status: 'active', role: 'owner' }],
+    }));
+    h.addOrganizationMember.mockReset().mockResolvedValue(ok({ member, changed: true }));
+    h.setOrganizationMemberRole.mockReset().mockResolvedValue(ok({ member, changed: false }));
+    h.removeOrganizationMember.mockReset().mockResolvedValue(ok({ member, changed: true }));
+  });
+
+  it('adds a member with a normalised address and role in the selected organization', async () => {
+    await run('--json', 'org', 'member', 'add', ' Member@Example.test ', '--role', 'owner', '--org', 'holding');
+    expect(h.addOrganizationMember).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', email: 'member@example.test', role: 'owner' });
+    expect(soleJson()).toEqual({ ok: true, data: { member, changed: true } });
+  });
+
+  it('changes a role and removes a member by address', async () => {
+    await run('--json', 'org', 'member', 'role', 'member@example.test', '--role', 'admin', '--org', 'org-1');
+    expect(h.setOrganizationMemberRole).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', email: 'member@example.test', role: 'admin' });
+    logSpy.mockClear();
+    await run('--json', 'org', 'member', 'remove', 'member@example.test', '--org', 'holding');
+    expect(h.removeOrganizationMember).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', email: 'member@example.test' });
+    expect(soleJson()).toEqual({ ok: true, data: { member, changed: true } });
+  });
+
+  it.each([
+    ['add', 'member@example.test', '--org', 'holding'],
+    ['role', 'member@example.test', '--role', 'member', '--org', 'holding'],
+    ['remove', 'not-an-email', '--org', 'holding'],
+  ])('refuses %s with a missing role, an unknown role or a malformed address before calling the API', async (...args) => {
+    await run('--json', 'org', 'member', ...args);
+    expect(h.addOrganizationMember).not.toHaveBeenCalled();
+    expect(h.setOrganizationMemberRole).not.toHaveBeenCalled();
+    expect(h.removeOrganizationMember).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('propagates the last-owner conflict with its exit code', async () => {
+    h.removeOrganizationMember.mockResolvedValue(err(appError('conflict', 'The last owner of an organization cannot be demoted or removed')));
+    await run('--json', 'org', 'member', 'remove', 'member@example.test', '--org', 'holding');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(process.exitCode).toBe(6);
   });
 });
 

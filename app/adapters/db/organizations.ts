@@ -67,6 +67,34 @@ export const createOrganizationRepository = (db: Db): OrganizationRepository => 
   }),
 });
 
+const memberAccountColumns = {
+  userId: organizationMembers.userId,
+  email: user.email,
+  role: organizationMembers.role,
+  createdAt: organizationMembers.createdAt,
+};
+
+const lockedMemberWrite = async (tx: Db, organizationId: string, actorUserId: string) => {
+  // NO KEY UPDATE serializes member writes per organization yet lets foreign-key checks against the row through.
+  const organization = await tx.select({ id: organizations.id }).from(organizations)
+    .where(eq(organizations.id, organizationId)).for('no key update');
+  if (organization.length !== 1) return { allowed: false, owners: 0 } as const;
+  const owners = await tx.select({ userId: organizationMembers.userId }).from(organizationMembers)
+    .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.role, 'owner')));
+  return { allowed: owners.some((owner) => owner.userId === actorUserId), owners: owners.length } as const;
+};
+
+const memberRow = (organizationId: string, userId: string) =>
+  and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, userId));
+
+const findMemberAccount = async (tx: Db, organizationId: string, userId: string) => {
+  const rows = await tx.select(memberAccountColumns).from(organizationMembers)
+    .innerJoin(user, eq(user.id, organizationMembers.userId))
+    .where(memberRow(organizationId, userId))
+    .limit(1);
+  return rows[0] === undefined ? null : organizationMemberAccountSchema.parse(rows[0]);
+};
+
 export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRepository => ({
   add: async (organizationId, member) => {
     const rows = await db.insert(organizationMembers).values({ ...member, organizationId })
@@ -84,12 +112,7 @@ export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRe
     .where(eq(organizationMembers.organizationId, organizationId))
     .orderBy(asc(organizationMembers.createdAt), asc(organizationMembers.id)))
     .map((row) => organizationMemberSchema.parse(row)),
-  listAccounts: async (organizationId) => (await db.select({
-    userId: organizationMembers.userId,
-    email: user.email,
-    role: organizationMembers.role,
-    createdAt: organizationMembers.createdAt,
-  }).from(organizationMembers)
+  listAccounts: async (organizationId) => (await db.select(memberAccountColumns).from(organizationMembers)
     .innerJoin(user, eq(user.id, organizationMembers.userId))
     .where(eq(organizationMembers.organizationId, organizationId))
     .orderBy(asc(organizationMembers.createdAt), asc(organizationMembers.id)))
@@ -98,6 +121,42 @@ export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRe
     .where(eq(organizationMembers.userId, userId))
     .orderBy(asc(organizationMembers.organizationId)))
     .map((row) => organizationMemberSchema.parse(row)),
+  addAccount: async (organizationId, { actorUserId, member, audit }) => db.transaction(async (tx) => {
+    const lock = await lockedMemberWrite(tx, organizationId, actorUserId);
+    if (!lock.allowed) return { status: 'organization_owner_required' } as const;
+    const verified = await tx.select({ email: user.email }).from(user)
+      .where(and(eq(user.id, member.userId), eq(user.emailVerified, true))).for('share');
+    if (verified[0] === undefined) return { status: 'account_unverified' } as const;
+    const existing = await findMemberAccount(tx, organizationId, member.userId);
+    if (existing !== null) return { status: 'already_member', member: existing } as const;
+    await tx.insert(organizationMembers).values({ ...member, organizationId });
+    await tx.insert(organizationAuditEvents).values({ ...audit, organizationId, data: { role: member.role } });
+    const added = organizationMemberAccountSchema.parse({
+      userId: member.userId, email: verified[0].email, role: member.role, createdAt: member.createdAt,
+    });
+    return { status: 'added', member: added } as const;
+  }),
+  changeRole: async (organizationId, { actorUserId, userId, role, audit }) => db.transaction(async (tx) => {
+    const lock = await lockedMemberWrite(tx, organizationId, actorUserId);
+    if (!lock.allowed) return { status: 'organization_owner_required' } as const;
+    const current = await findMemberAccount(tx, organizationId, userId);
+    if (current === null) return { status: 'not_member' } as const;
+    if (current.role === role) return { status: 'unchanged', member: current } as const;
+    if (current.role === 'owner' && lock.owners <= 1) return { status: 'last_owner' } as const;
+    await tx.update(organizationMembers).set({ role }).where(memberRow(organizationId, userId));
+    await tx.insert(organizationAuditEvents).values({ ...audit, organizationId, data: { from: current.role, to: role } });
+    return { status: 'changed', member: { ...current, role } } as const;
+  }),
+  remove: async (organizationId, { actorUserId, userId, audit }) => db.transaction(async (tx) => {
+    const lock = await lockedMemberWrite(tx, organizationId, actorUserId);
+    if (!lock.allowed) return { status: 'organization_owner_required' } as const;
+    const current = await findMemberAccount(tx, organizationId, userId);
+    if (current === null) return { status: 'not_member' } as const;
+    if (current.role === 'owner' && lock.owners <= 1) return { status: 'last_owner' } as const;
+    await tx.delete(organizationMembers).where(memberRow(organizationId, userId));
+    await tx.insert(organizationAuditEvents).values({ ...audit, organizationId, data: { role: current.role } });
+    return { status: 'removed', member: current } as const;
+  }),
 });
 
 export const createOrganizationAuditRepository = (db: Db): OrganizationAuditRepository => ({

@@ -81,6 +81,7 @@ import type {
   OrganizationAuditEvent,
   OrganizationMember,
   OrganizationMemberAccount,
+  OrganizationRole,
   OrganizationWorkspace,
   Tenant,
   TenantApiKey,
@@ -2606,12 +2607,40 @@ export interface OrganizationRepository {
   ): Promise<Organization | null>;
 }
 
+type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
+
+type OrganizationMemberChangeResult<Done extends string> =
+  | { status: Done; member: OrganizationMemberAccount }
+  | { status: 'not_member' }
+  | { status: 'last_owner' }
+  | { status: 'organization_owner_required' };
+
 export interface OrganizationMemberRepository {
   add(organizationId: string, member: Omit<OrganizationMember, 'organizationId'>): Promise<boolean>;
   find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
   list(organizationId: string): Promise<OrganizationMember[]>;
   listAccounts(organizationId: string): Promise<OrganizationMemberAccount[]>;
   listForUser(userId: string): Promise<OrganizationMember[]>;
+  /**
+   * Member writes serialize on the organization row and re-check, in the same transaction as the change
+   * and its audit row, that the actor is still an owner and that at least one owner remains.
+   */
+  addAccount(
+    organizationId: string,
+    input: { actorUserId: string; member: Omit<OrganizationMember, 'organizationId'>; audit: OrganizationMemberAuditInput },
+  ): Promise<
+    | { status: 'added' | 'already_member'; member: OrganizationMemberAccount }
+    | { status: 'account_unverified' }
+    | { status: 'organization_owner_required' }
+  >;
+  changeRole(
+    organizationId: string,
+    input: { actorUserId: string; userId: string; role: OrganizationRole; audit: OrganizationMemberAuditInput },
+  ): Promise<OrganizationMemberChangeResult<'changed' | 'unchanged'>>;
+  remove(
+    organizationId: string,
+    input: { actorUserId: string; userId: string; audit: OrganizationMemberAuditInput },
+  ): Promise<OrganizationMemberChangeResult<'removed'>>;
 }
 
 /** Append-only organization audit trail; entries are never updated or deleted. */

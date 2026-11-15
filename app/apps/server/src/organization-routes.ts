@@ -6,10 +6,13 @@ import {
   createOrganizationInputSchema,
   organizationAuditEventListQuerySchema,
   organizationLimitsSchema,
+  organizationMemberInputSchema,
+  organizationMemberSelectionSchema,
   organizationWorkspaceSelectionSchema,
 } from '#core/contract/index.js';
 import { err, unauthorized, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
+  addOrganizationMember,
   createOrganization,
   getOrganization,
   listOrganizationAuditEvents,
@@ -18,10 +21,13 @@ import {
   listOrganizations,
   listOrganizationWorkspaces,
   organizationContext,
+  removeOrganizationMember,
   unlinkOrganizationWorkspace,
   setOrganizationLimits,
+  setOrganizationMemberRole,
   type OperatorOrganizationDeps,
   type OrganizationCtx,
+  type OrganizationMemberDeps,
   type OrganizationMemberRepository,
   type OrganizationReadDeps,
   type OrganizationWorkspaceDeps,
@@ -63,7 +69,8 @@ export const registerOperatorOrganizationRoutes = (
 
 export const registerOrganizationRoutes = (
   app: Hono<AppVars>,
-  deps: OrganizationReadDeps & OrganizationWorkspaceDeps & { organizationMembers: Pick<OrganizationMemberRepository, 'find'> },
+  deps: OrganizationReadDeps & OrganizationWorkspaceDeps & OrganizationMemberDeps
+    & { organizationMembers: Pick<OrganizationMemberRepository, 'find'> },
 ): void => {
   const withOrganization = async <T>(
     c: Context<AppVars>,
@@ -82,6 +89,25 @@ export const registerOrganizationRoutes = (
   app.get(API_PATHS.organizationMembers, async (c) => {
     const organizationId = c.req.param('organizationId');
     return withOrganization(c, organizationId, (octx) => listOrganizationMembers(octx, { organizationId }, deps));
+  });
+  for (const [path, change] of [
+    [API_PATHS.organizationMemberAdd, addOrganizationMember],
+    [API_PATHS.organizationMemberRole, setOrganizationMemberRole],
+  ] as const) {
+    app.post(path, async (c) => {
+      const organizationId = c.req.param('organizationId');
+      const body: unknown = await c.req.json().catch(() => null);
+      const parsed = organizationMemberInputSchema.safeParse(body);
+      if (!parsed.success) return respond(err(validation('Invalid organization member', parsed.error.flatten())));
+      return withOrganization(c, organizationId, (octx) => change(octx, { organizationId, ...parsed.data }, deps));
+    });
+  }
+  app.post(API_PATHS.organizationMemberRemove, async (c) => {
+    const organizationId = c.req.param('organizationId');
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = organizationMemberSelectionSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid organization member', parsed.error.flatten())));
+    return withOrganization(c, organizationId, (octx) => removeOrganizationMember(octx, { organizationId, ...parsed.data }, deps));
   });
   app.get(API_PATHS.organizationAuditEvents, async (c) => {
     const organizationId = c.req.param('organizationId');

@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import type { ApiClient } from '#core/client/index.js';
-import { err, notFound, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import { err, notFound, ok, organizationRoleSchema, validation, type AppError, type Result } from '#core/domain/index.js';
 
 import { emit } from './output.js';
 
@@ -12,6 +12,9 @@ type OrganizationCliContext = {
     | 'listOrganizations'
     | 'getOrganization'
     | 'listOrganizationMembers'
+    | 'addOrganizationMember'
+    | 'setOrganizationMemberRole'
+    | 'removeOrganizationMember'
     | 'listOrganizationAuditEvents'
     | 'listOrganizationWorkspaces'
     | 'linkOrganizationWorkspace'
@@ -21,8 +24,12 @@ type OrganizationCliContext = {
   json: boolean;
 };
 
+type MemberChange = { member: { email: string; role: string; userId: string }; changed: boolean };
+
 const selectorSchema = z.string().trim().min(1);
 const orgOptionSchema = z.object({ org: selectorSchema.optional() });
+const memberEmailSchema = z.string().trim().toLowerCase().email();
+const memberRoleOptionsSchema = orgOptionSchema.extend({ role: organizationRoleSchema });
 const auditOptionsSchema = orgOptionSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -72,9 +79,9 @@ export const registerOrganizationCommands = (
     }
     emit(await action(ctx.value, options.data), ctx.value.json, human);
   };
-  const scoped = <T>(
-    call: (ctx: OrganizationCliContext, organizationId: string, options: z.output<typeof auditOptionsSchema>) => Promise<Result<T, AppError>>,
-  ) => async (ctx: OrganizationCliContext, options: z.output<typeof auditOptionsSchema>): Promise<Result<T, AppError>> => {
+  const scoped = <O extends { org?: string | undefined }, T>(
+    call: (ctx: OrganizationCliContext, organizationId: string, options: O) => Promise<Result<T, AppError>>,
+  ) => async (ctx: OrganizationCliContext, options: O): Promise<Result<T, AppError>> => {
     const organizationId = await resolveOrganizationId(ctx.api, options.org);
     return organizationId.ok ? call(ctx, organizationId.value, options) : organizationId;
   };
@@ -89,12 +96,35 @@ export const registerOrganizationCommands = (
     orgOptionSchema,
     scoped((ctx, organizationId) => ctx.api.getOrganization({ organizationId })),
   ));
-  org.command('member').description('Organization members')
-    .command('list').description('List organization members').option(...orgOption).action(run(
-      orgOptionSchema,
-      scoped((ctx, organizationId) => ctx.api.listOrganizationMembers({ organizationId })),
-      (value) => value.members.map((member) => `${member.email}\t${member.role}\t${member.userId}`).join('\n'),
-    ));
+  const member = org.command('member').description('Organization members');
+  member.command('list').description('List organization members').option(...orgOption).action(run(
+    orgOptionSchema,
+    scoped((ctx, organizationId) => ctx.api.listOrganizationMembers({ organizationId })),
+    (value) => value.members.map((entry) => `${entry.email}\t${entry.role}\t${entry.userId}`).join('\n'),
+  ));
+  const memberLine = (value: MemberChange) =>
+    `${value.member.email}\t${value.member.role}\t${value.member.userId}\t${value.changed ? 'changed' : 'unchanged'}`;
+  const memberChange = <S extends typeof orgOptionSchema | typeof memberRoleOptionsSchema>(
+    schema: S,
+    call: (ctx: OrganizationCliContext, input: { organizationId: string; email: string }, options: z.output<S>) => Promise<Result<MemberChange, AppError>>,
+  ) => (email: unknown, raw: unknown) => run(schema, scoped(async (ctx, organizationId, options: z.output<S>) => {
+    const address = memberEmailSchema.safeParse(email);
+    if (!address.success) return err(validation('Name the member by e-mail address'));
+    return call(ctx, { organizationId, email: address.data }, options);
+  }), memberLine)(raw);
+  const roleOption = ['--role <role>', 'Organization role: owner or admin'] as const;
+  member.command('add <email>')
+    .description('Add an existing account with a verified e-mail address (organization owners only)')
+    .option(...orgOption).option(...roleOption)
+    .action(memberChange(memberRoleOptionsSchema, (ctx, input, options) => ctx.api.addOrganizationMember({ ...input, role: options.role })));
+  member.command('role <email>')
+    .description('Change the role of an organization member (organization owners only)')
+    .option(...orgOption).option(...roleOption)
+    .action(memberChange(memberRoleOptionsSchema, (ctx, input, options) => ctx.api.setOrganizationMemberRole({ ...input, role: options.role })));
+  member.command('remove <email>')
+    .description('Remove an organization member (organization owners only)')
+    .option(...orgOption)
+    .action(memberChange(orgOptionSchema, (ctx, input) => ctx.api.removeOrganizationMember(input)));
   org.command('audit').description('List recent organization audit events').option(...orgOption)
     .option('--limit <n>', 'Number of events (1-100, default 25)').action(run(
       auditOptionsSchema,

@@ -12,12 +12,15 @@ import {
   operatorOrganizationLimitsOutputSchema,
   organizationAuditEventsOutputSchema,
   organizationListOutputSchema,
+  organizationMemberChangeOutputSchema,
   organizationMembersOutputSchema,
   organizationOutputSchema,
   organizationWorkspaceChangeOutputSchema,
   organizationWorkspacesOutputSchema,
   type CreateOrganizationInput,
   type OrganizationLimits,
+  type OrganizationMemberInput,
+  type OrganizationMemberSelection,
   type OrganizationWorkspaceSelection,
 } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
@@ -607,6 +610,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.organizationMembers.method,
       API_ROUTES.organizationMembers.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
       organizationMembersOutputSchema, undefined, signal),
+  addOrganizationMember: (input: { organizationId: string } & OrganizationMemberInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMemberAdd.method,
+      API_ROUTES.organizationMemberAdd.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMemberChangeOutputSchema, { email: input.email, role: input.role }, signal),
+  setOrganizationMemberRole: (input: { organizationId: string } & OrganizationMemberInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMemberRole.method,
+      API_ROUTES.organizationMemberRole.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMemberChangeOutputSchema, { email: input.email, role: input.role }, signal),
+  removeOrganizationMember: (input: { organizationId: string } & OrganizationMemberSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMemberRemove.method,
+      API_ROUTES.organizationMemberRemove.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMemberChangeOutputSchema, { email: input.email }, signal),
   listOrganizationAuditEvents: (input: { organizationId: string; limit?: number }, signal?: AbortSignal) => {
     const path = API_ROUTES.organizationAuditEvents.path.replace(':organizationId', encodeURIComponent(input.organizationId));
     return request(options, API_ROUTES.organizationAuditEvents.method,

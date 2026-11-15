@@ -35,6 +35,16 @@ export const createOrganizationFakes = (
   const tenantAuditRows: TenantAuditEventInput[] = [];
   const configSourceTenantIds = new Set<string>();
   const isVerified = (userId: string) => accounts.some((account) => account.userId === userId && account.emailVerified);
+  const isOwner = (organizationId: string, userId: string) =>
+    memberRows.some((row) => row.organizationId === organizationId && row.userId === userId && row.role === 'owner');
+  const ownerCount = (organizationId: string) =>
+    memberRows.filter((row) => row.organizationId === organizationId && row.role === 'owner').length;
+  const accountOf = (row: OrganizationMember) => ({
+    userId: row.userId,
+    email: accounts.find((account) => account.userId === row.userId)?.email ?? row.userId,
+    role: row.role,
+    createdAt: row.createdAt,
+  });
 
   const organizations: OrganizationRepository = {
     create: async (organization) => {
@@ -84,6 +94,38 @@ export const createOrganizationFakes = (
         return account === undefined ? [] : [{ userId: row.userId, email: account.email, role: row.role, createdAt: row.createdAt }];
       }),
     listForUser: async (userId) => memberRows.filter((row) => row.userId === userId),
+    addAccount: async (organizationId, { actorUserId, member, audit }) => {
+      if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
+      if (!isVerified(member.userId)) return { status: 'account_unverified' };
+      const existing = memberRows.find((row) => row.organizationId === organizationId && row.userId === member.userId);
+      if (existing !== undefined) return { status: 'already_member', member: accountOf(existing) };
+      const added = { ...member, organizationId };
+      memberRows.push(added);
+      auditRows.push({ ...audit, organizationId, data: { role: member.role } });
+      return { status: 'added', member: accountOf(added) };
+    },
+    changeRole: async (organizationId, { actorUserId, userId, role, audit }) => {
+      if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
+      const index = memberRows.findIndex((row) => row.organizationId === organizationId && row.userId === userId);
+      const current = memberRows[index];
+      if (current === undefined) return { status: 'not_member' };
+      if (current.role === role) return { status: 'unchanged', member: accountOf(current) };
+      if (current.role === 'owner' && ownerCount(organizationId) === 1) return { status: 'last_owner' };
+      const updated = { ...current, role };
+      memberRows[index] = updated;
+      auditRows.push({ ...audit, organizationId, data: { from: current.role, to: role } });
+      return { status: 'changed', member: accountOf(updated) };
+    },
+    remove: async (organizationId, { actorUserId, userId, audit }) => {
+      if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
+      const index = memberRows.findIndex((row) => row.organizationId === organizationId && row.userId === userId);
+      const current = memberRows[index];
+      if (current === undefined) return { status: 'not_member' };
+      if (current.role === 'owner' && ownerCount(organizationId) === 1) return { status: 'last_owner' };
+      memberRows.splice(index, 1);
+      auditRows.push({ ...audit, organizationId, data: { role: current.role } });
+      return { status: 'removed', member: accountOf(current) };
+    },
   };
 
   const organizationAudit: OrganizationAuditRepository = {

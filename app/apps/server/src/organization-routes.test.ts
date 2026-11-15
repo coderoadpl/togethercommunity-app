@@ -8,6 +8,7 @@ import {
   operatorCreateOrganizationOutputSchema,
   organizationAuditEventsOutputSchema,
   organizationListOutputSchema,
+  organizationMemberChangeOutputSchema,
   organizationMembersOutputSchema,
   organizationOutputSchema,
   organizationWorkspaceChangeOutputSchema,
@@ -53,7 +54,7 @@ const harness = () => {
     c.set('identity', identity(c.req.header('x-test-user') ?? 'anonymous'));
     await next();
   });
-  registerOrganizationRoutes(app, { ...fakes.repositories, ids, clock });
+  registerOrganizationRoutes(app, { ...fakes.repositories, authPort: fakes.authPort, ids, clock });
   const create = (ownerEmail: string, headers: Record<string, string> = operatorHeaders) =>
     app.request(API_PATHS.operatorOrganizationCreate, { method: 'POST', headers, body: createBody(ownerEmail) });
   const read = (path: string, userId: string) => app.request(path, { headers: { 'x-test-user': userId } });
@@ -161,5 +162,40 @@ describe('organization session routes', () => {
     expect(envelopeSchema(organizationWorkspaceChangeOutputSchema).parse(await unlinked.json())).toMatchObject({ ok: true, data: { changed: true } });
     expect(h.auditRows.map((event) => event.kind).slice(-2)).toEqual(['workspace.linked', 'workspace.unlinked']);
     expect(h.tenantAuditRows.map((event) => event.kind)).toEqual(['organization.linked', 'organization.unlinked']);
+  });
+
+  it('adds, re-roles and removes members for an owner, refuses an admin and protects the last owner', async () => {
+    const h = harness();
+    const organizationId = await created(h);
+    const path = (template: string) => template.replace(':organizationId', organizationId);
+    const refused = await h.post(path(API_PATHS.organizationMemberAdd), 'admin-1', { email: 'other-1@example.test', role: 'admin' });
+    expect(refused.status).toBe(403);
+    expect((await h.post(path(API_PATHS.organizationMemberAdd), 'owner-1', { email: 'other-1@example.test', role: 'member' })).status).toBe(400);
+    expect((await h.post(path(API_PATHS.organizationMemberAdd), 'other-1', { email: 'other-1@example.test', role: 'owner' })).status).toBe(404);
+    expect((await h.post(path(API_PATHS.organizationMemberAdd), 'owner-1', { email: 'unverified-1@example.test', role: 'admin' })).status).toBe(400);
+    const added = await h.post(path(API_PATHS.organizationMemberAdd), 'owner-1', { email: 'other-1@example.test', role: 'owner' });
+    expect(envelopeSchema(organizationMemberChangeOutputSchema).parse(await added.json())).toEqual({
+      ok: true, data: { member: { userId: 'other-1', email: 'other-1@example.test', role: 'owner', createdAt: '2026-11-15T12:00:00.000Z' }, changed: true },
+    });
+    const demoted = await h.post(path(API_PATHS.organizationMemberRole), 'other-1', { email: 'owner-1@example.test', role: 'admin' });
+    expect(envelopeSchema(organizationMemberChangeOutputSchema).parse(await demoted.json()))
+      .toMatchObject({ ok: true, data: { member: { userId: 'owner-1', role: 'admin' }, changed: true } });
+    const lastOwner = await h.post(path(API_PATHS.organizationMemberRemove), 'other-1', { email: 'other-1@example.test' });
+    expect(lastOwner.status).toBe(409);
+    expect(await lastOwner.json()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect((await h.post(path(API_PATHS.organizationMemberRole), 'other-1', { email: 'other-1@example.test', role: 'admin' })).status).toBe(409);
+    await h.post(path(API_PATHS.organizationMemberRole), 'other-1', { email: 'owner-1@example.test', role: 'owner' });
+    expect((await h.read(path(API_PATHS.organization), 'other-1')).status).toBe(200);
+    const removed = await h.post(path(API_PATHS.organizationMemberRemove), 'owner-1', { email: 'other-1@example.test' });
+    expect(envelopeSchema(organizationMemberChangeOutputSchema).parse(await removed.json()))
+      .toMatchObject({ ok: true, data: { member: { userId: 'other-1', role: 'owner' }, changed: true } });
+    for (const template of [API_PATHS.organization, API_PATHS.organizationMembers]) {
+      const response = await h.read(path(template), 'other-1');
+      expect(response.status, template).toBe(404);
+      expect(await response.json(), template).toEqual({ ok: false, error: { code: 'not_found', message: 'Organization not found' } });
+    }
+    expect(h.auditRows.map((event) => event.kind).slice(2)).toEqual([
+      'member.added', 'member.role_changed', 'member.role_changed', 'member.removed',
+    ]);
   });
 });

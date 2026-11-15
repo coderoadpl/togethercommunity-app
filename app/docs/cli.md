@@ -155,6 +155,26 @@ pnpm --silent run cli org audit --org holding --limit 50
 Organization owners and admins can read; an organization that the caller does
 not belong to answers `not_found`, whether or not it exists.
 
+Organization owners manage members. Only an existing account with a verified
+e-mail address can be added; no invitation is sent, so create the account
+first. Members are named by e-mail address and hold the role `owner` or
+`admin`:
+
+```bash
+pnpm --silent run cli org member add admin@example.test --role admin --org holding
+pnpm --silent run cli org member role admin@example.test --role owner --org holding
+pnpm --silent run cli org member remove admin@example.test --org holding
+```
+
+Adding a member who already holds the requested role, or setting the role a
+member already has, reports `changed: false`; adding a member with another role
+is a `conflict` (change the role instead). An unknown and an unverified account
+produce the same validation error. The last owner can be neither demoted nor
+removed (`conflict`), including by themselves. An organization admin is
+`forbidden`. A removed member loses organization access on the next request.
+Each change is recorded in the organization audit as `member.added`,
+`member.role_changed` or `member.removed`.
+
 An organization owner links a workspace in which they also hold a direct owner
 grant. The workspace is named by its slug and resolved from the caller's staff
 workspaces:

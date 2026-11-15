@@ -71,7 +71,7 @@ const audit = (overrides: Partial<TenantAuditEventInput> = {}): TenantAuditEvent
 });
 
 const auditIds = async (): Promise<string[]> =>
-  (await pool.query<{ id: string }>('select id from tenant_audit_events where tenant_id = $1 order by id', [TENANT]))
+  (await pool.query<{ id: string }>('select id from tenant_audit_events where tenant_id = $1 order by id collate "C"', [TENANT]))
     .rows.map((row) => row.id);
 
 beforeAll(async () => {
@@ -226,7 +226,7 @@ describe('shop management key lifecycle', () => {
     await repo.record(AUDIT_TENANT, event({ id: 'audit-keyed', kind: 'redirect_created', actorApiKeyId: 'shop-key', at: '1998-08-04T00:00:00.000Z' }));
     await repo.record(AUDIT_TENANT, event({ id: 'audit-session', kind: 'redirect_updated', at: '1998-08-04T00:00:01.000Z' }));
     const stored = await pool.query<{ id: string; actor_api_key_id: string | null }>(
-      `select id, actor_api_key_id from tenant_audit_events where id in ('audit-keyed', 'audit-session', 'audit-before-key-ids') order by id`,
+      `select id, actor_api_key_id from tenant_audit_events where id in ('audit-keyed', 'audit-session', 'audit-before-key-ids') order by id collate "C"`,
     );
     expect(stored.rows).toEqual([
       { id: 'audit-before-key-ids', actor_api_key_id: null },
@@ -274,7 +274,7 @@ describe('shop management key purge', () => {
   });
   const keyIds = async (): Promise<string[]> =>
     (await pool.query<{ id: string }>(
-      'select id from tenant_api_keys where tenant_id = any($1) order by id',
+      'select id from tenant_api_keys where tenant_id = any($1) order by id collate "C"',
       [[PURGE_TENANT, NEIGHBOUR_TENANT]],
     )).rows.map((row) => row.id);
 
@@ -298,7 +298,7 @@ describe('shop management key purge', () => {
     expect((await pool.query('select api_key_id from api_key_rate_limit_buckets where api_key_id = $1', ['purge-shop-active'])).rows)
       .toEqual([]);
     const events = await pool.query<{ id: string; kind: string; reason: string | null }>(
-      'select id, kind, reason from tenant_audit_events where tenant_id = $1 order by id',
+      'select id, kind, reason from tenant_audit_events where tenant_id = $1 order by id collate "C"',
       [PURGE_TENANT],
     );
     expect(events.rows).toEqual([

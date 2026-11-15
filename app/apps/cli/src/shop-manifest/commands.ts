@@ -3,42 +3,23 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 import { createApiClient } from '#core/client/index.js';
 import { TENANT_HEADER } from '#core/contract/index.js';
-import { err, isReservedTenantSlug, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import { emit } from '../output.js';
-import { planManifest } from './plan.js';
+import { planManifest, preflightManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 import { driftManifest } from './drift.js';
+import { baseDomainSchema, manifestWorkspaceOrigins } from './instance.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
-const optionsSchema = z.object({ manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional() }).strict();
+const optionsSchema = z.object({
+  manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
+}).strict();
 
-const PLATFORM_DOMAIN = 'togethercommunity.app';
-const LOOPBACK_HOST = 'localhost';
-const PLATFORM_HOST_LABEL = 'start';
-
-const instanceDomainOf = (host: string): string | null => {
-  if (host === PLATFORM_DOMAIN) return host;
-  if (![PLATFORM_DOMAIN, LOOPBACK_HOST].some((domain) => host.endsWith(`.${domain}`))) return null;
-  const [label = '', ...instance] = host.split('.');
-  return label === PLATFORM_HOST_LABEL || !isReservedTenantSlug(label) ? instance.join('.') : null;
-};
-
-export const manifestWorkspaceOrigins = (apiUrl: string): Result<(workspace: string) => string, AppError> => {
-  const refused = err(validation(
-    'Cannot derive workspace hosts from this API origin. Use a togethercommunity.app or localhost origin: the platform host (start.<domain>), a workspace host (<workspace>.<domain>) or localhost',
-  ));
-  if (!URL.canParse(apiUrl)) return refused;
-  const url = new URL(apiUrl);
-  const host = url.hostname.replace(/\.+$/, '');
-  if (host === LOOPBACK_HOST) return ok(() => url.origin);
-  const instanceDomain = instanceDomainOf(host);
-  if (instanceDomain === null) return refused;
-  return ok((workspace) => {
-    const target = new URL(url.origin);
-    target.hostname = `${workspace}.${instanceDomain}`;
-    return target.origin;
-  });
-};
+const sessionClient = (baseUrl: string, token: string | null, workspace: string) => createApiClient({
+  baseUrl,
+  refuseRedirects: true,
+  headers: () => ({ ...(token ? { authorization: `Bearer ${token}` } : {}), [TENANT_HEADER]: workspace }),
+});
 
 export const readManifestFile = async (path: string): Promise<Result<unknown, AppError>> => {
   let text: string;
@@ -60,7 +41,8 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
   for (const command of ['plan', 'apply', 'drift'] as const) {
     const subcommand = shop.command(command)
       .description(descriptions[command])
-      .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace');
+      .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace')
+      .option('--base-domain <domain>', 'Instance base domain, needed when the API origin does not report it (the platform host)');
     if (command === 'apply') subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks');
     subcommand.action(async (raw: unknown) => {
       const ctx = context();
@@ -69,20 +51,17 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
         emit(ctx, globals.success && globals.data.json, () => '');
         return;
       }
-      const workspaceOrigin = manifestWorkspaceOrigins(ctx.value.apiUrl);
-      if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
       const options = optionsSchema.safeParse(raw);
       if (!options.success) { emit(err(validation('Invalid shop command options')), ctx.value.json, () => ''); return; }
       const input = await readManifestFile(options.data.manifest);
       if (!input.ok) { emit(input, ctx.value.json, () => ''); return; }
-      const clientFor = (workspace: string) => createApiClient({
-        baseUrl: workspaceOrigin.value(workspace),
-        refuseRedirects: true,
-        headers: () => ({
-          ...(ctx.value.profile.token ? { authorization: `Bearer ${ctx.value.profile.token}` } : {}),
-          [TENANT_HEADER]: workspace,
-        }),
-      });
+      const preflight = preflightManifest(input.value, options.data.shop);
+      if (!preflight.ok) { emit(preflight, ctx.value.json, () => ''); return; }
+      const { apiUrl, profile } = ctx.value;
+      const workspaceOrigin = await manifestWorkspaceOrigins(apiUrl, (workspace) => sessionClient(apiUrl, profile.token, workspace),
+        preflight.value.map((shop) => shop.slug), options.data.baseDomain);
+      if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
+      const clientFor = (workspace: string) => sessionClient(workspaceOrigin.value(workspace), profile.token, workspace);
       if (command === 'drift') {
         const result = await driftManifest(input.value, clientFor, options.data.shop);
         emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
@@ -92,7 +71,7 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {
-          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: ctx.value.apiUrl, refuseRedirects: true }),
+          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: apiUrl, refuseRedirects: true }),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
     });

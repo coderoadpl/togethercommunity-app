@@ -37,25 +37,37 @@ same `--api-url` for login and the manifest commands; `--tenant` does not overri
 workspace slugs in the manifest.
 
 Each shop's requests go to that workspace's subdomain on the same instance as
-the selected API origin: the command replaces only the leading workspace label
-and keeps the rest of the host, the scheme and the port. For example
-`https://acme.staging.togethercommunity.app` and
-`https://start.staging.togethercommunity.app` both lead to
-`https://studio.staging.togethercommunity.app` for the `studio` shop,
-`https://togethercommunity.app` and `https://acme.togethercommunity.app` lead to
-`https://studio.togethercommunity.app`, and `http://acme.localhost:48730` leads to
-`http://studio.localhost:48730`. `http://localhost:48730` is kept as it is and
-selects each workspace with the workspace header. The session token therefore
-never leaves the instance of the selected profile, and the operator client uses
-the selected origin itself.
+the selected API origin. The command does not guess the instance from the host
+name: before any workspace request it asks the selected origin itself, with the
+profile's session, for its identity (`GET /api/me`) and its workspace routing
+(`GET /api/tenant/routing`, available to the workspace's owners and admins),
+selecting the first selected manifest workspace that exists with the workspace
+header. The routing answer names the workspace host the instance itself builds
+from its configured base domain. The command accepts it only when that host is
+`<workspace>.<base domain>` for the workspace the origin resolved, uses the
+origin's port, and the selected origin is the base domain itself or a host one
+label below it. Every workspace client then uses
+`<scheme>://<workspace>.<base domain>[:<port>]`, and the operator client uses the
+selected origin, so the session token and the operator secret never leave the
+instance that answered. For example `https://acme.staging.togethercommunity.app`
+and `https://staging.togethercommunity.app` lead to
+`https://studio.staging.togethercommunity.app` for the `studio` shop when that
+instance's base domain is `staging.togethercommunity.app`, and
+`https://togethercommunity.app` leads to `https://studio.togethercommunity.app`.
+`http://localhost:48730` is kept as it is and selects each workspace with the
+workspace header, without discovery requests.
 
-Any other origin is refused before the first request, because its workspace
-hosts cannot be derived unambiguously: a custom workspace domain, an IP address,
-a host outside `togethercommunity.app` and `localhost`, or a bare environment
-host such as `https://staging.togethercommunity.app` whose leading label is a
-reserved name rather than a workspace. Use the instance's platform host
-(`start.<domain>`) or one of its workspace hosts instead. Before reading
-settings or catalogue data, the command also checks `/api/me` and refuses a
+Two origins do not report a base domain: the platform host (`start.<domain>`),
+which resolves no workspace, and a bare base-domain origin when none of the
+selected workspaces exists yet. For those, pass `--base-domain <domain>` to
+`shop plan`, `shop apply` or `shop drift`; the command then requires the selected
+origin to be exactly `start.<domain>` or `<domain>`. When the origin does report
+a base domain, `--base-domain` must match it. Any other origin is refused before
+the first workspace request: a custom workspace domain, an IP address, or a host
+whose reported workspace routing points elsewhere. An authentication or
+permission failure of the discovery requests stops the command; it is never
+replaced by a guess or by `--base-domain`. Before reading settings or catalogue
+data, the command also checks `/api/me` on each workspace host and refuses a
 workspace mismatch.
 
 Every request the tool sends refuses HTTP redirects: workspace requests carrying

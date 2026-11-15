@@ -33,9 +33,7 @@ const validateVatSettings = (desired: ShopManifestSettings, current: Record<stri
   return ok(true);
 };
 
-export const prepareManifest = async <C extends ManifestReadClient>(
-  input: unknown, clientFor: ManifestClientFactory<C>, workspace?: string,
-): Promise<Result<PreparedShop<C>[], AppError>> => {
+export const preflightManifest = (input: unknown, workspace?: string) => {
   const parsed = shopManifestSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid shop manifest', {
     issues: parsed.error.issues.map((issue) => ({ path: issue.path, code: issue.code })),
@@ -59,8 +57,16 @@ export const prepareManifest = async <C extends ManifestReadClient>(
       if (vatError !== null) return err(validation(vatError, { workspace: slug, slug: product.slug }));
     }
   }
+  return ok(effective);
+};
+
+export const prepareManifest = async <C extends ManifestReadClient>(
+  input: unknown, clientFor: ManifestClientFactory<C>, workspace?: string,
+): Promise<Result<PreparedShop<C>[], AppError>> => {
+  const effective = preflightManifest(input, workspace);
+  if (!effective.ok) return effective;
   const prepared: PreparedShop<C>[] = [];
-  for (const { shop, slug, desired, integrations } of effective) {
+  for (const { shop, slug, desired, integrations } of effective.value) {
     const api = clientFor(slug);
     const identity = await api.me();
     if (!identity.ok) {

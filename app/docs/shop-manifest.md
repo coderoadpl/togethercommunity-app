@@ -358,8 +358,9 @@ masked previews only) and report `configured: true` when the restricted key,
 webhook signing secret and webhook endpoint ID of the manifest's mode are all
 stored; such a Stripe entry is reported as `"unchanged"`, otherwise as
 `"skipped without --integrations"` or, with the flag, `"configure"`. The tool
-never reads a secret value back, does not inspect environment values without the
-flag, does not compare credential values, and does not contact providers.
+never reads a secret value back, does not inspect integration environment values
+without the flag except for the published-token comparison below, does not
+compare stored credential values, and does not contact providers.
 
 Company integration objects merge recursively with shop overrides, just like
 settings. Shop references win. Set a provider (`stripe`, `shipx` or
@@ -401,10 +402,18 @@ refuses it in the variables of the ShipX fields and the parcel-locker token
 before any write. The error names the rule, never the value.
 
 Because the parcel-locker token is published to checkout visitors,
-`shop apply --integrations` also refuses, before any write, a parcel-locker
-token whose value equals the value of the ShipX token or the ShipX organization
-ID after surrounding whitespace is trimmed. The error names the rule, never a
-value.
+`shop apply` also refuses, before any write, a run that would publish a
+credential. It collects every token the run would publish: with
+`--integrations`, the values of the `parcelLocker.tokenEnv` variables of all
+selected shops, and, with or without the flag, every literal
+`settings.inpostGeowidgetToken` in their effective settings. It compares them,
+after surrounding whitespace is trimmed, with the values of the ShipX token and
+ShipX organization ID variables referenced by any selected shop and with
+`TOGETHER_SHOP_OPERATOR_SECRET` when that variable is set, so a ShipX token of
+one shop cannot become the public token of another. These carrier and operator
+variables are read for this comparison only when the run publishes a token. The
+error names the rule, the publishing workspaces and the shops whose credential
+matched (or the operator secret), never a value.
 
 | Manifest input | Environment value / accepted setting | Existing write route |
 | --- | --- | --- |

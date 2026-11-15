@@ -307,6 +307,46 @@ describe('manifest integrations', () => {
       expectNoSecrets(result);
     });
 
+    describe('public tokens across the selected shops', () => {
+      const carrierAcme = { workspace: 'acme', integrations: { stripe: null, parcelLocker: null, shipx: { environment: 'sandbox', tokenEnv: 'SHOP_SHIPX_ACME_TOKEN' } }, products: [] };
+      const runAcrossShops = async (studio: Record<string, unknown>, secrets: Record<string, string>, flag: boolean) => {
+        const acme = integrationFake();
+        const other = integrationFake('studio');
+        const published = vi.spyOn(other.api, 'updateTenantSettings');
+        const input = { version: 1, shops: [carrierAcme, { workspace: 'studio', products: [], ...studio }] };
+        const result = await applyManifest(input, (workspace) => workspace === 'acme' ? acme.api : other.api, undefined, { integrations: flag, environment: secrets });
+        return { result, published, fakes: [acme, other] };
+      };
+      const shared = 'carrier-private-fixture';
+
+      it.each([
+        ['an environment reference', { integrations: { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN' } } }, { SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN: ` ${shared}` }, true],
+        ['a literal settings value with integrations', { settings: { inpostGeowidgetToken: shared } }, {}, true],
+        ['a literal settings value without integrations', { settings: { inpostGeowidgetToken: shared } }, {}, false],
+      ])('refuses a token of another shop equal to a carrier credential through %s before any write', async (_case, studio, extra, flag) => {
+        const secrets = { SHOP_SHIPX_ACME_TOKEN: shared, ...extra };
+        const { result, published, fakes } = await runAcrossShops(studio, secrets, flag);
+        expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('studio would publish a credential of acme'), details: { failure: { publishingWorkspaces: ['studio'], credentialSources: ['acme'] }, applied: [] } } });
+        expect(JSON.stringify(result)).not.toContain(shared);
+        expect(published).not.toHaveBeenCalled();
+        for (const fake of fakes) expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
+      });
+
+      it('refuses a published token equal to the operator secret and names the operator secret, not its value', async () => {
+        const { result, published } = await runAcrossShops({ settings: { inpostGeowidgetToken: 'operator-private-fixture' } }, { [SHOP_OPERATOR_SECRET_ENV]: 'operator-private-fixture' }, false);
+        expect(result).toMatchObject({ ok: false, error: { code: 'validation', details: { failure: { publishingWorkspaces: ['studio'], credentialSources: ['operator secret'] } } } });
+        expect(JSON.stringify(result)).not.toContain('operator-private-fixture');
+        expect(published).not.toHaveBeenCalled();
+      });
+
+      it('publishes distinct tokens across shops', async () => {
+        const { result, published, fakes } = await runAcrossShops({ integrations: { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN' } } }, { SHOP_SHIPX_ACME_TOKEN: shared, SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN: 'public-fixture' }, true);
+        expect(result).toMatchObject({ ok: true });
+        expect(published).toHaveBeenCalledWith({ inpostGeowidgetToken: 'public-fixture' });
+        expect(fakes[1]?.state.settings.inpostGeowidgetToken).toBe('public-fixture');
+      });
+    });
+
     it('checks references again before resolving values', () => {
       const unchecked = { parcelLocker: { tokenEnv: 'SHOP_STRIPE_KEY' }, stripe: integrations.stripe };
       const result = resolveManifestIntegrations(unchecked, environment);

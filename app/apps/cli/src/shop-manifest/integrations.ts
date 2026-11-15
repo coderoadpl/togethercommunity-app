@@ -1,7 +1,49 @@
 import { z } from 'zod';
 import { configureShipxInputSchema, configureStripeInputSchema, err, ok, stripeModeFromKey, validation, type AppError, type Result } from '#core/domain/index.js';
 import { inpostGeowidgetTokenSchema } from '#core/domain/shipping.js';
-import { integrationReferenceError, paymentKeyValueError, type ShopManifestIntegrations } from '#core/domain/shop-manifest.js';
+import {
+  integrationReferenceError, paymentKeyValueError, SHOP_OPERATOR_SECRET_ENV, type ShopManifestIntegrations, type ShopManifestSettings,
+} from '#core/domain/shop-manifest.js';
+
+type ManifestEnvironment = Readonly<Record<string, string | undefined>>;
+type PublishingShop = { slug: string; desired: ShopManifestSettings; integrations: ShopManifestIntegrations };
+type SourcedValue = { source: string; value: string };
+
+const PUBLISHED_CREDENTIAL_MESSAGE =
+  'A published parcel-locker token must differ from every ShipX token and organization ID of the selected shops and from the operator secret';
+const OPERATOR_SECRET_SOURCE = 'operator secret';
+
+const presentValue = (value: string | null | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
+};
+
+const sourced = (source: string, values: ReadonlyArray<string | undefined>): SourcedValue[] =>
+  values.flatMap((value) => value === undefined ? [] : [{ source, value }]);
+
+export const publishedCredentialError = (
+  shops: readonly PublishingShop[], environment: ManifestEnvironment, resolveReferences: boolean,
+): AppError | null => {
+  const valueOf = (name: string | undefined) => name === undefined ? undefined : presentValue(environment[name]);
+  const published = shops.flatMap((shop) => sourced(shop.slug, [
+    resolveReferences ? valueOf(shop.integrations.parcelLocker?.tokenEnv) : undefined,
+    presentValue(shop.desired.inpostGeowidgetToken),
+  ]));
+  if (published.length === 0) return null;
+  const credentials = [
+    ...shops.flatMap((shop) => sourced(shop.slug, [valueOf(shop.integrations.shipx?.tokenEnv), valueOf(shop.integrations.shipx?.organizationIdEnv)])),
+    ...sourced(OPERATOR_SECRET_SOURCE, [valueOf(SHOP_OPERATOR_SECRET_ENV)]),
+  ];
+  const matches = published.flatMap((token) => credentials.filter((credential) => credential.value === token.value)
+    .map((credential) => ({ publishing: token.source, credential: credential.source })));
+  if (matches.length === 0) return null;
+  const publishingWorkspaces = [...new Set(matches.map((match) => match.publishing))];
+  const credentialSources = [...new Set(matches.map((match) => match.credential))];
+  return validation(
+    `${PUBLISHED_CREDENTIAL_MESSAGE}: ${publishingWorkspaces.join(', ')} would publish a credential of ${credentialSources.join(', ')}`,
+    { publishingWorkspaces, credentialSources },
+  );
+};
 
 const resolvedIntegrationsSchema = z.object({
   stripe: configureStripeInputSchema.optional(),

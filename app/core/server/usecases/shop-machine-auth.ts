@@ -23,7 +23,7 @@ import type {
   TenantAccessReader,
   TenantApiKeyRepository,
 } from '../ports.js';
-import { claimApiKeyRateLimit } from './m2m-transactional-email.js';
+import { apiKeyRateLimited, apiKeyRateLimitWindows, type ApiKeyRateLimitWindow } from './m2m-transactional-email.js';
 
 const SHOP_MANAGEMENT_KEY_RATE_LIMITS = { perMinute: 60, perDay: 10_000 } as const;
 
@@ -106,6 +106,25 @@ const issuerIdentity = async (
   });
 };
 
+const claimShopKeyRateLimit = async (
+  apiKeyId: string,
+  tenantId: string,
+  deps: Pick<ShopMachineAuthDeps, 'apiKeyRateLimits' | 'clock'>,
+): Promise<Result<void, AppError>> => {
+  const now = deps.clock.nowIso();
+  const { minute, day } = apiKeyRateLimitWindows(now, SHOP_MANAGEMENT_KEY_RATE_LIMITS);
+  const claim = (window: ApiKeyRateLimitWindow) => deps.apiKeyRateLimits.claim(tenantId, {
+    apiKeyId,
+    period: window.period,
+    windowStartedAt: window.windowStartedAt,
+    limit: window.limit,
+  });
+  if (!await claim(minute)) return err(apiKeyRateLimited(minute, now));
+  if (await claim(day)) return ok(undefined);
+  await deps.apiKeyRateLimits.release(tenantId, { apiKeyId, period: minute.period, windowStartedAt: minute.windowStartedAt });
+  return err(apiKeyRateLimited(day, now));
+};
+
 const shopManagementKeyCapabilities = (apiKey: TenantApiKey) => {
   const ownerCapabilities = capabilitiesForPrincipal('owner');
   return shopManagementCapabilitiesForApiKey(apiKey).filter((capability) => ownerCapabilities.includes(capability));
@@ -121,10 +140,7 @@ export const authenticateShopManagementKey = async (
   if (!apiKey.ok) return apiKey;
   const identity = await issuerIdentity(tenant, apiKey.value.issuedByUserId, deps);
   if (!identity.ok) return identity;
-  const limited = await claimApiKeyRateLimit(apiKey.value.id, tenant.id, deps.clock.nowIso(), {
-    rateLimits: deps.apiKeyRateLimits,
-    limits: SHOP_MANAGEMENT_KEY_RATE_LIMITS,
-  });
+  const limited = await claimShopKeyRateLimit(apiKey.value.id, tenant.id, deps);
   if (!limited.ok) return limited;
   if (!(apiKey.value.scopes ?? []).includes(requiredScope)) {
     return err(forbidden(`${requiredScope} is not permitted`));

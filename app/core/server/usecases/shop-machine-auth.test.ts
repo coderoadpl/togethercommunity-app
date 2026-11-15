@@ -54,7 +54,7 @@ const issuerMember: Member = {
   dmOptOutAt: null,
 };
 
-const createRateLimits = (): ApiKeyRateLimitRepository => {
+const createRateLimits = (): ApiKeyRateLimitRepository & { count: (apiKeyId: string, period: string) => number } => {
   const buckets = new Map<string, { windowStartedAt: string; count: number }>();
   return {
     claim: async (_tenantId, input) => {
@@ -66,7 +66,13 @@ const createRateLimits = (): ApiKeyRateLimitRepository => {
       buckets.set(key, { windowStartedAt: input.windowStartedAt, count: count + cost });
       return true;
     },
-    release: async () => undefined,
+    release: async (_tenantId, input) => {
+      const key = `${input.apiKeyId}:${input.period}`;
+      const current = buckets.get(key);
+      if (current?.windowStartedAt !== input.windowStartedAt) return;
+      buckets.set(key, { ...current, count: Math.max(0, current.count - (input.cost ?? 1)) });
+    },
+    count: (apiKeyId, period) => buckets.get(`${apiKeyId}:${period}`)?.count ?? 0,
   };
 };
 
@@ -92,6 +98,7 @@ const harness = (options: {
     state.staffRole !== null && userId === OWNER_ID && 'tenantId' in lookup && lookup.tenantId === TENANT.id
       ? { tenant: TENANT, staffRole: state.staffRole }
       : null);
+  const rateLimits = createRateLimits();
   const deps: ShopMachineAuthDeps = {
     tenantApiKeys: {
       findActiveByHash: async (tenantId, keyHash) =>
@@ -100,10 +107,10 @@ const harness = (options: {
     apiKeyCrypto: { generateSecret: () => SECRET, hash: (value) => `hash:${value}` },
     accountIdentities: { findById: async (userId) => (state.account?.userId === userId ? state.account : null) },
     tenantAccess: { findStaffGrant, findMember },
-    apiKeyRateLimits: createRateLimits(),
+    apiKeyRateLimits: rateLimits,
     clock: { nowIso: () => state.now },
   };
-  return { deps, state, findMember };
+  return { deps, state, findMember, rateLimits };
 };
 
 const authenticate = (
@@ -294,6 +301,24 @@ describe('authenticateShopManagementKey', () => {
       return claim(tenantId, input);
     };
     await authenticate(h);
-    expect(claims).toEqual([{ period: 'day', limit: 10_000 }, { period: 'minute', limit: 60 }]);
+    expect(claims).toEqual([{ period: 'minute', limit: 60 }, { period: 'day', limit: 10_000 }]);
+  });
+
+  it('leaves the day count unchanged when the minute window refuses', async () => {
+    const h = harness();
+    for (let request = 0; request < 61; request += 1) await authenticate(h);
+    expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(60);
+    expect(h.rateLimits.count('shop-key-1', 'day')).toBe(60);
+  });
+
+  it('gives the minute unit back when the day window refuses', async () => {
+    const h = harness();
+    const claim = h.deps.apiKeyRateLimits.claim;
+    h.deps.apiKeyRateLimits.claim = async (tenantId, input) => input.period === 'day' ? false : claim(tenantId, input);
+    expect(await authenticate(h)).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited', details: { period: 'day', retryAfterSeconds: 50_370 } },
+    });
+    expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(0);
   });
 });

@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_SESSION_PATH, BETTER_AUTH_TWO_FACTOR_TOTP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
+import { apiKeyRateLimitBuckets, tenantAdmins, tenantApiKeys, tenants, user } from '#adapters/db/schema.js';
 import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
@@ -301,6 +301,10 @@ describe('shop management key authentication over HTTP', () => {
     expect(limited.headers.get('retry-after')).toBe('30');
     expect(await errorOf(limited)).toMatchObject({ code: 'rate_limited' });
     expect((await probe({ 'x-api-key': 'shop-read-secret' })).status).toBe(200);
+    const buckets = (await database.db.select().from(apiKeyRateLimitBuckets))
+      .filter((bucket) => bucket.apiKeyId === 'shop-rate')
+      .map((bucket) => ({ period: bucket.period, count: bucket.count }));
+    expect(buckets).toEqual(expect.arrayContaining([{ period: 'day', count: 60 }, { period: 'minute', count: 60 }]));
   });
 });
 

@@ -25,6 +25,7 @@ import {
   deepHealthOutputSchema,
   envelopeSchema,
   imageAssetUploadOutputSchema,
+  ordersListOutputSchema,
   salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   studentLessonOutputSchema,
@@ -1152,6 +1153,58 @@ const scopedApp = (
     ...options.overrides,
   });
 };
+
+describe('order list payment mode', () => {
+  const harness = () => {
+    const stored = [
+      { id: 'acme-live', tenantId: acme.id, mode: 'live' },
+      { id: 'acme-test', tenantId: acme.id, mode: 'test' },
+      { id: 'studio-live', tenantId: 't-studio', mode: 'live' },
+      { id: 'studio-test', tenantId: 't-studio', mode: 'test' },
+    ].map((row) => orderListItemSchema.parse({
+      ...row,
+      memberId: 'buyer', productId: 'paperback', priceId: 'price', kind: 'one_time', status: 'paid',
+      amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '2026-11-10T12:00:00.000Z', memberEmail: 'buyer@togethercommunity.app', memberName: 'Buyer',
+      productTitle: 'Paperback', couponCode: null,
+    }));
+    const list = vi.fn<AppDeps['orders']['list']>(async (tenantId, filters) => {
+      const orders = stored.filter((row) => row.tenantId === tenantId && (filters.mode === undefined || row.mode === filters.mode));
+      return { orders, total: orders.length };
+    });
+    return { app: scopedApp('staff', { overrides: { orders: { ...deps().orders, list } } }), list };
+  };
+
+  it.each(['live', 'test'] as const)('returns only this tenant and mode=%s', async (mode) => {
+    const h = harness();
+    const response = await h.app.request(`/api/orders?mode=${mode}`, { headers: { host: 'acme.localhost' } });
+    const payload = envelopeSchema(ordersListOutputSchema).parse(await response.json());
+    expect(response.status).toBe(200);
+    if (!payload.ok) throw new Error(payload.error.message);
+    expect(payload.data.orders.map((row) => row.id)).toEqual([`acme-${mode}`]);
+    expect(payload.data.total).toBe(1);
+    expect(h.list).toHaveBeenCalledExactlyOnceWith(acme.id, { mode, page: 1, pageSize: 20 });
+  });
+
+  it('preserves both modes when omitted without returning another tenant', async () => {
+    const h = harness();
+    const response = await h.app.request('/api/orders', { headers: { host: 'acme.localhost' } });
+    const payload = envelopeSchema(ordersListOutputSchema).parse(await response.json());
+    expect(response.status).toBe(200);
+    if (!payload.ok) throw new Error(payload.error.message);
+    expect(payload.data.orders.map((row) => row.id)).toEqual(['acme-live', 'acme-test']);
+    expect(payload.data.total).toBe(2);
+    expect(h.list).toHaveBeenCalledExactlyOnceWith(acme.id, { page: 1, pageSize: 20 });
+  });
+
+  it.each(['staging', ''])('rejects invalid mode=%s before reading orders', async (mode) => {
+    const h = harness();
+    const response = await h.app.request(`/api/orders?mode=${mode}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.list).not.toHaveBeenCalled();
+  });
+});
 
 const marketingDeps = (): MarketingAppDeps => {
  const base: Omit<MarketingAppDeps, 'delivery' | 'marketingOutbox' | 'snsInbox'> = {
@@ -8240,6 +8293,83 @@ describe('checkout consent ordering', () => {
     );
   });
 
+  it.each([false, true])('records a signed shared-account checkout only in its workspace and once (foreign endpoint first: %s)', async (foreignFirst) => {
+    const studio: Tenant = { ...acme, id: 't-studio', slug: 'studio', name: 'Studio' };
+    const members: Member[] = [];
+    const orders: Order[] = [];
+    const ledger = new Map<string, Parameters<AppDeps['processedPaymentEvents']['claim']>[1]>();
+    const finalized = new Set<string>();
+    const base = deps({ tenants: [acme, studio], members });
+    const secrets = new Map([
+      [acme.id, 'whsec_acme_endpoint'], [studio.id, 'whsec_studio_endpoint'],
+    ]);
+    base.secretResolver.resolve = async (tenantId, key) => {
+      if (key !== 'stripe.webhookSecret') throw new Error('Unexpected secret slot');
+      const secret = secrets.get(tenantId);
+      if (secret === undefined) throw new Error('Unknown workspace');
+      return ok(secret);
+    };
+    base.payment = createStripePaymentProvider({
+      resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
+      clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
+    });
+    base.orders.create = async (_tenantId, order) => { orders.push(order); };
+    base.processedPaymentEvents = {
+      claim: async (tenantId, event) => {
+        const key = `${tenantId}:${event.id}`;
+        if (finalized.has(key)) return 'processed';
+        if (ledger.has(key)) return 'in_progress';
+        ledger.set(key, event);
+        return 'claimed';
+      },
+      finalize: async (tenantId, eventId) => { finalized.add(`${tenantId}:${eventId}`); },
+      release: async (tenantId, eventId) => { ledger.delete(`${tenantId}:${eventId}`); },
+    };
+    const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
+    const app = buildApp(base);
+    const payload = JSON.stringify({
+      id: 'evt_shared_account_acme', type: 'checkout.session.completed', livemode: true,
+      data: { object: {
+        id: 'cs_acme', customer: 'cus_acme', payment_intent: 'pi_acme', payment_status: 'paid',
+        amount_total: 1000, currency: 'pln', customer_details: { email: 'buyer@togethercommunity.app' },
+        metadata: { tenantId: acme.id, productId: 'acme-published' },
+      } },
+    });
+    const deliver = (tenantId: string, secret: string) => {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const digest = createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex');
+      return app.request(`/api/webhooks/stripe/${tenantId}`, {
+        method: 'POST', headers: { 'stripe-signature': `t=${timestamp},v1=${digest}` }, body: payload,
+      });
+    };
+    const expectIgnoredByStudio = async () => {
+      const response = await deliver(studio.id, 'whsec_studio_endpoint');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+    };
+
+    const wrongSecret = await deliver(studio.id, 'whsec_acme_endpoint');
+    expect(wrongSecret.status).toBe(400);
+    expect(await wrongSecret.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    if (foreignFirst) await expectIgnoredByStudio();
+    const accepted = await deliver(acme.id, 'whsec_acme_endpoint');
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ ok: true, data: { received: true, processed: true } });
+    await expectIgnoredByStudio();
+    const duplicate = await deliver(acme.id, 'whsec_acme_endpoint');
+    expect(duplicate.status).toBe(200);
+    expect(await duplicate.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+    expect(orders).toMatchObject([{ tenantId: acme.id, status: 'paid', providerObjectIds: { checkoutSession: 'cs_acme', paymentIntent: 'pi_acme' } }]);
+    expect(orders).toHaveLength(1);
+    expect(members).toMatchObject([{ tenantId: acme.id, email: 'buyer@togethercommunity.app' }]);
+    expect(members).toHaveLength(1);
+    expect([...ledger.values()]).toMatchObject([{ id: 'evt_shared_account_acme', tenantId: acme.id }]);
+    expect(ledger.size).toBe(1);
+    expect([...finalized]).toEqual([`${acme.id}:evt_shared_account_acme`]);
+    expect(claim).toHaveBeenCalledTimes(2);
+    for (const [tenantId] of claim.mock.calls) expect(tenantId).toBe(acme.id);
+  });
+
   it('acknowledges an invoice naming another tenant without opening a transaction', async () => {
     const base = deps({ tenants: [acme] });
     const initialize = vi.spyOn(base.authPort, 'initialize');
@@ -10291,6 +10421,63 @@ it('rejects a simulated bundle coupon that applies only to the first product', a
   expect(h.snapshots.size).toBe(0);
 });
 
+
+describe('public sales-link read CORS', () => {
+  const headers = { host: 'acme.localhost', origin: 'https://studio.togethercommunity.app' };
+
+  it('allows anonymous cross-origin GET and only GET preflights on the declared read route', async () => {
+    const h = simulatedBundleApp();
+    h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+    const response = await h.app.request('/api/public/sales-links/bundle', { headers });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.has('access-control-allow-credentials')).toBe(false);
+    expect(envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json()).ok).toBe(true);
+
+    const preflight = await h.app.request('/api/public/sales-links/bundle', {
+      method: 'OPTIONS',
+      headers: { ...headers, 'access-control-request-method': 'GET', 'access-control-request-headers': 'x-tenant, if-none-match' },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(preflight.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+    expect(preflight.headers.get('access-control-allow-headers')).toBe('x-tenant, content-type, if-none-match');
+    expect(preflight.headers.get('access-control-max-age')).toBe('60');
+    expect(preflight.headers.has('access-control-allow-credentials')).toBe(false);
+    expect(publicRouteManifestEntry({ path: API_PATHS.getPublicSalesLink, method: 'OPTIONS' })).toMatchObject({ mutating: false });
+    expect(publicRouteManifestEntry({ path: API_PATHS.getPublicSalesLink, method: 'POST' })).toBeUndefined();
+  });
+
+  it('keeps the existing public preflight methods and headers unchanged', async () => {
+    const app = buildApp(deps());
+    for (const [path, method] of [
+      [API_PATHS.publicOffer, 'GET'],
+      [API_PATHS.publicPaymentConfig, 'GET'],
+      [API_PATHS.publicCheckoutSessionStatus, 'GET'],
+      [API_PATHS.checkoutSession, 'POST'],
+    ] as const) {
+      const response = await app.request(path, { method: 'OPTIONS', headers: { ...headers, 'access-control-request-method': method } });
+      expect(response.status).toBe(204);
+      expect(response.headers.get('access-control-allow-origin')).toBe('*');
+      expect(response.headers.get('access-control-allow-methods')).toBe(`${method}, OPTIONS`);
+      expect(response.headers.get('access-control-allow-headers')).toBe('x-tenant, content-type, if-none-match');
+      expect(response.headers.has('access-control-allow-credentials')).toBe(false);
+    }
+  });
+
+  it('does not expose the direct checkout POST cross-origin', async () => {
+    const app = buildApp(deps());
+    for (const method of ['OPTIONS', 'POST']) {
+      const response = await app.request('/api/public/sales-links/bundle/checkout', {
+        method,
+        headers: { ...headers, 'content-type': 'application/json', 'access-control-request-method': 'POST' },
+        ...(method === 'POST' ? { body: '{}' } : {}),
+      });
+      expect(response.headers.has('access-control-allow-origin')).toBe(false);
+      expect(response.headers.has('access-control-allow-credentials')).toBe(false);
+    }
+  });
+});
 
 it('exposes only public sales-link fields and accepts its slug for checkout', async () => {
   const h = simulatedBundleApp();

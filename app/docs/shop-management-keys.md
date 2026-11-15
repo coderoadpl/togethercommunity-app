@@ -39,8 +39,10 @@ backend's secret store and send it only from that backend:
   site or a URL. The shop routes send no CORS headers, so a browser on another
   origin cannot read their answers, and a request that carries a cookie or an
   `Authorization` header is refused before the key is checked.
-- Never log the key. Pass it from the environment, as in the examples below;
-  the CLI reads it from an environment variable and never from its arguments.
+- Never log the key and never put it in a command-line argument. The curl
+  examples below read the key header from a file only the current user can
+  read; the CLI reads the key from an environment variable and never from its
+  arguments.
 - Use one key per job and the narrowest scopes: a provisioning key for settings
   and integrations, a catalog key, and a warehouse key. Revoking one never
   disturbs the others.
@@ -165,14 +167,24 @@ dropped. The session routes keep ignoring unknown fields.
 | `POST /api/m2m/shop/products/stock/adjust` | `shop:catalog:write` | `POST /api/products/stock/adjust` |
 | `POST /api/m2m/shop/products/stock/threshold` | `shop:catalog:write` | `POST /api/products/stock/threshold` |
 
-The examples below use the workspace host and read the key from the
-environment; `<product-id>` and `<price-id>` are placeholders. On the platform
-host, add `-H 'x-tenant: <workspace-slug>'`. Never send a cookie or an
-`Authorization` header with the key.
+The examples below use the workspace host; `<product-id>` and `<price-id>`
+are placeholders. On the platform host, add `-H 'x-tenant: <workspace-slug>'`.
+Never send a cookie or an `Authorization` header with the key.
+
+Never put the key, or any other secret, into a command-line argument: other
+users and process listings on the host can read the arguments of a running
+process. The examples write the key header once into a file only the current
+user can read and let curl read it with `-H @file` (curl 7.55 or newer);
+`printf` and `read` are shell builtins and start no process. A body that
+carries a secret goes through stdin the same way (see
+[Integration routes](#integration-routes)). Delete the header file when the job
+ends.
 
 ```bash
 SHOP=https://<workspace-host>/api/m2m/shop
-KEY="x-api-key: $TOGETHER_SHOP_KEY"
+umask 077
+printf 'x-api-key: %s\n' "$TOGETHER_SHOP_KEY" > shop-key.header
+KEY=@shop-key.header
 JSON='content-type: application/json'
 
 curl -s -H "$KEY" "$SHOP/products"
@@ -202,7 +214,7 @@ empty. It sends the key and the selected workspace (`--tenant`) only, never the
 signed-in session. Options mirror `product`, `price` and `product stock`.
 
 ```bash
-export TOGETHER_SHOP_KEY=<secret from api-key create>
+read -r TOGETHER_SHOP_KEY < shop-catalog.key && export TOGETHER_SHOP_KEY
 pnpm --silent run cli --tenant acme shop products list
 pnpm --silent run cli --tenant acme shop products create --title 'Printed handbook' --type physical --price 49
 pnpm --silent run cli --tenant acme shop products update <product-id> --description 'Second edition'
@@ -363,7 +375,9 @@ Stay within the key's rate limits below when sizing the poll interval.
 
 ```bash
 SHOP=https://<workspace-host>/api/m2m/shop
-KEY="x-api-key: $TOGETHER_SHOP_KEY"
+umask 077
+printf 'x-api-key: %s\n' "$TOGETHER_SHOP_KEY" > shop-key.header
+KEY=@shop-key.header
 JSON='content-type: application/json'
 
 curl -s -H "$KEY" "$SHOP/orders?mode=live&fulfilmentStatus=to_pack&page=1&pageSize=100"
@@ -552,11 +566,19 @@ storing their KSeF credentials.
   `"clearCredentials": true`. The view answers the environment, the sender and
   masked credentials.
 
+A body that carries a secret (an iFirma or KSeF value, the Stripe restricted
+key, the storage `secretAccessKey`, the ShipX `token`) is built by `jq` from a
+file only the current user can read and piped to curl on stdin with
+`--data-binary @-`; never expand a secret inside `-d`. `SHOP`, `KEY` and `JSON`
+are the shell variables from [Catalog routes](#catalog-routes).
+
 ```bash
 curl -s -H "$KEY" "$SHOP/integrations/secrets"
-curl -s -H "$KEY" -H "$JSON" -d "{\"key\":\"ksef.token\",\"value\":\"$KSEF_TOKEN\"}" "$SHOP/integrations/secrets"
+jq -Rs '{key: "ksef.token", value: rtrimstr("\n")}' < ksef-token.txt \
+  | curl -s -H "$KEY" -H "$JSON" --data-binary @- "$SHOP/integrations/secrets"
 curl -s -H "$KEY" -X DELETE "$SHOP/integrations/secrets/ksef.test.token"
-curl -s -H "$KEY" -H "$JSON" -d "{\"mode\":\"test\",\"restrictedKey\":\"$STRIPE_RESTRICTED_KEY\"}" "$SHOP/integrations/stripe/configure"
+jq -Rs '{mode: "test", restrictedKey: rtrimstr("\n")}' < stripe-test-restricted-key.txt \
+  | curl -s -H "$KEY" -H "$JSON" --data-binary @- "$SHOP/integrations/stripe/configure"
 curl -s -H "$KEY" -H "$JSON" -d '{"mode":"test"}' "$SHOP/integrations/stripe/probe"
 ```
 
@@ -570,7 +592,7 @@ left out.
 export TOGETHER_SHOP_KEY="$PROVISIONING_KEY"
 pnpm --silent run cli --tenant acme shop integrations secrets list
 pnpm --silent run cli --tenant acme shop integrations secrets set ksef.token --value-env KSEF_TOKEN
-printf '%s' "$IFIRMA_KEY" | pnpm --silent run cli --tenant acme shop integrations secrets set ifirma.invoiceApiKey
+pnpm --silent run cli --tenant acme shop integrations secrets set ifirma.invoiceApiKey < ifirma-invoice-api-key.txt
 pnpm --silent run cli --tenant acme shop integrations secrets delete ksef.test.token
 pnpm --silent run cli --tenant acme shop integrations stripe configure --mode test --restricted-key-env STRIPE_RESTRICTED_KEY
 pnpm --silent run cli --tenant acme shop integrations stripe probe --mode test

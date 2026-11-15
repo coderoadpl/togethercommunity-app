@@ -61,7 +61,7 @@ describe('shop management capabilities', () => {
     expect(shop('shop:settings:read')).toEqual(['tenant:settings:read']);
     expect(shop('shop:settings:write')).toEqual(['tenant:settings:write']);
     expect(shop('shop:integrations:read')).toEqual(['tenant:secret:read']);
-    expect(shop('shop:integrations:write')).toEqual(['tenant:secret:write', 'integration:test']);
+    expect(shop('shop:integrations:write')).toEqual(['tenant:secret:write']);
   });
 
   it('never grants key administration through any shop scope', () => {

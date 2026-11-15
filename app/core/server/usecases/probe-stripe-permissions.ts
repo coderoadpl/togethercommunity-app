@@ -26,7 +26,7 @@ export const probeStripePermissions = async (
   input: StripeProbePermissionsInput,
   deps: ProbeStripePermissionsDeps,
 ): Promise<Result<StripeProbePermissionsOutput, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { operation: 'stripe:probe' } });
   if (!tenant.ok) return tenant;
   const parsed = stripeProbePermissionsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid Stripe permission probe', parsed.error.flatten()));

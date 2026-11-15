@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { collectShopKeyDoctrineProblems, shopKeyDoctrineRequirements } from '../scripts/shop-key-doctrine-lint.js';
+import { collectShopKeyDoctrineProblems, shopKeyDoctrineContradictions, shopKeyDoctrineRequirements } from '../scripts/shop-key-doctrine-lint.js';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const surfaces = [...new Set(shopKeyDoctrineRequirements.map((requirement) => requirement.file))];
@@ -26,21 +26,35 @@ describe('shop management key doctrine lint', () => {
     },
   );
 
+  it.each(shopKeyDoctrineContradictions.map((contradiction) => [contradiction.text, contradiction] as const))(
+    'reports a doctrine that says %s',
+    (text, contradiction) => {
+      const files = readSurfaces();
+      files.set(contradiction.file, `${files.get(contradiction.file) ?? ''}\n${text.replaceAll(' ', '\n')}\n`);
+      expect(collectShopKeyDoctrineProblems(files)).toEqual([
+        `[shop-key-doctrine] ${contradiction.file} ${contradiction.reason} (found "${text}")`,
+      ]);
+    },
+  );
+
+  const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
+  const sections = [...new Set(sectioned.map((requirement) => requirement.section))];
+
   it('does not accept the security doctrine described outside its sections', () => {
-    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
     const files = readSurfaces();
-    files.set('app/docs/security.md', `## Tenant API keys\n\nNothing.\n\n## InPost ShipX credentials\n\nNothing.\n\n## Other\n\n${sectioned.map((requirement) => requirement.text).join('\n')}\n`);
+    const empty = sections.map((section) => `${section ?? ''}\n\nNothing.\n`).join('\n');
+    files.set('app/docs/security.md', `${empty}\n## Other\n\n${sectioned.map((requirement) => requirement.text).join('\n')}\n`);
     expect(collectShopKeyDoctrineProblems(files)).toHaveLength(sectioned.length);
   });
 
   it('accepts the required security doctrine wrapped across lines', () => {
-    const sectioned = shopKeyDoctrineRequirements.filter((requirement) => requirement.section !== undefined);
-    const sections = [...new Set(sectioned.map((requirement) => requirement.section))];
     const files = readSurfaces();
-    files.set('app/docs/security.md', sections.map((section) => `${section ?? ''}\n\n${sectioned
-      .filter((requirement) => requirement.section === section)
-      .map((requirement) => requirement.text.replaceAll(' ', '\n  '))
-      .join('\n')}\n`).join('\n'));
+    files.set('app/docs/security.md', sections.map((section) => [
+      `${section ?? ''}\n`,
+      ...sectioned
+        .filter((requirement) => requirement.section === section)
+        .map((requirement) => requirement.text.replaceAll(' ', '\n  ')),
+    ].join('\n')).join('\n\n'));
     expect(collectShopKeyDoctrineProblems(files)).toEqual([]);
   });
 
@@ -54,6 +68,7 @@ describe('shop management key doctrine lint', () => {
       "act as the key's issuer",
       "buys the shipment at InPost, charged to the workspace's carrier account, so a key with `shop:fulfilment:write` can spend carrier money",
       'so a call the use-case then refuses (a lease conflict, a missing configuration, an order of another workspace) keeps its history row',
+      'A shop management key may write them only through the ShipX configure use-case, never through the generic tenant-secret write',
     ]);
   });
 
@@ -62,6 +77,7 @@ describe('shop management key doctrine lint', () => {
       '[shop-key-doctrine] app/CLAUDE.md is not tracked markdown',
       '[shop-key-doctrine] app/docs/security.md is not tracked markdown',
       '[shop-key-doctrine] app/docs/shop-management-keys.md is not tracked markdown',
+      '[shop-key-doctrine] app/docs/observability.md is not tracked markdown',
     ]);
   });
 });

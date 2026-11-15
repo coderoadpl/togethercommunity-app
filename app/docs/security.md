@@ -489,22 +489,33 @@ scopes on every shop key.
   repository, before it can reach the error handler, telemetry, a log or a
   response. The legacy key repository is unchanged.
 - **Integration scope.** `shop:integrations:write` grants `tenant:secret:write`
-  and `integration:test`. Within its workspace a key with it may:
-  configure the payment account with
+  and nothing else, and a key ctx holds that capability only for an operation
+  on the allow-list in `core/domain/shop-management-key.ts`, checked in
+  `core/server/authorize.ts` below every route: the Stripe configure and
+  permission probe use-cases (the payment account, including the live slot;
+  configuring creates the webhook signing secret and endpoint id), the ShipX
+  configure use-case (carrier credentials and sender), the storage configure
+  use-case (the object storage connection) and the generic secret write or
+  delete of the invoicing credentials (`ifirma.invoiceApiKey`,
+  `ifirma.username`, `ksef.token`, `ksef.contextNip`, `ksef.test.token`,
+  `ksef.test.contextNip`). A key never writes a webhook signing secret or
+  endpoint id directly, the Meta Conversions API token, a video-hosting,
+  marketing, mail or telemetry credential or any other secret name, and never
+  runs a connection test (`integration:test`), whichever route calls the
+  use-case; owner sessions keep every write they have. Within its workspace a
+  key with this scope reaches those use-cases only through these routes:
   `POST /api/m2m/shop/integrations/stripe/configure`, the live Stripe slot
-  included (owner decision 2026-11-14), and check the stored Stripe key with
-  `POST /api/m2m/shop/integrations/stripe/probe`; replace the storage
-  connection with `POST /api/m2m/shop/integrations/storage/configure`, which
+  included (owner decision 2026-11-14), and
+  `POST /api/m2m/shop/integrations/stripe/probe`, which checks the stored
+  Stripe key; `POST /api/m2m/shop/integrations/storage/configure`, which
   probes the bucket against the workspace origins before it stores anything;
-  write the carrier credentials with
   `POST /api/m2m/shop/integrations/shipx/configure` (see
-  [InPost ShipX credentials](#inpost-shipx-credentials)); and set or delete,
-  through `POST /api/m2m/shop/integrations/secrets` and
-  `DELETE /api/m2m/shop/integrations/secrets/:key`, only the iFirma and KSeF
-  secrets of a finite allow-list: `ifirma.invoiceApiKey`, `ifirma.username`,
-  `ksef.token`, `ksef.contextNip`, `ksef.test.token` and
-  `ksef.test.contextNip`. Any other secret name answers `400`, so the keyed
-  generic route never reaches the Stripe, storage, ShipX or Meta secrets.
+  [InPost ShipX credentials](#inpost-shipx-credentials)); and
+  `POST /api/m2m/shop/integrations/secrets` and
+  `DELETE /api/m2m/shop/integrations/secrets/:key`, whose key list is that same
+  domain allow-list. Any other secret name answers `400` at the generic route
+  and is refused again by the use-case guard, so the keyed generic route never
+  reaches the Stripe, storage, ShipX, Meta, video, mail or telemetry secrets.
   These routes reuse the owner session's use-cases and validation, refuse
   unknown body fields, and `shop:integrations:read` returns masked previews
   only. Each accepted call writes its key history row before the use-case
@@ -599,11 +610,13 @@ Member erasure removes registry rows; see [copy identifiers](storage.md#copy-ide
 The ShipX organization id and API token are encrypted tenant secrets
 (`shipx.organizationId`, `shipx.token`), written only through the owner-only
 session route `POST /api/integrations/shipx/configure` (or the owner-only
-generic tenant-secret route) and through
+generic tenant-secret route) and through the keyed
 `POST /api/m2m/shop/integrations/shipx/configure` with a
 [shop management key](#shop-management-keys) holding
-`shop:integrations:write`; the keyed generic secret route refuses both names.
-They are returned only as masked previews. They are not part of tenant
+`shop:integrations:write`. A shop management key may write them only through
+the ShipX configure use-case, never through the generic tenant-secret write;
+the keyed generic secret route refuses both names. They are returned only as
+masked previews. They are not part of tenant
 settings, the public offer or the public payment configuration. The server
 decrypts them only for a ShipX call; the readiness check on the order page asks
 the secret repository whether both secrets exist without decrypting them. Each
@@ -664,7 +677,8 @@ The Meta Conversions API access token is the tenant secret
 `analyticsMetaCapiAccessToken`, not a tenant setting. It is encrypted at rest
 with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
 the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
-`DELETE /api/tenant-secrets/:key`). Reads return only the key, the update time
+`DELETE /api/tenant-secrets/:key`). A shop management key never writes or
+removes it: the token is not on the shop management key allow-list. Reads return only the key, the update time
 and the literal `configured`, never a token fragment. The server decrypts it
 when the checkout status decides whether to offer the consent prompt, when a
 new consent decision is recorded and when a dispatch builds a request. It is sent only to

@@ -8,17 +8,26 @@ import {
   PRINCIPALS,
   ROLE_CAPABILITIES,
 } from '#core/contract/index.js';
-import type { Capability, Principal } from '#core/domain/index.js';
+import {
+  shopManagementCapabilities,
+  shopManagementScopeSchema,
+  type Capability,
+  type Principal,
+} from '#core/domain/index.js';
 
 import { publicRouteManifestEntry } from '../apps/server/src/public-route-manifest.js';
 import { selfAuthenticatingRouteManifestEntry } from '../apps/server/src/self-authenticating-route-manifest.js';
 import { collectRuntimeRoutes } from './generate-route-table.mjs';
 
+export const SHOP_MANAGEMENT_KEY_PRINCIPAL = 'shop-management-key (scope intersect issuing owner)';
+
+type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL;
+
 export interface PermissionRow {
   subject: string;
   capability: Capability | null;
-  before: readonly Principal[];
-  after: readonly Principal[];
+  before: readonly InventoryPrincipal[];
+  after: readonly InventoryPrincipal[];
   derivable: boolean;
   evidence: string;
 }
@@ -59,15 +68,23 @@ const webhook = ['webhook'] as const;
 const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
 const platformOwner = ['platform-owner'] as const;
+const shopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
 
+const shopManagementKeyHolds = (capability: Capability): boolean =>
+  shopManagementCapabilities(shopManagementScopeSchema.options).includes(capability)
+  && ROLE_CAPABILITIES.owner.includes(capability);
+
 const effectiveAfter = (
-  before: readonly Principal[],
+  before: readonly InventoryPrincipal[],
   capability: Capability,
-): readonly Principal[] => {
-  const holders = principalsForCapability(capability);
+): readonly InventoryPrincipal[] => {
+  const holders: readonly InventoryPrincipal[] = [
+    ...principalsForCapability(capability),
+    ...(shopManagementKeyHolds(capability) ? shopManagementKey : []),
+  ];
   return before.filter((principal) => holders.includes(principal));
 };
 
@@ -279,7 +296,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
 const beforeForRoute = (
   method: string,
   path: string,
-): readonly Principal[] => {
+): readonly InventoryPrincipal[] => {
   if (/^\/api\/(?:m2m\/)?marketing\//.test(path) && (path.endsWith('/process') || path.endsWith('/contacts/sync'))) return path.startsWith('/api/m2m/') ? [] : staff;
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
@@ -304,7 +321,7 @@ const beforeForRoute = (
       if (path.startsWith('/api/m2m/import/')) return importContentApiKey;
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
-    if (selfAuthenticatingEntry.mechanism === 'Shop management key') return owner;
+    if (selfAuthenticatingEntry.mechanism === 'Shop management key') return shopManagementKey;
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;
@@ -354,7 +371,7 @@ const beforeForRoute = (
 const reachableForRoute = (
   method: string,
   path: string,
-): readonly Principal[] => {
+): readonly InventoryPrincipal[] => {
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) return beforeForRoute(method, path);
@@ -703,7 +720,7 @@ export const collectPermissionInventory = (): PermissionInventory => ({
   suspicious,
 });
 
-const principals = (values: readonly Principal[]): string =>
+const principals = (values: readonly InventoryPrincipal[]): string =>
   values.length === 0 ? 'none' : values.join(', ');
 
 const renderRows = (rows: readonly PermissionRow[]): string[] =>
@@ -744,6 +761,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
     '',
     '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
+    '',
+    `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

@@ -20,6 +20,8 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
+`shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
+
 Closed capability count: 124. Route rows: 502. Exported `Ctx` use-case rows: 365.
 
 ## Human-readable diff
@@ -179,50 +181,50 @@ no changes
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
-| `GET /api/m2m/shop/products` | product:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/update` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/publish` | product:publish | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/unpublish` | product:publish | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/delete` | product:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/products/:productId/prices` | product:price:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/prices` | product:price:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/prices/deactivate` | product:price:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/products/:productId/stock` | product:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/stock/enable` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/stock/adjust` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/stock/threshold` | product:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/orders` | order:read | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/orders/export` | order:export | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/orders/packing-list` | order:export | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/orders/verify/:reference` | order:read | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/orders/:orderId` | order:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/orders/:orderId/ship` | order:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/orders/:orderId/lines/:productId/issue` | order:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/orders/:orderId/shipx` | order:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/orders/:orderId/shipx` | order:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/orders/:orderId/shipx/refresh` | order:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/orders/:orderId/shipx/discard` | order:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/orders/:orderId/shipx/label` | order:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/settings` | tenant:settings:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/settings` | tenant:settings:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/image-assets/product-cover/upload` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/image-assets/product-cover/complete` | product:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/sales-links` | product:read | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/sales-links/:id` | product:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/sales-links` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/sales-links/:id` | product:write | owner | owner | yes | Shop management key |
-| `DELETE /api/m2m/shop/sales-links/:id` | product:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/integrations/secrets` | tenant:secret:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/integrations/secrets` | tenant:secret:write | owner | owner | yes | Shop management key |
-| `DELETE /api/m2m/shop/integrations/secrets/:key` | tenant:secret:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/integrations/stripe/probe` | tenant:secret:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/integrations/shipx` | tenant:secret:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | Shop management key |
+| `GET /api/m2m/shop/products` | product:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/update` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/publish` | product:publish | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/unpublish` | product:publish | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/delete` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/prices` | product:price:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/prices` | product:price:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/prices/deactivate` | product:price:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/stock` | product:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/enable` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/adjust` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/threshold` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/orders` | order:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/orders/export` | order:export | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/orders/packing-list` | order:export | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/orders/verify/:reference` | order:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/orders/:orderId` | order:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/orders/:orderId/ship` | order:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/orders/:orderId/lines/:productId/issue` | order:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/orders/:orderId/shipx` | order:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/orders/:orderId/shipx` | order:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/orders/:orderId/shipx/refresh` | order:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/orders/:orderId/shipx/discard` | order:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/orders/:orderId/shipx/label` | order:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/settings` | tenant:settings:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/settings` | tenant:settings:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/image-assets/branding/upload` | tenant:settings:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/image-assets/branding/complete` | tenant:settings:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/image-assets/product-cover/upload` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/image-assets/product-cover/complete` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/sales-links` | product:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/sales-links/:id` | product:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/sales-links` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/sales-links/:id` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `DELETE /api/m2m/shop/sales-links/:id` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/integrations/secrets` | tenant:secret:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/secrets` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `DELETE /api/m2m/shop/integrations/secrets/:key` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/stripe/configure` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/stripe/probe` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/storage/configure` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/integrations/shipx` | tenant:secret:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/integrations/shipx/configure` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |

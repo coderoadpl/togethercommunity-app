@@ -92,14 +92,16 @@ pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:r
 scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `api-keys revoke <id>`. Studio integrations also supports report keys.
 
-`api-keys create --kind shop_management` creates a
-[shop management key](shop-management-keys.md); it requires `shop:*` scopes and
-`--expires-at` at most 30 days ahead. `api-keys list` prints each key's kind.
-`api-keys purge-shop-management --yes` deletes every shop management key of the
+`api-keys shop-management create <name> --scope <shop:*...> --expires-at <ISO>`
+creates a [shop management key](shop-management-keys.md); it requires `shop:*`
+scopes and an expiry at most 30 days ahead. `api-keys shop-management list` and
+`api-keys shop-management revoke <id>` list and revoke them; `api-keys list`,
+`create` and `revoke` handle only the other keys.
+`api-keys shop-management purge --yes` deletes every shop management key of the
 workspace, revoked or not, and prints the count; it refuses without `--yes`.
-`api-keys shop-events [--key <id>] [--cursor <event-id>] [--limit <n>]` lists
-the workspace's shop management key history (creation, revocation, purge and
-keyed mutating requests handed to a shop route handler), newest first.
+`api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
+lists the workspace's shop management key history (creation, revocation, purge
+and keyed mutating requests handed to a shop route handler), newest first.
 The `shop products|prices|stock` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list.

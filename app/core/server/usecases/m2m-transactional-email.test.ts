@@ -33,8 +33,6 @@ const apiKey = (scopes: TenantApiKey['scopes'] = ['transactional']): TenantApiKe
   tenantId: 'tenant-1',
   name: 'orders-app',
   keyHash: 'hash',
-  kind: 'legacy',
-  issuedByUserId: null,
   scopes,
   createdAt: NOW,
   expiresAt: null,

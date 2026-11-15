@@ -21,8 +21,9 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
 The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller's own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning.
+`shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-Closed capability count: 137. Route rows: 477. Exported `Ctx` use-case rows: 366.
+Closed capability count: 137. Route rows: 480. Exported `Ctx` use-case rows: 369.
 
 ## Human-readable diff
 
@@ -183,19 +184,19 @@ no changes
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
-| `GET /api/m2m/shop/products` | product:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/update` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/publish` | product:publish | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/unpublish` | product:publish | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/delete` | product:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/products/:productId/prices` | product:price:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/prices` | product:price:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/prices/deactivate` | product:price:write | owner | owner | yes | Shop management key |
-| `GET /api/m2m/shop/products/:productId/stock` | product:read | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/stock/enable` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/stock/adjust` | product:write | owner | owner | yes | Shop management key |
-| `POST /api/m2m/shop/products/stock/threshold` | product:write | owner | owner | yes | Shop management key |
+| `GET /api/m2m/shop/products` | product:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/update` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/publish` | product:publish | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/unpublish` | product:publish | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/delete` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/prices` | product:price:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/prices` | product:price:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/prices/deactivate` | product:price:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/stock` | product:read | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/enable` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/adjust` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/stock/threshold` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -352,6 +353,9 @@ no changes
 | `GET /api/api-keys` | api-key:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/api-keys` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `DELETE /api/api-keys/:id` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/api-keys/shop-management` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/api-keys/shop-management` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
+| `DELETE /api/api-keys/shop-management/:id` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/api-keys/shop-management/purge` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/api-keys/shop-management/events` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/api-keys/:id/import-audit` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
@@ -522,8 +526,6 @@ no changes
 | `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
-| `api-keys.ts#purgeShopManagementKeys` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
-| `api-keys.ts#listShopManagementKeyEvents` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#listImportAuditForApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `bunny-videos.ts#listBunnyVideos` | course:read | owner, admin | owner, admin | yes | core/server/usecases/bunny-videos.ts authorization call |
 | `bunny-videos.ts#testBunnyConnection` | integration:test | owner | owner | yes | core/server/usecases/bunny-videos.ts authorization call |
@@ -822,6 +824,11 @@ no changes
 | `shipx.ts#createInpostShipment` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
 | `shipx.ts#discardInpostShipmentAttempt` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
 | `shipx.ts#inpostShipmentLabel` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
+| `shop-management-keys.ts#createShopManagementKey` | api-key:write | owner | owner | yes | core/server/usecases/shop-management-keys.ts authorization call |
+| `shop-management-keys.ts#listShopManagementKeys` | api-key:write | owner | owner | yes | core/server/usecases/shop-management-keys.ts authorization call |
+| `shop-management-keys.ts#revokeShopManagementKey` | api-key:write | owner | owner | yes | core/server/usecases/shop-management-keys.ts authorization call |
+| `shop-management-keys.ts#purgeShopManagementKeys` | api-key:write | owner | owner | yes | core/server/usecases/shop-management-keys.ts authorization call |
+| `shop-management-keys.ts#listShopManagementKeyEvents` | api-key:write | owner | owner | yes | core/server/usecases/shop-management-keys.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#updateSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#deleteSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -888,13 +895,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:32` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:213` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1260` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1262` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1284` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1298` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1826` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1826` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:215` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1265` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1267` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1289` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1303` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1831` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1831` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -905,7 +912,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:663` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:5` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:80` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:85` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -954,7 +961,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
 | staff-role | `core/server/usecases/progress.ts:113` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
 | staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
-| staff-role | `core/server/usecases/shop-machine-auth.ts:117` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
+| staff-role | `core/server/usecases/shop-machine-auth.ts:97` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:25` | `if (identity === null \|\| identity.staffRole === null \|\| cookie === undefined) return false;` |
 | staff-role | `core/server/usecases/tenant-settings.ts:38` | `if (ctx.identity.staffRole === null) return err(forbidden('Staff role is required'));` |

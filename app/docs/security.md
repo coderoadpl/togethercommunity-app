@@ -387,13 +387,15 @@ normal application repository connection and requires no database role changes.
 ### Shop management keys
 
 A program may operate a workspace's shop with a token instead of a session
-(owner decision 2026-11-14, recorded in `CLAUDE.md`). Such a token is a tenant
-API key of kind `shop_management`; every other key has kind `legacy`. The two
-kinds never cross: the legacy authenticator refuses a `shop_management` key on
-every existing API-key route, a legacy key grants no capability on a shop
-route, and a `shop_management` key carries only shop scopes. The database
-enforces the kind, an issuer and an expiry on every shop key and a non-empty
-scope array.
+(owner decision 2026-11-14, recorded in `CLAUDE.md`). Such a token is a shop
+management key stored in its own table, `shop_management_keys`; the existing
+tenant API keys (`tenant_api_keys`, the legacy keys) are not changed in shape,
+rows or code path. The two never cross: the legacy authenticator looks keys up
+only in `tenant_api_keys`, so it refuses a shop key on every existing API-key
+route, and the shop authenticator looks keys up only in
+`shop_management_keys`, so a legacy key is unknown on a shop route. The
+database requires an issuer, an expiry and a non-empty array of known shop
+scopes on every shop key.
 
 - **Binding.** A key belongs to one workspace and records the verified owner
   who created it. Only that kind of owner, in their own session (no member
@@ -402,9 +404,8 @@ scope array.
   `X-Tenant` like the other API-key routes, and the key lookup is scoped to
   that workspace.
 - **Revalidation.** Every request re-reads the key and the issuer: the key must
-  be unrevoked, unexpired and of kind `shop_management`, and the issuer must
-  still exist, have a verified e-mail address and hold the owner role in that
-  workspace. Nothing is cached between requests, so revocation, expiry,
+  be unrevoked and unexpired, and the issuer must still exist, have a verified
+  e-mail address and hold the owner role in that workspace. Nothing is cached between requests, so revocation, expiry,
   demotion, removal or account deletion takes effect on the next request.
 - **Expiry.** An expiry is mandatory and at most 30 days after creation; there
   is no renewal.
@@ -414,13 +415,17 @@ scope array.
   acts as the issuer's real account with the capabilities of its scopes
   intersected with the owner's, so `authorize()` stays default-deny and a key
   never exceeds its issuer.
+- **Fulfilment scope.** `shop:fulfilment:write` grants `order:write`, which
+  includes creating carrier shipments (InPost ShipX), a paid action at the
+  carrier charged to the workspace's carrier account.
 - **Uniform refusal.** A missing key answers `401 Missing API key`; an unknown,
   revoked, expired, legacy or other-workspace key and an issuer who no longer
   qualifies all answer the same `401 Invalid API key`. A missing scope answers
   `403` after the rate limit.
 - **No mixed credentials.** A shop route refuses any request that also carries
-  a `Cookie` or an `Authorization` header with `401`, never falls back to a
-  session and never upgrades one. The routes live only under `/api/m2m/shop`,
+  a `Cookie` or an `Authorization` header with `401` before any key lookup,
+  records only `app.api_key.match=mixed_credentials` on its span, never falls
+  back to a session and never upgrades one. The routes live only under `/api/m2m/shop`,
   each needs a "Shop management key" entry in the self-authenticating route
   manifest, and their unsafe methods are classified `api-key` in
   `apps/server/src/request-origin-policy.ts`; registration fails otherwise.
@@ -428,7 +433,8 @@ scope array.
   read it from an environment variable, never from an argument, and never
   follow a redirect, so the key cannot reach another URL.
 - **Rate limits.** Each key has atomic PostgreSQL buckets of 60 requests a
-  minute and 10,000 a day with `Retry-After`. A request refused by the minute
+  minute and 10,000 a day with `Retry-After`, in their own table
+  `shop_management_key_rate_limit_buckets` whose rows go with their key. A request refused by the minute
   bucket does not consume the day bucket, and a day refusal returns its minute
   unit.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
@@ -436,9 +442,14 @@ scope array.
   cookie or key is read, records only the switch state on the span, performs
   no key lookup and refuses key creation; existing keys stay listable,
   revocable and purgeable. An unknown value stops the server from booting.
-- **Purge.** `POST /api/api-keys/shop-management/purge` deletes every shop key
-  of the workspace, revoked or not, with its rate-limit buckets, in one
-  transaction.
+- **Purge.** `POST /api/api-keys/shop-management/purge` is the owner's kill
+  switch for one workspace: it deletes every shop key of the workspace, revoked
+  or not, with its rate-limit buckets, in one transaction. The legacy keys are
+  untouched.
+- **Rollback.** Migration 0155 only adds the three shop tables and leaves
+  `tenant_api_keys` untouched, and the previous release never reads the new
+  tables, so a retreat to it needs no purge; the off switch and the purge stay
+  owner controls, not rollback steps.
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
   `PATCH` or `DELETE` to a shop route that passed every check write a row to
   the dedicated `shop_management_key_events` table with the key id, never the
@@ -446,25 +457,43 @@ scope array.
   written before the handler runs: if it cannot be written the request answers
   `503` with `Retry-After` and nothing changes, so no keyed change commits
   without its row, and no write follows the handler, so a committed change is
-  never answered as an error. A refused request writes no row and is recorded
-  in its request span only, so refusals cannot grow the table, and the rate
-  limits bound the rows of one key to 10,000 a day. A row keeps a resource id
-  only when it is an identifier of at most 200 characters (also a database
-  check). Every shop
-  request span records `app.api_key.match` and, when the secret matched a key
-  row, `app.api_key.id`, `app.api_key.kind` and `app.api_key.issuer.id`.
+  never answered as an error. A request refused before the handler (the off
+  switch, the body size limit, mixed credentials, the key or issuer checks, the
+  rate limit or a missing scope) writes no row and is recorded in its request
+  span only, so those refusals cannot grow the table. A refusal returned by the
+  handler (a validation error, an id of another workspace, a conflict) does
+  have a request row, written before the handler ran, which does not record
+  the refusal. The rate limits bound the rows of one key to 10,000 a day; the
+  bound multiplies by the number of keys, which is not capped per workspace,
+  and a retention job for `shop_management_key_events` is a follow-up, so the
+  history grows until its workspace is deleted. A row keeps a resource id
+  only when it is an identifier of at most 200 characters matching
+  `^[A-Za-z0-9][A-Za-z0-9._:-]*$`; the database enforces the length and the
+  pattern with its own checks. Every shop request span records `app.api_key.match` and, when the secret matched a key
+  row, `app.api_key.id` and `app.api_key.issuer.id`.
   Changes the reused use-cases record elsewhere (product versions, stock) are
   attributed to the issuing owner's account.
 - **Hash secrecy on failure.** A database driver error carries the query's
-  bound parameters, and the key hash is one of them. Every query that takes a
-  key hash (the shop and legacy lookups and the key inserts) replaces a
-  database error with a parameter-free `API key lookup failed` or `API key
-  write failed` in the repository, before it can reach the error handler,
-  telemetry, a log or a response.
+  bound parameters, and the key hash is one of them. Every shop key query that
+  takes a key hash (the lookup and the insert) replaces a database error with
+  a parameter-free `API key lookup failed` or `API key write failed` in the
+  repository, before it can reach the error handler, telemetry, a log or a
+  response. The legacy key repository is unchanged.
 - **Integration scope.** `shop:integrations:write` grants `tenant:secret:write`
-  and `integration:test`: within its workspace it may configure the payment
-  account, including the live Stripe slot, the storage connection and the
-  carrier credentials. On this change only the catalog routes (products,
+  and nothing else, and a key ctx holds that capability only for an operation
+  on the allow-list in `core/domain/shop-management-key.ts`, checked in
+  `core/server/authorize.ts` below every route: the Stripe configure and
+  permission probe use-cases (the payment account, including the live slot;
+  configuring creates the webhook signing secret and endpoint id), the ShipX
+  configure use-case (carrier credentials and sender), the storage configure
+  use-case (the object storage connection) and the generic secret write or
+  delete of the invoicing credentials (`ifirma.invoiceApiKey`,
+  `ifirma.username`, `ksef.token`, `ksef.contextNip`, `ksef.test.token`,
+  `ksef.test.contextNip`). A key never writes a webhook signing secret or
+  endpoint id directly, the Meta Conversions API token, a video-hosting,
+  marketing, mail or telemetry credential or any other secret name, and never
+  runs a connection test (`integration:test`), whichever route calls the
+  use-case; owner sessions keep every write they have. On this change only the catalog routes (products,
   prices and stock) exist; the order, settings and integration routes,
   including the payment, storage and carrier configure routes, arrive in the
   stacked change, so a key with that scope can reach no route here yet.
@@ -555,7 +584,9 @@ Member erasure removes registry rows; see [copy identifiers](storage.md#copy-ide
 The ShipX organization id and API token are encrypted tenant secrets
 (`shipx.organizationId`, `shipx.token`), written only through the owner-only
 `POST /api/integrations/shipx/configure` route (or the generic tenant-secret
-route) and returned only as masked previews. They are not part of tenant
+route) and returned only as masked previews. A shop management key may write
+them only through the ShipX configure use-case, never through the generic
+tenant-secret write, and no keyed route reaches that use-case on this change. They are not part of tenant
 settings, the public offer or the public payment configuration. The server
 decrypts them only for a ShipX call; the readiness check on the order page asks
 the secret repository whether both secrets exist without decrypting them. Each
@@ -596,7 +627,8 @@ The Meta Conversions API access token is the tenant secret
 `analyticsMetaCapiAccessToken`, not a tenant setting. It is encrypted at rest
 with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
 the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
-`DELETE /api/tenant-secrets/:key`). Reads return only the key, the update time
+`DELETE /api/tenant-secrets/:key`). A shop management key never writes or
+removes it: the token is not on the shop management key allow-list. Reads return only the key, the update time
 and the literal `configured`, never a token fragment. The server decrypts it
 when the checkout status decides whether to offer the consent prompt, when a
 new consent decision is recorded and when a dispatch builds a request. It is sent only to

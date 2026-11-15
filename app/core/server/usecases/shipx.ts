@@ -113,7 +113,7 @@ export const configureShipx = async (
   input: unknown,
   deps: ShipxSettingsDeps,
 ): Promise<Result<ShipxSettingsView, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { operation: 'shipx:configure' } });
   if (!tenant.ok) return tenant;
   const parsed = configureShipxInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid InPost ShipX settings', parsed.error.flatten()));

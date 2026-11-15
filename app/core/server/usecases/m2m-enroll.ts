@@ -35,7 +35,7 @@ export const authenticateApiKey = async (
   const secret = presentedSecret.trim();
   if (!secret) return err(unauthorized('Missing API key'));
   const found = await deps.tenantApiKeys.findActiveByHash(tenantId, deps.apiKeyCrypto.hash(secret));
-  if (!found || found.kind !== 'legacy') return err(unauthorized('Invalid API key'));
+  if (!found) return err(unauthorized('Invalid API key'));
   if (found.expiresAt !== null && Date.parse(found.expiresAt) <= Date.parse(deps.clock.nowIso())) {
     return err(unauthorized('Invalid API key'));
   }

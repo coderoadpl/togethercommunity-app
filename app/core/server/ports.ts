@@ -134,6 +134,7 @@ import type {
   InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
+  ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
   TenantAuditEventListQuery,
@@ -874,16 +875,34 @@ export interface TenantApiKeyRepository {
   listByTenant(tenantId: string): Promise<TenantApiKey[]>;
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
-  findByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
-  createShopManagement(tenantId: string, apiKey: TenantApiKey, event: ShopManagementKeyEvent): Promise<void>;
-  revokeShopManagement(
+}
+
+export interface ShopManagementKeyRepository {
+  listByTenant(tenantId: string): Promise<ShopManagementKey[]>;
+  create(tenantId: string, key: ShopManagementKey, event: ShopManagementKeyEvent): Promise<void>;
+  findByHash(tenantId: string, keyHash: string): Promise<ShopManagementKey | null>;
+  revoke(
     tenantId: string,
     id: string,
     revokedAt: string,
     event: ShopManagementKeyEvent,
-  ): Promise<TenantApiKey | null>;
-  purgeShopManagement(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+  ): Promise<ShopManagementKey | null>;
+  purge(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+}
+
+export interface ShopManagementKeyRateLimitRepository {
+  claim(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    limit: number;
+  }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+  }): Promise<void>;
 }
 
 export interface ShopManagementKeyEventRepository {

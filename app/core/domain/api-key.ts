@@ -16,44 +16,11 @@ const tenantApiKeyScopeSchema = z.enum([
 
 export type TenantApiKeyScope = z.output<typeof tenantApiKeyScopeSchema>;
 
-export const tenantApiKeyKindSchema = z.enum(['legacy', 'shop_management']);
-
-type TenantApiKeyKind = z.output<typeof tenantApiKeyKindSchema>;
-
-export const shopManagementScopeSchema = z.enum([
-  'shop:catalog:read',
-  'shop:catalog:write',
-  'shop:orders:read',
-  'shop:fulfilment:write',
-  'shop:settings:read',
-  'shop:settings:write',
-  'shop:integrations:read',
-  'shop:integrations:write',
-]);
-
-export type ShopManagementScope = z.output<typeof shopManagementScopeSchema>;
-
-const tenantApiKeyStoredScopeSchema = z.union([tenantApiKeyScopeSchema, shopManagementScopeSchema]);
-
-export type TenantApiKeyStoredScope = z.output<typeof tenantApiKeyStoredScopeSchema>;
-
-const isShopManagementScope = (scope: TenantApiKeyStoredScope): scope is ShopManagementScope =>
-  shopManagementScopeSchema.options.some((option) => option === scope);
-
-const isLegacyApiKeyScope = (scope: TenantApiKeyStoredScope): scope is TenantApiKeyScope =>
-  tenantApiKeyScopeSchema.options.some((option) => option === scope);
-
 export const IMPORT_API_KEY_DEFAULT_EXPIRY_DAYS = 7;
 export const IMPORT_API_KEY_MAX_LIFETIME_DAYS = 30;
 export const IMPORT_API_KEY_MAX_LIFETIME_MS = IMPORT_API_KEY_MAX_LIFETIME_DAYS * 24 * 60 * 60 * 1000;
 
-export const SHOP_MANAGEMENT_KEY_MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
-
-export const shopManagementKeysSwitchSchema = z.enum(['enabled', 'disabled']);
-
-export type ShopManagementKeysSwitch = z.output<typeof shopManagementKeysSwitchSchema>;
-
-export const isImportApiKeyScope = (scope: TenantApiKeyStoredScope): boolean =>
+export const isImportApiKeyScope = (scope: TenantApiKeyScope): boolean =>
   scope === 'import:content' || scope === 'import:users';
 
 export const tenantApiKeySchema = z.object({
@@ -61,9 +28,7 @@ export const tenantApiKeySchema = z.object({
   tenantId: z.string(),
   name: z.string(),
   keyHash: z.string(),
-  kind: tenantApiKeyKindSchema,
-  scopes: z.array(tenantApiKeyStoredScopeSchema).min(1).nullable(),
-  issuedByUserId: z.string().min(1).nullable(),
+  scopes: z.array(tenantApiKeyScopeSchema).min(1).nullable(),
   createdAt: z.string().datetime(),
   expiresAt: z.string().datetime().nullable(),
   revokedAt: z.string().datetime().nullable(),
@@ -79,9 +44,7 @@ export const toTenantApiKeyPublic = (apiKey: TenantApiKey): TenantApiKeyPublic =
   id: apiKey.id,
   tenantId: apiKey.tenantId,
   name: apiKey.name,
-  kind: apiKey.kind,
   scopes: apiKey.scopes,
-  issuedByUserId: apiKey.issuedByUserId,
   createdAt: apiKey.createdAt,
   expiresAt: apiKey.expiresAt,
   revokedAt: apiKey.revokedAt,
@@ -89,36 +52,12 @@ export const toTenantApiKeyPublic = (apiKey: TenantApiKey): TenantApiKeyPublic =
 
 export const createApiKeyInputSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  kind: tenantApiKeyKindSchema.optional(),
-  scopes: z.array(tenantApiKeyStoredScopeSchema).min(1).optional(),
+  scopes: z.array(tenantApiKeyScopeSchema).min(1).optional(),
   expiresAt: z.string().datetime().nullable().optional(),
 }).superRefine((input, ctx) => {
   const scopes = input.scopes ?? [];
-  if (input.kind === 'shop_management') {
-    if (scopes.length === 0) {
-      ctx.addIssue({ code: 'custom', path: ['scopes'], message: 'Shop management keys require explicit scopes' });
-    }
-    if (scopes.some((scope) => !isShopManagementScope(scope))) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['scopes'],
-        message: 'Shop management scopes cannot be combined with other scopes',
-      });
-    }
-    if (input.expiresAt == null) {
-      ctx.addIssue({ code: 'custom', path: ['expiresAt'], message: 'Shop management keys require an expiry' });
-    }
-    return;
-  }
-  if (scopes.some(isShopManagementScope)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['scopes'],
-      message: 'Shop management scopes require the shop_management key kind',
-    });
-  }
   const hasImportScope = scopes.some(isImportApiKeyScope);
-  const hasExistingScope = scopes.some((scope) => isLegacyApiKeyScope(scope) && !isImportApiKeyScope(scope));
+  const hasExistingScope = scopes.some((scope) => !isImportApiKeyScope(scope));
   if (hasImportScope && hasExistingScope) {
     ctx.addIssue({
       code: 'custom',
@@ -151,32 +90,13 @@ const capabilitiesByScope: Record<TenantApiKeyScope, readonly Capability[]> = {
   'import:users': capabilitiesForPrincipal('import-users-api-key'),
 };
 
-type ApiKeyGrant = { kind?: TenantApiKeyKind; scopes?: TenantApiKey['scopes'] };
-
-export const capabilitiesForApiKey = (apiKey: ApiKeyGrant): readonly Capability[] => {
-  if (apiKey.kind === 'shop_management') return [];
-  if (apiKey.scopes === null || apiKey.scopes === undefined) return capabilitiesForPrincipal('api-key');
-  return [...new Set(apiKey.scopes.filter(isLegacyApiKeyScope).flatMap((scope) => capabilitiesByScope[scope]))];
-};
-
-const capabilitiesByShopManagementScope: Record<ShopManagementScope, readonly Capability[]> = {
-  'shop:catalog:read': ['product:read', 'product:price:read'],
-  'shop:catalog:write': ['product:write', 'product:price:write', 'product:publish'],
-  'shop:orders:read': ['order:read', 'order:export'],
-  'shop:fulfilment:write': ['order:write'],
-  'shop:settings:read': ['tenant:settings:read'],
-  'shop:settings:write': ['tenant:settings:write'],
-  'shop:integrations:read': ['tenant:secret:read'],
-  'shop:integrations:write': ['tenant:secret:write', 'integration:test'],
-};
-
-export const shopManagementCapabilitiesForApiKey = (apiKey: ApiKeyGrant): readonly Capability[] =>
-  apiKey.kind !== 'shop_management' || apiKey.scopes === null || apiKey.scopes === undefined
-    ? []
-    : [...new Set(apiKey.scopes.filter(isShopManagementScope).flatMap((scope) => capabilitiesByShopManagementScope[scope]))];
+export const capabilitiesForApiKey = (apiKey: { scopes?: TenantApiKey['scopes'] }): readonly Capability[] =>
+  apiKey.scopes === null || apiKey.scopes === undefined
+    ? capabilitiesForPrincipal('api-key')
+    : [...new Set(apiKey.scopes.flatMap((scope) => capabilitiesByScope[scope]))];
 
 export const apiKeyHasCapability = (
-  apiKey: ApiKeyGrant,
+  apiKey: { scopes?: TenantApiKey['scopes'] },
   capability: Capability,
 ): boolean => capabilitiesForApiKey(apiKey).includes(capability);
 

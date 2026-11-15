@@ -2,7 +2,6 @@ import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-era
 import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
-import { insertShopManagementKeyEvent } from './shop-management-key-events.js';
 import { surveyResponses } from './survey-schema.js';
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
@@ -374,19 +373,6 @@ const parseNotificationCursor = (cursor: string): { createdAt: string; id: strin
 };
 
 const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
-
-const apiKeyRow = (tenantId: string, apiKey: TenantApiKey): typeof tenantApiKeys.$inferInsert => ({
-  id: apiKey.id,
-  tenantId,
-  name: apiKey.name,
-  keyHash: apiKey.keyHash,
-  kind: apiKey.kind,
-  scopes: apiKey.scopes,
-  issuedByUserId: apiKey.issuedByUserId,
-  createdAt: apiKey.createdAt,
-  expiresAt: apiKey.expiresAt,
-  revokedAt: apiKey.revokedAt,
-});
 
 const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
   tenantSecretSchema.parse(row);
@@ -3944,15 +3930,6 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
   };
 };
 
-const withoutKeyHashInErrors = async <T>(message: string, query: () => PromiseLike<T>): Promise<T> => {
-  try {
-    return await query();
-  } catch {
-    // The driver error and its cause carry the bound key hash, which must never reach telemetry, logs or a response.
-    throw new Error(message);
-  }
-};
-
 export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => ({
   listByTenant: async (tenantId) =>
     (
@@ -3963,18 +3940,19 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
         .orderBy(asc(tenantApiKeys.createdAt))
     ).map(parseApiKey),
   create: async (tenantId, apiKey) => {
-    if (apiKey.kind !== 'legacy') throw new Error('Only legacy API keys are created without a lifecycle audit event');
-    await withoutKeyHashInErrors('API key write failed', () => db.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey)));
-  },
-  createShopManagement: async (tenantId, apiKey, event) => {
-    if (apiKey.kind !== 'shop_management') throw new Error('Expected a shop management API key');
-    await withoutKeyHashInErrors('API key write failed', () => db.transaction(async (tx) => {
-      await tx.insert(tenantApiKeys).values(apiKeyRow(tenantId, apiKey));
-      await insertShopManagementKeyEvent(tx, tenantId, event);
-    }));
+    await db.insert(tenantApiKeys).values({
+      id: apiKey.id,
+      tenantId,
+      name: apiKey.name,
+      keyHash: apiKey.keyHash,
+      scopes: apiKey.scopes,
+      createdAt: apiKey.createdAt,
+      expiresAt: apiKey.expiresAt,
+      revokedAt: apiKey.revokedAt,
+    });
   },
   findActiveByHash: async (tenantId, keyHash) => {
-    const rows = await withoutKeyHashInErrors('API key lookup failed', () => db
+    const rows = await db
       .select()
       .from(tenantApiKeys)
       .where(
@@ -3984,16 +3962,7 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
           sql`${tenantApiKeys.revokedAt} is null`,
         ),
       )
-      .limit(1));
-    const row = rows[0];
-    return row ? parseApiKey(row) : null;
-  },
-  findByHash: async (tenantId, keyHash) => {
-    const rows = await withoutKeyHashInErrors('API key lookup failed', () => db
-      .select()
-      .from(tenantApiKeys)
-      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.keyHash, keyHash)))
-      .limit(1));
+      .limit(1);
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },
@@ -4005,7 +3974,6 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
         and(
           eq(tenantApiKeys.tenantId, tenantId),
           eq(tenantApiKeys.id, id),
-          eq(tenantApiKeys.kind, 'legacy'),
           sql`${tenantApiKeys.revokedAt} is null`,
         ),
       )
@@ -4013,32 +3981,6 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
     const row = rows[0];
     return row ? parseApiKey(row) : null;
   },
-  revokeShopManagement: async (tenantId, id, revokedAt, event) => db.transaction(async (tx) => {
-    const rows = await tx
-      .update(tenantApiKeys)
-      .set({ revokedAt })
-      .where(
-        and(
-          eq(tenantApiKeys.tenantId, tenantId),
-          eq(tenantApiKeys.id, id),
-          eq(tenantApiKeys.kind, 'shop_management'),
-          sql`${tenantApiKeys.revokedAt} is null`,
-        ),
-      )
-      .returning();
-    const row = rows[0];
-    if (!row) return null;
-    await insertShopManagementKeyEvent(tx, tenantId, event);
-    return parseApiKey(row);
-  }),
-  purgeShopManagement: async (tenantId, event) => db.transaction(async (tx) => {
-    const purged = await tx
-      .delete(tenantApiKeys)
-      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.kind, 'shop_management')))
-      .returning({ id: tenantApiKeys.id });
-    for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
-    return purged.length;
-  }),
 });
 
 export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitRepository => ({

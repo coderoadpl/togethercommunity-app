@@ -24,6 +24,7 @@
               "netCents": 39900,
               "productId": "product-js-full",
               "productType": "course",
+              "quantity": 1,
               "vatCents": 0,
               "vatExemptionBasis": null,
               "vatExemptionBasisKind": null,

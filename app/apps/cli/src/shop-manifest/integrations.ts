@@ -7,10 +7,11 @@ import {
 
 type ManifestEnvironment = Readonly<Record<string, string | undefined>>;
 type PublishingShop = { slug: string; desired: ShopManifestSettings; integrations: ShopManifestIntegrations };
+export type CredentialHolder = { source: string; integrations: ShopManifestIntegrations };
 type SourcedValue = { source: string; value: string };
 
 const PUBLISHED_CREDENTIAL_MESSAGE =
-  'A published parcel-locker token must differ from every ShipX token and organization ID of the selected shops and from the operator secret';
+  'A published parcel-locker token must differ from every ShipX token and organization ID in the manifest and from the operator secret';
 const OPERATOR_SECRET_SOURCE = 'operator secret';
 
 const presentValue = (value: string | null | undefined): string | undefined => {
@@ -22,7 +23,7 @@ const sourced = (source: string, values: ReadonlyArray<string | undefined>): Sou
   values.flatMap((value) => value === undefined ? [] : [{ source, value }]);
 
 export const publishedCredentialError = (
-  shops: readonly PublishingShop[], environment: ManifestEnvironment, resolveReferences: boolean,
+  shops: readonly PublishingShop[], holders: readonly CredentialHolder[], environment: ManifestEnvironment, resolveReferences: boolean,
 ): AppError | null => {
   const valueOf = (name: string | undefined) => name === undefined ? undefined : presentValue(environment[name]);
   const published = shops.flatMap((shop) => sourced(shop.slug, [
@@ -31,7 +32,7 @@ export const publishedCredentialError = (
   ]));
   if (published.length === 0) return null;
   const credentials = [
-    ...shops.flatMap((shop) => sourced(shop.slug, [valueOf(shop.integrations.shipx?.tokenEnv), valueOf(shop.integrations.shipx?.organizationIdEnv)])),
+    ...holders.flatMap((holder) => sourced(holder.source, [valueOf(holder.integrations.shipx?.tokenEnv), valueOf(holder.integrations.shipx?.organizationIdEnv)])),
     ...sourced(OPERATOR_SECRET_SOURCE, [valueOf(SHOP_OPERATOR_SECRET_ENV)]),
   ];
   const matches = published.flatMap((token) => credentials.filter((credential) => credential.value === token.value)

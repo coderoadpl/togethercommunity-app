@@ -3,7 +3,7 @@ import { err, internal, ok, validation, updateProductInputSchema, type AppError,
 import { productMetadata, SHOP_OPERATOR_SECRET_ENV } from '#core/domain/shop-manifest.js';
 import { publishedCredentialError, resolveManifestIntegrations, type ResolvedManifestIntegrations } from './integrations.js';
 import {
-  manifestOperationError, manifestPlanReport, paymentConfigurationDue, preflightManifest, prepareManifest,
+  manifestCredentialHolders, manifestOperationError, manifestPlanReport, parseShopManifest, paymentConfigurationDue, preflightManifest, prepareManifest,
   type ManifestClientFactory, type ManifestReadClient, type ManifestReportOptions, type PreparedProduct,
 } from './plan.js';
 
@@ -37,9 +37,13 @@ export const applyManifest = async (
       integrationsByWorkspace.set(shop.workspace, resolved.value);
     }
   }
+  const manifest = parseShopManifest(input);
+  if (!manifest.ok) return fail(manifest.error);
   const effective = preflightManifest(input, workspace);
   if (!effective.ok) return fail(effective.error);
-  const credentialError = publishedCredentialError(effective.value, options.environment ?? {}, options.integrations === true);
+  const credentialError = publishedCredentialError(
+    effective.value, manifestCredentialHolders(manifest.value), options.environment ?? {}, options.integrations === true,
+  );
   if (credentialError !== null) return fail(credentialError);
   const unconfirmed = prepared.value.filter((shop) => shop.access.state === 'missing').map((shop) => shop.workspace);
   if (unconfirmed.length > 0) {

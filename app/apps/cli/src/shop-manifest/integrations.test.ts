@@ -309,12 +309,12 @@ describe('manifest integrations', () => {
 
     describe('public tokens across the selected shops', () => {
       const carrierAcme = { workspace: 'acme', integrations: { stripe: null, parcelLocker: null, shipx: { environment: 'sandbox', tokenEnv: 'SHOP_SHIPX_ACME_TOKEN' } }, products: [] };
-      const runAcrossShops = async (studio: Record<string, unknown>, secrets: Record<string, string>, flag: boolean) => {
+      const runAcrossShops = async (studio: Record<string, unknown>, secrets: Record<string, string>, flag: boolean, selected?: string) => {
         const acme = integrationFake();
         const other = integrationFake('studio');
         const published = vi.spyOn(other.api, 'updateTenantSettings');
         const input = { version: 1, shops: [carrierAcme, { workspace: 'studio', products: [], ...studio }] };
-        const result = await applyManifest(input, (workspace) => workspace === 'acme' ? acme.api : other.api, undefined, { integrations: flag, environment: secrets });
+        const result = await applyManifest(input, (workspace) => workspace === 'acme' ? acme.api : other.api, selected, { integrations: flag, environment: secrets });
         return { result, published, fakes: [acme, other] };
       };
       const shared = 'carrier-private-fixture';
@@ -330,6 +330,30 @@ describe('manifest integrations', () => {
         expect(JSON.stringify(result)).not.toContain(shared);
         expect(published).not.toHaveBeenCalled();
         for (const fake of fakes) expect(fake.state.requests.every((request) => request.startsWith('GET '))).toBe(true);
+      });
+
+      it.each([
+        ['an environment reference', { integrations: { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN' } } }, { SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN: shared }, true],
+        ['a literal settings value', { settings: { inpostGeowidgetToken: shared } }, {}, false],
+      ])('refuses with --shop a token equal to a carrier credential of an unselected shop through %s', async (_case, studio, extra, flag) => {
+        const { result, published, fakes } = await runAcrossShops(studio, { SHOP_SHIPX_ACME_TOKEN: shared, ...extra }, flag, 'studio');
+        expect(result).toMatchObject({ ok: false, error: { code: 'validation', details: { failure: { publishingWorkspaces: ['studio'], credentialSources: ['acme'] }, applied: [] } } });
+        expect(JSON.stringify(result)).not.toContain(shared);
+        expect(published).not.toHaveBeenCalled();
+        expect(fakes[0]?.state.requests).toEqual([]);
+      });
+
+      it('refuses with --shop a token equal to a carrier credential of the company block that the shop overrides', async () => {
+        const fake = integrationFake('studio');
+        const published = vi.spyOn(fake.api, 'updateTenantSettings');
+        const input = {
+          version: 1,
+          company: { integrations: { shipx: { environment: 'sandbox', tokenEnv: 'SHOP_SHIPX_COMPANY_TOKEN' } } },
+          shops: [{ workspace: 'studio', integrations: { shipx: null }, settings: { inpostGeowidgetToken: shared }, products: [] }],
+        };
+        const result = await applyManifest(input, () => fake.api, 'studio', { environment: { SHOP_SHIPX_COMPANY_TOKEN: shared } });
+        expect(result).toMatchObject({ ok: false, error: { code: 'validation', details: { failure: { publishingWorkspaces: ['studio'], credentialSources: ['company block'] } } } });
+        expect(published).not.toHaveBeenCalled();
       });
 
       it('refuses a published token equal to the operator secret and names the operator secret, not its value', async () => {

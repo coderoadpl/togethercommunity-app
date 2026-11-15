@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import { isRedirectRefusal, type ApiClient } from '#core/client/index.js';
 import {
   err, ok, validation,
@@ -7,6 +8,7 @@ import {
   diffManifestProduct, diffShopSettings, effectiveShopIntegrations, effectiveShopSettings, integrationReferenceError, manifestWorkspaceSlug, productVatConvergenceError, shopManifestSchema,
   type ShopManifestIntegrations, type ShopManifestProduct, type ShopManifestSettings,
 } from '#core/domain/shop-manifest.js';
+import type { CredentialHolder } from './integrations.js';
 
 export type ManifestReadClient = Pick<ApiClient, 'me' | 'getTenantSettings' | 'listProducts' | 'listProductPrices' | 'getProductStock' | 'listTenantSecrets'>;
 export type ManifestClientFactory<C extends ManifestReadClient = ManifestReadClient> = (workspace: string) => C | null;
@@ -61,18 +63,35 @@ const validateVatSettings = (desired: ShopManifestSettings, current: Record<stri
   return ok(true);
 };
 
-export const preflightManifest = (input: unknown, workspace?: string) => {
+type ShopManifest = z.output<typeof shopManifestSchema>;
+
+const COMPANY_CREDENTIAL_SOURCE = 'company block';
+
+export const manifestCredentialHolders = (manifest: ShopManifest): CredentialHolder[] => [
+  ...(manifest.company?.integrations === undefined ? [] : [{ source: COMPANY_CREDENTIAL_SOURCE, integrations: manifest.company.integrations }]),
+  ...manifest.shops.map((shop) => ({
+    source: manifestWorkspaceSlug(shop.workspace),
+    integrations: effectiveShopIntegrations(manifest.company?.integrations, shop.integrations),
+  })),
+];
+
+export const parseShopManifest = (input: unknown): Result<ShopManifest, AppError> => {
   const parsed = shopManifestSchema.safeParse(input);
-  if (!parsed.success) return err(validation('Invalid shop manifest', {
+  return parsed.success ? ok(parsed.data) : err(validation('Invalid shop manifest', {
     issues: parsed.error.issues.map((issue) => ({ path: issue.path, code: issue.code })),
   }));
-  const shops = parsed.data.shops.filter((shop) => workspace === undefined || manifestWorkspaceSlug(shop.workspace) === workspace);
+};
+
+export const preflightManifest = (input: unknown, workspace?: string) => {
+  const parsed = parseShopManifest(input);
+  if (!parsed.ok) return parsed;
+  const shops = parsed.value.shops.filter((shop) => workspace === undefined || manifestWorkspaceSlug(shop.workspace) === workspace);
   if (shops.length === 0) return err(validation('Selected shop is not in the manifest'));
   const effective = shops.map((shop) => ({
     shop,
     slug: manifestWorkspaceSlug(shop.workspace),
-    desired: effectiveShopSettings(parsed.data.company?.settings, shop.settings),
-    integrations: effectiveShopIntegrations(parsed.data.company?.integrations, shop.integrations),
+    desired: effectiveShopSettings(parsed.value.company?.settings, shop.settings),
+    integrations: effectiveShopIntegrations(parsed.value.company?.integrations, shop.integrations),
   }));
   for (const { shop, slug, desired, integrations } of effective) {
     if (integrations.parcelLocker != null && desired.inpostGeowidgetToken !== undefined) {

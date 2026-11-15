@@ -427,15 +427,18 @@ credential. It collects every token the run would publish: with
 selected shops, and, with or without the flag, every literal
 `settings.inpostGeowidgetToken` in their effective settings. It compares them,
 after surrounding whitespace is trimmed, with the values of the ShipX token and
-ShipX organization ID variables referenced by any selected shop and with
-`TOGETHER_SHOP_OPERATOR_SECRET` when that variable is set, so a ShipX token of
-one shop cannot become the public token of another. These carrier and operator
+ShipX organization ID variables referenced anywhere in the manifest (the
+`company` block and every shop entry, also when `--shop` selects only one of
+them) and with `TOGETHER_SHOP_OPERATOR_SECRET` when that variable is set, so a
+ShipX token of one shop cannot become the public token of another, even when
+that other shop is applied alone. These carrier and operator
 variables are read for this comparison only when the run publishes a token. The
 error names the rule, the publishing workspaces and the shops whose credential
-matched (or the operator secret), never a value.
+matched (`company block` for the company block, or the operator secret), never a
+value.
 
-The comparison covers only credentials referenced by the selected manifest
-entries and the operator secret. Carrier credentials stored earlier in a
+The comparison covers only credentials referenced by the manifest and the
+operator secret. Carrier credentials stored earlier in a
 workspace, by an earlier apply, another manifest or Studio, are not compared,
 because the tool never reads stored secret values; a public token equal to such
 a stored credential is not detected. A server-side check is a later change.

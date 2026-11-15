@@ -72,7 +72,8 @@ describe('shop manifest documentation', () => {
 
   it('states that the public-token comparison does not cover carrier credentials stored earlier', async () => {
     const document = (await readFile(new URL('../../../../docs/shop-manifest.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
-    expect(document).toContain('The comparison covers only credentials referenced by the selected manifest entries and the operator secret.');
+    expect(document).toContain('The comparison covers only credentials referenced by the manifest and the operator secret.');
+    expect(document).toContain('also when `--shop` selects only one of them');
     expect(document).toContain('Carrier credentials stored earlier in a workspace');
     expect(document).toContain('are not compared');
     expect(document).toContain('A server-side check is a later change.');

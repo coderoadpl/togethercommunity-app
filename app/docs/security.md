@@ -59,7 +59,7 @@ rules. Origin permission does not grant CORS access, tenant capabilities or
 cross-site cookie availability.
 
 The independently authorized exceptions retain their own mandatory checks:
-tenant API keys for import/M2M/automation, Stripe and SNS/SES provider signatures,
+tenant API keys for import/M2M/automation and shop management, Stripe and SNS/SES provider signatures,
 and scheduler/operator shared secrets. Session-backed API routes also accept a
 successfully verified CLI bearer token without browser metadata: verification
 runs with cookies removed, and downstream processing receives no ambient cookies
@@ -383,6 +383,81 @@ Report telemetry records route templates and status, without response rows or
 query strings. Database exceptions are sanitized at the report adapter boundary
 because driver exceptions can include bound email filters. Reporting uses the
 normal application repository connection and requires no database role changes.
+
+### Shop management keys
+
+A program may operate a workspace's shop with a token instead of a session
+(owner decision 2026-11-14, recorded in `CLAUDE.md`). Such a token is a tenant
+API key of kind `shop_management`; every other key has kind `legacy`. The two
+kinds never cross: the legacy authenticator refuses a `shop_management` key on
+every existing API-key route, a legacy key grants no capability on a shop
+route, and a `shop_management` key carries only shop scopes. The database
+enforces the kind, an issuer and an expiry on every shop key and a non-empty
+scope array.
+
+- **Binding.** A key belongs to one workspace and records the verified owner
+  who created it. Only that kind of owner, in their own session (no member
+  view, no capability override, no API key), creates, revokes or purges shop
+  keys or reads their history. Each request selects the workspace by host or
+  `X-Tenant` like the other API-key routes, and the key lookup is scoped to
+  that workspace.
+- **Revalidation.** Every request re-reads the key and the issuer: the key must
+  be unrevoked, unexpired and of kind `shop_management`, and the issuer must
+  still exist, have a verified e-mail address and hold the owner role in that
+  workspace. Nothing is cached between requests, so revocation, expiry,
+  demotion, removal or account deletion takes effect on the next request.
+- **Expiry.** An expiry is mandatory and at most 30 days after creation; there
+  is no renewal.
+- **Scopes.** `shop:catalog:read|write`, `shop:orders:read`,
+  `shop:fulfilment:write`, `shop:settings:read|write` and
+  `shop:integrations:read|write` map to a fixed capability list. The request
+  acts as the issuer's real account with the capabilities of its scopes
+  intersected with the owner's, so `authorize()` stays default-deny and a key
+  never exceeds its issuer.
+- **Uniform refusal.** A missing key answers `401 Missing API key`; an unknown,
+  revoked, expired, legacy or other-workspace key and an issuer who no longer
+  qualifies all answer the same `401 Invalid API key`. A missing scope answers
+  `403` after the rate limit.
+- **No mixed credentials.** A shop route refuses any request that also carries
+  a `Cookie` or an `Authorization` header with `401`, never falls back to a
+  session and never upgrades one. The routes live only under `/api/m2m/shop`,
+  each needs a "Shop management key" entry in the self-authenticating route
+  manifest, and their unsafe methods are classified `api-key` in
+  `apps/server/src/request-origin-policy.ts`; registration fails otherwise.
+- **Client.** The typed client and the CLI send the key only in `x-api-key`,
+  read it from an environment variable, never from an argument, and never
+  follow a redirect, so the key cannot reach another URL.
+- **Rate limits.** Each key has atomic PostgreSQL buckets of 60 requests a
+  minute and 10,000 a day with `Retry-After`. A request refused by the minute
+  bucket does not consume the day bucket, and a day refusal returns its minute
+  unit.
+- **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
+  answers every request under `/api/m2m/shop` with `404` before any session,
+  cookie or key is read and refuses key creation; existing keys stay listable,
+  revocable and purgeable. An unknown value stops the server from booting.
+- **Purge.** `POST /api/api-keys/shop-management/purge` deletes every shop key
+  of the workspace, revoked or not, with its rate-limit buckets, in one
+  transaction.
+- **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
+  `PATCH` or `DELETE` to a shop route, accepted or refused, write a row to the
+  dedicated `shop_management_key_events` table with the key id, never the
+  secret or its hash; the workspace audit list is unchanged. Every shop
+  request span records `app.api_key.match` and, when the secret matched a key
+  row, `app.api_key.id`, `app.api_key.kind` and `app.api_key.issuer.id`.
+  Changes the reused use-cases record elsewhere (product versions, stock) are
+  attributed to the issuing owner's account.
+- **Integration scope.** `shop:integrations:write` grants `tenant:secret:write`
+  and `integration:test`: within its workspace it may configure the payment
+  account, including the live Stripe slot, the storage connection and the
+  carrier credentials. On this change only the catalog routes (products,
+  prices and stock) exist; the order, settings and integration routes,
+  including the payment, storage and carrier configure routes, arrive in the
+  stacked change, so a key with that scope can reach no route here yet.
+
+Whoever holds a key can change that workspace's shop within its scopes and,
+with `shop:integrations:write`, its payment configuration, until the key
+expires or is revoked; the owner accepted this risk. See
+[Shop management keys](shop-management-keys.md) for the procedure.
 
 ## Public newsletter signup
 

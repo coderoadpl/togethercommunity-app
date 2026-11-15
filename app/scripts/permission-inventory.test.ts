@@ -6,6 +6,7 @@ import {
   collectPermissionInventory,
   collectUseCasesInSource,
   renderPermissionTable,
+  SHOP_MANAGEMENT_KEY_PRINCIPAL,
 } from './permission-inventory.js';
 
 const root = join(import.meta.dirname, '..');
@@ -25,7 +26,13 @@ describe('permission inventory', () => {
     }
     expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(13);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
-      .toMatchObject({ capability: 'product:write', before: ['owner'], after: ['owner'] });
+      .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+    const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
+    expect(shopRoutes).toHaveLength(13);
+    for (const row of shopRoutes) {
+      expect(row, row.subject).toMatchObject({ before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+      expect([...row.before, ...row.after], row.subject).not.toContain('owner');
+    }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),

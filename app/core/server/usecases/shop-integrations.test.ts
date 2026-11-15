@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, SHOP_INTEGRATION_SECRET_KEYS, shopIntegrationSecretInputSchema, type Identity, type TenantSecret } from '#core/domain/index.js';
+import {
+  ok,
+  SHOP_MANAGEMENT_KEY_SECRET_KEYS,
+  shopIntegrationSecretInputSchema,
+  shopIntegrationSecretKeySchema,
+  type Identity,
+  type TenantSecret,
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 
@@ -63,11 +70,24 @@ const harness = () => {
 };
 
 describe('shop integration secret use-cases', () => {
-  it('allows exactly the iFirma and KSeF credential keys', () => {
-    expect(SHOP_INTEGRATION_SECRET_KEYS).toEqual([
+  it('allows exactly the iFirma and KSeF credential keys of the shop management key allow-list', () => {
+    expect(shopIntegrationSecretKeySchema.options).toBe(SHOP_MANAGEMENT_KEY_SECRET_KEYS);
+    expect(shopIntegrationSecretKeySchema.options).toEqual([
       'ifirma.invoiceApiKey', 'ifirma.username', 'ksef.token', 'ksef.contextNip', 'ksef.test.token', 'ksef.test.contextNip',
     ]);
   });
+
+  it.each(SHOP_MANAGEMENT_KEY_SECRET_KEYS.filter((key) => !key.endsWith('contextNip')))(
+    'lets a key ctx holding only the secret write capability set and delete %s past the allow-list guard',
+    async (key) => {
+      const { deps, rows, deleted } = harness();
+      const ctx = keyCtx(['tenant:secret:write']);
+      expect(await setShopIntegrationSecret(ctx, { key, value: 'credential-5678' }, deps)).toMatchObject({ ok: true, value: { key } });
+      expect(await deleteShopIntegrationSecret(ctx, key, deps)).toEqual({ ok: true, value: { key } });
+      expect(rows.size).toBe(0);
+      expect(deleted).toEqual([key]);
+    },
+  );
 
   it('stores an allow-listed credential and returns only its masked preview', async () => {
     const { deps, rows } = harness();

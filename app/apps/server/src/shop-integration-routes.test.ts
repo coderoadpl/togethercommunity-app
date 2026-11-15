@@ -346,6 +346,45 @@ describe('shop integration routes with a shop management key', () => {
   });
 
   it.each([
+    ['a webhook signing secret', 'stripe.testWebhookSecret'],
+    ['a webhook endpoint id', 'stripe.webhookEndpointId'],
+    ['the Meta Conversions API token', 'analyticsMetaCapiAccessToken'],
+    ['a video-hosting credential', 'bunny.securityKey'],
+    ['a mail credential', 'ses.accessKeyId'],
+    ['a carrier credential', 'shipx.organizationId'],
+  ] as const)('refuses a key the generic write and delete of %s that an owner session stored, and the owner session still removes it', async (_group, key) => {
+    const stored = await ownerRequest(API_ROUTES.tenantSecretSet.method, API_ROUTES.tenantSecretSet.path, { key, value: `owner-${key}` });
+    expect(stored.status, key).toBe(200);
+    const { secret } = await createShopKey([READ, WRITE]);
+    const before = await deps.tenantSecrets.listByTenant('acme');
+    const set = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key, value: 'key-override' });
+    expect(set.status, key).toBe(400);
+    expect((await errorOf(set)).code).toBe('validation');
+    const removed = await keyed(secret, 'DELETE', secretPath(key));
+    expect(removed.status, key).toBe(400);
+    expect((await errorOf(removed)).code).toBe('validation');
+    expect(await deps.tenantSecrets.listByTenant('acme')).toEqual(before);
+    expect(await storedSecret('acme', key)).toBe(`owner-${key}`);
+    const ownerRemoved = await ownerRequest(API_ROUTES.tenantSecretDelete.method, API_PATHS.tenantSecretDelete.replace(':key', key));
+    expect(ownerRemoved.status, key).toBe(200);
+    expect(await storedKeys('acme')).not.toContain(key);
+  });
+
+  it('refuses a key the generic write and delete of an unknown secret name', async () => {
+    const { secret } = await createShopKey([READ, WRITE]);
+    const before = await deps.tenantSecrets.listByTenant('acme');
+    for (const [method, path, body] of [
+      ['POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'payments.payoutAccount', value: 'key-override' }],
+      ['DELETE', secretPath('payments.payoutAccount'), undefined],
+    ] as const) {
+      const response = await keyed(secret, method, path, body);
+      expect(response.status, method).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    expect(await deps.tenantSecrets.listByTenant('acme')).toEqual(before);
+  });
+
+  it.each([
     ['an invalid KSeF NIP', { key: 'ksef.contextNip', value: '1234567890' }],
     ['a short KSeF test NIP', { key: 'ksef.test.contextNip', value: '123' }],
     ['an empty iFirma key', { key: 'ifirma.invoiceApiKey', value: '   ' }],

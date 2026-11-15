@@ -512,10 +512,11 @@ scopes on every shop key.
   `POST /api/m2m/shop/integrations/shipx/configure` (see
   [InPost ShipX credentials](#inpost-shipx-credentials)); and
   `POST /api/m2m/shop/integrations/secrets` and
-  `DELETE /api/m2m/shop/integrations/secrets/:key`, whose key list is that same
-  domain allow-list. Any other secret name answers `400` at the generic route
-  and is refused again by the use-case guard, so the keyed generic route never
-  reaches the Stripe, storage, ShipX, Meta, video, mail or telemetry secrets.
+  `DELETE /api/m2m/shop/integrations/secrets/:key`, whose accepted names are
+  that same domain allow-list (`SHOP_MANAGEMENT_KEY_SECRET_KEYS`) and whose
+  use-cases name the secret to the guard. Any other secret name answers `400`
+  and changes nothing, so the keyed generic route never reaches the Stripe,
+  storage, ShipX, Meta, video, mail or telemetry secrets.
   These routes reuse the owner session's use-cases and validation, refuse
   unknown body fields, and `shop:integrations:read` returns masked previews
   only. Each accepted call writes its key history row before the use-case
@@ -678,7 +679,10 @@ The Meta Conversions API access token is the tenant secret
 with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
 the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
 `DELETE /api/tenant-secrets/:key`). A shop management key never writes or
-removes it: the token is not on the shop management key allow-list. Reads return only the key, the update time
+removes it: the token is not on the shop management key allow-list, so the
+keyed `POST /api/m2m/shop/integrations/secrets` and
+`DELETE /api/m2m/shop/integrations/secrets/:key` refuse it and no other keyed
+route writes it. Reads return only the key, the update time
 and the literal `configured`, never a token fragment. The server decrypts it
 when the checkout status decides whether to offer the consent prompt, when a
 new consent decision is recorded and when a dispatch builds a request. It is sent only to

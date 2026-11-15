@@ -36,10 +36,10 @@ export const setShopIntegrationSecret = async (
   input: ShopIntegrationSecretInput,
   deps: TenantSecretDeps,
 ): Promise<Result<TenantSecretMasked, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
-  if (!tenant.ok) return tenant;
   const parsed = shopIntegrationSecretInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid integration secret', parsed.error.flatten()));
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { secretKey: parsed.data.key } });
+  if (!tenant.ok) return tenant;
   return setTenantSecret(ctx, parsed.data, deps);
 };
 
@@ -48,10 +48,10 @@ export const deleteShopIntegrationSecret = async (
   key: string,
   deps: TenantSecretDeps,
 ): Promise<Result<{ key: ShopIntegrationSecretKey }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
-  if (!tenant.ok) return tenant;
   const parsed = shopIntegrationSecretDeleteInputSchema.safeParse({ key });
   if (!parsed.success) return err(validation('Invalid integration secret key', parsed.error.flatten()));
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { secretKey: parsed.data.key } });
+  if (!tenant.ok) return tenant;
   const deleted = await deleteTenantSecret(ctx, parsed.data.key, deps);
   return deleted.ok ? ok({ key: parsed.data.key }) : deleted;
 };

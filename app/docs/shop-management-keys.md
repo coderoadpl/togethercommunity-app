@@ -657,7 +657,8 @@ session counterpart; the session routes keep answering `401` for a shop key.
 No secret value is ever returned: the secret list answers the same masked
 previews, Stripe mode and webhook URL as the session route.
 
-The generic secret routes accept only this fixed list of keys:
+The generic secret routes accept only the secret names of the allow-list in
+`core/domain/shop-management-key.ts`, the same list the use-case guard checks:
 `ifirma.invoiceApiKey`, `ifirma.username`, `ksef.token`, `ksef.contextNip`,
 `ksef.test.token` and `ksef.test.contextNip`. The value is trimmed and must not
 be empty, and a KSeF context NIP must have ten digits and a valid checksum.

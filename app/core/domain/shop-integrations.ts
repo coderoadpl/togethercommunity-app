@@ -1,22 +1,14 @@
 import { z } from 'zod';
 
 import { nipSchema } from './commerce.js';
+import { SHOP_MANAGEMENT_KEY_SECRET_KEYS } from './shop-management-key.js';
 import { setTenantSecretInputSchema, type TenantSecretKey } from './tenant-secret.js';
-
-export const SHOP_INTEGRATION_SECRET_KEYS = [
-  'ifirma.invoiceApiKey',
-  'ifirma.username',
-  'ksef.token',
-  'ksef.contextNip',
-  'ksef.test.token',
-  'ksef.test.contextNip',
-] as const satisfies readonly TenantSecretKey[];
 
 const NIP_SECRET_KEYS: ReadonlySet<TenantSecretKey> = new Set(['ksef.contextNip', 'ksef.test.contextNip']);
 
-export const shopIntegrationSecretKeySchema = z.enum(SHOP_INTEGRATION_SECRET_KEYS, {
+export const shopIntegrationSecretKeySchema = z.enum(SHOP_MANAGEMENT_KEY_SECRET_KEYS, {
   errorMap: () => ({
-    message: `Only ${SHOP_INTEGRATION_SECRET_KEYS.join(', ')} can be set with a shop management key; Stripe, storage and ShipX have their own configure routes`,
+    message: `Only ${SHOP_MANAGEMENT_KEY_SECRET_KEYS.join(', ')} can be set with a shop management key; Stripe, storage and ShipX have their own configure routes`,
   }),
 });
 

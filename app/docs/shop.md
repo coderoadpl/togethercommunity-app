@@ -863,7 +863,7 @@ short the whole order is cancelled and nothing is decremented:
   granted, no purchase or welcome e-mail is queued, no automatic invoice job is
   queued and the order is never eligible for Meta conversions;
 - one `order_refund_jobs` row is inserted in the same transaction (`pending`,
-  the full paid amount, idempotency key `oos-refund-<orderId>`, unique per
+  the full paid amount, base idempotency key `oos-refund-<orderId>`, unique per
   order); an order paid with zero gets no job;
 - staff get the `order-out-of-stock` e-mail (support address, or every staff
   member in their language) with the short products, the amount being refunded
@@ -889,31 +889,50 @@ For each claimed job the dispatcher reads the order of that workspace again:
 
 - an order that is already `refunded` (for example refunded by hand in the
   Stripe Dashboard) ends as `skipped_refunded` without calling Stripe;
-- otherwise it refunds the full amount through `POST /v1/refunds` with the
-  payment intent, the workspace's restricted key in the order's mode and the
-  idempotency key `oos-refund-<orderId>`, stores the Stripe refund id and status
-  and marks the job `succeeded` (or `submitted` while Stripe reports the refund
-  as pending). The existing `charge.refunded` handler marks the order
-  `refunded`;
+- otherwise it lists the payment intent's refunds (`GET /v1/refunds`, covered
+  by the Charges and Refunds permission) and adds up every refund that is not
+  `failed` or `canceled`. When nothing is left to refund the job ends as
+  `skipped_refunded`; when staff refunded part of the payment by hand, only the
+  remainder is refunded;
+- it then refunds that amount through `POST /v1/refunds` with the payment
+  intent, the workspace's restricted key in the order's mode and the job's
+  current idempotency key, stores the Stripe refund id and status and marks the
+  job `succeeded` (or `submitted` while Stripe reports the refund as pending).
+  The existing `charge.refunded` handler marks the order `refunded`;
 - a temporary Stripe failure or a short available balance is retried 1 min,
   5 min, 30 min, 2 h and 6 h later, then every 12 h until seven days after the
-  first attempt; the job then ends as `failed`;
+  job was queued; the job then ends as `failed`;
 - a charge Stripe reports as already refunded ends as `skipped_refunded`; a
-  missing payment intent, a refund Stripe rejects for good (for example after a
-  partial refund by hand) or an order that is not cancelled ends as `failed` at
-  once;
-- a key without the Charges and Refunds (write) permission ends as
-  `blocked_permission`; no further automatic attempt is made.
+  missing payment intent, a refund Stripe rejects for good or an order that is
+  not cancelled ends as `failed` at once;
+- a key without the Charges and Refunds (write) permission moves the job to
+  `blocked_permission` and retries it every hour for 72 hours from the first
+  refusal; adding the permission in the Stripe Dashboard lets the next hourly
+  attempt pay the refund. After 72 hours the job ends as `failed`.
+
+Idempotency keys: the job keeps a key generation, starting at 0. Generation 0
+sends `oos-refund-<orderId>`, generation n sends `oos-refund-<orderId>-<n>`.
+Stripe saves the first response under a key once the endpoint starts executing,
+errors included, and keeps keys for at least 24 hours, so resending a key after
+an error answer only replays that error. The dispatcher therefore keeps the
+same key only when the outcome of the last call is unknown: no HTTP answer
+(timeout, connection error, an aborted request or a lease that expired while a
+call was running) or a `409 idempotency_key_in_use`, which means the first
+request with that key is still executing. After any other error answer the
+next attempt uses the next generation. A second refund cannot follow: every
+attempt first subtracts the refunds Stripe already lists for the payment, and
+Stripe never refunds more than the charge (`charge_already_refunded` ends the
+job as `skipped_refunded`).
 
 Staff get the `order-refund-alert` e-mail (support address, or every staff
-member in their language) on the first failed attempt, when a job ends as
-`failed` or `blocked_permission`, and when a refund fails after it was issued.
+member in their language) on the first failed attempt, on the first missing
+permission (add the permission; waiting refunds are paid by the next hourly
+attempt), when a job ends as `failed` (a separate message when the permission
+was still missing after 72 hours) and when a refund fails after it was issued.
 Studio shows the job state, attempts, next attempt, Stripe refund and last
-error on the order page. A `blocked_permission` or `failed` job is resolved by
-refunding the payment by hand in the Stripe Dashboard (the order then becomes
-`refunded`); add Charges and Refunds (write) to the restricted key so later
-refunds run automatically. Requeueing a blocked job from Studio is not
-available yet.
+error on the order page. A `failed` job is resolved by refunding the payment by
+hand in the Stripe Dashboard (the order then becomes `refunded`). Requeueing a
+failed job from Studio is not available yet.
 
 When `charge.refunded` reports a full refund of a cancelled order, the same
 payment transaction marks the order `refunded` and moves a `pending`,

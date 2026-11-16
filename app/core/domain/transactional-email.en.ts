@@ -160,6 +160,13 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       text: `E-mail reputation for ${tenantName}: ${status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
     }),
   },
+  orderOutOfStockEmail: {
+    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, amount, amountHtml, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => ({
+      subject: `[${tenantName}] Order cancelled, out of stock: ${orderId}`,
+      html: `<p>A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amountHtml} is in progress.</p><p>Order: ${orderIdHtml}<br>Buyer: ${buyerEmailHtml}<br>Out of stock: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Open the order</a></p>`,
+      text: `A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amount} is in progress.\nOrder: ${orderId}\nBuyer: ${buyerEmail}\nOut of stock: ${productTitles}\n${orderUrl}`,
+    }),
+  },
   stockLowEmail: {
     noThreshold: 'not set',
     render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({

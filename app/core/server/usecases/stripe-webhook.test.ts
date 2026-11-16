@@ -28,6 +28,7 @@ import {
 
 import { InMemoryConsentDefinitionRepository, InMemoryMarketingConsentRepository, InMemoryConsentConfirmationTokenRepository } from '../testing/marketing-fakes.js';
 import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
 
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
@@ -202,6 +203,7 @@ const harness = (
   const enrollmentEmails: { to: string; payload: EmailOutboxPayload }[] = [];
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const autoInvoiceJobs: AutoInvoiceJob[] = [];
+  const refundJobs = createOrderRefundJobFake();
   const consents: TermsConsent[] = [];
   const consentJobs: CheckoutConsentJob[] = [];
   const marketingConsents = new InMemoryMarketingConsentRepository();
@@ -459,6 +461,7 @@ const harness = (
         const enrollmentEmailSnapshot = [...enrollmentEmails];
         const queuedSnapshot = [...queued];
         const autoInvoiceJobsSnapshot = [...autoInvoiceJobs];
+        const refundJobsSnapshot = structuredClone(refundJobs.jobs);
         const refundSnapshot = refundTransitions;
         const consentSnapshot = [...consents];
         const marketingSnapshot = marketingConsents.snapshot();
@@ -487,6 +490,7 @@ const harness = (
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          orderRefundJobs: refundJobs.repository,
           consents: {
             record: async (_tenantId, consent) => { consents.push(consent); },
             listByEmail: async (tenantId, email) => consents.filter((row) => row.tenantId === tenantId && row.email === email),
@@ -523,6 +527,7 @@ const harness = (
         enrollmentEmails.splice(0, enrollmentEmails.length, ...enrollmentEmailSnapshot);
         queued.splice(0, queued.length, ...queuedSnapshot);
         autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
+        refundJobs.jobs.splice(0, refundJobs.jobs.length, ...refundJobsSnapshot);
         refundTransitions = refundSnapshot;
         consents.splice(0, consents.length, ...consentSnapshot);
         marketingConsents.restore(marketingSnapshot);
@@ -590,6 +595,7 @@ const harness = (
     enrollmentEmails,
     queued,
     autoInvoiceJobs,
+    refundJobs: refundJobs.jobs,
     providerCancellations,
     warnings,
     refundTransitions: () => refundTransitions,

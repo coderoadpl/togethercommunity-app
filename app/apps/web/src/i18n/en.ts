@@ -3328,6 +3328,7 @@ export const en: Messages = {
       memberErasureRequest: 'Data erasure',
       reputationAlert: 'Reputation alert',
       stockLow: 'Low stock',
+      orderOutOfStock: 'Order cancelled, out of stock',
       marketingConsentConfirmation: 'Consent confirmation',
       m2mTransactional: 'API transactional message',
       marketingCampaign: 'Marketing campaign',

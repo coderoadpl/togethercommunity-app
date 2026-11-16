@@ -3040,6 +3040,7 @@ export interface Messages {
       memberErasureRequest: string;
       reputationAlert: string;
       stockLow: string;
+      orderOutOfStock: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

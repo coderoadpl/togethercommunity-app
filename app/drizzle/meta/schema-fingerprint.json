@@ -1,6 +1,6 @@
 {
-  "hash": "9cbf912d7efb948b6d4c82a081b627ed47082b6693ff3e83e0b4a26dbdad964b",
-  "shortId": "9cbf912d7efb",
+  "hash": "47433b0de849b06c1fa7f3b3fdd80c5623f5b2323f3694db7f2cfef022e5fcab",
+  "shortId": "47433b0de849",
   "schema": {
     "constraints": [
       {
@@ -67,6 +67,11 @@
         "definition": "CHECK (((vat_rate IS NULL) OR (vat_rate = ANY (ARRAY['5'::jsonb, '8'::jsonb, '23'::jsonb, '\"exempt\"'::jsonb]))))",
         "name": "products_vat_rate_check",
         "table": "products"
+      },
+      {
+        "definition": "CHECK ((amount_cents > 0))",
+        "name": "order_refund_jobs_amount_check",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
@@ -184,6 +189,11 @@
         "table": "stock_reservations"
       },
       {
+        "definition": "CHECK ((reason = 'out_of_stock'::text))",
+        "name": "order_refund_jobs_reason_check",
+        "table": "order_refund_jobs"
+      },
+      {
         "definition": "CHECK ((reserved >= 0))",
         "name": "product_stock_reserved_check",
         "table": "product_stock"
@@ -227,6 +237,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
         "name": "tenants_status_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'submitted'::text, 'succeeded'::text, 'failed'::text, 'blocked_permission'::text, 'skipped_refunded'::text])))",
+        "name": "order_refund_jobs_status_check",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text])))",
@@ -875,6 +890,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_refund_jobs_tenant_id_fkey",
+        "table": "order_refund_jobs"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_shipment_events_tenant_id_fkey",
         "table": "order_shipment_events"
       },
@@ -1244,6 +1264,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id)",
+        "name": "order_refund_jobs_tenant_order_fk",
+        "table": "order_refund_jobs"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1592,6 +1617,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "order_fulfilment_events_pkey",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_refund_jobs_pkey",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2498,6 +2528,11 @@
         "table": "notifications"
       },
       {
+        "definition": "CREATE INDEX order_refund_jobs_due_idx ON order_refund_jobs USING btree (status, next_attempt_at)",
+        "name": "order_refund_jobs_due_idx",
+        "table": "order_refund_jobs"
+      },
+      {
         "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
         "name": "order_shipment_events_tenant_order_created_idx",
         "table": "order_shipment_events"
@@ -2961,6 +2996,16 @@
         "definition": "CREATE UNIQUE INDEX order_fulfilment_events_tenant_order_type_uidx ON order_fulfilment_events USING btree (tenant_id, order_id, type)",
         "name": "order_fulfilment_events_tenant_order_type_uidx",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_refund_jobs_idempotency_key_uidx ON order_refund_jobs USING btree (idempotency_key)",
+        "name": "order_refund_jobs_idempotency_key_uidx",
+        "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_refund_jobs_tenant_order_uidx ON order_refund_jobs USING btree (tenant_id, order_id)",
+        "name": "order_refund_jobs_tenant_order_uidx",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CREATE UNIQUE INDEX order_shipments_tenant_order_uidx ON order_shipments USING btree (tenant_id, order_id)",
@@ -3943,6 +3988,14 @@
             "name": "billing",
             "notNull": false,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "cancel_reason",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,
@@ -5705,6 +5758,147 @@
           }
         ],
         "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'pending'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "idempotency_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payment_intent_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_refund_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_refund_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "order_refund_jobs"
       },
       {
         "columns": [

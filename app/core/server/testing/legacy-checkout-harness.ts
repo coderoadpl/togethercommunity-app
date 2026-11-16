@@ -21,6 +21,7 @@ import type { StockRepository } from '../stock-ports.js';
 import type { CheckoutDeps } from '../usecases/checkout.js';
 import type { StripeWebhookDeps } from '../usecases/stripe-webhook.js';
 import { InMemoryConsentConfirmationTokenRepository, InMemoryMarketingConsentRepository } from './marketing-fakes.js';
+import { createOrderRefundJobFake } from './order-refund-job-fake.js';
 import { createStockRepositoryFake } from './stock-fake.js';
 import { createInMemoryTenantDomainRepository } from './tenant-domain-fakes.js';
 
@@ -73,6 +74,7 @@ export const createLegacyCheckoutHarness = (options: {
   checkoutSnapshots?: CheckoutSnapshotRepository;
 } = {}) => {
   const stockFake = createStockRepositoryFake();
+  const refundJobs = createOrderRefundJobFake();
   const stock = options.stock ?? stockFake.repository;
   const snapshotRows: CheckoutSnapshot[] = [];
   const checkoutSnapshots: CheckoutSnapshotRepository = options.checkoutSnapshots ?? {
@@ -284,6 +286,7 @@ export const createLegacyCheckoutHarness = (options: {
           reschedule: async () => undefined,
           complete: async () => undefined,
         },
+        orderRefundJobs: refundJobs.repository,
         consents: {
           record: async (_tenantId, consent) => { consents.push(consent); },
           listByEmail: async (tenantId, email) => consents.filter((row) => row.tenantId === tenantId && row.email === email),
@@ -328,6 +331,7 @@ export const createLegacyCheckoutHarness = (options: {
     captures,
     orders,
     autoInvoiceJobs,
+    refundJobs: refundJobs.jobs,
     errors,
     warnings,
     setNow: (iso: string) => { clockNow = iso; },

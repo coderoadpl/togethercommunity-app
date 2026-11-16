@@ -604,6 +604,37 @@ export const stockLowEmail = (
   }));
 };
 
+export const orderOutOfStockEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    buyerEmail: string;
+    amountCents: number;
+    currency: string;
+    productTitles: readonly string[];
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const productTitles = input.productTitles.join(', ');
+  return emailMessageSchema.parse(transactionalMessages[resolvedLanguage].orderOutOfStockEmail.render({
+    tenantName: input.tenantName,
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    buyerEmail: input.buyerEmail,
+    buyerEmailHtml: escapeHtml(input.buyerEmail),
+    amount,
+    amountHtml: escapeHtml(amount),
+    productTitles,
+    productTitlesHtml: escapeHtml(productTitles),
+    orderUrl: input.orderUrl,
+    orderUrlHtml: escapeHtml(input.orderUrl),
+  }));
+};
+
 export const emailTransportTest = (
   language: string,
   input: { transport: EmailIntegrationTransport | TransactionalEmailTransport },

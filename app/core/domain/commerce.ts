@@ -189,6 +189,8 @@ export const checkoutSnapshotSchema = z.object({
 
 export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
+export const orderCancelReasonSchema = z.enum(['out_of_stock']);
+
 export const orderSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
   mode: stripeModeSchema.default('live'),
@@ -211,6 +213,7 @@ export const orderSchema = z.object({
   shipping: orderShippingSchema.nullable().optional(),
   fulfilmentStatus: fulfilmentStatusSchema.nullable().optional(),
   shipment: orderShipmentSchema.nullable().optional(),
+  cancelReason: orderCancelReasonSchema.nullable().optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),
   paidAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),

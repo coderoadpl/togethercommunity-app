@@ -563,6 +563,7 @@ export const orders = pgTable(
     shipping: jsonb('shipping').$type<OrderShipping>(),
     fulfilmentStatus: text('fulfilment_status', { enum: ['to_pack', 'shipped'] }),
     shipment: jsonb('shipment').$type<OrderShipment>(),
+    cancelReason: text('cancel_reason', { enum: ['out_of_stock'] }),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
     createdAt: text('created_at').notNull(),

@@ -160,6 +160,13 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       text: `Reputacja nadawcy e-mail platformy ${tenantName}: ${status}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRate}\nOdsetek zgłoszeń spamu: ${complaintRate}\nOkres: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
     }),
   },
+  orderOutOfStockEmail: {
+    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, amount, amountHtml, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => ({
+      subject: `[${tenantName}] Zamówienie anulowane z braku towaru: ${orderId}`,
+      html: `<p>Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amountHtml} jest w toku.</p><p>Zamówienie: ${orderIdHtml}<br>Kupujący: ${buyerEmailHtml}<br>Brak towaru: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Otwórz zamówienie</a></p>`,
+      text: `Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amount} jest w toku.\nZamówienie: ${orderId}\nKupujący: ${buyerEmail}\nBrak towaru: ${productTitles}\n${orderUrl}`,
+    }),
+  },
   stockLowEmail: {
     noThreshold: 'nie ustawiono',
     render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({

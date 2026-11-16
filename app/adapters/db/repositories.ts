@@ -3441,6 +3441,7 @@ export const createOrderRepository = (
           lines: order.lines ?? [],
           shipping: order.shipping ?? null,
           fulfilmentStatus: order.fulfilmentStatus ?? null,
+          cancelReason: order.cancelReason ?? null,
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),
           createdAt: order.createdAt,
         })

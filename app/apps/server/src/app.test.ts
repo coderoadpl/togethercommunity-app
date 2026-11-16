@@ -8,6 +8,7 @@ import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
+import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
@@ -591,6 +592,7 @@ const deps = (input: {
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          orderRefundJobs: createOrderRefundJobFake().repository,
           checkoutConsentJobs: {
             enqueue: async () => undefined,
             lockPending: async () => null,

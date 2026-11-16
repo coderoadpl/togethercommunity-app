@@ -19,6 +19,7 @@ import {
   spaceEvent,
   spacePost,
   stockLowEmail,
+  orderOutOfStockEmail,
   subscriptionEnded,
   orderShipped,
   subscriptionPaymentFailed,
@@ -529,6 +530,10 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', productTitle: 'Printed poster', available: 1, threshold: 2,
       oversold: false, studioUrl: 'https://acme.test/panel/products/p1',
     })],
+    ['order-out-of-stock', (language) => orderOutOfStockEmail(language, {
+      tenantName: 'Acme Courses', orderId: 'order-1', buyerEmail: 'buyer@acme.test', amountCents: 4099, currency: 'PLN',
+      productTitles: ['Printed poster'], orderUrl: 'https://acme.test/panel/sales/order-1',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -639,6 +644,25 @@ describe('stock low email', () => {
     expect(oversold.subject).toBe('[Acme] Oversold: Printed <poster>');
     expect(oversold.text).toContain('Low-stock threshold: not set');
     expect(oversold.html).toContain('no piece was left');
+  });
+});
+
+describe('order out of stock email', () => {
+  const input = {
+    tenantName: 'Acme', orderId: 'order-<1>', buyerEmail: 'buyer@example.com', amountCents: 4099, currency: 'PLN',
+    productTitles: ['Printed <poster>', 'Mug'], orderUrl: 'https://acme.example.com/panel/sales/order-1',
+  };
+
+  it('tells staff the order was cancelled with the refunded amount, the short products and the order link', () => {
+    const message = orderOutOfStockEmail('en', input);
+    expect(message.subject).toBe('[Acme] Order cancelled, out of stock: order-<1>');
+    expect(message.text).toBe('A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of PLN\u00a040.99 is in progress.\nOrder: order-<1>\nBuyer: buyer@example.com\nOut of stock: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1');
+    expect(message.html).toContain('Out of stock: Printed &lt;poster&gt;, Mug');
+    expect(message.html).toContain('href="https://acme.example.com/panel/sales/order-1"');
+  });
+
+  it('renders the Polish alert with a Polish amount', () => {
+    expect(orderOutOfStockEmail('pl', input)).toEqual(expectedTransactionalEmailPl.orderOutOfStockEmail);
   });
 });
 

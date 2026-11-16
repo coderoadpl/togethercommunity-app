@@ -3352,6 +3352,7 @@ export const pl: Messages = {
       memberErasureRequest: 'Usunięcie danych',
       reputationAlert: 'Alert reputacji',
       stockLow: 'Niski stan magazynowy',
+      orderOutOfStock: 'Zamówienie anulowane z braku towaru',
       marketingConsentConfirmation: 'Potwierdzenie zgody',
       m2mTransactional: 'Wiadomość transakcyjna z API',
       marketingCampaign: 'Kampania marketingowa',

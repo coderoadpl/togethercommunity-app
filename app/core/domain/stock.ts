@@ -119,6 +119,21 @@ export const firstShortStockProductId = (items: readonly StockQuantity[], levels
     return level !== undefined && availableStock(level) < item.quantity;
   })?.productId ?? null;
 
+export const shortLateCommitProductIds = (
+  items: readonly StockQuantity[],
+  ownReservations: readonly { productId: string; quantity: number; status: StockReservationStatus }[],
+  levels: readonly Pick<StockLevel, 'productId' | 'onHand' | 'reserved'>[],
+): string[] => {
+  const needed = new Map(mergeStockQuantities(items).map((item) => [item.productId, item.quantity]));
+  for (const reservation of ownReservations) {
+    needed.set(reservation.productId, reservation.status === 'released' ? reservation.quantity : 0);
+  }
+  return levels
+    .filter((level) => (needed.get(level.productId) ?? 0) > availableStock(level))
+    .map((level) => level.productId)
+    .sort();
+};
+
 export const firstSoldOutProductId = (productIds: readonly string[], levels: readonly StockLevel[]): string | null =>
   firstShortStockProductId(productIds.map((productId) => ({ productId, quantity: 1 })), levels);
 

@@ -144,6 +144,7 @@ import type {
   StripeMode,
   StripePermissionCheck,
   ProviderRefund,
+  OrderRefundJob,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
@@ -1341,6 +1342,11 @@ export interface AutoInvoiceJobRepository {
   complete(tenantId: string, jobId: string): Promise<void>;
 }
 
+export interface OrderRefundJobRepository {
+  enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
+  findByOrderId(tenantId: string, orderId: string): Promise<OrderRefundJob | null>;
+}
+
 export interface KsefCredentials {
   tenantId: string;
   credentialSlot: 'live' | 'test';
@@ -1875,6 +1881,7 @@ export interface PaymentTransactionPort {
       couponRedemptions: CouponRedemptionRepository;
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
+      orderRefundJobs: OrderRefundJobRepository;
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;

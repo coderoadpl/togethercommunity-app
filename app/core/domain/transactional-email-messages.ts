@@ -234,6 +234,21 @@ export interface TransactionalEmailMessages {
       dashboardUrlHtml: string;
     }) => TransactionalEmailMessageContent;
   };
+  orderOutOfStockEmail: {
+    render: (input: {
+      tenantName: string;
+      orderId: string;
+      orderIdHtml: string;
+      buyerEmail: string;
+      buyerEmailHtml: string;
+      amount: string;
+      amountHtml: string;
+      productTitles: string;
+      productTitlesHtml: string;
+      orderUrl: string;
+      orderUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
   stockLowEmail: {
     noThreshold: string;
     render: (input: {

@@ -597,6 +597,12 @@ export const downloadInvoiceUpo = async (
   });
 };
 
+const cancelledOutOfStockRefusal = (): AppError => appError(
+  'conflict',
+  'This order was cancelled because its goods sold out before the payment arrived and is being refunded, so it gets no invoice',
+  { invoiceRefusal: 'order_cancelled_out_of_stock' },
+);
+
 export const requestInvoice = async (
   ctx: Ctx,
   orderId: string,
@@ -606,6 +612,7 @@ export const requestInvoice = async (
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
+  if (order.cancelReason != null) return err(cancelledOutOfStockRefusal());
   return issue(tenant.value, order, order.billing ?? null, deps);
 };
 
@@ -618,6 +625,7 @@ export const sendInvoice = async (
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
+  if (order.cancelReason != null) return err(cancelledOutOfStockRefusal());
   if (deps.invoices.withKsefInvoiceLock === undefined || deps.ksef === undefined) {
     return err(integrationNotConfigured('KSeF submission is unavailable in this deployment'));
   }

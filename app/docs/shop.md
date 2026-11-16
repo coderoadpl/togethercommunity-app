@@ -960,9 +960,10 @@ A cancelled order never counts as a purchase: it keeps no access when another
 order for the same product is refunded, is not listed under My products, is
 not reported by order reconciliation as a paid order missing its grant, is
 never the order a download copy is attributed to, is left out of the Studio
-30-day revenue summary from the moment it is cancelled, and its physical lines
-cannot be handed over at pickup (the verification page shows the cancellation
-and no issue button).
+30-day revenue summary from the moment it is cancelled, cannot be invoiced by
+hand (requesting or sending an invoice is refused with a `conflict` error), and
+its physical lines cannot be handed over at pickup (the verification page shows
+the cancellation and no issue button).
 
 Stripe does not send `refund.failed` to the platform (the event is not
 subscribed), so the dispatcher reads the refund back 24 hours and 7 days after

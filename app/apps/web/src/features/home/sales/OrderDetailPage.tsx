@@ -7,7 +7,7 @@ import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel, type Pa
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -334,8 +334,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             </Button>
           ) : null}
         </Stack>
-        {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
-        {issueInvoice.isError ? <Alert severity="error">{localizePanelError(issueInvoice.error, t)}</Alert> : null}
+        {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
+        {issueInvoice.isError ? <Alert severity="error">{localizeInvoiceError(issueInvoice.error, t)}</Alert> : null}
         {refreshInvoice.isError ? <Alert severity="error">{localizePanelError(refreshInvoice.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>

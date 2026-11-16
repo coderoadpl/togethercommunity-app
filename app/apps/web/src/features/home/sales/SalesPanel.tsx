@@ -29,7 +29,7 @@ import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 
@@ -440,7 +440,7 @@ export const SalesPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
-      {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
+      {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
       {exportError === null ? null : <Alert severity="error">{exportError}</Alert>}
     </PanelPage>
   );

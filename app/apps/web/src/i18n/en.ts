@@ -932,6 +932,7 @@ export const en: Messages = {
     billingDetails: 'Billing details',
     issueInvoice: 'Issue invoice',
     issuingInvoice: 'Issuing…',
+    invoiceOrderCancelledOutOfStock: 'This order was cancelled because its goods sold out before the payment arrived and is being refunded, so it gets no invoice.',
     refreshInvoice: 'Refresh status',
     refreshingInvoice: 'Refreshing…',
     invoiceStatus: 'Invoice status',

@@ -883,6 +883,7 @@ export interface Messages {
     billingDetails: string;
     issueInvoice: string;
     issuingInvoice: string;
+    invoiceOrderCancelledOutOfStock: string;
     refreshInvoice: string;
     refreshingInvoice: string;
     invoiceStatus: string;

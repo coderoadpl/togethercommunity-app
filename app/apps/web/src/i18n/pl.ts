@@ -939,6 +939,7 @@ export const pl: Messages = {
     billingDetails: 'Dane do faktury',
     issueInvoice: 'Wystaw fakturę',
     issuingInvoice: 'Wystawianie…',
+    invoiceOrderCancelledOutOfStock: 'To zamówienie zostało anulowane, bo towar wyprzedał się przed wpłynięciem płatności, i kwota jest zwracana, więc nie wystawia się do niego faktury.',
     refreshInvoice: 'Odśwież status',
     refreshingInvoice: 'Odświeżanie…',
     invoiceStatus: 'Status faktury',

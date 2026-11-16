@@ -404,10 +404,17 @@ someone recovers it:
 1. Set a log-drain alert on
    `[stripe-webhook] ignored tenant=<id> event=<id> reason=ownership conflict`.
 2. Find which other tenant holds the conflicting local record. Search by the
-   Stripe IDs of the logged event: `member_subscriptions.provider_subscription_id`,
+   Stripe IDs of the logged event: `provider_customer_owners.customer_id`
+   (provider `stripe`), `member_subscriptions.provider_subscription_id`,
    `orders.provider_object_ids` and `members.external_customer_ids ->> 'stripe'`.
+   `provider_customer_owners` holds one owning tenant per Stripe customer. Only
+   Stripe subscription adoption writes it, both when it adopts a subscription
+   and when it reconciles one already adopted. The webhook ownership check
+   reads it first, and so do adoption and the adoption listing. Its rows go
+   away only with their tenant.
 3. Remove or re-assign the wrong record so the Stripe ID belongs to one tenant
-   only.
+   only. For a customer recorded in `provider_customer_owners`, that means
+   updating or deleting its row by hand; no route does it.
 4. Resend the logged event from the Stripe Dashboard to this tenant's webhook
    endpoint. The endpoint is idempotent. Then check the renewal order, the
    subscription period and the member's access. A resend before step 3 is

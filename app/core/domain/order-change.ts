@@ -50,7 +50,7 @@ export type OrderChangeRead =
   | { kind: 'changes'; changes: OrderChange[] }
   | { kind: 'reset'; cursor: string };
 
-export const ORDER_CHANGE_FEED_RESET_MESSAGE = 'Order change feed reset: resync from the order list, then start from the cursor in this answer';
+const ORDER_CHANGE_FEED_RESET_MESSAGE = 'Order change feed reset: resync from the order list, then start from the cursor in this answer';
 
 export const orderChangeFeedResetDetailsSchema = z.object({ cursor: orderChangeCursorSchema }).strict();
 

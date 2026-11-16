@@ -19,6 +19,8 @@ vi.mock('./analytics.js', () => analytics);
 const poster = '00000000-0000-4000-8000-0000000000a1';
 const ebook = '00000000-0000-4000-8000-0000000000a2';
 const organizer = '00000000-0000-4000-8000-0000000000a3';
+const journal = '00000000-0000-4000-8000-0000000000a4';
+const bag = '00000000-0000-4000-8000-0000000000a5';
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
@@ -39,6 +41,20 @@ const products = {
   [organizer]: {
     id: organizer, type: 'digital_download', deliveryMethod: 'pickup', slug: 'cart', title: 'Cart Organizer', description: '', coverUrl: null,
     priceCents: 1500, currency: 'PLN', prices: [{ id: 'price-organizer', kind: 'one_time', interval: null, amountCents: 1500, currency: 'PLN' }],
+  },
+  [journal]: {
+    id: journal, type: 'digital_download', deliveryMethod: 'pickup', slug: 'journal', title: 'Journal', description: '', coverUrl: null,
+    priceCents: 4000, currency: 'PLN', marketingConsents: [], prices: [
+      { id: 'price-journal-monthly', kind: 'recurring', interval: 'month', amountCents: 900, currency: 'PLN' },
+      { id: 'price-journal', kind: 'one_time', interval: null, amountCents: 4000, currency: 'PLN' },
+    ],
+  },
+  [bag]: {
+    id: bag, type: 'physical', deliveryMethod: 'pickup', slug: 'bag', title: 'Bag', description: '', coverUrl: null,
+    priceCents: 1000, currency: 'PLN', marketingConsents: [], prices: [
+      { id: 'price-bag-small', kind: 'one_time', interval: null, amountCents: 1000, currency: 'PLN' },
+      { id: 'price-bag-large', kind: 'one_time', interval: null, amountCents: 1200, currency: 'PLN' },
+    ],
   },
 };
 
@@ -231,6 +247,30 @@ describe('hosted cart checkout', () => {
     await userEvent.click(within(screen.getByTestId(`cart-line-${ebook}`)).getByRole('button', { name: en.checkout.cartRemoveLine }));
     expect(screen.queryByText(en.checkout.cartProductMissing)).not.toBeInTheDocument();
     expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(3500) })));
+  });
+
+  it('takes the single one-time price of a product that also has a recurring price, as the server does', async () => {
+    const bodies: unknown[] = [];
+    serve({ onSession: (body) => bodies.push(body) });
+    renderCart(`${HOSTED_CART_PATH}?lines=${journal}.1~${ebook}.1`);
+    expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
+    expect(line(journal).getByText(exact(en.checkout.cartUnitPrice({ price: pln(4000) })))).toBeInTheDocument();
+    expect(screen.queryByText(`Journal: ${en.checkout.cartLineUnavailable}`)).not.toBeInTheDocument();
+    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(6500) })));
+
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ lines: [{ productId: journal, quantity: 1 }, { productId: ebook, quantity: 1 }] });
+  });
+
+  it('refuses a product with two one-time prices, as the server does', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${bag}.1~${ebook}.1`);
+    expect(await screen.findByText(`Bag: ${en.checkout.cartLineUnavailable}`)).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
   });
 
   it('checks a coupon with the lines, the email and the code only', async () => {

@@ -10,7 +10,9 @@ import {
   cartLinesSchema,
   formatCartLinesParam,
   parseCartLinesParam,
+  singleSellableOneTimePrice,
 } from './checkout-cart.js';
+import type { PriceKind } from './commerce.js';
 import { checkoutCartInputSchema } from './payment.js';
 
 const productId = (index: number): string => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -129,5 +131,32 @@ describe('cart lines URL parameter', () => {
     expect(cartLineMaxQuantity('physical')).toBe(CART_LINE_MAX_QUANTITY_WITH_HOLD);
     expect(cartLineMaxQuantity('digital_download')).toBe(1);
     expect(cartLineMaxQuantity('course')).toBe(1);
+  });
+});
+
+describe('cart line price', () => {
+  interface TestPrice { id: string; kind: PriceKind; active?: boolean; imported?: boolean }
+  const oneTime: TestPrice = { id: 'one-time', kind: 'one_time', active: true };
+  const recurring: TestPrice = { id: 'recurring', kind: 'recurring', active: true };
+
+  it('takes the single sellable one-time price next to a recurring price', () => {
+    expect(singleSellableOneTimePrice([recurring, oneTime])).toBe(oneTime);
+  });
+
+  it('takes a public offer price, which lists active prices only', () => {
+    const publicPrice: TestPrice = { id: 'public', kind: 'one_time' };
+    expect(singleSellableOneTimePrice([publicPrice])).toBe(publicPrice);
+  });
+
+  it.each<[string, TestPrice[]]>([
+    ['no price', []],
+    ['a recurring price only', [recurring]],
+    ['two one-time prices', [oneTime, { ...oneTime, id: 'second' }]],
+  ])('refuses %s', (_case, prices) => {
+    expect(singleSellableOneTimePrice(prices)).toBeNull();
+  });
+
+  it('ignores inactive and imported one-time prices', () => {
+    expect(singleSellableOneTimePrice([oneTime, { ...oneTime, id: 'inactive', active: false }, { ...oneTime, id: 'imported', imported: true }])).toBe(oneTime);
   });
 });

@@ -22,6 +22,7 @@ import {
   cartLineMaxQuantity,
   formatCartLinesParam,
   parseCartLinesParam,
+  singleSellableOneTimePrice,
   type CartLine,
 } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
@@ -57,8 +58,8 @@ const plusPath = 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z';
 
 const cartItem = (line: CartLine, product: OfferProduct | undefined): CartItem => {
   if (product === undefined) return { kind: 'missing', productId: line.productId };
-  const [price, ...otherPrices] = product.prices;
-  if (product.type === 'membership' || price === undefined || otherPrices.length > 0 || price.kind !== 'one_time') {
+  const price = singleSellableOneTimePrice(product.prices);
+  if (product.type === 'membership' || price === null) {
     return { kind: 'unavailable', productId: line.productId, product };
   }
   const max = cartLineMaxQuantity(product.type);

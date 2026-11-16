@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { PriceKind } from './commerce.js';
 import type { ProductType } from './product.js';
 
 export const CART_MAX_LINES = 20;
@@ -27,6 +28,22 @@ export const cartLinesSchema = z.array(cartLineSchema).min(1).max(CART_MAX_LINES
     context.addIssue({ code: z.ZodIssueCode.custom, message: `A cart may hold at most ${String(CART_MAX_UNITS)} units` });
   }
 });
+
+export const CART_PRICE_REQUIRED_MESSAGE = 'Every cart product requires exactly one active one-time price';
+
+interface SellablePriceCandidate {
+  kind: PriceKind;
+  active?: boolean | undefined;
+  imported?: boolean | undefined;
+}
+
+export const isSellableOneTimePrice = (price: SellablePriceCandidate): boolean =>
+  price.active !== false && price.kind === 'one_time' && price.imported !== true;
+
+export const singleSellableOneTimePrice = <T extends SellablePriceCandidate>(prices: readonly T[]): T | null => {
+  const [price, ...others] = prices.filter(isSellableOneTimePrice);
+  return price === undefined || others.length > 0 ? null : price;
+};
 
 export const cartLineMaxQuantity = (
   productType: ProductType,

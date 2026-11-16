@@ -460,7 +460,15 @@ const fixture = (input: {
     tenants: { findSettings: async () => null },
     tenantAccess: {
       listTenantsForStaff: async () => [],
-      listStaffForTenant: async () => [],
+      listStaffForTenant: async (tenantId) =>
+        tenantId === 't1'
+          ? staffUserIds.map((userId) => ({
+              userId,
+              email: `${userId}@example.com`,
+              staffRole: 'admin' as const,
+              language: null,
+            }))
+          : [],
       findStaffGrant: async (userId, lookup) =>
         'tenantId' in lookup && lookup.tenantId === 't1' && staffUserIds.includes(userId)
           ? {

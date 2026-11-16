@@ -335,6 +335,33 @@ describe('set-based notification recipients', () => {
     }
   });
 
+  it('counts only direct staff as notification recipients when an organization grants a role', async () => {
+    const organizationId = 'recipient-organization';
+    const workspaceId = 'recipient-organization-workspace';
+    const derivedOwnerId = 'recipient-derived-owner';
+    const directAdminOwnerId = 'recipient-direct-admin-owner';
+    await db.insert(organizations).values({ id: organizationId, slug: organizationId, name: 'Organization', maxWorkspaces: 1, createdAt: NOW, updatedAt: NOW });
+    await db.insert(tenants).values({ id: workspaceId, slug: workspaceId, name: 'Workspace', createdAt: NOW, organizationId });
+    await db.insert(user).values([derivedOwnerId, directAdminOwnerId].map((id) => ({ id, name: id, email: `${id}@auth.example.test` })));
+    await db.insert(organizationMembers).values([derivedOwnerId, directAdminOwnerId].map((id) => ({
+      id: `om-${id}`, organizationId, userId: id, role: 'owner' as const, createdAt: NOW, createdByUserId: 'operator',
+    })));
+    await db.insert(tenantAdmins).values({ id: `staff-${directAdminOwnerId}`, tenantId: workspaceId, userId: directAdminOwnerId, role: 'admin' });
+    await db.insert(members).values([derivedOwnerId, directAdminOwnerId].map((id) => ({
+      id: `member-${id}`, tenantId: workspaceId, userId: id, email: `${id}@member.example.test`, createdAt: NOW,
+    })));
+    const d = deps();
+    expect(await d.tenantAccess.findStaffGrant(directAdminOwnerId, { tenantId: workspaceId }))
+      .toMatchObject({ staffRole: 'owner', source: 'organization' });
+    expect(await notificationRecipient(workspaceId, derivedOwnerId, d)).toMatchObject({ isStaff: false, memberId: `member-${derivedOwnerId}` });
+    expect(await notificationRecipient(workspaceId, directAdminOwnerId, d)).toMatchObject({ isStaff: true, memberId: `member-${directAdminOwnerId}` });
+    const access = await d.fanoutBatches.listAccessForUsers(workspaceId, [derivedOwnerId, directAdminOwnerId], NOW);
+    expect(access.map(({ userId, isStaff }) => ({ userId, isStaff }))).toEqual([
+      { userId: derivedOwnerId, isStaff: false },
+      { userId: directAdminOwnerId, isStaff: true },
+    ]);
+  });
+
   it('pages the same staff recipients as the original rule and preserves an explicit mute when subscriptions are retried', async () => {
     const d = deps();
     const expected = await d.tenantAccess.listStaffForTenant(TENANT);

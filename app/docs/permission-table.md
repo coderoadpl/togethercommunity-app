@@ -941,8 +941,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/community-access.ts:84` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
 | staff-role | `core/server/usecases/community-access.ts:101` | `if (ctx.identity.staffRole) return ok(undefined);` |
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| staff-role | `core/server/usecases/community-access.ts:251` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:267` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:179` | `if (tenantId !== null && identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:193` | `if (ctx.identity.staffRole !== null) return false;` |
 | staff-role | `core/server/usecases/community.ts:395` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |

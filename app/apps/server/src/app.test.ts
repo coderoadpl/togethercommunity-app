@@ -10632,6 +10632,8 @@ describe('cart checkout over the public checkout routes', () => {
   const mug = '00000000-0000-4000-8000-0000000000a2';
   const ebook = '00000000-0000-4000-8000-0000000000a3';
   const frame = '00000000-0000-4000-8000-0000000000a5';
+  const foreignLamp = '00000000-0000-4000-8000-0000000000b1';
+  const unknownProduct = '00000000-0000-4000-8000-0000000000c1';
   const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
   const cartApp = (options: { couponPercent?: number; deliveryCents?: number } = {}) => {
     const products: Product[] = [
@@ -10639,13 +10641,14 @@ describe('cart checkout over the public checkout routes', () => {
       { ...product({ id: mug, tenantId: acme.id, title: 'Mug', published: true }), type: 'physical', vatRate: 23 },
       { ...product({ id: ebook, tenantId: acme.id, title: 'Ebook', published: true }), type: 'digital_download', vatRate: 5 },
       { ...product({ id: frame, tenantId: acme.id, title: 'Frame', published: true }), type: 'physical', deliveryMethod: 'shipping', vatRate: 23 },
+      { ...product({ id: foreignLamp, tenantId: globex.id, title: 'Globex Secret Lamp', published: true }), type: 'physical', vatRate: 23, priceCents: 7777, currency: 'EUR' },
     ];
     const base = deps({ products });
     const now = base.clock.nowIso();
-    const amounts: Record<string, number> = { [poster]: 3500, [mug]: 2500, [ebook]: 1500, [frame]: 4000 };
+    const amounts: Record<string, number> = { [poster]: 3500, [mug]: 2500, [ebook]: 1500, [frame]: 4000, [foreignLamp]: 7777 };
     base.prices.listActiveByProducts = async (tenantId, productIds) => products
       .filter((item) => item.tenantId === tenantId && productIds.includes(item.id))
-      .map((item): ProductPrice => ({ id: `price-${item.title.toLowerCase()}`, productId: item.id, tenantId: acme.id, amountCents: amounts[item.id] ?? 0, currency: 'PLN', kind: 'one_time', interval: null, active: true, createdAt: now }));
+      .map((item): ProductPrice => ({ id: `price-${item.title.toLowerCase()}`, productId: item.id, tenantId: item.tenantId, amountCents: amounts[item.id] ?? 0, currency: item.currency, kind: 'one_time', interval: null, active: true, createdAt: now }));
     const settings = base.tenants.findSettings;
     base.tenants.findSettings = async (tenantId) => {
       const stored = await settings(tenantId);
@@ -10662,6 +10665,7 @@ describe('cart checkout over the public checkout routes', () => {
     const stock = createStockRepositoryFake();
     stock.track(acme.id, poster, 5);
     stock.track(acme.id, frame, 3);
+    stock.track(globex.id, foreignLamp, 4321);
     base.stock = stock.repository;
     const orders: Order[] = [];
     base.orders.create = async (_, order) => { orders.push(order); };
@@ -10800,6 +10804,27 @@ describe('cart checkout over the public checkout routes', () => {
       expect(h.orders).toHaveLength(0);
       expect(h.stock.events).toEqual([]);
     });
+  });
+
+  it.each([
+    ['session', API_PATHS.checkoutSession, { email: 'buyer@example.test', termsAccepted: true }],
+    ['coupon', API_PATHS.couponCheckoutValidation, { email: 'buyer@example.test', couponCode: 'CART' }],
+  ])('refuses a product of another workspace on the %s route like an unknown product, without revealing it', async (_route, path, body) => {
+    const notFoundBody = (productId: string) => ({ ok: false, error: { code: 'not_found', message: `No published product "${productId}" in this tenant` } });
+    for (const lines of [[{ productId: foreignLamp, quantity: 1 }], [{ productId: poster, quantity: 1 }, { productId: foreignLamp, quantity: 1 }]]) {
+      const h = cartApp();
+      const response = await h.post(path, { ...body, lines });
+      expect(response.status).toBe(404);
+      const text = await response.text();
+      expect(JSON.parse(text)).toEqual(notFoundBody(foreignLamp));
+      for (const secret of ['Globex Secret Lamp', '7777', '77.77', 'EUR', '4321', 'price-globex']) expect(text).not.toContain(secret);
+      expect(h.createCheckoutSession).not.toHaveBeenCalled();
+      expect(h.snapshots.size).toBe(0);
+      expect(h.stock.events).toEqual([]);
+    }
+    const unknown = await cartApp().post(path, { ...body, lines: [{ productId: unknownProduct, quantity: 1 }] });
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual(notFoundBody(unknownProduct));
   });
 });
 

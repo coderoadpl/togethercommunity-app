@@ -270,6 +270,15 @@ remember it: payment, test checkout completion, refunds, collection, shipping an
 member erasure are all captured. An update that leaves the order row identical
 is not logged.
 
+Only `orders` has the triggers. The feed entry (the order list entry) also
+carries values from `invoices` (the invoice), `members` (the buyer's e-mail
+address and name), `products` (the title) and `sales_links` (the title); a
+write to those tables alone is not logged. `coupons` adds the coupon code,
+which no write path changes. Triggers on `members` and `products` would have to
+log one row per order that references the changed row, and both tables are
+written in bulk by the import, which updates every changed member and product in
+one transaction, so logging them is left for a later change.
+
 The read is scoped to one workspace, ordered by `(xact_id, id)` and returns only
 rows whose `xact_id` is below the `xmin` of the reader's snapshot, so every
 transaction that could still add a row before the cursor has already finished.

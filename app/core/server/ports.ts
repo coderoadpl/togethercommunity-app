@@ -2799,8 +2799,12 @@ export interface ProviderCustomerOwnerRepository {
   ): Promise<'this-workspace' | 'another-workspace'>;
 }
 
+interface SubscriptionAdoptionMemberLock {
+  findByIdForShare(tenantId: string, memberId: string): Promise<Member | null>;
+}
+
 export interface SubscriptionAdoptionRepositories {
-  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  members: Pick<MemberRepository, 'findByEmail'> & SubscriptionAdoptionMemberLock;
   customerOwners: ProviderCustomerOwnerRepository;
   products: Pick<ProductRepository, 'findById'>;
   prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;

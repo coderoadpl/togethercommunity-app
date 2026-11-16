@@ -409,19 +409,24 @@ holds an `organization:*` capability.
   from the organization is `forbidden`. Shop management keys stay open to such
   an owner because the issuer's role is checked again on every request with
   the key (below).
-- **What remains after a derived role ends.** Removal from the organization,
-  demotion, unlinking and suspension end the derived role and stop the shop
-  management keys its holder issued on the next request; they undo nothing the
-  person did with the role. Workspace changes made in the meantime stay in
-  force: the payment account configuration, object storage and other
-  workspace secrets, custom domains, products, coupons, sales links and
-  scheduled marketing sends. Legacy tenant API keys stay valid too: a key in
-  `tenant_api_keys` records no issuer, so no role change reaches it. A role
-  that comes only from the organization cannot create such a key since the
-  direct-grant requirement above, but a key created by that person before it
-  was introduced is still valid. After removing or demoting an organization
-  member, a direct owner of each linked workspace should review those settings
-  and revoke any legacy key they do not recognize.
+- **What remains after a derived role ends or is lowered.** Removal from the
+  organization, unlinking the workspace and suspending the organization end
+  the derived role on the next request. Demoting an organization owner to
+  organization admin does not end it: the derived workspace role becomes
+  `admin` (source `organization`). In every one of these cases the shop
+  management keys the person issued stop on the next request, because a key
+  needs its issuer to hold the workspace owner role; only a direct owner grant
+  in the workspace keeps them working. None of them undoes what the person did
+  with the role. Workspace changes made in the meantime stay in force: the
+  payment account configuration, object storage and other workspace secrets,
+  custom domains, products, coupons, sales links and scheduled marketing
+  sends. Legacy tenant API keys are not affected by organization changes:
+  organization-derived roles and the direct-grant requirement for creating
+  such a key (above) arrive in the same release, so a role that comes only
+  from the organization has never been able to create one, and every key in
+  `tenant_api_keys` was created by a direct owner of the workspace. After
+  removing or demoting an organization member, a direct owner of each linked
+  workspace should review those settings.
 
 ## Tenant API keys
 

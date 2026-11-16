@@ -427,6 +427,18 @@ const REDIRECT_REFUSED = 'Request refused a redirect';
 export const isRedirectRefusal = (error: AppError): boolean =>
   error.code === 'internal' && (error.message === REDIRECT_REFUSED || error.message === OPERATOR_REDIRECT_REFUSED);
 
+export type ApiFailureSource = 'network' | 'server' | 'client';
+
+const failureSources = new WeakMap<AppError, Exclude<ApiFailureSource, 'client'>>();
+
+const failedAt = (source: Exclude<ApiFailureSource, 'client'>, error: AppError): AppError => {
+  failureSources.set(error, source);
+  return error;
+};
+
+// A failure the client makes up while reading an answer shares the `internal` code with the server's own internal error; only the source tells them apart.
+export const apiFailureSource = (error: AppError): ApiFailureSource => failureSources.get(error) ?? 'client';
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -458,14 +470,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
       signal: signal ?? null,
     });
   } catch (cause) {
-    const message = raw?.redactErrors === true
-      ? isRedirectFailure(cause)
-        ? OPERATOR_REDIRECT_REFUSED
-        : 'Operator request failed'
-      : refuseRedirects && isRedirectFailure(cause)
-        ? REDIRECT_REFUSED
-        : `Network error calling ${path}: ${String(cause)}`;
-    return err(internal(message));
+    if (isRedirectFailure(cause) && (raw?.redactErrors === true || refuseRedirects)) {
+      return err(internal(raw?.redactErrors === true ? OPERATOR_REDIRECT_REFUSED : REDIRECT_REFUSED));
+    }
+    return err(failedAt('network', internal(raw?.redactErrors === true ? 'Operator request failed' : `Network error calling ${path}: ${String(cause)}`)));
   }
 
   if (refuseRedirects && (response.redirected || (response.status >= 300 && response.status < 400))) {
@@ -497,7 +505,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   if (!envelope.success) {
     return err(internal(`Response from ${path} does not match the contract envelope`));
   }
-  if (!envelope.data.ok) return err(envelope.data.error);
+  if (!envelope.data.ok) return err(failedAt('server', envelope.data.error));
 
   const data = outputSchema.safeParse(envelope.data.data);
   if (!data.success) {

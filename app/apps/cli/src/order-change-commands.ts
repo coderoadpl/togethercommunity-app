@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { z } from 'zod';
 
-import type { ApiClient } from '#core/client/index.js';
+import { apiFailureSource, type ApiClient } from '#core/client/index.js';
 import { HTTP_STATUS_BY_ERROR_CODE } from '#core/contract/index.js';
 import { err, feedCursorResetCursor, stripeModeSchema, validation, type AppError, type OrderChangeFeed, type Result } from '#core/domain/index.js';
 
@@ -47,6 +47,8 @@ const pause = (milliseconds: number, signal: AbortSignal): Promise<void> => new 
 const RETRY_DELAY_CAP_MS = 60_000;
 
 const isTransient = (error: AppError): boolean => {
+  const source = apiFailureSource(error);
+  if (source !== 'server') return source === 'network';
   const status = HTTP_STATUS_BY_ERROR_CODE[error.code];
   return status >= 500 || status === 429;
 };

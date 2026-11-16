@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import type { ApiClient } from '#core/client/index.js';
-import { err, feedCursorReset, forbidden, internal, ok, orderListItemSchema, rateLimited, unauthorized, validation, type OrderChangeFeed } from '#core/domain/index.js';
+import { createApiClient, type ApiClient } from '#core/client/index.js';
+import { err, feedCursorReset, forbidden, internal, notFound, ok, orderListItemSchema, rateLimited, tenantNotFound, unauthorized, validation, type AppError, type OrderChangeFeed } from '#core/domain/index.js';
 
 import { runOrderChanges } from './order-change-commands.js';
 
@@ -13,6 +13,15 @@ const order = (id: string, over: Record<string, unknown> = {}) => orderListItemS
 });
 
 const FRESH = '0123456789abcdef0123456789abcdef.12.4';
+
+const pollThrough = (reply: () => Promise<Response>) =>
+  createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: reply }).orderChanges({ after: '8.7' });
+
+const networkFailure = () => pollThrough(async () => { throw new TypeError('fetch failed'); });
+
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+const serverError = (status: number, error: AppError) => pollThrough(async () => json(status, { ok: false, error }));
 
 const page = (changes: OrderChangeFeed['changes'], nextCursor: string | null): OrderChangeFeed => ({ changes, nextCursor });
 
@@ -116,7 +125,7 @@ describe('orders changes command', () => {
     try {
       const h = harness();
       h.orderChanges
-        .mockResolvedValueOnce(err(internal('Network error calling /api/orders/changes: TypeError: fetch failed')))
+        .mockResolvedValueOnce(await networkFailure())
         .mockResolvedValueOnce(ok(page([{ cursor: '9.1', order: order('order-1') }], '9.1')))
         .mockImplementationOnce(async () => {
           h.controller.abort();
@@ -129,7 +138,7 @@ describe('orders changes command', () => {
       await running;
       expect(h.orderChanges.mock.calls.map(([input]) => input)).toEqual([{ after: '8.7' }, { after: '8.7' }, { after: '9.1' }]);
       expect(logSpy.mock.calls.map(([line]) => line)).toEqual(['9.1\torder-1\tpaid']);
-      expect(errorSpy).toHaveBeenCalledExactlyOnceWith('orders changes: Network error calling /api/orders/changes: TypeError: fetch failed; retrying in 5 s');
+      expect(errorSpy).toHaveBeenCalledExactlyOnceWith('orders changes: Network error calling /api/orders/changes?after=8.7: TypeError: fetch failed; retrying in 5 s');
       expect(process.exitCode).toBeUndefined();
     } finally {
       vi.useRealTimers();
@@ -140,7 +149,7 @@ describe('orders changes command', () => {
     vi.useFakeTimers();
     try {
       const h = harness();
-      const busy = err(rateLimited());
+      const busy = await serverError(429, rateLimited());
       h.orderChanges
         .mockResolvedValueOnce(busy).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy)
         .mockResolvedValueOnce(ok(page([{ cursor: '9.1', order: order('order-1') }], '9.1')))
@@ -161,17 +170,58 @@ describe('orders changes command', () => {
   });
 
   it.each([
-    { error: unauthorized(), exitCode: 3 },
-    { error: forbidden(), exitCode: 4 },
-    { error: validation('Invalid order changes query'), exitCode: 2 },
-    { error: feedCursorReset(FRESH), exitCode: 30 },
-  ])('stops following on $error.code with exit code $exitCode', async ({ error, exitCode }) => {
+    { error: unauthorized(), status: 401, exitCode: 3 },
+    { error: forbidden(), status: 403, exitCode: 4 },
+    { error: validation('Invalid order changes query'), status: 400, exitCode: 2 },
+    { error: notFound(), status: 404, exitCode: 5 },
+    { error: tenantNotFound(), status: 404, exitCode: 7 },
+    { error: feedCursorReset(FRESH), status: 409, exitCode: 30 },
+  ])('stops following on $error.code with exit code $exitCode', async ({ error, status, exitCode }) => {
     const h = harness();
-    h.orderChanges.mockResolvedValue(err(error));
+    h.orderChanges.mockResolvedValue(await serverError(status, error));
     await h.run({ after: '8.7', follow: true, interval: '1' });
     expect(h.orderChanges).toHaveBeenCalledOnce();
     expect(errorSpy).toHaveBeenCalledWith(`error(${error.code}): ${error.message}`);
     expect(process.exitCode).toBe(exitCode);
+  });
+
+  it.each([
+    { reason: 'an answer that does not match the contract', reply: async () => json(200, { ok: true, data: { orders: [] } }), message: 'Response data from /api/orders/changes?after=8.7 does not match the contract' },
+    { reason: 'a 4xx answer that is not JSON', reply: async () => new Response('<html>Not found</html>', { status: 404 }), message: 'Non-JSON response from /api/orders/changes?after=8.7 (HTTP 404)' },
+    { reason: 'a 5xx answer that is not JSON', reply: async () => new Response('Bad gateway', { status: 502 }), message: 'Non-JSON response from /api/orders/changes?after=8.7 (HTTP 502)' },
+  ])('stops following with the internal exit code on $reason', async ({ reply, message }) => {
+    const h = harness();
+    h.orderChanges.mockResolvedValue(await pollThrough(reply));
+    await h.run({ after: '8.7', follow: true, interval: '1' });
+    expect(h.orderChanges).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledExactlyOnceWith(`error(internal): ${message}`);
+    expect(process.exitCode).toBe(10);
+  });
+
+  it.each([
+    { reason: 'a network error', failure: networkFailure, message: 'Network error calling /api/orders/changes?after=8.7: TypeError: fetch failed' },
+    { reason: 'a 500 internal error envelope', failure: () => serverError(500, internal()), message: 'Internal error' },
+    { reason: 'a 503 envelope', failure: () => serverError(503, { code: 'unavailable', message: 'Service unavailable' }), message: 'Service unavailable' },
+    { reason: 'a 429 envelope', failure: () => serverError(429, rateLimited()), message: 'Too many requests' },
+  ])('retries $reason', async ({ failure, message }) => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      h.orderChanges
+        .mockResolvedValueOnce(await failure())
+        .mockImplementationOnce(async () => {
+          h.controller.abort();
+          return ok(page([], '8.7'));
+        });
+      const running = h.run({ after: '8.7', follow: true, interval: '1' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await running;
+      expect(h.orderChanges).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledExactlyOnceWith(`orders changes: ${message}; retrying in 1 s`);
+      expect(process.exitCode).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('waits the interval when nothing changed, then polls from the same cursor', async () => {

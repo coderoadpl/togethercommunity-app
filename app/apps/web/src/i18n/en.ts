@@ -952,7 +952,7 @@ export const en: Messages = {
     refundJobNextAttempt: 'Next attempt or check',
     refundJobProviderRefund: 'Stripe refund',
     refundJobLastError: 'Last error',
-    refundJobBlockedHelp: 'The restricted Stripe key lacks the Charges and Refunds (write) permission, so no further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard and add the permission to the key for future refunds.',
+    refundJobBlockedHelp: 'The restricted Stripe key lacks the Charges and Refunds (write) permission. Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt. Attempts stop 72 hours after the first refusal, and the refund then has to be made by hand.',
     refundJobFailedHelp: 'The automatic refund is no longer retried. Refund the payment by hand in the Stripe Dashboard.',
     invoiceDownload: 'Download invoice',
     ksefNumber: 'KSeF number',

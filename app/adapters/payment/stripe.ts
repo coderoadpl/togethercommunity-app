@@ -425,9 +425,11 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
   }
 };
 
+const REFUND_LIST_LIMIT = 100;
+
 const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
   const parsed = stripeRefundObjectSchema.safeParse(raw);
-  if (!parsed.success) return err(refundFailure('transient', 'Stripe returned a refund in an unexpected shape'));
+  if (!parsed.success) return err(refundFailure('transient', 'Stripe returned a refund in an unexpected shape', null, true));
   return ok({
     refundId: parsed.data.id,
     paymentIntentId: idOrNull(parsed.data.payment_intent),
@@ -747,6 +749,24 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return err(stripeRefundFailure('Stripe could not read the refund', cause));
       }
       return providerRefund(raw);
+    },
+    listRefunds: async (input) => {
+      const client = await clientFor(input.tenantId, input.mode);
+      if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
+      let page: { data: unknown[]; has_more: boolean };
+      try {
+        page = await client.value.refunds.list({ payment_intent: input.paymentIntentId, limit: REFUND_LIST_LIMIT });
+      } catch (cause) {
+        return err(stripeRefundFailure('Stripe could not list the refunds', cause));
+      }
+      if (page.has_more) return err(refundFailure('refund_failed', `The payment has more than ${String(REFUND_LIST_LIMIT)} refunds`));
+      const refunds: ProviderRefund[] = [];
+      for (const raw of page.data) {
+        const refund = providerRefund(raw);
+        if (!refund.ok) return refund;
+        refunds.push(refund.value);
+      }
+      return ok(refunds);
     },
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {
       // constructEvent verifies the HMAC locally and never calls the API, so a

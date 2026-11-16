@@ -18,10 +18,10 @@ export const createOrderRefundJobFake = () => {
         }
       }
       const due = jobs
-        .filter((job) => ['pending', 'submitted', 'succeeded'].includes(job.status) && job.nextAttemptAt !== null && job.nextAttemptAt <= now)
+        .filter((job) => ['pending', 'blocked_permission', 'submitted', 'succeeded'].includes(job.status) && job.nextAttemptAt !== null && job.nextAttemptAt <= now)
         .toSorted((left, right) => (left.nextAttemptAt ?? '').localeCompare(right.nextAttemptAt ?? '') || left.id.localeCompare(right.id))[0];
       if (due === undefined) return null;
-      const refunding = due.status === 'pending';
+      const refunding = due.status === 'pending' || due.status === 'blocked_permission';
       Object.assign(due, refunding
         ? { status: 'running', attempts: due.attempts + 1, lockedAt: now, updatedAt: now }
         : { lockedAt: now, nextAttemptAt: new Date(Date.parse(now) + leaseMs).toISOString(), updatedAt: now });

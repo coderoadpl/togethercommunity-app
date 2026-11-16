@@ -1,6 +1,8 @@
 import {
   err,
   ok,
+  orderRefundIdempotencyKey,
+  orderRefundPermissionRetryAt,
   orderRefundRetryAt,
   orderRefundStatusCheckAt,
   refundFailure,
@@ -33,7 +35,7 @@ import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 export interface DispatchOrderRefundJobsDeps extends TenantUrlDeps {
   refundJobs: Pick<OrderRefundJobRepository, 'claimDue' | 'release'>;
   orderDetails: OrderDetailRepository;
-  payment: Pick<PaymentProvider, 'createRefund' | 'getRefund'>;
+  payment: Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds'>;
   tenants: Pick<TenantRepository, 'findById' | 'findSettings'>;
   tenantAccess: Pick<TenantAccessReader, 'listStaffForTenant'>;
   tenantDomains: Pick<TenantDomainRepository, 'listByTenant'>;
@@ -86,14 +88,50 @@ const settleSubmittedRefund = (refund: ProviderRefund, now: string): Settlement 
   };
 };
 
+const settlePermissionMissing = (job: OrderRefundJob, lastError: string, now: string): Settlement => {
+  const blockedAt = job.permissionBlockedAt ?? now;
+  const retryAt = orderRefundPermissionRetryAt(blockedAt, now);
+  if (retryAt === null) return finalFailure(lastError, 'blocked_permission_failed');
+  return {
+    update: { status: 'blocked_permission', nextAttemptAt: retryAt, lastError, permissionBlockedAt: blockedAt },
+    outcome: 'blocked_permission',
+    alert: job.permissionBlockedAt === null ? 'blocked_permission' : null,
+  };
+};
+
 const settleRefundFailure = (job: OrderRefundJob, error: AppError, now: string): Settlement => {
   const kind = refundFailureOf(error)?.kind ?? 'transient';
   if (kind === 'already_refunded') return { update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: error.message }, outcome: 'skipped_refunded', alert: null };
-  if (kind === 'permission_missing') return { update: { status: 'blocked_permission', nextAttemptAt: null, lastError: error.message }, outcome: 'blocked_permission', alert: 'blocked_permission' };
+  if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
   if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(error.message);
-  const retryAt = orderRefundRetryAt(job.attempts, now);
+  const retryAt = orderRefundRetryAt(job.attempts, now, job.createdAt);
   if (retryAt === null) return finalFailure(error.message);
   return { update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message }, outcome: 'retrying', alert: job.attempts === 1 ? 'retrying' : null };
+};
+
+const committedRefundCents = (refunds: readonly ProviderRefund[]): number =>
+  refunds.filter((refund) => refund.status !== 'failed' && refund.status !== 'canceled').reduce((sum, refund) => sum + refund.amountCents, 0);
+
+const attemptRefund = async (job: OrderRefundJob, order: OrderListItem, paymentIntentId: string, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
+  const { createRefund, listRefunds } = deps.payment;
+  if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
+  const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId });
+  if (!listed.ok) return settleRefundFailure(job, listed.error, now);
+  const remainingCents = job.amountCents - committedRefundCents(listed.value);
+  if (remainingCents <= 0) return { update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: null }, outcome: 'skipped_refunded', alert: null };
+  const created = await createRefund({
+    mode: order.mode,
+    tenantId: job.tenantId,
+    paymentIntentId,
+    amountCents: remainingCents,
+    idempotencyKey: orderRefundIdempotencyKey(job),
+    metadata: { orderId: job.orderId, reason: job.reason },
+  });
+  if (created.ok) return settleSubmittedRefund(created.value, now);
+  const settlement = settleRefundFailure(job, created.error, now);
+  return refundFailureOf(created.error)?.outcomeUnknown === true
+    ? settlement
+    : { ...settlement, update: { ...settlement.update, keyGeneration: job.keyGeneration + 1 } };
 };
 
 const refundJob = async (job: OrderRefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
@@ -101,17 +139,8 @@ const refundJob = async (job: OrderRefundJob, order: OrderListItem | null, now: 
   if (order.status === 'refunded') return { update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: null }, outcome: 'skipped_refunded', alert: null };
   if (order.cancelReason !== job.reason) return finalFailure('The order is not cancelled for this refund reason');
   if (job.paymentIntentId === null) return finalFailure('The order has no payment intent to refund');
-  const created = deps.payment.createRefund === undefined
-    ? err(providerUnavailable)
-    : await deps.payment.createRefund({
-      mode: order.mode,
-      tenantId: job.tenantId,
-      paymentIntentId: job.paymentIntentId,
-      amountCents: job.amountCents,
-      idempotencyKey: job.idempotencyKey,
-      metadata: { orderId: job.orderId, reason: job.reason },
-    });
-  return created.ok ? settleSubmittedRefund(created.value, now) : settleRefundFailure(job, created.error, now);
+  const settlement = await attemptRefund(job, order, job.paymentIntentId, now, deps);
+  return settlement.outcome === 'blocked_permission' ? settlement : { ...settlement, update: { permissionBlockedAt: null, ...settlement.update } };
 };
 
 const checkRefundStatus = async (job: OrderRefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {

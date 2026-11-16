@@ -959,7 +959,7 @@ export const pl: Messages = {
     refundJobNextAttempt: 'Następna próba lub sprawdzenie',
     refundJobProviderRefund: 'Zwrot w Stripe',
     refundJobLastError: 'Ostatni błąd',
-    refundJobBlockedHelp: 'Ograniczony klucz Stripe nie ma uprawnienia Charges and Refunds (zapis), więc kolejne automatyczne próby nie będą podejmowane. Zwróć płatność ręcznie w panelu Stripe i dodaj uprawnienie do klucza na potrzeby kolejnych zwrotów.',
+    refundJobBlockedHelp: 'Ograniczony klucz Stripe nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; zwrot zostanie wtedy wypłacony przy najbliższej cogodzinnej próbie. Próby kończą się 72 godziny po pierwszej odmowie i wtedy zwrot trzeba zrobić ręcznie.',
     refundJobFailedHelp: 'Automatyczny zwrot nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.',
     invoiceDownload: 'Pobierz fakturę',
     ksefNumber: 'Numer KSeF',

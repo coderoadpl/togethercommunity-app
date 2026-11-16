@@ -44,14 +44,15 @@ const REFUND_FAILURE_ERROR_CODE = {
 const refundFailureDetailsSchema = z.object({
   refundFailure: refundFailureKindSchema,
   providerCode: z.string().nullable(),
+  outcomeUnknown: z.boolean().default(false),
 });
 
-export const refundFailure = (kind: RefundFailureKind, message: string, providerCode: string | null = null): AppError =>
-  appError(REFUND_FAILURE_ERROR_CODE[kind], message, { refundFailure: kind, providerCode });
+export const refundFailure = (kind: RefundFailureKind, message: string, providerCode: string | null = null, outcomeUnknown = false): AppError =>
+  appError(REFUND_FAILURE_ERROR_CODE[kind], message, { refundFailure: kind, providerCode, outcomeUnknown });
 
-export const refundFailureOf = (error: AppError): { kind: RefundFailureKind; providerCode: string | null } | null => {
+export const refundFailureOf = (error: AppError): { kind: RefundFailureKind; providerCode: string | null; outcomeUnknown: boolean } | null => {
   const parsed = refundFailureDetailsSchema.safeParse(error.details);
-  return parsed.success ? { kind: parsed.data.refundFailure, providerCode: parsed.data.providerCode } : null;
+  return parsed.success ? { kind: parsed.data.refundFailure, providerCode: parsed.data.providerCode, outcomeUnknown: parsed.data.outcomeUnknown } : null;
 };
 
 const stripeApiFailureSchema = z.object({
@@ -77,9 +78,14 @@ const stripeRefundFailureKind = (failure: z.infer<typeof stripeApiFailureSchema>
   return 'refund_failed';
 };
 
+// Without an HTTP status Stripe's answer never arrived, and a 409 idempotency_key_in_use means the
+// first request with this key is still executing, so the refund may or may not exist yet.
+const stripeOutcomeUnknown = (failure: z.infer<typeof stripeApiFailureSchema>): boolean =>
+  failure.statusCode === undefined || failure.code === 'idempotency_key_in_use';
+
 export const stripeRefundFailure = (prefix: string, cause: unknown): AppError => {
   const parsed = stripeApiFailureSchema.safeParse(cause);
   const failure = parsed.success ? parsed.data : {};
   const reason = failure.message ?? (cause instanceof Error ? cause.message : String(cause));
-  return refundFailure(stripeRefundFailureKind(failure), `${prefix}: ${reason}`, failure.code ?? null);
+  return refundFailure(stripeRefundFailureKind(failure), `${prefix}: ${reason}`, failure.code ?? null, stripeOutcomeUnknown(failure));
 };

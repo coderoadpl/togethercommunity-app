@@ -21,6 +21,8 @@ export const orderRefundJobSchema = z.object({
   providerRefundStatus: z.string().nullable(),
   submittedAt: z.string().datetime().nullable().default(null),
   statusChecks: z.number().int().nonnegative().default(0),
+  keyGeneration: z.number().int().nonnegative().default(0),
+  permissionBlockedAt: z.string().datetime().nullable().default(null),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -29,6 +31,9 @@ export type OrderRefundJob = z.output<typeof orderRefundJobSchema>;
 type OrderRefundJobStatus = OrderRefundJob['status'];
 
 const outOfStockRefundIdempotencyKey = (orderId: string): string => `oos-refund-${orderId}`;
+
+export const orderRefundIdempotencyKey = (job: Pick<OrderRefundJob, 'idempotencyKey' | 'keyGeneration'>): string =>
+  job.keyGeneration === 0 ? job.idempotencyKey : `${job.idempotencyKey}-${String(job.keyGeneration)}`;
 
 export const outOfStockRefundJob = (
   order: Pick<Order, 'id' | 'tenantId' | 'amountCents' | 'currency' | 'providerObjectIds'>,
@@ -61,15 +66,20 @@ const ORDER_REFUND_RETRY_DELAYS_MS = [MINUTE_MS, 5 * MINUTE_MS, 30 * MINUTE_MS, 
 const ORDER_REFUND_RETRY_EVERY_MS = 12 * HOUR_MS;
 const ORDER_REFUND_RETRY_WINDOW_MS = 7 * DAY_MS;
 const ORDER_REFUND_STATUS_CHECKS_AFTER_MS = [DAY_MS, 7 * DAY_MS] as const;
+const ORDER_REFUND_PERMISSION_RETRY_MS = HOUR_MS;
+const ORDER_REFUND_PERMISSION_WINDOW_MS = 72 * HOUR_MS;
 
 const retryDelayMs = (attempt: number): number => ORDER_REFUND_RETRY_DELAYS_MS[attempt - 1] ?? ORDER_REFUND_RETRY_EVERY_MS;
 
-export const orderRefundRetryAt = (failedAttempts: number, now: string): string | null => {
-  let elapsed = 0;
-  for (let attempt = 1; attempt <= failedAttempts; attempt += 1) elapsed += retryDelayMs(attempt);
-  if (elapsed > ORDER_REFUND_RETRY_WINDOW_MS) return null;
-  return new Date(Date.parse(now) + retryDelayMs(failedAttempts)).toISOString();
+export const orderRefundRetryAt = (failedAttempts: number, now: string, queuedAt: string): string | null => {
+  const next = Date.parse(now) + retryDelayMs(failedAttempts);
+  return next - Date.parse(queuedAt) > ORDER_REFUND_RETRY_WINDOW_MS ? null : new Date(next).toISOString();
 };
+
+export const orderRefundPermissionRetryAt = (blockedAt: string, now: string): string | null =>
+  Date.parse(now) - Date.parse(blockedAt) >= ORDER_REFUND_PERMISSION_WINDOW_MS
+    ? null
+    : new Date(Date.parse(now) + ORDER_REFUND_PERMISSION_RETRY_MS).toISOString();
 
 export const orderRefundStatusCheckAt = (submittedAt: string, completedChecks: number): string | null => {
   const after = ORDER_REFUND_STATUS_CHECKS_AFTER_MS[completedChecks];
@@ -84,7 +94,7 @@ export interface ClaimedOrderRefundJob {
   lease: { status: OrderRefundJobStatus; lockedAt: string };
 }
 
-export const ORDER_REFUND_ALERTS = ['retrying', 'blocked_permission', 'failed', 'failed_after_submission'] as const;
+export const ORDER_REFUND_ALERTS = ['retrying', 'blocked_permission', 'blocked_permission_failed', 'failed', 'failed_after_submission'] as const;
 export type OrderRefundAlert = (typeof ORDER_REFUND_ALERTS)[number];
 
 export const orderRefundJobViewSchema = orderRefundJobSchema.pick({
@@ -104,4 +114,5 @@ export const orderRefundJobViewSchema = orderRefundJobSchema.pick({
 
 export type OrderRefundJobView = z.output<typeof orderRefundJobViewSchema>;
 
-export const orderRefundJobView = (job: OrderRefundJob): OrderRefundJobView => orderRefundJobViewSchema.parse(job);
+export const orderRefundJobView = (job: OrderRefundJob): OrderRefundJobView =>
+  orderRefundJobViewSchema.parse({ ...job, idempotencyKey: orderRefundIdempotencyKey(job) });

@@ -33,9 +33,9 @@ const providerOverFetch = (respond: (request: Request) => Response) => {
       }),
     }),
   });
-  const { createRefund, getRefund, probeStripePermissions } = provider;
-  if (createRefund === undefined || getRefund === undefined || probeStripePermissions === undefined) throw new Error('Refund methods missing');
-  return { createRefund, getRefund, probeStripePermissions, requests, keys };
+  const { createRefund, getRefund, listRefunds, probeStripePermissions } = provider;
+  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || probeStripePermissions === undefined) throw new Error('Refund methods missing');
+  return { createRefund, getRefund, listRefunds, probeStripePermissions, requests, keys };
 };
 
 const refundInput = {
@@ -75,7 +75,7 @@ describe('Stripe createRefund', () => {
     const result = await h.createRefund({ ...refundInput, amountCents });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null });
+    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false });
     expect(h.requests).toHaveLength(0);
   });
 
@@ -118,11 +118,23 @@ describe('Stripe createRefund', () => {
     expect(result.error.message).toContain(error.message);
   });
 
-  it('maps a network failure to transient', async () => {
+  it('maps a network failure to transient with an unknown outcome', async () => {
     const h = providerOverFetch(() => { throw new TypeError('fetch failed'); });
     const result = await h.createRefund(refundInput);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)?.kind).toBe('transient');
+    expect(refundFailureOf(result.error)).toMatchObject({ kind: 'transient', outcomeUnknown: true });
+  });
+
+  it.each([
+    ['a concurrent request with the same key', 409, { code: 'idempotency_key_in_use', message: 'In use' }, true],
+    ['a server error', 500, { type: 'api_error', message: 'Something went wrong' }, false],
+    ['a short balance', 400, { code: 'balance_insufficient', message: 'Insufficient available balance' }, false],
+    ['a missing permission', 403, { message: 'The provided key does not have the required permissions for this endpoint' }, false],
+  ] as const)('reports whether the outcome of %s is unknown', async (_name, status, error, outcomeUnknown) => {
+    const h = providerOverFetch(() => stripeError(status, error));
+    const result = await h.createRefund(refundInput);
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(refundFailureOf(result.error)?.outcomeUnknown).toBe(outcomeUnknown);
   });
 
   it('maps an unparseable refund response to transient', async () => {
@@ -154,6 +166,39 @@ describe('Stripe getRefund', () => {
     const result = await h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' });
     if (result.ok) throw new Error('Expected a refusal');
     expect(refundFailureOf(result.error)?.kind).toBe('not_found');
+  });
+});
+
+describe('Stripe listRefunds', () => {
+  it('lists the refunds of the payment intent', async () => {
+    const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [
+      refundObject({ id: 're_2', amount: 2000, status: 'pending' }),
+      refundObject({ id: 're_1', amount: 1000, status: 'failed', failure_reason: 'declined' }),
+    ] }));
+    expect(await h.listRefunds({ mode: 'test', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toEqual(ok([
+      { refundId: 're_2', paymentIntentId: 'pi_paid', amountCents: 2000, status: 'pending', failureReason: null },
+      { refundId: 're_1', paymentIntentId: 'pi_paid', amountCents: 1000, status: 'failed', failureReason: 'declined' },
+    ]));
+    const request = h.requests[0];
+    expect(request?.method).toBe('GET');
+    const url = new URL(request?.url ?? '');
+    expect(url.pathname).toBe('/v1/refunds');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ payment_intent: 'pi_paid', limit: '100' });
+    expect(h.keys).toEqual(['stripe.testRestrictedKey']);
+  });
+
+  it('refuses a payment with more refunds than one page', async () => {
+    const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: true, data: [refundObject()] }));
+    const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(refundFailureOf(result.error)?.kind).toBe('refund_failed');
+  });
+
+  it('maps a missing permission', async () => {
+    const h = providerOverFetch(() => stripeError(403, { message: 'The provided key does not have the required permissions for this endpoint' }));
+    const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(refundFailureOf(result.error)?.kind).toBe('permission_missing');
   });
 });
 
@@ -206,11 +251,11 @@ describe('refund permission probe', () => {
 });
 
 describe('fake payment provider refunds', () => {
-  const fake = () => {
-    const provider = createFakePaymentProvider({ resolve: async () => ok('rk_test_fake') });
-    const { createRefund, getRefund } = provider;
-    if (createRefund === undefined || getRefund === undefined) throw new Error('Fake refund methods missing');
-    return { createRefund, getRefund };
+  const fake = (chargeAmountCents?: Record<string, number>) => {
+    const provider = createFakePaymentProvider({ resolve: async () => ok('rk_test_fake') }, chargeAmountCents === undefined ? {} : { chargeAmountCents });
+    const { createRefund, getRefund, listRefunds } = provider;
+    if (createRefund === undefined || getRefund === undefined || listRefunds === undefined) throw new Error('Fake refund methods missing');
+    return { createRefund, getRefund, listRefunds };
   };
 
   it('replays the same refund for the same idempotency key and reads it back', async () => {
@@ -231,5 +276,30 @@ describe('fake payment provider refunds', () => {
     const result = await f.createRefund({ ...refundInput, amountCents: 100 });
     if (result.ok) throw new Error('Expected a refusal');
     expect(refundFailureOf(result.error)?.kind).toBe('refund_failed');
+  });
+
+  it('never refunds a payment intent beyond its charge and saves that error under the key', async () => {
+    const f = fake();
+    const first = await f.createRefund(refundInput);
+    if (!first.ok) throw new Error('Fake refund failed');
+    const second = await f.createRefund({ ...refundInput, idempotencyKey: 'oos-refund-order-1-1' });
+    if (second.ok) throw new Error('Expected a refusal');
+    expect(refundFailureOf(second.error)).toMatchObject({ kind: 'already_refunded', providerCode: 'charge_already_refunded' });
+    expect(await f.createRefund({ ...refundInput, idempotencyKey: 'oos-refund-order-1-1' })).toEqual(second);
+    expect(await f.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toEqual(ok([first.value]));
+  });
+
+  it('refunds the rest of a partly refunded charge and refuses more than is left', async () => {
+    const f = fake({ pi_paid: 4900 });
+    const part = await f.createRefund({ ...refundInput, amountCents: 2000, idempotencyKey: 'by-hand' });
+    if (!part.ok) throw new Error('Fake refund failed');
+    const tooMuch = await f.createRefund({ ...refundInput, idempotencyKey: 'too-much' });
+    if (tooMuch.ok) throw new Error('Expected a refusal');
+    expect(refundFailureOf(tooMuch.error)?.kind).toBe('refund_failed');
+    const rest = await f.createRefund({ ...refundInput, amountCents: 2900, idempotencyKey: 'rest' });
+    expect(rest).toMatchObject({ ok: true, value: { amountCents: 2900, status: 'succeeded' } });
+    const listed = await f.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
+    expect(listed.ok ? listed.value.map((refund) => refund.amountCents) : []).toEqual([2900, 2000]);
+    expect(await f.listRefunds({ mode: 'live', tenantId: 'tenant-2', paymentIntentId: 'pi_paid' })).toEqual(ok([]));
   });
 });

@@ -1,6 +1,6 @@
 {
-  "hash": "36326bbffcca2ecd7e956caf0c7ff4ca5a36bedcf1515bd16ba33be68f52231b",
-  "shortId": "36326bbffcca",
+  "hash": "3da63f717bf48c034de7f1c1bd99ae598a3fae57362731e0505b5502f7d7cf61",
+  "shortId": "3da63f717bf4",
   "schema": {
     "constraints": [
       {
@@ -5781,6 +5781,14 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "key_generation",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "status_checks",
             "notNull": true,
             "type": "integer"
@@ -5864,6 +5872,14 @@
             "name": "payment_intent_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "permission_blocked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
           },
           {
             "default": null,

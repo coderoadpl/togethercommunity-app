@@ -1207,6 +1207,11 @@ export interface PaymentProvider {
     tenantId: string;
     refundId: string;
   }): Promise<Result<ProviderRefund, AppError>>;
+  listRefunds?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+  }): Promise<Result<ProviderRefund[], AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
     mode: 'live' | 'test';
@@ -1344,7 +1349,7 @@ export interface AutoInvoiceJobRepository {
 }
 
 export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
-  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks'>>;
+  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt'>>;
 
 export interface OrderRefundJobRepository {
   enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;

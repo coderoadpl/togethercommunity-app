@@ -293,6 +293,7 @@ const refundDispatcher = (h: Harness, release: Promise<void> = Promise.resolve()
         return ok(refund);
       },
       getRefund: async () => ok<ProviderRefund>({ refundId: 're_unused', paymentIntentId: null, amountCents: 0, status: 'succeeded', failureReason: null }),
+      listRefunds: async () => ok<ProviderRefund[]>([]),
     },
   };
   return { calls, run: () => dispatchOrderRefundJobs(deps) };
@@ -387,6 +388,7 @@ const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing
         calls.push(`get:${input.refundId}`);
         return ok<ProviderRefund>({ refundId: input.refundId, paymentIntentId: null, amountCents: 0, status: 'pending', failureReason: null });
       },
+      listRefunds: async () => ok<ProviderRefund[]>([]),
     },
   };
   return { calls, run: () => dispatchOrderRefundJobs(deps) };
@@ -485,6 +487,25 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
       expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
     }
     expect(dispatcher.calls).toStrictEqual([]);
+  });
+
+  it('claims a blocked refund again an hour later and sends the next key generation', async () => {
+    const h = harness();
+    const cancelled = await cancelBundle(h);
+    const blocked = providerCalls(h, 'permission_missing');
+    expect(await blocked.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { blocked_permission: 1 } }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({
+      status: 'blocked_permission', keyGeneration: 1, permissionBlockedAt: '2026-11-15T10:42:00.000Z', nextAttemptAt: '2026-11-15T11:42:00.000Z',
+    });
+    h.setNow('2026-11-15T11:41:59.000Z');
+    expect(await blocked.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
+
+    h.setNow('2026-11-15T11:42:00.000Z');
+    const paying = providerCalls(h, { refundId: 're_after_permission', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null });
+    expect(await paying.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+
+    expect([...blocked.calls, ...paying.calls]).toStrictEqual([`create:oos-refund-${cancelled.id}`, `create:oos-refund-${cancelled.id}-1`]);
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'succeeded', attempts: 2, keyGeneration: 1, permissionBlockedAt: null, providerRefundId: 're_after_permission' });
   });
 
   it('resolves a job whose refund attempt is still running and makes that attempt lose its lease', async () => {

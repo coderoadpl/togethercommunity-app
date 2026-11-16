@@ -11,12 +11,12 @@ const job: OrderRefundJobView = {
 };
 
 describe('OrderRefundJob', () => {
-  it('shows a blocked refund with its last error and tells staff to refund by hand', () => {
-    renderWithProviders(<OrderRefundJob job={job} />);
+  it('shows a blocked refund with its last error and tells staff to add the permission before the next hourly attempt', () => {
+    renderWithProviders(<OrderRefundJob job={{ ...job, nextAttemptAt: '2026-11-15T11:42:00.000Z' }} />);
     const section = screen.getByTestId('order-refund-job');
     expect(within(section).getByText('Blocked: Stripe key lacks the refund permission')).toBeVisible();
     expect(within(section).getByText('The provided key does not have the required permissions')).toBeVisible();
-    expect(within(section).getByRole('alert')).toHaveTextContent('Refund the payment by hand in the Stripe Dashboard');
+    expect(within(section).getByRole('alert')).toHaveTextContent('Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt.');
   });
 
   it('shows the Stripe refund of a refunded order without a warning', () => {

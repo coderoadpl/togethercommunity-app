@@ -194,14 +194,17 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       const subjects = {
         retrying: 'Automatyczny zwrot nie powiódł się, ponawiamy',
         blocked_permission: 'Automatyczny zwrot zablokowany przez brak uprawnienia w Stripe',
+        blocked_permission_failed: 'Automatyczny zwrot nadal zablokowany po 72 godzinach, zwróć ręcznie',
         failed: 'Automatyczny zwrot nie powiódł się, zwróć ręcznie',
         failed_after_submission: 'Zwrot nie powiódł się po zleceniu, zwróć ręcznie',
       } as const;
       const bodies = {
         retrying: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`,
           `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`],
-        blocked_permission: [`Zwrot ${amount} za anulowane zamówienie ${orderId} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Kolejne automatyczne próby nie będą podejmowane. Zwróć płatność ręcznie w panelu Stripe i dodaj uprawnienie do klucza na potrzeby kolejnych zwrotów.`,
-          `Zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Kolejne automatyczne próby nie będą podejmowane. Zwróć płatność ręcznie w panelu Stripe i dodaj uprawnienie do klucza na potrzeby kolejnych zwrotów.`],
+        blocked_permission: [`Zwrot ${amount} za anulowane zamówienie ${orderId} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.`,
+          `Zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.`],
+        blocked_permission_failed: [`Zwrot ${amount} za anulowane zamówienie ${orderId} był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`,
+          `Zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`],
         failed: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`,
           `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`],
         failed_after_submission: [`Stripe zgłasza, że zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`,

@@ -683,13 +683,21 @@ describe('order refund alert email', () => {
     error: 'The provided key does not have the required <permissions>', orderUrl: 'https://acme.example.com/panel/sales/order-1',
   };
 
-  it('tells staff a blocked refund needs a refund by hand and escapes the provider error', () => {
+  it('tells staff to add the missing permission so the next hourly attempt pays the refund and escapes the provider error', () => {
     const message = orderRefundAlertEmail('en', { ...input, alert: 'blocked_permission' });
     expect(message.subject).toBe('[Acme] Automatic refund blocked by a missing Stripe permission: order-<1>');
-    expect(message.text).toContain('lacks the Charges and Refunds (write) permission. No further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard');
+    expect(message.text).toContain('lacks the Charges and Refunds (write) permission. Add the permission to the key in the Stripe Dashboard; waiting refunds are then paid by the next hourly attempt.');
     expect(message.text).toContain('PLN\u00a040.99');
     expect(message.html).toContain('Last error: The provided key does not have the required &lt;permissions&gt;');
     expect(message.html).toContain('href="https://acme.example.com/panel/sales/order-1"');
+  });
+
+  it('tells staff to refund by hand once the permission is still missing after 72 hours, and words both permission alerts in Polish', () => {
+    const en = orderRefundAlertEmail('en', { ...input, alert: 'blocked_permission_failed' });
+    expect(en.subject).toBe('[Acme] Automatic refund still blocked after 72 hours, refund by hand: order-<1>');
+    expect(en.text).toContain('after 72 hours of hourly attempts and is no longer retried. Refund the payment by hand in the Stripe Dashboard.');
+    expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission_failed' })).toMatchObject(expectedTransactionalEmailPl.orderRefundBlockedFailedAlertEmail);
+    expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission' })).toMatchObject(expectedTransactionalEmailPl.orderRefundBlockedAlertEmail);
   });
 
   it('gives every alert its own subject', () => {

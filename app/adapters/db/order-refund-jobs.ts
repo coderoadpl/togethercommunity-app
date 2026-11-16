@@ -13,6 +13,7 @@ const toJob = (row: typeof orderRefundJobs.$inferSelect): OrderRefundJob => orde
   nextAttemptAt: isoOrNull(row.nextAttemptAt),
   lockedAt: isoOrNull(row.lockedAt),
   submittedAt: isoOrNull(row.submittedAt),
+  permissionBlockedAt: isoOrNull(row.permissionBlockedAt),
   createdAt: new Date(row.createdAt).toISOString(),
   updatedAt: new Date(row.updatedAt).toISOString(),
 });
@@ -37,14 +38,14 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
       .where(and(eq(orderRefundJobs.status, 'running'), lt(orderRefundJobs.lockedAt, staleBefore)));
     const [due] = await tx.select().from(orderRefundJobs)
       .where(and(
-        inArray(orderRefundJobs.status, ['pending', 'submitted', 'succeeded']),
+        inArray(orderRefundJobs.status, ['pending', 'blocked_permission', 'submitted', 'succeeded']),
         lte(orderRefundJobs.nextAttemptAt, now),
       ))
       .orderBy(asc(orderRefundJobs.nextAttemptAt), asc(orderRefundJobs.id))
       .limit(1)
       .for('update', { skipLocked: true });
     if (due === undefined) return null;
-    const refunding = due.status === 'pending';
+    const refunding = due.status === 'pending' || due.status === 'blocked_permission';
     const [claimed] = await tx.update(orderRefundJobs)
       .set(refunding
         ? { status: 'running', attempts: due.attempts + 1, lockedAt: now, updatedAt: now }

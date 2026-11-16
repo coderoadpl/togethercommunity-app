@@ -194,14 +194,17 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       const subjects = {
         retrying: 'Automatic refund failed, retrying',
         blocked_permission: 'Automatic refund blocked by a missing Stripe permission',
+        blocked_permission_failed: 'Automatic refund still blocked after 72 hours, refund by hand',
         failed: 'Automatic refund failed, refund by hand',
         failed_after_submission: 'Refund failed after it was issued, refund by hand',
       } as const;
       const bodies = {
         retrying: [`The automatic refund of ${amount} for cancelled order ${orderId} failed. It is retried automatically for 7 days; you get another message if it still fails.`,
           `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} failed. It is retried automatically for 7 days; you get another message if it still fails.`],
-        blocked_permission: [`The refund of ${amount} for cancelled order ${orderId} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. No further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard and add the permission to the key for future refunds.`,
-          `The refund of ${amountHtml} for cancelled order ${orderIdHtml} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. No further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard and add the permission to the key for future refunds.`],
+        blocked_permission: [`The refund of ${amount} for cancelled order ${orderId} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. Add the permission to the key in the Stripe Dashboard; waiting refunds are then paid by the next hourly attempt. Attempts continue every hour for 72 hours.`,
+          `The refund of ${amountHtml} for cancelled order ${orderIdHtml} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. Add the permission to the key in the Stripe Dashboard; waiting refunds are then paid by the next hourly attempt. Attempts continue every hour for 72 hours.`],
+        blocked_permission_failed: [`The refund of ${amount} for cancelled order ${orderId} was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`,
+          `The refund of ${amountHtml} for cancelled order ${orderIdHtml} was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`],
         failed: [`The automatic refund of ${amount} for cancelled order ${orderId} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`,
           `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`],
         failed_after_submission: [`Stripe reports that the refund of ${amount} for cancelled order ${orderId} failed after it was issued. Return the money to the buyer another way.`,

@@ -199,6 +199,7 @@ export const ORDER_REFUND_JOB_STATUSES = [
   'failed',
   'blocked_permission',
   'skipped_refunded',
+  'resolved_externally',
 ] as const;
 
 export const orderRefundJobStatusSchema = z.enum(ORDER_REFUND_JOB_STATUSES);

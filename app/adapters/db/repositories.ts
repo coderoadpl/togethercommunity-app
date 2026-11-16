@@ -3750,6 +3750,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.memberId, memberId),
           sql`(${orders.productId} = ${productId} OR ${orders.lines} @> ${JSON.stringify([{ productId }])}::jsonb)`,
           inArray(orders.status, [...ACCESS_RETAINING_ORDER_STATUSES]),
+          isNull(orders.cancelReason),
         ),
       )
       .orderBy(desc(orders.createdAt), desc(orders.id));

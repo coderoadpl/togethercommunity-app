@@ -1,6 +1,6 @@
 {
-  "hash": "ddf1a39f56af86c53c4aea7489101486341ec802575df12682e70c2c75cde271",
-  "shortId": "ddf1a39f56af",
+  "hash": "36326bbffcca2ecd7e956caf0c7ff4ca5a36bedcf1515bd16ba33be68f52231b",
+  "shortId": "36326bbffcca",
   "schema": {
     "constraints": [
       {
@@ -239,7 +239,7 @@
         "table": "tenants"
       },
       {
-        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'submitted'::text, 'succeeded'::text, 'failed'::text, 'blocked_permission'::text, 'skipped_refunded'::text])))",
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'submitted'::text, 'succeeded'::text, 'failed'::text, 'blocked_permission'::text, 'skipped_refunded'::text, 'resolved_externally'::text])))",
         "name": "order_refund_jobs_status_check",
         "table": "order_refund_jobs"
       },

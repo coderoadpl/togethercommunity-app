@@ -1356,6 +1356,7 @@ export interface OrderRefundJobRepository {
     lease: ClaimedOrderRefundJob['lease'],
     update: OrderRefundJobUpdate & { now: string },
   ): Promise<OrderRefundJob | null>;
+  resolveExternally(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
 }
 
 export interface KsefCredentials {

@@ -945,6 +945,7 @@ export const en: Messages = {
       failed: 'Failed, refund by hand',
       blocked_permission: 'Blocked: Stripe key lacks the refund permission',
       skipped_refunded: 'Skipped, already refunded',
+      resolved_externally: 'Refunded outside the automatic refund',
     },
     refundJobAttempts: 'Attempts',
     refundJobNextAttempt: 'Next attempt or check',

@@ -844,10 +844,49 @@ const applyInvoiceEvent = async (
   return ok({ processed: true });
 };
 
+const revokeRefundedAccess = async (tenant: Tenant, order: Order, deps: StripeWebhookDeps): Promise<void> => {
+  const refundedProductIds = order.lines === undefined ? [order.productId] : productLines(order.lines).filter((line) => line.productType !== 'physical').map((line) => line.productId);
+  for (const productId of refundedProductIds) {
+    const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
+      tenant.id,
+      order.memberId,
+      productId,
+    );
+    let remainingAccess = remainingOrders.some((candidate) => candidate.mode === order.mode && candidate.kind === 'one_time');
+    if (!remainingAccess) {
+      const providerSubscriptionIds = new Set(
+        remainingOrders
+          .filter((candidate) => candidate.mode === order.mode)
+          .map((candidate) => candidate.providerObjectIds['subscription'])
+          .filter((id): id is string => id !== undefined),
+      );
+      for (const providerSubscriptionId of providerSubscriptionIds) {
+        const [latest, subscription] = await Promise.all([
+          deps.paymentRefunds.findLatestSubscriptionOrder(tenant.id, providerSubscriptionId),
+          deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
+        ]);
+        if (
+          latest !== null && latest.mode === order.mode && subscription?.mode === order.mode &&
+          ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
+          subscription?.productId === productId &&
+          subscription.currentPeriodEnd >= deps.clock.nowIso()
+        ) {
+          remainingAccess = true;
+          break;
+        }
+      }
+    }
+    if (!remainingAccess) {
+      const grant = await deps.grants.findGrant(tenant.id, order.memberId, productId, order.mode);
+      if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
+    }
+  }
+};
+
 const applyPaymentAdjustment = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
-  deps: StripeWebhookDeps,
+  deps: CheckoutCompletionDeps,
 ): Promise<Result<EventApplication, AppError>> => {
   const adjustment = event.adjustment;
   if (!adjustment) return ok({ processed: false });
@@ -898,42 +937,11 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
-  const refundedProductIds = order.lines === undefined ? [order.productId] : productLines(order.lines).filter((line) => line.productType !== 'physical').map((line) => line.productId);
-  for (const productId of refundedProductIds) {
-  const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
-    tenant.id,
-    order.memberId,
-    productId,
-  );
-  let remainingAccess = remainingOrders.some((candidate) => candidate.mode === order.mode && candidate.kind === 'one_time');
-  if (!remainingAccess) {
-    const providerSubscriptionIds = new Set(
-      remainingOrders
-        .filter((candidate) => candidate.mode === order.mode)
-        .map((candidate) => candidate.providerObjectIds['subscription'])
-        .filter((id): id is string => id !== undefined),
-    );
-    for (const providerSubscriptionId of providerSubscriptionIds) {
-      const [latest, subscription] = await Promise.all([
-        deps.paymentRefunds.findLatestSubscriptionOrder(tenant.id, providerSubscriptionId),
-        deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
-      ]);
-      if (
-        latest !== null && latest.mode === order.mode && subscription?.mode === order.mode &&
-        ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
-        subscription?.productId === productId &&
-        subscription.currentPeriodEnd >= deps.clock.nowIso()
-      ) {
-        remainingAccess = true;
-        break;
-      }
-    }
-  }
-  if (!remainingAccess) {
-    const grant = await deps.grants.findGrant(tenant.id, order.memberId, productId, order.mode);
-    if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
-  }
-
+  if (order.cancelReason == null) {
+    await revokeRefundedAccess(tenant, order, deps);
+  } else if (event.type === 'charge.refunded') {
+    const resolved = await deps.orderRefundJobs.resolveExternally(tenant.id, order.id, deps.clock.nowIso());
+    if (resolved !== null) deps.logger.warn(`[order-refund] resolved externally tenant=${tenant.id} order=${order.id} job=${resolved.id} event=${event.id}`);
   }
 
   if (subscriptionToCancel !== null) {

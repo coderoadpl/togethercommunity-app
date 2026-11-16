@@ -952,6 +952,7 @@ export const pl: Messages = {
       failed: 'Nieudany, zwróć ręcznie',
       blocked_permission: 'Zablokowany: klucz Stripe nie ma uprawnienia do zwrotów',
       skipped_refunded: 'Pominięty, już zwrócono',
+      resolved_externally: 'Zwrócono poza automatycznym zwrotem',
     },
     refundJobAttempts: 'Próby',
     refundJobNextAttempt: 'Następna próba lub sprawdzenie',

@@ -321,7 +321,8 @@ const harness = (
             order.tenantId === tenantId &&
             order.memberId === memberId &&
             order.productId === productId &&
-            ACCESS_RETAINING_ORDER_STATUSES.includes(order.status),
+            ACCESS_RETAINING_ORDER_STATUSES.includes(order.status) &&
+            order.cancelReason == null,
         ),
       markOrderRefunded: async (tenantId, orderId) => {
         const index = orders.findIndex(

@@ -32,5 +32,5 @@ export const orderRefundJobs = pgTable('order_refund_jobs', {
   index('order_refund_jobs_due_idx').on(table.status, table.nextAttemptAt),
   check('order_refund_jobs_amount_check', sql`${table.amountCents} > 0`),
   check('order_refund_jobs_reason_check', sql`${table.reason} IN ('out_of_stock')`),
-  check('order_refund_jobs_status_check', sql`${table.status} IN ('pending', 'running', 'submitted', 'succeeded', 'failed', 'blocked_permission', 'skipped_refunded')`),
+  check('order_refund_jobs_status_check', sql`${table.status} IN ('pending', 'running', 'submitted', 'succeeded', 'failed', 'blocked_permission', 'skipped_refunded', 'resolved_externally')`),
 ]);

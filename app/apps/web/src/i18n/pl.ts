@@ -1347,7 +1347,7 @@ export const pl: Messages = {
     stripeProbeWrite: 'zapis',
     stripeProbeStatuses: { ok: 'OK', missing: 'Brak uprawnienia', error: 'Błąd' },
     stripeProbeReasons: { 'coupon-probe-failed': 'Pominięto: sonda kuponu nie powiodła się' },
-    stripeProbeResources: { 'Webhook Endpoints': 'Punkty końcowe webhooków', Subscriptions: 'Subskrypcje', Coupons: 'Kupony', 'Promotion Codes': 'Kody promocyjne', 'Checkout Sessions': 'Sesje płatności' },
+    stripeProbeResources: { 'Webhook Endpoints': 'Punkty końcowe webhooków', Subscriptions: 'Subskrypcje', Coupons: 'Kupony', 'Promotion Codes': 'Kody promocyjne', 'Checkout Sessions': 'Sesje płatności', 'Charges and Refunds': 'Obciążenia i zwroty' },
     stripeConfigure: 'Zapisz i utwórz webhook',
     stripeConfiguring: 'Tworzenie webhooka…',
     stripeConfigured: 'Klucz Stripe został zapisany, a webhook utworzony.',

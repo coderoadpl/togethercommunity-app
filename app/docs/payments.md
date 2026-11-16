@@ -471,6 +471,10 @@ reason `coupon-probe-failed` and no detail; Studio translates the reason, and th
 checkout probe still runs. The checkout is a PLN 1.00
 payment session with return URLs on the tenant's canonical origin, a 30-minute
 expiry and immediate expiration in cleanup. No purchase is completed.
+The last check, Charges and Refunds (write), asks Stripe to refund a payment
+intent ID that does not exist. Stripe answers 403 when the key lacks the
+permission and `resource_missing` when it has it, so the check reports `ok` for
+`resource_missing`; nothing is refunded.
 
 Stripe cannot delete promotion codes. Each successful check leaves one deactivated
 `TOGETHER-PROBE-<8 uppercase alphanumeric characters>` code. Probe objects carry

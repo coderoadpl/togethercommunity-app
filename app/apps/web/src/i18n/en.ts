@@ -1339,7 +1339,7 @@ export const en: Messages = {
     stripeProbeWrite: 'write',
     stripeProbeStatuses: { ok: 'OK', missing: 'Missing permission', error: 'Error' },
     stripeProbeReasons: { 'coupon-probe-failed': 'Skipped: the coupon probe failed' },
-    stripeProbeResources: { 'Webhook Endpoints': 'Webhook Endpoints', Subscriptions: 'Subscriptions', Coupons: 'Coupons', 'Promotion Codes': 'Promotion Codes', 'Checkout Sessions': 'Checkout Sessions' },
+    stripeProbeResources: { 'Webhook Endpoints': 'Webhook Endpoints', Subscriptions: 'Subscriptions', Coupons: 'Coupons', 'Promotion Codes': 'Promotion Codes', 'Checkout Sessions': 'Checkout Sessions', 'Charges and Refunds': 'Charges and Refunds' },
     stripeConfigure: 'Save and create webhook',
     stripeConfiguring: 'Creating webhook…',
     stripeConfigured: 'Stripe key saved and webhook created.',

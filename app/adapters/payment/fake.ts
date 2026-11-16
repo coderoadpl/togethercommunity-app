@@ -7,8 +7,10 @@ import {
   err,
   ok,
   refundCoverage,
+  refundFailure,
   stripeWebhookPayloadSchema,
   validation,
+  type ProviderRefund,
 } from '#core/domain/index.js';
 import { CHECKOUT_SESSION_EVENT_TYPES } from '#core/server/index.js';
 import type { PaymentProvider, TenantSecretResolver } from '#core/server/index.js';
@@ -26,6 +28,46 @@ const signatureIsValid = (payload: string, header: string, secret: string): bool
   });
 };
 
+interface StoredFakeRefund {
+  tenantId: string;
+  idempotencyKey: string;
+  refund: ProviderRefund;
+}
+
+const fakeRefunds = (resolver: TenantSecretResolver): Pick<PaymentProvider, 'createRefund' | 'getRefund'> => {
+  const refunds = new Map<string, StoredFakeRefund>();
+  const resolveKey = (tenantId: string, mode: 'live' | 'test') =>
+    resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+  return {
+    createRefund: async (input) => {
+      const key = await resolveKey(input.tenantId, input.mode);
+      if (!key.ok) return err(refundFailure('credentials_unavailable', key.error.message));
+      const replay = [...refunds.values()].find((stored) => stored.tenantId === input.tenantId && stored.idempotencyKey === input.idempotencyKey);
+      if (replay !== undefined) {
+        if (replay.refund.paymentIntentId !== input.paymentIntentId || replay.refund.amountCents !== input.amountCents) {
+          return err(refundFailure('refund_failed', 'Keys for idempotent requests can only be used with the same parameters', 'idempotency_error'));
+        }
+        return ok(replay.refund);
+      }
+      const refund: ProviderRefund = {
+        refundId: `re_fake_${randomUUID()}`, paymentIntentId: input.paymentIntentId,
+        amountCents: input.amountCents, status: 'succeeded', failureReason: null,
+      };
+      refunds.set(refund.refundId, { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey, refund });
+      return ok(refund);
+    },
+    getRefund: async (input) => {
+      const key = await resolveKey(input.tenantId, input.mode);
+      if (!key.ok) return err(refundFailure('credentials_unavailable', key.error.message));
+      const stored = refunds.get(input.refundId);
+      if (stored === undefined || stored.tenantId !== input.tenantId) {
+        return err(refundFailure('not_found', `No such refund: '${input.refundId}'`, 'resource_missing'));
+      }
+      return ok(stored.refund);
+    },
+  };
+};
+
 /**
  * Deterministic in-memory PaymentProvider for tests and local dev. It still
  * resolves the tenant's restricted key so the Integrations flow behaves
@@ -33,6 +75,7 @@ const signatureIsValid = (payload: string, header: string, secret: string): bool
  * touches the network.
  */
 export const createFakePaymentProvider = (resolver: TenantSecretResolver): PaymentProvider => ({
+  ...fakeRefunds(resolver),
   configureWebhook: async () => ok({
     webhookEndpointId: `we_fake_${randomUUID()}`,
     webhookSecret: `whsec_fake_${randomUUID()}`,

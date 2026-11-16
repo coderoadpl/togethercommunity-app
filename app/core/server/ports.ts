@@ -143,6 +143,7 @@ import type {
   StripeSubscriptionSnapshot,
   StripeMode,
   StripePermissionCheck,
+  ProviderRefund,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
@@ -1191,6 +1192,19 @@ export interface PaymentProvider {
     providerSubscriptionId: string;
     idempotencyKey: string;
   }): Promise<Result<{ canceled: true; alreadySettled: boolean }, AppError>>;
+  createRefund?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+    metadata: { orderId: string; reason: 'out_of_stock' };
+  }): Promise<Result<ProviderRefund, AppError>>;
+  getRefund?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    refundId: string;
+  }): Promise<Result<ProviderRefund, AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
     mode: 'live' | 'test';

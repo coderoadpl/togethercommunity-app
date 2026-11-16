@@ -13,8 +13,12 @@ import {
   orderLineQuantity,
   refundCoverage,
   SHIPPING_ALLOWED_COUNTRIES,
+  refundFailure,
   stripeCancelErrorSchema,
   stripeCheckoutShippingSchema,
+  stripePermissionMissing,
+  stripeRefundFailure,
+  stripeRefundObjectSchema,
   stripeAdoptionObjectSchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
@@ -27,6 +31,7 @@ import {
   type AppError,
   type CheckoutBranding,
   type CollectedShipping,
+  type ProviderRefund,
   type Result,
   type StripePermissionCheck,
 } from '#core/domain/index.js';
@@ -420,6 +425,38 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
   }
 };
 
+const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
+  const parsed = stripeRefundObjectSchema.safeParse(raw);
+  if (!parsed.success) return err(refundFailure('transient', 'Stripe returned a refund in an unexpected shape'));
+  return ok({
+    refundId: parsed.data.id,
+    paymentIntentId: idOrNull(parsed.data.payment_intent),
+    amountCents: parsed.data.amount,
+    status: parsed.data.status,
+    failureReason: parsed.data.failure_reason ?? null,
+  });
+};
+
+const PROBE_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+const probeRefundPermission = async (
+  client: Stripe,
+  tenantId: string,
+  failure: (resource: StripePermissionCheck['resource'], permission: StripePermissionCheck['permission'], cause: unknown) => StripePermissionCheck,
+): Promise<StripePermissionCheck> => {
+  const suffix = Array.from({ length: 24 }, () => PROBE_ID_ALPHABET[randomInt(PROBE_ID_ALPHABET.length)]).join('');
+  try {
+    await client.refunds.create({ payment_intent: `pi_togetherprobe${suffix}`, metadata: { togetherProbe: '1', tenantId } });
+  } catch (cause) {
+    const check = failure('Charges and Refunds', 'write', cause);
+    const parsed = stripeCancelErrorSchema.safeParse(cause);
+    return check.status === 'error' && parsed.success && parsed.data.code === 'resource_missing'
+      ? { resource: 'Charges and Refunds', permission: 'write', status: 'ok' }
+      : check;
+  }
+  return { resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: 'Stripe accepted a refund for a payment intent that should not exist' };
+};
+
 export const createStripePaymentProvider = (config: StripePaymentProviderConfig): PaymentProvider => {
   const createClient = config.clientFactory ?? ((restrictedKey: string) => new Stripe(restrictedKey));
   const clientFor = async (tenantId: string, mode: 'live' | 'test' = 'live'): Promise<Result<Stripe, AppError>> => {
@@ -439,8 +476,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         const parsed = stripeCancelErrorSchema.safeParse(cause);
         const detail = parsed.success && parsed.data.message !== undefined
           ? parsed.data.message : cause instanceof Error ? cause.message : String(cause);
-        const missing = parsed.success && (parsed.data.statusCode === 403 || parsed.data.code === 'permission_denied')
-          || detail.toLowerCase().includes('does not have the required permissions');
+        const missing = stripePermissionMissing({ ...(parsed.success ? parsed.data : {}), message: detail });
         return { resource, permission, status: missing ? 'missing' : 'error', detail };
       };
       const probe = async (resource: StripePermissionCheck['resource'], permission: StripePermissionCheck['permission'], operation: () => Promise<void>): Promise<void> => {
@@ -502,6 +538,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           if (sessionId !== undefined) await client.checkout.sessions.expire(sessionId);
         }
       });
+      checks.push(await probeRefundPermission(client, input.tenantId, failure));
       return ok(checks);
     },
     retrieveStripeSubscription: async (tenantId, subscriptionId) => {
@@ -677,6 +714,39 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         }
         return err(asDiagnostic('Stripe could not cancel the subscription', cause));
       }
+    },
+    createRefund: async (input) => {
+      if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
+        return err(refundFailure('refund_failed', 'Refund amount must be a positive whole number of minor units'));
+      }
+      if (input.idempotencyKey.trim() === '') return err(refundFailure('refund_failed', 'Refund idempotency key is required'));
+      const client = await clientFor(input.tenantId, input.mode);
+      if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
+      let raw: unknown;
+      try {
+        raw = await client.value.refunds.create(
+          {
+            payment_intent: input.paymentIntentId,
+            amount: input.amountCents,
+            metadata: { tenantId: input.tenantId, orderId: input.metadata.orderId, reason: input.metadata.reason },
+          },
+          { idempotencyKey: input.idempotencyKey },
+        );
+      } catch (cause) {
+        return err(stripeRefundFailure('Stripe rejected the refund', cause));
+      }
+      return providerRefund(raw);
+    },
+    getRefund: async (input) => {
+      const client = await clientFor(input.tenantId, input.mode);
+      if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
+      let raw: unknown;
+      try {
+        raw = await client.value.refunds.retrieve(input.refundId);
+      } catch (cause) {
+        return err(stripeRefundFailure('Stripe could not read the refund', cause));
+      }
+      return providerRefund(raw);
     },
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {
       // constructEvent verifies the HMAC locally and never calls the API, so a

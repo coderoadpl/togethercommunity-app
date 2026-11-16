@@ -1,5 +1,5 @@
 import { and, eq, or } from 'drizzle-orm';
-import { appError, err, notFound, ok, orderSchema, validation } from '#core/domain/index.js';
+import { appError, err, notFound, ok, orderLineQuantity, orderSchema, validation } from '#core/domain/index.js';
 import type { OrderVerificationRepository } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { orders } from './app-schema.js';
@@ -27,8 +27,10 @@ export const createOrderVerificationRepository = (db: Db): OrderVerificationRepo
         const line = order.lines?.find((item) => item.productId === input.productId);
         if (line === undefined) return err(notFound('Order line was not found'));
         if (line.productType !== 'physical' || line.issuedCount === null) return err(validation('Only physical order lines can be issued'));
-        if (line.issuedCount >= 1) return err(appError('conflict', 'Order line has already been issued'));
-        const issuedCount = line.issuedCount + 1;
+        const quantity = orderLineQuantity(line);
+        if (line.issuedCount >= quantity) return err(appError('conflict', 'Order line has already been issued'));
+        const issuedCount = line.issuedCount + input.count;
+        if (issuedCount > quantity) return err(appError('conflict', 'Issue count exceeds the quantity left to issue'));
         const lines = order.lines?.map((item) => item.productId === input.productId ? { ...item, issuedCount, issuedAt: item.issuedAt ?? input.occurredAt, issuedBy: item.issuedBy ?? input.staffUserId } : item);
         await tx.update(orders).set({ lines }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId)));
         await tx.insert(orderIssueEvents).values({ tenantId, orderId: input.orderId, productId: input.productId, issuedCount, staffUserId: input.staffUserId, occurredAt: input.occurredAt });

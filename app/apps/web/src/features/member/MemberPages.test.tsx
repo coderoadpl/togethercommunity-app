@@ -402,6 +402,16 @@ it('shows physical purchases as collected in person without an access link', asy
   expect(product.queryByTestId('grant-status-physical-1')).toBeNull();
 });
 
+it('names the units of a physical purchase above one', async () => {
+  server.use(http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [
+    { ...productsBody.products[0], id: 'physical-units', title: 'Printed workbook', type: 'physical', accessItems: [], quantity: 2 },
+    { ...productsBody.products[0], id: 'physical-single', title: 'Printed stand', type: 'physical', accessItems: [] },
+  ] } })));
+  await renderPage(MyProductsPage, '/my/products');
+  expect(within(await screen.findByTestId('my-product-physical-units')).getByRole('heading', { name: '2 × Printed workbook' })).toBeVisible();
+  expect(within(screen.getByTestId('my-product-physical-single')).getByRole('heading', { name: 'Printed stand' })).toBeVisible();
+});
+
 it('shows a shipped physical purchase with its delivery destination instead of in-person collection', async () => {
   server.use(http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [
     { ...productsBody.products[0], id: 'physical-locker', title: 'Printed holder', type: 'physical', accessItems: [], shippedTo: 'WAW01M' },

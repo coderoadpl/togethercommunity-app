@@ -54,7 +54,7 @@ export interface Messages {
     notFound: string;
     markIssued: string;
     issuing: string;
-    issued: (params: { count: number }) => string;
+    issued: (params: { count: number; quantity: number }) => string;
     firstIssued: string;
     staff: string;
     unpaidHelp: string;

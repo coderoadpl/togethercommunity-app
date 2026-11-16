@@ -1081,7 +1081,7 @@ it('uses a swapped first line for the payment identity, ordered snapshot, hold, 
   expect(h.calls[0]?.cancelUrl).toContain(`&variant=${h.first.id}.${h.sibling.id}`);
   expect(h.snapshots[0]?.lines.map((line) => line.productId)).toEqual([h.sibling.id, 'physical-1']);
   expect(h.reserve).toHaveBeenCalledOnce();
-  expect(h.reserve.mock.calls[0]?.[1]).toMatchObject({ productIds: [h.sibling.id, 'physical-1'] });
+  expect(h.reserve.mock.calls[0]?.[1]).toMatchObject({ items: [{ productId: h.sibling.id, quantity: 1 }, { productId: 'physical-1', quantity: 1 }] });
   expect(h.findById.mock.calls.every(([tenantId]) => tenantId === tenant.id)).toBe(true);
 });
 

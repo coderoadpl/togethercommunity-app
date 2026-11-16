@@ -82,6 +82,14 @@ describe('Meta conversion domain rules', () => {
     expect(payload.custom_data).toMatchObject({ value: 109, content_ids: ['book'], num_items: 1,
       contents: [{ id: 'book', quantity: 1, item_price: 99 }] });
   });
+  it('sends the units and the unit price of a line above one unit, like the pixel', () => {
+    const withUnits = orderSchema.parse({ ...order, amountCents: 13500, lines: [
+      { productId: 'book', productType: 'physical', name: 'Book', quantity: 3, grossCents: 13500, netCents: 12857, vatCents: 643, vatRate: 5, vatExemptionBasis: null, issuedCount: 0 },
+    ] });
+    const payload = buildMetaCapiPayload({ order: withUnits, email: 'buyer@example.org', sourceUrl: 'https://example.org',
+      ip: null, userAgent: null, fbp: null, sha256: (value) => value });
+    expect(payload.custom_data).toMatchObject({ value: 135, num_items: 3, contents: [{ id: 'book', quantity: 3, item_price: 45 }] });
+  });
   it('allows QR credentials only to withdraw even with a current text version', () => {
     for (const decision of ['granted', 'denied']) {
       expect(metaCapiDecisionSchema.safeParse({ orderToken: 'q'.repeat(64), decision, textVersion: 'a'.repeat(64) }).success).toBe(false);

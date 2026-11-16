@@ -39,7 +39,7 @@ export const en: Messages = {
     notFound: 'Order not found',
     markIssued: 'Mark as issued',
     issuing: 'Marking as issued…',
-    issued: ({ count }) => format('Issued {count} of 1', { count }),
+    issued: ({ count, quantity }) => format('Issued {count} of {quantity}', { count, quantity }),
     firstIssued: 'First issued',
     staff: 'Issued by',
     unpaidHelp: 'Only paid orders can be issued.',

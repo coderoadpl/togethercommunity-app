@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { orderLineLabel } from './commerce.js';
 import { translateDeletedEmailContent } from './deleted-content.js';
 import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
@@ -26,6 +27,7 @@ export type EmailMessage = z.output<typeof emailMessageSchema>;
 
 const purchaseLineSchema = z.object({
   name: z.string().min(1),
+  quantity: z.number().int().min(1).optional(),
   grossCents: z.number().int().nonnegative(),
   vatRate: productVatRateSchema.nullable(),
 });
@@ -168,7 +170,7 @@ const purchaseItems = (
   labels: TransactionalEmailMessages['purchase'],
 ): { html: string; text: string } => {
   if (purchase.currency === undefined || purchase.totalCents === undefined || !purchase.lines.every((line) => typeof line !== 'string')) {
-    const names = purchase.lines.map((line) => typeof line === 'string' ? line : line.name);
+    const names = purchase.lines.map((line) => typeof line === 'string' ? line : orderLineLabel(line));
     return {
       html: `<ul>${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`,
       text: names.map((name) => `- ${name}`).join('\n'),
@@ -178,7 +180,7 @@ const purchaseItems = (
     style: 'currency', currency: purchase.currency,
   });
   const lines = purchase.lines.map((line) => ({
-    name: line.name,
+    name: orderLineLabel(line),
     amount: formatter.format(line.grossCents / 100),
     vat: line.vatRate === null ? null : line.vatRate === 'exempt' ? labels.exempt : `${String(line.vatRate)}\u00a0%`,
   }));

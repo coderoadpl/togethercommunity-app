@@ -5,13 +5,13 @@ import { formatPrice } from '../../lib/format.js';
 
 export type OfferLine = { productId: string; name: string; grossCents: number; netCents: number; vatRate: number | 'exempt' | null; vatCents: number; vatExemptionBasis: string | null };
 
-export const OfferLines = <L extends OfferLine>({ lines, currency, afterName }: { lines: readonly L[]; currency: string; afterName?: ((line: L) => ReactNode) | undefined }) => {
+export const OfferLines = <L extends OfferLine>({ lines, currency, lineName = (line) => line.name, afterName }: { lines: readonly L[]; currency: string; lineName?: ((line: L) => string) | undefined; afterName?: ((line: L) => ReactNode) | undefined }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   return <Stack spacing={2} divider={<Divider />} data-testid="offer-lines">{lines.map((line) => {
     const extra = afterName?.(line);
     return <Box key={line.productId} sx={{ pb: 2 }}>
-    <Typography variant="h3">{line.name}</Typography>
+    <Typography variant="h3">{lineName(line)}</Typography>
     {extra == null ? null : <Box sx={{ mt: 1 }}>{extra}</Box>}
     <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap', mt: 1 }}>{[
       [t.salesLinks.net, formatPrice(line.netCents, currency, language)],

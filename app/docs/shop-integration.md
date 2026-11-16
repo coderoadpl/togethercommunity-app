@@ -270,7 +270,9 @@ opened cross-origin by the sales-link read CORS registration.
 
 For the smallest custom UI, read the public offer, render its cover and active
 prices, then navigate the browser to the workspace's `/checkout/<product-id>`.
-For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. The hosted
+For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. For a cart
+of several products use `/checkout/cart/pay?lines=<product-id>.<quantity>~<product-id>.<quantity>`
+(see the cart section below). The hosted
 form already collects legal acceptance, applicable consent choices, billing and
 shipping selections. Do not embed it in an iframe.
 
@@ -432,6 +434,24 @@ The cart answers with the same error envelope as the other routes:
 | a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
 | a shipped product without `shipping` | `shipping_required` (400) |
 
+A storefront without its own form can send the buyer to the hosted cart page
+instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
+`<product-id>.<quantity>` pair per product, separated by `~`, within the same
+limits. The page reads product IDs in lower case, as the platform issues them,
+so an upper-case ID finds its product and two IDs that differ only in case are
+a duplicate. The page lets the buyer change the quantities within the limits or
+remove a line, and collects delivery, billing, consents and a coupon as the
+single-product page does. A malformed or empty `lines` parameter shows an error
+and sends no request. The page picks each line's price by the session route's
+rule, so a product with one one-time and one recurring price is sold at its
+one-time price, while a membership or a product without exactly one active
+one-time price has to be removed before paying. A cart whose products are
+priced in different currencies shows the session route's refusal, no total and
+no coupon field, and cannot be paid until the products in the other currency
+are removed. The cart page has two path segments below `/checkout/`, so
+`/checkout/<product-id>` and `/checkout/<slug>` keep opening the
+single-product page for every product, including one whose slug is `cart`.
+
 The CLI posts the same cart with `checkout session --line '<product-id>:2'
 --line '<product-id>:1'`; repeat `--line` once per product and leave out
 `--product`.
@@ -462,10 +482,11 @@ do not assume a browser can discover it from `response.headers`.
 ## 7. Preserve the hosted payment return
 
 Standard checkout returns to the workspace `/checkout/<product-id>`; a cart
-returns to `/checkout/<product-id>` of its first line; sales-link checkout
+returns to the hosted cart page `/checkout/cart/pay`; sales-link checkout
 returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
-`checkout=together` for the standard sales-link flow). Preserve the returned URL
+`checkout=together` for the standard sales-link flow, and with the cart's
+`lines` for a cart, so the buyer can try the same cart again). Preserve the returned URL
 and its other query parameters. Do not add imaginary `successUrl` or `returnUrl`
 fields to the standard session request.
 

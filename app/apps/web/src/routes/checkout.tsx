@@ -1,5 +1,6 @@
 import { useParams } from '@tanstack/react-router';
 
+import { CartCheckoutPage } from '../features/checkout/CartCheckoutPage.js';
 import { CheckoutPage } from '../features/checkout/CheckoutPage.js';
 
 export const CheckoutRoute = () => {
@@ -11,3 +12,5 @@ export const SalesLinkOfferRoute = () => {
   const params = useParams({ strict: false });
   return <CheckoutPage productRef="" salesLinkSlug={params.slug ?? ''} />;
 };
+
+export const CartCheckoutRoute = () => <CartCheckoutPage />;

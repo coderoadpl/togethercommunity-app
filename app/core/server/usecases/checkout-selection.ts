@@ -1,4 +1,4 @@
-import { checkoutShippingInputSchema, err, notFound, ok, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
 import type { TenantRepository } from '../ports.js';
 
 export interface CheckoutSelection {
@@ -32,7 +32,7 @@ export const selectionLineQuantity = (selection: Pick<CheckoutSelection, 'cartLi
   selection.cartLines?.find((line) => line.productId === productId)?.quantity ?? 1;
 
 const sellableOneTimePrice = (price: ProductPrice, productId: string): boolean =>
-  price.productId === productId && price.active && price.kind === 'one_time' && price.imported !== true;
+  price.productId === productId && isSellableOneTimePrice(price);
 
 export const resolveSalesLinkPrices = (
   products: Product[],
@@ -56,9 +56,8 @@ export const resolveCartPrices = (
   const resolved: ProductPrice[] = [];
   for (const line of lines) {
     if (line.priceId === undefined) {
-      const matching = prices.filter((price) => sellableOneTimePrice(price, line.productId));
-      const price = matching[0];
-      if (matching.length !== 1 || price === undefined) return err(validation('Every cart product requires exactly one active one-time price'));
+      const price = singleSellableOneTimePrice(prices.filter((candidate) => candidate.productId === line.productId));
+      if (price === null) return err(validation(CART_PRICE_REQUIRED_MESSAGE));
       resolved.push(price);
       continue;
     }
@@ -67,7 +66,7 @@ export const resolveCartPrices = (
     if (!sellableOneTimePrice(price, line.productId)) return err(validation('Cart products require a one-time price'));
     resolved.push(price);
   }
-  if (new Set(resolved.map((price) => price.currency)).size > 1) return err(validation('Cart products must use the same currency'));
+  if (cartCurrencies(resolved).length > 1) return err(validation(CART_CURRENCY_MISMATCH_MESSAGE));
   return ok(resolved);
 };
 

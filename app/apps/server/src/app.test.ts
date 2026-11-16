@@ -4213,6 +4213,39 @@ describe('server edge security baseline', () => {
     expect(legal.headers.get('content-security-policy')).not.toContain('geowidget.inpost.pl');
   });
 
+  it('gives the hosted cart documents and a "cart" product reference exactly the policy of the single-product checkout documents', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/cart/pay', (c) => c.html('<main>Cart</main>'));
+    const policy = async (path: string) => {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get('content-type'), path).toMatch(/^text\/html/u);
+      const directives = parseCsp(response);
+      const nonce = scriptNonce(directives);
+      directives.get('script-src')?.delete(nonce);
+      return directives;
+    };
+    const lines = 'lines=00000000-0000-4000-8000-0000000000a1.2~00000000-0000-4000-8000-0000000000a2.1';
+    const form = new Set(["'self'", 'https://geowidget.inpost.pl']);
+    const success = new Set(["'self'", 'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net']);
+    for (const [query, scriptSources] of [
+      ['', form], ['status=cancelled', form], ['code=SPRING', form], ['checkout=together', form], ['status=successful', form],
+      ['status=success', success], ['status=success&purchase_kind=one_time&session_id=cs_live_one', success],
+    ] as const) {
+      const cart = await policy(`/checkout/cart/pay?${lines}${query === '' ? '' : `&${query}`}`);
+      expect(cart, query).toEqual(await policy(`/checkout/product-1${query === '' ? '' : `?${query}`}`));
+      expect(await policy(`/checkout/cart${query === '' ? '' : `?${query}`}`), query).toEqual(cart);
+      expect(cart.get('script-src'), query).toEqual(scriptSources);
+      expect(cart.get('style-src'), query).toEqual(new Set(["'self'", "'unsafe-inline'", ...(scriptSources === form ? ['https://geowidget.inpost.pl'] : [])]));
+      expect(cart.get('connect-src'), query).toEqual(new Set(["'self'", 'https:']));
+    }
+    expect(await policy('/checkout/cart/pay')).toEqual(await policy('/checkout/product-1'));
+    expect(await policy('/checkout/cart')).toEqual(await policy('/checkout/product-1'));
+  });
+
   it('keeps baseline CSP outside checkout success documents', async () => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
@@ -10747,6 +10780,16 @@ describe('cart checkout over the public checkout routes', () => {
     });
   });
 
+  it('returns the buyer to the hosted cart page with its lines after a cancelled payment', async () => {
+    const h = cartApp();
+    const response = await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true });
+    expect(response.status).toBe(200);
+    expect(h.createCheckoutSession.mock.calls[0]?.[0]).toMatchObject({
+      successUrl: 'http://acme.localhost:48730/checkout/cart/pay?status=success&purchase_kind=one_time&session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: `http://acme.localhost:48730/checkout/cart/pay?status=cancelled&lines=${poster}.2~${mug}.1`,
+    });
+  });
+
   describe('a cart that a full coupon makes free', () => {
     const freeBody = { email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART' };
 
@@ -10756,7 +10799,7 @@ describe('cart checkout over the public checkout routes', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({ ok: true, data: {
         free: true,
-        url: `http://acme.localhost:48730/checkout/${poster}?status=success&purchase_kind=one_time`,
+        url: 'http://acme.localhost:48730/checkout/cart/pay?status=success&purchase_kind=one_time',
         coupon: { originalCents: 8500, discountCents: 8500, finalCents: 0 },
       } });
       expect(h.createCheckoutSession).not.toHaveBeenCalled();

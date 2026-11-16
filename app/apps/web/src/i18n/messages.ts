@@ -736,6 +736,8 @@ export interface Messages {
     createConfirmBody: (params: { service: string; size: string; email: string }) => string;
     createConfirmBodyTest: (params: { service: string; size: string }) => string;
     createConfirm: string;
+    parcelTemplateOverrideLabel: string;
+    parcelTemplateAutomatic: (params: { size: string }) => string;
     printLabel: string;
     downloadingLabel: string;
     shipmentStatus: (params: { status: string }) => string;
@@ -2746,6 +2748,25 @@ export interface Messages {
     retry: string;
     paymentUnavailable: string;
     soldOut: string;
+    cartTitle: string;
+    cartInvalidTitle: string;
+    cartInvalidBody: string;
+    cartEmptyTitle: string;
+    cartEmptyBody: string;
+    cartQuantity: (params: { title: string }) => string;
+    cartIncrease: (params: { title: string }) => string;
+    cartDecrease: (params: { title: string }) => string;
+    cartRemove: (params: { title: string }) => string;
+    cartRemoveLine: string;
+    cartQuantityLimit: (params: { max: number }) => string;
+    cartUnitPrice: (params: { price: string }) => string;
+    cartLineTotal: (params: { price: string }) => string;
+    cartSubtotal: (params: { price: string }) => string;
+    cartDelivery: (params: { price: string }) => string;
+    cartLineUnavailable: string;
+    cartProductMissing: string;
+    cartCurrencyMismatch: string;
+    cartPay: string;
   };
   directory: {
     activeConsent: string;

@@ -16,6 +16,7 @@ import {
   SHIPX_STATUS_UNCONFIRMED,
   shipxAttemptUnconfirmed,
   shipxClientKind,
+  shipxCreateInputSchema,
   shipxErrorStateSchema,
   shipxFailedTransactions,
   shipxOfferToBuy,
@@ -339,6 +340,7 @@ interface ShipmentRun {
   sender: ShipxSender;
   shipment: ShipxShipmentRecord;
   credentials: ShipxCredentials;
+  parcelTemplate: ParcelTemplate | null;
   token: string;
   deadline: number;
   lease: { released: boolean };
@@ -426,7 +428,7 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
     memberEmail: run.order.memberEmail,
     shipping: run.shipping,
     sender: run.sender,
-    parcelTemplate: await orderParcelTemplate(run.tenantId, run.order, deps),
+    parcelTemplate: run.parcelTemplate ?? await orderParcelTemplate(run.tenantId, run.order, deps),
   });
   if (!request.ok) return releaseAttempt(run, request, deps);
   if (pastDeadline(run, deps)) return releaseAttempt(run, err(pendingShipment(run.shipment.status)), deps);
@@ -541,8 +543,8 @@ export const createInpostShipment = async (
 ): Promise<Result<{ order: OrderListItem; shipment: ShipxShipment }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:write');
   if (!tenant.ok) return tenant;
-  const parsed = shipxOrderInputSchema.safeParse(input);
-  if (!parsed.success) return err(validation('Invalid order', parsed.error.flatten()));
+  const parsed = shipxCreateInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid InPost shipment request', parsed.error.flatten()));
   const order = await loadOrder(tenant.value, parsed.data.orderId, deps);
   if (!order.ok) return order;
   const allowed = orderShipmentAllowed(order.value);
@@ -583,6 +585,7 @@ export const createInpostShipment = async (
     sender: settings.sender,
     shipment: acquired.shipment,
     credentials: credentials.value,
+    parcelTemplate: parsed.data.parcelTemplate ?? null,
     token,
     deadline: Date.parse(startedAt) + SHIPX_OPERATION_DEADLINE_MS,
     lease: { released: false },

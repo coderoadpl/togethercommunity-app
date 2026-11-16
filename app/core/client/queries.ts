@@ -23,8 +23,10 @@ import type {
   ApiKeyImportAuditQuery,
   ApiKeyRevokeInput,
   AuthResolveRequest,
+  CheckoutCartSessionRequest,
   CheckoutSessionRequest,
   ContentVersionRestoreInput,
+  CouponCartCheckoutValidationRequest,
   CouponCheckoutValidationRequest,
   CouponArchiveRequest,
   CouponCreateRequest,
@@ -696,6 +698,18 @@ export const validateCouponForCheckoutMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: ['coupon-checkout-validation'] as const,
     call: (input: CouponCheckoutValidationRequest) => api.validateCouponForCheckout(input),
+  });
+
+export const createCartCheckoutSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['checkout-session', 'cart'] as const,
+    call: (input: CheckoutCartSessionRequest) => api.createCartCheckoutSession(input),
+  });
+
+export const validateCartCouponForCheckoutMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['coupon-checkout-validation', 'cart'] as const,
+    call: (input: CouponCartCheckoutValidationRequest) => api.validateCartCouponForCheckout(input),
   });
 
 export const recordTermsConsentMutation = (

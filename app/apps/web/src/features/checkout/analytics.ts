@@ -1,4 +1,5 @@
 import {
+  HOSTED_CART_PATH,
   shouldLoadCheckoutAnalytics,
   type CheckoutAnalyticsConfig,
   type CheckoutPurchaseAnalytics,
@@ -29,7 +30,8 @@ declare global {
 let loadedTagId: string | null = null;
 let loadedPixelId: string | null = null;
 
-const isReturnPage = (): boolean => /^\/(?:checkout|offer)\/[^/]+$/u.test(window.location.pathname) &&
+const isReturnPage = (): boolean =>
+  (/^\/(?:checkout|offer)\/[^/]+$/u.test(window.location.pathname) || window.location.pathname === HOSTED_CART_PATH) &&
   new URLSearchParams(window.location.search).get('status') === 'success';
 
 const isTestPurchase = (): boolean => {

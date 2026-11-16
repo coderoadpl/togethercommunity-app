@@ -5,9 +5,15 @@ import {
   CART_MAX_LINES,
   CART_MAX_UNITS,
   CART_PHYSICAL_LINE_MAX_QUANTITY,
+  cartCurrencies,
+  cartLineMaxQuantity,
   cartLineQuantityError,
   cartLinesSchema,
+  formatCartLinesParam,
+  parseCartLinesParam,
+  singleSellableOneTimePrice,
 } from './checkout-cart.js';
+import type { PriceKind } from './commerce.js';
 import { checkoutCartInputSchema } from './payment.js';
 
 const productId = (index: number): string => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -94,5 +100,81 @@ describe('cart line quantity per product', () => {
   it.each(['digital_download', 'course', 'membership'] as const)('allows only one unit of a %s product', (type) => {
     expect(cartLineQuantityError({ title: 'Item', type }, 1)).toBeNull();
     expect(cartLineQuantityError({ title: 'Item', type }, 2, CART_PHYSICAL_LINE_MAX_QUANTITY)).toBe('"Item" can be ordered in a quantity of at most 1');
+  });
+});
+
+describe('cart lines URL parameter', () => {
+  it('round-trips product IDs and quantities', () => {
+    const lines = [{ productId: productId(1), quantity: 2 }, { productId: productId(2), quantity: 1 }];
+    const value = formatCartLinesParam(lines);
+    expect(value).toBe(`${productId(1)}.2~${productId(2)}.1`);
+    expect(encodeURIComponent(value)).toBe(value);
+    expect(parseCartLinesParam(new URLSearchParams(`lines=${value}`).get('lines'))).toEqual(lines);
+    expect(parseCartLinesParam(value)).toEqual(lines);
+  });
+
+  it('reads upper-case product IDs as the lower-case IDs the platform issues', () => {
+    const lower = 'abcdef01-0000-4000-8000-00000000000a';
+    expect(parseCartLinesParam(`${lower.toUpperCase()}.2~${productId(11)}.1`)).toEqual([
+      { productId: lower, quantity: 2 },
+      { productId: productId(11), quantity: 1 },
+    ]);
+  });
+
+  it.each([
+    ['a missing parameter', null],
+    ['an empty parameter', ''],
+    ['a trailing separator', `${productId(1)}.1~`],
+    ['a product ID that is not a UUID', 'product-1.1'],
+    ['a missing quantity', productId(1)],
+    ['a zero quantity', `${productId(1)}.0`],
+    ['a quantity above 99', `${productId(1)}.100`],
+    ['a fractional quantity', `${productId(1)}.1.5`],
+    ['a duplicate product', `${productId(1)}.1~${productId(1)}.2`],
+    ['a duplicate product that differs only in case', 'abcdef01-0000-4000-8000-000000000001.1~ABCDEF01-0000-4000-8000-000000000001.2'],
+    ['21 lines', Array.from({ length: 21 }, (_, index) => `${productId(index + 1)}.1`).join('~')],
+  ])('rejects %s', (_case, value) => {
+    expect(parseCartLinesParam(value)).toBeNull();
+  });
+
+  it('gives a physical line the hold maximum and any other line one unit', () => {
+    expect(cartLineMaxQuantity('physical')).toBe(CART_LINE_MAX_QUANTITY_WITH_HOLD);
+    expect(cartLineMaxQuantity('digital_download')).toBe(1);
+    expect(cartLineMaxQuantity('course')).toBe(1);
+  });
+});
+
+describe('cart line price', () => {
+  interface TestPrice { id: string; kind: PriceKind; active?: boolean; imported?: boolean }
+  const oneTime: TestPrice = { id: 'one-time', kind: 'one_time', active: true };
+  const recurring: TestPrice = { id: 'recurring', kind: 'recurring', active: true };
+
+  it('takes the single sellable one-time price next to a recurring price', () => {
+    expect(singleSellableOneTimePrice([recurring, oneTime])).toBe(oneTime);
+  });
+
+  it('takes a public offer price, which lists active prices only', () => {
+    const publicPrice: TestPrice = { id: 'public', kind: 'one_time' };
+    expect(singleSellableOneTimePrice([publicPrice])).toBe(publicPrice);
+  });
+
+  it.each<[string, TestPrice[]]>([
+    ['no price', []],
+    ['a recurring price only', [recurring]],
+    ['two one-time prices', [oneTime, { ...oneTime, id: 'second' }]],
+  ])('refuses %s', (_case, prices) => {
+    expect(singleSellableOneTimePrice(prices)).toBeNull();
+  });
+
+  it('ignores inactive and imported one-time prices', () => {
+    expect(singleSellableOneTimePrice([oneTime, { ...oneTime, id: 'inactive', active: false }, { ...oneTime, id: 'imported', imported: true }])).toBe(oneTime);
+  });
+});
+
+describe('cart currencies', () => {
+  it('lists each currency of the cart prices once', () => {
+    expect(cartCurrencies([{ currency: 'PLN' }, { currency: 'PLN' }])).toEqual(['PLN']);
+    expect(cartCurrencies([{ currency: 'PLN' }, { currency: 'EUR' }])).toEqual(['PLN', 'EUR']);
+    expect(cartCurrencies([])).toEqual([]);
   });
 });

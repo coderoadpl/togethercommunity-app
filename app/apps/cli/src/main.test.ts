@@ -1925,6 +1925,15 @@ describe('InPost ShipX CLI', () => {
     expect(process.exitCode).toBe(29);
   });
 
+  it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {
+    await run('order', 'shipx', 'create', 'order-number', '--parcel-template', 'large');
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large' });
+    h.shipxCreate.mockClear();
+    await run('--json', 'order', 'shipx', 'create', 'order-number', '--parcel-template', 'huge');
+    expect(h.shipxCreate).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
   it('discards an unconfirmed attempt and maps a running operation to the fulfilment conflict exit code', async () => {
     await run('order', 'shipx', 'discard', 'order-number');
     expect(h.shipxDiscard).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });

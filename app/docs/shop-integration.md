@@ -592,6 +592,31 @@ and fulfils only from that answer. The order answers do not carry
 `checkout_ref`, so send a `clientReference` when the shop needs to match the
 return to its own cart.
 
+### Free checkout
+
+When nothing is to be paid (a free one-time price, or a coupon that removes the
+whole price, in an order without delivery), there is no payment step and no
+return trip. The request must carry `email`. The platform records the order
+before it answers, so the answer to the session request itself says the
+checkout is complete:
+
+- `data.free` is `true` (a checkout that goes to payment answers `false`);
+- `data.url` is the workspace confirmation page (`/checkout/<product-id>`,
+  `/checkout/cart/pay` or `/offer/<slug>`) with `status=success`;
+- with a coupon, `data.coupon` holds the price breakdown, `finalCents` being 0.
+
+`checkoutSessionOutputSchema` declares only `url`, so a parse with it drops
+`free`: read `data.free` from the JSON answer before that parse.
+
+The calling shop keeps control of the page, so it should not navigate to
+`data.url`. It shows its own confirmation instead: the order is complete,
+nothing was charged, and the buyer receives the access or download e-mail
+(section 9). The order is already in the paid-order ledger with amount 0 and
+the `clientReference` of the request, so the shop's backend confirms it the same
+way as a paid order (section 8). A `returnUrl` sent with a free checkout is
+stored but never offered: the workspace confirmation page of a free checkout has
+no "Back to shop" button.
+
 ## 8. Poll live orders and record fulfilment
 
 Always request live mode explicitly for operational automation:

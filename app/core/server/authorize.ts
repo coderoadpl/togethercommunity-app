@@ -118,6 +118,9 @@ export const authorizeRequiredTenant = (
     : ok(ctx.identity.tenantId);
 };
 
+export const organizationSuspendedError = (): AppError =>
+  forbidden('This organization is suspended; only reads are allowed until it is reactivated');
+
 export const authorizeOrganization = (
   octx: OrganizationCtx,
   organizationId: string,
@@ -131,7 +134,7 @@ export const authorizeOrganization = (
   const granted = roleGrants.includes(capability) && (octx.capabilities?.includes(capability) ?? true);
   if (!granted) return err(forbidden(`${capability} is not permitted`));
   if (membership.organizationStatus === 'suspended' && !isOrganizationReadCapability(capability)) {
-    return err(forbidden('This organization is suspended; only reads are allowed until it is reactivated'));
+    return err(organizationSuspendedError());
   }
   return ok({ organizationId, role: membership.role });
 };

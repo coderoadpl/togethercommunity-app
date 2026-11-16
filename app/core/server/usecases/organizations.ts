@@ -16,7 +16,7 @@ import {
   type UpdateOrganizationInput,
 } from '#core/domain/index.js';
 
-import { authorize, authorizeOrganization } from '../authorize.js';
+import { authorize, authorizeOrganization, organizationSuspendedError } from '../authorize.js';
 import type { Ctx, OrganizationCtx } from '../context.js';
 import type { Clock, IdGenerator, OrganizationAuditRepository, OrganizationMemberRepository, OrganizationRepository } from '../ports.js';
 
@@ -79,7 +79,10 @@ export const updateOrganization = async (
       actorKeyId: null, subjectTenantId: null, subjectUserId: null, at,
     },
   });
-  return result === null ? err(notFound('Organization not found')) : ok(result);
+  if (result === null) return err(notFound('Organization not found'));
+  if (result.status === 'organization_suspended') return err(organizationSuspendedError());
+  const { organization, settings, changed } = result;
+  return ok({ organization, settings, changed });
 };
 
 export const listOrganizationMembers = async (

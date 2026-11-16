@@ -29,6 +29,9 @@ const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together
 const at = '2026-11-15T10:00:00.000Z';
 const later = '2026-11-15T11:00:00.000Z';
 
+const hasRows = (result: unknown): boolean =>
+  typeof result === 'object' && result !== null && 'rows' in result && Array.isArray(result.rows) && result.rows.length > 0;
+
 const organization = (id: string, slug: string): Organization => ({
   id, slug, name: `Organization ${slug}`, status: 'active', maxWorkspaces: 3, createdAt: at, updatedAt: at,
 });
@@ -360,6 +363,7 @@ describe('organization repositories', () => {
       updatedAt: later,
       audit: audit('settings-1'),
     })).toEqual({
+      status: 'updated',
       organization: { ...organization('org-settings', 'settings'), name: 'Settings Group', updatedAt: later },
       settings: { ...defaults, legalName: 'Settings Ltd', invoicingProvider: 'ksef', shipxSender: sender },
       changed: true,
@@ -397,9 +401,9 @@ describe('organization repositories', () => {
     });
 
     expect(await repository.set('org-secrets', { secret: secret('s-1', 'ksef.token', '••••1111'), group: 'invoicing', audit: audit('sa-1', 'secret.set') }))
-      .toEqual({ ...secret('s-1', 'ksef.token', '••••1111'), organizationId: 'org-secrets' });
+      .toEqual({ status: 'set', secret: { ...secret('s-1', 'ksef.token', '••••1111'), organizationId: 'org-secrets' } });
     expect(await repository.set('org-secrets', { secret: secret('s-2', 'ksef.token', '••••2222'), group: 'invoicing', audit: audit('sa-2', 'secret.set') }))
-      .toEqual({ ...secret('s-2', 'ksef.token', '••••2222'), id: 's-1', organizationId: 'org-secrets' });
+      .toEqual({ status: 'set', secret: { ...secret('s-2', 'ksef.token', '••••2222'), id: 's-1', organizationId: 'org-secrets' } });
     await repository.set('org-secrets', { secret: secret('s-3', 'smtp.password', '••••3333'), group: 'email_transport', audit: audit('sa-3', 'secret.set') });
     expect((await repository.listByOrganization('org-secrets')).map((row) => [row.key, row.maskedPreview])).toEqual([
       ['ksef.token', '••••2222'], ['smtp.password', '••••3333'],
@@ -628,6 +632,174 @@ describe('organization repositories', () => {
         expect(await linkedTo(organizationId)).toHaveLength(1);
         expect((await auditIds(organizationId, tenantIds)).tenant).toHaveLength(1);
       }
+    });
+  });
+
+  describe('organization write locking', () => {
+    const workspaceChange = (organizationId: string, tenantId: string, actorUserId: string, id: string, linked: boolean) => ({
+      organizationId,
+      actorUserId,
+      organizationAudit: {
+        id: `org-${id}`, kind: linked ? 'workspace.linked' as const : 'workspace.unlinked' as const, actorUserId,
+        actorEmail: `${actorUserId}@example.test`, actorKeyId: null, subjectTenantId: tenantId, subjectUserId: null, data: {}, at,
+      },
+      tenantAudit: {
+        id: `tenant-${id}`, kind: linked ? 'organization.linked' as const : 'organization.unlinked' as const, actorUserId,
+        actorEmail: `${actorUserId}@example.test`, subjectMemberId: null, reason: organizationId, at,
+      },
+    });
+    const memberAudit = (id: string, kind: 'member.added' | 'member.role_changed' | 'member.removed', actorUserId: string, subjectUserId: string) => ({
+      id, kind, actorUserId, actorEmail: `${actorUserId}@example.test`, actorKeyId: null, subjectTenantId: null, subjectUserId, at: later,
+    });
+    const linkOf = async (tenantId: string) =>
+      (await database.db.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId)))[0]?.organizationId;
+
+    it('serializes a workspace link with the removal or demotion of the linking owner into one of the two serial outcomes', async () => {
+      await insertOrganization({ ...organization('org-order', 'order'), maxWorkspaces: 50 });
+      await database.db.insert(user).values([
+        { id: 'order-x', email: 'order-x@example.test', name: 'Order X', emailVerified: true },
+        { id: 'order-y', email: 'order-y@example.test', name: 'Order Y', emailVerified: true },
+      ]);
+      await database.db.insert(tenants).values({ id: 'order-ws', slug: 'order-ws', name: 'Order', createdAt: at });
+      await database.db.insert(tenantAdmins).values({ id: 'order-grant', tenantId: 'order-ws', userId: 'order-x', role: 'owner' });
+      const workspaces = createOrganizationWorkspaceRepository(database.db);
+      const members = createOrganizationMemberRepository(database.db);
+      const reset = async () => {
+        await database.db.update(tenants).set({ organizationId: null }).where(eq(tenants.id, 'order-ws'));
+        await database.db.delete(organizationMembers).where(eq(organizationMembers.organizationId, 'org-order'));
+        for (const userId of ['order-x', 'order-y']) {
+          await insertMember('org-order', { id: `order-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
+        }
+      };
+      const roleOf = async (userId: string) => (await members.find('org-order', userId))?.role ?? null;
+
+      for (let round = 0; round < 8; round += 1) {
+        await reset();
+        const [linked, removed] = await Promise.all([
+          workspaces.link('order-ws', workspaceChange('org-order', 'order-ws', 'order-x', `order-remove-${round}`, true)),
+          members.remove('org-order', { actorUserId: 'order-y', userId: 'order-x', audit: memberAudit(`order-remove-${round}`, 'member.removed', 'order-y', 'order-x') }),
+        ]);
+        expect(removed.status, `remove round ${round}`).toBe('removed');
+        expect(['linked', 'organization_owner_required'], `remove round ${round}`).toContain(linked.status);
+        expect(await linkOf('order-ws'), `remove round ${round}`).toBe(linked.status === 'linked' ? 'org-order' : null);
+        expect(await roleOf('order-x'), `remove round ${round}`).toBeNull();
+      }
+
+      for (let round = 0; round < 8; round += 1) {
+        await reset();
+        const [linked, demoted] = await Promise.all([
+          workspaces.link('order-ws', workspaceChange('org-order', 'order-ws', 'order-x', `order-demote-${round}`, true)),
+          members.changeRole('org-order', {
+            actorUserId: 'order-y', userId: 'order-x', role: 'admin', audit: memberAudit(`order-demote-${round}`, 'member.role_changed', 'order-y', 'order-x'),
+          }),
+        ]);
+        expect(demoted.status, `demote round ${round}`).toBe('changed');
+        expect(['linked', 'organization_owner_required'], `demote round ${round}`).toContain(linked.status);
+        expect(await linkOf('order-ws'), `demote round ${round}`).toBe(linked.status === 'linked' ? 'org-order' : null);
+        expect(await roleOf('order-x'), `demote round ${round}`).toBe('admin');
+      }
+    });
+
+    it('refuses an organization write that acquires the organization lock after a suspension committed, and keeps the operator and workspace-side writes open', async () => {
+      await insertOrganization({ ...organization('org-held', 'held'), maxWorkspaces: 10 });
+      await database.db.insert(user).values([
+        { id: 'held-owner', email: 'held-owner@example.test', name: 'Held owner', emailVerified: true },
+        { id: 'held-admin', email: 'held-admin@example.test', name: 'Held admin', emailVerified: true },
+        { id: 'held-candidate', email: 'held-candidate@example.test', name: 'Held candidate', emailVerified: true },
+      ]);
+      await database.db.insert(tenants).values([
+        { id: 'held-in', slug: 'held-in', name: 'Held in', createdAt: at, organizationId: 'org-held' },
+        { id: 'held-out', slug: 'held-out', name: 'Held out', createdAt: at },
+      ]);
+      await database.db.insert(tenantAdmins).values([
+        { id: 'held-grant-in', tenantId: 'held-in', userId: 'held-owner', role: 'owner' },
+        { id: 'held-grant-out', tenantId: 'held-out', userId: 'held-owner', role: 'owner' },
+      ]);
+      await insertMember('org-held', { id: 'held-m-owner', userId: 'held-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      await insertMember('org-held', { id: 'held-m-admin', userId: 'held-admin', role: 'admin', createdAt: at, createdByUserId: 'held-owner' });
+      const secrets = createOrganizationSecretRepository(database.db);
+      const secret = (id: string, key: 'ksef.token' | 'smtp.password') => ({
+        id, key, ciphertext: `cipher-${id}`, iv: `iv-${id}`, authTag: `tag-${id}`, maskedPreview: '••••0000', updatedAt: later,
+      });
+      const secretAudit = (id: string, kind: 'secret.set' | 'secret.deleted') => ({
+        id, kind, actorUserId: 'held-owner', actorEmail: 'held-owner@example.test', actorKeyId: null, subjectTenantId: null, subjectUserId: null, at: later,
+      });
+      await database.db.insert(organizationSecrets).values({ ...secret('held-s-1', 'smtp.password'), organizationId: 'org-held' });
+
+      const organizationsRepository = createOrganizationRepository(database.db);
+      const members = createOrganizationMemberRepository(database.db);
+      const workspaces = createOrganizationWorkspaceRepository(database.db);
+      const setStatus = async (status: 'active' | 'suspended') => {
+        await database.db.update(organizations).set({ status }).where(eq(organizations.id, 'org-held'));
+      };
+      const snapshot = async () => JSON.stringify({
+        organization: (await database.db.select({ name: organizations.name, legalName: organizations.legalName, updatedAt: organizations.updatedAt })
+          .from(organizations).where(eq(organizations.id, 'org-held'))),
+        members: (await memberRows('org-held')).map((row) => [row.userId, row.role]),
+        secrets: (await database.db.select().from(organizationSecrets).where(eq(organizationSecrets.organizationId, 'org-held'))).map((row) => [row.key, row.ciphertext]),
+        audit: (await database.db.select().from(organizationAuditEvents).where(eq(organizationAuditEvents.organizationId, 'org-held'))).map((row) => row.id),
+        links: [await linkOf('held-in'), await linkOf('held-out')],
+        tenantAudit: (await database.db.select().from(tenantAuditEvents)).filter((row) => row.tenantId.startsWith('held-')).map((row) => row.id),
+      });
+      const suspendDuring = async <T>(write: () => Promise<T>): Promise<T> => {
+        let settled = false;
+        const started: Array<Promise<T>> = [];
+        await database.db.transaction(async (tx) => {
+          await tx.update(organizations).set({ status: 'suspended' }).where(eq(organizations.id, 'org-held'));
+          const pending = write().finally(() => { settled = true; });
+          pending.catch(() => undefined);
+          started.push(pending);
+          for (let attempt = 0; attempt < 200 && !settled; attempt += 1) {
+            const waiting = await database.db.execute(sql`SELECT pid FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`);
+            if (hasRows(waiting)) break;
+            await new Promise((resolve) => { setTimeout(resolve, 10); });
+          }
+        });
+        const [pending] = started;
+        if (pending === undefined) throw new Error('write did not start');
+        return pending;
+      };
+      const writes: Array<[string, () => Promise<{ status: string } | null>]> = [
+        ['settings', () => organizationsRepository.updateSettings('org-held', {
+          update: { legalName: 'Held Ltd' }, updatedAt: later,
+          audit: { id: 'held-a-settings', kind: 'organization.updated', actorUserId: 'held-owner', actorEmail: 'held-owner@example.test', actorKeyId: null, subjectTenantId: null, subjectUserId: null, at: later },
+        })],
+        ['secret set', () => secrets.set('org-held', { secret: secret('held-s-2', 'ksef.token'), group: 'invoicing', audit: secretAudit('held-sa-2', 'secret.set') })],
+        ['secret delete', () => secrets.delete('org-held', { key: 'smtp.password', group: 'email_transport', audit: secretAudit('held-sa-3', 'secret.deleted') })],
+        ['member add', () => members.addAccount('org-held', {
+          actorUserId: 'held-owner',
+          member: { id: 'held-m-candidate', userId: 'held-candidate', role: 'admin', createdAt: later, createdByUserId: 'held-owner' },
+          audit: memberAudit('held-a-add', 'member.added', 'held-owner', 'held-candidate'),
+        })],
+        ['member role', () => members.changeRole('org-held', {
+          actorUserId: 'held-owner', userId: 'held-admin', role: 'owner', audit: memberAudit('held-a-role', 'member.role_changed', 'held-owner', 'held-admin'),
+        })],
+        ['member remove', () => members.remove('org-held', {
+          actorUserId: 'held-owner', userId: 'held-admin', audit: memberAudit('held-a-remove', 'member.removed', 'held-owner', 'held-admin'),
+        })],
+        ['link', () => workspaces.link('held-out', workspaceChange('org-held', 'held-out', 'held-owner', 'held-link', true))],
+        ['unlink', () => workspaces.unlink('held-in', workspaceChange('org-held', 'held-in', 'held-owner', 'held-unlink', false))],
+      ];
+
+      const before = await snapshot();
+      for (const [label, write] of writes) {
+        expect(await suspendDuring(write), label).toEqual({ status: 'organization_suspended' });
+        expect(await snapshot(), label).toBe(before);
+        await setStatus('active');
+      }
+
+      await setStatus('suspended');
+      expect(await organizationsRepository.setMaxWorkspaces('org-held', {
+        maxWorkspaces: 4, updatedAt: later,
+        audit: { id: 'held-a-limit', kind: 'organization.updated', actorUserId: 'operator', actorEmail: 'operator@together.invalid', actorKeyId: null, subjectTenantId: null, subjectUserId: null, data: { maxWorkspaces: 4 }, at: later },
+      })).toMatchObject({ status: 'suspended', maxWorkspaces: 4 });
+      expect(await workspaces.unlinkAsWorkspaceOwner('held-in', {
+        actorUserId: 'held-owner',
+        organizationAudit: { ...workspaceChange('org-held', 'held-in', 'held-owner', 'held-ws-unlink', false).organizationAudit },
+        tenantAudit: { id: 'tenant-held-ws-unlink', kind: 'organization.unlinked', actorUserId: 'held-owner', actorEmail: 'held-owner@example.test', subjectMemberId: null, at },
+      })).toMatchObject({ status: 'unlinked', organizationId: 'org-held' });
+      expect(await linkOf('held-in')).toBeNull();
     });
   });
 });

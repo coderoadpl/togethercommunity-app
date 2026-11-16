@@ -55,6 +55,8 @@ export const createOrganizationFakes = (
   const isVerified = (userId: string) => accounts.some((account) => account.userId === userId && account.emailVerified);
   const isOwner = (organizationId: string, userId: string) =>
     memberRows.some((row) => row.organizationId === organizationId && row.userId === userId && row.role === 'owner');
+  const suspended = (organizationId: string) =>
+    organizationRows.some((row) => row.id === organizationId && row.status === 'suspended');
   const ownerCount = (organizationId: string) =>
     memberRows.filter((row) => row.organizationId === organizationId && row.role === 'owner').length;
   const accountOf = (row: OrganizationMember) => ({
@@ -95,6 +97,7 @@ export const createOrganizationFakes = (
       const index = organizationRows.findIndex((row) => row.id === organizationId);
       const current = organizationRows[index];
       if (current === undefined) return null;
+      if (current.status === 'suspended') return { status: 'organization_suspended' };
       const settings = settingsRows.get(organizationId) ?? defaultSettings;
       const nextSettings: OrganizationSettings = {
         legalName: keep(update.legalName, settings.legalName),
@@ -111,12 +114,12 @@ export const createOrganizationFakes = (
           .filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(before.get(field)))
           .map(([field]) => field),
       ];
-      if (fields.length === 0) return { organization: current, settings, changed: false };
+      if (fields.length === 0) return { status: 'updated', organization: current, settings, changed: false };
       const organization = { ...current, name: update.name ?? current.name, updatedAt };
       organizationRows[index] = organization;
       settingsRows.set(organizationId, nextSettings);
       auditRows.push({ ...audit, organizationId, data: { fields } });
-      return { organization, settings: nextSettings, changed: true };
+      return { status: 'updated', organization, settings: nextSettings, changed: true };
     },
   };
 
@@ -131,6 +134,7 @@ export const createOrganizationFakes = (
       }),
     listForUser: async (userId) => memberRows.filter((row) => row.userId === userId),
     addAccount: async (organizationId, { actorUserId, member, audit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
       if (!isVerified(member.userId)) return { status: 'account_unverified' };
       const existing = memberRows.find((row) => row.organizationId === organizationId && row.userId === member.userId);
@@ -141,6 +145,7 @@ export const createOrganizationFakes = (
       return { status: 'added', member: accountOf(added) };
     },
     changeRole: async (organizationId, { actorUserId, userId, role, audit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
       const index = memberRows.findIndex((row) => row.organizationId === organizationId && row.userId === userId);
       const current = memberRows[index];
@@ -153,6 +158,7 @@ export const createOrganizationFakes = (
       return { status: 'changed', member: accountOf(updated) };
     },
     remove: async (organizationId, { actorUserId, userId, audit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
       const index = memberRows.findIndex((row) => row.organizationId === organizationId && row.userId === userId);
       const current = memberRows[index];
@@ -187,6 +193,7 @@ export const createOrganizationFakes = (
 
   const organizationWorkspaces: OrganizationWorkspaceRepository = {
     link: async (tenantId, { organizationId, actorUserId, organizationAudit, tenantAudit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       const checked = checkChange(tenantId, organizationId, actorUserId);
       if (checked.status !== 'allowed') return checked;
       const { workspace } = checked;
@@ -203,6 +210,7 @@ export const createOrganizationFakes = (
       return { status: 'linked', workspace: workspaceOf(workspace) };
     },
     unlink: async (tenantId, { organizationId, actorUserId, organizationAudit, tenantAudit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       const workspace = workspaceRows.find((row) => row.id === tenantId);
       if (!isOwner(organizationId, actorUserId)) return { status: 'organization_owner_required' };
       if (workspace === undefined) return { status: 'not_in_organization' };
@@ -238,15 +246,17 @@ export const createOrganizationFakes = (
       .filter((row) => row.organizationId === organizationId)
       .toSorted((left, right) => left.key.localeCompare(right.key)),
     set: async (organizationId, { secret, group, audit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       const index = secretRows.findIndex((row) => row.organizationId === organizationId && row.key === secret.key);
       const existing = secretRows[index];
       const stored = existing === undefined ? { ...secret, organizationId } : { ...secret, id: existing.id, organizationId };
       if (existing === undefined) secretRows.push(stored);
       else secretRows[index] = stored;
       auditRows.push({ ...audit, organizationId, data: { key: secret.key, group } });
-      return stored;
+      return { status: 'set', secret: stored };
     },
     delete: async (organizationId, { key, group, audit }) => {
+      if (suspended(organizationId)) return { status: 'organization_suspended' };
       const index = secretRows.findIndex((row) => row.organizationId === organizationId && row.key === key);
       const current = secretRows[index];
       if (current === undefined) return { status: 'not_found' };

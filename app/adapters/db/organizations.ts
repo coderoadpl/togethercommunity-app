@@ -48,6 +48,16 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, neste
 const differs = <T>(next: T | undefined, stored: unknown): next is T =>
   next !== undefined && canonical(next) !== canonical(stored);
 
+// Every organization write locks this row before any tenant, member or secret row, so concurrent writes queue here
+// instead of deadlocking; NO KEY UPDATE still lets foreign-key checks against the row through.
+const lockOrganization = async (tx: Db, organizationId: string) => {
+  const [row] = await tx.select({ status: organizations.status, maxWorkspaces: organizations.maxWorkspaces })
+    .from(organizations).where(eq(organizations.id, organizationId)).for('no key update');
+  return row ?? null;
+};
+
+const organizationSuspended = { status: 'organization_suspended' } as const;
+
 export const createOrganizationRepository = (db: Db): OrganizationRepository => ({
   createWithOwner: async ({ organization, owner, audit }) => db.transaction(async (tx) => {
     const verifiedOwner = await tx.select({ id: user.id }).from(user)
@@ -92,6 +102,7 @@ export const createOrganizationRepository = (db: Db): OrganizationRepository => 
     const rows = await tx.select().from(organizations).where(eq(organizations.id, organizationId)).for('no key update');
     const current = rows[0];
     if (current === undefined) return null;
+    if (current.status === 'suspended') return organizationSuspended;
     const changes = {
       ...(differs(update.name, current.name) ? { name: update.name } : {}),
       ...(differs(update.legalName, current.legalName) ? { legalName: update.legalName } : {}),
@@ -103,13 +114,13 @@ export const createOrganizationRepository = (db: Db): OrganizationRepository => 
     };
     const fields = Object.keys(changes);
     if (fields.length === 0) {
-      return { organization: organizationSchema.parse(current), settings: settingsOf(current), changed: false };
+      return { status: 'updated', organization: organizationSchema.parse(current), settings: settingsOf(current), changed: false } as const;
     }
     const updated = await tx.update(organizations).set({ ...changes, updatedAt })
       .where(eq(organizations.id, organizationId)).returning();
     if (updated[0] === undefined) return null;
     await tx.insert(organizationAuditEvents).values({ ...audit, organizationId, data: { fields } });
-    return { organization: organizationSchema.parse(updated[0]), settings: settingsOf(updated[0]), changed: true };
+    return { status: 'updated', organization: organizationSchema.parse(updated[0]), settings: settingsOf(updated[0]), changed: true } as const;
   }),
 });
 
@@ -122,6 +133,7 @@ export const createOrganizationSecretRepository = (db: Db): OrganizationSecretRe
     .orderBy(asc(organizationSecrets.key)))
     .map((row) => organizationSecretSchema.parse(row)),
   set: async (organizationId, { secret, group, audit }) => db.transaction(async (tx) => {
+    if ((await lockOrganization(tx, organizationId))?.status === 'suspended') return organizationSuspended;
     const rows = await tx.insert(organizationSecrets).values({ ...secret, organizationId })
       .onConflictDoUpdate({
         target: [organizationSecrets.organizationId, organizationSecrets.key],
@@ -138,9 +150,10 @@ export const createOrganizationSecretRepository = (db: Db): OrganizationSecretRe
     await tx.insert(organizationAuditEvents).values({
       ...audit, organizationId, data: { key: secret.key, group },
     });
-    return organizationSecretSchema.parse(rows[0]);
+    return { status: 'set', secret: organizationSecretSchema.parse(rows[0]) } as const;
   }),
   delete: async (organizationId, { key, group, audit }) => db.transaction(async (tx) => {
+    if ((await lockOrganization(tx, organizationId))?.status === 'suspended') return organizationSuspended;
     const rows = await tx.select().from(organizationSecrets).where(secretRow(organizationId, key)).for('update');
     const current = rows[0];
     if (current === undefined) return { status: 'not_found' } as const;
@@ -204,13 +217,13 @@ const memberAccountColumns = {
 };
 
 const lockedMemberWrite = async (tx: Db, organizationId: string, actorUserId: string) => {
-  // NO KEY UPDATE serializes member writes per organization yet lets foreign-key checks against the row through.
-  const organization = await tx.select({ id: organizations.id }).from(organizations)
-    .where(eq(organizations.id, organizationId)).for('no key update');
-  if (organization.length !== 1) return { allowed: false, owners: 0 } as const;
+  const organization = await lockOrganization(tx, organizationId);
+  if (organization === null) return { status: 'organization_owner_required' } as const;
+  if (organization.status === 'suspended') return organizationSuspended;
   const owners = await tx.select({ userId: organizationMembers.userId }).from(organizationMembers)
     .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.role, 'owner')));
-  return { allowed: owners.some((owner) => owner.userId === actorUserId), owners: owners.length } as const;
+  if (!owners.some((owner) => owner.userId === actorUserId)) return { status: 'organization_owner_required' } as const;
+  return { status: 'allowed', owners: owners.length } as const;
 };
 
 const memberRow = (organizationId: string, userId: string) =>
@@ -242,7 +255,7 @@ export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRe
     .map((row) => organizationMemberSchema.parse(row)),
   addAccount: async (organizationId, { actorUserId, member, audit }) => db.transaction(async (tx) => {
     const lock = await lockedMemberWrite(tx, organizationId, actorUserId);
-    if (!lock.allowed) return { status: 'organization_owner_required' } as const;
+    if (lock.status !== 'allowed') return lock;
     const verified = await tx.select({ email: user.email }).from(user)
       .where(and(eq(user.id, member.userId), eq(user.emailVerified, true))).for('share');
     if (verified[0] === undefined) return { status: 'account_unverified' } as const;
@@ -257,7 +270,7 @@ export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRe
   }),
   changeRole: async (organizationId, { actorUserId, userId, role, audit }) => db.transaction(async (tx) => {
     const lock = await lockedMemberWrite(tx, organizationId, actorUserId);
-    if (!lock.allowed) return { status: 'organization_owner_required' } as const;
+    if (lock.status !== 'allowed') return lock;
     const current = await findMemberAccount(tx, organizationId, userId);
     if (current === null) return { status: 'not_member' } as const;
     if (current.role === role) return { status: 'unchanged', member: current } as const;
@@ -268,7 +281,7 @@ export const createOrganizationMemberRepository = (db: Db): OrganizationMemberRe
   }),
   remove: async (organizationId, { actorUserId, userId, audit }) => db.transaction(async (tx) => {
     const lock = await lockedMemberWrite(tx, organizationId, actorUserId);
-    if (!lock.allowed) return { status: 'organization_owner_required' } as const;
+    if (lock.status !== 'allowed') return lock;
     const current = await findMemberAccount(tx, organizationId, userId);
     if (current === null) return { status: 'not_member' } as const;
     if (current.role === 'owner' && lock.owners <= 1) return { status: 'last_owner' } as const;
@@ -332,13 +345,13 @@ const checkWorkspaceChange = async (
 
 export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorkspaceRepository => ({
   link: async (tenantId, input) => db.transaction(async (tx) => {
+    const organization = await lockOrganization(tx, input.organizationId);
+    if (organization?.status === 'suspended') return organizationSuspended;
     const checked = await checkWorkspaceChange(tx, tenantId, input);
     if (checked.status !== 'allowed') return checked;
     if (checked.organizationId === input.organizationId) return { status: 'already_linked', workspace: checked.workspace } as const;
     if (checked.organizationId !== null) return { status: 'linked_elsewhere' } as const;
-    const [organization] = await tx.select({ maxWorkspaces: organizations.maxWorkspaces }).from(organizations)
-      .where(eq(organizations.id, input.organizationId)).for('no key update');
-    if (organization === undefined) return { status: 'organization_owner_required' } as const;
+    if (organization === null) return { status: 'organization_owner_required' } as const;
     const [linked] = await tx.select({ total: count() }).from(tenants).where(eq(tenants.organizationId, input.organizationId));
     if ((linked?.total ?? 0) >= organization.maxWorkspaces) return { status: 'workspace_quota_exceeded' } as const;
     await tx.update(tenants).set({ organizationId: input.organizationId }).where(eq(tenants.id, tenantId));
@@ -347,6 +360,7 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     return { status: 'linked', workspace: checked.workspace } as const;
   }),
   unlink: async (tenantId, input) => db.transaction(async (tx) => {
+    if ((await lockOrganization(tx, input.organizationId))?.status === 'suspended') return organizationSuspended;
     const locked = await lockWorkspace(tx, tenantId);
     if (!await holdsOrganizationOwnership(tx, input.organizationId, input.actorUserId)) {
       return { status: 'organization_owner_required' } as const;
@@ -366,6 +380,8 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     return { status: 'unlinked', workspace: locked.workspace } as const;
   }),
   unlinkAsWorkspaceOwner: async (tenantId, input) => db.transaction(async (tx) => {
+    const [linked] = await tx.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId));
+    if (linked !== undefined && linked.organizationId !== null) await lockOrganization(tx, linked.organizationId);
     const locked = await lockWorkspace(tx, tenantId);
     if (locked === null || !await holdsDirectOwnerGrant(tx, tenantId, input.actorUserId)) {
       return { status: 'workspace_owner_required' } as const;

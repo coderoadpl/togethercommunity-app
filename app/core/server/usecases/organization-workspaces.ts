@@ -14,7 +14,7 @@ import {
   type WorkspaceConfigSource,
 } from '#core/domain/index.js';
 
-import { authorizeOrganization, authorizeTenant } from '../authorize.js';
+import { authorizeOrganization, authorizeTenant, organizationSuspendedError } from '../authorize.js';
 import type { Ctx, OrganizationCtx } from '../context.js';
 import type { Clock, IdGenerator, OrganizationWorkspaceRepository, TenantConfigSourceRepository } from '../ports.js';
 
@@ -85,6 +85,7 @@ export const linkOrganizationWorkspace = async (
     case 'linked_elsewhere': return linkedElsewhere();
     case 'workspace_quota_exceeded':
       return err(appError('workspace_quota_exceeded', 'The organization already holds its maximum number of workspaces'));
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
 };
 
@@ -108,6 +109,7 @@ export const unlinkOrganizationWorkspace = async (
     case 'linked_elsewhere': return linkedElsewhere();
     case 'not_in_organization': return err(notFound('Workspace not found in this organization'));
     case 'config_sources_present': return configSourcesPresent();
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
 };
 

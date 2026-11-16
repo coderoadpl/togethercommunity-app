@@ -130,6 +130,18 @@ describe('suspended organization', () => {
     });
   });
 
+  it('refuses a write whose context was built before the organization was suspended', async () => {
+    const h = harness();
+    const owner = await h.octx('owner-1');
+    h.setStatus('suspended');
+    const before = h.snapshot();
+
+    for (const [label, write] of writes(h, owner)) {
+      expect(await write(), label).toEqual(suspendedRefusal);
+    }
+    expect(h.snapshot()).toBe(before);
+  });
+
   it('accepts the same writes again once the organization is reactivated', async () => {
     const h = harness();
     h.setStatus('suspended');

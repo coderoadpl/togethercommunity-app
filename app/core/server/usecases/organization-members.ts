@@ -15,7 +15,7 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
-import { authorizeOrganization } from '../authorize.js';
+import { authorizeOrganization, organizationSuspendedError } from '../authorize.js';
 import type { OrganizationCtx } from '../context.js';
 import type { AuthPort, Clock, IdGenerator, OrganizationMemberRepository } from '../ports.js';
 
@@ -76,6 +76,7 @@ export const addOrganizationMember = async (
         : err(appError('conflict', 'Account is already a member with another role; change its role instead'));
     case 'account_unverified': return accountRefused();
     case 'organization_owner_required': return ownerRequired();
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
 };
 
@@ -102,6 +103,7 @@ export const setOrganizationMemberRole = async (
     case 'not_member': return memberNotFound();
     case 'last_owner': return lastOwner();
     case 'organization_owner_required': return ownerRequired();
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
 };
 
@@ -126,5 +128,6 @@ export const removeOrganizationMember = async (
     case 'not_member': return memberNotFound();
     case 'last_owner': return lastOwner();
     case 'organization_owner_required': return ownerRequired();
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
 };

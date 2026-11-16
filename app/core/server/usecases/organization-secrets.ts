@@ -16,7 +16,7 @@ import {
   type SetOrganizationSecretInput,
 } from '#core/domain/index.js';
 
-import { authorizeOrganization } from '../authorize.js';
+import { authorizeOrganization, organizationSuspendedError } from '../authorize.js';
 import type { OrganizationCtx } from '../context.js';
 import type { Clock, IdGenerator, OrganizationSecretRepository, SecretCrypto } from '../ports.js';
 
@@ -87,7 +87,8 @@ export const setOrganizationSecret = async (
     group: ORGANIZATION_SECRET_GROUP[key],
     audit,
   });
-  return ok({ secret: masked(stored) });
+  if (stored.status === 'organization_suspended') return err(organizationSuspendedError());
+  return ok({ secret: masked(stored.secret) });
 };
 
 export const deleteOrganizationSecret = async (
@@ -107,6 +108,7 @@ export const deleteOrganizationSecret = async (
   });
   switch (result.status) {
     case 'deleted': return ok({ key });
+    case 'organization_suspended': return err(organizationSuspendedError());
     case 'not_found': return err(notFound(`No secret "${key}" in this organization`));
     case 'config_inherited':
       return err(appError('conflict', `A workspace takes ${ORGANIZATION_SECRET_GROUP[key]} from the organization; switch it back to its own values first`));

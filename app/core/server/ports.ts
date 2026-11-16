@@ -2612,6 +2612,8 @@ interface OrganizationCreationInput {
   audit: ReadonlyArray<Omit<OrganizationAuditEvent, 'organizationId'>>;
 }
 
+type OrganizationSuspended = { status: 'organization_suspended' };
+
 type OrganizationCreationResult =
   | { status: 'created'; organization: Organization }
   | { status: 'existing'; organization: Organization }
@@ -2633,11 +2635,12 @@ export interface OrganizationRepository {
   /**
    * One transaction: fields equal to the stored values are dropped, and only a real change
    * updates the row and writes its audit row, which names the changed fields.
+   * A suspended organization, read from the locked row, is refused without a write.
    */
   updateSettings(
     organizationId: string,
     input: { update: OrganizationUpdate; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId' | 'data'> },
-  ): Promise<{ organization: Organization; settings: OrganizationSettings; changed: boolean } | null>;
+  ): Promise<{ status: 'updated'; organization: Organization; settings: OrganizationSettings; changed: boolean } | OrganizationSuspended | null>;
 }
 
 type OrganizationSecretAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
@@ -2647,7 +2650,7 @@ export interface OrganizationSecretRepository {
   set(
     organizationId: string,
     input: { secret: Omit<OrganizationSecret, 'organizationId'>; group: ConfigGroup; audit: OrganizationSecretAuditInput },
-  ): Promise<OrganizationSecret>;
+  ): Promise<{ status: 'set'; secret: OrganizationSecret } | OrganizationSuspended>;
   /**
    * Refuses while a workspace of the organization takes the key's group from the organization;
    * otherwise deletes the secret and writes its secret.deleted audit row in the same transaction.
@@ -2655,7 +2658,7 @@ export interface OrganizationSecretRepository {
   delete(
     organizationId: string,
     input: { key: OrganizationSecretKey; group: ConfigGroup; audit: OrganizationSecretAuditInput },
-  ): Promise<{ status: 'deleted'; secret: OrganizationSecret } | { status: 'not_found' } | { status: 'config_inherited' }>;
+  ): Promise<{ status: 'deleted'; secret: OrganizationSecret } | { status: 'not_found' } | { status: 'config_inherited' } | OrganizationSuspended>;
 }
 
 export interface TenantConfigSourceRepository {
@@ -2675,7 +2678,8 @@ type OrganizationMemberChangeResult<Done extends string> =
   | { status: Done; member: OrganizationMemberAccount }
   | { status: 'not_member' }
   | { status: 'last_owner' }
-  | { status: 'organization_owner_required' };
+  | { status: 'organization_owner_required' }
+  | OrganizationSuspended;
 
 export interface OrganizationMemberRepository {
   find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
@@ -2683,7 +2687,7 @@ export interface OrganizationMemberRepository {
   listForUser(userId: string): Promise<OrganizationMember[]>;
   /**
    * Member writes serialize on the organization row and re-check, in the same transaction as the change
-   * and its audit row, that the actor is still an owner and that at least one owner remains.
+   * and its audit row, that the organization is not suspended, that the actor is still an owner and that at least one owner remains.
    */
   addAccount(
     organizationId: string,
@@ -2692,6 +2696,7 @@ export interface OrganizationMemberRepository {
     | { status: 'added' | 'already_member'; member: OrganizationMemberAccount }
     | { status: 'account_unverified' }
     | { status: 'organization_owner_required' }
+    | OrganizationSuspended
   >;
   changeRole(
     organizationId: string,
@@ -2720,14 +2725,16 @@ type OrganizationWorkspaceLinkResult =
   | { status: 'workspace_quota_exceeded' }
   | { status: 'workspace_owner_required' }
   | { status: 'organization_owner_required' }
-  | { status: 'linked_elsewhere' };
+  | { status: 'linked_elsewhere' }
+  | OrganizationSuspended;
 
 type OrganizationWorkspaceUnlinkResult =
   | { status: 'unlinked' | 'not_linked'; workspace: OrganizationWorkspace }
   | { status: 'config_sources_present' }
   | { status: 'organization_owner_required' }
   | { status: 'linked_elsewhere' }
-  | { status: 'not_in_organization' };
+  | { status: 'not_in_organization' }
+  | OrganizationSuspended;
 
 interface WorkspaceOwnerUnlink {
   actorUserId: string;
@@ -2745,6 +2752,7 @@ type WorkspaceOwnerUnlinkResult =
  * Every change re-checks its authority inside one transaction with the change and both audit rows.
  * Linking needs a direct workspace owner who owns the organization. Unlinking needs either side:
  * `unlink` an organization owner, `unlinkAsWorkspaceOwner` a direct owner grant in the workspace.
+ * `link` and `unlink` refuse a suspended organization; `unlinkAsWorkspaceOwner` stays open to the workspace side.
  */
 export interface OrganizationWorkspaceRepository {
   link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;

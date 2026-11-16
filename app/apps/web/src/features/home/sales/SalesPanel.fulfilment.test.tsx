@@ -201,8 +201,9 @@ describe('order detail shipment', () => {
     expect(screen.queryByTestId('order-shipx-create')).toBeNull();
   });
 
-  it('discards an unconfirmed InPost attempt and creates the shipment again', async () => {
+  it('discards an unconfirmed InPost attempt and creates the shipment again with the chosen parcel size', async () => {
     const calls: string[] = [];
+    const createBodies: unknown[] = [];
     server.use(
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), memberEmail: 'buyer@example.org' }, invoice: null } })),
       http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
@@ -219,8 +220,9 @@ describe('order detail shipment', () => {
         calls.push('discard');
         return HttpResponse.json({ ok: true, data: { discarded: true } });
       }),
-      http.post('/api/orders/o1/shipx', () => {
+      http.post('/api/orders/o1/shipx', async ({ request }) => {
         calls.push('create');
+        createBodies.push(await request.json());
         return HttpResponse.json({ ok: false, error: { code: 'shipx_unavailable', message: 'InPost ShipX is unavailable; retry in a moment' } }, { status: 503 });
       }),
     );
@@ -230,8 +232,42 @@ describe('order detail shipment', () => {
     await userEvent.click(screen.getByRole('button', { name: en.shipx.discardAttempt }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(en.shipx.discardConfirmBody)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('combobox', { name: en.shipx.parcelTemplateOverrideLabel }));
+    await userEvent.click(await screen.findByRole('option', { name: en.shipx.parcelTemplates.large }));
     await userEvent.click(within(dialog).getByRole('button', { name: en.shipx.discardConfirm }));
     await waitFor(() => expect(calls).toEqual(['discard', 'create']));
+    expect(createBodies).toEqual([{ orderId: 'o1', parcelTemplate: 'large' }]);
+  });
+
+  it('creates the InPost shipment with the parcel size staff chose and without one by default', async () => {
+    const createBodies: unknown[] = [];
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), memberEmail: 'buyer@example.org' }, invoice: null } })),
+      http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
+        ok: true,
+        data: { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null },
+      })),
+      http.post('/api/orders/o1/shipx', async ({ request }) => {
+        createBodies.push(await request.json());
+        return HttpResponse.json({ ok: false, error: { code: 'shipx_unavailable', message: 'InPost ShipX is unavailable; retry in a moment' } }, { status: 503 });
+      }),
+    );
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: en.shipx.create }));
+    const automatic = await screen.findByRole('dialog');
+    expect(within(automatic).getByRole('combobox', { name: en.shipx.parcelTemplateOverrideLabel }))
+      .toHaveTextContent(en.shipx.parcelTemplateAutomatic({ size: en.shipx.parcelTemplates.medium }));
+    await userEvent.click(within(automatic).getByRole('button', { name: en.shipx.createConfirm }));
+    await waitFor(() => expect(createBodies).toEqual([{ orderId: 'o1' }]));
+
+    await userEvent.click(await screen.findByRole('button', { name: en.shipx.create }));
+    const chosen = await screen.findByRole('dialog');
+    await userEvent.click(within(chosen).getByRole('combobox', { name: en.shipx.parcelTemplateOverrideLabel }));
+    await userEvent.click(await screen.findByRole('option', { name: en.shipx.parcelTemplates.large }));
+    expect(within(chosen).getByText(/Parcel locker shipment, size Large/)).toBeInTheDocument();
+    await userEvent.click(within(chosen).getByRole('button', { name: en.shipx.createConfirm }));
+    await waitFor(() => expect(createBodies).toEqual([{ orderId: 'o1' }, { orderId: 'o1', parcelTemplate: 'large' }]));
   });
 
   it('shows the conflict when the order was shipped meanwhile', async () => {

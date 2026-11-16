@@ -45,6 +45,16 @@ describe('OrderShipx', () => {
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('offers the parcel size only when the click creates a shipment', async () => {
+    const onCreate = vi.fn();
+    renderWithProviders(<OrderShipx {...props} onCreate={onCreate} view={{ ...ready, shipment: shipment({ status: 'offer_selected', trackingNumber: null, boughtAt: null }) }} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('combobox', { name: 'Parcel size for this shipment' })).toBeNull();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
   it('says that a test order is answered by the simulated InPost', async () => {
     renderWithProviders(<OrderShipx {...props} order={{ ...toPack, mode: 'test' }} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));

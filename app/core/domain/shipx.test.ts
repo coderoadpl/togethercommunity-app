@@ -8,6 +8,7 @@ import {
   sanitizeShipxError,
   shipxAttemptUnconfirmed,
   shipxClientKind,
+  shipxCreateInputSchema,
   shipxOfferToBuy,
   shipxPurchaseFailure,
   shipxReference,
@@ -43,6 +44,13 @@ describe('ShipX domain', () => {
     expect(largestParcelTemplate(['small', 'large', 'medium'])).toBe('large');
     expect(largestParcelTemplate(['small'])).toBe('small');
     expect(largestParcelTemplate([])).toBe('medium');
+  });
+
+  it('accepts an optional parcel template from the known templates when creating a shipment', () => {
+    expect(shipxCreateInputSchema.parse({ orderId: 'order-1' })).toEqual({ orderId: 'order-1' });
+    expect(shipxCreateInputSchema.parse({ orderId: 'order-1', parcelTemplate: 'large' })).toEqual({ orderId: 'order-1', parcelTemplate: 'large' });
+    expect(shipxCreateInputSchema.safeParse({ orderId: 'order-1', parcelTemplate: 'huge' }).success).toBe(false);
+    expect(shipxCreateInputSchema.safeParse({ orderId: 'order-1', parcelTemplate: null }).success).toBe(false);
   });
 
   it('derives the service from the carrier and pickup point', () => {

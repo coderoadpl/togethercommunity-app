@@ -808,6 +808,31 @@ describe('InPost shipment view and label', () => {
     expect(await sizedParcel(lines, [ebook, course])).toEqual({ view: 'large', created: 'large' });
   });
 
+  it('buys the parcel template staff chose instead of the largest product template', async () => {
+    const lines = [line('stand', 'physical'), line('shipping:locker', 'shipping')];
+    const larger = harness({ order: orderListItemSchema.parse({ ...baseOrder, lines }) });
+    expect(await createInpostShipment(write, { orderId: 'order-1', parcelTemplate: 'large' }, larger.deps)).toMatchObject({ ok: true });
+    expect(larger.real.calls.create.map((request) => request.parcelTemplate)).toEqual(['large']);
+    const smaller = harness();
+    expect(await createInpostShipment(write, { orderId: 'order-1', parcelTemplate: 'small' }, smaller.deps)).toMatchObject({ ok: true });
+    expect(smaller.real.calls.create.map((request) => request.parcelTemplate)).toEqual(['small']);
+  });
+
+  it('keeps the largest product template, medium for products without one, when staff choose no template', async () => {
+    expect(await sizedParcel(undefined, [productSchema.parse({ ...product('stand', 'small'), parcelTemplate: undefined })])).toEqual({ view: 'medium', created: 'medium' });
+    const h = harness();
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.create.map((request) => request.parcelTemplate)).toEqual(['large']);
+  });
+
+  it('rejects an unknown parcel template before claiming the order or calling ShipX', async () => {
+    const h = harness();
+    expect(await createInpostShipment(write, { orderId: 'order-1', parcelTemplate: 'huge' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createInpostShipment(write, { orderId: 'order-1', parcelTemplate: 'large', extra: true }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.row()).toBeUndefined();
+  });
+
   it('returns the stored view of a shipment waiting for payment without calling ShipX or writing', async () => {
     const h = harness();
     h.seed({ shipxShipmentId: '1001', status: 'offer_selected' });

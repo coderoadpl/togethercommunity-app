@@ -765,6 +765,8 @@ export const en: Messages = {
     createConfirmBody: ({ service, size, email }) => `InPost creates and charges a ${service} shipment, size ${size}. The order is then marked as shipped and ${email} receives the tracking e-mail.`,
     createConfirmBodyTest: ({ service, size }) => `Test order: the simulated InPost answers for a ${service} shipment, size ${size}. Nothing is charged and no e-mail is sent.`,
     createConfirm: 'Create shipment',
+    parcelTemplateOverrideLabel: 'Parcel size for this shipment',
+    parcelTemplateAutomatic: ({ size }) => `Automatic: the largest product size, ${size}`,
     printLabel: 'Print label',
     downloadingLabel: 'Downloading label…',
     shipmentStatus: ({ status }) => `InPost shipment status: ${status}`,

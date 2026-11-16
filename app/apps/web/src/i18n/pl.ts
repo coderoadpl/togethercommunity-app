@@ -772,6 +772,8 @@ export const pl: Messages = {
     createConfirmBody: ({ service, size, email }) => `InPost utworzy i opłaci przesyłkę: ${service}, gabaryt ${size}. Zamówienie zostanie oznaczone jako wysłane, a ${email} dostanie e-mail z numerem przesyłki.`,
     createConfirmBodyTest: ({ service, size }) => `Zamówienie testowe: odpowiada symulowany InPost (${service}, gabaryt ${size}). Nic nie zostanie pobrane i nie wyślemy e-maila.`,
     createConfirm: 'Utwórz przesyłkę',
+    parcelTemplateOverrideLabel: 'Gabaryt paczki tej przesyłki',
+    parcelTemplateAutomatic: ({ size }) => `Automatycznie: największy gabaryt produktów, ${size}`,
     printLabel: 'Drukuj etykietę',
     downloadingLabel: 'Pobieranie etykiety…',
     shipmentStatus: ({ status }) => `Status przesyłki InPost: ${status}`,

@@ -294,8 +294,11 @@ the InPost locker sizes A (8 × 38 × 64 cm), B (19 × 38 × 64 cm) and C
 (41 × 38 × 64 cm). Studio shows **InPost parcel size** in the editor and on the
 create page of physical products shipped by parcel; the API and the CLI accept
 it on every product. A shipment uses the largest size among the order's product
-lines. Locker shipments send the size as the ShipX `template`; courier
-shipments send the size's dimensions and a fixed weight of 5 kg
+lines, unless staff choose another size for that shipment (see
+[Creating the shipment](#creating-the-shipment)). One order is one parcel with
+one label; an order that does not fit one large locker parcel goes by courier
+or is shipped by hand. Locker shipments send the size as the ShipX
+`template`; courier shipments send the size's dimensions and a fixed weight of 5 kg
 (`SHIPX_COURIER_PARCEL_WEIGHT_KG` in `core/domain/shipx.ts`). Product
 snapshots carry the parcel size from version 9
 (`core/domain/snapshots/product/v9.ts`); version 8 snapshots read unchanged
@@ -338,9 +341,19 @@ delivery option has the carrier `inpost`, when the staff role has `order:write`
 and the workspace is ready. The service follows the option: a parcel locker
 option sends `inpost_locker_standard` with the locker code as `target_point`,
 an address option sends `inpost_courier_standard` with the delivery address.
-The confirmation names the service, the parcel size and the buyer e-mail. The
-receiver is the delivery name (split into first and last name at the last
-space), the member e-mail and the delivery phone. For courier shipments the
+The confirmation names the service, the parcel size and the buyer e-mail, and
+offers **Parcel size for this shipment**: **Automatic** (the largest product
+size, the default) or one of the three sizes. The chosen size is sent as the
+optional `parcelTemplate` (`small`, `medium` or `large`) in the body of
+`POST /api/orders/<orderId>/shipx`, or with
+`order shipx create <orderId> --parcel-template <size>` in the CLI; another
+value is refused with `validation` before anything is claimed or sent to ShipX.
+Without it the parcel takes the largest product size. The size applies only
+when the request creates the ShipX shipment: a retry that finishes the payment
+of a stored shipment or looks up an unconfirmed attempt keeps the shipment
+ShipX already has, and **Discard the attempt and create again** offers the same
+choice for the new shipment. The receiver is the delivery name (split into
+first and last name at the last space), the member e-mail and the delivery phone. For courier shipments the
 street line is split into street and building number; an address without a
 building number is refused with a validation message so staff can dispatch it
 manually. ShipX e-mail and SMS notifications (`additional_services`) stay off

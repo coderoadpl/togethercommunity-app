@@ -233,6 +233,7 @@ const ordersShipOptionsSchema = z.object({
 const ordersIssueOptionsSchema = z.object({
   count: z.string().regex(/^[1-9]\d*$/, 'Count must be a positive integer').transform((value) => Number.parseInt(value, 10)).optional(),
 });
+const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
   environment: shipxEnvironmentSchema.optional(),
@@ -1820,12 +1821,19 @@ ordersShipx.command('refresh <orderId>').description('Read the live ShipX status
     emit(await ctx.api.shipxRefresh({ orderId }), ctx.json, shipxOrderLines);
   }),
 );
-ordersShipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped').action(
-  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
-    emit(await ctx.api.shipxCreate({ orderId }), ctx.json, (data) =>
-      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`);
-  }),
-);
+ordersShipx
+  .command('create <orderId>')
+  .description('Create and pay the InPost shipment, then mark the order as shipped')
+  .option('--parcel-template <size>', 'InPost parcel size for this shipment: small, medium or large (default: the largest product template)')
+  .action(
+    withInput(z.tuple([z.string().min(1), ordersShipxCreateOptionsSchema]), async (ctx, [orderId, options]) => {
+      emit(
+        await ctx.api.shipxCreate({ orderId, ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }) }),
+        ctx.json,
+        (data) => `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`,
+      );
+    }),
+  );
 ordersShipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
     emit(await ctx.api.shipxDiscard({ orderId }), ctx.json, () => `discarded the unconfirmed InPost attempt of ${orderId}`);

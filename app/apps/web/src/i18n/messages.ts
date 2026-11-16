@@ -736,6 +736,8 @@ export interface Messages {
     createConfirmBody: (params: { service: string; size: string; email: string }) => string;
     createConfirmBodyTest: (params: { service: string; size: string }) => string;
     createConfirm: string;
+    parcelTemplateOverrideLabel: string;
+    parcelTemplateAutomatic: (params: { size: string }) => string;
     printLabel: string;
     downloadingLabel: string;
     shipmentStatus: (params: { status: string }) => string;

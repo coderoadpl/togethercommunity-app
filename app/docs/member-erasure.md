@@ -73,6 +73,11 @@ follow the same member-erasure selection as live orders.
   matching SNS notification receipts to `together-scrubbed:v1:` without changing
   their status, so pending feedback remains processable; late feedback for erased
   recipients is scrubbed before persistence as well;
+- deletes the current tenant's `provider_customer_owners` rows written for the
+  member (`member_id`) or holding the member's Stripe customer identifier from
+  `external_customer_ids`, so that Stripe customer is unowned again and a later
+  subscription adoption follows the normal ownership rules; rows of other
+  tenants stay;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state

@@ -46,8 +46,10 @@ CREATE TABLE provider_customer_owners (
   provider text NOT NULL CONSTRAINT provider_customer_owners_provider_check CHECK (provider IN ('stripe')),
   customer_id text NOT NULL,
   tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  member_id text,
   created_at text NOT NULL,
-  CONSTRAINT provider_customer_owners_pkey PRIMARY KEY (provider, customer_id)
+  CONSTRAINT provider_customer_owners_pkey PRIMARY KEY (provider, customer_id),
+  CONSTRAINT provider_customer_owners_tenant_member_fk FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)
 );
 --> statement-breakpoint
 CREATE INDEX provider_customer_owners_tenant_idx ON provider_customer_owners (tenant_id);

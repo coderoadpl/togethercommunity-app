@@ -407,11 +407,15 @@ someone recovers it:
    Stripe IDs of the logged event: `provider_customer_owners.customer_id`
    (provider `stripe`), `member_subscriptions.provider_subscription_id`,
    `orders.provider_object_ids` and `members.external_customer_ids ->> 'stripe'`.
-   `provider_customer_owners` holds one owning tenant per Stripe customer. Only
-   Stripe subscription adoption writes it, both when it adopts a subscription
-   and when it reconciles one already adopted. The webhook ownership check
-   reads it first, and so do adoption and the adoption listing. Its rows go
-   away only with their tenant.
+   `provider_customer_owners` holds one owning tenant per Stripe customer and
+   the member it was written for (`member_id`). Only Stripe subscription
+   adoption writes it, both when it adopts a subscription and when it
+   reconciles one already adopted; it fills a missing `member_id` of its own
+   tenant's row and never replaces another member's. The webhook ownership
+   check reads it first, and so do adoption and the adoption listing. Its rows
+   go away with their tenant, and member erasure deletes the tenant's rows
+   written for the erased member or holding that member's Stripe customer
+   identifier; that customer is then unowned.
 3. Remove or re-assign the wrong record so the Stripe ID belongs to one tenant
    only. For a customer recorded in `provider_customer_owners`, that means
    updating or deleting its row by hand; no route does it.

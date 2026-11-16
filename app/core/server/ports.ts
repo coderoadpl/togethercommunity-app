@@ -2697,7 +2697,9 @@ export interface ActivityReportRepository {
 }
 
 export interface ProviderCustomerOwnerRepository {
-  claimStripeCustomer(tenantId: string, customerId: string, claimedAt: string): Promise<'this-workspace' | 'another-workspace'>;
+  claimStripeCustomer(
+    tenantId: string, claim: { customerId: string; memberId: string; claimedAt: string },
+  ): Promise<'this-workspace' | 'another-workspace'>;
 }
 
 export interface SubscriptionAdoptionRepositories {

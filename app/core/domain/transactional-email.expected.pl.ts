@@ -71,6 +71,11 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty 40,99\u00a0zł jest w toku.</p><p>Zamówienie: order-&lt;1&gt;<br>Kupujący: buyer@example.com<br>Brak towaru: Printed &lt;poster&gt;, Mug</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
     text: 'Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty 40,99\u00a0zł jest w toku.\nZamówienie: order-<1>\nKupujący: buyer@example.com\nBrak towaru: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1',
   },
+  orderOutOfStockNothingChargedEmail: {
+    subject: '[Acme] Zamówienie anulowane z braku towaru: order-<1>',
+    html: '<p>Zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.</p><p>Zamówienie: order-&lt;1&gt;<br>Kupujący: buyer@example.com<br>Brak towaru: Printed &lt;poster&gt;, Mug</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.\nZamówienie: order-<1>\nKupujący: buyer@example.com\nBrak towaru: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1',
+  },
   orderRefundAlertEmail: {
     subject: '[Acme] Automatyczny zwrot nie powiódł się, zwróć ręcznie: order-<1>',
     html: '<p>Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',

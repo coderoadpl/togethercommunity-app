@@ -680,9 +680,7 @@ describe('order out of stock email', () => {
     const en = orderOutOfStockEmail('en', { ...input, amountCents: 0 });
     expect(en.text).toBe('An order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock, and nothing was charged, so there is nothing to refund.\nOrder: order-<1>\nBuyer: buyer@example.com\nOut of stock: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1');
     expect(en.html).toContain('<p>An order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock, and nothing was charged, so there is nothing to refund.</p>');
-    const pl = orderOutOfStockEmail('pl', { ...input, amountCents: 0 });
-    expect(pl.text).toContain('Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.');
-    expect(pl.html).not.toContain('zwrot całej kwoty');
+    expect(orderOutOfStockEmail('pl', { ...input, amountCents: 0 })).toEqual(expectedTransactionalEmailPl.orderOutOfStockNothingChargedEmail);
   });
 });
 

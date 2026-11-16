@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { DELETED_MEMBER_DISPLAY, err, memberTombstone, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription, m2mListStripeSubscriptions, type StripeSubscriptionAdoptionDeps } from '#core/server/index.js';
 
+import { createProviderCustomerOwnerRepository } from './provider-customer-owners.js';
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
 import { createMemberErasureRepository, createMemberSubscriptionRepository } from './repositories.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -259,4 +260,54 @@ it('lets exactly one of two workspaces adopt different subscriptions of one cust
   expect((await database.db.select().from(memberSubscriptions))
     .filter((subscription) => subscription.providerSubscriptionId === first.id || subscription.providerSubscriptionId === second.id)
     .map((subscription) => subscription.tenantId)).toEqual(owners);
+});
+
+const ownerRowOf = async (customerId: string) => (await database.db.select().from(providerCustomerOwners)
+  .where(eq(providerCustomerOwners.customerId, customerId))).map((owner) => ({ tenantId: owner.tenantId, memberId: owner.memberId }));
+
+it('records the adopting member on a new owner row and fills a row without a member only for this workspace', async () => {
+  await database.db.insert(providerCustomerOwners).values({ provider: 'stripe', customerId: 'cus_unclaimed', tenantId: 't1', createdAt: now });
+  const owners = createProviderCustomerOwnerRepository(database.db);
+
+  await expect(owners.claimStripeCustomer('t2', { customerId: 'cus_unclaimed', memberId: 'member-2', claimedAt: now }))
+    .resolves.toBe('another-workspace');
+  expect(await ownerRowOf('cus_unclaimed')).toEqual([{ tenantId: 't1', memberId: null }]);
+  await expect(owners.claimStripeCustomer('t1', { customerId: 'cus_unclaimed', memberId: 'member-1', claimedAt: now }))
+    .resolves.toBe('this-workspace');
+  expect(await ownerRowOf('cus_unclaimed')).toEqual([{ tenantId: 't1', memberId: 'member-1' }]);
+  await expect(owners.claimStripeCustomer('t1', { customerId: 'cus_unclaimed', memberId: 'member-3', claimedAt: now }))
+    .resolves.toBe('this-workspace');
+  expect(await ownerRowOf('cus_unclaimed')).toEqual([{ tenantId: 't1', memberId: 'member-1' }]);
+});
+
+it('removes the owner rows of an erased member so a later adoption of its customer follows the normal rules', async () => {
+  const email = 'forgotten@example.com';
+  await database.db.insert(user).values({ id: 'user-forgotten', email, name: 'Forgotten' });
+  await database.db.insert(members).values([
+    { id: 'forgotten', tenantId: 't1', userId: 'user-forgotten', email, createdAt: now,
+      externalCustomerIds: { stripe: 'cus_forgotten_linked' } },
+    { id: 'forgotten', tenantId: 't2', userId: 'user-forgotten', email, createdAt: now },
+  ]);
+  await database.db.insert(providerCustomerOwners).values([
+    { provider: 'stripe', customerId: 'cus_forgotten_linked', tenantId: 't1', createdAt: now },
+    { provider: 'stripe', customerId: 'cus_forgotten_elsewhere', tenantId: 't2', memberId: 'forgotten', createdAt: now },
+  ]);
+  expect(await adopt('t1', 'forgotten', snapshot('sub_forgotten', 'cus_forgotten', email)))
+    .toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+  expect(await ownerRowOf('cus_forgotten')).toEqual([{ tenantId: 't1', memberId: 'forgotten' }]);
+  expect(await adopt('t2', 'forgotten', snapshot('sub_forgottenBlocked', 'cus_forgotten', email))).toMatchObject(conflict);
+
+  const tombstone = memberTombstone('forgotten');
+  await createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` })
+    .pseudonymize('t1', { memberId: 'forgotten', deletedAt: now, tombstoneEmail: tombstone.email,
+      severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY });
+
+  expect(await ownerRowOf('cus_forgotten')).toEqual([]);
+  expect(await ownerRowOf('cus_forgotten_linked')).toEqual([]);
+  expect(await ownerRowOf('cus_existing')).toEqual([{ tenantId: 't1', memberId: 'member-1' }]);
+  expect(await ownerRowOf('cus_forgotten_elsewhere')).toEqual([{ tenantId: 't2', memberId: 'forgotten' }]);
+
+  expect(await adopt('t2', 'forgotten', snapshot('sub_forgottenLater', 'cus_forgotten', email)))
+    .toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+  expect(await ownerRowOf('cus_forgotten')).toEqual([{ tenantId: 't2', memberId: 'forgotten' }]);
 });

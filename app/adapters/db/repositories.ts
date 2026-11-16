@@ -213,6 +213,7 @@ import {
   productDownloadAssets,
   downloadCopies,
   processedPaymentEvents,
+  providerCustomerOwners,
   salesLinks,
   products,
   spaces,
@@ -2975,6 +2976,18 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
             eq(memberBlocks.blockedUserId, member.userId),
           ),
         ));
+
+      const stripeCustomerId = member.externalCustomerIds['stripe'];
+      await tx.delete(providerCustomerOwners).where(and(
+        eq(providerCustomerOwners.tenantId, tenantId),
+        or(
+          eq(providerCustomerOwners.memberId, input.memberId),
+          stripeCustomerId === undefined ? undefined : and(
+            eq(providerCustomerOwners.provider, 'stripe'),
+            eq(providerCustomerOwners.customerId, stripeCustomerId),
+          ),
+        ),
+      ));
 
       await tx
         .update(members)

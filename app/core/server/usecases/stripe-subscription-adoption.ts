@@ -127,7 +127,8 @@ const reconcileAdoption = async (
     ? await resolvePrice(tenantId, product.id, undefined, remote, now, deps)
     : ok({ price: known, created: false });
   if (!resolved.ok) return resolved;
-  if (await deps.customerOwners.claimStripeCustomer(tenantId, remote.customerId, now) === 'another-workspace') {
+  const claim = { customerId: remote.customerId, memberId: member.id, claimedAt: now };
+  if (await deps.customerOwners.claimStripeCustomer(tenantId, claim) === 'another-workspace') {
     return foreignOwnerRefusal();
   }
   const billable: Partial<Pick<MemberSubscription, 'status' | 'currentPeriodEnd' | 'cancelAtPeriodEnd'>> =
@@ -178,7 +179,8 @@ const saveAdoption = async (
     return err(adoptionRefusal('validation', 'email-mismatch', 'Stripe customer email does not match the member'));
   }
   const now = deps.clock.nowIso();
-  if (await deps.customerOwners.claimStripeCustomer(tenantId, remote.customerId, now) === 'another-workspace') {
+  const claim = { customerId: remote.customerId, memberId: member.value.id, claimedAt: now };
+  if (await deps.customerOwners.claimStripeCustomer(tenantId, claim) === 'another-workspace') {
     return foreignOwnerRefusal();
   }
   const resolved = await resolvePrice(tenantId, product.id, input.priceId, remote, now, deps);

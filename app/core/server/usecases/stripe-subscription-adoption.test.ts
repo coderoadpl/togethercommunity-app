@@ -32,7 +32,7 @@ const harness = (published = true) => {
   const repositories: Omit<SubscriptionAdoptionRepositories, 'stripeWebhookOwnership'> = {
     members: { findById: async (tenantId, id) => members.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
       findByEmail: async (tenantId, email) => members.find((candidate) => candidate.tenantId === tenantId && candidate.email === email) ?? null },
-    customerOwners: { claimStripeCustomer: async (tenantId, customerId) => {
+    customerOwners: { claimStripeCustomer: async (tenantId, { customerId }) => {
       const owner = customerOwners.get(customerId) ?? tenantId;
       customerOwners.set(customerId, owner);
       return owner === tenantId ? 'this-workspace' : 'another-workspace';

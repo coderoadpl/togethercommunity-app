@@ -997,10 +997,16 @@ export const providerCustomerOwners = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
     primaryKey({ name: 'provider_customer_owners_pkey', columns: [table.provider, table.customerId] }),
+    foreignKey({
+      name: 'provider_customer_owners_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('no action'),
     index('provider_customer_owners_tenant_idx').on(table.tenantId),
     check('provider_customer_owners_provider_check', sql`${table.provider} IN ('stripe')`),
   ],

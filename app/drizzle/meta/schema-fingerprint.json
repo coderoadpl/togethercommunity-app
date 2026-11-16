@@ -1,6 +1,6 @@
 {
-  "hash": "334a262a2c5c17320140e8dfc1a88533ecd5fb70118adae9627a441f63c26bbe",
-  "shortId": "334a262a2c5c",
+  "hash": "22fc73c9b267f6a005e23519670fc0235821c673bd56bd7254c9af9afffbd0c2",
+  "shortId": "22fc73c9b267",
   "schema": {
     "constraints": [
       {
@@ -1352,6 +1352,11 @@
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
         "name": "product_grants_tenant_member_fk",
         "table": "product_grants"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
+        "name": "provider_customer_owners_tenant_member_fk",
+        "table": "provider_customer_owners"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
@@ -13823,6 +13828,14 @@
             "identity": "",
             "name": "customer_id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": false,
             "type": "text"
           },
           {

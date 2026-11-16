@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
+import pg from 'pg';
 
-import { DELETED_MEMBER_DISPLAY, err, memberTombstone, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, appError, err, memberTombstone, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription, m2mListStripeSubscriptions, type StripeSubscriptionAdoptionDeps } from '#core/server/index.js';
 
 import { createProviderCustomerOwnerRepository } from './provider-customer-owners.js';
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
-import { createMemberErasureRepository, createMemberSubscriptionRepository } from './repositories.js';
+import { createMemberErasureRepository, createMemberSubscriptionRepository, createProductGrantRepository } from './repositories.js';
 import { createTestDatabase } from './test-database-name.js';
 import { createSubscriptionAdoptionTransaction } from './subscription-adoption.js';
 import {
@@ -214,25 +215,124 @@ it('records the owner of a customer adopted before ownership rows existed when i
   expect(await ownersOf('cus_legacy')).toEqual(['t1']);
 });
 
+const erase = (memberId: string, deletedAt = now) => {
+  const tombstone = memberTombstone(memberId);
+  return createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` })
+    .pseudonymize('t1', { memberId, deletedAt, tombstoneEmail: tombstone.email,
+      severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY });
+};
+
+const erasedRefusal = err(appError('conflict', 'Member account was erased; it can no longer be modified'));
+
+const adoptionRowsOf = async (memberId: string, customerId: string) => ({
+  subscriptions: await database.db.select().from(memberSubscriptions).where(eq(memberSubscriptions.memberId, memberId)),
+  grants: await database.db.select().from(productGrants).where(eq(productGrants.memberId, memberId)),
+  events: (await database.db.select().from(memberEvents).where(eq(memberEvents.memberId, memberId)))
+    .filter((event) => event.type === 'subscription-adopted'),
+  owners: await database.db.select().from(providerCustomerOwners).where(or(
+    eq(providerCustomerOwners.memberId, memberId), eq(providerCustomerOwners.customerId, customerId),
+  )),
+});
+
+const noAdoptionRows = { subscriptions: [], grants: [], events: [], owners: [] };
+
+const withObserver = async <T>(operation: (waitForLockWaiters: (waiters: number, settled: () => boolean) => Promise<void>) => Promise<T>) => {
+  const observer = new pg.Client({ connectionString: database.url });
+  await observer.connect();
+  try {
+    return await operation(async (waiters, settled) => {
+      for (;;) {
+        expect(settled()).toBe(false);
+        const waiting = await observer.query<{ count: number }>(
+          "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+        );
+        if ((waiting.rows[0]?.count ?? 0) >= waiters) return;
+      }
+    });
+  } finally {
+    await observer.end();
+  }
+};
+
 it('never writes a Stripe customer back onto a member erased while the adoption runs', async () => {
   const email = await addMembers('erased', {});
-  const erasure = createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` });
   const transaction = createSubscriptionAdoptionTransaction(database.db);
-  const result = await adopt('t1', 'erased-t1', snapshot('sub_erased', 'cus_erased', email), {
+  const result = await m2mAdoptStripeSubscription('t1', { subscriptionId: 'sub_erased', email, productId: 'product-1' }, { ...deps,
+    payment: { retrieveStripeSubscription: async () => ok(snapshot('sub_erased', 'cus_erased', email)) },
     subscriptionAdoptionTransaction: { run: (tenantId, stripe, operation) => transaction.run(tenantId, stripe, (repositories) =>
-      operation({ ...repositories, members: { ...repositories.members, findById: async (memberTenantId, memberId) => {
-        const found = await repositories.members.findById(memberTenantId, memberId);
-        const tombstone = memberTombstone(memberId);
-        await erasure.pseudonymize(memberTenantId, { memberId, deletedAt: now, tombstoneEmail: tombstone.email,
-          severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY });
+      operation({ ...repositories, members: { ...repositories.members, findByEmail: async (memberTenantId, memberEmail) => {
+        const found = await repositories.members.findByEmail(memberTenantId, memberEmail);
+        if (found !== null) await erase(found.id);
         return found;
       } } })) },
   });
-  expect(result).toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+  expect(result).toEqual(erasedRefusal);
   const [erased] = await database.db.select().from(members).where(eq(members.id, 'erased-t1'));
   expect(erased?.deletedAt).not.toBeNull();
   expect(erased?.externalCustomerIds).toEqual({});
-  expect(await ownersOf('cus_erased')).toEqual(['t1']);
+  expect(await adoptionRowsOf('erased-t1', 'cus_erased')).toEqual(noAdoptionRows);
+});
+
+it('refuses an adoption that waited for a member erasure to commit', async () => {
+  const email = await addMembers('erasurefirst', {});
+  const blocker = new pg.Client({ connectionString: database.url });
+  await blocker.connect();
+  try {
+    await withObserver(async (waitForLockWaiters) => {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT id FROM "user" WHERE id = $1 FOR UPDATE', ['user-erasurefirst']);
+      let erasureSettled = false;
+      let adoptionSettled = false;
+      const erasing = erase('erasurefirst-t1').finally(() => { erasureSettled = true; });
+      await waitForLockWaiters(1, () => erasureSettled);
+      const adopting = adopt('t1', 'erasurefirst-t1', snapshot('sub_erasurefirst', 'cus_erasurefirst', email))
+        .finally(() => { adoptionSettled = true; });
+      await waitForLockWaiters(2, () => adoptionSettled);
+      await blocker.query('COMMIT');
+      expect(await erasing).toMatchObject({ alreadyDeleted: false });
+      expect(await adopting).toEqual(erasedRefusal);
+    });
+  } finally {
+    await blocker.end();
+  }
+  expect(await adoptionRowsOf('erasurefirst-t1', 'cus_erasurefirst')).toEqual(noAdoptionRows);
+});
+
+it('lets an erasure that waited for an adoption cancel the adopted subscription, expire its grant and drop its owner row', async () => {
+  const email = await addMembers('adoptionfirst', {});
+  const erasedAt = '1998-07-15T00:00:00.000Z';
+  const transaction = createSubscriptionAdoptionTransaction(database.db);
+  let releaseAdoption = () => {};
+  const adoptionReleased = new Promise<void>((resolve) => { releaseAdoption = resolve; });
+  let memberLocked = () => {};
+  const adoptionHoldsMember = new Promise<void>((resolve) => { memberLocked = resolve; });
+  const adopting = adopt('t1', 'adoptionfirst-t1', snapshot('sub_adoptionfirst', 'cus_adoptionfirst', email), {
+    subscriptionAdoptionTransaction: { run: (tenantId, stripe, operation) => transaction.run(tenantId, stripe, (repositories) =>
+      operation({ ...repositories, products: { findById: async (productTenantId, productId) => {
+        memberLocked();
+        await adoptionReleased;
+        return repositories.products.findById(productTenantId, productId);
+      } } })) },
+  });
+  try {
+    await adoptionHoldsMember;
+    await withObserver(async (waitForLockWaiters) => {
+      let erasureSettled = false;
+      const erasing = erase('adoptionfirst-t1', erasedAt).finally(() => { erasureSettled = true; });
+      await waitForLockWaiters(1, () => erasureSettled);
+      releaseAdoption();
+      expect(await adopting).toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+      expect(await erasing).toMatchObject({ alreadyDeleted: false });
+    });
+  } finally {
+    releaseAdoption();
+  }
+  const rows = await adoptionRowsOf('adoptionfirst-t1', 'cus_adoptionfirst');
+  expect(rows.subscriptions).toMatchObject([{ providerSubscriptionId: 'sub_adoptionfirst', status: 'canceled', cancelAtPeriodEnd: true }]);
+  expect(rows.grants).toMatchObject([{ expiresAt: erasedAt }]);
+  expect(await createProductGrantRepository(database.db).listActiveForMember('t1', 'adoptionfirst-t1', '1998-07-16T00:00:00.000Z'))
+    .toEqual([]);
+  expect(rows.owners).toEqual([]);
 });
 
 it('lets exactly one of two workspaces adopt different subscriptions of one customer at the same time', async () => {

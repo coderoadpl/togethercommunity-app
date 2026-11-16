@@ -156,13 +156,10 @@ const saveAdoption = async (
   remote: StripeSubscriptionSnapshot,
   deps: AdoptionRepositories,
 ): Promise<Result<AdoptStripeSubscriptionResult, AppError>> => {
-  const found = input.memberId === undefined
-    ? await deps.members.findByEmail(tenantId, normalizeEmail(input.email ?? ''))
-    : await deps.members.findById(tenantId, input.memberId);
-  if (found === null && input.memberId === undefined) {
-    return err(notFound('No member with that e-mail address in this tenant'));
-  }
-  const member = requireLiveMember(found, input.memberId ?? '');
+  const memberId = input.memberId
+    ?? (await deps.members.findByEmail(tenantId, normalizeEmail(input.email ?? '')))?.id;
+  if (memberId === undefined) return err(notFound('No member with that e-mail address in this tenant'));
+  const member = requireLiveMember(await deps.members.findByIdForShare(tenantId, memberId), memberId);
   if (!member.ok) return member;
   const product = await deps.products.findById(tenantId, input.productId);
   if (product === null) return err(notFound('Product was not found'));

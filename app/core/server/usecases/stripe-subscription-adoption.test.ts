@@ -30,7 +30,7 @@ const harness = (published = true) => {
   const events: Omit<MemberEvent, 'tenantId'>[] = [];
   const customerOwners = new Map<string, string>();
   const repositories: Omit<SubscriptionAdoptionRepositories, 'stripeWebhookOwnership'> = {
-    members: { findById: async (tenantId, id) => members.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
+    members: { findByIdForShare: async (tenantId, id) => members.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
       findByEmail: async (tenantId, email) => members.find((candidate) => candidate.tenantId === tenantId && candidate.email === email) ?? null },
     customerOwners: { claimStripeCustomer: async (tenantId, { customerId }) => {
       const owner = customerOwners.get(customerId) ?? tenantId;

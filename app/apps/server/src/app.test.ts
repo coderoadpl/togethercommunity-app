@@ -589,7 +589,8 @@ const deps = (input: {
       }),
     },
     subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
-      operation({ ...appDeps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' } }) },
+      operation({ ...appDeps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
+        members: { ...appDeps.members, findByIdForShare: (tenantId, memberId) => appDeps.members.findById(tenantId, memberId) } }) },
     paymentTransaction: {
       run: async (operation) =>
         operation({

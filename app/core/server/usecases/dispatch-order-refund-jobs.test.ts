@@ -627,16 +627,49 @@ describe('order refund dispatcher', () => {
     expect(result).toStrictEqual(ok({ processedCount: 3, outcomes: { refunded: 3 } }));
     expect(claimed).toStrictEqual(['job-1', 'job-2', 'job-3']);
     expect(untouched).toBe(3);
-    expect(warnings).toStrictEqual(['[order-refund] run deadline reached, 3 due refund jobs left for the next run']);
+    expect(warnings).toStrictEqual(['[order-refund] run stopped by deadline, 3 due refund jobs left for the next run']);
   });
 
-  it('claims one job on the cron tick although the deadline leaves time for more, and logs no deadline warning', async () => {
+  it('claims one job on the cron tick although the deadline leaves time for more, and names the cap in the warning', async () => {
     expect(ORDER_REFUND_CRON_TICK_MAX_JOBS).toBe(1);
     const { result, claimed, untouched, warnings } = await slowDispatch({ deadlineAt: Date.parse(createdAt) + 45_000, maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
 
     expect(result).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
     expect(claimed).toStrictEqual(['job-1']);
     expect(untouched).toBe(5);
+    expect(warnings).toStrictEqual(['[order-refund] run stopped by cap, 5 due refund jobs left for the next run']);
+  });
+
+  it('warns about the one due job the cron tick cap left of two', async () => {
+    const h = harness();
+    const orders = [1, 2].map((index) => cancelledOrder({
+      id: `order-${String(index)}`, providerObjectIds: { checkoutSession: `cs_${String(index)}`, paymentIntent: `pi_${String(index)}` },
+    }));
+    const jobs = createOrderRefundJobFake();
+    for (const [index, order] of orders.entries()) {
+      await jobs.repository.enqueue('tenant-a', outOfStockRefundJob(order, { id: `job-${String(index + 1)}`, now: createdAt }));
+    }
+    const warnings: string[] = [];
+    const result = await dispatchOrderRefundJobs({
+      ...h.deps,
+      refundJobs: jobs.repository,
+      orderDetails: { findById: async (tenantId: string, orderId: string) => orders.find((order) => order.tenantId === tenantId && order.id === orderId) ?? null },
+      payment: createRefundProviderFake({ chargeAmountCents: 4099 }).payment,
+      logger: { ...h.deps.logger, warn: (message: string) => { warnings.push(message); } },
+    }, { deadlineAt: Date.parse(createdAt) + 45_000, maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
+
+    expect(result).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+    expect(jobs.jobs.filter((job) => job.attempts > 0).map((job) => job.id)).toStrictEqual(['job-1']);
+    expect(warnings).toStrictEqual(['[order-refund] run stopped by cap, 1 due refund jobs left for the next run']);
+  });
+
+  it('logs no warning when the cap stops a run that has no due job left', async () => {
+    const h = harness();
+    await h.queue();
+    const warnings: string[] = [];
+    const result = await dispatchOrderRefundJobs({ ...h.deps, logger: { ...h.deps.logger, warn: (message: string) => { warnings.push(message); } } }, { deadlineAt: Date.parse(createdAt) + 45_000, maxJobs: 1 });
+
+    expect(result).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
     expect(warnings).toStrictEqual([]);
   });
 
@@ -655,7 +688,7 @@ describe('order refund dispatcher', () => {
     expect(result).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
     expect(claimed).toStrictEqual([]);
     expect(untouched).toBe(6);
-    expect(warnings).toStrictEqual(['[order-refund] run deadline reached, 6 due refund jobs left for the next run']);
+    expect(warnings).toStrictEqual(['[order-refund] run stopped by deadline, 6 due refund jobs left for the next run']);
   });
 
   it('gives a run without a tick deadline, such as the kick after a webhook, 30 seconds', async () => {

@@ -270,12 +270,12 @@ const processClaim = async (claim: ClaimedOrderRefundJob, deps: DispatchOrderRef
   return settlement.outcome;
 };
 
-const warnUnclaimedAtDeadline = async (deps: DispatchOrderRefundJobsDeps): Promise<void> => {
+const warnDueJobsLeft = async (stoppedBy: 'cap' | 'deadline', deps: DispatchOrderRefundJobsDeps): Promise<void> => {
   try {
-    const unclaimed = await deps.refundJobs.countDue({ now: deps.clock.nowIso() });
-    if (unclaimed > 0) deps.logger.warn(`[order-refund] run deadline reached, ${String(unclaimed)} due refund jobs left for the next run`);
+    const due = await deps.refundJobs.countDue({ now: deps.clock.nowIso() });
+    if (due > 0) deps.logger.warn(`[order-refund] run stopped by ${stoppedBy}, ${String(due)} due refund jobs left for the next run`);
   } catch (cause) {
-    deps.logger.error(safeLogMessage(`[order-refund] due refund jobs not counted at the run deadline: ${safeErrorMessage(cause)}`));
+    deps.logger.error(safeLogMessage(`[order-refund] due refund jobs not counted after the run stopped by ${stoppedBy}: ${safeErrorMessage(cause)}`));
   }
 };
 
@@ -287,9 +287,13 @@ export const dispatchOrderRefundJobs = async (
   let processedCount = 0;
   const deadlineAt = options.deadlineAt ?? Date.parse(deps.clock.nowIso()) + ORDER_REFUND_DISPATCH_BUDGET_MS;
   const maxJobs = Math.min(options.maxJobs ?? MAX_JOBS_PER_DISPATCH, MAX_JOBS_PER_DISPATCH);
-  while (processedCount < maxJobs) {
+  for (;;) {
+    if (processedCount >= maxJobs) {
+      await warnDueJobsLeft('cap', deps);
+      break;
+    }
     if (Date.parse(deps.clock.nowIso()) + ORDER_REFUND_JOB_WORST_CASE_MS > deadlineAt) {
-      await warnUnclaimedAtDeadline(deps);
+      await warnDueJobsLeft('deadline', deps);
       break;
     }
     const claim = await deps.refundJobs.claimDue({ now: deps.clock.nowIso(), leaseMs: LEASE_MS });

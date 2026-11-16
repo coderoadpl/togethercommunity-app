@@ -896,10 +896,10 @@ queues a refund job; a failing kick or tick is logged and never fails the
 webhook response, the e-mail dispatch or the Meta CAPI dispatch. It handles at
 most 25 due jobs per run (one on the cron tick, see below) and claims a job only
 when the worst case of that job still ends before the run's deadline; jobs it
-did not claim stay due for the next tick. When the deadline leaves due jobs
-unclaimed, the run logs one warning with their number
-(`[order-refund] run deadline reached, <n> due refund jobs left for the next
-run`). The minute tick sets the deadline 45 seconds after the tick request
+did not claim stay due for the next tick. When a run stops with due jobs left,
+whether the job cap or the deadline stopped it, it logs one warning naming the
+reason and their number (`[order-refund] run stopped by <cap|deadline>, <n> due
+refund jobs left for the next run`); a run that leaves no due job logs nothing. The minute tick sets the deadline 45 seconds after the tick request
 started, so the notification fan-out, the stock sweep and the e-mail dispatch
 that run first use part of it; a run started any other way (the kick after a
 webhook, the Node ticker) gets 30 seconds from its own start.

@@ -61,7 +61,8 @@ analytics form. Empty copy fields restore the defaults shown as placeholders.
 The separate write-only token card saves or removes the encrypted secret and
 shows only whether it is configured. Only workspace owners can manage it.
 
-On `/checkout/<slug>?status=success` and `/offer/<slug>?status=success`, an eligible
+On `/checkout/<slug>?status=success`, the hosted cart page's return
+`/checkout/cart/pay?status=success` and `/offer/<slug>?status=success`, an eligible
 paid order with no decision opens an accessible consent dialog over the return
 page. Accept and decline have equal visual weight. Neither is preselected;
 Escape or the backdrop closes the dialog without recording a choice. Dismissal

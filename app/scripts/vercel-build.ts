@@ -16,6 +16,7 @@ import { stampManifestVersion } from './stamp-manifest-version.js';
 import {
   beginVercelBuildOnce,
   completeVercelBuildOnce,
+  feedEpochRotationDecision,
   migrationJournalDecision,
   releaseVercelBuildOnce,
   stagingSeedCandidate,
@@ -124,11 +125,23 @@ const seedEmptyStagingDeployment = async (verdict: DeploymentDatabaseVerdict): P
   run('pnpm', ['run', 'db:seed']);
 };
 
+// Neon preview and staging branches start as copies of their parent, epoch included, so a cursor of the parent must not read on as valid.
+const rotateCopiedFeedEpoch = (verdict: DeploymentDatabaseVerdict): void => {
+  const decision = feedEpochRotationDecision(process.env, verdict);
+  if (decision.action === 'skip') {
+    process.stdout.write(`vercel-build: order feed epoch kept (${decision.reason})\n`);
+    return;
+  }
+  process.stdout.write('vercel-build: rotating the order feed epoch of this non-production database\n');
+  run('pnpm', ['run', 'orders:rotate-feed-epoch']);
+};
+
 const runFullBuild = async (): Promise<string> => {
   const derivedVersion = applyDerivedVersion();
   const deploymentVerdict = assertDeploymentDatabase();
   await assertMigrationJournalReady();
   run('pnpm', ['run', 'db:migrate']);
+  rotateCopiedFeedEpoch(deploymentVerdict);
   await seedEmptyStagingDeployment(deploymentVerdict);
   run('pnpm', ['run', 'build']);
   return derivedVersion;

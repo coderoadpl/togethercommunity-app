@@ -306,7 +306,8 @@ control functions that a hosted database may refuse. A restore to an earlier
 state can leave cursors behind the current position that the guard cannot tell
 apart, so only `pnpm run orders:rotate-feed-epoch` changes the epoch: the
 [move and restore runbook](deployment-environments.md#order-change-feed-after-a-move-or-restore)
-runs it.
+runs it, and the deployment build runs it after migrating every preview and
+staging database.
 
 The rows are kept without a retention purge for now. Deleting an order, for
 example through a product deletion, deletes its change rows.

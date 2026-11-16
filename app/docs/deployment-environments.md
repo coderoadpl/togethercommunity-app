@@ -406,6 +406,23 @@ has not reached yet is answered with a reset for its own workspace without
 changing the epoch, and a restore to an earlier state can leave older cursors
 that look valid, so the command is part of every move and restore.
 
+Creating a Neon branch from a parent and resetting a branch from its parent
+both copy the parent's epoch together with its order changes. Every Vercel
+build whose `APP_ENV` is exactly `preview`, `staging` or `development`, whose
+deployment is not production and whose database guard allowed the database
+therefore runs `pnpm run orders:rotate-feed-epoch` right after `db:migrate`, and
+logs `vercel-build: rotating the order feed epoch of this non-production
+database`. Any other `APP_ENV`, an absent or empty one, a misspelt one,
+`production`, a `VERCEL_ENV` of `production`, or a database the guard only
+warned about keeps the epoch and logs `vercel-build: order feed epoch kept
+(<reason>)`. A branch created or reset from its parent outside a build, for
+example from the Neon console before a manual test against it, is rotated by
+hand before anything follows its feed:
+
+```bash
+DATABASE_URL='<branch database URL>' pnpm run orders:rotate-feed-epoch
+```
+
 The function runs in Vercel `fra1`; the Neon project must remain in
 `aws-eu-central-1`. Moving either side requires moving both. Deployed tenant
 resolution uses `X-Tenant` until a wildcard base domain is attached.

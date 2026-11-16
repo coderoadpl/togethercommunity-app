@@ -24,6 +24,10 @@ export type StagingSeedCandidate =
   | { action: 'inspect-markers'; databaseUrl: string }
   | { action: 'skip'; reason: 'not-staging' | 'missing-database-url' | 'database-not-allowed' };
 
+export type FeedEpochRotationDecision =
+  | { action: 'rotate' }
+  | { action: 'skip'; reason: 'production' | 'unknown-environment' | 'database-not-allowed' | 'missing-database-url' };
+
 export type StagingSeedDecision =
   | { action: 'seed' }
   | { action: 'skip'; reason: 'markers-present' };
@@ -402,3 +406,18 @@ export const migrationJournalDecision = (
           `the database has ${state.tables} tables but no migration journal; it looks like a schema-only copy. Recreate it as an empty database (see docs/staging.md).`,
       }
     : { action: 'allowed' };
+
+const FEED_EPOCH_ROTATION_APP_ENVS: readonly string[] = ['preview', 'staging', 'development'];
+
+export const feedEpochRotationDecision = (
+  env: VercelBuildPolicyEnv,
+  verdict: DeploymentDatabaseVerdict,
+): FeedEpochRotationDecision => {
+  if (env.APP_ENV === 'production' || env.VERCEL_ENV === 'production' || isProductionEnvironment(env)) {
+    return { action: 'skip', reason: 'production' };
+  }
+  if (!FEED_EPOCH_ROTATION_APP_ENVS.includes(env.APP_ENV ?? '')) return { action: 'skip', reason: 'unknown-environment' };
+  if (verdict.decision !== 'allowed') return { action: 'skip', reason: 'database-not-allowed' };
+  if (env.DATABASE_URL === undefined || env.DATABASE_URL === '') return { action: 'skip', reason: 'missing-database-url' };
+  return { action: 'rotate' };
+};

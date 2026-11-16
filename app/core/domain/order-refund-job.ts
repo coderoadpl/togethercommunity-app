@@ -94,7 +94,7 @@ export interface ClaimedOrderRefundJob {
   lease: { status: OrderRefundJobStatus; lockedAt: string };
 }
 
-export const ORDER_REFUND_ALERTS = ['retrying', 'blocked_permission', 'blocked_permission_failed', 'failed', 'failed_after_submission'] as const;
+export const ORDER_REFUND_ALERTS = ['retrying', 'blocked_permission', 'blocked_permission_failed', 'failed', 'failed_after_submission', 'unconfirmed'] as const;
 export type OrderRefundAlert = (typeof ORDER_REFUND_ALERTS)[number];
 
 export const orderRefundJobViewSchema = orderRefundJobSchema.pick({

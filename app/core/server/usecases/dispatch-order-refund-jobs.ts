@@ -16,11 +16,10 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
-import { safeLogMessage } from '../log-safety.js';
+import { safeErrorMessage, safeLogMessage } from '../log-safety.js';
 import type {
   Clock,
-  EmailOutboxRepository,
-  IdGenerator,
+  EmailOutboxEnqueueInput,
   OrderDetailRepository,
   OrderRefundJobRepository,
   OrderRefundJobUpdate,
@@ -39,14 +38,12 @@ export interface DispatchOrderRefundJobsDeps extends TenantUrlDeps {
   tenants: Pick<TenantRepository, 'findById' | 'findSettings'>;
   tenantAccess: Pick<TenantAccessReader, 'listStaffForTenant'>;
   tenantDomains: Pick<TenantDomainRepository, 'listByTenant'>;
-  emailOutbox: Pick<EmailOutboxRepository, 'enqueue'>;
-  ids: IdGenerator;
   clock: Clock;
   logger: { warn(message: string): void; error(message: string): void };
   dispatchEmail(): void;
 }
 
-type DispatchOutcome = 'refunded' | 'submitted' | 'skipped_refunded' | 'retrying' | 'blocked_permission' | 'failed' | 'checked' | 'lease_lost';
+type DispatchOutcome = 'refunded' | 'submitted' | 'skipped_refunded' | 'retrying' | 'blocked_permission' | 'failed' | 'checked' | 'unconfirmed' | 'deferred' | 'lease_lost';
 
 export interface DispatchOrderRefundJobsResult {
   processedCount: number;
@@ -63,11 +60,15 @@ const MAX_JOBS_PER_DISPATCH = 25;
 const LEASE_MS = 10 * 60_000;
 const STATUS_READ_RETRY_MS = 60 * 60_000;
 const STATUS_READ_GIVE_UP_AFTER_MS = 8 * 24 * 60 * 60_000;
+const SETTLEMENT_RETRY_MS = 60_000;
 
 const providerUnavailable = refundFailure('credentials_unavailable', 'The payment provider cannot issue refunds');
 
 const finalFailure = (lastError: string, alert: OrderRefundAlert = 'failed'): Settlement =>
   ({ update: { status: 'failed', nextAttemptAt: null, lastError }, outcome: 'failed', alert });
+
+const unconfirmed = (update: OrderRefundJobUpdate & { lastError: string }): Settlement =>
+  ({ update: { ...update, status: 'unconfirmed', nextAttemptAt: null }, outcome: 'unconfirmed', alert: 'unconfirmed' });
 
 const settleSubmittedRefund = (refund: ProviderRefund, now: string): Settlement => {
   if (refund.status === 'failed' || refund.status === 'canceled') {
@@ -106,7 +107,7 @@ const settleRefundFailure = (job: OrderRefundJob, error: AppError, now: string):
   if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(error.message);
   const retryAt = orderRefundRetryAt(job.attempts, now, job.createdAt);
   if (retryAt === null) return finalFailure(error.message);
-  return { update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message }, outcome: 'retrying', alert: job.attempts === 1 ? 'retrying' : null };
+  return { update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message }, outcome: 'retrying', alert: job.lastError === null ? 'retrying' : null };
 };
 
 const committedRefundCents = (refunds: readonly ProviderRefund[]): number =>
@@ -151,9 +152,9 @@ const checkRefundStatus = async (job: OrderRefundJob, order: OrderListItem | nul
     ? err(providerUnavailable)
     : await deps.payment.getRefund({ mode: order?.mode ?? 'live', tenantId: job.tenantId, refundId: job.providerRefundId });
   if (!read.ok) {
-    const givenUp = Date.parse(now) - Date.parse(job.submittedAt) > STATUS_READ_GIVE_UP_AFTER_MS;
+    if (Date.parse(now) - Date.parse(job.submittedAt) > STATUS_READ_GIVE_UP_AFTER_MS) return unconfirmed({ lastError: read.error.message });
     return {
-      update: { nextAttemptAt: givenUp ? null : new Date(Date.parse(now) + STATUS_READ_RETRY_MS).toISOString(), lastError: read.error.message },
+      update: { nextAttemptAt: new Date(Date.parse(now) + STATUS_READ_RETRY_MS).toISOString(), lastError: read.error.message },
       outcome: 'checked',
       alert: null,
     };
@@ -167,36 +168,51 @@ const checkRefundStatus = async (job: OrderRefundJob, order: OrderListItem | nul
     };
   }
   const statusChecks = job.statusChecks + 1;
+  const nextAttemptAt = orderRefundStatusCheckAt(job.submittedAt, statusChecks);
+  if (refund.status !== 'succeeded' && nextAttemptAt === null) {
+    return unconfirmed({ providerRefundStatus: refund.status, statusChecks, lastError: `Refund still ${refund.status} at the last scheduled status check` });
+  }
   return {
     update: {
-      status: refund.status === 'succeeded' ? 'succeeded' : 'submitted', providerRefundStatus: refund.status, statusChecks,
-      nextAttemptAt: orderRefundStatusCheckAt(job.submittedAt, statusChecks), lastError: null,
+      status: refund.status === 'succeeded' ? 'succeeded' : 'submitted', providerRefundStatus: refund.status, statusChecks, nextAttemptAt, lastError: null,
     },
     outcome: 'checked',
     alert: null,
   };
 };
 
-const queueStaffAlert = async (job: OrderRefundJob, alert: OrderRefundAlert, deps: DispatchOrderRefundJobsDeps): Promise<void> => {
+const staffAlertEmails = async (job: OrderRefundJob, alert: OrderRefundAlert, deps: DispatchOrderRefundJobsDeps): Promise<EmailOutboxEnqueueInput[]> => {
   const tenant = await deps.tenants.findById(job.tenantId);
-  if (tenant === null) return;
+  if (tenant === null) return [];
   const recipients = await tenantStaffRecipients(job.tenantId, deps);
   const orderUrl = `${await resolveTenantOrigin(tenant, deps)}/panel/sales/${encodeURIComponent(job.orderId)}`;
   const now = deps.clock.nowIso();
-  for (const recipient of recipients) {
-    const queued = await deps.emailOutbox.enqueue({
-      id: deps.ids.nextId(),
-      tenantId: job.tenantId,
-      to: recipient.email,
-      payload: {
-        kind: 'order-refund-alert', language: recipient.language, tenantName: tenant.name, alert, orderId: job.orderId,
-        amountCents: job.amountCents, currency: job.currency, error: job.lastError ?? '', orderUrl,
-      },
+  return recipients.map((recipient, index) => ({
+    id: `order-refund-alert:${job.id}:${alert}:${String(job.attempts)}:${String(index)}`,
+    tenantId: job.tenantId,
+    to: recipient.email,
+    payload: {
+      kind: 'order-refund-alert', language: recipient.language, tenantName: tenant.name, alert, orderId: job.orderId,
+      amountCents: job.amountCents, currency: job.currency, error: job.lastError ?? '', orderUrl,
+    },
+    now,
+  }));
+};
+
+const deferSettlement = async (claim: ClaimedOrderRefundJob, cause: unknown, deps: DispatchOrderRefundJobsDeps): Promise<DispatchOutcome> => {
+  const { job } = claim;
+  const now = deps.clock.nowIso();
+  deps.logger.error(safeLogMessage(`[order-refund] settlement not saved, retrying tenant=${job.tenantId} order=${job.orderId} job=${job.id} phase=${claim.phase}: ${safeErrorMessage(cause)}`));
+  try {
+    await deps.refundJobs.release(job.tenantId, job.id, claim.lease, {
+      ...(claim.phase === 'refund' ? { status: 'pending' } : {}),
+      nextAttemptAt: new Date(Date.parse(now) + SETTLEMENT_RETRY_MS).toISOString(),
       now,
     });
-    if (!queued.ok) deps.logger.error(`[order-refund] staff alert not queued tenant=${job.tenantId} order=${job.orderId} alert=${alert}: ${queued.error.message}`);
+  } catch (releaseCause) {
+    deps.logger.error(safeLogMessage(`[order-refund] job left to its lease tenant=${job.tenantId} order=${job.orderId} job=${job.id}: ${safeErrorMessage(releaseCause)}`));
   }
-  if (recipients.length > 0) deps.dispatchEmail();
+  return 'deferred';
 };
 
 const processClaim = async (claim: ClaimedOrderRefundJob, deps: DispatchOrderRefundJobsDeps): Promise<DispatchOutcome> => {
@@ -206,7 +222,14 @@ const processClaim = async (claim: ClaimedOrderRefundJob, deps: DispatchOrderRef
   const settlement = claim.phase === 'refund'
     ? await refundJob(job, order, now, deps)
     : await checkRefundStatus(job, order, now, deps);
-  const released = await deps.refundJobs.release(job.tenantId, job.id, claim.lease, { ...settlement.update, now: deps.clock.nowIso() });
+  let staffAlerts: EmailOutboxEnqueueInput[] = [];
+  let released: OrderRefundJob | null;
+  try {
+    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, settlement.alert, deps);
+    released = await deps.refundJobs.release(job.tenantId, job.id, claim.lease, { ...settlement.update, now: deps.clock.nowIso() }, staffAlerts);
+  } catch (cause) {
+    return deferSettlement(claim, cause, deps);
+  }
   if (released === null) {
     deps.logger.error(`[order-refund] lease lost tenant=${job.tenantId} order=${job.orderId} job=${job.id} phase=${claim.phase}`);
     return 'lease_lost';
@@ -214,7 +237,7 @@ const processClaim = async (claim: ClaimedOrderRefundJob, deps: DispatchOrderRef
   if (settlement.outcome !== 'refunded' && settlement.outcome !== 'checked') {
     deps.logger.warn(safeLogMessage(`[order-refund] tenant=${job.tenantId} order=${job.orderId} job=${job.id} attempt=${String(job.attempts)} status=${released.status} next=${released.nextAttemptAt ?? 'none'} error=${released.lastError ?? 'none'}`));
   }
-  if (settlement.alert !== null) await queueStaffAlert(released, settlement.alert, deps);
+  if (staffAlerts.length > 0) deps.dispatchEmail();
   return settlement.outcome;
 };
 

@@ -8,4 +8,4 @@ ALTER TABLE "order_refund_jobs" ADD COLUMN "permission_blocked_at" timestamp wit
 --> statement-breakpoint
 ALTER TABLE "order_refund_jobs" DROP CONSTRAINT "order_refund_jobs_status_check";
 --> statement-breakpoint
-ALTER TABLE "order_refund_jobs" ADD CONSTRAINT "order_refund_jobs_status_check" CHECK ("status" IN ('pending', 'running', 'submitted', 'succeeded', 'failed', 'blocked_permission', 'skipped_refunded', 'resolved_externally'));
+ALTER TABLE "order_refund_jobs" ADD CONSTRAINT "order_refund_jobs_status_check" CHECK ("status" IN ('pending', 'running', 'submitted', 'succeeded', 'failed', 'blocked_permission', 'skipped_refunded', 'resolved_externally', 'unconfirmed'));

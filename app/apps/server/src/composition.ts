@@ -1171,8 +1171,6 @@ export const createDeps = (
     tenants,
     tenantAccess,
     tenantDomains,
-    emailOutbox,
-    ids,
     clock,
     logger,
     dispatchEmail,

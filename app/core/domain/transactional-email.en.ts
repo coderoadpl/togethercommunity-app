@@ -197,6 +197,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
         blocked_permission_failed: 'Automatic refund still blocked after 72 hours, refund by hand',
         failed: 'Automatic refund failed, refund by hand',
         failed_after_submission: 'Refund failed after it was issued, refund by hand',
+        unconfirmed: 'Refund not confirmed by Stripe, check it by hand',
       } as const;
       const bodies = {
         retrying: [`The automatic refund of ${amount} for cancelled order ${orderId} failed. It is retried automatically for 7 days; you get another message if it still fails.`,
@@ -209,6 +210,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
           `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`],
         failed_after_submission: [`Stripe reports that the refund of ${amount} for cancelled order ${orderId} failed after it was issued. Return the money to the buyer another way.`,
           `Stripe reports that the refund of ${amountHtml} for cancelled order ${orderIdHtml} failed after it was issued. Return the money to the buyer another way.`],
+        unconfirmed: [`Stripe has not confirmed the refund of ${amount} for cancelled order ${orderId}, and the refund is no longer checked automatically. Check it in the Stripe Dashboard; if it failed or was canceled, return the money to the buyer another way.`,
+          `Stripe has not confirmed the refund of ${amountHtml} for cancelled order ${orderIdHtml}, and the refund is no longer checked automatically. Check it in the Stripe Dashboard; if it failed or was canceled, return the money to the buyer another way.`],
       } as const;
       const [text, html] = bodies[alert];
       return {

@@ -222,7 +222,9 @@ same order and keeps them until that transaction ends; a late line that no
 longer fits cancels the whole order instead of committing, and the
 `order_refund_jobs` row of that order is inserted in the same transaction. Its
 unique `(tenant_id, order_id)` and `idempotency_key` indexes keep one refund job
-per order. Stock events are never updated or deleted
+per order. The refund dispatcher saves a job's new state and the staff alert
+rows for that state in the e-mail outbox in one transaction, so a failed alert
+write leaves the job unsettled and it is retried. Stock events are never updated or deleted
 except through the product foreign-key cascade when a draft product is deleted.
 
 ## Sales links and order lines

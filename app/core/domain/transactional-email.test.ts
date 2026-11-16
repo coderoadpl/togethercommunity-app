@@ -700,6 +700,15 @@ describe('order refund alert email', () => {
     expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission' })).toMatchObject(expectedTransactionalEmailPl.orderRefundBlockedAlertEmail);
   });
 
+  it('tells staff to check a refund Stripe never confirmed and to return the money another way if it failed, in English and Polish', () => {
+    const unconfirmed = { ...input, alert: 'unconfirmed' as const, error: 'Refund still pending at the last scheduled status check' };
+    const en = orderRefundAlertEmail('en', unconfirmed);
+    expect(en.subject).toBe('[Acme] Refund not confirmed by Stripe, check it by hand: order-<1>');
+    expect(en.text).toBe('Stripe has not confirmed the refund of PLN\u00a040.99 for cancelled order order-<1>, and the refund is no longer checked automatically. Check it in the Stripe Dashboard; if it failed or was canceled, return the money to the buyer another way.\nLast error: Refund still pending at the last scheduled status check\nhttps://acme.example.com/panel/sales/order-1');
+    expect(en.html).toContain('cancelled order order-&lt;1&gt;, and the refund is no longer checked automatically.');
+    expect(orderRefundAlertEmail('pl', unconfirmed)).toMatchObject(expectedTransactionalEmailPl.orderRefundUnconfirmedAlertEmail);
+  });
+
   it('gives every alert its own subject', () => {
     const subjects = ORDER_REFUND_ALERTS.map((alert) => orderRefundAlertEmail('en', { ...input, alert }).subject);
     expect(new Set(subjects).size).toBe(ORDER_REFUND_ALERTS.length);

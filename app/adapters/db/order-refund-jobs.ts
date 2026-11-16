@@ -4,6 +4,7 @@ import { orderRefundJobSchema, type OrderRefundJob } from '#core/domain/index.js
 import type { OrderRefundJobRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { createEmailOutboxRepository } from './email-outbox.js';
 import { orderRefundJobs } from './order-refund-job-schema.js';
 
 const isoOrNull = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();
@@ -60,8 +61,8 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
     const job = toJob(claimed);
     return { job, phase: refunding ? 'refund' : 'status_check', lease: { status: job.status, lockedAt: now } };
   }),
-  release: async (tenantId, jobId, lease, { now, ...update }) => {
-    const [row] = await db.update(orderRefundJobs)
+  release: async (tenantId, jobId, lease, { now, ...update }, staffAlerts = []) => db.transaction(async (tx) => {
+    const [row] = await tx.update(orderRefundJobs)
       .set({ ...update, lockedAt: null, updatedAt: now })
       .where(and(
         eq(orderRefundJobs.tenantId, tenantId),
@@ -70,8 +71,15 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
         eq(orderRefundJobs.lockedAt, lease.lockedAt),
       ))
       .returning();
-    return row === undefined ? null : toJob(row);
-  },
+    if (row === undefined) return null;
+    const outbox = createEmailOutboxRepository(tx);
+    for (const alert of staffAlerts) {
+      if (alert.tenantId !== tenantId) throw new Error(`Refund alert ${alert.id} belongs to another workspace`);
+      const queued = await outbox.enqueue(alert);
+      if (!queued.ok) throw new Error(`Refund alert ${alert.id} not queued: ${queued.error.message}`);
+    }
+    return toJob(row);
+  }),
   resolveExternally: async (tenantId, orderId, now) => {
     const [row] = await db.update(orderRefundJobs)
       .set({ status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: now })

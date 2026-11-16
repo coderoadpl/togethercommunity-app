@@ -19,6 +19,14 @@ describe('OrderRefundJob', () => {
     expect(within(section).getByRole('alert')).toHaveTextContent('Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt.');
   });
 
+  it('shows a refund Stripe never confirmed with its last known status and tells staff to check it by hand', () => {
+    renderWithProviders(<OrderRefundJob job={{ ...job, status: 'unconfirmed', lastError: 'Refund still pending at the last scheduled status check', providerRefundId: 're_123', providerRefundStatus: 'pending', submittedAt: '2026-11-15T10:43:00.000Z' }} />);
+    const section = screen.getByTestId('order-refund-job');
+    expect(within(section).getByText('Not confirmed by Stripe, check by hand')).toBeVisible();
+    expect(within(section).getByText('re_123 (pending)')).toBeVisible();
+    expect(within(section).getByRole('alert')).toHaveTextContent('Stripe did not confirm this refund and it is no longer checked automatically.');
+  });
+
   it('shows the Stripe refund of a refunded order without a warning', () => {
     renderWithProviders(<OrderRefundJob job={{ ...job, status: 'succeeded', lastError: null, providerRefundId: 're_123', providerRefundStatus: 'succeeded', submittedAt: '2026-11-15T10:43:00.000Z' }} />);
     const section = screen.getByTestId('order-refund-job');

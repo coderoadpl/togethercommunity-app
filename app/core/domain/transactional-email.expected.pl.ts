@@ -84,6 +84,10 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     subject: '[Acme] Automatyczny zwrot nadal zablokowany po 72 godzinach, zwróć ręcznie: order-<1>',
     text: 'Zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
   },
+  orderRefundUnconfirmedAlertEmail: {
+    subject: '[Acme] Stripe nie potwierdził zwrotu, sprawdź go ręcznie: order-<1>',
+    text: 'Stripe nie potwierdził zwrotu 40,99\u00a0zł za anulowane zamówienie order-<1>, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.\nOstatni błąd: Refund still pending at the last scheduled status check\nhttps://acme.example.com/panel/sales/order-1',
+  },
   orderSoldOutRefundEmail: {
     subject: 'Zamówienie order-<1> anulowane: towar wyprzedany, zwracamy całą kwotę',
     html: '<p>Cześć!</p><p>Płatność za zamówienie order-&lt;1&gt; na platformie Acme &lt;Shop&gt; wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Wyprzedane: Printed &lt;poster&gt;, Mug</p><p>Automatycznie zleciliśmy zwrot całej kwoty 40,99\u00a0zł na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul><li>Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.</li><li>BLIK: zwrot trwa około 120 minut.</li><li>Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.</li><li>Inne metody płatności: czas zależy od operatora płatności.</li></ul><p>Przepraszamy za kłopot.</p><p><a href="https://acme.example.com/">Przejdź do sklepu</a></p>',

@@ -8,7 +8,7 @@ import { formatDateTime } from '../../../lib/format.js';
 export const OrderRefundJob = ({ job }: { job: OrderRefundJobView }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const problem = job.status === 'failed' || job.status === 'blocked_permission';
+  const problem = job.status === 'failed' || job.status === 'blocked_permission' || job.status === 'unconfirmed';
   const rows = [
     [t.sales.refundJobAttempts, String(job.attempts)],
     [t.sales.refundJobNextAttempt, job.nextAttemptAt === null ? '—' : formatDateTime(job.nextAttemptAt, language, SALES_LINK_TIME_ZONE)],
@@ -30,6 +30,7 @@ export const OrderRefundJob = ({ job }: { job: OrderRefundJobView }) => {
         ))}
         {job.status === 'blocked_permission' ? <Alert severity="error">{t.sales.refundJobBlockedHelp}</Alert> : null}
         {job.status === 'failed' ? <Alert severity="error">{t.sales.refundJobFailedHelp}</Alert> : null}
+        {job.status === 'unconfirmed' ? <Alert severity="error">{t.sales.refundJobUnconfirmedHelp}</Alert> : null}
       </Stack>
     </SectionCard>
   );

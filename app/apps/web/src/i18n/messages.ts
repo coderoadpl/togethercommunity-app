@@ -896,6 +896,7 @@ export interface Messages {
     refundJobLastError: string;
     refundJobBlockedHelp: string;
     refundJobFailedHelp: string;
+    refundJobUnconfirmedHelp: string;
     invoiceDownload: string;
     ksefNumber: string;
     ksefPdfDownload: string;

@@ -372,13 +372,15 @@ const chargeAdjustment = (input: { eventId: string; paymentIntentId: string; amo
   },
 });
 
-const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing') => {
+const owner = { userId: 'owner', email: 'owner@example.com', staffRole: 'owner' as const, language: 'en' as const };
+
+const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing', staff: Array<typeof owner> = []) => {
   const calls: string[] = [];
   const deps = {
     ...h.webhookDeps,
     refundJobs: createOrderRefundJobRepository(database.db),
     orderDetails: createOrderRepository(database.db),
-    tenantAccess: { listStaffForTenant: async () => [] },
+    tenantAccess: { listStaffForTenant: async () => staff },
     payment: {
       createRefund: async (input: RefundInput) => {
         calls.push(`create:${input.idempotencyKey}`);
@@ -506,6 +508,30 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
 
     expect([...blocked.calls, ...paying.calls]).toStrictEqual([`create:oos-refund-${cancelled.id}`, `create:oos-refund-${cancelled.id}-1`]);
     expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'succeeded', attempts: 2, keyGeneration: 1, permissionBlockedAt: null, providerRefundId: 're_after_permission' });
+  });
+
+  it('commits a blocked refund only together with its staff alert and queues that alert exactly once', async () => {
+    const h = harness();
+    const cancelled = await cancelBundle(h);
+    const jobId = (await refundJobOf(cancelled.id))?.id ?? '';
+    const refundAlerts = async () => (await database.db.select({ id: emailOutbox.id, to: emailOutbox.to }).from(emailOutbox)
+      .where(eq(emailOutbox.tenantId, legacyTenant.id)).orderBy(asc(emailOutbox.id))).filter((row) => row.id.startsWith('order-refund-alert:'));
+    const takenId = `order-refund-alert:${jobId}:blocked_permission:1:0`;
+    await database.db.insert(emailOutbox).values({
+      id: takenId, tenantId: legacyTenant.id, kind: 'order-refund-alert', to: 'someone-else@example.com', payload: {},
+      nextAttemptAt: '2026-11-15T10:00:00.000Z', createdAt: '2026-11-15T10:00:00.000Z',
+    });
+    const blocked = providerCalls(h, 'permission_missing', [owner]);
+
+    expect(await blocked.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { deferred: 1 } }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'pending', attempts: 1, permissionBlockedAt: null, keyGeneration: 0, nextAttemptAt: '2026-11-15T10:43:00.000Z', lockedAt: null });
+    expect(await refundAlerts()).toStrictEqual([{ id: takenId, to: 'someone-else@example.com' }]);
+
+    await database.db.delete(emailOutbox).where(eq(emailOutbox.id, takenId));
+    h.setNow('2026-11-15T10:43:00.000Z');
+    expect(await blocked.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { blocked_permission: 1 } }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'blocked_permission', attempts: 2, permissionBlockedAt: '2026-11-15T10:43:00.000Z' });
+    expect(await refundAlerts()).toStrictEqual([{ id: `order-refund-alert:${jobId}:blocked_permission:2:0`, to: 'owner@example.com' }]);
   });
 
   it('resolves a job whose refund attempt is still running and makes that attempt lose its lease', async () => {

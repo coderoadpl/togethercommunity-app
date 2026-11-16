@@ -1,9 +1,11 @@
 import type { OrderRefundJob } from '#core/domain/index.js';
 
-import type { OrderRefundJobRepository } from '../ports.js';
+import type { EmailOutboxEnqueueInput, OrderRefundJobRepository } from '../ports.js';
 
 export const createOrderRefundJobFake = () => {
   const jobs: OrderRefundJob[] = [];
+  const alerts: EmailOutboxEnqueueInput[] = [];
+  let failingAlertWrites = 0;
   const repository: OrderRefundJobRepository = {
     enqueue: async (tenantId, job) => {
       if (jobs.some((existing) => existing.tenantId === tenantId && (existing.orderId === job.orderId || existing.idempotencyKey === job.idempotencyKey))) return false;
@@ -27,10 +29,17 @@ export const createOrderRefundJobFake = () => {
         : { lockedAt: now, nextAttemptAt: new Date(Date.parse(now) + leaseMs).toISOString(), updatedAt: now });
       return { job: structuredClone(due), phase: refunding ? 'refund' : 'status_check', lease: { status: due.status, lockedAt: now } };
     },
-    release: async (tenantId, jobId, lease, { now, ...update }) => {
+    release: async (tenantId, jobId, lease, { now, ...update }, staffAlerts = []) => {
       const job = jobs.find((candidate) => candidate.tenantId === tenantId && candidate.id === jobId
         && candidate.status === lease.status && candidate.lockedAt === lease.lockedAt);
       if (job === undefined) return null;
+      if (staffAlerts.length > 0 && failingAlertWrites > 0) {
+        failingAlertWrites -= 1;
+        throw new Error('Could not enqueue email: connection terminated');
+      }
+      for (const alert of staffAlerts) {
+        if (!alerts.some((queued) => queued.id === alert.id)) alerts.push(structuredClone(alert));
+      }
       Object.assign(job, { ...update, lockedAt: null, updatedAt: now });
       return structuredClone(job);
     },
@@ -42,5 +51,6 @@ export const createOrderRefundJobFake = () => {
       return structuredClone(job);
     },
   };
-  return { repository, jobs };
+  const failAlertWrites = (count: number) => { failingAlertWrites = count; };
+  return { repository, jobs, alerts, failAlertWrites };
 };

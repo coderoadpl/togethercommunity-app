@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  err,
   ok,
   orderListItemSchema,
   outOfStockRefundJob,
   refundFailure,
   type AppError,
-  type EmailOutboxPayload,
   type OrderListItem,
   type ProviderRefund,
   type Result,
@@ -42,7 +42,7 @@ const harness = (input: {
   staleRefundList?: boolean;
 } = {}) => {
   let now = createdAt;
-  let nextId = 0;
+  let failingRecipientLookups = 0;
   const order = input.order ?? cancelledOrder();
   const fake = createOrderRefundJobFake();
   const provider = createRefundProviderFake({
@@ -51,7 +51,8 @@ const harness = (input: {
     ...(input.reads === undefined ? {} : { reads: input.reads }),
     ...(input.refundedByHand === undefined ? {} : { refundedByHand: input.refundedByHand }),
   });
-  const alerts: Array<{ to: string; payload: EmailOutboxPayload }> = [];
+  const alerts = fake.alerts;
+  const errors: string[] = [];
   const deps = {
     refundJobs: fake.repository,
     orderDetails: { findById: async (tenantId: string, orderId: string) => (tenantId === order.tenantId && orderId === order.id ? order : null) },
@@ -60,17 +61,18 @@ const harness = (input: {
       findById: async () => ({ id: 'tenant-a', slug: 'acme', name: 'Acme', status: 'active' as const, plan: 'hosted' as const, contentVersion: 1 }),
       findSettings: async () => null,
     },
-    tenantAccess: { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.com', staffRole: 'owner' as const, language: 'en' as const }] },
-    tenantDomains: createInMemoryTenantDomainRepository(),
-    emailOutbox: {
-      enqueue: async (email: { to: string; payload: EmailOutboxPayload }) => {
-        alerts.push({ to: email.to, payload: email.payload });
-        return ok({ id: `email-${String(alerts.length)}` });
+    tenantAccess: {
+      listStaffForTenant: async () => {
+        if (failingRecipientLookups > 0) {
+          failingRecipientLookups -= 1;
+          throw new Error('Connection pool timeout');
+        }
+        return [{ userId: 'owner', email: 'owner@example.com', staffRole: 'owner' as const, language: 'en' as const }];
       },
     },
-    ids: { nextId: () => `id-${String(++nextId)}` },
+    tenantDomains: createInMemoryTenantDomainRepository(),
     clock: { nowIso: () => now },
-    logger: { warn: () => undefined, error: () => undefined },
+    logger: { warn: () => undefined, error: (message: string) => { errors.push(message); } },
     dispatchEmail: () => undefined,
     appBaseUrl: 'https://togethercommunity.app',
     baseDomain: 'togethercommunity.app',
@@ -92,7 +94,11 @@ const harness = (input: {
   };
   const alertKinds = () => alerts.map(({ payload }) => (payload.kind === 'order-refund-alert' ? payload.alert : payload.kind));
   const keys = () => provider.calls.map((call) => call.idempotencyKey);
-  return { deps, queue, tick, job, refundCalls: provider.calls, readCalls: provider.readCalls, created: provider.created, alerts, alertKinds, keys };
+  const failRecipientLookups = (count: number) => { failingRecipientLookups = count; };
+  return {
+    deps, queue, tick, job, refundCalls: provider.calls, readCalls: provider.readCalls, created: provider.created, alerts, alertKinds, keys, errors,
+    failAlertWrites: fake.failAlertWrites, failRecipientLookups,
+  };
 };
 
 describe('order refund dispatcher', () => {
@@ -332,6 +338,105 @@ describe('order refund dispatcher', () => {
     await h.tick(at(hours(24 * 7)));
     expect(h.readCalls).toHaveLength(1);
     expect(h.refundCalls).toHaveLength(1);
+  });
+
+  it.each(['pending', 'requires_action'] as const)('marks a refund still %s at the 7-day re-read as unconfirmed and alerts staff once', async (status) => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }], reads: [ok(providerRefund(status)), ok(providerRefund(status))] });
+    await h.queue();
+
+    await h.tick(createdAt);
+    await h.tick(at(hours(24)));
+    expect(h.job()).toMatchObject({ status: 'submitted', statusChecks: 1, nextAttemptAt: at(hours(24 * 7)) });
+    expect(h.alerts).toStrictEqual([]);
+
+    expect(await h.tick(at(hours(24 * 7)))).toStrictEqual({ processedCount: 1, outcomes: { unconfirmed: 1 } });
+    expect(h.job()).toMatchObject({
+      status: 'unconfirmed', providerRefundStatus: status, statusChecks: 2, nextAttemptAt: null, lockedAt: null,
+      lastError: `Refund still ${status} at the last scheduled status check`,
+    });
+    expect(h.alertKinds()).toStrictEqual(['unconfirmed']);
+    expect(h.alerts[0]).toMatchObject({ to: 'owner@example.com', payload: { error: `Refund still ${status} at the last scheduled status check` } });
+    expect(await h.tick(at(hours(24 * 30)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+    expect(h.readCalls).toHaveLength(2);
+    expect(h.refundCalls).toHaveLength(1);
+  });
+
+  it('marks a refund whose status reads fail until 8 days after it was issued as unconfirmed and alerts staff once', async () => {
+    const readFailure = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }], reads: Array.from({ length: 300 }, () => err(readFailure)) });
+    await h.queue();
+
+    await h.tick(createdAt);
+    const readTimes: string[] = [];
+    for (let tick = 0; tick < 300 && h.job().status === 'submitted'; tick += 1) {
+      const due = h.job().nextAttemptAt ?? createdAt;
+      readTimes.push(due);
+      await h.tick(due);
+    }
+
+    expect(h.job()).toMatchObject({ status: 'unconfirmed', providerRefundStatus: 'pending', nextAttemptAt: null, lastError: readFailure.message });
+    expect(readTimes.slice(0, 2)).toStrictEqual([at(hours(24)), at(hours(25))]);
+    expect(readTimes.at(-2)).toBe(at(hours(24 * 8)));
+    expect(readTimes.at(-1)).toBe(at(hours(24 * 8 + 1)));
+    expect(h.alertKinds()).toStrictEqual(['unconfirmed']);
+    expect(await h.tick(at(hours(24 * 30)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+  });
+
+  it('keeps a refund Stripe rejected for good out of its failed state until its staff alert is queued, and queues the alert exactly once', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('refund_failed', 'Refund amount is greater than the unrefunded amount') }] });
+    await h.queue();
+    h.failAlertWrites(1);
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { deferred: 1 } });
+    expect(h.job()).toMatchObject({ status: 'pending', attempts: 1, keyGeneration: 0, nextAttemptAt: at(minutes(1)), lastError: null, lockedAt: null });
+    expect(h.alerts).toStrictEqual([]);
+    expect(h.errors).toStrictEqual([expect.stringContaining('[order-refund] settlement not saved, retrying tenant=tenant-a order=order-1 job=job-1 phase=refund')]);
+
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { failed: 1 } });
+    expect(h.job()).toMatchObject({ status: 'failed', attempts: 2, nextAttemptAt: null, lastError: 'Refund amount is greater than the unrefunded amount' });
+    expect(h.alerts).toStrictEqual([expect.objectContaining({ id: 'order-refund-alert:job-1:failed:2:0', to: 'owner@example.com' })]);
+    expect(await h.tick(at(hours(24 * 30)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+    expect(h.keys()).toStrictEqual(['oos-refund-order-1', 'oos-refund-order-1']);
+    expect(h.created).toStrictEqual([]);
+  });
+
+  it('retries a missing permission whose staff recipients could not be read and alerts staff about it exactly once', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: permissionMissing() }] });
+    await h.queue();
+    h.failRecipientLookups(1);
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { deferred: 1 } });
+    expect(h.job()).toMatchObject({ status: 'pending', permissionBlockedAt: null, nextAttemptAt: at(minutes(1)) });
+
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+    expect(h.job()).toMatchObject({ status: 'blocked_permission', permissionBlockedAt: at(minutes(1)), nextAttemptAt: at(minutes(61)) });
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
+  });
+
+  it('sends the first retry alert after a failed alert write although the attempt counter moved on', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('transient', 'Stripe is unavailable') }] });
+    await h.queue();
+    h.failAlertWrites(1);
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { deferred: 1 } });
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { retrying: 1 } });
+    expect(h.job()).toMatchObject({ status: 'pending', attempts: 2, lastError: 'Stripe is unavailable' });
+    expect(h.alertKinds()).toStrictEqual(['retrying']);
+  });
+
+  it('reads a refund that failed after it was issued again a minute later when its staff alert could not be queued', async () => {
+    const h = harness({ reads: [ok(providerRefund('failed')), ok(providerRefund('failed'))] });
+    await h.queue();
+
+    await h.tick(createdAt);
+    h.failAlertWrites(1);
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { deferred: 1 } });
+    expect(h.job()).toMatchObject({ status: 'succeeded', statusChecks: 0, nextAttemptAt: at(hours(24) + minutes(1)), lockedAt: null });
+
+    expect(await h.tick(at(hours(24) + minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { failed: 1 } });
+    expect(h.job()).toMatchObject({ status: 'failed', providerRefundStatus: 'failed', nextAttemptAt: null });
+    expect(h.alertKinds()).toStrictEqual(['failed_after_submission']);
+    expect(h.readCalls).toHaveLength(2);
   });
 
   it('refunds nothing for an order that is not cancelled', async () => {

@@ -928,11 +928,18 @@ Staff get the `order-refund-alert` e-mail (support address, or every staff
 member in their language) on the first failed attempt, on the first missing
 permission (add the permission; waiting refunds are paid by the next hourly
 attempt), when a job ends as `failed` (a separate message when the permission
-was still missing after 72 hours) and when a refund fails after it was issued.
-Studio shows the job state, attempts, next attempt, Stripe refund and last
-error on the order page. A `failed` job is resolved by refunding the payment by
-hand in the Stripe Dashboard (the order then becomes `refunded`). Requeueing a
-failed job from Studio is not available yet.
+was still missing after 72 hours), when a refund fails after it was issued and
+when a refund ends `unconfirmed`. The alert rows are written to the e-mail
+outbox in the same database transaction that saves the job's new state, under
+the outbox id `order-refund-alert:<jobId>:<alert>:<attempt>:<recipient index>`.
+When the staff lookup or the outbox write fails, nothing of that settlement is
+saved: the job keeps its previous state, is due again a minute later and the
+Stripe call or status read is repeated with the same idempotency key, so the
+state change and its alert are saved together on a later tick. Studio shows
+the job state, attempts, next attempt, Stripe refund and last error on the
+order page. A `failed` job is resolved by refunding the payment by hand in the
+Stripe Dashboard (the order then becomes `refunded`). Requeueing a failed job
+from Studio is not available yet.
 
 When `charge.refunded` reports a full refund of a cancelled order, the same
 payment transaction marks the order `refunded` and moves a `pending`,
@@ -951,8 +958,12 @@ and no issue button).
 Stripe does not send `refund.failed` to the platform (the event is not
 subscribed), so the dispatcher reads the refund back 24 hours and 7 days after
 it was issued. A refund Stripe then reports as `failed` or `canceled` marks the
-job `failed` and alerts staff to return the money another way. A read that
-fails is retried hourly for up to 8 days after the refund was issued.
+job `failed` and alerts staff to return the money another way. A refund still
+`pending` or `requires_action` at the 7-day read, and a refund whose reads keep
+failing (retried hourly) until 8 days after it was issued, end as
+`unconfirmed`: staff get an alert to check the refund in the Stripe Dashboard
+and return the money another way if it failed, and the dispatcher stops
+reading it.
 
 #### Buyer communication for a cancelled order
 

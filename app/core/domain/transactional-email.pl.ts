@@ -197,6 +197,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
         blocked_permission_failed: 'Automatyczny zwrot nadal zablokowany po 72 godzinach, zwróć ręcznie',
         failed: 'Automatyczny zwrot nie powiódł się, zwróć ręcznie',
         failed_after_submission: 'Zwrot nie powiódł się po zleceniu, zwróć ręcznie',
+        unconfirmed: 'Stripe nie potwierdził zwrotu, sprawdź go ręcznie',
       } as const;
       const bodies = {
         retrying: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`,
@@ -209,6 +210,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
           `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`],
         failed_after_submission: [`Stripe zgłasza, że zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`,
           `Stripe zgłasza, że zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`],
+        unconfirmed: [`Stripe nie potwierdził zwrotu ${amount} za anulowane zamówienie ${orderId}, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.`,
+          `Stripe nie potwierdził zwrotu ${amountHtml} za anulowane zamówienie ${orderIdHtml}, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.`],
       } as const;
       const [text, html] = bodies[alert];
       return {

@@ -1,6 +1,6 @@
 {
-  "hash": "88f08f1bc0fda05ece2942b99b6cf88bc215d311a93bd4db730266d56a0a1373",
-  "shortId": "88f08f1bc0fd",
+  "hash": "6b76b5d9027f630211e35733666bf0d48fab0966f474b2acb88d50c937b6f583",
+  "shortId": "6b76b5d9027f",
   "schema": {
     "constraints": [
       {
@@ -3775,6 +3775,467 @@
             "default": "'[]'::jsonb",
             "generated": "",
             "identity": "",
+            "name": "checkout_return_origins",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "shipping_rates",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "social_links",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'active'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'automatic'::text",
+            "generated": "",
+            "identity": "",
+            "name": "ksef_submission_mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'b2b_only'::text",
+            "generated": "",
+            "identity": "",
+            "name": "auto_issue_invoice_scope",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'en'::text",
+            "generated": "",
+            "identity": "",
+            "name": "default_language",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'rate'::text",
+            "generated": "",
+            "identity": "",
+            "name": "invoice_vat_mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'sandbox'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'self_hosted'::text",
+            "generated": "",
+            "identity": "",
+            "name": "plan",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'{\"text\": \"\", \"enabled\": false}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "sign_in_notice",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "content_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "analytics_load_without_consent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_enabled",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "auto_issue_invoices",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "member_video_autoplay_override",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "video_autoplay_default",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "direct_messages_enabled",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "accent_color",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "accent_light",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_value",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_accept_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_body",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_decline_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_heading",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_test_event_code",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_pixel_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_tag_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "billing_portal_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bunny_stream_cdn_hostname",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bunny_stream_library_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_appearance",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "default_home_space_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "favicon_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "inpost_geowidget_token",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_exemption_basis",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_exemption_basis_kind",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_seller_address",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_seller_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_vat_rate_percent",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoicing_provider",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "logo_dark_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "logo_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "og_description",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "og_image_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "og_title",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "onboarding_dismissed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "privacy_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sender",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "support_email",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "support_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "terms_url",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "tenants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
             "name": "completed_lesson_ids",
             "notNull": true,
             "type": "jsonb"
@@ -3994,6 +4455,14 @@
             "generated": "",
             "identity": "",
             "name": "cancel_reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_reference",
             "notNull": false,
             "type": "text"
           },
@@ -4454,459 +4923,6 @@
           }
         ],
         "name": "tenant_domains"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "shipping_rates",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "social_links",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'active'::text",
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'automatic'::text",
-            "generated": "",
-            "identity": "",
-            "name": "ksef_submission_mode",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'b2b_only'::text",
-            "generated": "",
-            "identity": "",
-            "name": "auto_issue_invoice_scope",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'en'::text",
-            "generated": "",
-            "identity": "",
-            "name": "default_language",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'rate'::text",
-            "generated": "",
-            "identity": "",
-            "name": "invoice_vat_mode",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'sandbox'::text",
-            "generated": "",
-            "identity": "",
-            "name": "shipx_environment",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'self_hosted'::text",
-            "generated": "",
-            "identity": "",
-            "name": "plan",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'{\"text\": \"\", \"enabled\": false}'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "sign_in_notice",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "1",
-            "generated": "",
-            "identity": "",
-            "name": "content_version",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "analytics_load_without_consent",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_enabled",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "auto_issue_invoices",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "member_video_autoplay_override",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "video_autoplay_default",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "true",
-            "generated": "",
-            "identity": "",
-            "name": "direct_messages_enabled",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "accent_color",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "accent_light",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_consent_cookie_name",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_consent_cookie_value",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_accept_label",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_body",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_decline_label",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_heading",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_test_event_code",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_pixel_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_tag_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "billing_portal_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "bunny_stream_cdn_hostname",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "bunny_stream_library_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "checkout_appearance",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "default_home_space_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "favicon_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "inpost_geowidget_token",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_exemption_basis",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_exemption_basis_kind",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_seller_address",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_seller_name",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_vat_rate_percent",
-            "notNull": false,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoicing_provider",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "logo_dark_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "logo_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "og_description",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "og_image_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "og_title",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "onboarding_dismissed_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "privacy_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "shipx_sender",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "slug",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "support_email",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "support_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "terms_url",
-            "notNull": false,
-            "type": "text"
-          }
-        ],
-        "name": "tenants"
       },
       {
         "columns": [
@@ -10909,6 +10925,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "created_at",
             "notNull": true,
             "type": "text"
@@ -10950,6 +10974,14 @@
             "generated": "",
             "identity": "",
             "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "return_url",
             "notNull": false,
             "type": "text"
           },

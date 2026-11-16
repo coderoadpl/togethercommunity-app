@@ -16,7 +16,7 @@ import {
 import type { Clock, CouponRedemptionRepository, CouponRepository, PaymentProvider, ProductPriceHistoryRepository, ProductPriceRepository, ProductRepository, TenantRepository } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveCartPrices, selectionLineQuantity, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
+import { resolveCartPrices, resolveCheckoutReturnAddresses, selectionLineQuantity, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
 import { ensureProductsInStock } from './stock.js';
 
 interface CartSelectionDeps {
@@ -57,15 +57,18 @@ const selectCartProducts = async (
 
 export const validateCartSelection = async (
   tenantId: string,
-  input: Pick<CheckoutCartInput, 'lines' | 'shipping'>,
+  input: Pick<CheckoutCartInput, 'lines' | 'shipping' | 'returnUrl' | 'cancelUrl'>,
   deps: CartSelectionDeps,
   options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
 ): Promise<Result<CheckoutSelection, AppError>> => {
   const lines = cartLinesSchema.safeParse(input.lines);
   if (!lines.success) return err(validation('Invalid cart', lines.error.flatten()));
+  const returns = await resolveCheckoutReturnAddresses(tenantId, input, deps);
+  if (!returns.ok) return returns;
   const selection = await selectCartProducts(tenantId, lines.data, deps);
-  if (!selection.ok || options.shipping === 'ignore') return selection;
-  return withCheckoutShipping(tenantId, selection.value, input.shipping, deps);
+  if (!selection.ok) return selection;
+  const withReturns = { ...selection.value, ...returns.value };
+  return options.shipping === 'ignore' ? ok(withReturns) : withCheckoutShipping(tenantId, withReturns, input.shipping, deps);
 };
 
 export const validateCartCoupon = async (

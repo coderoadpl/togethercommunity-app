@@ -22,7 +22,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams, formatSalesLinkVariantParam, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, checkoutReturnLink, formatSalesLinkVariantParam, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -262,6 +262,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
     const title = soldOutRefund ? t.checkout.soldOutRefundTitle : paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
+    const paidStatus = paymentStatus.data?.status === 'paid' ? paymentStatus.data : undefined;
+    const shopLink = paidStatus?.returnUrl === undefined || paidStatus.checkoutRef === undefined ? null : checkoutReturnLink(paidStatus.returnUrl, {
+      checkoutRef: paidStatus.checkoutRef, status: 'paid', clientReference: paidStatus.clientReference,
+    });
     const eyebrow = soldOutRefund
       ? t.checkout.soldOutRefundEyebrow
       : paymentPaid
@@ -285,8 +289,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
           </Typography>
           {paymentSettled ? null : <LinearProgress aria-label={title} />}
+          {shopLink === null ? null : <Button href={shopLink} variant="contained" fullWidth>{t.checkout.backToShop}</Button>}
           {soldOutRefund ? null : (
-            <Button component={Link} to="/login" variant={paymentPaid ? 'contained' : 'text'} fullWidth>
+            <Button component={Link} to="/login" variant={shopLink !== null ? 'outlined' : paymentPaid ? 'contained' : 'text'} fullWidth>
               {t.checkout.goToLogin}
             </Button>
           )}

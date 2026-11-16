@@ -211,6 +211,8 @@ describe('legacy checkout stock on Postgres', () => {
           },
           currency: 'PLN',
           createdAt: '2026-11-15T10:00:00.000Z',
+          clientReference: null,
+          returnUrl: null,
         },
       ],
     });
@@ -364,6 +366,8 @@ describe('legacy checkout stock on Postgres', () => {
           shipping: null,
           currency: 'PLN',
           createdAt: '2026-11-15T10:00:00.000Z',
+          clientReference: null,
+          returnUrl: null,
         },
       ],
     });
@@ -515,6 +519,8 @@ describe('legacy checkout stock on Postgres', () => {
           shipping: null,
           currency: 'PLN',
           createdAt: '2026-11-15T10:00:00.000Z',
+          clientReference: null,
+          returnUrl: null,
         },
       ],
     });

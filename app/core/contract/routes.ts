@@ -479,6 +479,9 @@ export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInput
 export const publicCheckoutSessionStatusOutputSchema = z.object({
   status: z.enum(['pending', 'paid', 'cancelled']),
   charged: z.boolean().optional(),
+  clientReference: z.string().optional(),
+  returnUrl: z.string().optional(),
+  checkoutRef: z.string().optional(),
   analytics: checkoutPurchaseAnalyticsSchema.optional(),
   metaCapi: metaCapiConfigSchema.optional(),
 }).strict();

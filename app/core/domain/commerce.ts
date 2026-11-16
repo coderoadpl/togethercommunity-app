@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { orderAttributionSchema } from './attribution.js';
+import { CHECKOUT_RETURN_URL_MAX_LENGTH } from './checkout-return.js';
 
 import { invoiceSchema } from './invoice.js';
 import { stripeModeSchema } from './integration.js';
@@ -174,8 +175,15 @@ export const allocatePaidOrderLineGross = (
   return lines.map((line) => isShippingLine(line) ? line.grossCents : allocated[index++] ?? 0);
 };
 
+const CLIENT_REFERENCE_MAX_LENGTH = 200;
+
+export const clientReferenceSchema = z.string().trim().min(1).max(CLIENT_REFERENCE_MAX_LENGTH)
+  .regex(/^[\x20-\x7E]+$/, 'clientReference may contain only printable ASCII characters');
+
 export const checkoutSnapshotSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
+  clientReference: clientReferenceSchema.nullable().optional(),
+  returnUrl: z.string().max(CHECKOUT_RETURN_URL_MAX_LENGTH).nullable().optional(),
   mode: stripeModeSchema.nullable().optional(),
   providerSessionId: z.string().nullable().optional(),
   id: z.string(),
@@ -207,6 +215,7 @@ export const orderRefundJobStatusSchema = z.enum(ORDER_REFUND_JOB_STATUSES);
 
 export const orderSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
+  clientReference: clientReferenceSchema.nullable().optional(),
   mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),

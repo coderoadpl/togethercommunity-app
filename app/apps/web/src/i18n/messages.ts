@@ -673,6 +673,12 @@ export interface Messages {
     pickupPoints: { none: string; inpost_locker: string };
     geowidgetToken: string;
     geowidgetTokenHint: string;
+    returnOriginsHeading: string;
+    returnOriginsIntro: string;
+    returnOriginsLabel: string;
+    returnOriginsHint: string;
+    returnOriginsInvalid: string;
+    returnOriginsSave: string;
     deliveryMethodLabel: string;
     deliveryMethodHint: string;
     deliveryMethods: { pickup: string; shipping: string };
@@ -2760,6 +2766,7 @@ export interface Messages {
     soldOutRefundTitle: string;
     soldOutRefundBody: string;
     soldOutNothingChargedBody: string;
+    backToShop: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
     cancelledBody: string;

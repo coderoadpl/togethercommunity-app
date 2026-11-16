@@ -371,6 +371,71 @@ The server derives the product selection and amounts from the stored sales link.
 It is not a free-form cart. Use the hosted bundle form when variant or consent
 selection is needed rather than guessing a payload.
 
+### Cart: several products and quantities
+
+The same session route accepts a cart: several products, each with a quantity,
+paid in one payment. A body that has a `lines` field is a cart request; any other
+body is the single-product or sales-link request above, parsed exactly as before.
+With the `readData` helper and `workspaceOrigin` of the example above, a custom
+form sends:
+
+```js
+const catalog = await readData(await fetch(`${workspaceOrigin}/api/public/offer`, {
+  credentials: 'omit',
+}));
+const paperback = catalog.products.find((item) => item.slug === 'paperback');
+const bookmark = catalog.products.find((item) => item.slug === 'bookmark');
+if (!paperback || !bookmark) throw new Error('Product is unavailable');
+const cartSession = await readData(await fetch(`${workspaceOrigin}/api/public/checkout/session`, {
+  method: 'POST',
+  credentials: 'omit',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    lines: [
+      { productId: paperback.id, quantity: 2 },
+      { productId: bookmark.id, quantity: 1 },
+    ],
+    termsAccepted: true,
+    language: 'en',
+    shipping: { rateId: 'courier' },
+  }),
+}));
+window.location.assign(cartSession.url);
+```
+
+Each line has `productId`, `quantity` and an optional `priceId` (an active
+one-time price of that product; without it the product needs exactly one).
+`email`, `language`, `termsAccepted`, `marketingConsentDefinitionIds`,
+`couponCode`, `billing`, `shipping` and `attribution` work as in the
+single-product request. A cart request must not contain `productId`, `priceId`,
+`salesLinkId`, `salesLinkSlug` or `variantSelections`, and the cart schema is
+strict: an unknown field in the body or in a line, such as a price or an amount,
+is rejected, not ignored. The client sends product IDs and quantities only; the
+server sets every price from the stored prices. Stripe shows one line item per
+product with its unit price and quantity, and the buyer cannot change the
+quantity there.
+
+To check a coupon for a cart, send `{ "lines": [...], "couponCode": "SPRING" }`
+(and the optional `email`) to `POST /api/public/checkout/coupon`. The discount
+applies to the subtotal of the product lines without the delivery fee. A coupon
+limited to some products is valid only when every product of the cart is in its
+scope; otherwise the answer is the usual unavailable-coupon `validation` error.
+
+The cart answers with the same error envelope as the other routes:
+
+| Situation | `error.code` (HTTP) |
+| --- | --- |
+| a body or line that breaks the schema or the limits below, a duplicate product, a forbidden or unknown field | `validation` (400) |
+| a line above the quantity allowed for its product (`"<title>" can be ordered in a quantity of at most <n>`) | `validation` (400) |
+| a membership product, a product without exactly one active one-time price, a recurring `priceId`, products in different currencies, a product without a VAT rate | `validation` (400) |
+| an unknown or unpublished product, an unknown or inactive `priceId` | `not_found` (404) |
+| a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
+| a shipped product without `shipping` | `shipping_required` (400) |
+
+The CLI posts the same cart with `checkout session --line '<product-id>:2'
+--line '<product-id>:1'`; repeat `--line` once per product and leave out
+`--product`.
+
 ### Errors, caching and retry behavior
 
 Application JSON responses are `{ "ok": true, "data": ... }` or
@@ -396,8 +461,9 @@ do not assume a browser can discover it from `response.headers`.
 
 ## 7. Preserve the hosted payment return
 
-Standard checkout returns to the workspace `/checkout/<product-id>`; sales-link
-checkout returns to `/offer/<slug>`. Success uses `status=success` and, for paid
+Standard checkout returns to the workspace `/checkout/<product-id>`; a cart
+returns to `/checkout/<product-id>` of its first line; sales-link checkout
+returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
 `checkout=together` for the standard sales-link flow). Preserve the returned URL
 and its other query parameters. Do not add imaginary `successUrl` or `returnUrl`
@@ -499,10 +565,21 @@ or certify a live provider/KSeF submission.
 
 ## Limits
 
-- **Quantity one.** This checkout contract does not accept a buyer-selected
-  quantity, price override or arbitrary line list.
-- **Fixed bundles, not a free cart.** Use stored sales links for predefined
-  combinations. Do not fabricate a general cart request.
+- **Cart size.** A cart has 1–20 lines, one line per product, and at most 200
+  units in total.
+- **Quantity per line.** A physical product allows a whole quantity of 1–99 per
+  line, but at most 10 while checkout holds stock for an unpaid session (the
+  current behavior). Download, course and other non-physical products allow
+  quantity 1 only; membership products cannot be in a cart. The single-product
+  and sales-link requests buy one unit of each product.
+- **One delivery fee per order.** The fee of the chosen delivery option is
+  charged once, whatever the number of products and units.
+- **Coupon scope.** A coupon limited to some products applies only when every
+  product of the cart is in its scope.
+- **Server-side prices.** The server sets every price; a request cannot override
+  a price or an amount.
+- **Fixed bundles stay sales links.** A sales link keeps its stored products and
+  one unit of each; use a cart request for a buyer-chosen selection.
 - **One cover.** The product exposes `coverUrl`, not a product gallery.
 - **Delivery in Poland.** Shipping is limited to `PL`, with at most five rates.
   Pickup instructions remain seller/storefront content.

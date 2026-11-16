@@ -4,7 +4,6 @@ import {
   attributionSchema,
   attributionToSearchParams,
   checkoutSessionInputSchema,
-  checkoutShippingInputSchema,
   err,
   FREE_ORDER_DELIVERY_UNAVAILABLE,
   normalizeCouponCode,
@@ -12,10 +11,10 @@ import {
   ok,
   productLines,
   resolveCheckoutBranding,
-  resolveCheckoutShipping,
   stripeKeyModeConflicts,
   validation,
   type AppError,
+  type CheckoutCartInput,
   type CheckoutSessionInput,
   type CouponCheckoutBreakdown,
   type Product,
@@ -43,7 +42,7 @@ import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, type CheckoutSelection } from './checkout-selection.js';
+import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
 import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
 import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
@@ -173,13 +172,7 @@ export const validateCheckoutSelection = async (
 ): Promise<Result<CheckoutSelection, AppError>> => {
   const selection = await selectCheckoutProducts(tenantId, input, deps);
   if (!selection.ok || options.shipping === 'ignore') return selection;
-  const shippingInput = input.shipping === undefined ? undefined : checkoutShippingInputSchema.safeParse(input.shipping);
-  if (shippingInput !== undefined && !shippingInput.success) return err(validation('Invalid delivery selection', shippingInput.error.flatten()));
-  const products = selection.value.products ?? [selection.value.product];
-  const settings = products.some((product) => product.deliveryMethod === 'shipping') ? await deps.tenants?.findSettings(tenantId) : null;
-  const shipping = resolveCheckoutShipping(products, settings?.shippingRates, shippingInput?.data);
-  if (!shipping.ok) return shipping;
-  return ok(shipping.value === null ? selection.value : { ...selection.value, shipping: shipping.value });
+  return withCheckoutShipping(tenantId, selection.value, input.shipping, deps);
 };
 
 const freeShippedOrder = async (
@@ -204,7 +197,7 @@ const freeShippedOrder = async (
 export const startCheckoutSession = async (
   tenant: Tenant,
   tenantBaseUrl: string,
-  input: CheckoutSessionInput,
+  input: CheckoutSessionInput | CheckoutCartInput,
   selection: CheckoutSelection,
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,

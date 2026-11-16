@@ -3010,6 +3010,36 @@ const bundlePayment = () => {
   return { ...h, event, lines };
 };
 
+it.each([
+  [{ kind: 'all' as const }, 'coupon-1'],
+  [{ kind: 'products' as const, productIds: ['product-1'] }, null],
+])('re-checks a cart coupon against every cart product at its unit price and quantity (scope %o)', async (scope, couponId) => {
+  const h = couponHarness({ coupon: { scope }, session: { originalCents: 15200, discountCents: 7600, finalCents: 7600 } });
+  const lines: OrderLine[] = [
+    { productId: 'product-1', name: 'Poster', productType: 'physical', quantity: 2, grossCents: 9800, netCents: 9074, vatRate: 8, vatCents: 726, vatExemptionBasis: null, issuedCount: 0 },
+    { productId: 'product-2', name: 'Course item', productType: 'course', quantity: 1, grossCents: 5400, netCents: 5000, vatRate: 8, vatCents: 400, vatExemptionBasis: null, issuedCount: null },
+  ];
+  h.deps.products.findById = async (tenantId, id) => {
+    const line = lines.find((item) => item.productId === id);
+    return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: line.name, priceCents: 1 });
+  };
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    attachProviderSession: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? { id, tenantId, salesLinkId: null, lines, currency: 'PLN', createdAt: now } : null,
+  };
+  const lowestSince = vi.fn(async (_tenantId: string, input: { currentAmountCents: number }) => input.currentAmountCents);
+  h.deps.priceHistory = { lowestSince };
+  const event = completedEvent({ objectId: 'cs-coupon', amountTotalCents: 7600, discountTotalCents: 7600, couponCheckoutSessionId: 'coupon-session-1' });
+  if (event.checkoutSession !== null) event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ amountCents: 7600, couponId, lines });
+  if (couponId !== null) {
+    expect(lowestSince.mock.calls.map(([, input]) => input.currentAmountCents)).toEqual([4900, 5400]);
+  }
+});
+
 it('fulfills a bundle as one payment with immutable VAT lines and no physical grant', async () => {
   const h = bundlePayment();
   const result = await fulfillStripeWebhook(tenantA, h.event, h.deps);

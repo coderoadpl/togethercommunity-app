@@ -20,17 +20,21 @@ import {
 } from '#core/contract/index.js';
 import {
   accessItemSchema,
+  cartLinesSchema,
   currencySchema,
   contactCampaignAudienceInputSchema,
   devGrantInputSchema,
   err,
   internal,
+  isShippingLine,
   m2mEnrollInputSchema,
   memberExportFormatSchema,
   newCourseLessonSchema,
   newCourseModuleSchema,
   notFound,
   ok,
+  orderLineLabel,
+  orderLineQuantity,
   PASSWORD_MIN_LENGTH,
   priceMajorSchema,
   reactionEmojiSchema,
@@ -49,6 +53,7 @@ import {
   type AccessStatus,
   type AppError,
   type LessonReferences,
+  type OrderLineType,
   type Result,
 } from '#core/domain/index.js';
 
@@ -346,9 +351,16 @@ const couponExportOptionsSchema = z.object({
   partner: z.string().trim().min(1).optional(),
   out: z.string().min(1).optional(),
 });
+const checkoutLineOptionSchema = z.string()
+  .regex(/^[^:\s]+:[1-9]\d*$/u, 'Pass each --line as <productId>:<quantity> with a positive whole quantity')
+  .transform((value) => {
+    const [productId = '', quantity = ''] = value.split(':');
+    return { productId, quantity: Number.parseInt(quantity, 10) };
+  });
 const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   salesLink: z.string().min(1).optional(),
-  product: z.string().min(1),
+  product: z.string().min(1).optional(),
+  line: z.array(checkoutLineOptionSchema).default([]),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
 });
@@ -943,9 +955,10 @@ checkout.command('session-status').description('Show checkout payment confirmati
 
 checkout
   .command('session')
-  .description('Start a paid or free checkout')
+  .description('Start a paid or free checkout of one product, a sales link or a cart')
   .option('--sales-link <id>', 'buy every product in a sales link; --product is its first product')
-  .requiredOption('--product <id>')
+  .option('--product <id>', 'the product to buy; required unless --line is given')
+  .option('--line <productId:quantity>', 'a cart line; repeat for each product, without --product or --sales-link', (value: string, previous: string[]) => [...previous, value], [])
   .option('--email <email>')
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
@@ -957,19 +970,47 @@ checkout
         emit(shipping, ctx.json, () => '');
         return;
       }
+      const common = {
+        ...(options.email === undefined ? {} : { email: options.email }),
+        ...(options.language === undefined ? {} : { language: options.language }),
+        ...(shipping.value === null ? {} : { shipping: shipping.value }),
+      };
+      if (options.line.length > 0) {
+        const lines = cartLinesSchema.safeParse(options.line);
+        if (options.product !== undefined || options.salesLink !== undefined) {
+          emit(err(validation('Pass --line without --product or --sales-link')), ctx.json, () => '');
+        } else if (!lines.success) {
+          emit(err(validation('Invalid cart', lines.error.flatten())), ctx.json, () => '');
+        } else {
+          emit(await ctx.api.createCartCheckoutSession({ lines: lines.data, ...common }), ctx.json, (data) => data.url);
+        }
+        return;
+      }
+      if (options.product === undefined) {
+        emit(err(validation('Pass --product <id> or at least one --line <productId:quantity>')), ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createCheckoutSession({
           productId: options.product,
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
-          ...(options.email === undefined ? {} : { email: options.email }),
-          ...(options.language === undefined ? {} : { language: options.language }),
-          ...(shipping.value === null ? {} : { shipping: shipping.value }),
+          ...common,
         }),
         ctx.json,
         (data) => data.url,
       );
     }),
   );
+
+const orderProductsLabel = (order: {
+  productTitle: string;
+  lines?: { name: string; productType: OrderLineType; quantity?: number | undefined }[] | undefined;
+}): string => {
+  const productLines = (order.lines ?? []).filter((line) => !isShippingLine(line));
+  return productLines.some((line) => orderLineQuantity(line) > 1)
+    ? productLines.map(orderLineLabel).join('; ')
+    : order.productTitle;
+};
 
 const shippingSelection = (
   options: z.output<typeof shippingSelectionOptionsSchema>,
@@ -1862,7 +1903,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${order.productTitle}\t${order.memberEmail}\t(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),

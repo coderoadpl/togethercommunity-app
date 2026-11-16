@@ -1,4 +1,5 @@
-import { err, ok, validation, resolveProductVat, type AppError, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import { checkoutShippingInputSchema, err, notFound, ok, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import type { TenantRepository } from '../ports.js';
 
 export interface CheckoutSelection {
   product: Product;
@@ -8,9 +9,30 @@ export interface CheckoutSelection {
   salesLinkId?: string;
   salesLinkSlug?: string;
   variantSelections?: SalesLinkVariantSelection[];
+  cartLines?: { productId: string; quantity: number }[];
   shipping?: CheckoutShippingSelection;
 }
 
+export const withCheckoutShipping = async (
+  tenantId: string,
+  selection: CheckoutSelection,
+  shipping: CheckoutSessionInput['shipping'],
+  deps: { tenants?: Pick<TenantRepository, 'findSettings'> | undefined },
+): Promise<Result<CheckoutSelection, AppError>> => {
+  const shippingInput = shipping === undefined ? undefined : checkoutShippingInputSchema.safeParse(shipping);
+  if (shippingInput !== undefined && !shippingInput.success) return err(validation('Invalid delivery selection', shippingInput.error.flatten()));
+  const products = selection.products ?? [selection.product];
+  const settings = products.some((product) => product.deliveryMethod === 'shipping') ? await deps.tenants?.findSettings(tenantId) : null;
+  const resolved = resolveCheckoutShipping(products, settings?.shippingRates, shippingInput?.data);
+  if (!resolved.ok) return resolved;
+  return ok(resolved.value === null ? selection : { ...selection, shipping: resolved.value });
+};
+
+export const selectionLineQuantity = (selection: Pick<CheckoutSelection, 'cartLines'>, productId: string): number =>
+  selection.cartLines?.find((line) => line.productId === productId)?.quantity ?? 1;
+
+const sellableOneTimePrice = (price: ProductPrice, productId: string): boolean =>
+  price.productId === productId && price.active && price.kind === 'one_time' && price.imported !== true;
 
 export const resolveSalesLinkPrices = (
   products: Product[],
@@ -18,12 +40,34 @@ export const resolveSalesLinkPrices = (
 ): Result<ProductPrice[], AppError> => {
   const resolved: ProductPrice[] = [];
   for (const product of products) {
-    const matching = prices.filter((price) => price.productId === product.id && price.active && price.kind === 'one_time' && price.imported !== true);
+    const matching = prices.filter((price) => sellableOneTimePrice(price, product.id));
     const price = matching[0];
     if (matching.length !== 1 || price === undefined) return err(validation('Every sales-link product requires exactly one active one-time price'));
     resolved.push(price);
   }
   if (new Set(resolved.map((price) => price.currency)).size !== 1) return err(validation('Sales-link products must use the same currency'));
+  return ok(resolved);
+};
+
+export const resolveCartPrices = (
+  lines: readonly Pick<CartLine, 'productId' | 'priceId'>[],
+  prices: ProductPrice[],
+): Result<ProductPrice[], AppError> => {
+  const resolved: ProductPrice[] = [];
+  for (const line of lines) {
+    if (line.priceId === undefined) {
+      const matching = prices.filter((price) => sellableOneTimePrice(price, line.productId));
+      const price = matching[0];
+      if (matching.length !== 1 || price === undefined) return err(validation('Every cart product requires exactly one active one-time price'));
+      resolved.push(price);
+      continue;
+    }
+    const price = prices.find((candidate) => candidate.id === line.priceId && candidate.productId === line.productId && candidate.active && candidate.imported !== true);
+    if (price === undefined) return err(notFound(`No active price "${line.priceId}" for this product`));
+    if (!sellableOneTimePrice(price, line.productId)) return err(validation('Cart products require a one-time price'));
+    resolved.push(price);
+  }
+  if (new Set(resolved.map((price) => price.currency)).size > 1) return err(validation('Cart products must use the same currency'));
   return ok(resolved);
 };
 

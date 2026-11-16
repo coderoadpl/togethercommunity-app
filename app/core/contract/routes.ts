@@ -28,6 +28,7 @@ import {
   signInNoticeSchema,
   accessItemSchema,
   attachModuleToCourseInputSchema,
+  checkoutCartInputSchema,
   checkoutSessionInputSchema,
   salesLinkVariantSelectionSchema,
   checkoutSessionStatusInputSchema,
@@ -494,6 +495,13 @@ export const checkoutSessionRequestSchema = checkoutSessionInputSchema;
 
 export type CheckoutSessionRequest = z.input<typeof checkoutSessionRequestSchema>;
 
+export const checkoutCartSessionRequestSchema = checkoutCartInputSchema;
+
+export type CheckoutCartSessionRequest = z.input<typeof checkoutCartSessionRequestSchema>;
+
+export const isCheckoutCartRequest = (body: unknown): boolean =>
+  typeof body === 'object' && body !== null && Object.hasOwn(body, 'lines');
+
 export const checkoutSessionOutputSchema = z.object({
   url: z.string().url(),
 });
@@ -510,6 +518,16 @@ export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.
 
 export type CouponCheckoutValidationRequest = z.input<
   typeof couponCheckoutValidationRequestSchema
+>;
+
+export const couponCartCheckoutValidationRequestSchema = checkoutCartInputSchema.pick({
+  lines: true,
+  email: true,
+  couponCode: true,
+}).required({ couponCode: true });
+
+export type CouponCartCheckoutValidationRequest = z.input<
+  typeof couponCartCheckoutValidationRequestSchema
 >;
 
 export const couponCheckoutValidationOutputSchema = z.object({

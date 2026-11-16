@@ -54,6 +54,8 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'testCheckoutRejection',
   'type PaymentWebhookEvent',
   'type ResolvedTenant',
+  'validateCartCoupon',
+  'validateCartSelection',
   'validateCheckoutSelection',
   'validateCouponForCheckout',
   'validateStripeInvoiceTenant',

@@ -1,5 +1,5 @@
 import { checkoutShippingSnapshotSchema, err, ok, resolveProductVat, SHIPPING_LINE_TYPE, splitProductGross, validation, type AppError, type CheckoutShippingSnapshot, type OrderAttribution, type OrderLine, type Result } from '#core/domain/index.js';
-import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
+import { resolveSalesLinkPrices, selectionLineQuantity, type CheckoutSelection } from './checkout-selection.js';
 import type { TenantRepository, IdGenerator, Clock } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 
@@ -38,23 +38,26 @@ export const buildCheckoutLines = async (
   const resolvedPrices = selection.products === undefined ? null : resolveSalesLinkPrices(selectedProducts, selection.productPrices ?? []);
   if (resolvedPrices !== null && !resolvedPrices.ok) return resolvedPrices;
   const productPrices = resolvedPrices?.value;
-  const totalCents = productPrices?.reduce((total, item) => total + item.amountCents, 0) ?? price?.amountCents ?? product.priceCents;
+  const totalCents = productPrices?.reduce((total, item) => total + item.amountCents * selectionLineQuantity(selection, item.productId), 0) ?? price?.amountCents ?? product.priceCents;
   const settings = await deps.tenants?.findSettings(tenantId);
+  const vatRequired = selection.salesLinkId !== undefined || selection.cartLines !== undefined;
   const lines: OrderLine[] = selectedProducts.map((item) => {
     const vat = resolveProductVat(item, settings ?? null);
     const linePrice = productPrices?.find((selectedPrice) => selectedPrice.productId === item.id);
-    const snapshotVat = selection.salesLinkId === undefined && item.vatRate == null ? null : vat;
+    const snapshotVat = !vatRequired && item.vatRate == null ? null : vat;
+    const quantity = selectionLineQuantity(selection, item.id);
     return {
       productId: item.id, name: item.title, productType: item.type,
       ...(linePrice === undefined ? {} : { priceId: linePrice.id }),
-      ...splitProductGross(linePrice?.amountCents ?? totalCents, vat?.kind === 'rate' ? vat.percent : 'exempt'),
+      ...(selection.cartLines === undefined ? {} : { quantity }),
+      ...splitProductGross(linePrice === undefined ? totalCents : linePrice.amountCents * quantity, vat?.kind === 'rate' ? vat.percent : 'exempt'),
       vatRate: snapshotVat === null ? null : snapshotVat.kind === 'rate' ? snapshotVat.percent : 'exempt',
       vatExemptionBasis: snapshotVat?.kind === 'exempt' ? snapshotVat.basis : null,
       vatExemptionBasisKind: snapshotVat?.kind === 'exempt' ? snapshotVat.basisKind : null,
       issuedCount: item.type === 'physical' ? 0 : null,
     };
   });
-  if (selection.salesLinkId !== undefined && lines.some((line) => line.vatRate === null)) return err(validation('Configure a VAT rate for every sales-link product'));
+  if (vatRequired && lines.some((line) => line.vatRate === null)) return err(validation(`Configure a VAT rate for every ${selection.cartLines === undefined ? 'sales-link' : 'cart'} product`));
   const currency = productPrices?.[0]?.currency ?? price?.currency ?? product.currency;
   if (selection.shipping === undefined) return ok({ lines, totalCents, currency });
   return ok({ lines: [...lines, shippingLine(selection.shipping)], totalCents, currency, shippingCents: selection.shipping.amountCents });
@@ -69,6 +72,7 @@ export const captureCheckoutSelection = async (
   const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
   if (deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined) {
+    if (selection.cartLines !== undefined) return err(validation('Cart checkout is not configured'));
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
   const shipping = selection.shipping === undefined ? undefined : checkoutShippingSnapshotSchema.safeParse(selection.shipping);

@@ -353,7 +353,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchOrderRefundJobs, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type DispatchOrderRefundJobsResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchOrderRefundJobs, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type DispatchOrderRefundJobsOptions, type DispatchOrderRefundJobsResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import { safeLogMessage } from '#core/server/log-safety.js';
 import {
   DEMO_SEED_PASSWORD,
@@ -564,7 +564,7 @@ export interface AppDeps {
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   drainNotificationFanout(): Promise<Result<NotificationFanoutDrainResult, AppError>>;
   dispatchAutoInvoices(): Promise<Result<DispatchAutoInvoiceJobsResult, AppError>>;
-  dispatchOrderRefundJobs(): Promise<Result<DispatchOrderRefundJobsResult, AppError>>;
+  dispatchOrderRefundJobs(options?: DispatchOrderRefundJobsOptions): Promise<Result<DispatchOrderRefundJobsResult, AppError>>;
   dispatchOrderRefunds(): void;
   dispatchEmail(): void;
   emailDispatchSecret: string;
@@ -1164,7 +1164,7 @@ export const createDeps = (
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
-  const runOrderRefundDispatch = () => dispatchOrderRefundJobs({
+  const runOrderRefundDispatch = (dispatchOptions: DispatchOrderRefundJobsOptions = {}) => dispatchOrderRefundJobs({
     refundJobs: createOrderRefundJobRepository(db),
     orderDetails: orderRepository,
     payment,
@@ -1177,7 +1177,7 @@ export const createDeps = (
     appBaseUrl: env.APP_BASE_URL,
     baseDomain,
     singleTenantMode,
-  });
+  }, dispatchOptions);
   const dispatchOrderRefunds = createDeferredCoalescedRunner(async () => {
     const result = await runOrderRefundDispatch();
     if (!result.ok) process.stderr.write(`[order-refund] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);

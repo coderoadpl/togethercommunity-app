@@ -13,6 +13,13 @@ export const stripeRefundObjectSchema = z.object({
   metadata: z.record(z.string(), z.string()).nullable().optional(),
 });
 
+export const REFUND_REQUEST_TIMEOUT_MS = 5_000;
+export const REFUND_REQUEST_MAX_NETWORK_RETRIES = 0;
+// stripe-node repeats a request whose connection was reset (ECONNRESET, EPIPE) once even with no network
+// retries, after a 0.5 s pause; any further retry may wait out a Retry-After of up to 60 s.
+const STRIPE_RESET_CONNECTION_PAUSE_MS = 500;
+export const REFUND_REQUEST_WORST_CASE_MS = 2 * REFUND_REQUEST_TIMEOUT_MS + STRIPE_RESET_CONNECTION_PAUSE_MS;
+
 export interface ProviderRefund {
   refundId: string;
   paymentIntentId: string | null;

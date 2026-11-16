@@ -3392,7 +3392,7 @@ describe('email dispatch route', () => {
     expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
   });
 
-  it('dispatches due order refund jobs on the same tick and keeps dispatching e-mail when that fails', async () => {
+  it('dispatches due order refund jobs on the same tick with a deadline 45 seconds after the tick started and keeps dispatching e-mail when that fails', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
     const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
     const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>()
@@ -3404,7 +3404,8 @@ describe('email dispatch route', () => {
     const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
     const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
     expect([cron.status, manual.status]).toEqual([200, 200]);
-    expect(dispatchOrderRefundJobs).toHaveBeenCalledTimes(2);
+    const tickDeadline = { deadlineAt: Date.parse('1998-07-12T00:00:00.000Z') + 45_000 };
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[tickDeadline], [tickDeadline]]);
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });

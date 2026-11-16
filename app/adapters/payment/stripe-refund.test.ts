@@ -180,26 +180,20 @@ describe('refund request deadline', () => {
     ['createRefund', 'POST', (provider: ReturnType<typeof createStripePaymentProvider>) => provider.createRefund?.(refundInput)],
     ['getRefund', 'GET', (provider: ReturnType<typeof createStripePaymentProvider>) => provider.getRefund?.({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' })],
     ['listRefunds', 'GET', (provider: ReturnType<typeof createStripePaymentProvider>) => provider.listRefunds?.({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })],
-  ] as const)('%s gives up after ten seconds and one network retry when Stripe does not answer', async (_name, method, call) => {
+  ] as const)('%s gives up after five seconds without a network retry when Stripe does not answer', async (_name, method, call) => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const h = providerOverHangingFetch();
     let settled = false;
     const pending = Promise.resolve(call(h.provider)).finally(() => { settled = true; });
     await h.requestCount(1);
-    await vi.advanceTimersByTimeAsync(9_999);
-    expect(h.requests).toStrictEqual([method]);
-    await vi.advanceTimersByTimeAsync(1 + 499);
-    expect(h.requests).toStrictEqual([method]);
-    await vi.advanceTimersByTimeAsync(1);
-    await h.requestCount(2);
-    await vi.advanceTimersByTimeAsync(9_999);
+    await vi.advanceTimersByTimeAsync(4_999);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     const result = await pending;
     if (result === undefined || result.ok) throw new Error('Expected a timeout');
-    expect(result.error.message).toContain('Request aborted due to timeout being reached (10000ms)');
+    expect(result.error.message).toContain('Request aborted due to timeout being reached (5000ms)');
     expect(refundFailureOf(result.error)).toMatchObject({ kind: 'transient', outcomeUnknown: true });
-    expect(h.requests).toStrictEqual([method, method]);
+    expect(h.requests).toStrictEqual([method]);
   });
 });
 

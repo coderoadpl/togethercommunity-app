@@ -886,13 +886,30 @@ nothing. Recurring prices keep the commit above.
 dispatch has finished, so a slow or failing refund run never holds e-mail back,
 and is also started right after a webhook queues a refund job; a failing kick
 or tick is logged and never fails the webhook response or the e-mail dispatch.
-It handles at most 25 due jobs per run and stops claiming new jobs 30 seconds
-after the run started, so a run fits the 60-second function limit; jobs it did
-not claim stay due for the next tick. Every refund call to Stripe (list, create
-and the status read) has a 10-second timeout and at most one automatic network
-retry (the SDK's per-request `timeout` and `maxNetworkRetries` options); a
-refund request that still gets no answer has an unknown outcome and is retried
-with the same key. Each job is claimed with `FOR UPDATE SKIP LOCKED`
+It handles at most 25 due jobs per run and claims a job only when the worst
+case of that job still ends before the run's deadline; jobs it did not claim
+stay due for the next tick. The minute tick sets the deadline 45 seconds after
+the tick request started, so the notification fan-out, the stock sweep, the
+e-mail dispatch and (on the cron tick) the Meta CAPI dispatch that run first
+use part of it; a run started any other way (the kick after a webhook, the
+Node ticker) gets 30 seconds from its own start.
+
+The worst case of a job: a job makes at most two Stripe calls (the refund list
+and the create call, or one status read). Every refund call has a 5-second
+timeout and no network retry (the SDK's per-request `timeout` and
+`maxNetworkRetries: 0`). stripe-node still repeats a request once when its
+connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
+call takes at most 2 × 5 s + 0.5 s = 10.5 s and a job at most 2 × 10.5 s =
+21 s. The last job is therefore claimed at most 24 seconds after the tick
+started, its Stripe calls end by 45 seconds, and 15 seconds of the 60-second
+function limit remain for that job's database writes and the response. When the
+work before the refunds takes longer than 24 seconds, the tick claims no refund
+job. Network retries stay at 0 because any further SDK retry may wait for a
+`Retry-After` of up to 60 seconds. On Node the SDK's timeout restarts at each
+stage of a request (connecting, sending, waiting for the answer), so a call
+that is slow at every stage can outlast its 5 seconds; the arithmetic counts
+one timeout per request. A refund request that gets no answer has an unknown
+outcome and is retried with the same key. Each job is claimed with `FOR UPDATE SKIP LOCKED`
 and a conditional update (`pending` becomes `running` with a 10-minute lease and
 one more attempt), so two runs never work on the same job; a `running` job
 whose lease expired goes back to `pending` and is retried with the same key.

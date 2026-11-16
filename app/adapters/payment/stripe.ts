@@ -19,6 +19,8 @@ import {
   stripePermissionMissing,
   stripeRefundFailure,
   stripeRefundObjectSchema,
+  REFUND_REQUEST_MAX_NETWORK_RETRIES,
+  REFUND_REQUEST_TIMEOUT_MS,
   stripeAdoptionObjectSchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
@@ -426,7 +428,7 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
 };
 
 const REFUND_LIST_LIMIT = 100;
-const REFUND_REQUEST_OPTIONS = { timeout: 10_000, maxNetworkRetries: 1 } as const;
+const REFUND_REQUEST_OPTIONS = { timeout: REFUND_REQUEST_TIMEOUT_MS, maxNetworkRetries: REFUND_REQUEST_MAX_NETWORK_RETRIES } as const;
 
 const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
   const parsed = stripeRefundObjectSchema.safeParse(raw);

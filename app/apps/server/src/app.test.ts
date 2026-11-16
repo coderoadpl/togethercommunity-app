@@ -10663,18 +10663,32 @@ it('uses current bundle price amounts, currencies and identifiers for coupon pre
 describe('cart checkout over the public checkout routes', () => {
   const poster = '00000000-0000-4000-8000-0000000000a1';
   const mug = '00000000-0000-4000-8000-0000000000a2';
+  const ebook = '00000000-0000-4000-8000-0000000000a3';
+  const frame = '00000000-0000-4000-8000-0000000000a5';
+  const foreignLamp = '00000000-0000-4000-8000-0000000000b1';
+  const unknownProduct = '00000000-0000-4000-8000-0000000000c1';
   const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
-  const cartApp = () => {
+  const cartApp = (options: { couponPercent?: number; deliveryCents?: number } = {}) => {
     const products: Product[] = [
       { ...product({ id: poster, tenantId: acme.id, title: 'Poster', published: true }), type: 'physical', vatRate: 8 },
       { ...product({ id: mug, tenantId: acme.id, title: 'Mug', published: true }), type: 'physical', vatRate: 23 },
+      { ...product({ id: ebook, tenantId: acme.id, title: 'Ebook', published: true }), type: 'digital_download', vatRate: 5 },
+      { ...product({ id: frame, tenantId: acme.id, title: 'Frame', published: true }), type: 'physical', deliveryMethod: 'shipping', vatRate: 23 },
+      { ...product({ id: foreignLamp, tenantId: globex.id, title: 'Globex Secret Lamp', published: true }), type: 'physical', vatRate: 23, priceCents: 7777, currency: 'EUR' },
     ];
     const base = deps({ products });
     const now = base.clock.nowIso();
-    const amounts: Record<string, number> = { [poster]: 3500, [mug]: 2500 };
+    const amounts: Record<string, number> = { [poster]: 3500, [mug]: 2500, [ebook]: 1500, [frame]: 4000, [foreignLamp]: 7777 };
     base.prices.listActiveByProducts = async (tenantId, productIds) => products
       .filter((item) => item.tenantId === tenantId && productIds.includes(item.id))
-      .map((item): ProductPrice => ({ id: `price-${item.title.toLowerCase()}`, productId: item.id, tenantId: acme.id, amountCents: amounts[item.id] ?? 0, currency: 'PLN', kind: 'one_time', interval: null, active: true, createdAt: now }));
+      .map((item): ProductPrice => ({ id: `price-${item.title.toLowerCase()}`, productId: item.id, tenantId: item.tenantId, amountCents: amounts[item.id] ?? 0, currency: item.currency, kind: 'one_time', interval: null, active: true, createdAt: now }));
+    const settings = base.tenants.findSettings;
+    base.tenants.findSettings = async (tenantId) => {
+      const stored = await settings(tenantId);
+      return stored === null || options.deliveryCents === undefined ? stored : { ...stored, shippingRates: [
+        { id: 'courier', label: 'Courier', amountCents: options.deliveryCents, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: true },
+      ] };
+    };
     const snapshots = new Map<string, CheckoutSnapshot>();
     base.checkoutSnapshots = {
       create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); },
@@ -10683,18 +10697,26 @@ describe('cart checkout over the public checkout routes', () => {
     };
     const stock = createStockRepositoryFake();
     stock.track(acme.id, poster, 5);
+    stock.track(acme.id, frame, 3);
+    stock.track(globex.id, foreignLamp, 4321);
     base.stock = stock.repository;
-    const coupon = couponSchema.parse({ id: 'coupon', tenantId: acme.id, code: 'CART', kind: 'percent', value: 10, scope: { kind: 'all' }, appliesTo: 'one_time', recurringDuration: 'first_invoice', startsAt: null, endsAt: null, maxRedemptions: null, maxRedemptionsPerMember: null, status: 'active', partnerLabel: null, stripeCouponId: null, stripePromotionCodeId: null, createdAt: now });
+    const orders: Order[] = [];
+    base.orders.create = async (_, order) => { orders.push(order); };
+    const coupon = couponSchema.parse({ id: 'coupon', tenantId: acme.id, code: 'CART', kind: 'percent', value: options.couponPercent ?? 10, scope: { kind: 'all' }, appliesTo: 'one_time', recurringDuration: 'first_invoice', startsAt: null, endsAt: null, maxRedemptions: null, maxRedemptionsPerMember: null, status: 'active', partnerLabel: null, stripeCouponId: null, stripePromotionCodeId: null, createdAt: now });
     base.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon, create: async () => coupon, archive: async () => coupon };
-    base.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+    base.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async (_, input) => { orders.push(input.order); return true; } };
+    const couponSessions = new Map<string, CouponCheckoutSession>();
+    base.couponCheckoutSessions = { create: async (_, session) => { couponSessions.set(session.id, session); }, attachProviderSession: async () => undefined, findById: async (_, id) => couponSessions.get(id) ?? null };
     base.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
     base.tenantSecrets = { ...base.tenantSecrets, findByKey: async (tenantId, key) => ({ id: `secret-${key}`, tenantId, key, ciphertext: 'ciphertext', iv: 'iv', authTag: 'auth-tag', maskedPreview: '••••text', updatedAt: now }) };
     const createCheckoutSession = vi.fn(base.payment.createCheckoutSession);
-    base.payment = { ...base.payment, createCheckoutSession };
+    base.payment = { ...base.payment, createCheckoutSession, ensureCouponPromotion: async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-cart' }) };
     const post = (path: string, body: Record<string, unknown>) => buildApp(base).request(path, { method: 'POST', headers, body: JSON.stringify(body) });
-    return { post, createCheckoutSession, snapshots, stock };
+    return { post, createCheckoutSession, snapshots, stock, orders };
   };
   const cartLines = [{ productId: poster, quantity: 2 }, { productId: mug, quantity: 1 }];
+  const sessionBody = { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART' };
+  const couponBody = { lines: cartLines, email: 'buyer@example.test', couponCode: 'CART' };
 
   it('starts one payment for the cart lines at their quantities and holds stock per line quantity', async () => {
     const h = cartApp();
@@ -10717,13 +10739,28 @@ describe('cart checkout over the public checkout routes', () => {
     ['a sales-link ID', { salesLinkId: 'bundle-link' }],
     ['variant selections', { variantSelections: [] }],
     ['an unknown field', { amountCents: 1 }],
-  ])('rejects lines together with %s', async (_case, extra) => {
+  ])('rejects lines together with %s on both routes', async (_case, extra) => {
     const h = cartApp();
-    for (const path of [API_PATHS.checkoutSession, API_PATHS.couponCheckoutValidation]) {
-      const response = await h.post(path, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART', ...extra });
-      expect(response.status).toBe(400);
-    }
+    const unrecognized = { ok: false, error: { code: 'validation', details: { formErrors: [expect.stringContaining(`'${Object.keys(extra)[0] ?? ''}'`)] } } };
+    const session = await h.post(API_PATHS.checkoutSession, { ...sessionBody, ...extra });
+    expect(session.status).toBe(400);
+    expect(await session.json()).toMatchObject(unrecognized);
+    const coupon = await h.post(API_PATHS.couponCheckoutValidation, { ...couponBody, ...extra });
+    expect(coupon.status).toBe(400);
+    expect(await coupon.json()).toMatchObject(unrecognized);
     expect(h.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('accepts the bare cart form on both routes', async () => {
+    const h = cartApp();
+    expect((await h.post(API_PATHS.checkoutSession, sessionBody)).status).toBe(200);
+    expect(h.createCheckoutSession).toHaveBeenCalledOnce();
+    expect((await h.post(API_PATHS.couponCheckoutValidation, couponBody)).status).toBe(200);
+  });
+
+  it('rejects the session-only terms consent field on the cart coupon route', async () => {
+    const response = await cartApp().post(API_PATHS.couponCheckoutValidation, { ...couponBody, termsAccepted: true });
+    expect(response.status).toBe(400);
   });
 
   it('rejects a price sent inside a cart line', async () => {
@@ -10751,6 +10788,86 @@ describe('cart checkout over the public checkout routes', () => {
       successUrl: 'http://acme.localhost:48730/checkout/cart/pay?status=success&purchase_kind=one_time&session_id={CHECKOUT_SESSION_ID}',
       cancelUrl: `http://acme.localhost:48730/checkout/cart/pay?status=cancelled&lines=${poster}.2~${mug}.1`,
     });
+  });
+
+  describe('a cart that a full coupon makes free', () => {
+    const freeBody = { email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART' };
+
+    it('completes without Stripe as a paid order with the line quantities and commits the stock per line quantity', async () => {
+      const h = cartApp({ couponPercent: 100 });
+      const response = await h.post(API_PATHS.checkoutSession, { ...freeBody, lines: [{ productId: poster, quantity: 2 }, { productId: ebook, quantity: 1 }] });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, data: {
+        free: true,
+        url: 'http://acme.localhost:48730/checkout/cart/pay?status=success&purchase_kind=one_time',
+        coupon: { originalCents: 8500, discountCents: 8500, finalCents: 0 },
+      } });
+      expect(h.createCheckoutSession).not.toHaveBeenCalled();
+      expect(h.orders).toHaveLength(1);
+      expect(h.orders[0]).toMatchObject({
+        productId: poster, status: 'paid', provider: 'simulated', amountCents: 0, discountCents: 8500, currency: 'PLN',
+        lines: [
+          { productId: poster, productType: 'physical', quantity: 2, grossCents: 7000, issuedCount: 0 },
+          { productId: ebook, productType: 'digital_download', quantity: 1, grossCents: 1500 },
+        ],
+      });
+      expect(h.orders[0]?.shipping ?? null).toBeNull();
+      expect(h.stock.events.map((event) => [event.productId, event.type, event.quantity])).toEqual([[poster, 'reserved', 2], [poster, 'committed', -2]]);
+      expect(h.stock.reservations.map((row) => [row.productId, row.quantity, row.status])).toEqual([[poster, 2, 'committed']]);
+      expect(h.stock.levels.get(acme.id, poster)).toMatchObject({ onHand: 3, reserved: 0 });
+    });
+
+    it('still charges a paid delivery rate through Stripe for a shipped cart', async () => {
+      const h = cartApp({ couponPercent: 100, deliveryCents: 1500 });
+      const response = await h.post(API_PATHS.checkoutSession, { ...freeBody, lines: [{ productId: frame, quantity: 2 }, { productId: ebook, quantity: 1 }], shipping: { rateId: 'courier' } });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, data: {
+        free: false, url: 'https://checkout.local/cs', coupon: { originalCents: 9500, discountCents: 9500, finalCents: 0 },
+      } });
+      expect(h.createCheckoutSession).toHaveBeenCalledOnce();
+      expect(h.createCheckoutSession.mock.calls[0]?.[0]).toMatchObject({
+        priceCents: 9500, promotionCodeId: 'promo-cart',
+        lines: [{ productId: frame, quantity: 2, grossCents: 8000 }, { productId: ebook, quantity: 1, grossCents: 1500 }],
+        shipping: { option: { label: 'Courier', amountCents: 1500, currency: 'PLN' } },
+      });
+      expect([...h.snapshots.values()].map((snapshot) => snapshot.lines.map((line) => [line.productId, line.quantity, line.grossCents]))).toEqual([
+        [[frame, 2, 8000], [ebook, 1, 1500], ['shipping:courier', undefined, 1500]],
+      ]);
+      expect(h.orders).toHaveLength(0);
+      expect(h.stock.levels.get(acme.id, frame)).toMatchObject({ onHand: 3, reserved: 2 });
+    });
+
+    it('refuses a shipped cart with a free delivery rate before any snapshot, hold or order', async () => {
+      const h = cartApp({ couponPercent: 100, deliveryCents: 0 });
+      const response = await h.post(API_PATHS.checkoutSession, { ...freeBody, lines: [{ productId: frame, quantity: 2 }, { productId: ebook, quantity: 1 }], shipping: { rateId: 'courier' } });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'validation', message: 'Delivery is not available for free orders' } });
+      expect(h.createCheckoutSession).not.toHaveBeenCalled();
+      expect(h.snapshots.size).toBe(0);
+      expect(h.orders).toHaveLength(0);
+      expect(h.stock.events).toEqual([]);
+    });
+  });
+
+  it.each([
+    ['session', API_PATHS.checkoutSession, { email: 'buyer@example.test', termsAccepted: true }],
+    ['coupon', API_PATHS.couponCheckoutValidation, { email: 'buyer@example.test', couponCode: 'CART' }],
+  ])('refuses a product of another workspace on the %s route like an unknown product, without revealing it', async (_route, path, body) => {
+    const notFoundBody = (productId: string) => ({ ok: false, error: { code: 'not_found', message: `No published product "${productId}" in this tenant` } });
+    for (const lines of [[{ productId: foreignLamp, quantity: 1 }], [{ productId: poster, quantity: 1 }, { productId: foreignLamp, quantity: 1 }]]) {
+      const h = cartApp();
+      const response = await h.post(path, { ...body, lines });
+      expect(response.status).toBe(404);
+      const text = await response.text();
+      expect(JSON.parse(text)).toEqual(notFoundBody(foreignLamp));
+      for (const secret of ['Globex Secret Lamp', '7777', '77.77', 'EUR', '4321', 'price-globex']) expect(text).not.toContain(secret);
+      expect(h.createCheckoutSession).not.toHaveBeenCalled();
+      expect(h.snapshots.size).toBe(0);
+      expect(h.stock.events).toEqual([]);
+    }
+    const unknown = await cartApp().post(path, { ...body, lines: [{ productId: unknownProduct, quantity: 1 }] });
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual(notFoundBody(unknownProduct));
   });
 });
 

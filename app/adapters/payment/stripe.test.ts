@@ -1265,13 +1265,13 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const h = permissionProbeHarness();
     const earliestExpiry = Math.floor(Date.now() / 1000) + 30 * 60;
     const result = await h.run(mode);
-    expect(result).toMatchObject({ ok: true, value: { mode, allOk: true, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
+    expect(result).toMatchObject({ ok: true, value: { mode, allOk: false, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
       { resource: 'Webhook Endpoints', permission: 'write', status: 'ok' },
       { resource: 'Subscriptions', permission: 'read', status: 'ok' },
       { resource: 'Coupons', permission: 'write', status: 'ok' },
       { resource: 'Promotion Codes', permission: 'write', status: 'ok' },
       { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
-      { resource: 'Charges and Refunds', permission: 'write', status: 'ok' },
+      { resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: expect.stringContaining('cannot tell whether the key may create refunds') },
     ] } });
     expect(h.operations()).toEqual([
       'GET /v1/webhook_endpoints', 'GET /v1/subscriptions', 'POST /v1/coupons',
@@ -1313,7 +1313,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const result = await h.run();
     expect(result).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { resource: 'Coupons', status: 'missing', detail: 'Coupon write denied' },
-      { resource: 'Promotion Codes', status: 'error', reason: 'coupon-probe-failed' }, { status: 'ok' }, { status: 'ok' },
+      { resource: 'Promotion Codes', status: 'error', reason: 'coupon-probe-failed' }, { status: 'ok' }, { resource: 'Charges and Refunds', status: 'error' },
     ] } });
     if (!result.ok) throw new Error('Probe failed');
     expect(result.value.checks.find((check) => check.resource === 'Promotion Codes')).not.toHaveProperty('detail');
@@ -1330,7 +1330,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const h = permissionProbeHarness({ 'POST /v1/checkout/sessions': { status, message, ...(code === undefined ? {} : { code }) } });
     expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
-      { resource: 'Checkout Sessions', status: expected, detail: message }, { resource: 'Charges and Refunds', status: 'ok' },
+      { resource: 'Checkout Sessions', status: expected, detail: message }, { resource: 'Charges and Refunds', status: 'error' },
     ] } });
     expect(h.operations()).toContain('DELETE /v1/coupons/coupon_probe');
     expect(h.operations()).not.toContain('POST /v1/checkout/sessions/cs_probe/expire');
@@ -1340,7 +1340,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const h = permissionProbeHarness({ [operation]: { status: 400, message: 'Promotion failed' } });
     expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
-      { status: 'error', detail: 'Promotion failed' }, { status: 'ok' }, { status: 'ok' },
+      { status: 'error', detail: 'Promotion failed' }, { status: 'ok' }, { resource: 'Charges and Refunds', status: 'error' },
     ] } });
     expect(h.operations()).toContain('DELETE /v1/coupons/coupon_probe');
     expect(h.operations()).toContain('POST /v1/checkout/sessions/cs_probe/expire');

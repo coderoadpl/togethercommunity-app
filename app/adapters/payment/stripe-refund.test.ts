@@ -275,9 +275,12 @@ describe('refund permission probe', () => {
     return { check: result.value.find((check) => check.resource === 'Charges and Refunds'), h };
   };
 
-  it('classifies resource_missing on a nonexistent payment intent as present', async () => {
+  it('reports resource_missing on a nonexistent payment intent as unconfirmed, neither present nor missing', async () => {
     const { check, h } = await refundCheck(stripeError(404, { code: 'resource_missing', message: "No such payment_intent: 'pi_x'" }));
-    expect(check).toEqual({ resource: 'Charges and Refunds', permission: 'write', status: 'ok' });
+    expect(check).toEqual({
+      resource: 'Charges and Refunds', permission: 'write', status: 'error',
+      detail: 'This probe cannot tell whether the key may create refunds (Stripe answered resource_missing) until the one-time Stripe sandbox check with a test restricted key without Charges and Refunds, or the first real refund, settles it.',
+    });
     const request = h.requests.find((candidate) => new URL(candidate.url).pathname === '/v1/refunds');
     if (request === undefined) throw new Error('Refund probe request missing');
     const body = new URLSearchParams(await request.text());

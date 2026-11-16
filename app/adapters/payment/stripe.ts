@@ -442,6 +442,13 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
 
 const PROBE_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+const REFUND_PROBE_RESOURCE_MISSING_MEANS_PERMITTED = false;
+const REFUND_PROBE_UNCONFIRMED_DETAIL = 'This probe cannot tell whether the key may create refunds (Stripe answered resource_missing) until the one-time Stripe sandbox check with a test restricted key without Charges and Refunds, or the first real refund, settles it.';
+
+const resourceMissingRefundCheck = (meansPermitted: boolean): StripePermissionCheck => meansPermitted
+  ? { resource: 'Charges and Refunds', permission: 'write', status: 'ok' }
+  : { resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: REFUND_PROBE_UNCONFIRMED_DETAIL };
+
 const probeRefundPermission = async (
   client: Stripe,
   tenantId: string,
@@ -454,7 +461,7 @@ const probeRefundPermission = async (
     const check = failure('Charges and Refunds', 'write', cause);
     const parsed = stripeCancelErrorSchema.safeParse(cause);
     return check.status === 'error' && parsed.success && parsed.data.code === 'resource_missing'
-      ? { resource: 'Charges and Refunds', permission: 'write', status: 'ok' }
+      ? resourceMissingRefundCheck(REFUND_PROBE_RESOURCE_MISSING_MEANS_PERMITTED)
       : check;
   }
   return { resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: 'Stripe accepted a refund for a payment intent that should not exist' };

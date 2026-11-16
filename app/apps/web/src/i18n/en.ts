@@ -3066,6 +3066,7 @@ export const en: Messages = {
     soldOutRefundEyebrow: 'Order cancelled',
     soldOutRefundTitle: 'Sold out before your payment completed',
     soldOutRefundBody: 'Your payment arrived after the last items had sold out, so the whole order was cancelled and nothing will be sent. A full refund to the payment method you used has been started automatically, and we sent you an email with the details. A card refund often shows as a reversal shortly after payment, a BLIK refund takes about 120 minutes, and a Przelewy24 refund arrives within 3 business days.',
+    soldOutNothingChargedBody: 'Your order arrived after the last items had sold out, so the whole order was cancelled and nothing will be sent. You were not charged, so there is nothing to refund.',
     cancelledEyebrow: 'Payment canceled',
     cancelledTitle: 'The payment was not completed',
     cancelledBody: 'You were not charged. You can safely try again.',

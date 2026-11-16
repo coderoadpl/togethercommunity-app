@@ -221,3 +221,13 @@ it.each(['/checkout/course-1', '/offer/bundle'])('shows the sold-out refund mess
   expect(analytics.trackCheckoutPurchase).not.toHaveBeenCalled();
   expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
 });
+
+it('promises no refund on the sold-out message when nothing was charged', async () => {
+  server.use(http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'cancelled', charged: false } })));
+  await renderCheckout('/checkout/course-1?status=success&session_id=cs_live_one');
+  await act(() => vi.advanceTimersByTimeAsync(0));
+
+  expect(screen.getByRole('heading', { name: en.checkout.soldOutRefundTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.soldOutNothingChargedBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.soldOutRefundBody)).toBeNull();
+});

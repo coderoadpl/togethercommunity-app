@@ -243,8 +243,7 @@ export interface TransactionalEmailMessages {
       orderIdHtml: string;
       buyerEmail: string;
       buyerEmailHtml: string;
-      amount: string;
-      amountHtml: string;
+      refund: { amount: string; amountHtml: string } | null;
       productTitles: string;
       productTitlesHtml: string;
       orderUrl: string;

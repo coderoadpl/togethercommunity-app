@@ -867,7 +867,8 @@ short the whole order is cancelled and nothing is decremented:
   order); an order paid with zero gets no job;
 - staff get the `order-out-of-stock` e-mail (support address, or every staff
   member in their language) with the short products, the amount being refunded
-  and a Studio link to the order;
+  (or that nothing was charged, for an order paid with zero) and a Studio link
+  to the order;
 - the buyer gets the `order-sold-out-refund` e-mail (see Buyer communication
   below), queued in the same transaction.
 
@@ -989,11 +990,14 @@ after about 5-10 business days; BLIK about 120 minutes; Przelewy24 a separate
 transfer within 3 business days; other methods depend on the provider. An order
 paid with zero says nothing was charged instead.
 
-`GET /api/public/checkout/session-status` returns `{ "status": "cancelled" }`
-for such an order, whether it is still `paid` or already `refunded`, without
-the purchase analytics payload and without the Meta conversion consent payload.
-The hosted success page (`status=success`) then stops polling and shows the
-sold-out message without the sign-in button; it sends no purchase event. The
+`GET /api/public/checkout/session-status` returns
+`{ "status": "cancelled", "charged": true }` for such an order, whether it is
+still `paid` or already `refunded`, without the purchase analytics payload and
+without the Meta conversion consent payload; `charged` is `false` for an order
+paid with zero. The hosted success page (`status=success`) then stops polling
+and shows the sold-out message without the sign-in button, saying that the
+refund was started, or that nothing was charged when `charged` is `false`; it
+sends no purchase event. The
 document keeps its script policy: the analytics libraries may still load as on
 any success return, and the full-navigation exit rule is unchanged.
 

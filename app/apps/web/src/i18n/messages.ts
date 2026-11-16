@@ -2758,6 +2758,7 @@ export interface Messages {
     soldOutRefundEyebrow: string;
     soldOutRefundTitle: string;
     soldOutRefundBody: string;
+    soldOutNothingChargedBody: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
     cancelledBody: string;

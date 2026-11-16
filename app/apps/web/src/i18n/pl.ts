@@ -3090,6 +3090,7 @@ export const pl: Messages = {
     soldOutRefundEyebrow: 'Zamówienie anulowane',
     soldOutRefundTitle: 'Towar wyprzedał się przed dokończeniem płatności',
     soldOutRefundBody: 'Płatność wpłynęła, gdy ostatnie sztuki były już sprzedane, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane. Automatycznie zleciliśmy zwrot całej kwoty na metodę płatności, której użyto, i wysłaliśmy Ci e-mail ze szczegółami. Zwrot na kartę często ma postać anulowania transakcji wkrótce po płatności, zwrot BLIK trwa około 120 minut, a zwrot Przelewy24 wpływa w ciągu 3 dni roboczych.',
+    soldOutNothingChargedBody: 'Zamówienie wpłynęło, gdy ostatnie sztuki były już sprzedane, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane. Nie pobraliśmy żadnej opłaty, więc nie ma czego zwracać.',
     cancelledEyebrow: 'Płatność anulowana',
     cancelledTitle: 'Płatność nie została dokończona',
     cancelledBody: 'Nie pobraliśmy opłaty. Możesz bezpiecznie spróbować ponownie.',

@@ -85,6 +85,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   });
   const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
   const soldOutRefund = hasSessionId && paymentStatus.data?.status === 'cancelled';
+  const soldOutBody = paymentStatus.data?.charged === false ? t.checkout.soldOutNothingChargedBody : t.checkout.soldOutRefundBody;
   const paymentSettled = paymentPaid || soldOutRefund;
 
   useEffect(() => {
@@ -279,7 +280,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">
-            {testPurchase ? t.checkout.testPurchaseBody : soldOutRefund ? t.checkout.soldOutRefundBody : paymentPaid
+            {testPurchase ? t.checkout.testPurchaseBody : soldOutRefund ? soldOutBody : paymentPaid
               ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
               : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
           </Typography>

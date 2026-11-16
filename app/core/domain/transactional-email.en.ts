@@ -161,11 +161,16 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     }),
   },
   orderOutOfStockEmail: {
-    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, amount, amountHtml, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => ({
-      subject: `[${tenantName}] Order cancelled, out of stock: ${orderId}`,
-      html: `<p>A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amountHtml} is in progress.</p><p>Order: ${orderIdHtml}<br>Buyer: ${buyerEmailHtml}<br>Out of stock: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Open the order</a></p>`,
-      text: `A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amount} is in progress.\nOrder: ${orderId}\nBuyer: ${buyerEmail}\nOut of stock: ${productTitles}\n${orderUrl}`,
-    }),
+    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, refund, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => {
+      const summary = (amount: string | null) => amount === null
+        ? 'An order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock, and nothing was charged, so there is nothing to refund.'
+        : `A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amount} is in progress.`;
+      return {
+        subject: `[${tenantName}] Order cancelled, out of stock: ${orderId}`,
+        html: `<p>${summary(refund?.amountHtml ?? null)}</p><p>Order: ${orderIdHtml}<br>Buyer: ${buyerEmailHtml}<br>Out of stock: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Open the order</a></p>`,
+        text: `${summary(refund?.amount ?? null)}\nOrder: ${orderId}\nBuyer: ${buyerEmail}\nOut of stock: ${productTitles}\n${orderUrl}`,
+      };
+    },
   },
   orderSoldOutRefundEmail: {
     shopLabel: 'Visit the shop',

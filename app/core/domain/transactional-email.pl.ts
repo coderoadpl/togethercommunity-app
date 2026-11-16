@@ -161,11 +161,16 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     }),
   },
   orderOutOfStockEmail: {
-    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, amount, amountHtml, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => ({
-      subject: `[${tenantName}] Zamówienie anulowane z braku towaru: ${orderId}`,
-      html: `<p>Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amountHtml} jest w toku.</p><p>Zamówienie: ${orderIdHtml}<br>Kupujący: ${buyerEmailHtml}<br>Brak towaru: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Otwórz zamówienie</a></p>`,
-      text: `Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amount} jest w toku.\nZamówienie: ${orderId}\nKupujący: ${buyerEmail}\nBrak towaru: ${productTitles}\n${orderUrl}`,
-    }),
+    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, refund, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => {
+      const summary = (amount: string | null) => amount === null
+        ? 'Zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.'
+        : `Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amount} jest w toku.`;
+      return {
+        subject: `[${tenantName}] Zamówienie anulowane z braku towaru: ${orderId}`,
+        html: `<p>${summary(refund?.amountHtml ?? null)}</p><p>Zamówienie: ${orderIdHtml}<br>Kupujący: ${buyerEmailHtml}<br>Brak towaru: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Otwórz zamówienie</a></p>`,
+        text: `${summary(refund?.amount ?? null)}\nZamówienie: ${orderId}\nKupujący: ${buyerEmail}\nBrak towaru: ${productTitles}\n${orderUrl}`,
+      };
+    },
   },
   orderSoldOutRefundEmail: {
     shopLabel: 'Przejdź do sklepu',

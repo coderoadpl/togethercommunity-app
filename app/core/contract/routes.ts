@@ -509,6 +509,8 @@ export const isCheckoutCartRequest = (body: unknown): boolean =>
 
 export const checkoutSessionOutputSchema = z.object({
   url: z.string().url(),
+  free: z.boolean().optional(),
+  coupon: couponCheckoutBreakdownSchema.optional(),
 });
 
 export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.pick({

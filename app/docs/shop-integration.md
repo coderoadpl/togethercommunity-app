@@ -605,8 +605,8 @@ checkout is complete:
   `/checkout/cart/pay` or `/offer/<slug>`) with `status=success`;
 - with a coupon, `data.coupon` holds the price breakdown, `finalCents` being 0.
 
-`checkoutSessionOutputSchema` declares only `url`, so a parse with it drops
-`free`: read `data.free` from the JSON answer before that parse.
+`checkoutSessionOutputSchema` declares `free` and `coupon` as optional fields,
+so a typed client reads `session.data.free` after the parse.
 
 The calling shop keeps control of the page, so it should not navigate to
 `data.url`. It shows its own confirmation instead: the order is complete,

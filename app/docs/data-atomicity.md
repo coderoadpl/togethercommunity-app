@@ -296,16 +296,15 @@ every cursor carries it. A cursor with another epoch is answered with
 log: the largest settled `(xact_id, id)` of that workspace, or position `0.0`
 when it has none, so it never points into another workspace's rows. A cursor
 of the current epoch whose `xact_id` is at or beyond `pg_snapshot_xmax` of the
-current snapshot cannot come from this database, so the read rotates the epoch
-and answers the same way. The rotation is
-`UPDATE order_feed_epoch ... WHERE epoch = <the epoch read>`: when two readers
-race, the second waits for the first's row lock, finds the epoch already
-changed, updates nothing and reads the new one, so both answer with one epoch.
-The guard uses only the snapshot functions, no control functions that a hosted
-database may refuse. A restore to an earlier state can leave cursors behind the
-current position that the guard cannot tell apart, so the
+current snapshot cannot come from this database, so it is answered the same way
+with a fresh cursor of the caller's workspace. The epoch stays as it is: the read
+runs in a `READ ONLY` transaction, so a forged cursor cannot change what any
+other workspace's cursors mean. The guard uses only the snapshot functions, no
+control functions that a hosted database may refuse. A restore to an earlier
+state can leave cursors behind the current position that the guard cannot tell
+apart, so only `pnpm run orders:rotate-feed-epoch` changes the epoch: the
 [move and restore runbook](deployment-environments.md#order-change-feed-after-a-move-or-restore)
-rotates the epoch with `pnpm run orders:rotate-feed-epoch`.
+runs it.
 
 The rows are kept without a retention purge for now. Deleting an order, for
 example through a product deletion, deletes its change rows.

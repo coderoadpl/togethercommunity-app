@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { decodeOrderChangeCursor, listOrderChangesQuerySchema, orderLineSchema, orderSchema, type Order, type OrderChange, type OrderChangeRead, type OrderShipping } from '#core/domain/index.js';
 
@@ -49,6 +49,17 @@ const storedEpoch = async (): Promise<string> => {
   const [row] = await database.db.select({ epoch: orderFeedEpoch.epoch }).from(orderFeedEpoch);
   if (row === undefined) throw new Error('The order feed epoch row is missing');
   return row.epoch;
+};
+
+const databaseState = async () => {
+  const [row] = await database.db.select({
+    epoch: orderFeedEpoch.epoch,
+    rowVersion: sql<string>`xmin::text`,
+    rotatedAt: orderFeedEpoch.rotatedAt,
+    changes: sql<string>`(SELECT count(*) FROM order_changes)::text`,
+  }).from(orderFeedEpoch);
+  if (row === undefined) throw new Error('The order feed epoch row is missing');
+  return row;
 };
 
 const withEpoch = (cursor: string | undefined, epoch: string): string => {
@@ -236,45 +247,21 @@ describe('order change feed epoch on Postgres', () => {
     await eventually('workspace', reset, [later]);
   });
 
-  it('rotates the epoch once for a cursor the database has not reached and keeps answering old cursors with a reset', async () => {
+  it('answers a cursor the database has not reached with a fresh cursor of that workspace only and writes nothing', async () => {
     const tail = await settledCursor('workspace');
-    const before = await storedEpoch();
-    const ahead = `${before}.18446744073709551615.1`;
-    const reset = resetOf(await changes(database.db).listOrderChanges('workspace', { after: ahead, limit: 200 }));
-    const rotated = await storedEpoch();
-    expect(rotated).not.toBe(before);
-    expect(reset).toBe(withEpoch(tail, rotated));
-    expect(resetOf(await changes(database.db).listOrderChanges('workspace', { after: withEpoch(tail, before), limit: 200 }))).toBe(reset);
-    expect(await storedEpoch()).toBe(rotated);
-    expect(changesOf(await changes(database.db).listOrderChanges('workspace', { after: reset, limit: 200 }))).toEqual([]);
-  });
-
-  it('lets two requests that both see a cursor ahead of the database converge on one new epoch', async () => {
-    const before = await storedEpoch();
-    const ahead = `${before}.18446744073709551615.1`;
-    const holder = new pg.Client({ connectionString: database.url });
-    await holder.connect();
+    const otherTail = await settledCursor('other');
+    const before = await databaseState();
+    const transaction = vi.spyOn(database.db, 'transaction');
     try {
-      await holder.query('BEGIN');
-      await holder.query('SELECT epoch FROM order_feed_epoch FOR UPDATE');
-      const reads = Promise.all([
-        changes(database.db).listOrderChanges('workspace', { after: ahead, limit: 200 }),
-        changes(database.db).listOrderChanges('other', { after: ahead, limit: 200 }),
-      ]);
-      await waitFor(async () => {
-        const [row] = await database.db.select({ waiting: sql<string>`count(*)::text` }).from(sql`pg_stat_activity`)
-          .where(sql`datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE 'update "order_feed_epoch"%'`);
-        return row?.waiting === '2';
-      });
-      await holder.query('COMMIT');
-      const [first, second] = await reads;
-      const rotated = await storedEpoch();
-      expect(rotated).not.toBe(before);
-      expect(decodeOrderChangeCursor(resetOf(first))?.epoch).toBe(rotated);
-      expect(decodeOrderChangeCursor(resetOf(second))?.epoch).toBe(rotated);
+      const forged = `${before.epoch}.18446744073709551615.0`;
+      expect(resetOf(await changes(database.db).listOrderChanges('workspace', { after: forged, limit: 200 }))).toBe(withEpoch(tail, before.epoch));
+      expect(transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { accessMode: 'read only' });
     } finally {
-      await holder.end();
+      transaction.mockRestore();
     }
+    expect(await databaseState()).toEqual(before);
+    const foreign = await createOrder('other');
+    await eventually('other', otherTail, [foreign]);
   });
 
   it('gives each workspace a fresh cursor of its own log and never one that reveals another workspace', async () => {

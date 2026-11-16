@@ -402,9 +402,9 @@ DATABASE_URL='<target database URL>' pnpm run orders:rotate-feed-epoch
 It prints `{"epoch":"<new epoch>"}`. Every cursor issued before then is
 answered with `feed_cursor_reset` (HTTP 409) and a fresh cursor, and each shop
 backend resyncs once from the order list. A cursor whose position the database
-has not reached yet rotates the epoch on its own, but a restore to an earlier
-state can leave older cursors that look valid, so the command is part of every
-move and restore.
+has not reached yet is answered with a reset for its own workspace without
+changing the epoch, and a restore to an earlier state can leave older cursors
+that look valid, so the command is part of every move and restore.
 
 The function runs in Vercel `fra1`; the Neon project must remain in
 `aws-eu-central-1`. Moving either side requires moving both. Deployed tenant

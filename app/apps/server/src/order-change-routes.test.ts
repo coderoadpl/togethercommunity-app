@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { orderChangeContracts } from '#core/contract/index.js';
-import { orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
+import { orderListItemSchema, type Identity, type ImpersonationPrincipal, type OrderListItem } from '#core/domain/index.js';
 import type { OrderChangeRepository, OrderListItemReader } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -25,7 +25,12 @@ const order = (id: string, mode: 'live' | 'test'): OrderListItem => orderListIte
 
 const EPOCH = '0123456789abcdef0123456789abcdef';
 
-const harness = (staffRole: 'owner' | null) => {
+const impersonation: ImpersonationPrincipal = {
+  id: 'impersonation', actorUserId: 'staff', actorEmail: 'staff@example.org', actorName: 'Staff', actorStaffRole: 'owner',
+  subjectMemberId: 'member', subjectName: 'Member', expiresAt: '2026-11-16T13:00:00.000Z',
+};
+
+const harness = (staffRole: 'owner' | null, impersonated = false) => {
   const stored = [order('live-order', 'live'), order('test-order', 'test')];
   const listOrderChanges = vi.fn<OrderChangeRepository['listOrderChanges']>(async (_tenantId, query) => query.after?.startsWith(EPOCH) === false
     ? { kind: 'reset', cursor: `${EPOCH}.12.4` }
@@ -34,7 +39,11 @@ const harness = (staffRole: 'owner' | null) => {
       .map((item, index) => ({ cursor: `${EPOCH}.9.${String(index + 1)}`, orderId: item.id, changedAt: item.createdAt })) });
   const listByIds = vi.fn<OrderListItemReader['listByIds']>(async (_tenantId, ids) => stored.filter((item) => ids.includes(item.id)));
   const app = new Hono<AppVars>();
-  app.use('*', async (c, next) => { c.set('identity', identity(staffRole)); await next(); });
+  app.use('*', async (c, next) => {
+    c.set('identity', identity(staffRole));
+    if (impersonated) c.set('impersonation', impersonation);
+    await next();
+  });
   registerOrderChangeRoutes(app, { orderChangeFeed: { changes: { listOrderChanges }, orders: { listByIds } } });
   return { app, listOrderChanges };
 };
@@ -75,6 +84,14 @@ describe('order changes HTTP route', () => {
     const h = harness(null);
     const response = await h.app.request('/api/orders/changes');
     expect(response.status).toBe(403);
+    expect(h.listOrderChanges).not.toHaveBeenCalled();
+  });
+
+  it('refuses a read-only impersonation session before the feed is read', async () => {
+    const h = harness('owner', true);
+    const response = await h.app.request(`/api/orders/changes?after=${EPOCH}.18446744073709551615.0`);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
     expect(h.listOrderChanges).not.toHaveBeenCalled();
   });
 

@@ -78,14 +78,17 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
   },
   orderRefundBlockedAlertEmail: {
     subject: '[Acme] Automatyczny zwrot zablokowany przez brak uprawnienia w Stripe: order-<1>',
+    html: '<p>Zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
     text: 'Zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
   },
   orderRefundBlockedFailedAlertEmail: {
     subject: '[Acme] Automatyczny zwrot nadal zablokowany po 72 godzinach, zwróć ręcznie: order-<1>',
+    html: '<p>Zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
     text: 'Zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
   },
   orderRefundUnconfirmedAlertEmail: {
     subject: '[Acme] Stripe nie potwierdził zwrotu, sprawdź go ręcznie: order-<1>',
+    html: '<p>Stripe nie potwierdził zwrotu 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt;, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.</p><p>Ostatni błąd: Refund still pending at the last scheduled status check</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
     text: 'Stripe nie potwierdził zwrotu 40,99\u00a0zł za anulowane zamówienie order-<1>, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.\nOstatni błąd: Refund still pending at the last scheduled status check\nhttps://acme.example.com/panel/sales/order-1',
   },
   orderSoldOutRefundEmail: {

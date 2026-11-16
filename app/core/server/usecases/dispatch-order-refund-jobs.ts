@@ -116,9 +116,14 @@ const settleRefundFailure = (job: OrderRefundJob, error: AppError, now: string):
   if (kind === 'already_refunded') return skippedRefunded(error.message);
   if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
   if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(error.message);
-  const retryAt = orderRefundRetryAt(job.attempts, now, job.createdAt);
+  const transientFailureStreak = job.transientFailureStreak + 1;
+  const retryAt = orderRefundRetryAt(transientFailureStreak, now, job.createdAt);
   if (retryAt === null) return finalFailure(error.message);
-  return { update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message }, outcome: 'retrying', alert: job.lastError === null ? 'retrying' : null };
+  return {
+    update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message, transientFailureStreak },
+    outcome: 'retrying',
+    alert: job.lastError === null ? 'retrying' : null,
+  };
 };
 
 const isCommitted = (refund: ProviderRefund): boolean => refund.status !== 'failed' && refund.status !== 'canceled';
@@ -166,7 +171,8 @@ const refundJob = async (job: OrderRefundJob, order: OrderListItem | null, now: 
   if (order.cancelReason !== job.reason) return finalFailure('The order is not cancelled for this refund reason');
   if (job.paymentIntentId === null) return finalFailure('The order has no payment intent to refund');
   const settlement = await attemptRefund(job, order, job.paymentIntentId, now, deps);
-  return settlement.outcome === 'blocked_permission' ? settlement : { ...settlement, update: { permissionBlockedAt: null, ...settlement.update } };
+  const refundIssued = settlement.outcome === 'refunded' || settlement.outcome === 'submitted';
+  return { ...settlement, update: { transientFailureStreak: 0, ...(refundIssued ? { permissionBlockedAt: null } : {}), ...settlement.update } };
 };
 
 const checkRefundStatus = async (job: OrderRefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {

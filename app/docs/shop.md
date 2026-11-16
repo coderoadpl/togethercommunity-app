@@ -937,14 +937,21 @@ For each claimed job the dispatcher reads the order of that workspace again:
   The existing `charge.refunded` handler marks the order `refunded`;
 - a temporary Stripe failure or a short available balance is retried 1 min,
   5 min, 30 min, 2 h and 6 h later, then every 12 h until seven days after the
-  job was queued; the job then ends as `failed`;
+  job was queued; the job then ends as `failed`. The delay follows the number
+  of consecutive temporary failures (`transient_failure_streak`), not the
+  number of attempts: any other outcome, such as a missing permission, resets
+  it, so the first temporary failure after hourly permission refusals is
+  retried a minute later;
 - a charge Stripe reports as already refunded ends as `skipped_refunded`; a
   missing payment intent, a refund Stripe rejects for good or an order that is
   not cancelled ends as `failed` at once;
 - a key without the Charges and Refunds (write) permission moves the job to
   `blocked_permission` and retries it every hour for 72 hours from the first
   refusal; adding the permission in the Stripe Dashboard lets the next hourly
-  attempt pay the refund. After 72 hours the job ends as `failed`.
+  attempt pay the refund. After 72 hours the job ends as `failed`. The time of
+  the first refusal (`permission_blocked_at`) is kept until a refund is issued,
+  so a refusal after a temporary failure neither restarts the 72 hours nor
+  sends a second alert.
 
 Idempotency keys: the job keeps a key generation, starting at 0. Generation 0
 sends `oos-refund-<orderId>`, generation n sends `oos-refund-<orderId>-<n>`.

@@ -25,6 +25,7 @@ export const orderRefundJobs = pgTable('order_refund_jobs', {
   statusChecks: integer('status_checks').notNull().default(0),
   keyGeneration: integer('key_generation').notNull().default(0),
   permissionBlockedAt: timestamp('permission_blocked_at', { withTimezone: true, mode: 'string' }),
+  transientFailureStreak: integer('transient_failure_streak').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [

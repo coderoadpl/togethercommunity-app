@@ -1,6 +1,6 @@
 {
-  "hash": "22c7f43d132f59bb36fadc2889f8ca75d177dc204880d87a020e4ebabe3996b7",
-  "shortId": "22c7f43d132f",
+  "hash": "88f08f1bc0fda05ece2942b99b6cf88bc215d311a93bd4db730266d56a0a1373",
+  "shortId": "88f08f1bc0fd",
   "schema": {
     "constraints": [
       {
@@ -5790,6 +5790,14 @@
             "generated": "",
             "identity": "",
             "name": "status_checks",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "transient_failure_streak",
             "notNull": true,
             "type": "integer"
           },

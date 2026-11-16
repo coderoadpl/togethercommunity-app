@@ -1349,7 +1349,7 @@ export interface AutoInvoiceJobRepository {
 }
 
 export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
-  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt'>>;
+  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt' | 'transientFailureStreak'>>;
 
 export interface OrderRefundJobRepository {
   enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;

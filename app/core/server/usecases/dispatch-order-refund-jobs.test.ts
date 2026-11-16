@@ -326,6 +326,51 @@ describe('order refund dispatcher', () => {
     expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
   });
 
+  it('retries a temporary error met after hourly permission refusals a minute later, because the retry delay follows consecutive temporary errors', async () => {
+    const h = harness({ steps: [
+      ...Array.from({ length: 6 }, () => ({ outcome: 'error' as const, error: permissionMissing() })),
+      { outcome: 'error', error: refundFailure('transient', 'Stripe is unavailable') },
+    ] });
+    await h.queue();
+
+    for (let hour = 0; hour < 6; hour += 1) await h.tick(at(hours(hour)));
+    expect(h.job()).toMatchObject({ status: 'blocked_permission', attempts: 6, nextAttemptAt: at(hours(6)), transientFailureStreak: 0 });
+
+    expect(await h.tick(at(hours(6)))).toStrictEqual({ processedCount: 1, outcomes: { retrying: 1 } });
+    expect(h.job()).toMatchObject({ status: 'pending', attempts: 7, transientFailureStreak: 1, nextAttemptAt: at(hours(6) + minutes(1)), lastError: 'Stripe is unavailable' });
+
+    expect(await h.tick(at(hours(6) + minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { refunded: 1 } });
+    expect(h.job()).toMatchObject({ status: 'succeeded', transientFailureStreak: 0, permissionBlockedAt: null });
+    expect(h.created).toHaveLength(1);
+  });
+
+  it('keeps the 72-hour window and sends no second blocked alert for a permission refusal after a temporary error', async () => {
+    const h = harness({ steps: [
+      { outcome: 'error', error: permissionMissing() },
+      { outcome: 'error', error: refundFailure('transient', 'Stripe is unavailable') },
+      ...Array.from({ length: 100 }, () => ({ outcome: 'error' as const, error: permissionMissing() })),
+    ] });
+    await h.queue();
+
+    await h.tick(createdAt);
+    await h.tick(at(hours(1)));
+    expect(h.job()).toMatchObject({ status: 'pending', permissionBlockedAt: createdAt, nextAttemptAt: at(hours(1) + minutes(1)) });
+
+    expect(await h.tick(at(hours(1) + minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+    expect(h.job()).toMatchObject({ status: 'blocked_permission', permissionBlockedAt: createdAt, nextAttemptAt: at(hours(2) + minutes(1)) });
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
+
+    const attemptTimes: string[] = [];
+    for (let tick = 0; tick < 100 && ['pending', 'blocked_permission'].includes(h.job().status); tick += 1) {
+      const due = h.job().nextAttemptAt ?? createdAt;
+      attemptTimes.push(due);
+      await h.tick(due);
+    }
+    expect(attemptTimes.at(-1)).toBe(at(hours(72) + minutes(1)));
+    expect(h.job()).toMatchObject({ status: 'failed', nextAttemptAt: null });
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission', 'blocked_permission_failed']);
+  });
+
   it('gives up a refund still blocked by the missing permission after 72 hours and alerts staff a second time', async () => {
     const h = harness({ steps: Array.from({ length: 100 }, () => ({ outcome: 'error' as const, error: permissionMissing() })) });
     await h.queue();

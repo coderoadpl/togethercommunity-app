@@ -78,8 +78,8 @@ describe('order refund jobs of two workspaces', () => {
     })).toBeNull();
 
     expect(await jobRows()).toStrictEqual(before);
-    expect(await repository.release('tenant-a', claim.job.id, claim.lease, { status: 'succeeded', now: '2026-11-15T10:02:00.000Z' }))
-      .toMatchObject({ tenantId: 'tenant-a', status: 'succeeded', lockedAt: null });
+    expect(await repository.release('tenant-a', claim.job.id, claim.lease, { status: 'succeeded', transientFailureStreak: 2, now: '2026-11-15T10:02:00.000Z' }))
+      .toMatchObject({ tenantId: 'tenant-a', status: 'succeeded', lockedAt: null, transientFailureStreak: 2 });
   });
 
   it('resolves a job externally only through the workspace that owns its order', async () => {

@@ -23,6 +23,7 @@ export const orderRefundJobSchema = z.object({
   statusChecks: z.number().int().nonnegative().default(0),
   keyGeneration: z.number().int().nonnegative().default(0),
   permissionBlockedAt: z.string().datetime().nullable().default(null),
+  transientFailureStreak: z.number().int().nonnegative().default(0),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -69,10 +70,10 @@ const ORDER_REFUND_STATUS_CHECKS_AFTER_MS = [DAY_MS, 7 * DAY_MS] as const;
 const ORDER_REFUND_PERMISSION_RETRY_MS = HOUR_MS;
 const ORDER_REFUND_PERMISSION_WINDOW_MS = 72 * HOUR_MS;
 
-const retryDelayMs = (attempt: number): number => ORDER_REFUND_RETRY_DELAYS_MS[attempt - 1] ?? ORDER_REFUND_RETRY_EVERY_MS;
+const retryDelayMs = (consecutiveFailures: number): number => ORDER_REFUND_RETRY_DELAYS_MS[consecutiveFailures - 1] ?? ORDER_REFUND_RETRY_EVERY_MS;
 
-export const orderRefundRetryAt = (failedAttempts: number, now: string, queuedAt: string): string | null => {
-  const next = Date.parse(now) + retryDelayMs(failedAttempts);
+export const orderRefundRetryAt = (consecutiveFailures: number, now: string, queuedAt: string): string | null => {
+  const next = Date.parse(now) + retryDelayMs(consecutiveFailures);
   return next - Date.parse(queuedAt) > ORDER_REFUND_RETRY_WINDOW_MS ? null : new Date(next).toISOString();
 };
 

@@ -925,11 +925,13 @@ For each claimed job the dispatcher reads the order of that workspace again:
   refund call;
 - otherwise it adds up every listed refund that is not `failed` or `canceled`
   (only refunds made outside the job, such as by hand in the Stripe Dashboard,
-  remain at this point). When nothing is left to refund, or the order is
-  already `refunded`, the job ends as `skipped_refunded` without a refund call;
-  when staff refunded part of the payment by hand, only the remainder is
-  refunded. For an order already `refunded`, a list call that fails for a
-  reason other than a temporary error also ends the job as `skipped_refunded`;
+  remain at this point). The refund list decides, not the order status: only
+  when nothing is left to refund does the job end as `skipped_refunded` without
+  a refund call. When staff refunded part of the payment by hand, or a hand
+  refund that marked the order `refunded` failed later, the remainder is
+  refunded under the usual idempotency key rule. A list call that fails is
+  settled like a failed refund call (retried, blocked, or `failed` with a staff
+  alert), also for an order already `refunded`;
 - it then refunds that amount through `POST /v1/refunds` with the payment
   intent, the workspace's restricted key in the order's mode and the job's
   current idempotency key, stores the Stripe refund id and status and marks the
@@ -993,8 +995,10 @@ refund: a `submitted` job keeps its scheduled status reads, a `running` job
 keeps its lease, and a `pending` or `blocked_permission` job that already
 attempted a refund is settled by its next attempt, whose refund list tells the
 job's own refund (taken over and tracked) from one made by hand (no matching
-metadata, so the job ends as `skipped_refunded`). A blocked job whose payment
-staff refund by hand therefore heals at its next hourly attempt. A refund or dispute of a
+metadata, subtracted from the amount to refund, so a full hand refund ends the
+job as `skipped_refunded`). A blocked job whose payment staff refund by hand
+therefore heals at its next hourly attempt, and refunds the payment itself
+when that hand refund failed in the meantime. A refund or dispute of a
 cancelled order revokes no access, because the cancelled order granted none.
 
 A cancelled order never counts as a purchase: it keeps no access when another

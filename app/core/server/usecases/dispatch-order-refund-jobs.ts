@@ -138,17 +138,13 @@ const issuedRefundOf = (job: OrderRefundJob, refunds: readonly ProviderRefund[])
 
 const attemptRefund = async (job: OrderRefundJob, order: OrderListItem, paymentIntentId: string, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   const { createRefund, listRefunds } = deps.payment;
-  const orderRefunded = order.status === 'refunded';
-  if (createRefund === undefined || listRefunds === undefined) return orderRefunded ? skippedRefunded() : settleRefundFailure(job, providerUnavailable, now);
+  if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
   const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId });
-  if (!listed.ok) {
-    const transient = (refundFailureOf(listed.error)?.kind ?? 'transient') === 'transient';
-    return orderRefunded && !transient ? skippedRefunded() : settleRefundFailure(job, listed.error, now);
-  }
+  if (!listed.ok) return settleRefundFailure(job, listed.error, now);
   const issued = issuedRefundOf(job, listed.value);
   if (issued !== undefined) return settleSubmittedRefund(issued, now);
   const remainingCents = job.amountCents - committedRefundCents(listed.value);
-  if (orderRefunded || remainingCents <= 0) return skippedRefunded();
+  if (remainingCents <= 0) return skippedRefunded();
   const created = await createRefund({
     mode: order.mode,
     tenantId: job.tenantId,

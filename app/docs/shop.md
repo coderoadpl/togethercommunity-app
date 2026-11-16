@@ -883,16 +883,19 @@ nothing. Recurring prices keep the commit above.
 
 `dispatchOrderRefundJobs` runs on the existing minute tick (the
 `/api/internal/dispatch-email` cron route and the Node ticker) after e-mail
-dispatch has finished, so a slow or failing refund run never holds e-mail back,
-and is also started right after a webhook queues a refund job; a failing kick
-or tick is logged and never fails the webhook response or the e-mail dispatch.
-It handles at most 25 due jobs per run and claims a job only when the worst
-case of that job still ends before the run's deadline; jobs it did not claim
-stay due for the next tick. The minute tick sets the deadline 45 seconds after
-the tick request started, so the notification fan-out, the stock sweep, the
-e-mail dispatch and (on the cron tick) the Meta CAPI dispatch that run first
-use part of it; a run started any other way (the kick after a webhook, the
-Node ticker) gets 30 seconds from its own start.
+dispatch has finished and before the Meta CAPI dispatch, so a slow or failing
+refund run never holds e-mail back, and is also started right after a webhook
+queues a refund job; a failing kick or tick is logged and never fails the
+webhook response, the e-mail dispatch or the Meta CAPI dispatch. It handles at
+most 25 due jobs per run (one on the cron tick, see below) and claims a job only
+when the worst case of that job still ends before the run's deadline; jobs it
+did not claim stay due for the next tick. When the deadline leaves due jobs
+unclaimed, the run logs one warning with their number
+(`[order-refund] run deadline reached, <n> due refund jobs left for the next
+run`). The minute tick sets the deadline 45 seconds after the tick request
+started, so the notification fan-out, the stock sweep and the e-mail dispatch
+that run first use part of it; a run started any other way (the kick after a
+webhook, the Node ticker) gets 30 seconds from its own start.
 
 The worst case of a job: a job makes at most two Stripe calls (the refund list
 and the create call, or one status read). Every refund call has a 5-second
@@ -900,12 +903,21 @@ timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
 call takes at most 2 × 5 s + 0.5 s = 10.5 s and a job at most 2 × 10.5 s =
-21 s. The last job is therefore claimed at most 24 seconds after the tick
-started, its Stripe calls end by 45 seconds, and 15 seconds of the 60-second
-function limit remain for that job's database writes and the response. When the
-work before the refunds takes longer than 24 seconds, the tick claims no refund
-job. Network retries stay at 0 because any further SDK retry may wait for a
-`Retry-After` of up to 60 seconds. On Node the SDK's timeout restarts at each
+21 s. The Meta CAPI dispatch that follows on the cron tick has its own
+20-second budget (it starts a Meta request only while its 5-second timeout fits
+in it). Two refund jobs (2 × 21 s = 42 s) plus that budget would already
+outlast the 60-second function limit, and a refund backlog that kept every tick
+busy until the 45-second deadline would leave Meta CAPI no time on any tick, so
+the cron tick claims at most one refund job: with the fan-out, the stock sweep
+and the e-mail dispatch taking t seconds, the refunds end by t + 21 s and Meta
+CAPI by t + 41 s, inside the 60 seconds while t stays under 19 seconds. A job
+is still claimed only when its worst case ends by the 45-second deadline (at
+most 24 seconds after the tick started); when the work before the refunds
+takes longer, the tick claims no refund job. Further due jobs wait for the next
+minute or are taken by the kick after a webhook (up to 25 jobs in 30 seconds).
+The Node ticker has no function limit and keeps the 25-job cap. Network retries
+stay at 0 because any further SDK retry may wait for a `Retry-After` of up to
+60 seconds. On Node the SDK's timeout restarts at each
 stage of a request (connecting, sending, waiting for the answer), so a call
 that is slow at every stage can outlast its 5 seconds; the arithmetic counts
 one timeout per request. A refund request that gets no answer has an unknown

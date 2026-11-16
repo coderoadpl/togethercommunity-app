@@ -256,13 +256,25 @@ describe('entry.node composition', () => {
     );
   });
 
-  it('starts order refund dispatch on the minute ticker only after e-mail dispatch has finished', async () => {
+  it('starts order refund dispatch on the minute ticker only after e-mail dispatch has finished and Meta conversions only after the refunds', async () => {
     vi.useFakeTimers();
     harness.env.NODE_ENV = 'production';
     let finishEmails = (): void => undefined;
+    let finishRefunds = (): void => undefined;
+    const listDueTenantIds = vi.fn(async () => []);
     harness.deps.dispatchEmails.mockImplementationOnce(() => new Promise((resolve) => {
       finishEmails = () => { resolve({ ok: true, value: undefined }); };
     }));
+    harness.deps.dispatchOrderRefundJobs.mockImplementationOnce(() => new Promise((resolve) => {
+      finishRefunds = () => { resolve({ ok: true, value: { processedCount: 0, outcomes: {} } }); };
+    }));
+    harness.deps.metaCapi = {
+      clock: { nowIso: () => '2026-11-01T10:00:00.000Z' }, hash: { sha256: () => 'a'.repeat(64) },
+      directory: { listAll: async () => [] }, tenants: { findSettings: async () => null }, secrets: { resolve: async () => ok('test-token') },
+      gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listMemberConsents: async () => [], listDueTenantIds,
+        listEvents: async () => [], processNext: async () => false },
+    };
     harness.deps.dispatchAutoInvoices.mockResolvedValue({ ok: true, value: undefined });
     harness.deps.releaseExpiredStockReservations.mockResolvedValue(undefined);
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -271,9 +283,14 @@ describe('entry.node composition', () => {
     await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
     expect(harness.deps.dispatchOrderRefundJobs).not.toHaveBeenCalled();
+    expect(listDueTenantIds).not.toHaveBeenCalled();
     finishEmails();
     await vi.advanceTimersByTimeAsync(0);
     expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(listDueTenantIds).not.toHaveBeenCalled();
+    finishRefunds();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listDueTenantIds).toHaveBeenCalledOnce();
   });
 
   it('waits for an in-flight Meta conversion tick when the tickers stop', async () => {

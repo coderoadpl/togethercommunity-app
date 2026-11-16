@@ -15,7 +15,9 @@ import {
 import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
 import { createRefundProviderFake, type RefundProviderStep } from '../testing/refund-provider-fake.js';
 import { createInMemoryTenantDomainRepository } from '../testing/tenant-domain-fakes.js';
-import { dispatchOrderRefundJobs, ORDER_REFUND_DISPATCH_BUDGET_MS, ORDER_REFUND_JOB_WORST_CASE_MS, type DispatchOrderRefundJobsOptions } from './dispatch-order-refund-jobs.js';
+import {
+  dispatchOrderRefundJobs, ORDER_REFUND_CRON_TICK_MAX_JOBS, ORDER_REFUND_DISPATCH_BUDGET_MS, ORDER_REFUND_JOB_WORST_CASE_MS, type DispatchOrderRefundJobsOptions,
+} from './dispatch-order-refund-jobs.js';
 
 const createdAt = '2026-11-15T10:42:00.000Z';
 const minutes = (count: number) => count * 60_000;
@@ -597,6 +599,7 @@ describe('order refund dispatcher', () => {
       await jobs.repository.enqueue('tenant-a', outOfStockRefundJob(order, { id: `job-${String(index + 1)}`, now: createdAt }));
     }
     let now = createdAt;
+    const warnings: string[] = [];
     const provider = createRefundProviderFake({ chargeAmountCents: 4099 });
     const slowCreateRefund = provider.payment.createRefund;
     if (slowCreateRefund === undefined) throw new Error('Fake refund method missing');
@@ -612,25 +615,47 @@ describe('order refund dispatcher', () => {
         },
       },
       clock: { nowIso: () => now },
+      logger: { ...h.deps.logger, warn: (message: string) => { warnings.push(message); } },
     }, options);
-    return { result, claimed: jobs.jobs.filter((job) => job.attempts > 0).map((job) => job.id), untouched: jobs.jobs.filter((job) => job.status === 'pending' && job.attempts === 0).length };
+    return { result, warnings, claimed: jobs.jobs.filter((job) => job.attempts > 0).map((job) => job.id), untouched: jobs.jobs.filter((job) => job.status === 'pending' && job.attempts === 0).length };
   };
 
   it('claims a job only while a list and a create call that both run into their worst case still end before the tick deadline', async () => {
     expect(ORDER_REFUND_JOB_WORST_CASE_MS).toBe(21_000);
-    const { result, claimed, untouched } = await slowDispatch({ deadlineAt: Date.parse(createdAt) + 45_000 });
+    const { result, claimed, untouched, warnings } = await slowDispatch({ deadlineAt: Date.parse(createdAt) + 45_000 });
 
     expect(result).toStrictEqual(ok({ processedCount: 3, outcomes: { refunded: 3 } }));
     expect(claimed).toStrictEqual(['job-1', 'job-2', 'job-3']);
     expect(untouched).toBe(3);
+    expect(warnings).toStrictEqual(['[order-refund] run deadline reached, 3 due refund jobs left for the next run']);
+  });
+
+  it('claims one job on the cron tick although the deadline leaves time for more, and logs no deadline warning', async () => {
+    expect(ORDER_REFUND_CRON_TICK_MAX_JOBS).toBe(1);
+    const { result, claimed, untouched, warnings } = await slowDispatch({ deadlineAt: Date.parse(createdAt) + 45_000, maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
+
+    expect(result).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+    expect(claimed).toStrictEqual(['job-1']);
+    expect(untouched).toBe(5);
+    expect(warnings).toStrictEqual([]);
+  });
+
+  it('logs no deadline warning when the deadline stops a run that has no due job left', async () => {
+    const h = harness();
+    const warnings: string[] = [];
+    const result = await dispatchOrderRefundJobs({ ...h.deps, logger: { ...h.deps.logger, warn: (message: string) => { warnings.push(message); } } }, { deadlineAt: Date.parse(createdAt) });
+
+    expect(result).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
+    expect(warnings).toStrictEqual([]);
   });
 
   it('claims nothing when the tick has less time left than the worst case of one job', async () => {
-    const { result, claimed, untouched } = await slowDispatch({ deadlineAt: Date.parse(createdAt) + ORDER_REFUND_JOB_WORST_CASE_MS - 1 });
+    const { result, claimed, untouched, warnings } = await slowDispatch({ deadlineAt: Date.parse(createdAt) + ORDER_REFUND_JOB_WORST_CASE_MS - 1 });
 
     expect(result).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
     expect(claimed).toStrictEqual([]);
     expect(untouched).toBe(6);
+    expect(warnings).toStrictEqual(['[order-refund] run deadline reached, 6 due refund jobs left for the next run']);
   });
 
   it('gives a run without a tick deadline, such as the kick after a webhook, 30 seconds', async () => {

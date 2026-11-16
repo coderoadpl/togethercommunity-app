@@ -1355,6 +1355,7 @@ export interface OrderRefundJobRepository {
   enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
   findByOrderId(tenantId: string, orderId: string): Promise<OrderRefundJob | null>;
   claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedOrderRefundJob | null>;
+  countDue(input: { now: string }): Promise<number>;
   release(
     tenantId: string,
     jobId: string,

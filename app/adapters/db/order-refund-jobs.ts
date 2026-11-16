@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, lt, lte, or } from 'drizzle-orm';
 
 import { orderRefundJobSchema, type OrderRefundJob } from '#core/domain/index.js';
 import type { OrderRefundJobRepository } from '#core/server/index.js';
@@ -8,6 +8,10 @@ import { createEmailOutboxRepository } from './email-outbox.js';
 import { orderRefundJobs } from './order-refund-job-schema.js';
 
 const isoOrNull = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();
+
+const DUE_STATUSES = ['pending', 'blocked_permission', 'submitted', 'succeeded'] as const;
+
+const isDue = (now: string) => and(inArray(orderRefundJobs.status, [...DUE_STATUSES]), lte(orderRefundJobs.nextAttemptAt, now));
 
 const toJob = (row: typeof orderRefundJobs.$inferSelect): OrderRefundJob => orderRefundJobSchema.parse({
   ...row,
@@ -38,10 +42,7 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
       .set({ status: 'pending', lockedAt: null, updatedAt: now })
       .where(and(eq(orderRefundJobs.status, 'running'), lt(orderRefundJobs.lockedAt, staleBefore)));
     const [due] = await tx.select().from(orderRefundJobs)
-      .where(and(
-        inArray(orderRefundJobs.status, ['pending', 'blocked_permission', 'submitted', 'succeeded']),
-        lte(orderRefundJobs.nextAttemptAt, now),
-      ))
+      .where(isDue(now))
       .orderBy(asc(orderRefundJobs.nextAttemptAt), asc(orderRefundJobs.id))
       .limit(1)
       .for('update', { skipLocked: true });
@@ -61,6 +62,10 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
     const job = toJob(claimed);
     return { job, phase: refunding ? 'refund' : 'status_check', lease: { status: job.status, lockedAt: now } };
   }),
+  countDue: async ({ now }) => {
+    const [row] = await db.select({ due: count() }).from(orderRefundJobs).where(isDue(now));
+    return row?.due ?? 0;
+  },
   release: async (tenantId, jobId, lease, { now, ...update }, staffAlerts = []) => db.transaction(async (tx) => {
     const [row] = await tx.update(orderRefundJobs)
       .set({ ...update, lockedAt: null, updatedAt: now })

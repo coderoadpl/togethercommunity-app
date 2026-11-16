@@ -3404,8 +3404,8 @@ describe('email dispatch route', () => {
     const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
     const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
     expect([cron.status, manual.status]).toEqual([200, 200]);
-    const tickDeadline = { deadlineAt: Date.parse('1998-07-12T00:00:00.000Z') + 45_000 };
-    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[tickDeadline], [tickDeadline]]);
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 45_000;
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1 }], [{ deadlineAt }]]);
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });
@@ -3430,6 +3430,31 @@ describe('email dispatch route', () => {
     expect(calls).toStrictEqual([`email:${trigger}`, 'refunds']);
     finishRefunds();
     expect((await response).status).toBe(200);
+  });
+
+  it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
+    const calls: string[] = [];
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
+      calls.push('email');
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      calls.push('refunds');
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchEmails, dispatchOrderRefundJobs });
+    base.metaCapi = {
+      tenants: base.tenants, clock: base.clock, hash: base.contentHash,
+      directory: { listAll: async () => [] },
+      secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listDueTenantIds: async () => { calls.push('meta-capi'); return []; },
+        processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] },
+    };
+
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+
+    expect(response.status).toBe(200);
+    expect(calls).toStrictEqual(['email', 'refunds', 'meta-capi']);
   });
 
   it('preserves the email result when the Meta tenant directory fails', async () => {

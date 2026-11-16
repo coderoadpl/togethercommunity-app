@@ -133,7 +133,8 @@ through the public endpoint. Withdrawal does not claim to recall data from Meta.
 ## Delivery and fields
 
 The existing authenticated per-minute `GET /api/internal/dispatch-email` tick
-also drains CAPI after email dispatch. It retains the existing bearer cron-secret
+also drains CAPI after email dispatch and the order refund dispatch (see
+[the shop guide](../shop.md)). It retains the existing bearer cron-secret
 check. Self-hosted Node servers also invoke the same isolated runner from the
 email ticker; CAPI cycles for the same runtime dependencies cannot overlap in
 one process, including a concurrent cron request. A tick handles at most 20 jobs

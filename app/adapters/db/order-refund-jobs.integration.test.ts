@@ -82,6 +82,17 @@ describe('order refund jobs of two workspaces', () => {
       .toMatchObject({ tenantId: 'tenant-a', status: 'succeeded', lockedAt: null, transientFailureStreak: 2 });
   });
 
+  it('counts the due jobs of every workspace that claimDue would still hand out', async () => {
+    const repository = createOrderRefundJobRepository(database.db);
+    await insertOrder('tenant-a', 'order-later', 'out_of_stock');
+    await insertJob('tenant-a', 'order-later', { nextAttemptAt: '2026-11-15T12:00:00.000Z' });
+
+    expect(await repository.countDue({ now: '2026-11-15T10:30:00.000Z' })).toBe(1);
+    expect(await repository.countDue({ now: '2026-11-15T11:00:00.000Z' })).toBe(2);
+    await repository.claimDue({ now: '2026-11-15T11:00:00.000Z', leaseMs: 600_000 });
+    expect(await repository.countDue({ now: '2026-11-15T11:00:00.000Z' })).toBe(1);
+  });
+
   it('resolves a job externally only through the workspace that owns its order', async () => {
     const repository = createOrderRefundJobRepository(database.db);
     const before = await jobRows();

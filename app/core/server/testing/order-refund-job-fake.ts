@@ -6,6 +6,8 @@ export const createOrderRefundJobFake = () => {
   const jobs: OrderRefundJob[] = [];
   const alerts: EmailOutboxEnqueueInput[] = [];
   let failingAlertWrites = 0;
+  const isDue = (job: OrderRefundJob, now: string) =>
+    ['pending', 'blocked_permission', 'submitted', 'succeeded'].includes(job.status) && job.nextAttemptAt !== null && job.nextAttemptAt <= now;
   const repository: OrderRefundJobRepository = {
     enqueue: async (tenantId, job) => {
       if (jobs.some((existing) => existing.tenantId === tenantId && (existing.orderId === job.orderId || existing.idempotencyKey === job.idempotencyKey))) return false;
@@ -20,7 +22,7 @@ export const createOrderRefundJobFake = () => {
         }
       }
       const due = jobs
-        .filter((job) => ['pending', 'blocked_permission', 'submitted', 'succeeded'].includes(job.status) && job.nextAttemptAt !== null && job.nextAttemptAt <= now)
+        .filter((job) => isDue(job, now))
         .toSorted((left, right) => (left.nextAttemptAt ?? '').localeCompare(right.nextAttemptAt ?? '') || left.id.localeCompare(right.id))[0];
       if (due === undefined) return null;
       const refunding = due.status === 'pending' || due.status === 'blocked_permission';
@@ -29,6 +31,7 @@ export const createOrderRefundJobFake = () => {
         : { lockedAt: now, nextAttemptAt: new Date(Date.parse(now) + leaseMs).toISOString(), updatedAt: now });
       return { job: structuredClone(due), phase: refunding ? 'refund' : 'status_check', lease: { status: due.status, lockedAt: now } };
     },
+    countDue: async ({ now }) => jobs.filter((job) => isDue(job, now)).length,
     release: async (tenantId, jobId, lease, { now, ...update }, staffAlerts = []) => {
       const job = jobs.find((candidate) => candidate.tenantId === tenantId && candidate.id === jobId
         && candidate.status === lease.status && candidate.lockedAt === lease.lockedAt);

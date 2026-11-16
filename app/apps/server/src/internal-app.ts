@@ -462,6 +462,7 @@ import {
   validateCheckoutSelection,
   validateCouponForCheckout,
   validateTermsConsent,
+  ORDER_REFUND_CRON_TICK_MAX_JOBS,
   ORDER_REFUND_TICK_BUDGET_MS,
   type AuthenticatedUser,
   type Ctx,
@@ -802,9 +803,13 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
-const dispatchDueOrderRefunds = async (deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>, tickStartedAt: number): Promise<void> => {
+const dispatchDueOrderRefunds = async (
+  deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>,
+  tickStartedAt: number,
+  limits: { maxJobs?: number } = {},
+): Promise<void> => {
   try {
-    const result = await deps.dispatchOrderRefundJobs({ deadlineAt: tickStartedAt + ORDER_REFUND_TICK_BUDGET_MS });
+    const result = await deps.dispatchOrderRefundJobs({ deadlineAt: tickStartedAt + ORDER_REFUND_TICK_BUDGET_MS, ...limits });
     if (!result.ok) deps.logger.error(`[order-refund] tick dispatch failed: ${result.error.message}`);
   } catch (error) {
     deps.logger.error(`[order-refund] tick dispatch failed: ${safeErrorMessage(error)}`);
@@ -838,8 +843,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('cron');
+    await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
-    await dispatchDueOrderRefunds(deps, tickStartedAt);
     return respond(emails);
   });
 

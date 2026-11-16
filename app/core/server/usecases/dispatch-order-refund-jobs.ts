@@ -33,7 +33,7 @@ import { resolveTenantOrigin, type TenantUrlDeps } from '../tenant-url.js';
 import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 
 export interface DispatchOrderRefundJobsDeps extends TenantUrlDeps {
-  refundJobs: Pick<OrderRefundJobRepository, 'claimDue' | 'release'>;
+  refundJobs: Pick<OrderRefundJobRepository, 'claimDue' | 'release' | 'countDue'>;
   orderDetails: OrderDetailRepository;
   payment: Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds'>;
   tenants: Pick<TenantRepository, 'findById' | 'findSettings'>;
@@ -59,9 +59,11 @@ interface Settlement {
 
 export interface DispatchOrderRefundJobsOptions {
   deadlineAt?: number;
+  maxJobs?: number;
 }
 
 const MAX_JOBS_PER_DISPATCH = 25;
+export const ORDER_REFUND_CRON_TICK_MAX_JOBS = 1;
 export const ORDER_REFUND_DISPATCH_BUDGET_MS = 30_000;
 export const ORDER_REFUND_TICK_BUDGET_MS = 45_000;
 export const ORDER_REFUND_JOB_WORST_CASE_MS = 2 * REFUND_REQUEST_WORST_CASE_MS;
@@ -268,6 +270,15 @@ const processClaim = async (claim: ClaimedOrderRefundJob, deps: DispatchOrderRef
   return settlement.outcome;
 };
 
+const warnUnclaimedAtDeadline = async (deps: DispatchOrderRefundJobsDeps): Promise<void> => {
+  try {
+    const unclaimed = await deps.refundJobs.countDue({ now: deps.clock.nowIso() });
+    if (unclaimed > 0) deps.logger.warn(`[order-refund] run deadline reached, ${String(unclaimed)} due refund jobs left for the next run`);
+  } catch (cause) {
+    deps.logger.error(safeLogMessage(`[order-refund] due refund jobs not counted at the run deadline: ${safeErrorMessage(cause)}`));
+  }
+};
+
 export const dispatchOrderRefundJobs = async (
   deps: DispatchOrderRefundJobsDeps,
   options: DispatchOrderRefundJobsOptions = {},
@@ -275,7 +286,12 @@ export const dispatchOrderRefundJobs = async (
   const outcomes: Partial<Record<DispatchOutcome, number>> = {};
   let processedCount = 0;
   const deadlineAt = options.deadlineAt ?? Date.parse(deps.clock.nowIso()) + ORDER_REFUND_DISPATCH_BUDGET_MS;
-  while (processedCount < MAX_JOBS_PER_DISPATCH && Date.parse(deps.clock.nowIso()) + ORDER_REFUND_JOB_WORST_CASE_MS <= deadlineAt) {
+  const maxJobs = Math.min(options.maxJobs ?? MAX_JOBS_PER_DISPATCH, MAX_JOBS_PER_DISPATCH);
+  while (processedCount < maxJobs) {
+    if (Date.parse(deps.clock.nowIso()) + ORDER_REFUND_JOB_WORST_CASE_MS > deadlineAt) {
+      await warnUnclaimedAtDeadline(deps);
+      break;
+    }
     const claim = await deps.refundJobs.claimDue({ now: deps.clock.nowIso(), leaseMs: LEASE_MS });
     if (claim === null) break;
     const outcome = await processClaim(claim, deps);

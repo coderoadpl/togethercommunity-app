@@ -53,6 +53,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'KsefSubmissionJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'NotificationFanoutJobRepository.claimDue': 'A platform worker leases due fan-out jobs across all tenants.',
   'OrderRefundJobRepository.claimDue': 'A platform worker leases the next due refund job across all tenants.',
+  'OrderRefundJobRepository.countDue': 'A platform worker counts the due refund jobs of all tenants it left for the next run.',
   'PlatformAuditRepository.record': 'Platform audit entries record operator actions taken outside any tenant boundary.',
   'PlatformDataResetPort.run': 'The disposable-environment reset rebuilds every demo tenant, so it spans all of them by definition.',
   'SmokeTenantReseedPort.run': 'The smoke-tenant reseed owns its tenant ID; the caller cannot choose which tenant is rebuilt.',

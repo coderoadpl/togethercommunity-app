@@ -4,6 +4,7 @@ import { decodeOrderChangeCursor, encodeOrderChangeCursor, listOrderChangesQuery
 import type { OrderChangeRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { orders } from './app-schema.js';
 import { orderChanges } from './order-change-schema.js';
 
 const afterCursor = (cursor: string | undefined): SQL | undefined => {
@@ -15,7 +16,7 @@ const afterCursor = (cursor: string | undefined): SQL | undefined => {
 
 export const createOrderChangeRepository = (db: Db): OrderChangeRepository => ({
   listOrderChanges: async (tenantId, query) => {
-    const { after, limit } = listOrderChangesQuerySchema.parse(query);
+    const { after, limit, mode } = listOrderChangesQuerySchema.parse(query);
     const rows = await db
       .select({
         id: sql<string>`${orderChanges.id}::text`,
@@ -24,8 +25,10 @@ export const createOrderChangeRepository = (db: Db): OrderChangeRepository => ({
         changedAt: orderChanges.changedAt,
       })
       .from(orderChanges)
+      .innerJoin(orders, and(eq(orders.tenantId, orderChanges.tenantId), eq(orders.id, orderChanges.orderId)))
       .where(and(
         eq(orderChanges.tenantId, tenantId),
+        mode === undefined ? undefined : eq(orders.mode, mode),
         sql`${orderChanges.xactId} < pg_snapshot_xmin(pg_current_snapshot())`,
         afterCursor(after),
       ))

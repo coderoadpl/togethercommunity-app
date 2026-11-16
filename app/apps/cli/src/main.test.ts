@@ -16,6 +16,7 @@ const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
   listOrders: ReturnType<typeof vi.fn>;
+  orderChanges: ReturnType<typeof vi.fn>;
   exportOrders: ReturnType<typeof vi.fn>;
   publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
   createCheckoutSession: ReturnType<typeof vi.fn>;
@@ -94,6 +95,7 @@ interface Hoisted {
 const h = vi.hoisted(
   (): Hoisted => ({
     listOrders: vi.fn(),
+    orderChanges: vi.fn(),
     exportOrders: vi.fn(),
     publicCheckoutSessionStatus: vi.fn(),
     createCheckoutSession: vi.fn(),
@@ -220,6 +222,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
     listOrders: h.listOrders,
+    orderChanges: h.orderChanges,
     exportOrders: h.exportOrders,
     publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
     createCheckoutSession: h.createCheckoutSession,
@@ -1807,6 +1810,20 @@ describe('orders list CLI text', () => {
     h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, lines: [{ ...line, productId: 'paperback', name: 'Paperback (old title)', quantity: 1 }] }], total: 1, page: 1, pageSize: 20, sources: [] }));
     await run('orders', 'list');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tPaperback\tbuyer@example.com\t'));
+  });
+});
+
+describe('orders changes CLI', () => {
+  it('reads the change feed after a cursor and prints each change and the next cursor', async () => {
+    h.orderChanges.mockResolvedValue(ok({ changes: [{ cursor: '9.4', order: {
+      id: 'order-12345678', tenantId: 'workspace', memberId: 'member', productId: 'paperback', priceId: null, kind: 'one_time',
+      status: 'paid', mode: 'live', amountCents: 9400, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null,
+      discountCents: 0, createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.com', memberName: 'Buyer',
+      productTitle: 'Paperback', couponCode: null, fulfilmentStatus: 'shipped',
+    } }], nextCursor: '9.4' }));
+    await run('orders', 'changes', '--after', '8.7', '--limit', '50', '--mode', 'live');
+    expect(h.orderChanges).toHaveBeenCalledExactlyOnceWith({ after: '8.7', limit: 50, mode: 'live' });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('9.4\torder-12345678\tpaid\tshipped\nnext cursor: 9.4');
   });
 });
 

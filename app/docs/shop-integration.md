@@ -633,14 +633,64 @@ The corresponding staff-session read is
 live/test list; `mode=test` selects test rows; an unknown or empty mode is a
 validation error. Workspace authorization still applies independently of mode.
 
-Poll all relevant pages, overlap successive scans and de-duplicate by order ID.
-The list is newest-first offset pagination, not a cursor or an updated-since
-feed: new orders can shift page boundaries, and older orders can change state.
-Revisit outstanding orders and reconcile periodically rather than remembering
-only the latest creation time. Use `GET /api/orders/<order-id>` for protected
-detail (`data.order` and nullable `data.invoice`). Protect buyer addresses and
-emails as personal data. This integration uses polling; it does not rely on an
-outbound order-push contract.
+The list is newest-first offset pagination: new orders can shift page
+boundaries, and older orders can change state. To follow every new order and
+every later change, read the change feed below instead of rescanning the list.
+Use `GET /api/orders/<order-id>` for protected detail (`data.order` and nullable
+`data.invoice`). Protect buyer addresses and emails as personal data. This
+integration uses polling; it does not rely on an outbound order-push contract.
+
+### Follow order changes
+
+`GET /api/orders/changes?after=<cursor>&limit=100&mode=live` returns the orders
+of the workspace that were created or changed after the cursor, oldest change
+first. It needs the same staff session and `order:read` permission as the order
+list:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "changes": [{ "cursor": "<cursor>", "order": { "id": "<order-id>", "status": "paid", "fulfilmentStatus": "shipped" } }],
+    "nextCursor": "<cursor>"
+  }
+}
+```
+
+Each `order` has the shape of an entry in `data.orders` of the order list, in
+its state at the time of the read, not at the time of the change. An order
+changed several times within one page appears once, at its latest cursor.
+Payment, refunds, collection and shipping all produce a change.
+`limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`
+selects one mode, and an omitted mode returns both. A malformed cursor or limit
+is a validation error (HTTP 400).
+
+A shop backend follows the feed like this:
+
+1. Start without `after` to read from the oldest change. Orders last written
+   before the change log was introduced appear only after their next change,
+   so read those once from the order list.
+2. Process every entry of `changes` (for example, update the order in the shop's
+   database by `order.id`).
+3. Store `nextCursor` only after the processing is saved, then request the next
+   page with `after=<nextCursor>`.
+4. When `changes` is empty, `nextCursor` stays the cursor that was sent (or is
+   `null` before the first change); wait a minute and ask again.
+
+The feed delivers each change at least once: a backend that stops between
+processing and storing the cursor receives the same entries again, so the
+processing must be idempotent by `order.id`. The cursor is opaque: store and
+send it unchanged, and do not compare, sort or build cursors. A change becomes
+visible only after every earlier database transaction has finished, so it can
+appear a little later than the write that caused it, but it never lands behind
+a cursor that was already returned.
+
+CLI: `orders changes --mode live --after '<cursor>'` prints one line per change
+(cursor, order ID, status, fulfilment status, client reference) and the next
+cursor; `--json` prints the envelope above. `orders changes --mode live --after
+'<cursor>' --follow` keeps polling every `--interval` seconds (default 10)
+while nothing changes, prints each change once and stops cleanly on Ctrl+C; with
+`--json` it prints one single-line envelope per page that has changes.
 
 For shipping, select live, paid orders whose `fulfilmentStatus` is `to_pack`.
 Packing-list/export tools are also available, but they are not proof of carrier
@@ -725,7 +775,8 @@ or certify a live provider/KSeF submission.
 - **Buyer account.** Physical checkout creates or reuses an account/member; it is
   not a guest-only flow.
 - **Polling instead of push.** Plan this integration around protected order
-  reads and reconciliation, not a promised general outbound order webhook.
+  reads and the order change feed, not a promised general outbound order
+  webhook.
 - **Shared seller invoice numbering.** KSeF allocation is workspace/year scoped,
   while the printed number is `FV/<year>/<six-digit-sequence>` without a workspace
   prefix. Several workspaces using one legal seller can therefore allocate the
@@ -738,13 +789,16 @@ or certify a live provider/KSeF submission.
 Request/response shapes and paths are defined in
 [`core/contract/routes.ts`](../core/contract/routes.ts),
 [`sales-links.ts`](../core/contract/sales-links.ts),
-[`order-fulfilment.ts`](../core/contract/order-fulfilment.ts) and
+[`order-fulfilment.ts`](../core/contract/order-fulfilment.ts),
+[`order-changes.ts`](../core/contract/order-changes.ts) and
 [`order-verification.ts`](../core/contract/order-verification.ts).
 The executable client boundary is [`core/client/http.ts`](../core/client/http.ts).
 The corresponding session handlers are in
-[`internal-app.ts`](../apps/server/src/internal-app.ts), public handlers and CORS
-in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI flags in
-[`main.ts`](../apps/cli/src/main.ts). Follow those schemas instead of guessing
+[`internal-app.ts`](../apps/server/src/internal-app.ts) and
+[`order-change-routes.ts`](../apps/server/src/order-change-routes.ts), public
+handlers and CORS in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI
+flags in [`main.ts`](../apps/cli/src/main.ts) and
+[`order-change-commands.ts`](../apps/cli/src/order-change-commands.ts). Follow those schemas instead of guessing
 uniform body IDs or undocumented checkout fields.
 
 ## Several workspaces of one company

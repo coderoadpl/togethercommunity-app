@@ -24,6 +24,7 @@ import {
   salesLinkContracts,
   orderVerificationContracts,
   orderFulfilmentContracts,
+  orderChangeContracts,
   shipxContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
@@ -562,6 +563,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
   shipxConfigure: (input: z.input<typeof shipxContracts.shipxConfigure.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxConfigure.path, shipxContracts.shipxConfigure.output, input, signal),
   shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
   ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
+  orderChanges: (input: z.input<typeof orderChangeContracts.orderChanges.input> = {}, signal?: AbortSignal) => {
+    const query = directoryQuery(input, []);
+    return request(options, API_ROUTES.orderChanges.method, query === '' ? API_ROUTES.orderChanges.path : `${API_ROUTES.orderChanges.path}?${query}`, orderChangeContracts.orderChanges.output, undefined, signal);
+  },
   issueOrderLine: (input: z.input<typeof orderVerificationContracts.issueOrderLine.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.issueOrderLine.path.replace(':orderId', encodeURIComponent(input.orderId)).replace(':productId', encodeURIComponent(input.productId)), orderVerificationContracts.issueOrderLine.output, input, signal),
   provisionOperatorTenant: (input: ProvisionTenantInput, secret: string) =>
     request(options, API_ROUTES.operatorTenantProvision.method, API_ROUTES.operatorTenantProvision.path,

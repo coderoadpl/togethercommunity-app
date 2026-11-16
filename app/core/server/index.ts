@@ -158,6 +158,7 @@ export * from './stock-ports.js';
 export * from './usecases/order-verification.js';
 export * from './order-fulfilment-ports.js';
 export * from './order-change-ports.js';
+export * from './usecases/order-changes.js';
 export * from './usecases/order-fulfilment.js';
 export * from './shipx-ports.js';
 export * from './usecases/shipx.js';

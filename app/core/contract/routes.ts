@@ -4,6 +4,7 @@ import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
 import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
+import { ORDER_CHANGE_ROUTES } from './order-changes.js';
 import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
@@ -1966,6 +1967,7 @@ export const API_ROUTES = {
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
   ...ORDER_FULFILMENT_ROUTES,
+  ...ORDER_CHANGE_ROUTES,
   ...SHIPX_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
@@ -2293,6 +2295,7 @@ export const API_PATHS = {
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
+  orderChanges: API_ROUTES.orderChanges.path,
   shipxShipment: API_ROUTES.shipxShipment.path,
   shipxRefresh: API_ROUTES.shipxRefresh.path,
   shipxCreate: API_ROUTES.shipxCreate.path,

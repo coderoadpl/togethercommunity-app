@@ -732,6 +732,20 @@ it.each(['test', 'live'])('preserves obsolete direct checkout mode %s for server
 });
 
 
+it('reads the order change feed with the cursor, limit and mode in the query', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {
+    urls.push(String(input));
+    return jsonResponse({ ok: true, data: { changes: [], nextCursor: '42.7' } });
+  } });
+  expect(await client.orderChanges({ after: '42.7', limit: 50, mode: 'live' })).toEqual({ ok: true, value: { changes: [], nextCursor: '42.7' } });
+  await client.orderChanges();
+  expect(urls).toEqual([
+    'https://api.example.test/api/orders/changes?after=42.7&limit=50&mode=live',
+    'https://api.example.test/api/orders/changes',
+  ]);
+});
+
 it('sends source filters for order listing and export and parses tenant source options', async () => {
   const urls: string[] = [];
   const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {

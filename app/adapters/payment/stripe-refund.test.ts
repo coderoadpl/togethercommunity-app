@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 import { err, ok, refundFailureOf, validation, type RefundFailureKind } from '#core/domain/index.js';
 import { createFakePaymentProvider } from './fake.js';
@@ -147,6 +147,59 @@ describe('Stripe createRefund', () => {
   it('returns a refund that Stripe created as failed with its reason', async () => {
     const h = providerOverFetch(() => stripeJson(refundObject({ status: 'failed', failure_reason: 'insufficient_funds' })));
     expect(await h.createRefund(refundInput)).toMatchObject({ ok: true, value: { status: 'failed', failureReason: 'insufficient_funds' } });
+  });
+});
+
+describe('refund request deadline', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  const providerOverHangingFetch = () => {
+    const requests: string[] = [];
+    const provider = createStripePaymentProvider({
+      resolver: { resolve: async () => ok('rk_live_refund') },
+      clientFactory: (key) => new Stripe(key, {
+        httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+          requests.push(new Request(input, init).method);
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => { reject(init.signal?.reason); });
+          });
+        }),
+      }),
+    });
+    const requestCount = async (count: number) => {
+      const giveUpAt = Date.now() + 5_000;
+      while (requests.length < count) {
+        if (Date.now() > giveUpAt) throw new Error(`Expected ${String(count)} requests, saw ${String(requests.length)}`);
+        await new Promise((resolve) => { setImmediate(resolve); });
+      }
+    };
+    return { provider, requests, requestCount };
+  };
+
+  it.each([
+    ['createRefund', 'POST', (provider: ReturnType<typeof createStripePaymentProvider>) => provider.createRefund?.(refundInput)],
+    ['getRefund', 'GET', (provider: ReturnType<typeof createStripePaymentProvider>) => provider.getRefund?.({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' })],
+    ['listRefunds', 'GET', (provider: ReturnType<typeof createStripePaymentProvider>) => provider.listRefunds?.({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })],
+  ] as const)('%s gives up after ten seconds and one network retry when Stripe does not answer', async (_name, method, call) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const h = providerOverHangingFetch();
+    let settled = false;
+    const pending = Promise.resolve(call(h.provider)).finally(() => { settled = true; });
+    await h.requestCount(1);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(h.requests).toStrictEqual([method]);
+    await vi.advanceTimersByTimeAsync(1 + 499);
+    expect(h.requests).toStrictEqual([method]);
+    await vi.advanceTimersByTimeAsync(1);
+    await h.requestCount(2);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await pending;
+    if (result === undefined || result.ok) throw new Error('Expected a timeout');
+    expect(result.error.message).toContain('Request aborted due to timeout being reached (10000ms)');
+    expect(refundFailureOf(result.error)).toMatchObject({ kind: 'transient', outcomeUnknown: true });
+    expect(h.requests).toStrictEqual([method, method]);
   });
 });
 

@@ -426,6 +426,7 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
 };
 
 const REFUND_LIST_LIMIT = 100;
+const REFUND_REQUEST_OPTIONS = { timeout: 10_000, maxNetworkRetries: 1 } as const;
 
 const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
   const parsed = stripeRefundObjectSchema.safeParse(raw);
@@ -732,7 +733,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             amount: input.amountCents,
             metadata: { tenantId: input.tenantId, orderId: input.metadata.orderId, reason: input.metadata.reason },
           },
-          { idempotencyKey: input.idempotencyKey },
+          { ...REFUND_REQUEST_OPTIONS, idempotencyKey: input.idempotencyKey },
         );
       } catch (cause) {
         return err(stripeRefundFailure('Stripe rejected the refund', cause));
@@ -744,7 +745,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
       let raw: unknown;
       try {
-        raw = await client.value.refunds.retrieve(input.refundId);
+        raw = await client.value.refunds.retrieve(input.refundId, {}, REFUND_REQUEST_OPTIONS);
       } catch (cause) {
         return err(stripeRefundFailure('Stripe could not read the refund', cause));
       }
@@ -755,7 +756,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
       let page: { data: unknown[]; has_more: boolean };
       try {
-        page = await client.value.refunds.list({ payment_intent: input.paymentIntentId, limit: REFUND_LIST_LIMIT });
+        page = await client.value.refunds.list({ payment_intent: input.paymentIntentId, limit: REFUND_LIST_LIMIT }, REFUND_REQUEST_OPTIONS);
       } catch (cause) {
         return err(stripeRefundFailure('Stripe could not list the refunds', cause));
       }

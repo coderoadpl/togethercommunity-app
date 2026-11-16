@@ -57,6 +57,7 @@ interface Settlement {
 }
 
 const MAX_JOBS_PER_DISPATCH = 25;
+export const ORDER_REFUND_DISPATCH_BUDGET_MS = 30_000;
 const LEASE_MS = 10 * 60_000;
 const STATUS_READ_RETRY_MS = 60 * 60_000;
 const STATUS_READ_GIVE_UP_AFTER_MS = 8 * 24 * 60 * 60_000;
@@ -246,7 +247,8 @@ export const dispatchOrderRefundJobs = async (
 ): Promise<Result<DispatchOrderRefundJobsResult, AppError>> => {
   const outcomes: Partial<Record<DispatchOutcome, number>> = {};
   let processedCount = 0;
-  while (processedCount < MAX_JOBS_PER_DISPATCH) {
+  const stopClaimingAt = Date.parse(deps.clock.nowIso()) + ORDER_REFUND_DISPATCH_BUDGET_MS;
+  while (processedCount < MAX_JOBS_PER_DISPATCH && Date.parse(deps.clock.nowIso()) < stopClaimingAt) {
     const claim = await deps.refundJobs.claimDue({ now: deps.clock.nowIso(), leaseMs: LEASE_MS });
     if (claim === null) break;
     const outcome = await processClaim(claim, deps);

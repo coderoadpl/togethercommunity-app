@@ -877,10 +877,17 @@ nothing. Recurring prices keep the commit above.
 #### Automatic refund of a cancelled order
 
 `dispatchOrderRefundJobs` runs on the existing minute tick (the
-`/api/internal/dispatch-email` cron route and the Node ticker) and is also
-started right after a webhook queues a refund job; a failing kick or tick is
-logged and never fails the webhook response or the e-mail dispatch. It handles
-at most 25 due jobs per run. Each job is claimed with `FOR UPDATE SKIP LOCKED`
+`/api/internal/dispatch-email` cron route and the Node ticker) after e-mail
+dispatch has finished, so a slow or failing refund run never holds e-mail back,
+and is also started right after a webhook queues a refund job; a failing kick
+or tick is logged and never fails the webhook response or the e-mail dispatch.
+It handles at most 25 due jobs per run and stops claiming new jobs 30 seconds
+after the run started, so a run fits the 60-second function limit; jobs it did
+not claim stay due for the next tick. Every refund call to Stripe (list, create
+and the status read) has a 10-second timeout and at most one automatic network
+retry (the SDK's per-request `timeout` and `maxNetworkRetries` options); a
+refund request that still gets no answer has an unknown outcome and is retried
+with the same key. Each job is claimed with `FOR UPDATE SKIP LOCKED`
 and a conditional update (`pending` becomes `running` with a 10-minute lease and
 one more attempt), so two runs never work on the same job; a `running` job
 whose lease expired goes back to `pending` and is retried with the same key.

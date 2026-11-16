@@ -15,7 +15,7 @@ import {
 import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
 import { createRefundProviderFake, type RefundProviderStep } from '../testing/refund-provider-fake.js';
 import { createInMemoryTenantDomainRepository } from '../testing/tenant-domain-fakes.js';
-import { dispatchOrderRefundJobs } from './dispatch-order-refund-jobs.js';
+import { dispatchOrderRefundJobs, ORDER_REFUND_DISPATCH_BUDGET_MS } from './dispatch-order-refund-jobs.js';
 
 const createdAt = '2026-11-15T10:42:00.000Z';
 const minutes = (count: number) => count * 60_000;
@@ -437,6 +437,45 @@ describe('order refund dispatcher', () => {
     expect(h.job()).toMatchObject({ status: 'failed', providerRefundStatus: 'failed', nextAttemptAt: null });
     expect(h.alertKinds()).toStrictEqual(['failed_after_submission']);
     expect(h.readCalls).toHaveLength(2);
+  });
+
+  it('stops claiming jobs once a slow provider has used up the dispatch budget and leaves the rest due', async () => {
+    const h = harness();
+    const orders = Array.from({ length: 6 }, (_, index) => cancelledOrder({
+      id: `order-${String(index + 1)}`, providerObjectIds: { checkoutSession: `cs_${String(index + 1)}`, paymentIntent: `pi_${String(index + 1)}` },
+    }));
+    const jobs = createOrderRefundJobFake();
+    for (const [index, order] of orders.entries()) {
+      await jobs.repository.enqueue('tenant-a', outOfStockRefundJob(order, { id: `job-${String(index + 1)}`, now: createdAt }));
+    }
+    let now = createdAt;
+    const provider = createRefundProviderFake({ chargeAmountCents: 4099 });
+    const slowCreateRefund = provider.payment.createRefund;
+    if (slowCreateRefund === undefined) throw new Error('Fake refund method missing');
+    const result = await dispatchOrderRefundJobs({
+      ...h.deps,
+      refundJobs: jobs.repository,
+      orderDetails: { findById: async (tenantId: string, orderId: string) => orders.find((order) => order.tenantId === tenantId && order.id === orderId) ?? null },
+      payment: {
+        ...provider.payment,
+        createRefund: async (call) => {
+          now = new Date(Date.parse(now) + 12_000).toISOString();
+          return slowCreateRefund(call);
+        },
+      },
+      clock: { nowIso: () => now },
+    });
+
+    expect(ORDER_REFUND_DISPATCH_BUDGET_MS).toBe(30_000);
+    expect(result).toStrictEqual(ok({ processedCount: 3, outcomes: { refunded: 3 } }));
+    expect(jobs.jobs.map((job) => [job.id, job.status, job.attempts, job.nextAttemptAt])).toStrictEqual([
+      ['job-1', 'succeeded', 1, expect.any(String)],
+      ['job-2', 'succeeded', 1, expect.any(String)],
+      ['job-3', 'succeeded', 1, expect.any(String)],
+      ['job-4', 'pending', 0, createdAt],
+      ['job-5', 'pending', 0, createdAt],
+      ['job-6', 'pending', 0, createdAt],
+    ]);
   });
 
   it('refunds nothing for an order that is not cancelled', async () => {

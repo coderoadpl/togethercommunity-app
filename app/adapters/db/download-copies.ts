@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or } from 'drizzle-orm';
 
 import { DOWNLOAD_COPY_PAGE_SIZE, downloadCopySchema } from '#core/domain/index.js';
 import type { DownloadCopyRepository, DownloadCopyOrderReader } from '#core/server/index.js';
@@ -31,7 +31,7 @@ export const createDownloadCopyOrderReader = (db: Db): DownloadCopyOrderReader =
   findLatestPaidOrderId: async (tenantId, memberId, productId) => {
     const [order] = await db.select({ id: orders.id }).from(orders).where(and(
       eq(orders.tenantId, tenantId), eq(orders.memberId, memberId),
-      eq(orders.productId, productId), eq(orders.status, 'paid'),
+      eq(orders.productId, productId), eq(orders.status, 'paid'), isNull(orders.cancelReason),
     )).orderBy(desc(orders.createdAt), desc(orders.id)).limit(1);
     return order?.id ?? null;
   },

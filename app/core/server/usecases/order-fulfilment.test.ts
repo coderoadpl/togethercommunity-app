@@ -119,6 +119,12 @@ describe('ship order', () => {
     expect(h.dispatchEmail).toHaveBeenCalledTimes(1);
   });
 
+  it('names the units of a line above one in the shipment e-mail', async () => {
+    const h = harness(orderWith({ lines: [{ ...line('product-1', 'Printed stand', 'physical', 8000), quantity: 2 }] }));
+    await shipOrder(ctx(['order:write']), shipInput, h.deps);
+    expect(h.ship.mock.calls[0]?.[1].email?.payload).toMatchObject({ shipment: { items: ['2 × Printed stand'] } });
+  });
+
   it('renders the queued e-mail with the order number, items, delivery and tracking link', async () => {
     const h = harness();
     await shipOrder(ctx(['order:write']), shipInput, h.deps);
@@ -211,9 +217,9 @@ describe('packing list', () => {
     expect(result).toMatchObject({ ok: true, value: { filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8' } });
     if (!result.ok) return;
     expect(result.value.content.split('\n')).toEqual([
-      'order_number,paid_at,buyer_name,email,phone,delivery,pickup_point_code,pickup_point_address,shipping_name,address_line1,address_line2,postal_code,city,country,items,notes',
-      '"order-1","2026-11-04 10:01","Jane Buyer","buyer@example.org","\'+48500000000","Parcel locker","WAW01M","Main Street 1, Warsaw","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1",""',
-      '"order-2","2026-11-05 00:30","","second@example.org","","Courier","","","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1",""',
+      'order_number,paid_at,buyer_name,email,phone,delivery,pickup_point_code,pickup_point_address,shipping_name,address_line1,address_line2,postal_code,city,country,items,notes,quantity',
+      '"order-1","2026-11-04 10:01","Jane Buyer","buyer@example.org","\'+48500000000","Parcel locker","WAW01M","Main Street 1, Warsaw","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1","","1"',
+      '"order-2","2026-11-05 00:30","","second@example.org","","Courier","","","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1","","1"',
     ]);
   });
 
@@ -229,6 +235,24 @@ describe('packing list', () => {
     expect(row).toContain('"\'=HYPERLINK(""x"")"');
     expect(row).toContain('"\'@Street 1","\'-2"');
     expect(row).toContain('"\'+Stand × 1; Cup ""large"" × 1"');
+  });
+
+  it('appends the units of every product line in the last column', async () => {
+    const h = listing([orderWith({
+      lines: [{ ...line('a', 'Stand', 'physical', 4000), quantity: 2 }, line('b', 'Cup', 'physical', 100), line('shipping:locker', 'Parcel locker', 'shipping', 1499)],
+    })]);
+    const result = await exportPackingList(ctx(['order:export']), { format: 'csv' }, h.deps);
+    if (!result.ok) throw new Error('packing list failed');
+    const [header, row] = result.value.content.split('\n');
+    expect(header?.split(',').slice(-3)).toEqual(['items', 'notes', 'quantity']);
+    expect(row).toMatch(/,"Stand × 2; Cup × 1","","3"$/u);
+  });
+
+  it('shows 2 in the quantity column for one line of two units', async () => {
+    const h = listing([orderWith({ lines: [{ ...line('a', 'Stand', 'physical', 4000), quantity: 2 }] })]);
+    const result = await exportPackingList(ctx(['order:export']), { format: 'csv' }, h.deps);
+    if (!result.ok) throw new Error('packing list failed');
+    expect(result.value.content.split('\n')[1]).toMatch(/,"Stand × 2","","2"$/u);
   });
 
   it('pages through every order to pack', async () => {

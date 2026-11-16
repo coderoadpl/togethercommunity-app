@@ -16,6 +16,7 @@ describe('0156 organizations core migration', () => {
       await database.db.execute(sql.raw(`
         DROP TABLE tenant_config_sources;
         DROP TABLE organization_secrets;
+        DROP TABLE provider_customer_owners;
         DROP TABLE organization_audit_events;
         DROP TABLE organization_members;
         ALTER TABLE tenants DROP COLUMN organization_id;

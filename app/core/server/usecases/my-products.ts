@@ -3,6 +3,7 @@ import {
   forbidden,
   memberFulfilmentView,
   ok,
+  orderLineQuantity,
   type AppError,
   type GrantedProduct,
   type GrantWindowStatus,
@@ -41,6 +42,7 @@ export type MyProduct = GrantedProduct & {
   purchasable: boolean;
   shippedTo?: string | null;
   fulfilment?: MemberFulfilment | null;
+  quantity?: number;
   subscription: MemberSubscriptionSummary | null;
   downloads: Array<ProductDownloadAsset & { previousVersions: ProductDownloadAsset[] }>;
 };
@@ -157,11 +159,14 @@ export const listMyProducts = async (
     for (const product of physicalProducts) {
       const order = newestOrder.get(product.id);
       if (product.type !== 'physical' || order === undefined || seen.has(product.id)) continue;
+      const line = order.lines?.find((item) => item.productId === product.id);
+      const quantity = line === undefined ? 1 : orderLineQuantity(line);
       result.push({
         ...product, purchasable: false, grantStatus: 'active', grantStartsAt: order.createdAt,
         grantExpiresAt: null, subscription: null, downloads: [],
         shippedTo: order.shipping == null ? null : order.shipping.pickupPoint?.code ?? order.shipping.address.city,
         fulfilment: memberFulfilmentView(order),
+        ...(quantity > 1 ? { quantity } : {}),
       });
     }
   }

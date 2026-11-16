@@ -28,16 +28,15 @@ const harness = (published = true) => {
   const subscriptions: MemberSubscription[] = [];
   const grants: ProductGrant[] = [];
   const events: Omit<MemberEvent, 'tenantId'>[] = [];
+  const customerOwners = new Map<string, string>();
   const repositories: Omit<SubscriptionAdoptionRepositories, 'stripeWebhookOwnership'> = {
     members: { findById: async (tenantId, id) => members.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
-      findByEmail: async (tenantId, email) => members.find((candidate) => candidate.tenantId === tenantId && candidate.email === email) ?? null,
-      recordStripeCustomerId: async (tenantId, id, customerId) => {
-        const target = members.find((candidate) => candidate.tenantId === tenantId && candidate.id === id);
-        const recorded = target?.externalCustomerIds['stripe'];
-        if (target === undefined || (recorded !== undefined && recorded !== customerId)) return false;
-        target.externalCustomerIds = { ...target.externalCustomerIds, stripe: customerId };
-        return true;
-      } },
+      findByEmail: async (tenantId, email) => members.find((candidate) => candidate.tenantId === tenantId && candidate.email === email) ?? null },
+    customerOwners: { claimStripeCustomer: async (tenantId, customerId) => {
+      const owner = customerOwners.get(customerId) ?? tenantId;
+      customerOwners.set(customerId, owner);
+      return owner === tenantId ? 'this-workspace' : 'another-workspace';
+    } },
     products: { findById: async (tenantId, id) => (tenantId === 't1' || tenantId === tenantB) && id === input.productId ? {
       id, tenantId, type: 'course', slug: 'course', title: 'Course', description: '', coverUrl: null,
       priceCents: 0, currency: 'EUR', visibility: 'listed', deliveryMethod: 'pickup', published, accessItems: [], legacyId: null, createdAt: now,
@@ -67,7 +66,8 @@ const harness = (published = true) => {
   const retrieve = vi.fn(async () => ok(remote));
   const ownership: StripeWebhookOwnershipReader = {
     hasForeignOwner: vi.fn(async (tenantId, ids) =>
-      members.some((candidate) => candidate.tenantId !== tenantId && ids.customer !== undefined
+      (ids.customer !== undefined && (customerOwners.get(ids.customer) ?? tenantId) !== tenantId)
+      || members.some((candidate) => candidate.tenantId !== tenantId && ids.customer !== undefined
         && candidate.externalCustomerIds['stripe'] === ids.customer)
       || subscriptions.some((subscription) => subscription.tenantId !== tenantId
         && subscription.providerSubscriptionId === ids.subscription)),
@@ -86,7 +86,7 @@ const harness = (published = true) => {
     providerPriceId: remote.price.id, customerId: remote.customerId, metadataTenantId: remote.metadataTenantId }], nextCursor: null }));
   const listFor = (tenantId: string) => m2mListStripeSubscriptions(tenantId, {},
     { payment: { listStripeSubscriptions: listAccount }, subscriptions: adoptedIds, stripeWebhookOwnership: ownership });
-  return { deps, remote, prices, subscriptions, grants, events, member, memberB, repositories, retrieve, adoptedIds, ownership, listFor };
+  return { deps, remote, prices, subscriptions, grants, events, member, memberB, customerOwners, repositories, retrieve, adoptedIds, ownership, listFor };
 };
 
 const expectNoRowsWrittenFor = (h: ReturnType<typeof harness>, tenantId: string) => {
@@ -273,7 +273,8 @@ describe('Stripe subscriptions in an account shared by two workspaces', () => {
   it('records the adopting workspace as the customer owner and refuses another subscription of that customer elsewhere', async () => {
     const h = harness();
     expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject({ ok: true, value: { subscriptionCreated: true } });
-    expect(h.member.externalCustomerIds).toEqual({ stripe: 'cus_existing' });
+    expect(h.customerOwners).toEqual(new Map([['cus_existing', 't1']]));
+    expect(h.member.externalCustomerIds).toEqual({});
     h.remote.id = 'sub_second';
     expect(await m2mAdoptStripeSubscription(tenantB, { ...inputB, subscriptionId: 'sub_second' }, h.deps)).toMatchObject(conflict);
     expectNoRowsWrittenFor(h, tenantB);
@@ -282,23 +283,32 @@ describe('Stripe subscriptions in an account shared by two workspaces', () => {
     expect(await h.listFor(tenantB)).toEqual(ok({ subscriptions: [], nextCursor: null }));
   });
 
-  it('refuses a member already linked to a different Stripe customer without writing anything', async () => {
+  it('adopts a subscription of a second customer for a member already linked to another Stripe customer', async () => {
     const h = harness();
     h.member.externalCustomerIds = { stripe: 'cus_other' };
-    expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject(conflict);
-    expectNoRowsWrittenFor(h, 't1');
-    expect(h.events).toEqual([]);
+    expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+    expect(h.customerOwners).toEqual(new Map([['cus_existing', 't1']]));
     expect(h.member.externalCustomerIds).toEqual({ stripe: 'cus_other' });
   });
 
   it('records the customer owner when an adoption without one is reconciled', async () => {
     const h = harness();
     await m2mAdoptStripeSubscription('t1', input, h.deps);
-    h.member.externalCustomerIds = {};
+    h.customerOwners.clear();
     expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject({ ok: true, value: { subscriptionCreated: false } });
-    expect(h.member.externalCustomerIds).toEqual({ stripe: 'cus_existing' });
+    expect(h.customerOwners).toEqual(new Map([['cus_existing', 't1']]));
     expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject({ ok: true, value: { subscriptionCreated: false } });
     expect(h.subscriptions).toHaveLength(1); expect(h.events).toHaveLength(1);
+  });
+
+  it('refuses reconciling an adopted subscription whose customer another workspace owns', async () => {
+    const h = harness();
+    await m2mAdoptStripeSubscription('t1', input, h.deps);
+    h.customerOwners.set('cus_existing', tenantB);
+    const ownership = { hasForeignOwner: async () => false };
+    expect(await m2mAdoptStripeSubscription('t1', input, { ...h.deps, stripeWebhookOwnership: ownership,
+      subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
+        operation({ ...h.repositories, stripeWebhookOwnership: ownership }) } })).toMatchObject(conflict);
   });
 
   it('refuses a subscription whose customer belongs to another workspace', async () => {

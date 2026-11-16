@@ -4,14 +4,17 @@ import {
   adjustStockInputSchema,
   availableStock,
   enableStockTrackingInputSchema,
+  firstShortStockProductId,
   firstSoldOutProductId,
   lowStockAlertFor,
+  mergeStockQuantities,
   productStockView,
   publicProductStock,
   publicStockVersion,
   stockAdjustmentEventType,
   stockAlertMarkers,
   stockIsLow,
+  stockQuantitiesFromLines,
   type StockCommitEffect,
   type StockLevel,
 } from './stock.js';
@@ -68,6 +71,25 @@ describe('stock availability', () => {
     const levels = [level({ productId: 'a', onHand: 1, reserved: 0 }), level({ productId: 'b', onHand: 1, reserved: 1 })];
     expect(firstSoldOutProductId(['untracked', 'a', 'b'], levels)).toBe('b');
     expect(firstSoldOutProductId(['untracked', 'a'], levels)).toBeNull();
+  });
+
+  it('finds the first tracked product whose availability is below the requested quantity', () => {
+    const levels = [level({ productId: 'a', onHand: 3, reserved: 1 }), level({ productId: 'b', onHand: 5, reserved: 0 })];
+    expect(firstShortStockProductId([{ productId: 'untracked', quantity: 9 }, { productId: 'b', quantity: 5 }, { productId: 'a', quantity: 2 }], levels)).toBeNull();
+    expect(firstShortStockProductId([{ productId: 'b', quantity: 5 }, { productId: 'a', quantity: 3 }], levels)).toBe('a');
+  });
+
+  it('sums repeated products in first-seen order', () => {
+    expect(mergeStockQuantities([{ productId: 'b', quantity: 1 }, { productId: 'a', quantity: 2 }, { productId: 'b', quantity: 3 }]))
+      .toEqual([{ productId: 'b', quantity: 4 }, { productId: 'a', quantity: 2 }]);
+  });
+
+  it('takes stock quantities from product lines, counting a line without quantity as one and skipping delivery', () => {
+    expect(stockQuantitiesFromLines([
+      { productId: 'poster', productType: 'physical', quantity: 3 },
+      { productId: 'course', productType: 'course' },
+      { productId: 'shipping:rate-1', productType: 'shipping' },
+    ])).toEqual([{ productId: 'poster', quantity: 3 }, { productId: 'course', quantity: 1 }]);
   });
 
   it('records a positive adjustment with the returned reason as a return', () => {

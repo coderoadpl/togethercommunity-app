@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { orderLineQuantity, productLines, type OrderLineType } from './commerce.js';
+
 export const STOCK_EVENT_TYPES = [
   'tracking_enabled',
   'adjusted',
@@ -95,11 +97,30 @@ export const publicStockVersion = (levels: readonly StockLevel[]): string =>
     .sort()
     .join('|');
 
+export interface StockQuantity {
+  productId: string;
+  quantity: number;
+}
+
+export const mergeStockQuantities = (items: readonly StockQuantity[]): StockQuantity[] => {
+  const merged = new Map<string, number>();
+  for (const item of items) merged.set(item.productId, (merged.get(item.productId) ?? 0) + item.quantity);
+  return [...merged].map(([productId, quantity]) => ({ productId, quantity }));
+};
+
+export const stockQuantitiesFromLines = (
+  lines: readonly { productId: string; productType: OrderLineType; quantity?: number | undefined }[],
+): StockQuantity[] =>
+  mergeStockQuantities(productLines(lines).map((line) => ({ productId: line.productId, quantity: orderLineQuantity(line) })));
+
+export const firstShortStockProductId = (items: readonly StockQuantity[], levels: readonly StockLevel[]): string | null =>
+  items.find((item) => {
+    const level = levels.find((candidate) => candidate.productId === item.productId);
+    return level !== undefined && availableStock(level) < item.quantity;
+  })?.productId ?? null;
+
 export const firstSoldOutProductId = (productIds: readonly string[], levels: readonly StockLevel[]): string | null =>
-  productIds.find((productId) => {
-    const level = levels.find((candidate) => candidate.productId === productId);
-    return level !== undefined && availableStock(level) < 1;
-  }) ?? null;
+  firstShortStockProductId(productIds.map((productId) => ({ productId, quantity: 1 })), levels);
 
 export const stockCheckoutExpiry = (nowIso: string): { sessionExpiresAt: string; reservationExpiresAt: string } => {
   const now = Date.parse(nowIso);

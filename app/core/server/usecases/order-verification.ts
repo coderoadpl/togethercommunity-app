@@ -18,7 +18,7 @@ export const verifyOrder = async (ctx: Ctx, reference: string, deps: Pick<OrderV
   return order === null ? err(notFound('Order was not found')) : ok({ order });
 };
 
-export const issueOrderLine = async (ctx: Ctx, input: { orderId: string; productId: string }, deps: OrderVerificationDeps): Promise<Result<{ order: OrderListItem }, AppError>> => {
+export const issueOrderLine = async (ctx: Ctx, input: { orderId: string; productId: string; count?: unknown }, deps: OrderVerificationDeps): Promise<Result<{ order: OrderListItem }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:write');
   if (!tenant.ok) return tenant;
   const parsed = issueOrderLineInputSchema.safeParse(input);

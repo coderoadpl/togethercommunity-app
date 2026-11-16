@@ -26,6 +26,7 @@ export const checkoutPurchaseAnalyticsSchema = z.object({
     itemId: z.string().min(1),
     itemName: z.string().min(1),
     price: z.number().nonnegative(),
+    quantity: z.number().int().min(1).optional(),
   })),
 });
 export type CheckoutPurchaseAnalytics = z.infer<typeof checkoutPurchaseAnalyticsSchema>;

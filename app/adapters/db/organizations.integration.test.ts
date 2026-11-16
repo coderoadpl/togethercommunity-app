@@ -1,7 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { Organization } from '#core/domain/index.js';
+import type { Organization, OrganizationMember } from '#core/domain/index.js';
 
 import {
   createOrganizationAuditRepository,
@@ -46,42 +46,45 @@ describe('organization repositories', () => {
 
   afterAll(async () => { await database?.close(); });
 
-  it('round-trips an organization and refuses a second one with the same slug', async () => {
+  const insertOrganization = async (value: Organization) => { await database.db.insert(organizations).values(value); };
+  const insertMember = async (organizationId: string, member: Omit<OrganizationMember, 'organizationId'>) => {
+    await database.db.insert(organizationMembers).values({ ...member, organizationId });
+  };
+  const memberRows = async (organizationId: string) => database.db.select().from(organizationMembers)
+    .where(eq(organizationMembers.organizationId, organizationId))
+    .orderBy(asc(organizationMembers.createdAt), asc(organizationMembers.id));
+
+  it('reads an organization by id and refuses a second one with the same slug', async () => {
     const repository = createOrganizationRepository(database.db);
 
-    expect(await repository.create(organization('org-1', 'holding'))).toEqual(organization('org-1', 'holding'));
-    expect(await repository.create(organization('org-2', 'holding'))).toBeNull();
+    await insertOrganization(organization('org-1', 'holding'));
+    await expect(insertOrganization(organization('org-2', 'holding'))).rejects.toThrow();
     expect(await repository.findById('org-1')).toEqual(organization('org-1', 'holding'));
-    expect(await repository.findBySlug('holding')).toEqual(organization('org-1', 'holding'));
     expect(await repository.findById('org-2')).toBeNull();
   });
 
-  it('round-trips members once per organization and user', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-members', 'members'));
-    await createOrganizationRepository(database.db).create(organization('org-other', 'other'));
+  it('reads members once per organization and user', async () => {
+    await insertOrganization(organization('org-members', 'members'));
+    await insertOrganization(organization('org-other', 'other'));
     const repository = createOrganizationMemberRepository(database.db);
     const owner = { id: 'member-owner', userId: 'user-owner', role: 'owner' as const, createdAt: at, createdByUserId: 'operator' };
     const admin = { id: 'member-admin', userId: 'user-admin', role: 'admin' as const, createdAt: later, createdByUserId: 'user-owner' };
 
-    expect(await repository.add('org-members', owner)).toBe(true);
-    expect(await repository.add('org-members', admin)).toBe(true);
-    expect(await repository.add('org-members', { ...admin, id: 'member-duplicate', role: 'owner' })).toBe(false);
-    expect(await repository.add('org-other', { ...owner, id: 'member-other' })).toBe(true);
+    await insertMember('org-members', owner);
+    await insertMember('org-members', admin);
+    await expect(insertMember('org-members', { ...admin, id: 'member-duplicate', role: 'owner' })).rejects.toThrow();
+    await insertMember('org-other', { ...owner, id: 'member-other' });
 
     expect(await repository.find('org-members', 'user-admin')).toEqual({ ...admin, organizationId: 'org-members' });
     expect(await repository.find('org-other', 'user-admin')).toBeNull();
-    expect(await repository.list('org-members')).toEqual([
-      { ...owner, organizationId: 'org-members' },
-      { ...admin, organizationId: 'org-members' },
-    ]);
     expect(await repository.listForUser('user-owner')).toEqual([
       { ...owner, organizationId: 'org-members' },
       { ...owner, id: 'member-other', organizationId: 'org-other' },
     ]);
   });
 
-  it('round-trips audit events newest first within one organization', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-audit', 'audit'));
+  it('lists audit events newest first within one organization', async () => {
+    await insertOrganization(organization('org-audit', 'audit'));
     const repository = createOrganizationAuditRepository(database.db);
     const created = {
       id: 'audit-created', kind: 'organization.created' as const, actorUserId: 'operator', actorEmail: 'operator@example.test',
@@ -93,9 +96,11 @@ describe('organization repositories', () => {
       data: { key: 'ifirma.invoiceKey', preview: '••••abcd', groups: ['invoicing'], inherited: false, previous: null }, at: later,
     };
 
-    await repository.record('org-audit', created);
-    await repository.record('org-audit', secret);
-    await repository.record('org-members', { ...created, id: 'audit-elsewhere' });
+    await database.db.insert(organizationAuditEvents).values([
+      { ...created, organizationId: 'org-audit' },
+      { ...secret, organizationId: 'org-audit' },
+      { ...created, id: 'audit-elsewhere', organizationId: 'org-members' },
+    ]);
 
     expect(await repository.list('org-audit', { limit: 10 })).toEqual([
       { ...secret, organizationId: 'org-audit' },
@@ -115,7 +120,7 @@ describe('organization repositories', () => {
     });
     const before = await read();
 
-    await createOrganizationRepository(database.db).create(organization('org-link', 'link'));
+    await insertOrganization(organization('org-link', 'link'));
     await database.db.update(tenants).set({ organizationId: 'org-link' }).where(eq(tenants.id, 'acme'));
     const after = await read();
 
@@ -179,8 +184,8 @@ describe('organization repositories', () => {
   });
 
   it('links only for a direct workspace owner who owns the organization and unlinks for an organization owner, auditing both sides in one transaction', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-ws', 'workspaces'));
-    await createOrganizationRepository(database.db).create(organization('org-ws-other', 'workspaces-other'));
+    await insertOrganization(organization('org-ws', 'workspaces'));
+    await insertOrganization(organization('org-ws-other', 'workspaces-other'));
     await database.db.insert(tenants).values([
       { id: 'ws-own', slug: 'ws-own', name: 'Own', createdAt: at },
       { id: 'ws-taken', slug: 'ws-taken', name: 'Taken', createdAt: at, organizationId: 'org-ws-other' },
@@ -191,9 +196,8 @@ describe('organization repositories', () => {
       { id: 'grant-org-admin', tenantId: 'ws-own', userId: 'ws-org-admin', role: 'owner' },
       { id: 'grant-taken', tenantId: 'ws-taken', userId: 'ws-owner', role: 'owner' },
     ]);
-    const members = createOrganizationMemberRepository(database.db);
     for (const [userId, role] of [['ws-owner', 'owner'], ['ws-admin', 'owner'], ['ws-org-admin', 'admin']] as const) {
-      await members.add('org-ws', { id: `org-ws-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
+      await insertMember('org-ws', { id: `org-ws-${userId}`, userId, role, createdAt: at, createdByUserId: 'operator' });
     }
     const repository = createOrganizationWorkspaceRepository(database.db);
     const change = (actorUserId: string, id: string, linked: boolean) => ({
@@ -244,7 +248,7 @@ describe('organization repositories', () => {
   });
 
   it('adds, re-roles and removes members with their audit rows and never leaves the organization without an owner', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-team', 'team'));
+    await insertOrganization(organization('org-team', 'team'));
     await database.db.insert(user).values([
       { id: 'team-owner', email: 'team-owner@example.test', name: 'Team owner', emailVerified: true },
       { id: 'team-second', email: 'team-second@example.test', name: 'Team second', emailVerified: true },
@@ -252,7 +256,7 @@ describe('organization repositories', () => {
       { id: 'team-pending', email: 'team-pending@example.test', name: 'Team pending', emailVerified: false },
     ]);
     const repository = createOrganizationMemberRepository(database.db);
-    await repository.add('org-team', { id: 'team-m-owner', userId: 'team-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    await insertMember('org-team', { id: 'team-m-owner', userId: 'team-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
     let next = 0;
     const audit = (kind: 'member.added' | 'member.role_changed' | 'member.removed', actorUserId: string, subjectUserId: string) => ({
       id: `team-audit-${++next}`, kind, actorUserId, actorEmail: `${actorUserId}@example.test`, actorKeyId: null,
@@ -263,7 +267,7 @@ describe('organization repositories', () => {
     const audits = async () => (await database.db.select().from(organizationAuditEvents)
       .where(eq(organizationAuditEvents.organizationId, 'org-team')))
       .map((row) => [row.kind, row.actorUserId, row.subjectUserId, row.data]);
-    const roles = async () => (await repository.list('org-team')).map((row) => [row.userId, row.role]);
+    const roles = async () => (await memberRows('org-team')).map((row) => [row.userId, row.role]);
 
     expect(await repository.addAccount('org-team', { actorUserId: 'team-owner', member: member('team-pending', 'admin'), audit: audit('member.added', 'team-owner', 'team-pending') }))
       .toEqual({ status: 'account_unverified' });
@@ -301,14 +305,14 @@ describe('organization repositories', () => {
   });
 
   it('keeps one owner when two owners are demoted and removed concurrently', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-race', 'race'));
+    await insertOrganization(organization('org-race', 'race'));
     await database.db.insert(user).values([
       { id: 'race-a', email: 'race-a@example.test', name: 'Race A', emailVerified: true },
       { id: 'race-b', email: 'race-b@example.test', name: 'Race B', emailVerified: true },
     ]);
     const repository = createOrganizationMemberRepository(database.db);
     for (const userId of ['race-a', 'race-b']) {
-      await repository.add('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      await insertMember('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
     }
     const audit = (id: string, kind: 'member.role_changed' | 'member.removed', actorUserId: string, subjectUserId: string) => ({
       id, kind, actorUserId, actorEmail: `${actorUserId}@example.test`, actorKeyId: null, subjectTenantId: null, subjectUserId, at: later,
@@ -320,18 +324,18 @@ describe('organization repositories', () => {
         repository.remove('org-race', { actorUserId: 'race-b', userId: 'race-b', audit: audit(`race-${round}-b`, 'member.removed', 'race-b', 'race-b') }),
       ]);
       expect(results.filter((result) => result.status === 'last_owner'), `round ${round}`).toHaveLength(1);
-      const owners = (await repository.list('org-race')).filter((row) => row.role === 'owner');
+      const owners = (await memberRows('org-race')).filter((row) => row.role === 'owner');
       expect(owners, `round ${round}`).toHaveLength(1);
       await database.db.delete(organizationMembers).where(eq(organizationMembers.organizationId, 'org-race'));
       for (const userId of ['race-a', 'race-b']) {
-        await repository.add('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
+        await insertMember('org-race', { id: `race-m-${userId}`, userId, role: 'owner', createdAt: at, createdByUserId: 'operator' });
       }
     }
   });
 
   it('reads default settings, updates only changed fields with one audit row and compares the sender regardless of key order', async () => {
     const repository = createOrganizationRepository(database.db);
-    await repository.create(organization('org-settings', 'settings'));
+    await insertOrganization(organization('org-settings', 'settings'));
     const audit = (id: string) => ({
       id, kind: 'organization.updated' as const, actorUserId: 'settings-owner', actorEmail: 'settings-owner@example.test',
       actorKeyId: null, subjectTenantId: null, subjectUserId: null, at: later,
@@ -377,8 +381,8 @@ describe('organization repositories', () => {
   });
 
   it('upserts organization secrets with their audit rows and refuses deletion while a linked workspace inherits the group', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-secrets', 'secrets'));
-    await createOrganizationRepository(database.db).create(organization('org-secrets-other', 'secrets-other'));
+    await insertOrganization(organization('org-secrets', 'secrets'));
+    await insertOrganization(organization('org-secrets-other', 'secrets-other'));
     await database.db.insert(tenants).values([
       { id: 'secrets-ws', slug: 'secrets-ws', name: 'Secrets workspace', createdAt: at, organizationId: 'org-secrets' },
       { id: 'secrets-foreign', slug: 'secrets-foreign', name: 'Foreign workspace', createdAt: at, organizationId: 'org-secrets-other' },
@@ -429,11 +433,10 @@ describe('organization repositories', () => {
   });
 
   it('refuses to unlink a workspace while it has a configuration source row and lists its sources', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-sources', 'sources'));
+    await insertOrganization(organization('org-sources', 'sources'));
     await database.db.insert(tenants).values({ id: 'sources-ws', slug: 'sources-ws', name: 'Sources', createdAt: at });
     await database.db.insert(tenantAdmins).values({ id: 'sources-grant', tenantId: 'sources-ws', userId: 'sources-owner', role: 'owner' });
-    await createOrganizationMemberRepository(database.db)
-      .add('org-sources', { id: 'sources-member', userId: 'sources-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    await insertMember('org-sources', { id: 'sources-member', userId: 'sources-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
     const workspaces = createOrganizationWorkspaceRepository(database.db);
     const sources = createTenantConfigSourceRepository(database.db);
     const change = (id: string, linked: boolean) => ({
@@ -468,8 +471,8 @@ describe('organization repositories', () => {
   });
 
   it('unlinks for either side, re-checking the authority and the source rows inside the transaction', async () => {
-    await createOrganizationRepository(database.db).create(organization('org-either', 'either'));
-    await createOrganizationRepository(database.db).create(organization('org-either-other', 'either-other'));
+    await insertOrganization(organization('org-either', 'either'));
+    await insertOrganization(organization('org-either-other', 'either-other'));
     await database.db.insert(tenants).values([
       { id: 'either-a', slug: 'either-a', name: 'Either A', createdAt: at, organizationId: 'org-either' },
       { id: 'either-b', slug: 'either-b', name: 'Either B', createdAt: at, organizationId: 'org-either' },
@@ -480,8 +483,7 @@ describe('organization repositories', () => {
       { id: 'either-grant-owner', tenantId: 'either-b', userId: 'either-ws-owner', role: 'owner' },
       { id: 'either-grant-admin', tenantId: 'either-b', userId: 'either-ws-admin', role: 'admin' },
     ]);
-    await createOrganizationMemberRepository(database.db)
-      .add('org-either', { id: 'either-member', userId: 'either-org-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+    await insertMember('org-either', { id: 'either-member', userId: 'either-org-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
     const repository = createOrganizationWorkspaceRepository(database.db);
     const audit = (actorUserId: string, tenantId: string, id: string) => ({
       organizationAudit: {
@@ -566,11 +568,10 @@ describe('organization repositories', () => {
 
   describe('workspace limit on link', () => {
     const quotaOrganization = async (organizationId: string, tenantIds: string[]) => {
-      await createOrganizationRepository(database.db).create({ ...organization(organizationId, organizationId), maxWorkspaces: 1 });
+      await insertOrganization({ ...organization(organizationId, organizationId), maxWorkspaces: 1 });
       await database.db.insert(tenants).values(tenantIds.map((id) => ({ id, slug: id, name: id, createdAt: at })));
       await database.db.insert(tenantAdmins).values(tenantIds.map((id) => ({ id: `grant-${id}`, tenantId: id, userId: 'quota-owner', role: 'owner' as const })));
-      await createOrganizationMemberRepository(database.db)
-        .add(organizationId, { id: `${organizationId}-owner`, userId: 'quota-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      await insertMember(organizationId, { id: `${organizationId}-owner`, userId: 'quota-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
     };
     const change = (organizationId: string, tenantId: string, id: string) => ({
       organizationId,

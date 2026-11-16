@@ -2,6 +2,7 @@ import {
   appError,
   err,
   MAX_STOCK_QUANTITY,
+  mergeStockQuantities,
   notFound,
   ok,
   stockAdjustmentEventType,
@@ -10,6 +11,7 @@ import {
   type StockCommitEffect,
   type StockEventType,
   type StockLevel,
+  type StockQuantity,
   type StockReservationStatus,
 } from '#core/domain/index.js';
 
@@ -83,18 +85,20 @@ export const createStockRepositoryFake = () => {
     soldOutNotifiedAt: stored.soldOutNotifiedAt,
     oversold,
   });
-  const applyCommit = (tenantId: string, productId: string, releaseReserved: boolean, outcome: 'committed' | 'committed_late', reference: Record<string, string>, now: string): StockCommitEffect | null => {
+  const applyCommit = (tenantId: string, productId: string, quantity: number, releaseReserved: boolean, outcome: 'committed' | 'committed_late', reference: Record<string, string>, now: string): StockCommitEffect | null => {
     const stored = level(tenantId, productId);
     if (stored === null) return null;
     const before = { onHand: stored.onHand, reserved: stored.reserved };
-    stored.onHand = Math.max(before.onHand - 1, 0);
-    if (releaseReserved) stored.reserved = Math.max(stored.reserved - 1, 0);
+    stored.onHand = Math.max(before.onHand - quantity, 0);
+    if (releaseReserved) stored.reserved = Math.max(stored.reserved - quantity, 0);
     stored.updatedAt = now;
     record(tenantId, productId, outcome, stored.onHand - before.onHand, reference);
-    const oversold = before.onHand < 1;
-    if (oversold) record(tenantId, productId, 'oversold', -1, reference);
-    return effectOf(stored, outcome, oversold, before);
+    const shortfall = quantity - (before.onHand - stored.onHand);
+    if (shortfall > 0) record(tenantId, productId, 'oversold', -shortfall, reference);
+    return effectOf(stored, outcome, shortfall > 0, before);
   };
+  const sortedQuantities = (items: readonly StockQuantity[]) =>
+    mergeStockQuantities(items).toSorted((left, right) => left.productId < right.productId ? -1 : 1);
 
   const repository: StockRepository = {
     find: async (tenantId, productId) => {
@@ -136,20 +140,19 @@ export const createStockRepositoryFake = () => {
       return ok(view(stored));
     },
     reserve: async (tenantId, input) => {
-      const productIds = [...new Set(input.productIds)].sort();
-      const tracked = productIds.flatMap((productId) => {
+      const tracked = sortedQuantities(input.items).flatMap(({ productId, quantity }) => {
         const stored = level(tenantId, productId);
-        return stored === null ? [] : [stored];
+        return stored === null ? [] : [{ stored, quantity }];
       });
-      const short = tracked.find((stored) => stored.onHand - stored.reserved < input.quantity);
-      if (short !== undefined) return err({ soldOutProductId: short.productId });
-      const reservationIds = tracked.map((stored) => {
+      const short = tracked.find(({ stored, quantity }) => stored.onHand - stored.reserved < quantity);
+      if (short !== undefined) return err({ soldOutProductId: short.stored.productId });
+      const reservationIds = tracked.map(({ stored, quantity }) => {
         sequence += 1;
-        const reservation = { id: `reservation-${String(sequence)}`, tenantId, productId: stored.productId, checkoutSnapshotId: input.checkoutSnapshotId, quantity: input.quantity, status: 'active' as const, expiresAt: input.expiresAt };
+        const reservation = { id: `reservation-${String(sequence)}`, tenantId, productId: stored.productId, checkoutSnapshotId: input.checkoutSnapshotId, quantity, status: 'active' as const, expiresAt: input.expiresAt };
         reservations.push(reservation);
-        stored.reserved += input.quantity;
+        stored.reserved += quantity;
         stored.updatedAt = input.now;
-        record(tenantId, stored.productId, 'reserved', input.quantity, { checkoutSnapshotId: input.checkoutSnapshotId, reservationId: reservation.id });
+        record(tenantId, stored.productId, 'reserved', quantity, { checkoutSnapshotId: input.checkoutSnapshotId, reservationId: reservation.id });
         return reservation.id;
       });
       return ok({ reservationIds });
@@ -173,10 +176,10 @@ export const createStockRepositoryFake = () => {
         }
         const wasActive = reservation.status === 'active';
         reservation.status = 'committed';
-        const effect = applyCommit(tenantId, reservation.productId, wasActive, wasActive ? 'committed' : 'committed_late', { ...reference, reservationId: reservation.id }, input.now);
+        const effect = applyCommit(tenantId, reservation.productId, reservation.quantity, wasActive, wasActive ? 'committed' : 'committed_late', { ...reference, reservationId: reservation.id }, input.now);
         if (effect !== null) effects.push(effect);
       }
-      for (const productId of [...new Set(input.productIds)].sort()) {
+      for (const { productId, quantity } of sortedQuantities(input.items)) {
         const stored = level(tenantId, productId);
         if (own.some((reservation) => reservation.productId === productId) || stored === null) continue;
         if (input.checkoutSnapshotId === null && events.some((event) => event.tenantId === tenantId && event.productId === productId && (event.type === 'committed' || event.type === 'committed_late') && event.reference['orderId'] === input.orderId)) {
@@ -185,9 +188,9 @@ export const createStockRepositoryFake = () => {
         }
         if (input.checkoutSnapshotId !== null) {
           sequence += 1;
-          reservations.push({ id: `reservation-${String(sequence)}`, tenantId, productId, checkoutSnapshotId: input.checkoutSnapshotId, quantity: 1, status: 'committed', expiresAt: input.now });
+          reservations.push({ id: `reservation-${String(sequence)}`, tenantId, productId, checkoutSnapshotId: input.checkoutSnapshotId, quantity, status: 'committed', expiresAt: input.now });
         }
-        const effect = applyCommit(tenantId, productId, false, 'committed_late', reference, input.now);
+        const effect = applyCommit(tenantId, productId, quantity, false, 'committed_late', reference, input.now);
         if (effect !== null) effects.push(effect);
       }
       return effects;

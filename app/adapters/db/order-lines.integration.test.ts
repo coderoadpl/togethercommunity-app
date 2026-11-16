@@ -44,13 +44,13 @@ describe('order and checkout snapshots', () => {
     expect(second?.verificationToken).toMatch(/^[a-f0-9]{64}$/u);
     expect(first?.verificationToken).not.toBe(second?.verificationToken);
     expect(first?.verificationToken).not.toBe(first?.id);
-    expect(first?.lines).toEqual([physicalLine, digitalLine]);
+    expect(first?.lines).toEqual([{ ...physicalLine, quantity: 1 }, { ...digitalLine, quantity: 1 }]);
     expect(first).toMatchObject({ amountCents: 22800, salesLinkId: 'sales-link' });
     await database.db.update(products).set({ title: 'Changed printed material', priceCents: 15000, vatRate: 23 }).where(eq(products.id, 'physical'));
     await repository.create('workspace', order('order-a'));
     const reread = await repository.findById('workspace', 'order-a');
     expect(reread?.verificationToken).toBe(first?.verificationToken);
-    expect(reread?.lines).toEqual([physicalLine, digitalLine]);
+    expect(reread?.lines).toEqual([{ ...physicalLine, quantity: 1 }, { ...digitalLine, quantity: 1 }]);
     expect(await repository.findById('other', 'order-a')).toBeNull();
   });
 

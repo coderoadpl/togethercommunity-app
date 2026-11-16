@@ -989,6 +989,23 @@ export const memberSubscriptions = pgTable(
   ],
 );
 
+export const providerCustomerOwners = pgTable(
+  'provider_customer_owners',
+  {
+    provider: text('provider', { enum: ['stripe'] }).notNull(),
+    customerId: text('customer_id').notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ name: 'provider_customer_owners_pkey', columns: [table.provider, table.customerId] }),
+    index('provider_customer_owners_tenant_idx').on(table.tenantId),
+    check('provider_customer_owners_provider_check', sql`${table.provider} IN ('stripe')`),
+  ],
+);
+
 export const productGrants = pgTable(
   'product_grants',
   {

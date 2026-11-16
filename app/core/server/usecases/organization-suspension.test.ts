@@ -38,7 +38,7 @@ const secretCrypto: SecretCrypto = {
   decrypt: (input) => ok(input.ciphertext.replace('cipher:', '')),
 };
 
-const harness = async () => {
+const harness = () => {
   const fakes = createOrganizationFakes([
     { userId: 'owner-1', email: 'owner-1@example.test', emailVerified: true },
     { userId: 'admin-1', email: 'admin-1@example.test', emailVerified: true },
@@ -48,10 +48,11 @@ const harness = async () => {
     { id: 'studio', slug: 'studio', name: 'Workspace studio', status: 'active', organizationId: null, grants: [{ userId: 'owner-1', role: 'owner' }] },
     { id: 'akademia', slug: 'akademia', name: 'Workspace akademia', status: 'active', organizationId, grants: [{ userId: 'outsider', role: 'owner' }] },
   ]);
-  const { organizations, organizationMembers } = fakes.repositories;
-  await organizations.create({ ...organization });
-  await organizationMembers.add(organizationId, { id: 'm-1', userId: 'owner-1', role: 'owner', createdAt: at, createdByUserId: 'operator' });
-  await organizationMembers.add(organizationId, { id: 'm-2', userId: 'admin-1', role: 'admin', createdAt: at, createdByUserId: 'owner-1' });
+  fakes.organizationRows.push({ ...organization });
+  fakes.memberRows.push(
+    { organizationId: organizationId, id: 'm-1', userId: 'owner-1', role: 'owner', createdAt: at, createdByUserId: 'operator' },
+    { organizationId: organizationId, id: 'm-2', userId: 'admin-1', role: 'admin', createdAt: at, createdByUserId: 'owner-1' },
+  );
   let next = 0;
   const deps = {
     ...fakes.repositories, authPort: fakes.authPort, secretCrypto, ids: { nextId: () => `id-${++next}` }, clock: { nowIso: () => at },
@@ -106,7 +107,7 @@ const reads = (h: Harness, octx: OrganizationCtx): Array<[string, () => Promise<
 
 describe('suspended organization', () => {
   it('refuses every organization write without a change and keeps every read open to owners and admins', async () => {
-    const h = await harness();
+    const h = harness();
     expect(await setOrganizationSecret(await h.octx('owner-1'), { organizationId, key: 'ifirma.invoiceApiKey', value: 'invoice-secret-abcd' }, h.deps))
       .toMatchObject({ ok: true });
     h.setStatus('suspended');
@@ -130,7 +131,7 @@ describe('suspended organization', () => {
   });
 
   it('accepts the same writes again once the organization is reactivated', async () => {
-    const h = await harness();
+    const h = harness();
     h.setStatus('suspended');
     h.setStatus('active');
 
@@ -143,7 +144,7 @@ describe('suspended organization', () => {
   });
 
   it('lets a direct workspace owner take the workspace out of a suspended organization', async () => {
-    const h = await harness();
+    const h = harness();
     h.setStatus('suspended');
     expect(await unlinkWorkspaceFromOrganization(h.workspaceOwnerCtx('outsider', 'akademia'), h.deps)).toEqual({
       ok: true, value: { workspace: { id: 'akademia', slug: 'akademia', name: 'Workspace akademia', status: 'active' }, changed: true },

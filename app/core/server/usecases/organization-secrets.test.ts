@@ -24,15 +24,16 @@ const secretCrypto: SecretCrypto = {
   decrypt: (input) => ok(input.ciphertext.replace('cipher:', '')),
 };
 
-const harness = async () => {
+const harness = () => {
   const fakes = createOrganizationFakes([], [
     { id: 'acme', slug: 'acme', name: 'Acme', status: 'active', organizationId: 'org-1', grants: [] },
     { id: 'studio', slug: 'studio', name: 'Studio', status: 'active', organizationId: null, grants: [] },
   ]);
-  const { organizations, organizationMembers } = fakes.repositories;
-  await organizations.create(organization);
-  await organizationMembers.add('org-1', { id: 'm-1', userId: 'owner-1', role: 'owner', createdAt: at, createdByUserId: 'operator' });
-  await organizationMembers.add('org-1', { id: 'm-2', userId: 'admin-1', role: 'admin', createdAt: at, createdByUserId: 'owner-1' });
+  fakes.organizationRows.push(organization);
+  fakes.memberRows.push(
+    { organizationId: 'org-1', id: 'm-1', userId: 'owner-1', role: 'owner', createdAt: at, createdByUserId: 'operator' },
+    { organizationId: 'org-1', id: 'm-2', userId: 'admin-1', role: 'admin', createdAt: at, createdByUserId: 'owner-1' },
+  );
   let next = 0;
   const deps = { ...fakes.repositories, secretCrypto, ids: { nextId: () => `id-${++next}` }, clock: { nowIso: () => at } };
   const octx = async (userId: string) => {
@@ -45,7 +46,7 @@ const harness = async () => {
 
 describe('organization secrets', () => {
   it('stores an allow-listed secret encrypted and lists only masked previews to owners and admins', async () => {
-    const h = await harness();
+    const h = harness();
     const owner = await h.octx('owner-1');
     expect(await setOrganizationSecret(owner, { organizationId: 'org-1', key: 'ifirma.invoiceApiKey', value: ' invoice-secret-abcd ' }, h.deps)).toEqual({
       ok: true, value: { secret: { key: 'ifirma.invoiceApiKey', maskedPreview: '••••abcd', updatedAt: at } },
@@ -67,7 +68,7 @@ describe('organization secrets', () => {
   });
 
   it('masks a value shorter than twelve characters completely in the response, the stored row and the audit row', async () => {
-    const h = await harness();
+    const h = harness();
     const owner = await h.octx('owner-1');
     const values: ReadonlyArray<readonly [OrganizationSecretKey, string]> = [['smtp.port', '2525'], ['smtp.password', 'a7Q!'], ['smtp.user', 'mailer-1234']];
     for (const [key, value] of values) {
@@ -89,7 +90,7 @@ describe('organization secrets', () => {
   });
 
   it('shows only the last four characters of a value of at least twelve characters', async () => {
-    const h = await harness();
+    const h = harness();
     const owner = await h.octx('owner-1');
     expect(await setOrganizationSecret(owner, { organizationId: 'org-1', key: 'smtp.password', value: 'Pa55word-xyz' }, h.deps))
       .toMatchObject({ ok: true, value: { secret: { maskedPreview: '••••-xyz' } } });
@@ -98,7 +99,7 @@ describe('organization secrets', () => {
   });
 
   it('rejects keys outside the allow-list and the dedicated-flow keys through the generic setter', async () => {
-    const h = await harness();
+    const h = harness();
     const owner = await h.octx('owner-1');
     for (const key of ['stripe.restrictedKey', 'stripe.testRestrictedKey', 'telemetry.mongodb'] as const) {
       const result = await setOrganizationSecret(owner, { organizationId: 'org-1', key, value: 'rk_live_secret-1234' }, h.deps);
@@ -109,7 +110,7 @@ describe('organization secrets', () => {
   });
 
   it('refuses writes to an admin and answers not_found to a non-member', async () => {
-    const h = await harness();
+    const h = harness();
     const admin = await h.octx('admin-1');
     expect(await setOrganizationSecret(admin, { organizationId: 'org-1', key: 'smtp.password', value: 'smtp-secret' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -121,7 +122,7 @@ describe('organization secrets', () => {
   });
 
   it('refuses to delete a secret while a workspace of the organization takes its group from the organization', async () => {
-    const h = await harness();
+    const h = harness();
     const owner = await h.octx('owner-1');
     await setOrganizationSecret(owner, { organizationId: 'org-1', key: 'shipx.token', value: 'shipx-token-9876' }, h.deps);
     await setOrganizationSecret(owner, { organizationId: 'org-1', key: 'resend.apiKey', value: 're_secret_4321' }, h.deps);

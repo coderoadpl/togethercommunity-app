@@ -2,14 +2,16 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { eq } from 'drizzle-orm';
 
-import { err, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, err, memberTombstone, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription, m2mListStripeSubscriptions, type StripeSubscriptionAdoptionDeps } from '#core/server/index.js';
 
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
-import { createMemberSubscriptionRepository } from './repositories.js';
+import { createMemberErasureRepository, createMemberSubscriptionRepository } from './repositories.js';
 import { createTestDatabase } from './test-database-name.js';
 import { createSubscriptionAdoptionTransaction } from './subscription-adoption.js';
-import { members, tenants, user, products, productPrices, memberSubscriptions, productGrants, memberEvents } from './schema.js';
+import {
+  members, tenants, user, products, productPrices, memberSubscriptions, productGrants, memberEvents, providerCustomerOwners,
+} from './schema.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let deps: StripeSubscriptionAdoptionDeps;
@@ -52,6 +54,9 @@ afterAll(async () => { await database?.close(); });
 const stripeCustomerOf = async (memberId: string) =>
   (await database.db.select().from(members).where(eq(members.id, memberId)))[0]?.externalCustomerIds;
 
+const ownersOf = async (customerId: string) => (await database.db.select().from(providerCustomerOwners)
+  .where(eq(providerCustomerOwners.customerId, customerId))).map((owner) => owner.tenantId);
+
 it('rolls back every local write when an adoption fails', async () => {
   const transaction = deps.subscriptionAdoptionTransaction;
   const result = await m2mAdoptStripeSubscription('t1', input, { ...deps, subscriptionAdoptionTransaction: {
@@ -67,6 +72,7 @@ it('rolls back every local write when an adoption fails', async () => {
   expect(await database.db.select().from(productGrants)).toHaveLength(0);
   expect(await database.db.select().from(memberEvents)).toHaveLength(0);
   expect(await stripeCustomerOf('member-1')).toEqual({});
+  expect(await database.db.select().from(providerCustomerOwners)).toHaveLength(0);
 });
 
 it('serializes concurrent adoption and persists a single audit and imported price', async () => {
@@ -76,7 +82,8 @@ it('serializes concurrent adoption and persists a single audit and imported pric
   expect(await database.db.select().from(memberSubscriptions)).toHaveLength(1);
   expect(await database.db.select().from(productPrices)).toMatchObject([{ imported: true, active: false, providerPriceId: 'price_existing' }]);
   expect((await database.db.select().from(memberEvents)).filter((event) => event.type === 'subscription-adopted')).toHaveLength(1);
-  expect(await stripeCustomerOf('member-1')).toEqual({ stripe: 'cus_existing' });
+  expect(await ownersOf('cus_existing')).toEqual(['t1']);
+  expect(await stripeCustomerOf('member-1')).toEqual({});
 });
 
 it('refuses another tenant adopting a subscription already stored for this account', async () => {
@@ -146,20 +153,110 @@ it('refuses another workspace adopting a different subscription of a customer th
   expect(listed).toEqual(ok({ subscriptions: [], nextCursor: null }));
 });
 
-it('refuses a member already linked to a different Stripe customer and writes nothing', async () => {
-  const elsewhere: StripeSubscriptionSnapshot = { id: 'sub_elsewhere', status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
-    cancelAtPeriodEnd: false, customerId: 'cus_elsewhere', customerEmail: 'buyer@example.com', metadataTenantId: null,
-    price: { id: 'price_elsewhere', amountCents: 2500, currency: 'EUR', interval: 'month', intervalCount: 1 } };
-  const before = await counts();
-  const result = await m2mAdoptStripeSubscription('t1', { subscriptionId: elsewhere.id, memberId: 'member-1', productId: 'product-1' },
-    { ...deps, payment: { retrieveStripeSubscription: async () => ok(elsewhere) } });
-  expect(result).toMatchObject({ ok: false, error: { code: 'conflict', details: { adoptionRefusal: 'conflict' } } });
-  expect(await counts()).toEqual(before);
-  expect(await stripeCustomerOf('member-1')).toEqual({ stripe: 'cus_existing' });
-});
-
-it('keeps the recorded customer when the same subscription is reconciled again', async () => {
+it('keeps one customer owner when the same subscription is reconciled again', async () => {
   const result = await m2mAdoptStripeSubscription('t1', input, deps);
   expect(result).toMatchObject({ ok: true, value: { subscriptionCreated: false } });
-  expect(await stripeCustomerOf('member-1')).toEqual({ stripe: 'cus_existing' });
+  expect(await ownersOf('cus_existing')).toEqual(['t1']);
+  expect(await stripeCustomerOf('member-1')).toEqual({});
+});
+
+const snapshot = (id: string, customerId: string, customerEmail: string): StripeSubscriptionSnapshot => ({
+  id, status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z', cancelAtPeriodEnd: false,
+  customerId, customerEmail, metadataTenantId: null,
+  price: { id: `price_${id}`, amountCents: 2500, currency: 'EUR', interval: 'month', intervalCount: 1 },
+});
+
+const addMembers = async (name: string, stripeCustomers: { t1?: string; t2?: string }) => {
+  const email = `${name}@example.com`;
+  await database.db.insert(user).values({ id: `user-${name}`, email, name });
+  await database.db.insert(members).values((['t1', 't2'] as const).map((tenantId) => {
+    const stripe = stripeCustomers[tenantId];
+    return { id: `${name}-${tenantId}`, tenantId, userId: `user-${name}`, email, createdAt: now,
+      externalCustomerIds: stripe === undefined ? {} : { stripe } };
+  }));
+  return email;
+};
+
+const productOf = { t1: 'product-1', t2: 'product-2' } as const;
+
+const adopt = (tenantId: 't1' | 't2', memberId: string, remote: StripeSubscriptionSnapshot, overrides: Partial<StripeSubscriptionAdoptionDeps> = {}) =>
+  m2mAdoptStripeSubscription(tenantId, { subscriptionId: remote.id, memberId, productId: productOf[tenantId] },
+    { ...deps, payment: { retrieveStripeSubscription: async () => ok(remote) }, ...overrides });
+
+const conflict = { ok: false, error: { code: 'conflict', details: { adoptionRefusal: 'conflict' } } };
+
+it('adopts a subscription of a second customer for a member already linked to another Stripe customer', async () => {
+  const email = await addMembers('holder', { t1: 'cus_holder_first' });
+  const result = await adopt('t1', 'holder-t1', snapshot('sub_holderSecond', 'cus_holder_second', email));
+  expect(result).toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+  expect(await ownersOf('cus_holder_second')).toEqual(['t1']);
+  expect(await stripeCustomerOf('holder-t1')).toEqual({ stripe: 'cus_holder_first' });
+});
+
+it('records the owner of a customer adopted before ownership rows existed when its subscription is reconciled', async () => {
+  const email = await addMembers('legacy', { t1: 'cus_legacy_other' });
+  await database.db.insert(productPrices).values({ id: 'price-legacy', tenantId: 't1', productId: 'product-1', kind: 'recurring',
+    interval: 'month', amountCents: 2500, currency: 'EUR', providerPriceId: 'price_sub_legacy', createdAt: now });
+  await database.db.insert(memberSubscriptions).values({ id: 'subscription-legacy', tenantId: 't1', memberId: 'legacy-t1',
+    productId: 'product-1', priceId: 'price-legacy', provider: 'stripe', providerSubscriptionId: 'sub_legacy', status: 'active',
+    currentPeriodEnd: '1998-08-01T00:00:00.000Z', createdAt: now, updatedAt: now });
+  expect(await ownersOf('cus_legacy')).toEqual([]);
+
+  const reconciled = await adopt('t1', 'legacy-t1', snapshot('sub_legacy', 'cus_legacy', email));
+  expect(reconciled).toMatchObject({ ok: true, value: { subscriptionCreated: false } });
+  expect(await ownersOf('cus_legacy')).toEqual(['t1']);
+  expect(await stripeCustomerOf('legacy-t1')).toEqual({ stripe: 'cus_legacy_other' });
+
+  const before = await counts();
+  expect(await adopt('t2', 'legacy-t2', snapshot('sub_legacySecond', 'cus_legacy', email))).toMatchObject(conflict);
+  expect(await counts()).toEqual(before);
+  expect(await ownersOf('cus_legacy')).toEqual(['t1']);
+});
+
+it('never writes a Stripe customer back onto a member erased while the adoption runs', async () => {
+  const email = await addMembers('erased', {});
+  const erasure = createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` });
+  const transaction = createSubscriptionAdoptionTransaction(database.db);
+  const result = await adopt('t1', 'erased-t1', snapshot('sub_erased', 'cus_erased', email), {
+    subscriptionAdoptionTransaction: { run: (tenantId, stripe, operation) => transaction.run(tenantId, stripe, (repositories) =>
+      operation({ ...repositories, members: { ...repositories.members, findById: async (memberTenantId, memberId) => {
+        const found = await repositories.members.findById(memberTenantId, memberId);
+        const tombstone = memberTombstone(memberId);
+        await erasure.pseudonymize(memberTenantId, { memberId, deletedAt: now, tombstoneEmail: tombstone.email,
+          severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY });
+        return found;
+      } } })) },
+  });
+  expect(result).toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+  const [erased] = await database.db.select().from(members).where(eq(members.id, 'erased-t1'));
+  expect(erased?.deletedAt).not.toBeNull();
+  expect(erased?.externalCustomerIds).toEqual({});
+  expect(await ownersOf('cus_erased')).toEqual(['t1']);
+});
+
+it('lets exactly one of two workspaces adopt different subscriptions of one customer at the same time', async () => {
+  const email = await addMembers('shared', { t1: 'cus_shared_t1_earlier', t2: 'cus_shared_t2_earlier' });
+  const first = snapshot('sub_sharedFirst', 'cus_shared', email);
+  const second = snapshot('sub_sharedSecond', 'cus_shared', email);
+  const reader = createStripeWebhookOwnershipReader(database.db);
+  let checked = 0;
+  let releaseChecks = () => {};
+  const bothChecked = new Promise<void>((resolve) => { releaseChecks = resolve; });
+  const stripeWebhookOwnership = { hasForeignOwner: async (tenantId: string, ids: { customer?: string; subscription?: string }) => {
+    const foreign = await reader.hasForeignOwner(tenantId, ids);
+    if (++checked === 2) releaseChecks();
+    await bothChecked;
+    return foreign;
+  } };
+  const results = await Promise.all([
+    adopt('t1', 'shared-t1', first, { stripeWebhookOwnership }),
+    adopt('t2', 'shared-t2', second, { stripeWebhookOwnership }),
+  ]);
+  expect(results.filter((result) => result.ok && result.value.subscriptionCreated)).toHaveLength(1);
+  expect(results.filter((result) => !result.ok)).toMatchObject([conflict]);
+  const owners = await ownersOf('cus_shared');
+  expect(owners).toHaveLength(1);
+  expect((await database.db.select().from(memberSubscriptions))
+    .filter((subscription) => subscription.providerSubscriptionId === first.id || subscription.providerSubscriptionId === second.id)
+    .map((subscription) => subscription.tenantId)).toEqual(owners);
 });

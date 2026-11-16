@@ -82,8 +82,9 @@ const created = async (h: ReturnType<typeof harness>) => {
   const response = await h.create('owner-1@example.test');
   const payload = envelopeSchema(operatorCreateOrganizationOutputSchema).parse(await response.json());
   if (!payload.ok) throw new Error(payload.error.message);
-  await h.repositories.organizationMembers.add(payload.data.organization.id, {
-    id: 'member-admin', userId: 'admin-1', role: 'admin', createdAt: '2026-11-15T12:00:00.000Z', createdByUserId: 'owner-1',
+  h.memberRows.push({
+    organizationId: payload.data.organization.id, id: 'member-admin', userId: 'admin-1', role: 'admin',
+    createdAt: '2026-11-15T12:00:00.000Z', createdByUserId: 'owner-1',
   });
   return payload.data.organization.id;
 };

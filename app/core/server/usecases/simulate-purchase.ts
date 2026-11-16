@@ -5,6 +5,7 @@ import {
   ok,
   orderShippingFrom,
   SIMULATED_SHIPPING_DETAILS,
+  stockQuantitiesFromLines,
   tenantNotFound,
   validation,
   type AppError,
@@ -89,12 +90,12 @@ export const simulatePurchase = async (
         billing: input.billing ?? null, salesLinkId: selection.value.salesLinkId ?? null, lines: built.value.lines,
         ...(shipping === null ? {} : { shipping: shipping.value, fulfilmentStatus: 'to_pack' as const }),
       }, { ...deps, orders: transaction.orders });
-      const hold = await reserveCheckoutStock(tenantId, { checkoutSnapshotId: checkoutSession, products: selectedProducts }, { stock: transaction.stock, clock: deps.clock });
+      const hold = await reserveCheckoutStock(tenantId, { checkoutSnapshotId: checkoutSession, products: selectedProducts, lines: built.value.lines }, { stock: transaction.stock, clock: deps.clock });
       if (!hold.ok) return hold;
       if (hold.value !== null) {
         const tenant = await deps.tenants.findById(tenantId);
         if (tenant === null) return err(tenantNotFound());
-        await commitCheckoutStock(tenant, { checkoutSnapshotId: checkoutSession, orderId: order.id, productIds: selectedProducts.map((item) => item.id) }, { ...deps, stock: transaction.stock, emailOutbox: transaction.emailOutbox });
+        await commitCheckoutStock(tenant, { checkoutSnapshotId: checkoutSession, orderId: order.id, items: stockQuantitiesFromLines(built.value.lines) }, { ...deps, stock: transaction.stock, emailOutbox: transaction.emailOutbox });
       }
       return ok({ memberId: member.value.id, productId: product.id, alreadyOwned: false, subscriptionId: null, orderId: order.id });
     });

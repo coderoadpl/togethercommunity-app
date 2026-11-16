@@ -8,6 +8,7 @@ import {
   renderFa3Invoice,
   type Invoice,
   type InvoiceEvent,
+  type InvoicePosition,
   type OrderListItem,
 } from '#core/domain/index.js';
 
@@ -71,6 +72,7 @@ const harness = (options: {
   const events: InvoiceEvent[] = [];
   let calls = 0;
   let issuedBilling: OrderListItem['billing'];
+  let issuedPositions: InvoicePosition[] | undefined;
   let allocationCount = 0;
   let allocatedYear: number | null = null;
   let frozenXml: string | null = null;
@@ -123,12 +125,14 @@ const harness = (options: {
     invoicing: {
       issueInvoice: async ({
         billing,
+        positions,
         providerInvoiceId,
         onProviderInvoiceCreateUncertain,
         onProviderInvoiceCreated,
       }) => {
         calls += 1;
         issuedBilling = billing;
+        issuedPositions = positions;
         if (options.uncertainFailure === true) {
           await onProviderInvoiceCreateUncertain();
           return err(integrationUnavailable('connection lost'));
@@ -278,6 +282,7 @@ const harness = (options: {
     events,
     calls: () => calls,
     issuedBilling: () => issuedBilling,
+    issuedPositions: () => issuedPositions,
     allocatedYear: () => allocatedYear,
     frozenXml: () => frozenXml,
     testedConfig: () => testedConfig,
@@ -374,6 +379,45 @@ describe('requestInvoice', () => {
       expect(h.calls()).toBe(0);
       expect(h.frozenXml()).toBeNull();
     }
+  });
+
+  it('renders the quantity and unit net of a single multi-unit line in the frozen KSeF XML', async () => {
+    const h = harness({ provider: 'ksef' });
+    h.deps.orderDetails.findById = async () => ({ ...order(), amountCents: 9000, lines: [
+      { productId: 'p1', name: 'Poster', productType: 'physical', quantity: 3, grossCents: 9000, netCents: 7317, vatCents: 1683, vatRate: 23, vatExemptionBasis: null, issuedCount: 0 },
+    ] });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    expect(h.events.find((event) => event.type === 'frozen')?.meta.positions).toEqual([
+      { name: 'Poster', quantity: 3, grossCents: 9000, netCents: 7317, vatCents: 1683, vat: { kind: 'rate', percent: 23 } },
+    ]);
+    expect(h.frozenXml()).toContain('<P_7>Poster</P_7><P_8A>szt.</P_8A><P_8B>3</P_8B><P_9A>24.39</P_9A><P_11>73.17</P_11><P_12>23</P_12>');
+    expect(h.frozenXml()).toContain('<P_6>2026-07-27</P_6>');
+  });
+
+  it('sends iFirma positions for a single multi-unit line', async () => {
+    const h = harness({ provider: 'ifirma' });
+    h.deps.orderDetails.findById = async () => ({ ...order(), amountCents: 9000, lines: [
+      { productId: 'p1', name: 'Poster', productType: 'physical', quantity: 3, grossCents: 9000, netCents: 7317, vatCents: 1683, vatRate: 23, vatExemptionBasis: null, issuedCount: 0 },
+    ] });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    expect(h.issuedPositions()).toEqual([
+      { name: 'Poster', quantity: 3, grossCents: 9000, netCents: 7317, vatCents: 1683, vat: { kind: 'rate', percent: 23 } },
+    ]);
+  });
+
+  it.each(['ifirma', 'ksef'] as const)('splits a discounted multi-unit line into whole-grosz %s positions summing to the paid amount', async (provider) => {
+    const h = harness({ provider });
+    h.deps.orderDetails.findById = async () => ({ ...order(), amountCents: 10001, discountCents: 1999, lines: [
+      { productId: 'p1', name: 'Poster', productType: 'physical', quantity: 3, grossCents: 12000, netCents: 9756, vatCents: 2244, vatRate: 23, vatExemptionBasis: null, issuedCount: 0 },
+    ] });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    const expected = [
+      { name: 'Poster', quantity: 2, grossCents: 6666, netCents: 5420, vatCents: 1246, vat: { kind: 'rate', percent: 23 } },
+      { name: 'Poster', grossCents: 3335, netCents: 2711, vatCents: 624, vat: { kind: 'rate', percent: 23 } },
+    ];
+    expect(h.events.find((event) => event.type === (provider === 'ksef' ? 'frozen' : 'requested'))?.meta.positions).toEqual(expected);
+    if (provider === 'ksef') expect(h.frozenXml()).toContain('<P_15>100.01</P_15>');
+    else expect(h.issuedPositions()).toEqual(expected);
   });
 
   it('preserves the complete single-product KSeF XML without a sale-date element', async () => {

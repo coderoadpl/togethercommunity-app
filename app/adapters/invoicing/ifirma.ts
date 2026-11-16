@@ -6,6 +6,8 @@ import {
   err,
   integrationAuth,
   integrationUnavailable,
+  invoicePositionQuantity,
+  invoicePositionUnitCents,
   ok,
   validation,
   type AppError,
@@ -124,8 +126,8 @@ export const ifirmaInvoicePayload = (
     Numer: null,
     ...(exemptionBases.length > 0 ? { Uwagi: `Zwolnienie z VAT: ${exemptionBases.join('; ')}` } : {}),
     Pozycje: input.positions === undefined ? [position] : input.positions.map((line) => line.vat.kind === 'exempt'
-      ? { StawkaVat: null, Ilosc: 1, CenaJednostkowa: line.grossCents / 100, NazwaPelna: line.name, Jednostka: 'szt.', TypStawkiVat: 'ZW', PodstawaPrawna: line.vat.basis }
-      : { StawkaVat: line.vat.percent / 100, Ilosc: 1, CenaJednostkowa: line.grossCents / 100, NazwaPelna: line.name, Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' }),
+      ? { StawkaVat: null, Ilosc: invoicePositionQuantity(line), CenaJednostkowa: invoicePositionUnitCents(line, line.grossCents) / 100, NazwaPelna: line.name, Jednostka: 'szt.', TypStawkiVat: 'ZW', PodstawaPrawna: line.vat.basis }
+      : { StawkaVat: line.vat.percent / 100, Ilosc: invoicePositionQuantity(line), CenaJednostkowa: invoicePositionUnitCents(line, line.grossCents) / 100, NazwaPelna: line.name, Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' }),
     Kontrahent: {
       Nazwa: billing?.companyName || 'Klient detaliczny',
       Identyfikator: null,

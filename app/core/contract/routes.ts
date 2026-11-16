@@ -546,6 +546,7 @@ export const myProductsOutputSchema = z.object({
       purchasable: z.boolean(),
       shippedTo: z.string().nullable().optional(),
       fulfilment: memberFulfilmentSchema.nullable().optional(),
+      quantity: z.number().int().min(1).optional(),
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),

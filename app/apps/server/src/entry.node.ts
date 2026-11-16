@@ -78,6 +78,11 @@ const productionTickers: BackgroundTicker[] = [
           process.stderr.write(`[email-outbox] ticker dispatch failed: ${safeErrorMessage(error)}\n`);
         }),
         runMetaCapiDispatch(deps.metaCapi, deps.logger, 'node ticker'),
+        deps.dispatchOrderRefundJobs().then((result) => {
+          if (!result.ok) process.stderr.write(`[order-refund] ticker dispatch failed: ${safeLogMessage(result.error.message)}\n`);
+        }, (error: unknown) => {
+          process.stderr.write(`[order-refund] ticker dispatch failed: ${safeErrorMessage(error)}\n`);
+        }),
       ]);
     },
   },

@@ -3,6 +3,7 @@ import type {
   ImportAuditResourceType,
   LessonBlockType,
   MemberEventType,
+  OrderRefundJobView,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StripeAdoptionRefusal,
@@ -884,6 +885,14 @@ export interface Messages {
     refreshInvoice: string;
     refreshingInvoice: string;
     invoiceStatus: string;
+    refundJobTitle: string;
+    refundJobStatuses: Record<OrderRefundJobView['status'], string>;
+    refundJobAttempts: string;
+    refundJobNextAttempt: string;
+    refundJobProviderRefund: string;
+    refundJobLastError: string;
+    refundJobBlockedHelp: string;
+    refundJobFailedHelp: string;
     invoiceDownload: string;
     ksefNumber: string;
     ksefPdfDownload: string;
@@ -3041,6 +3050,7 @@ export interface Messages {
       reputationAlert: string;
       stockLow: string;
       orderOutOfStock: string;
+      orderRefundAlert: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

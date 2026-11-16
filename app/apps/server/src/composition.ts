@@ -55,6 +55,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
+import { createOrderRefundJobRepository } from '#adapters/db/order-refund-jobs.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
@@ -298,6 +299,7 @@ import type {
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
+  OrderRefundJobRepository,
   PaymentRefundRepository,
   StripeWebhookOwnershipReader,
   PostRepository,
@@ -351,7 +353,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchOrderRefundJobs, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type DispatchOrderRefundJobsResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import { safeLogMessage } from '#core/server/log-safety.js';
 import {
   DEMO_SEED_PASSWORD,
@@ -505,6 +507,7 @@ export interface AppDeps {
   prices: ProductPriceRepository;
   orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
+  orderRefundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'>;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
   shipxIntegration?: ShipxIntegrationDeps;
@@ -561,6 +564,8 @@ export interface AppDeps {
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   drainNotificationFanout(): Promise<Result<NotificationFanoutDrainResult, AppError>>;
   dispatchAutoInvoices(): Promise<Result<DispatchAutoInvoiceJobsResult, AppError>>;
+  dispatchOrderRefundJobs(): Promise<Result<DispatchOrderRefundJobsResult, AppError>>;
+  dispatchOrderRefunds(): void;
   dispatchEmail(): void;
   emailDispatchSecret: string;
   emailDispatchCronSecret: string;
@@ -1159,6 +1164,26 @@ export const createDeps = (
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
+  const runOrderRefundDispatch = () => dispatchOrderRefundJobs({
+    refundJobs: createOrderRefundJobRepository(db),
+    orderDetails: orderRepository,
+    payment,
+    tenants,
+    tenantAccess,
+    tenantDomains,
+    emailOutbox,
+    ids,
+    clock,
+    logger,
+    dispatchEmail,
+    appBaseUrl: env.APP_BASE_URL,
+    baseDomain,
+    singleTenantMode,
+  });
+  const dispatchOrderRefunds = createDeferredCoalescedRunner(async () => {
+    const result = await runOrderRefundDispatch();
+    if (!result.ok) process.stderr.write(`[order-refund] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
+  }, options.keepAlive);
   const dispatchNotificationFanout: AppDeps['dispatchNotificationFanout'] = createDeferredCoalescedRunner(async () => {
     const result = await drainNotificationFanoutJobs(deps);
     if (!result.ok) process.stderr.write(`[notification-fanout] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
@@ -1522,6 +1547,7 @@ export const createDeps = (
     orders: orderRepository,
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
+    orderRefundJobs: createOrderRefundJobRepository(db),
     orderVerification: createOrderVerificationRepository(db),
     metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
@@ -1602,6 +1628,8 @@ export const createDeps = (
     dispatchEmails,
     drainNotificationFanout: async () => drainNotificationFanoutJobs(deps),
     dispatchAutoInvoices,
+    dispatchOrderRefundJobs: runOrderRefundDispatch,
+    dispatchOrderRefunds,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,

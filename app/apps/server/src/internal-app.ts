@@ -801,6 +801,15 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
+const dispatchDueOrderRefunds = async (deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>): Promise<void> => {
+  try {
+    const result = await deps.dispatchOrderRefundJobs();
+    if (!result.ok) deps.logger.error(`[order-refund] tick dispatch failed: ${result.error.message}`);
+  } catch (error) {
+    deps.logger.error(`[order-refund] tick dispatch failed: ${safeErrorMessage(error)}`);
+  }
+};
+
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   registerOperatorTenantRoutes(app, deps);
@@ -814,6 +823,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
+    await dispatchDueOrderRefunds(deps);
     return respond(await deps.dispatchEmails('manual'));
   });
 
@@ -823,6 +833,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
+    await dispatchDueOrderRefunds(deps);
     const emails = await deps.dispatchEmails('cron');
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
     return respond(emails);
@@ -2886,7 +2897,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       await getOrder(
         ctxOf(c),
         c.req.param('orderId'),
-        { orders: deps.orderDetails, invoices: deps.invoices },
+        { orders: deps.orderDetails, invoices: deps.invoices, ...(deps.orderRefundJobs === undefined ? {} : { refundJobs: deps.orderRefundJobs }) },
       ),
     );
   });

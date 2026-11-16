@@ -1,6 +1,6 @@
 {
-  "hash": "47433b0de849b06c1fa7f3b3fdd80c5623f5b2323f3694db7f2cfef022e5fcab",
-  "shortId": "47433b0de849",
+  "hash": "ddf1a39f56af86c53c4aea7489101486341ec802575df12682e70c2c75cde271",
+  "shortId": "ddf1a39f56af",
   "schema": {
     "constraints": [
       {
@@ -5778,6 +5778,14 @@
             "type": "integer"
           },
           {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "status_checks",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -5880,6 +5888,14 @@
             "name": "reason",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "submitted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
           },
           {
             "default": null,

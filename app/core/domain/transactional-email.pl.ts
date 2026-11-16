@@ -167,6 +167,32 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       text: `Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amount} jest w toku.\nZamówienie: ${orderId}\nKupujący: ${buyerEmail}\nBrak towaru: ${productTitles}\n${orderUrl}`,
     }),
   },
+  orderRefundAlertEmail: {
+    render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
+      const subjects = {
+        retrying: 'Automatyczny zwrot nie powiódł się, ponawiamy',
+        blocked_permission: 'Automatyczny zwrot zablokowany przez brak uprawnienia w Stripe',
+        failed: 'Automatyczny zwrot nie powiódł się, zwróć ręcznie',
+        failed_after_submission: 'Zwrot nie powiódł się po zleceniu, zwróć ręcznie',
+      } as const;
+      const bodies = {
+        retrying: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`,
+          `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`],
+        blocked_permission: [`Zwrot ${amount} za anulowane zamówienie ${orderId} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Kolejne automatyczne próby nie będą podejmowane. Zwróć płatność ręcznie w panelu Stripe i dodaj uprawnienie do klucza na potrzeby kolejnych zwrotów.`,
+          `Zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Kolejne automatyczne próby nie będą podejmowane. Zwróć płatność ręcznie w panelu Stripe i dodaj uprawnienie do klucza na potrzeby kolejnych zwrotów.`],
+        failed: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`,
+          `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`],
+        failed_after_submission: [`Stripe zgłasza, że zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`,
+          `Stripe zgłasza, że zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`],
+      } as const;
+      const [text, html] = bodies[alert];
+      return {
+        subject: `[${tenantName}] ${subjects[alert]}: ${orderId}`,
+        html: `<p>${html}</p><p>Ostatni błąd: ${errorHtml}</p><p><a href="${orderUrlHtml}">Otwórz zamówienie</a></p>`,
+        text: `${text}\nOstatni błąd: ${error}\n${orderUrl}`,
+      };
+    },
+  },
   stockLowEmail: {
     noThreshold: 'nie ustawiono',
     render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({

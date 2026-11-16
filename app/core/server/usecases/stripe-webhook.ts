@@ -68,7 +68,11 @@ import {
   type SubscriptionLifecycleDeps,
 } from './subscription-lifecycle.js';
 
-export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+interface OrderRefundDispatchTrigger {
+  dispatchOrderRefunds?(): void;
+}
+
+export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps, OrderRefundDispatchTrigger {
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
@@ -99,6 +103,7 @@ interface EventApplication {
   consumed?: boolean;
   paidOrder?: Order;
   pendingConsent?: string;
+  refundQueued?: boolean;
 }
 
 const ignorePaymentMode = (
@@ -449,10 +454,10 @@ const recordOutOfStockCancellation = async (
   order: Order,
   input: { buyerEmail: string; shortProductIds: readonly string[] },
   deps: CheckoutCompletionDeps,
-): Promise<Result<{ job: OrderRefundJob | null; emailsQueued: boolean }, AppError>> => {
+): Promise<Result<{ job: OrderRefundJob | null; refundQueued: boolean; emailsQueued: boolean }, AppError>> => {
   const now = deps.clock.nowIso();
   const job = order.amountCents > 0 ? outOfStockRefundJob(order, { id: deps.ids.nextId(), now }) : null;
-  if (job !== null) await deps.orderRefundJobs.enqueue(tenant.id, job);
+  const refundQueued = job !== null && await deps.orderRefundJobs.enqueue(tenant.id, job);
   deps.logger.warn(`[stock] out of stock tenant=${tenant.id} order=${order.id} products=${input.shortProductIds.join(',')} refund=${job === null ? 'none' : job.idempotencyKey}`);
   const recipients = deps.tenantAccess === undefined ? [] : await tenantStaffRecipients(tenant.id, { tenants: deps.tenants, tenantAccess: deps.tenantAccess });
   const productTitles = await Promise.all(input.shortProductIds.map(async (productId) => (await deps.products.findById(tenant.id, productId))?.title ?? productId));
@@ -470,7 +475,7 @@ const recordOutOfStockCancellation = async (
     });
     if (!queued.ok) return queued;
   }
-  return ok({ job, emailsQueued: recipients.length > 0 });
+  return ok({ job, refundQueued, emailsQueued: recipients.length > 0 });
 };
 
 const checkoutShipping = (
@@ -650,7 +655,7 @@ const applyCheckoutCompleted = async (
     const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
     const cancelled = await recordOutOfStockCancellation(tenant, persistedOrder ?? paidOrder, { buyerEmail: normalizeEmail(email), shortProductIds }, deps);
     if (!cancelled.ok) return cancelled;
-    return ok({ processed: true, paidOrder, emailsQueued: cancelled.value.emailsQueued });
+    return ok({ processed: true, paidOrder, emailsQueued: cancelled.value.emailsQueued, refundQueued: cancelled.value.refundQueued });
   }
 
   const stockCommit = event.mode === 'test'
@@ -1264,6 +1269,7 @@ export const fulfillStripeWebhook = async (
     return applied;
   }
   if (applied.value.emailsQueued) deps.dispatchEmail();
+  if (applied.value.refundQueued === true) deps.dispatchOrderRefunds?.();
   if (!applied.value.processed && applied.value.consumed !== true) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
   }

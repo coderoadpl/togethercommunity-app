@@ -1,3 +1,5 @@
+import type { OrderRefundAlert } from './order-refund-job.js';
+
 interface TransactionalEmailMessageContent {
   subject: string;
   html: string;
@@ -245,6 +247,20 @@ export interface TransactionalEmailMessages {
       amountHtml: string;
       productTitles: string;
       productTitlesHtml: string;
+      orderUrl: string;
+      orderUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
+  orderRefundAlertEmail: {
+    render: (input: {
+      tenantName: string;
+      alert: OrderRefundAlert;
+      orderId: string;
+      orderIdHtml: string;
+      amount: string;
+      amountHtml: string;
+      error: string;
+      errorHtml: string;
       orderUrl: string;
       orderUrlHtml: string;
     }) => TransactionalEmailMessageContent;

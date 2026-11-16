@@ -167,6 +167,32 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       text: `A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amount} is in progress.\nOrder: ${orderId}\nBuyer: ${buyerEmail}\nOut of stock: ${productTitles}\n${orderUrl}`,
     }),
   },
+  orderRefundAlertEmail: {
+    render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
+      const subjects = {
+        retrying: 'Automatic refund failed, retrying',
+        blocked_permission: 'Automatic refund blocked by a missing Stripe permission',
+        failed: 'Automatic refund failed, refund by hand',
+        failed_after_submission: 'Refund failed after it was issued, refund by hand',
+      } as const;
+      const bodies = {
+        retrying: [`The automatic refund of ${amount} for cancelled order ${orderId} failed. It is retried automatically for 7 days; you get another message if it still fails.`,
+          `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} failed. It is retried automatically for 7 days; you get another message if it still fails.`],
+        blocked_permission: [`The refund of ${amount} for cancelled order ${orderId} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. No further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard and add the permission to the key for future refunds.`,
+          `The refund of ${amountHtml} for cancelled order ${orderIdHtml} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. No further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard and add the permission to the key for future refunds.`],
+        failed: [`The automatic refund of ${amount} for cancelled order ${orderId} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`,
+          `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`],
+        failed_after_submission: [`Stripe reports that the refund of ${amount} for cancelled order ${orderId} failed after it was issued. Return the money to the buyer another way.`,
+          `Stripe reports that the refund of ${amountHtml} for cancelled order ${orderIdHtml} failed after it was issued. Return the money to the buyer another way.`],
+      } as const;
+      const [text, html] = bodies[alert];
+      return {
+        subject: `[${tenantName}] ${subjects[alert]}: ${orderId}`,
+        html: `<p>${html}</p><p>Last error: ${errorHtml}</p><p><a href="${orderUrlHtml}">Open the order</a></p>`,
+        text: `${text}\nLast error: ${error}\n${orderUrl}`,
+      };
+    },
+  },
   stockLowEmail: {
     noThreshold: 'not set',
     render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({

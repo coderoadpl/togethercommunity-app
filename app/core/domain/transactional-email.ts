@@ -6,6 +6,7 @@ import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
+import type { OrderRefundAlert } from './order-refund-job.js';
 import { currencySchema, productTypeSchema } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
@@ -630,6 +631,35 @@ export const orderOutOfStockEmail = (
     amountHtml: escapeHtml(amount),
     productTitles,
     productTitlesHtml: escapeHtml(productTitles),
+    orderUrl: input.orderUrl,
+    orderUrlHtml: escapeHtml(input.orderUrl),
+  }));
+};
+
+export const orderRefundAlertEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    alert: OrderRefundAlert;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    error: string;
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  return emailMessageSchema.parse(transactionalMessages[resolvedLanguage].orderRefundAlertEmail.render({
+    tenantName: input.tenantName,
+    alert: input.alert,
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    amount,
+    amountHtml: escapeHtml(amount),
+    error: input.error,
+    errorHtml: escapeHtml(input.error),
     orderUrl: input.orderUrl,
     orderUrlHtml: escapeHtml(input.orderUrl),
   }));

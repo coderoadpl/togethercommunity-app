@@ -12,6 +12,7 @@ import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { OrderShipment } from './OrderShipment.js';
+import { OrderRefundJob } from './OrderRefundJob.js';
 import { OrderShipx } from './OrderShipx.js';
 
 const saveLabel = (file: { filename: string; contentType: string; bytes: Uint8Array }) => {
@@ -238,6 +239,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </SectionCard>
       )}
+      {detail.data.refundJob === null ? null : <OrderRefundJob job={detail.data.refundJob} />}
       <SectionCard title={t.sales.invoiceStatus}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}

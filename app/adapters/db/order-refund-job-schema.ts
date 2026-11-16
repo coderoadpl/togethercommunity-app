@@ -21,6 +21,8 @@ export const orderRefundJobs = pgTable('order_refund_jobs', {
   lastError: text('last_error'),
   providerRefundId: text('provider_refund_id'),
   providerRefundStatus: text('provider_refund_status'),
+  submittedAt: timestamp('submitted_at', { withTimezone: true, mode: 'string' }),
+  statusChecks: integer('status_checks').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [

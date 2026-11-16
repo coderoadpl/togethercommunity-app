@@ -872,6 +872,53 @@ short the whole order is cancelled and nothing is decremented:
 A later event for a checkout session whose order is already cancelled changes
 nothing. Recurring prices keep the commit above.
 
+#### Automatic refund of a cancelled order
+
+`dispatchOrderRefundJobs` runs on the existing minute tick (the
+`/api/internal/dispatch-email` cron route and the Node ticker) and is also
+started right after a webhook queues a refund job; a failing kick or tick is
+logged and never fails the webhook response or the e-mail dispatch. It handles
+at most 25 due jobs per run. Each job is claimed with `FOR UPDATE SKIP LOCKED`
+and a conditional update (`pending` becomes `running` with a 10-minute lease and
+one more attempt), so two runs never work on the same job; a `running` job
+whose lease expired goes back to `pending` and is retried with the same key.
+
+For each claimed job the dispatcher reads the order of that workspace again:
+
+- an order that is already `refunded` (for example refunded by hand in the
+  Stripe Dashboard) ends as `skipped_refunded` without calling Stripe;
+- otherwise it refunds the full amount through `POST /v1/refunds` with the
+  payment intent, the workspace's restricted key in the order's mode and the
+  idempotency key `oos-refund-<orderId>`, stores the Stripe refund id and status
+  and marks the job `succeeded` (or `submitted` while Stripe reports the refund
+  as pending). The existing `charge.refunded` handler marks the order
+  `refunded`;
+- a temporary Stripe failure or a short available balance is retried 1 min,
+  5 min, 30 min, 2 h and 6 h later, then every 12 h until seven days after the
+  first attempt; the job then ends as `failed`;
+- a charge Stripe reports as already refunded ends as `skipped_refunded`; a
+  missing payment intent, a refund Stripe rejects for good (for example after a
+  partial refund by hand) or an order that is not cancelled ends as `failed` at
+  once;
+- a key without the Charges and Refunds (write) permission ends as
+  `blocked_permission`; no further automatic attempt is made.
+
+Staff get the `order-refund-alert` e-mail (support address, or every staff
+member in their language) on the first failed attempt, when a job ends as
+`failed` or `blocked_permission`, and when a refund fails after it was issued.
+Studio shows the job state, attempts, next attempt, Stripe refund and last
+error on the order page. A `blocked_permission` or `failed` job is resolved by
+refunding the payment by hand in the Stripe Dashboard (the order then becomes
+`refunded`); add Charges and Refunds (write) to the restricted key so later
+refunds run automatically. Requeueing a blocked job from Studio is not
+available yet.
+
+Stripe does not send `refund.failed` to the platform (the event is not
+subscribed), so the dispatcher reads the refund back 24 hours and 7 days after
+it was issued. A refund Stripe then reports as `failed` or `canceled` marks the
+job `failed` and alerts staff to return the money another way. A read that
+fails is retried hourly for up to 8 days after the refund was issued.
+
 `checkout.session.expired` is not handled. The expiry sweep
 `releaseExpiredStockReservations` runs on the existing minute tick (the
 `/api/internal/dispatch-email` cron route and the Node ticker) before e-mail

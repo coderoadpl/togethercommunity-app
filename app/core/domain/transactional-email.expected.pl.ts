@@ -71,6 +71,11 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty 40,99\u00a0zł jest w toku.</p><p>Zamówienie: order-&lt;1&gt;<br>Kupujący: buyer@example.com<br>Brak towaru: Printed &lt;poster&gt;, Mug</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
     text: 'Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty 40,99\u00a0zł jest w toku.\nZamówienie: order-<1>\nKupujący: buyer@example.com\nBrak towaru: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1',
   },
+  orderRefundAlertEmail: {
+    subject: '[Acme] Automatyczny zwrot nie powiódł się, zwróć ręcznie: order-<1>',
+    html: '<p>Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
+  },
   emailTransportTest: {
     subject: 'Together — wiadomość testowa (resend)',
     html: '<p>Transport resend jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>',

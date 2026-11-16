@@ -200,6 +200,7 @@ const deps = (input: {
   migrationCounts?: Awaited<ReturnType<AppDeps['health']['migrationCounts']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
+  dispatchOrderRefundJobs?: AppDeps['dispatchOrderRefundJobs'];
   checkTenantDomains?: AppDeps['checkTenantDomains'];
   sanitizeStagingSecrets?: AppDeps['sanitizeStagingSecrets'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
@@ -616,6 +617,8 @@ const deps = (input: {
       processedCount: 0,
       orderId: null,
     })),
+    dispatchOrderRefundJobs: input.dispatchOrderRefundJobs ?? (async () => ok({ processedCount: 0, outcomes: {} })),
+    dispatchOrderRefunds: () => undefined,
     dispatchEmail: () => undefined,
     emailDispatchSecret: 'test-email-dispatch-secret',
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
@@ -3387,6 +3390,23 @@ describe('email dispatch route', () => {
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledTimes(2);
     expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
+  });
+
+  it('dispatches due order refund jobs on the same tick and keeps dispatching e-mail when that fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>()
+      .mockResolvedValueOnce(ok({ processedCount: 1, outcomes: { refunded: 1 } }))
+      .mockRejectedValueOnce(new Error('database unavailable'));
+    const app = buildApp(deps({ dispatchEmails, dispatchOrderRefundJobs, logger }));
+    expect((await app.request(API_PATHS.emailDispatch)).status).toBe(401);
+    expect(dispatchOrderRefundJobs).not.toHaveBeenCalled();
+    const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect([cron.status, manual.status]).toEqual([200, 200]);
+    expect(dispatchOrderRefundJobs).toHaveBeenCalledTimes(2);
+    expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
+    expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });
 
   it('preserves the email result when the Meta tenant directory fails', async () => {

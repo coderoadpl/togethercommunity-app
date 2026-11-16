@@ -38,6 +38,7 @@ const harness = vi.hoisted(() => {
     singleTenantMode: true,
     dispatchEmails: vi.fn(),
     dispatchAutoInvoices: vi.fn(),
+    dispatchOrderRefundJobs: vi.fn(async () => ({ ok: true, value: { processedCount: 0, outcomes: {} } })),
     releaseExpiredStockReservations: vi.fn(),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger', warn: vi.fn() },
@@ -206,6 +207,7 @@ describe('entry.node composition', () => {
       value: { processed: false, processedCount: 0, orderId: null },
     });
     harness.deps.releaseExpiredStockReservations.mockRejectedValueOnce(new Error('stock unavailable'));
+    harness.deps.dispatchOrderRefundJobs.mockRejectedValueOnce(new Error('refund jobs unavailable'));
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
 
@@ -236,6 +238,8 @@ describe('entry.node composition', () => {
     expect(harness.deps.releaseExpiredStockReservations).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(stderr).toHaveBeenCalledWith('[order-refund] ticker dispatch failed: refund jobs unavailable\n');
     expect(send).toHaveBeenCalledOnce();
     expect(events).toMatchObject([{ transactionId: 'purchase', status: 'sent', fbtraceId: 'trace' }]);
     expect(pending).toBe(false);

@@ -2,8 +2,8 @@ import { asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { checkoutSessionInputSchema, ok, type CheckoutSessionInput } from '#core/domain/index.js';
-import { fulfillStripeWebhook, releaseExpiredStockReservations, startCheckoutSession, validateCheckoutSelection, type PaymentWebhookEvent } from '#core/server/index.js';
+import { checkoutSessionInputSchema, ok, type CheckoutSessionInput, type ProviderRefund } from '#core/domain/index.js';
+import { dispatchOrderRefundJobs, fulfillStripeWebhook, releaseExpiredStockReservations, startCheckoutSession, validateCheckoutSelection, type PaymentProvider, type PaymentWebhookEvent } from '#core/server/index.js';
 import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
@@ -269,5 +269,92 @@ describe('payment for goods that sold out after the hold ended', () => {
     expect(rows.levels).toStrictEqual([{ productId: 'printed-1', onHand: 0, reserved: 0 }]);
     expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual(['committed_late']);
     expect(rows.invoiceJobs.map((job) => job.orderId)).toStrictEqual(fulfilled.map((order) => order.id));
+  });
+});
+
+type RefundInput = Parameters<NonNullable<PaymentProvider['createRefund']>>[0];
+
+const refundDispatcher = (h: Harness, release: Promise<void> = Promise.resolve()) => {
+  const calls: RefundInput[] = [];
+  const deps = {
+    ...h.webhookDeps,
+    refundJobs: createOrderRefundJobRepository(database.db),
+    orderDetails: createOrderRepository(database.db),
+    tenantAccess: { listStaffForTenant: async () => [] },
+    payment: {
+      createRefund: async (input: RefundInput) => {
+        calls.push(input);
+        await release;
+        const refund: ProviderRefund = { refundId: `re_${input.idempotencyKey}`, paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, status: 'succeeded', failureReason: null };
+        return ok(refund);
+      },
+      getRefund: async () => ok<ProviderRefund>({ refundId: 're_unused', paymentIntentId: null, amountCents: 0, status: 'succeeded', failureReason: null }),
+    },
+  };
+  return { calls, run: () => dispatchOrderRefundJobs(deps) };
+};
+
+describe('refund dispatcher for orders cancelled out of stock', () => {
+  it('refunds a cancelled order delivered twice exactly once and kicks the dispatcher only for the first delivery', async () => {
+    const h = harness();
+    const kicks: string[] = [];
+    Object.assign(h.webhookDeps, { dispatchOrderRefunds: () => { kicks.push('kick'); } });
+    await track('printed-1', 1);
+    const snapshotId = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('printed-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+    const event = printedPaid({ eventId: 'evt_oos_refund', session: 'cs_live_golden1', snapshotId, paymentIntentId: 'pi_oos_refund' });
+
+    expect(await fulfillStripeWebhook(legacyTenant, event, h.webhookDeps)).toStrictEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(legacyTenant, { ...event, id: 'evt_oos_refund_again' }, h.webhookDeps)).toStrictEqual(ok({ processed: false }));
+    expect(kicks).toStrictEqual(['kick']);
+
+    const dispatcher = refundDispatcher(h);
+    expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+    expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
+
+    const rows = await tenantRows();
+    const orderId = rows.orders[0]?.id ?? '';
+    expect(rows.refundJobs).toStrictEqual([{ ...cancelledJob(orderId, 'pi_oos_refund', 4099), status: 'succeeded', attempts: 1 }]);
+    expect(dispatcher.calls).toStrictEqual([{
+      mode: 'live', tenantId: 'tenant-a', paymentIntentId: 'pi_oos_refund', amountCents: 4099, idempotencyKey: `oos-refund-${orderId}`,
+      metadata: { orderId, reason: 'out_of_stock' },
+    }]);
+    expect(await createOrderRefundJobRepository(database.db).findByOrderId(legacyTenant.id, orderId)).toMatchObject({
+      providerRefundId: `re_oos-refund-${orderId}`, providerRefundStatus: 'succeeded', submittedAt: '2026-11-15T10:42:00.000Z',
+      nextAttemptAt: '2026-11-16T10:42:00.000Z', lockedAt: null,
+    });
+  });
+
+  it('gives each due job to exactly one of two concurrent dispatcher runs', async () => {
+    const h = harness();
+    await track('printed-1', 2);
+    const firstSnapshot = await publicCheckout(h, printedRequest);
+    const secondSnapshot = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('printed-1', '2026-11-15T10:41:00.000Z');
+    await damage('printed-1', '2026-11-15T10:41:30.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+    expect(await fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_oos_c1', session: 'cs_live_golden1', snapshotId: firstSnapshot, paymentIntentId: 'pi_oos_c1' }), h.webhookDeps))
+      .toStrictEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_oos_c2', session: 'cs_live_golden2', snapshotId: secondSnapshot, paymentIntentId: 'pi_oos_c2' }), h.webhookDeps))
+      .toStrictEqual(ok({ processed: true }));
+    expect((await tenantRows()).refundJobs.map((job) => job.status)).toStrictEqual(['pending', 'pending']);
+
+    let open = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    const first = refundDispatcher(h, gate);
+    const second = refundDispatcher(h, gate);
+    const running = Promise.all([first.run(), second.run()]);
+    for (let wait = 0; wait < 200 && first.calls.length + second.calls.length < 2; wait += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    open();
+    const results = await running;
+
+    const calls = [...first.calls, ...second.calls];
+    expect(calls.map((call) => call.paymentIntentId).toSorted()).toStrictEqual(['pi_oos_c1', 'pi_oos_c2']);
+    expect(results.map((result) => (result.ok ? result.value.processedCount : -1)).reduce((sum, count) => sum + count, 0)).toBe(2);
+    expect((await tenantRows()).refundJobs.map((job) => [job.status, job.attempts])).toStrictEqual([['succeeded', 1], ['succeeded', 1]]);
+    expect(await refundDispatcher(h).run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
   });
 });

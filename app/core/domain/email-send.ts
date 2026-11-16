@@ -25,6 +25,7 @@ const emailSendSourceKindSchema = z.enum([
   'reputation-alert',
   'stock-low',
   'order-out-of-stock',
+  'order-refund-alert',
   'marketing-consent-confirmation',
   'm2m-transactional',
   'marketing-campaign',

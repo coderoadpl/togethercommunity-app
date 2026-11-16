@@ -145,6 +145,7 @@ import type {
   StripePermissionCheck,
   ProviderRefund,
   OrderRefundJob,
+  ClaimedOrderRefundJob,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
@@ -1342,9 +1343,19 @@ export interface AutoInvoiceJobRepository {
   complete(tenantId: string, jobId: string): Promise<void>;
 }
 
+export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
+  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks'>>;
+
 export interface OrderRefundJobRepository {
   enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
   findByOrderId(tenantId: string, orderId: string): Promise<OrderRefundJob | null>;
+  claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedOrderRefundJob | null>;
+  release(
+    tenantId: string,
+    jobId: string,
+    lease: ClaimedOrderRefundJob['lease'],
+    update: OrderRefundJobUpdate & { now: string },
+  ): Promise<OrderRefundJob | null>;
 }
 
 export interface KsefCredentials {

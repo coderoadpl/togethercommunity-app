@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
+import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
 import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
@@ -20,6 +21,7 @@ import {
   spacePost,
   stockLowEmail,
   orderOutOfStockEmail,
+  orderRefundAlertEmail,
   subscriptionEnded,
   orderShipped,
   subscriptionPaymentFailed,
@@ -534,6 +536,10 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', orderId: 'order-1', buyerEmail: 'buyer@acme.test', amountCents: 4099, currency: 'PLN',
       productTitles: ['Printed poster'], orderUrl: 'https://acme.test/panel/sales/order-1',
     })],
+    ['order-refund-alert', (language) => orderRefundAlertEmail(language, {
+      tenantName: 'Acme Courses', alert: 'retrying', orderId: 'order-1', amountCents: 4099, currency: 'PLN',
+      error: 'Stripe is unavailable', orderUrl: 'https://acme.test/panel/sales/order-1',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -663,6 +669,31 @@ describe('order out of stock email', () => {
 
   it('renders the Polish alert with a Polish amount', () => {
     expect(orderOutOfStockEmail('pl', input)).toEqual(expectedTransactionalEmailPl.orderOutOfStockEmail);
+  });
+});
+
+describe('order refund alert email', () => {
+  const input = {
+    tenantName: 'Acme', orderId: 'order-<1>', amountCents: 4099, currency: 'PLN',
+    error: 'The provided key does not have the required <permissions>', orderUrl: 'https://acme.example.com/panel/sales/order-1',
+  };
+
+  it('tells staff a blocked refund needs a refund by hand and escapes the provider error', () => {
+    const message = orderRefundAlertEmail('en', { ...input, alert: 'blocked_permission' });
+    expect(message.subject).toBe('[Acme] Automatic refund blocked by a missing Stripe permission: order-<1>');
+    expect(message.text).toContain('lacks the Charges and Refunds (write) permission. No further automatic attempt is made. Refund the payment by hand in the Stripe Dashboard');
+    expect(message.text).toContain('PLN\u00a040.99');
+    expect(message.html).toContain('Last error: The provided key does not have the required &lt;permissions&gt;');
+    expect(message.html).toContain('href="https://acme.example.com/panel/sales/order-1"');
+  });
+
+  it('gives every alert its own subject', () => {
+    const subjects = ORDER_REFUND_ALERTS.map((alert) => orderRefundAlertEmail('en', { ...input, alert }).subject);
+    expect(new Set(subjects).size).toBe(ORDER_REFUND_ALERTS.length);
+  });
+
+  it('renders the Polish alert with a Polish amount', () => {
+    expect(orderRefundAlertEmail('pl', { ...input, alert: 'failed' })).toEqual(expectedTransactionalEmailPl.orderRefundAlertEmail);
   });
 });
 

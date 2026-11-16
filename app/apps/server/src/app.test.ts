@@ -10654,14 +10654,18 @@ describe('cart checkout over the public checkout routes', () => {
     const coupon = couponSchema.parse({ id: 'coupon', tenantId: acme.id, code: 'CART', kind: 'percent', value: 10, scope: { kind: 'all' }, appliesTo: 'one_time', recurringDuration: 'first_invoice', startsAt: null, endsAt: null, maxRedemptions: null, maxRedemptionsPerMember: null, status: 'active', partnerLabel: null, stripeCouponId: null, stripePromotionCodeId: null, createdAt: now });
     base.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon, create: async () => coupon, archive: async () => coupon };
     base.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+    const couponSessions = new Map<string, CouponCheckoutSession>();
+    base.couponCheckoutSessions = { create: async (_, session) => { couponSessions.set(session.id, session); }, attachProviderSession: async () => undefined, findById: async (_, id) => couponSessions.get(id) ?? null };
     base.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
     base.tenantSecrets = { ...base.tenantSecrets, findByKey: async (tenantId, key) => ({ id: `secret-${key}`, tenantId, key, ciphertext: 'ciphertext', iv: 'iv', authTag: 'auth-tag', maskedPreview: '••••text', updatedAt: now }) };
     const createCheckoutSession = vi.fn(base.payment.createCheckoutSession);
-    base.payment = { ...base.payment, createCheckoutSession };
+    base.payment = { ...base.payment, createCheckoutSession, ensureCouponPromotion: async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-cart' }) };
     const post = (path: string, body: Record<string, unknown>) => buildApp(base).request(path, { method: 'POST', headers, body: JSON.stringify(body) });
     return { post, createCheckoutSession, snapshots, stock };
   };
   const cartLines = [{ productId: poster, quantity: 2 }, { productId: mug, quantity: 1 }];
+  const sessionBody = { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART' };
+  const couponBody = { lines: cartLines, email: 'buyer@example.test', couponCode: 'CART' };
 
   it('starts one payment for the cart lines at their quantities and holds stock per line quantity', async () => {
     const h = cartApp();
@@ -10684,13 +10688,28 @@ describe('cart checkout over the public checkout routes', () => {
     ['a sales-link ID', { salesLinkId: 'bundle-link' }],
     ['variant selections', { variantSelections: [] }],
     ['an unknown field', { amountCents: 1 }],
-  ])('rejects lines together with %s', async (_case, extra) => {
+  ])('rejects lines together with %s on both routes', async (_case, extra) => {
     const h = cartApp();
-    for (const path of [API_PATHS.checkoutSession, API_PATHS.couponCheckoutValidation]) {
-      const response = await h.post(path, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART', ...extra });
-      expect(response.status).toBe(400);
-    }
+    const unrecognized = { ok: false, error: { code: 'validation', details: { formErrors: [expect.stringContaining(`'${Object.keys(extra)[0] ?? ''}'`)] } } };
+    const session = await h.post(API_PATHS.checkoutSession, { ...sessionBody, ...extra });
+    expect(session.status).toBe(400);
+    expect(await session.json()).toMatchObject(unrecognized);
+    const coupon = await h.post(API_PATHS.couponCheckoutValidation, { ...couponBody, ...extra });
+    expect(coupon.status).toBe(400);
+    expect(await coupon.json()).toMatchObject(unrecognized);
     expect(h.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('accepts the bare cart form on both routes', async () => {
+    const h = cartApp();
+    expect((await h.post(API_PATHS.checkoutSession, sessionBody)).status).toBe(200);
+    expect(h.createCheckoutSession).toHaveBeenCalledOnce();
+    expect((await h.post(API_PATHS.couponCheckoutValidation, couponBody)).status).toBe(200);
+  });
+
+  it('rejects the session-only terms consent field on the cart coupon route', async () => {
+    const response = await cartApp().post(API_PATHS.couponCheckoutValidation, { ...couponBody, termsAccepted: true });
+    expect(response.status).toBe(400);
   });
 
   it('rejects a price sent inside a cart line', async () => {

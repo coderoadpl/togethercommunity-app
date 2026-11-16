@@ -3047,6 +3047,7 @@ export const en: Messages = {
     subscriptionSuccessTitle: 'Your subscription has started',
     subscriptionSuccessBody: 'We sent an email with a confirmation and a sign-in link to the address you provided at checkout. Can’t find it? Check your spam or promotions folder.',
     goToLogin: 'Go to sign in',
+    backToShop: 'Back to shop',
     cancelledEyebrow: 'Payment canceled',
     cancelledTitle: 'The payment was not completed',
     cancelledBody: 'You were not charged. You can safely try again.',

@@ -3071,6 +3071,7 @@ export const pl: Messages = {
     subscriptionSuccessTitle: 'Subskrypcja została rozpoczęta',
     subscriptionSuccessBody: 'Wysłaliśmy na adres podany przy płatności wiadomość z potwierdzeniem i linkiem do logowania. Nie widzisz jej? Sprawdź folder spam lub oferty.',
     goToLogin: 'Przejdź do logowania',
+    backToShop: 'Wróć do sklepu',
     cancelledEyebrow: 'Płatność anulowana',
     cancelledTitle: 'Płatność nie została dokończona',
     cancelledBody: 'Nie pobraliśmy opłaty. Możesz bezpiecznie spróbować ponownie.',

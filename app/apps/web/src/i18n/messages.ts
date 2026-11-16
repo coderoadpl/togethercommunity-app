@@ -2748,6 +2748,7 @@ export interface Messages {
     subscriptionSuccessTitle: string;
     subscriptionSuccessBody: string;
     goToLogin: string;
+    backToShop: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
     cancelledBody: string;

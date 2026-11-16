@@ -83,6 +83,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
       save: async (_tenantId, value) => ok(value), delete: async () => ok(undefined),
     },
     checkoutSnapshots: {
+      findByProviderSession: async () => null,
       create: async (_tenantId, snapshot) => { snapshots.push(snapshot); },
       attachProviderSession: async () => undefined,
       findById: async () => snapshots[0] ?? null,
@@ -306,7 +307,7 @@ describe('checkout selection capture', () => {
       product: accessory, price: null,
       shipping: { rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: null, allowedCountries: [] },
     }, {
-      checkoutSnapshots: { create, attachProviderSession: async () => undefined, findById: async () => null },
+      checkoutSnapshots: { create, attachProviderSession: async () => undefined, findById: async () => null, findByProviderSession: async () => null },
       ids: { nextId: () => 'snapshot-1' }, clock: { nowIso: () => now },
     });
     expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Checkout shipping selection is invalid' } });

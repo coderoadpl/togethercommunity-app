@@ -9960,7 +9960,7 @@ describe('unlisted and free checkout', () => {
 
   it('returns the free fulfilment failure and logs the release failure when releasing the hold throws', async () => {
     const { base, stock, start } = trackedFreeCheckout();
-    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null };
+    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null, findByProviderSession: async () => null };
     const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
     const logger = { error: vi.fn(), warn: vi.fn() };
     base.logger = logger;
@@ -9973,7 +9973,7 @@ describe('unlisted and free checkout', () => {
 
   it('releases the free checkout hold when fulfilment throws', async () => {
     const { base, stock, start } = trackedFreeCheckout();
-    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null };
+    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null, findByProviderSession: async () => null };
     base.processedPaymentEvents.claim = async () => { throw new Error('Payment event storage unavailable'); };
     const response = await start(buildApp(base), 'first@example.com');
     expect(response.status).toBe(500);
@@ -10462,6 +10462,7 @@ const simulatedBundleApp = (couponScope: 'all' | 'first-only' = 'all') => {
   base.enrollmentTransaction = { run: async (operation) => operation({ members: base.members, grants: base.grants, emailOutbox: base.emailOutbox }) };
   base.paymentRefunds.findOrderByProviderObjectIds = async (_, providerIds) => orders.find((order) => order.providerObjectIds['checkoutSession'] === providerIds['checkoutSession']) ?? null;
   base.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); },
     attachProviderSession: async (tenantId, id, providerSessionId) => {
       const snapshot = snapshots.get(id);
@@ -10709,6 +10710,7 @@ describe('cart checkout over the public checkout routes', () => {
     };
     const snapshots = new Map<string, CheckoutSnapshot>();
     base.checkoutSnapshots = {
+      findByProviderSession: async () => null,
       create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); },
       attachProviderSession: async () => undefined,
       findById: async (_, id) => snapshots.get(id) ?? null,

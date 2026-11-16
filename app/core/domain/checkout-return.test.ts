@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkoutReturnOriginsSchema, checkoutReturnUrlSchema, resolveCheckoutReturnUrl } from './checkout-return.js';
+import { checkoutReturnLink, checkoutReturnOriginsSchema, checkoutReturnUrlSchema, resolveCheckoutReturnUrl } from './checkout-return.js';
 import { checkoutCartInputSchema, checkoutSessionInputSchema } from './payment.js';
 import { updateTenantSettingsInputSchema } from './tenant.js';
 
@@ -78,5 +78,27 @@ describe('checkout return and cancel addresses', () => {
       }
     }
     expect(checkoutReturnUrlSchema.safeParse(`https://shop.example.test/${'a'.repeat(1975)}`).success).toBe(false);
+  });
+});
+
+describe('checkout return link', () => {
+  it('appends the encoded result to the existing query and keeps it unchanged', () => {
+    expect(checkoutReturnLink('https://shop.example.test/thanks?lang=pl&note=a%20b', {
+      checkoutRef: 'checkout-1', status: 'paid', clientReference: 'cart 88&12=x#y',
+    })).toBe('https://shop.example.test/thanks?lang=pl&note=a%20b&checkout_ref=checkout-1&status=paid&client_reference=cart+88%2612%3Dx%23y');
+  });
+
+  it('leaves the client reference out when there is none', () => {
+    expect(checkoutReturnLink('https://shop.example.test/thanks', { checkoutRef: 'checkout-1', status: 'paid' }))
+      .toBe('https://shop.example.test/thanks?checkout_ref=checkout-1&status=paid');
+  });
+
+  it.each([
+    ['http', 'http://shop.example.test/thanks'],
+    ['credentials', 'https://user:secret@shop.example.test/thanks'],
+    ['a javascript: URL', 'javascript:alert(1)'],
+    ['a relative address', '/thanks'],
+  ])('builds no link from an address with %s', (_label, returnUrl) => {
+    expect(checkoutReturnLink(returnUrl, { checkoutRef: 'checkout-1', status: 'paid' })).toBeNull();
   });
 });

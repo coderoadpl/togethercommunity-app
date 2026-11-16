@@ -1,6 +1,6 @@
-import { and, eq, getTableColumns, isNull } from 'drizzle-orm';
+import { and, eq, getTableColumns, isNull, type SQL } from 'drizzle-orm';
 import { pgTable, text } from 'drizzle-orm/pg-core';
-import { checkoutSnapshotSchema } from '#core/domain/index.js';
+import { checkoutSnapshotSchema, type CheckoutSnapshot } from '#core/domain/index.js';
 import type { CheckoutSnapshotRepository } from '#core/server/index.js';
 import { checkoutSnapshots } from './checkout-snapshot-schema.js';
 import type { Db } from './client.js';
@@ -12,6 +12,19 @@ const checkoutSnapshotStorefrontColumns = pgTable('checkout_snapshots', {
   clientReference: text('client_reference'),
   returnUrl: text('return_url'),
 });
+
+const findOne = async (db: Db, ...conditions: SQL[]): Promise<CheckoutSnapshot | null> => {
+  const [row] = await db.select({
+    ...getTableColumns(checkoutSnapshots),
+    clientReference: checkoutSnapshotStorefrontColumns.clientReference,
+    returnUrl: checkoutSnapshotStorefrontColumns.returnUrl,
+  }).from(checkoutSnapshots).where(and(...conditions)).limit(1);
+  if (row === undefined) return null;
+  const { clientReference, returnUrl, ...snapshot } = row;
+  return checkoutSnapshotSchema.parse({
+    ...snapshot, ...(clientReference === null ? {} : { clientReference }), ...(returnUrl === null ? {} : { returnUrl }),
+  });
+};
 
 export const createCheckoutSnapshotRepository = (db: Db): CheckoutSnapshotRepository => ({
   create: async (tenantId, { clientReference, returnUrl, ...snapshot }) => {
@@ -32,18 +45,7 @@ export const createCheckoutSnapshotRepository = (db: Db): CheckoutSnapshotReposi
       isNull(checkoutSnapshots.providerSessionId),
     ));
   },
-  findById: async (tenantId, id) => {
-    const [row] = await db.select({
-      ...getTableColumns(checkoutSnapshots),
-      clientReference: checkoutSnapshotStorefrontColumns.clientReference,
-      returnUrl: checkoutSnapshotStorefrontColumns.returnUrl,
-    }).from(checkoutSnapshots).where(and(
-      eq(checkoutSnapshots.tenantId, tenantId), eq(checkoutSnapshots.id, id),
-    )).limit(1);
-    if (row === undefined) return null;
-    const { clientReference, returnUrl, ...snapshot } = row;
-    return checkoutSnapshotSchema.parse({
-      ...snapshot, ...(clientReference === null ? {} : { clientReference }), ...(returnUrl === null ? {} : { returnUrl }),
-    });
-  },
+  findById: async (tenantId, id) => findOne(db, eq(checkoutSnapshots.tenantId, tenantId), eq(checkoutSnapshots.id, id)),
+  findByProviderSession: async (tenantId, providerSessionId) =>
+    findOne(db, eq(checkoutSnapshots.tenantId, tenantId), eq(checkoutSnapshots.providerSessionId, providerSessionId)),
 });

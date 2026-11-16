@@ -60,3 +60,16 @@ export const resolveCheckoutReturnUrl = (value: string, allowedOrigins: readonly
   url.hash = '';
   return url.href.length > CHECKOUT_RETURN_URL_MAX_LENGTH ? null : url.href;
 };
+
+export const checkoutReturnLink = (
+  returnUrl: string,
+  result: { checkoutRef: string; status: 'paid' | 'pending'; clientReference?: string | null | undefined },
+): string | null => {
+  const url = parseUrl(returnUrl);
+  if (url === null || url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
+  const params = new URLSearchParams({ checkout_ref: result.checkoutRef, status: result.status });
+  if (result.clientReference != null) params.set('client_reference', result.clientReference);
+  url.hash = '';
+  url.search = url.search === '' ? `?${params.toString()}` : `${url.search}&${params.toString()}`;
+  return url.href;
+};

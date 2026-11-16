@@ -85,3 +85,17 @@ it('leaves the snapshot return address empty for a request without one', async (
   expect(await storedReturnUrl()).toBeNull();
   expect(await createCheckoutSnapshotRepository(database.db).findById(legacyTenant.id, 'checkout-id-1')).not.toHaveProperty('returnUrl');
 });
+
+it('finds the return address by its own provider session and workspace only', async () => {
+  await database.db.update(tenants).set({ checkoutReturnOrigins: ['https://shop.example.test'] }).where(eq(tenants.id, legacyTenant.id));
+  const { result } = await startPoster({ ...posterRequest, returnUrl: 'https://shop.example.test/thanks' });
+  if (!result.ok) throw new Error('The checkout did not start');
+  const [row] = await database.db.select({ providerSessionId: checkoutSnapshots.providerSessionId }).from(checkoutSnapshots)
+    .where(eq(checkoutSnapshots.id, 'checkout-id-1'));
+  const sessionId = row?.providerSessionId;
+  if (sessionId == null) throw new Error('The snapshot has no provider session');
+  const repository = createCheckoutSnapshotRepository(database.db);
+  expect(await repository.findByProviderSession(legacyTenant.id, sessionId)).toMatchObject({ id: 'checkout-id-1', returnUrl: 'https://shop.example.test/thanks' });
+  expect(await repository.findByProviderSession('tenant-b', sessionId)).toBeNull();
+  expect(await repository.findByProviderSession(legacyTenant.id, `${sessionId}x`)).toBeNull();
+});

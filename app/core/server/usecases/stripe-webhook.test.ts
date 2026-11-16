@@ -2996,6 +2996,7 @@ const bundlePayment = () => {
     return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: 'Edited after checkout', priceCents: 1 });
   };
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? {
@@ -3024,6 +3025,7 @@ it.each([
     return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: line.name, priceCents: 1 });
   };
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? { id, tenantId, salesLinkId: null, lines, currency: 'PLN', createdAt: now } : null,
@@ -3088,6 +3090,7 @@ it('queues allocated amounts for a coupon-discounted two-line order', async () =
   const h = couponHarness({ session: { originalCents: 10300, discountCents: 5151, finalCents: 5149 } });
   h.deps.products = bundle.deps.products;
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now }),
@@ -3206,6 +3209,7 @@ it('revokes all nonphysical bundle grants after one full payment refund', async 
 const directBundlePayment = async () => {
   const h = bundlePayment();
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
@@ -3283,6 +3287,7 @@ const directTestPayment = async () => {
   h.event.mode = 'test';
   h.event.livemode = false;
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1'
@@ -3409,6 +3414,7 @@ const shippedPayment = (productLinesFor: (lines: OrderLine[]) => OrderLine[] = (
   const lines = [...productLinesFor(bundle.lines), shippingLine];
   const snapshot = { id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, shipping: lockerShipping, currency: 'PLN', createdAt: now };
   bundle.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? snapshot : null,

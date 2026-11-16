@@ -486,9 +486,10 @@ two optional addresses on the shop's own site:
 
 - `cancelUrl`: where Stripe sends the buyer who cancels the payment. Without it
   the cancel address stays the workspace page described in section 7.
-- `returnUrl`: stored with the checkout for the shop's own "back to shop" link
-  after payment. Payment success still returns to the workspace confirmation
-  page; the success address sent to Stripe does not change.
+- `returnUrl`: stored with the checkout for the "Back to shop" button on the
+  workspace confirmation page (section 7). Payment success still returns to the
+  workspace confirmation page; the success address sent to Stripe does not
+  change.
 
 Each address is accepted only when all of these hold; otherwise the answer is a
 `validation` error (400) and nothing is stored or sent to Stripe:
@@ -556,6 +557,33 @@ returns `data.status` (`pending` or `paid`), for a paid session the
 `clientReference` sent with it, and may include optional analytics fields; use
 it for buyer display only. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
+
+### Back to shop
+
+When the checkout carried a `returnUrl`, the session-status answer of that paid
+session also holds `returnUrl` and `checkoutRef` (the checkout snapshot id). The
+address is returned only for its own session and workspace, and only while its
+origin is still one of the workspace's `checkoutReturnOrigins`: an origin
+removed after the checkout hides the address. A pending session never returns
+it.
+
+The workspace confirmation page then shows a "Back to shop" button. There is no
+automatic redirect: the buyer leaves by clicking it, as a full document
+navigation. The button links to the stored `returnUrl` with these query
+parameters appended (URL-encoded, the address's own query kept first):
+
+| Parameter | Value |
+| --- | --- |
+| `checkout_ref` | the checkout snapshot id, the same as `checkoutRef` |
+| `status` | `paid` |
+| `client_reference` | the `clientReference` of the checkout, only when one was sent |
+
+These parameters are a hint for display only: anyone can type them into the
+address bar. The shop's backend confirms the payment by reading its paid orders
+with a management key (section 8) and matching the order's `clientReference`,
+and fulfils only from that answer. The order answers do not carry
+`checkout_ref`, so send a `clientReference` when the shop needs to match the
+return to its own cart.
 
 ## 8. Poll live orders and record fulfilment
 

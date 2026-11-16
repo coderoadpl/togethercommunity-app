@@ -67,9 +67,10 @@ export const checkoutReturnLink = (
 ): string | null => {
   const url = parseUrl(returnUrl);
   if (url === null || url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
-  const params = new URLSearchParams({ checkout_ref: result.checkoutRef, status: result.status });
-  if (result.clientReference != null) params.set('client_reference', result.clientReference);
+  for (const name of ['checkout_ref', 'status', 'client_reference']) url.searchParams.delete(name);
+  url.searchParams.set('checkout_ref', result.checkoutRef);
+  url.searchParams.set('status', result.status);
+  if (result.clientReference != null) url.searchParams.set('client_reference', result.clientReference);
   url.hash = '';
-  url.search = url.search === '' ? `?${params.toString()}` : `${url.search}&${params.toString()}`;
   return url.href;
 };

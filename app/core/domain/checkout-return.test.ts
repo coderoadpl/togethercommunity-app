@@ -82,10 +82,26 @@ describe('checkout return and cancel addresses', () => {
 });
 
 describe('checkout return link', () => {
-  it('appends the encoded result to the existing query and keeps it unchanged', () => {
+  it('appends the encoded result after the shop parameters, which keep their order in form encoding', () => {
     expect(checkoutReturnLink('https://shop.example.test/thanks?lang=pl&note=a%20b', {
       checkoutRef: 'checkout-1', status: 'paid', clientReference: 'cart 88&12=x#y',
-    })).toBe('https://shop.example.test/thanks?lang=pl&note=a%20b&checkout_ref=checkout-1&status=paid&client_reference=cart+88%2612%3Dx%23y');
+    })).toBe('https://shop.example.test/thanks?lang=pl&note=a+b&checkout_ref=checkout-1&status=paid&client_reference=cart+88%2612%3Dx%23y');
+  });
+
+  it('replaces the result parameters the return address already carries with the platform values', () => {
+    expect(checkoutReturnLink('https://shop.example.test/thanks?status=failed&lang=pl&checkout_ref=forged&client_reference=other&status=x&page=2', {
+      checkoutRef: 'checkout-1', status: 'paid', clientReference: 'cart-88',
+    })).toBe('https://shop.example.test/thanks?lang=pl&page=2&checkout_ref=checkout-1&status=paid&client_reference=cart-88');
+  });
+
+  it('drops a client reference the return address carries when the checkout has none', () => {
+    expect(checkoutReturnLink('https://shop.example.test/thanks?client_reference=forged&lang=pl', { checkoutRef: 'checkout-1', status: 'paid' }))
+      .toBe('https://shop.example.test/thanks?lang=pl&checkout_ref=checkout-1&status=paid');
+  });
+
+  it('keeps the shop parameters in order when the return address carries none of the result parameters', () => {
+    expect(checkoutReturnLink('https://shop.example.test/thanks?lang=pl&page=2', { checkoutRef: 'checkout-1', status: 'paid', clientReference: 'cart-88' }))
+      .toBe('https://shop.example.test/thanks?lang=pl&page=2&checkout_ref=checkout-1&status=paid&client_reference=cart-88');
   });
 
   it('leaves the client reference out when there is none', () => {

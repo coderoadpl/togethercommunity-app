@@ -570,13 +570,20 @@ it.
 The workspace confirmation page then shows a "Back to shop" button. There is no
 automatic redirect: the buyer leaves by clicking it, as a full document
 navigation. The button links to the stored `returnUrl` with these query
-parameters appended (URL-encoded, the address's own query kept first):
+parameters appended after the address's own query:
 
 | Parameter | Value |
 | --- | --- |
 | `checkout_ref` | the checkout snapshot id, the same as `checkoutRef` |
 | `status` | `paid` |
 | `client_reference` | the `clientReference` of the checkout, only when one was sent |
+
+Parameters of the stored address with any of these three names are removed
+first, so the platform's values are the only ones in the link. The address's
+other parameters keep their order, but the whole query is written again in form
+encoding: for example `%20` becomes `+`, and characters such as `~`, `'`, `/`
+or `:` in a parameter become percent escapes. A parameter without `=` gains an
+empty value (`a` becomes `a=`).
 
 These parameters are a hint for display only: anyone can type them into the
 address bar. The shop's backend confirms the payment by reading its paid orders

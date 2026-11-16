@@ -5,6 +5,7 @@ import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 import { API_PATHS } from '#core/contract/index.js';
+import { HOSTED_CART_PATH } from '#core/domain/index.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const eslintSource = readFileSync(join(appRoot, 'eslint.config.js'), 'utf8');
@@ -160,7 +161,8 @@ describe('Vercel platform entry boundary', () => {
       '/checkout/reference?checkout=together&status=success',
       '/offer/workbook?status=success',
       '/offer/workbook?checkout=together&status=success',
-      '/checkout/cart?status=success&purchase_kind=one_time&session_id=cs_live_one',
+      `${HOSTED_CART_PATH}?status=success&purchase_kind=one_time&session_id=cs_live_one`,
+      '/checkout/cart?status=success',
     ];
     const formDocuments = [
       '/checkout/reference',
@@ -169,9 +171,11 @@ describe('Vercel platform entry boundary', () => {
       '/offer/workbook?checkout=together',
       '/offer/workbook?status=cancelled',
       '/offer/workbook?checkout=together&status=cancelled',
-      `/checkout/cart?${cartLines}`,
-      `/checkout/cart?status=cancelled&${cartLines}`,
+      `${HOSTED_CART_PATH}?${cartLines}`,
+      `${HOSTED_CART_PATH}?status=cancelled&${cartLines}`,
+      HOSTED_CART_PATH,
       '/checkout/cart',
+      `/checkout/cart?${cartLines}`,
     ];
     const signedInOrSignInDocuments = [
       '/', '/index.html', '/login', '/login?status=cancelled', '/register', '/my', '/my/products', '/my?status=success',
@@ -243,18 +247,28 @@ describe('Vercel platform entry boundary', () => {
 
     it.each(Object.entries(queryMatchers))('gives the hosted cart documents the policy of the single-product checkout documents (%s query matching)', (_label, matchQuery) => {
       for (const query of ['', 'status=cancelled', 'code=SPRING', 'status=successful', 'status=success', 'status=success&purchase_kind=one_time&session_id=cs_live_one']) {
-        const cart = matchingPolicies(`/checkout/cart?${cartLines}${query === '' ? '' : `&${query}`}`, matchQuery);
-        expect(cart, query).toEqual(matchingPolicies(`/checkout/reference${query === '' ? '' : `?${query}`}`, matchQuery));
+        const reference = matchingPolicies(`/checkout/reference${query === '' ? '' : `?${query}`}`, matchQuery);
+        expect(matchingPolicies(`${HOSTED_CART_PATH}?${cartLines}${query === '' ? '' : `&${query}`}`, matchQuery), query).toEqual(reference);
+        expect(matchingPolicies(`/checkout/cart${query === '' ? '' : `?${query}`}`, matchQuery), query).toEqual(reference);
       }
     });
 
     it('resolves the hosted cart form and success documents to the checkout form and success policies', () => {
-      for (const path of [`/checkout/cart?${cartLines}`, `/checkout/cart?${cartLines}&status=cancelled`, `/checkout/cart?${cartLines}&status=successful`, '/checkout/cart']) {
+      for (const path of [`${HOSTED_CART_PATH}?${cartLines}`, `${HOSTED_CART_PATH}?${cartLines}&status=cancelled`, `${HOSTED_CART_PATH}?${cartLines}&status=successful`, HOSTED_CART_PATH]) {
         expect(matchingPolicies(path, queryMatchers.anchored), path).toEqual([checkoutForm]);
       }
-      for (const path of ['/checkout/cart?status=success', `/checkout/cart?${cartLines}&status=success&session_id=cs_live_one`]) {
+      for (const path of [`${HOSTED_CART_PATH}?status=success`, `${HOSTED_CART_PATH}?${cartLines}&status=success&session_id=cs_live_one`]) {
         expect(matchingPolicies(path, queryMatchers.anchored), path).toEqual([extended]);
       }
+    });
+
+    it('routes the hosted cart below a product reference segment so no product id or slug can reach it', () => {
+      expect(HOSTED_CART_PATH).toMatch(/^\/checkout\/[^/]+\/[^/]+$/u);
+      const main = readFileSync(join(appRoot, 'apps', 'web', 'src', 'main.tsx'), 'utf8');
+      const checkoutPaths = [...main.matchAll(/\bpath: ('[^']*'|[A-Z_]+),/gu)]
+        .map((match) => match[1])
+        .filter((path) => path === 'HOSTED_CART_PATH' || path?.startsWith("'/checkout") === true);
+      expect(checkoutPaths).toEqual(['HOSTED_CART_PATH', "'/checkout/$productRef'"]);
     });
   });
 

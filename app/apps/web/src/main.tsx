@@ -44,6 +44,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { MEMBER_ROUTE_PATHS } from '#core/contract/index.js';
+import { HOSTED_CART_PATH } from '#core/domain/index.js';
 
 import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';
@@ -177,7 +178,7 @@ const loginRoute = createRoute({
 const salesLinkOfferRoute = createRoute({ getParentRoute: () => rootRoute, path: '/offer/$slug', component: SalesLinkOfferRoute });
 const cartCheckoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/checkout/cart',
+  path: HOSTED_CART_PATH,
   component: CartCheckoutRoute,
 });
 const checkoutRoute = createRoute({

@@ -4213,11 +4213,12 @@ describe('server edge security baseline', () => {
     expect(legal.headers.get('content-security-policy')).not.toContain('geowidget.inpost.pl');
   });
 
-  it('gives the hosted cart documents exactly the policy of the single-product checkout documents', async () => {
+  it('gives the hosted cart documents and a "cart" product reference exactly the policy of the single-product checkout documents', async () => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
       termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/cart/pay', (c) => c.html('<main>Cart</main>'));
     const policy = async (path: string) => {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       expect(response.status, path).toBe(200);
@@ -4234,12 +4235,14 @@ describe('server edge security baseline', () => {
       ['', form], ['status=cancelled', form], ['code=SPRING', form], ['checkout=together', form], ['status=successful', form],
       ['status=success', success], ['status=success&purchase_kind=one_time&session_id=cs_live_one', success],
     ] as const) {
-      const cart = await policy(`/checkout/cart?${lines}${query === '' ? '' : `&${query}`}`);
+      const cart = await policy(`/checkout/cart/pay?${lines}${query === '' ? '' : `&${query}`}`);
       expect(cart, query).toEqual(await policy(`/checkout/product-1${query === '' ? '' : `?${query}`}`));
+      expect(await policy(`/checkout/cart${query === '' ? '' : `?${query}`}`), query).toEqual(cart);
       expect(cart.get('script-src'), query).toEqual(scriptSources);
       expect(cart.get('style-src'), query).toEqual(new Set(["'self'", "'unsafe-inline'", ...(scriptSources === form ? ['https://geowidget.inpost.pl'] : [])]));
       expect(cart.get('connect-src'), query).toEqual(new Set(["'self'", 'https:']));
     }
+    expect(await policy('/checkout/cart/pay')).toEqual(await policy('/checkout/product-1'));
     expect(await policy('/checkout/cart')).toEqual(await policy('/checkout/product-1'));
   });
 
@@ -10745,8 +10748,8 @@ describe('cart checkout over the public checkout routes', () => {
     const response = await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true });
     expect(response.status).toBe(200);
     expect(h.createCheckoutSession.mock.calls[0]?.[0]).toMatchObject({
-      successUrl: 'http://acme.localhost:48730/checkout/cart?status=success&purchase_kind=one_time&session_id={CHECKOUT_SESSION_ID}',
-      cancelUrl: `http://acme.localhost:48730/checkout/cart?status=cancelled&lines=${poster}.2~${mug}.1`,
+      successUrl: 'http://acme.localhost:48730/checkout/cart/pay?status=success&purchase_kind=one_time&session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: `http://acme.localhost:48730/checkout/cart/pay?status=cancelled&lines=${poster}.2~${mug}.1`,
     });
   });
 });

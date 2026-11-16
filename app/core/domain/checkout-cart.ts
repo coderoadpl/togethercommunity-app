@@ -42,6 +42,8 @@ export const cartLineQuantityError = (
   return quantity <= max ? null : `"${product.title}" can be ordered in a quantity of at most ${String(max)}`;
 };
 
+// `/checkout/$productRef` matches a single segment, so no product id or slug can reach a deeper path.
+export const HOSTED_CART_PATH = '/checkout/cart/pay';
 export const CART_LINES_PARAM = 'lines';
 const CART_LINE_SEPARATOR = '~';
 const cartLineParamPattern = /^([0-9a-f-]{36})\.([1-9][0-9]?)$/iu;

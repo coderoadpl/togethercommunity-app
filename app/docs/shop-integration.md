@@ -271,7 +271,7 @@ opened cross-origin by the sales-link read CORS registration.
 For the smallest custom UI, read the public offer, render its cover and active
 prices, then navigate the browser to the workspace's `/checkout/<product-id>`.
 For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. For a cart
-of several products use `/checkout/cart?lines=<product-id>.<quantity>~<product-id>.<quantity>`
+of several products use `/checkout/cart/pay?lines=<product-id>.<quantity>~<product-id>.<quantity>`
 (see the cart section below). The hosted
 form already collects legal acceptance, applicable consent choices, billing and
 shipping selections. Do not embed it in an iframe.
@@ -435,12 +435,14 @@ The cart answers with the same error envelope as the other routes:
 | a shipped product without `shipping` | `shipping_required` (400) |
 
 A storefront without its own form can send the buyer to the hosted cart page
-instead: `/checkout/cart?lines=<product-id>.2~<product-id>.1`, one
+instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
 `<product-id>.<quantity>` pair per product, separated by `~`, within the same
 limits. The page lets the buyer change the quantities within the limits or
 remove a line, and collects delivery, billing, consents and a coupon as the
 single-product page does. A malformed or empty `lines` parameter shows an error
-and sends no request.
+and sends no request. The cart page has two path segments below `/checkout/`,
+so `/checkout/<product-id>` and `/checkout/<slug>` keep opening the
+single-product page for every product, including one whose slug is `cart`.
 
 The CLI posts the same cart with `checkout session --line '<product-id>:2'
 --line '<product-id>:1'`; repeat `--line` once per product and leave out
@@ -472,7 +474,7 @@ do not assume a browser can discover it from `response.headers`.
 ## 7. Preserve the hosted payment return
 
 Standard checkout returns to the workspace `/checkout/<product-id>`; a cart
-returns to the hosted cart page `/checkout/cart`; sales-link checkout
+returns to the hosted cart page `/checkout/cart/pay`; sales-link checkout
 returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
 `checkout=together` for the standard sales-link flow, and with the cart's

@@ -1,20 +1,24 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
+import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useParams } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { HOSTED_CART_PATH } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
 import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CartCheckoutPage } from './CartCheckoutPage.js';
+import { CheckoutPage } from './CheckoutPage.js';
 
 const analytics = vi.hoisted(() => ({ loadGoogleTag: vi.fn(), loadMetaPixel: vi.fn(), trackCheckoutPurchase: vi.fn() }));
 vi.mock('./analytics.js', () => analytics);
 
 const poster = '00000000-0000-4000-8000-0000000000a1';
 const ebook = '00000000-0000-4000-8000-0000000000a2';
+const organizer = '00000000-0000-4000-8000-0000000000a3';
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
@@ -31,6 +35,10 @@ const products = {
     id: ebook, type: 'digital_download', deliveryMethod: 'pickup', slug: 'ebook', title: 'E-book', description: '', coverUrl: null,
     priceCents: 2500, currency: 'PLN', prices: [{ id: 'price-ebook', kind: 'one_time', interval: null, amountCents: 2500, currency: 'PLN' }],
     marketingConsents: [{ definitionId: 'news', label: 'Send me news', doubleOptIn: false, documentUrl: null }],
+  },
+  [organizer]: {
+    id: organizer, type: 'digital_download', deliveryMethod: 'pickup', slug: 'cart', title: 'Cart Organizer', description: '', coverUrl: null,
+    priceCents: 1500, currency: 'PLN', prices: [{ id: 'price-organizer', kind: 'one_time', interval: null, amountCents: 1500, currency: 'PLN' }],
   },
 };
 
@@ -53,7 +61,7 @@ const serve = (input: {
     http.get('/api/public/offer', ({ request }) => {
       record(request);
       const ref = new URL(request.url).searchParams.get('productRef') ?? '';
-      const product = Object.entries(products).find(([id]) => id === ref && !(input.missing ?? []).includes(id))?.[1];
+      const product = Object.entries(products).find(([id, entry]) => (id === ref || entry.slug === ref) && !(input.missing ?? []).includes(id))?.[1];
       return product === undefined
         ? HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'No product' } }, { status: 404 })
         : HttpResponse.json({ ok: true, data: {
@@ -94,6 +102,17 @@ const renderCart = (path: string) => {
 
 const line = (productId: string) => within(screen.getByTestId(`cart-line-${productId}`));
 
+const SingleProductCheckout = () => <CheckoutPage productRef={useParams({ strict: false }).productRef ?? ''} />;
+
+const renderCheckoutRoutes = (path: string) => {
+  window.history.replaceState(null, '', path);
+  const root = createRootRoute({ component: Outlet });
+  const cart = createRoute({ getParentRoute: () => root, path: HOSTED_CART_PATH, component: CartCheckoutPage });
+  const single = createRoute({ getParentRoute: () => root, path: '/checkout/$productRef', component: SingleProductCheckout });
+  const router = createRouter({ routeTree: root.addChildren([cart, single]), history: createMemoryHistory({ initialEntries: [path] }) });
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
 describe('hosted cart checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -108,7 +127,7 @@ describe('hosted cart checkout', () => {
   it('renders the lines of the query string and posts the cart payload through the client', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });
-    renderCart(`/checkout/cart?lines=${poster}.2~${ebook}.1&utm_source=meta`);
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1&utm_source=meta`);
 
     expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
     expect(line(poster).getByRole('heading', { name: 'Poster' })).toBeInTheDocument();
@@ -151,7 +170,7 @@ describe('hosted cart checkout', () => {
   it('keeps each stepper within the line limits and posts the changed quantities', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });
-    renderCart(`/checkout/cart?lines=${poster}.9~${ebook}.1`);
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.9~${ebook}.1`);
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
 
     const increasePoster = line(poster).getByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) });
@@ -181,7 +200,7 @@ describe('hosted cart checkout', () => {
 
   it('caps a quantity above the line limit at the limit', async () => {
     serve();
-    renderCart(`/checkout/cart?lines=${poster}.25~${ebook}.3`);
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.25~${ebook}.3`);
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('10');
     expect(line(ebook).getByTestId(`cart-quantity-${ebook}`)).toHaveTextContent('1');
@@ -189,11 +208,11 @@ describe('hosted cart checkout', () => {
   });
 
   it.each([
-    ['no lines parameter', '/checkout/cart'],
-    ['an empty lines parameter', '/checkout/cart?lines='],
-    ['a product reference that is not a UUID', '/checkout/cart?lines=poster.1'],
-    ['a zero quantity', `/checkout/cart?lines=${poster}.0`],
-    ['a duplicate product', `/checkout/cart?lines=${poster}.1~${poster}.2`],
+    ['no lines parameter', HOSTED_CART_PATH],
+    ['an empty lines parameter', `${HOSTED_CART_PATH}?lines=`],
+    ['a product reference that is not a UUID', `${HOSTED_CART_PATH}?lines=poster.1`],
+    ['a zero quantity', `${HOSTED_CART_PATH}?lines=${poster}.0`],
+    ['a duplicate product', `${HOSTED_CART_PATH}?lines=${poster}.1~${poster}.2`],
   ])('shows an error and sends no request for %s', async (_case, path) => {
     const requests: string[] = [];
     serve({ requests });
@@ -206,7 +225,7 @@ describe('hosted cart checkout', () => {
 
   it('asks to remove a product that is no longer available before paying', async () => {
     serve({ missing: [ebook] });
-    renderCart(`/checkout/cart?lines=${poster}.1~${ebook}.1`);
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1~${ebook}.1`);
     expect(await screen.findByText(en.checkout.cartProductMissing)).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     await userEvent.click(within(screen.getByTestId(`cart-line-${ebook}`)).getByRole('button', { name: en.checkout.cartRemoveLine }));
@@ -218,7 +237,7 @@ describe('hosted cart checkout', () => {
     const coupons: unknown[] = [];
     const bodies: unknown[] = [];
     serve({ onCoupon: (body) => coupons.push(body), onSession: (body) => bodies.push(body) });
-    renderCart(`/checkout/cart?lines=${poster}.2~${ebook}.1`);
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1`);
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByTestId('checkout-coupon-reveal'));
     await userEvent.type(screen.getByTestId('checkout-coupon-input'), 'CART');
@@ -239,7 +258,7 @@ describe('hosted cart checkout', () => {
 
   it('loads no analytics vendor on the cart form even when the workspace configured analytics', async () => {
     serve({ token: 'public-map-token' });
-    renderCart(`/checkout/cart?lines=${poster}.1`);
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
     expect(analytics.loadGoogleTag).not.toHaveBeenCalled();
     expect(analytics.loadMetaPixel).not.toHaveBeenCalled();
@@ -249,14 +268,14 @@ describe('hosted cart checkout', () => {
   it('shows the shared success document on the cart success return', async () => {
     serve();
     server.use(http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'pending' } })));
-    renderCart('/checkout/cart?status=success&purchase_kind=one_time&session_id=cs_live_one');
+    renderCart(`${HOSTED_CART_PATH}?status=success&purchase_kind=one_time&session_id=cs_live_one`);
     expect(await screen.findByRole('heading', { name: en.checkout.successPendingTitle })).toBeInTheDocument();
     await waitFor(() => expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(analyticsConfig));
   });
 
   it('offers the same cart again after a cancelled payment', async () => {
     serve();
-    renderCart(`/checkout/cart?status=cancelled&lines=${poster}.2~${ebook}.1&code=CART&utm_source=meta`);
+    renderCart(`${HOSTED_CART_PATH}?status=cancelled&lines=${poster}.2~${ebook}.1&code=CART&utm_source=meta`);
     expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
     expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
@@ -266,10 +285,30 @@ describe('hosted cart checkout', () => {
     expect(analytics.loadGoogleTag).not.toHaveBeenCalled();
   });
 
+  describe('address', () => {
+    it.each(['/checkout/cart', `/checkout/cart?lines=${poster}.1`])('keeps %s an ordinary single-product checkout for the product whose slug is "cart"', async (path) => {
+      const requests: string[] = [];
+      serve({ requests });
+      renderCheckoutRoutes(path);
+      expect(await screen.findByText('Cart Organizer')).toBeInTheDocument();
+      expect(requests).toContain('GET /api/public/offer?productRef=cart');
+      expect(screen.queryByRole('heading', { name: en.checkout.cartTitle })).not.toBeInTheDocument();
+      expect(screen.queryByTestId(`cart-line-${poster}`)).not.toBeInTheDocument();
+    });
+
+    it('serves the hosted cart only at an address no single product reference can take', async () => {
+      expect(HOSTED_CART_PATH.split('/').filter((segment) => segment !== '')).toHaveLength(3);
+      serve();
+      renderCheckoutRoutes(`${HOSTED_CART_PATH}?lines=${poster}.1~${ebook}.1`);
+      expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
+      expect(await screen.findByTestId(`cart-line-${poster}`)).toBeInTheDocument();
+    });
+  });
+
   describe('parcel locker map', () => {
     it('loads the map only with a token, after the locker option is chosen, in live mode, for a buyer', async () => {
       serve({ token: 'public-map-token' });
-      renderCart(`/checkout/cart?lines=${poster}.1`);
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
       await userEvent.click(await screen.findByLabelText(exact(`Courier — ${pln(1999)}`)));
       expect(document.getElementById('inpost-geowidget-script')).toBeNull();
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
@@ -280,14 +319,14 @@ describe('hosted cart checkout', () => {
 
     it('leaves the cart by a document navigation once the map was loaded', async () => {
       serve({ token: 'public-map-token' });
-      window.history.replaceState(null, '', `/checkout/cart?lines=${poster}.1`);
+      window.history.replaceState(null, '', `${HOSTED_CART_PATH}?lines=${poster}.1`);
       const location = window.location;
       const assign = vi.fn();
       vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
       vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
       const history = createBrowserHistory();
       const root = createRootRoute({ component: Outlet });
-      const cart = createRoute({ getParentRoute: () => root, path: '/checkout/cart', component: CartCheckoutPage });
+      const cart = createRoute({ getParentRoute: () => root, path: HOSTED_CART_PATH, component: CartCheckoutPage });
       const login = createRoute({ getParentRoute: () => root, path: '/login', component: () => <p>Sign-in view</p> });
       const router = createRouter({ routeTree: root.addChildren([cart, login]), history });
       try {
@@ -296,7 +335,7 @@ describe('hosted cart checkout', () => {
         await screen.findByTestId('checkout-inpost-geowidget');
         act(() => { void router.navigate({ to: '/login' }); });
         await waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith('/login'));
-        expect(router.state.location.pathname).toBe('/checkout/cart');
+        expect(router.state.location.pathname).toBe(HOSTED_CART_PATH);
         expect(screen.queryByText('Sign-in view')).not.toBeInTheDocument();
       } finally {
         history.destroy();
@@ -312,7 +351,7 @@ describe('hosted cart checkout', () => {
     ])('never loads the map $viewer and takes the typed locker code', async ({ token, canTest, testEnabled }) => {
       const bodies: unknown[] = [];
       serve({ token, canTest, testEnabled, onSession: (body) => bodies.push(body) });
-      renderCart(`/checkout/cart?lines=${poster}.1`);
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));

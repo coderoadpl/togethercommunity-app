@@ -1,5 +1,6 @@
 import {
   CART_LINES_PARAM,
+  HOSTED_CART_PATH,
   SALES_LINK_VARIANT_PARAM,
   formatCartLinesParam,
   formatSalesLinkVariantParam,
@@ -229,7 +230,7 @@ export const startCheckoutSession = async (
   if (testSession !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }
-  const checkoutPath = selection.cartLines !== undefined ? `${tenantBaseUrl}/checkout/cart`
+  const checkoutPath = selection.cartLines !== undefined ? `${tenantBaseUrl}${HOSTED_CART_PATH}`
     : selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
   const cartQuery = selection.cartLines === undefined ? '' : `&${CART_LINES_PARAM}=${encodeURIComponent(formatCartLinesParam(selection.cartLines))}`;
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;

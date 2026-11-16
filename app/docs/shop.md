@@ -675,7 +675,8 @@ hint without the map.
 Following the same decision, the checkout form documents add
 `https://geowidget.inpost.pl` to `script-src` and `style-src`:
 
-- `/checkout/<productRef>` without `status=success`;
+- `/checkout/<productRef>` and the hosted cart page `/checkout/cart/pay`
+  without `status=success`;
 - `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled`.
 
 The server middleware (`apps/server/src/app.ts`) and the static hosting headers

@@ -1,4 +1,4 @@
-import type { Language } from '#core/domain/index.js';
+import type { Language, OrderChangeFeed } from '#core/domain/index.js';
 import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
 import { SALES_LINK_VARIANT_PARAM, type AddTenantAdminInput, type RemoveTenantAdminInput } from '#core/domain/index.js';
@@ -24,6 +24,7 @@ import {
   salesLinkContracts,
   orderVerificationContracts,
   orderFulfilmentContracts,
+  orderChangeContracts,
   shipxContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
@@ -426,6 +427,18 @@ const REDIRECT_REFUSED = 'Request refused a redirect';
 export const isRedirectRefusal = (error: AppError): boolean =>
   error.code === 'internal' && (error.message === REDIRECT_REFUSED || error.message === OPERATOR_REDIRECT_REFUSED);
 
+export type ApiFailureSource = 'network' | 'server' | 'client';
+
+const failureSources = new WeakMap<AppError, Exclude<ApiFailureSource, 'client'>>();
+
+const failedAt = (source: Exclude<ApiFailureSource, 'client'>, error: AppError): AppError => {
+  failureSources.set(error, source);
+  return error;
+};
+
+// A failure the client makes up while reading an answer shares the `internal` code with the server's own internal error; only the source tells them apart.
+export const apiFailureSource = (error: AppError): ApiFailureSource => failureSources.get(error) ?? 'client';
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -457,14 +470,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
       signal: signal ?? null,
     });
   } catch (cause) {
-    const message = raw?.redactErrors === true
-      ? isRedirectFailure(cause)
-        ? OPERATOR_REDIRECT_REFUSED
-        : 'Operator request failed'
-      : refuseRedirects && isRedirectFailure(cause)
-        ? REDIRECT_REFUSED
-        : `Network error calling ${path}: ${String(cause)}`;
-    return err(internal(message));
+    if (isRedirectFailure(cause) && (raw?.redactErrors === true || refuseRedirects)) {
+      return err(internal(raw?.redactErrors === true ? OPERATOR_REDIRECT_REFUSED : REDIRECT_REFUSED));
+    }
+    return err(failedAt('network', internal(raw?.redactErrors === true ? 'Operator request failed' : `Network error calling ${path}: ${String(cause)}`)));
   }
 
   if (refuseRedirects && (response.redirected || (response.status >= 300 && response.status < 400))) {
@@ -496,7 +505,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   if (!envelope.success) {
     return err(internal(`Response from ${path} does not match the contract envelope`));
   }
-  if (!envelope.data.ok) return err(envelope.data.error);
+  if (!envelope.data.ok) return err(failedAt('server', envelope.data.error));
 
   const data = outputSchema.safeParse(envelope.data.data);
   if (!data.success) {
@@ -562,6 +571,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
   shipxConfigure: (input: z.input<typeof shipxContracts.shipxConfigure.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxConfigure.path, shipxContracts.shipxConfigure.output, input, signal),
   shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
   ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
+  orderChanges: async (input: z.input<typeof orderChangeContracts.orderChanges.input> = {}, signal?: AbortSignal): Promise<ReadResult<OrderChangeFeed>> => {
+    const query = directoryQuery(input, []);
+    const result = await request(options, API_ROUTES.orderChanges.method, query === '' ? API_ROUTES.orderChanges.path : `${API_ROUTES.orderChanges.path}?${query}`, orderChangeContracts.orderChanges.output, undefined, signal);
+    if (result.ok || result.error.code !== 'feed_cursor_reset' || orderChangeContracts.orderChanges.resetDetails.safeParse(result.error.details).success) return result;
+    return err(internal(`Response from ${API_ROUTES.orderChanges.path} does not match the contract`));
+  },
   issueOrderLine: (input: z.input<typeof orderVerificationContracts.issueOrderLine.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.issueOrderLine.path.replace(':orderId', encodeURIComponent(input.orderId)).replace(':productId', encodeURIComponent(input.productId)), orderVerificationContracts.issueOrderLine.output, input, signal),
   provisionOperatorTenant: (input: ProvisionTenantInput, secret: string) =>
     request(options, API_ROUTES.operatorTenantProvision.method, API_ROUTES.operatorTenantProvision.path,

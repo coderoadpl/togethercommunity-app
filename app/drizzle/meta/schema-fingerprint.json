@@ -1,6 +1,6 @@
 {
-  "hash": "90ab7de1b385c91541796d94746d62210fe76fc64de1c0474bbe105baefd47d8",
-  "shortId": "90ab7de1b385",
+  "hash": "e19de09772963e19f867b8fa38e60a2a097e97528566193a9c16c9ad27b35c92",
+  "shortId": "e19de0977296",
   "schema": {
     "constraints": [
       {
@@ -102,6 +102,11 @@
         "definition": "CHECK ((environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "order_shipments_environment_check",
         "table": "order_shipments"
+      },
+      {
+        "definition": "CHECK ((epoch ~ '^[0-9a-f]{32}$'::text))",
+        "name": "order_feed_epoch_epoch_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "CHECK ((interval_count > 0))",
@@ -287,6 +292,11 @@
         "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
         "name": "products_visibility_check",
         "table": "products"
+      },
+      {
+        "definition": "CHECK (singleton)",
+        "name": "order_feed_epoch_singleton_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES tenant_api_keys(id) ON DELETE CASCADE",
@@ -865,6 +875,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_id_fkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_fulfilment_events_tenant_id_fkey",
         "table": "order_fulfilment_events"
       },
@@ -1244,6 +1259,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_order_fk",
+        "table": "order_changes"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1590,6 +1610,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "order_changes_pkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "order_fulfilment_events_pkey",
         "table": "order_fulfilment_events"
       },
@@ -1809,6 +1834,11 @@
         "table": "telemetry_outbox"
       },
       {
+        "definition": "PRIMARY KEY (singleton)",
+        "name": "order_feed_epoch_pkey",
+        "table": "order_feed_epoch"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "marketing_throttle_buckets_pkey",
         "table": "marketing_throttle_buckets"
@@ -2014,6 +2044,16 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
         "name": "project_marketing_signup_confirmation"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_invoice_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) SELECT tenant_id, id FROM orders WHERE tenant_id = NEW.tenant_id AND id = NEW.order_id; RETURN NULL; END; $function$",
+        "name": "record_invoice_order_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.id); RETURN NULL; END; $function$",
+        "name": "record_order_change"
       },
       {
         "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
@@ -2496,6 +2536,16 @@
         "definition": "CREATE INDEX notifications_tenant_recipient_read_created_idx ON notifications USING btree (tenant_id, recipient_user_id, read_at, created_at DESC NULLS LAST)",
         "name": "notifications_tenant_recipient_read_created_idx",
         "table": "notifications"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_cursor_idx ON order_changes USING btree (tenant_id, xact_id, id)",
+        "name": "order_changes_tenant_cursor_idx",
+        "table": "order_changes"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_order_idx ON order_changes USING btree (tenant_id, order_id)",
+        "name": "order_changes_tenant_order_idx",
+        "table": "order_changes"
       },
       {
         "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
@@ -3197,6 +3247,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "member_events_sequence_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "order_changes_id_seq",
         "start": "1"
       },
       {
@@ -8443,6 +8502,51 @@
       {
         "columns": [
           {
+            "default": "nextval('order_changes_id_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "changed_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "pg_current_xact_id()",
+            "generated": "",
+            "identity": "",
+            "name": "xact_id",
+            "notNull": true,
+            "type": "xid8"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_changes"
+      },
+      {
+        "columns": [
+          {
             "default": "nextval('post_report_events_sequence_seq'::regclass)",
             "generated": "",
             "identity": "",
@@ -8784,6 +8888,35 @@
           }
         ],
         "name": "session"
+      },
+      {
+        "columns": [
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "rotated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "singleton",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "epoch",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_feed_epoch"
       },
       {
         "columns": [
@@ -14733,6 +14866,16 @@
     ],
     "triggers": [
       {
+        "definition": "CREATE TRIGGER invoices_record_insert AFTER INSERT ON invoices FOR EACH ROW EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_insert",
+        "table": "invoices"
+      },
+      {
+        "definition": "CREATE TRIGGER invoices_record_update AFTER UPDATE ON invoices FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_update",
+        "table": "invoices"
+      },
+      {
         "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
         "name": "marketing_member_directory_trigger",
         "table": "members"
@@ -14750,6 +14893,16 @@
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_insert AFTER INSERT ON orders FOR EACH ROW EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_insert",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_update",
         "table": "orders"
       },
       {

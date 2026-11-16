@@ -7,6 +7,7 @@ import { billingDataSchema, clientReferenceSchema, type BillingData } from './co
 import { COUPON_CODE_MAX_LENGTH } from './coupon.js';
 import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.js';
 import { cartLinesSchema } from './checkout-cart.js';
+import { checkoutReturnUrlSchema } from './checkout-return.js';
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
@@ -28,6 +29,8 @@ export const checkoutSessionInputSchema = z.object({
   billing: billingDataSchema.optional(),
   shipping: checkoutShippingInputSchema.optional(),
   clientReference: clientReferenceSchema.optional(),
+  returnUrl: checkoutReturnUrlSchema.optional(),
+  cancelUrl: checkoutReturnUrlSchema.optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;

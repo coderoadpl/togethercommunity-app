@@ -708,6 +708,8 @@ any `connect-src` change for them needs a separate owner decision.
 pnpm --silent run cli --tenant acme tenant settings-set \
   --shipping-rates '[{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]' \
   --inpost-geowidget-token '<public token>'
+pnpm --silent run cli --tenant acme tenant settings-set \
+  --checkout-return-origins 'https://shop.example.test,https://www.shop.example.test'
 pnpm --silent run cli --tenant acme product create --title 'Printed holder' \
   --type physical --delivery-method shipping --price-cents 4900
 pnpm --silent run cli --tenant acme product update <id> --delivery-method pickup
@@ -738,7 +740,10 @@ pnpm --silent run cli --tenant acme product update <id> \
 ```
 
 `--shipping-rates` replaces the whole list; an empty string for
-`--inpost-geowidget-token` clears the token. `--pickup-point` needs
+`--inpost-geowidget-token` clears the token. `--checkout-return-origins` replaces
+the list of shop origins that checkout return and cancel addresses may use
+(see [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses));
+an empty string clears it. `--pickup-point` needs
 `--shipping-rate`. `checkout session --line <product-id>:<quantity>` posts a
 cart; repeat it once per product and leave out `--product` and `--sales-link`
 (see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).

@@ -138,6 +138,19 @@ use HTTP for the complete seller/legal/branding settings. Supplying
 URL/contact fields accept `null` or an empty string; do not assume every field
 has the same clearing behavior.
 
+`checkoutReturnOrigins` lists the origins of the shop's own site to which a
+checkout may send the buyer back (section 6, "Return and cancel addresses").
+It holds at most five entries; each is an exact `https://host` or
+`https://host:port` origin with no path, query, fragment, user name, password
+or wildcard (a single trailing `/` is accepted and removed). The host is stored
+in lower case and the default port `443` is dropped; the same origin twice, an
+`http:` entry or any other form is a `validation` error (400). IP literals are
+accepted, as for the sales-link cancel return address. Supplying the field
+replaces the whole list; `[]` removes every origin. The CLI form is
+`tenant settings-set --checkout-return-origins 'https://shop.example.test,https://www.shop.example.test'`,
+and an empty string clears the list. Studio shows it under Settings → Shipping,
+"Return to your shop".
+
 ## 4. Create a draft physical product and its cover
 
 Use a staff bearer session. All JSON examples below are relative to the workspace
@@ -466,6 +479,36 @@ The CLI posts the same cart with `checkout session --line '<product-id>:2'
 --line '<product-id>:1'`; repeat `--line` once per product and leave out
 `--product`. Both forms take `--client-reference '<reference>'`.
 
+### Return and cancel addresses
+
+Both request forms, the single-product or sales-link request and the cart, take
+two optional addresses on the shop's own site:
+
+- `cancelUrl`: where Stripe sends the buyer who cancels the payment. Without it
+  the cancel address stays the workspace page described in section 7.
+- `returnUrl`: stored with the checkout for the shop's own "back to shop" link
+  after payment. Payment success still returns to the workspace confirmation
+  page; the success address sent to Stripe does not change.
+
+Each address is accepted only when all of these hold; otherwise the answer is a
+`validation` error (400) and nothing is stored or sent to Stripe:
+
+- it is an absolute `https:` URL of at most 2000 characters;
+- it has no user name or password part;
+- its origin (scheme, host and port, as a URL parser normalizes them) is exactly
+  one of the workspace's `checkoutReturnOrigins` (section 3). The same host on
+  another port, a subdomain or an `http:` address is a different origin. A
+  workspace without origins refuses every address.
+
+A fragment (`#...`) is removed before the address is used or stored. The error
+message names the field (`returnUrl` or `cancelUrl`) but never repeats the
+refused address. A request without either field behaves exactly as before.
+
+| Situation | `error.code` (HTTP) |
+| --- | --- |
+| not an absolute `https:` URL (`http:`, `javascript:`, `data:`, a relative path), longer than 2000 characters, or with a user name or password | `validation` (400), `details.fieldErrors.returnUrl` or `details.fieldErrors.cancelUrl` |
+| an origin that is not in the workspace's `checkoutReturnOrigins` | `validation` (400) |
+
 ### Errors, caching and retry behavior
 
 Application JSON responses are `{ "ok": true, "data": ... }` or
@@ -497,8 +540,9 @@ returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
 `checkout=together` for the standard sales-link flow, and with the cart's
 `lines` for a cart, so the buyer can try the same cart again). Preserve the returned URL
-and its other query parameters. Do not add imaginary `successUrl` or `returnUrl`
-fields to the standard session request.
+and its other query parameters. A validated `cancelUrl` (section 6, "Return and
+cancel addresses") replaces only the cancel address. There is no `successUrl`
+field: success always returns to the workspace confirmation page.
 
 The hosted success document remains the confirmation page and the place for the
 platform's configured, consent-controlled purchase analytics. The separate
@@ -616,7 +660,8 @@ or certify a live provider/KSeF submission.
 - **Delivery in Poland.** Shipping is limited to `PL`, with at most five rates.
   Pickup instructions remain seller/storefront content.
 - **Hosted confirmation.** Payment success returns to the workspace confirmation
-  document, not an arbitrary storefront URL.
+  document, not an arbitrary storefront URL. Only the cancel address may point at
+  the shop, and only on an origin in `checkoutReturnOrigins` (at most five).
 - **Buyer account.** Physical checkout creates or reuses an account/member; it is
   not a guest-only flow.
 - **Polling instead of push.** Plan this integration around protected order

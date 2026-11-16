@@ -212,7 +212,8 @@ format, not a tax recommendation.
         "checkoutAppearance": {
           "displayName": "Acme Shop",
           "buttonColor": "#123456"
-        }
+        },
+        "checkoutReturnOrigins": ["https://shop.example.test"]
       },
       "products": [
         {
@@ -339,6 +340,10 @@ Settings use the existing workspace route's field names and validation:
 - Delivery: `shippingRates` (at most five unique rates) and the public
   `inpostGeowidgetToken`, which is not a ShipX secret. Existing delivery and
   vendor-script load rules continue to apply unchanged.
+- Checkout return: `checkoutReturnOrigins`, at most five exact `https` origins
+  of the shop's own site (see
+  [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses)).
+  The list replaces the stored one in full; `[]` removes every origin.
 
 Empty strings clear the fields for which the existing settings route supports
 that convention. Rate-mode VAT must not specify non-null exemption fields;

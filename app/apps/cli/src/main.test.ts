@@ -1861,6 +1861,18 @@ describe('shipping CLI', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('InPost parcel locker map token: (set)'));
   });
 
+  it('sets and clears the checkout return origins from a comma-separated list', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test'] } }));
+    await run('tenant', 'settings-set', '--checkout-return-origins', ' https://shop.example.test, https://www.shop.example.test ');
+    expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test'] });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('checkout return origins: https://shop.example.test, https://www.shop.example.test'));
+    h.updateTenantSettings.mockClear();
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { checkoutReturnOrigins: [] } }));
+    await run('tenant', 'settings-set', '--checkout-return-origins', '');
+    expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ checkoutReturnOrigins: [] });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('checkout return origins: (none)'));
+  });
+
   it('rejects more than five shipping rates before calling the server', async () => {
     const rates = Array.from({ length: 6 }, (_, index) => ({ id: `rate-${index}`, label: 'Rate', amountCents: 100, carrier: 'other', pickupPoint: 'none', active: true }));
     await run('--json', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates));

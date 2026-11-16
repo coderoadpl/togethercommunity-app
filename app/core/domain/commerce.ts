@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { orderAttributionSchema } from './attribution.js';
+import { CHECKOUT_RETURN_URL_MAX_LENGTH } from './checkout-return.js';
 
 import { invoiceSchema } from './invoice.js';
 import { stripeModeSchema } from './integration.js';
@@ -182,6 +183,7 @@ export const clientReferenceSchema = z.string().trim().min(1).max(CLIENT_REFEREN
 export const checkoutSnapshotSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
   clientReference: clientReferenceSchema.nullable().optional(),
+  returnUrl: z.string().max(CHECKOUT_RETURN_URL_MAX_LENGTH).nullable().optional(),
   mode: stripeModeSchema.nullable().optional(),
   providerSessionId: z.string().nullable().optional(),
   id: z.string(),

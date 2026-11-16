@@ -1,4 +1,4 @@
-import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutReturnUrl, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
 import type { TenantRepository } from '../ports.js';
 
 export interface CheckoutSelection {
@@ -11,7 +11,29 @@ export interface CheckoutSelection {
   variantSelections?: SalesLinkVariantSelection[];
   cartLines?: { productId: string; quantity: number }[];
   shipping?: CheckoutShippingSelection;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
+
+export type CheckoutReturnAddresses = Pick<CheckoutSelection, 'returnUrl' | 'cancelUrl'>;
+
+export const resolveCheckoutReturnAddresses = async (
+  tenantId: string,
+  input: { returnUrl?: string | undefined; cancelUrl?: string | undefined },
+  deps: { tenants?: Pick<TenantRepository, 'findSettings'> | undefined },
+): Promise<Result<CheckoutReturnAddresses, AppError>> => {
+  if (input.returnUrl === undefined && input.cancelUrl === undefined) return ok({});
+  const origins = (await deps.tenants?.findSettings(tenantId))?.checkoutReturnOrigins ?? [];
+  const resolved: CheckoutReturnAddresses = {};
+  for (const field of ['returnUrl', 'cancelUrl'] as const) {
+    const requested = input[field];
+    if (requested === undefined) continue;
+    const allowed = resolveCheckoutReturnUrl(requested, origins);
+    if (allowed === null) return err(validation(`${field} must be an https address on an origin allowed in the workspace checkout return origins`));
+    resolved[field] = allowed;
+  }
+  return ok(resolved);
+};
 
 export const withCheckoutShipping = async (
   tenantId: string,

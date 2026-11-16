@@ -32,6 +32,17 @@ describe('shop manifest v1', () => {
     expect(shopManifestSchema.safeParse(input).success).toBe(false);
   });
 
+  it('carries checkout return origins normalized and treats an unchanged list as no change', () => {
+    const parsed = shopManifestSchema.parse({ ...manifest, company: { settings: { checkoutReturnOrigins: ['https://Shop.Example.Test/'] } } });
+    const desired = effectiveShopSettings(parsed.company?.settings, undefined);
+    expect(desired).toEqual({ checkoutReturnOrigins: ['https://shop.example.test'] });
+    expect(diffShopSettings(desired, { checkoutReturnOrigins: ['https://shop.example.test'] }).changes).toEqual({});
+    expect(diffShopSettings(desired, { checkoutReturnOrigins: [] }).changes).toEqual({ checkoutReturnOrigins: ['https://shop.example.test'] });
+    for (const checkoutReturnOrigins of [['https://shop.example.test/cart'], ['http://shop.example.test'], ['https://*.example.test']]) {
+      expect(shopManifestSchema.safeParse({ ...manifest, company: { settings: { checkoutReturnOrigins } } }).success).toBe(false);
+    }
+  });
+
   it('rejects duplicate workspaces and product slugs', () => {
     expect(shopManifestSchema.safeParse({ ...manifest, shops: [...manifest.shops, ...manifest.shops] }).success).toBe(false);
     expect(shopManifestSchema.safeParse({ ...manifest, shops: [{ workspace: 'acme', products: [productInput, productInput] }] }).success).toBe(false);

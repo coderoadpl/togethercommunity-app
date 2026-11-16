@@ -4952,6 +4952,23 @@ describe('new route authorization', () => {
     }
   });
 
+  it('stores normalized checkout return origins for owners and refuses entries that are not exact https origins', async () => {
+    const save = (checkoutReturnOrigins: unknown) => scopedApp('owner').request(API_PATHS.tenantSettingsUpdate, {
+      method: 'POST', headers, body: JSON.stringify({ checkoutReturnOrigins }),
+    });
+    const saved = await save(['https://Shop.Example.Test/', 'https://shop.example.test:8443']);
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ ok: true, data: { settings: { checkoutReturnOrigins: ['https://shop.example.test', 'https://shop.example.test:8443'] } } });
+    for (const invalid of [
+      ['https://shop.example.test/cart'], ['https://*.example.test'], ['http://shop.example.test'],
+      Array.from({ length: 6 }, (_, index) => `https://shop${String(index)}.example.test`),
+    ]) {
+      const refused = await save(invalid);
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+  });
+
   it('serves a tenant-scoped import audit only to the owner', async () => {
     const base = deps();
     const key: TenantApiKey = {
@@ -10668,7 +10685,7 @@ describe('cart checkout over the public checkout routes', () => {
   const foreignLamp = '00000000-0000-4000-8000-0000000000b1';
   const unknownProduct = '00000000-0000-4000-8000-0000000000c1';
   const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
-  const cartApp = (options: { couponPercent?: number; deliveryCents?: number } = {}) => {
+  const cartApp = (options: { couponPercent?: number; deliveryCents?: number; returnOrigins?: string[] } = {}) => {
     const products: Product[] = [
       { ...product({ id: poster, tenantId: acme.id, title: 'Poster', published: true }), type: 'physical', vatRate: 8 },
       { ...product({ id: mug, tenantId: acme.id, title: 'Mug', published: true }), type: 'physical', vatRate: 23 },
@@ -10685,7 +10702,8 @@ describe('cart checkout over the public checkout routes', () => {
     const settings = base.tenants.findSettings;
     base.tenants.findSettings = async (tenantId) => {
       const stored = await settings(tenantId);
-      return stored === null || options.deliveryCents === undefined ? stored : { ...stored, shippingRates: [
+      const withOrigins = stored === null || options.returnOrigins === undefined ? stored : { ...stored, checkoutReturnOrigins: options.returnOrigins };
+      return withOrigins === null || options.deliveryCents === undefined ? withOrigins : { ...withOrigins, shippingRates: [
         { id: 'courier', label: 'Courier', amountCents: options.deliveryCents, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: true },
       ] };
     };
@@ -10819,6 +10837,47 @@ describe('cart checkout over the public checkout routes', () => {
       const response = await h.post(API_PATHS.checkoutSession, body);
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { clientReference: expect.arrayContaining([expect.any(String)]) } } } });
+    }
+    expect(h.snapshots.size).toBe(0);
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('sends an allowed cancel address as the Stripe cancel URL and keeps the success URL on both request forms', async () => {
+    for (const form of [{ lines: cartLines }, { productId: poster }]) {
+      const plain = cartApp({ returnOrigins: ['https://shop.example.test'] });
+      expect((await plain.post(API_PATHS.checkoutSession, { ...form, email: 'buyer@example.test', termsAccepted: true })).status).toBe(200);
+      const h = cartApp({ returnOrigins: ['https://shop.example.test'] });
+      const response = await h.post(API_PATHS.checkoutSession, {
+        ...form, email: 'buyer@example.test', termsAccepted: true,
+        returnUrl: 'https://shop.example.test/thanks#done', cancelUrl: 'https://shop.example.test/cart?step=2#lines',
+      });
+      expect(response.status).toBe(200);
+      expect(h.createCheckoutSession.mock.calls[0]?.[0]).toMatchObject({
+        cancelUrl: 'https://shop.example.test/cart?step=2', successUrl: plain.createCheckoutSession.mock.calls[0]?.[0].successUrl,
+      });
+      expect([...h.snapshots.values()].map((snapshot) => snapshot.returnUrl)).toEqual(['https://shop.example.test/thanks']);
+    }
+  });
+
+  it.each([
+    ['the http scheme', 'http://shop.example.test/cart'],
+    ['a foreign origin', 'https://elsewhere.example.test/cart'],
+    ['the same host on another port', 'https://shop.example.test:8443/cart'],
+    ['a credentials part', 'https://buyer:secret@shop.example.test/cart'],
+    ['2001 characters', `https://shop.example.test/${'a'.repeat(2001 - 'https://shop.example.test/'.length)}`],
+    ['a javascript: URL', 'javascript:alert(document.cookie)'],
+    ['a data: URL', 'data:text/html,<script>alert(1)</script>'],
+  ])('answers 400 without echoing a return or cancel address with %s', async (_case, url) => {
+    const h = cartApp({ returnOrigins: ['https://shop.example.test'] });
+    for (const field of ['returnUrl', 'cancelUrl']) {
+      for (const form of [{ lines: cartLines }, { productId: poster }]) {
+        const response = await h.post(API_PATHS.checkoutSession, { ...form, email: 'buyer@example.test', termsAccepted: true, [field]: url });
+        expect(response.status).toBe(400);
+        const body = await response.text();
+        expect(JSON.parse(body)).toMatchObject({ ok: false, error: { code: 'validation' } });
+        expect(body).not.toContain(url);
+        expect(body).not.toContain(JSON.stringify(url).slice(1, -1));
+      }
     }
     expect(h.snapshots.size).toBe(0);
     expect(h.createCheckoutSession).not.toHaveBeenCalled();

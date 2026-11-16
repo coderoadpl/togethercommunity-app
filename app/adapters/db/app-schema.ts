@@ -80,6 +80,7 @@ export const tenants = pgTable(
     checkoutAppearance: jsonb('checkout_appearance').$type<CheckoutAppearance>(),
     shippingRates: jsonb('shipping_rates').$type<ShippingRate[]>().notNull().default([]),
     inpostGeowidgetToken: text('inpost_geowidget_token'),
+    checkoutReturnOrigins: jsonb('checkout_return_origins').$type<string[]>().notNull().default([]),
     shipxEnvironment: text('shipx_environment', { enum: ['sandbox', 'production'] }).notNull().default('sandbox'),
     shipxSender: jsonb('shipx_sender').$type<ShipxSender>(),
     signInNotice: jsonb('sign_in_notice').$type<{ enabled: boolean; text: string }>().notNull().default({ enabled: false, text: '' }),

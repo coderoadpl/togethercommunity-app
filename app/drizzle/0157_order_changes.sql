@@ -22,6 +22,17 @@ CREATE TRIGGER orders_record_insert AFTER INSERT ON orders FOR EACH ROW EXECUTE 
 --> statement-breakpoint
 CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*) EXECUTE FUNCTION record_order_change();
 --> statement-breakpoint
+CREATE FUNCTION record_invoice_order_change() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.order_id);
+  RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER invoices_record_insert AFTER INSERT ON invoices FOR EACH ROW EXECUTE FUNCTION record_invoice_order_change();
+--> statement-breakpoint
+CREATE TRIGGER invoices_record_update AFTER UPDATE ON invoices FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*) EXECUTE FUNCTION record_invoice_order_change();
+--> statement-breakpoint
 CREATE TABLE order_feed_epoch (
   singleton boolean PRIMARY KEY DEFAULT true CONSTRAINT order_feed_epoch_singleton_check CHECK (singleton),
   epoch text NOT NULL CONSTRAINT order_feed_epoch_epoch_check CHECK (epoch ~ '^[0-9a-f]{32}$'),

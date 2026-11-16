@@ -2,8 +2,9 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { decodeOrderChangeCursor, listOrderChangesQuerySchema, orderLineSchema, orderSchema, type Order, type OrderChange, type OrderChangeRead, type OrderShipping } from '#core/domain/index.js';
+import { decodeOrderChangeCursor, invoiceEventSchema, invoiceSchema, listOrderChangesQuerySchema, orderLineSchema, orderSchema, type InvoiceEvent, type Order, type OrderChange, type OrderChangeRead, type OrderShipping } from '#core/domain/index.js';
 
+import { createInvoiceRepository } from './invoice-repositories.js';
 import { orderChanges, orderFeedEpoch } from './order-change-schema.js';
 import { createOrderChangeRepository, rotateOrderFeedEpoch } from './order-changes.js';
 import { createOrderFulfilmentRepository } from './order-fulfilment.js';
@@ -203,6 +204,25 @@ describe('order change log on Postgres', () => {
 
     const logged = await eventually('workspace', cursor, [physical, physical, physical, physical, physical, testOrder, testOrder]);
     expect(new Set(logged.map((change) => change.cursor)).size).toBe(logged.length);
+  });
+
+  it('logs the order when its invoice is issued or changed', async () => {
+    const orderId = await createOrder('workspace');
+    const cursor = await settledCursor('workspace');
+    const invoices = createInvoiceRepository(database.db);
+    const invoice = invoiceSchema.parse({
+      id: `invoice-${orderId}`, tenantId: 'workspace', orderId, status: 'requested', provider: 'simulated', providerInvoiceId: null,
+      invoiceNumber: null, pdfUrl: null, error: null, issuedAt: null, createdAt: now,
+    });
+    const event = (type: InvoiceEvent['type']): InvoiceEvent => invoiceEventSchema.parse({
+      id: `${invoice.id}-${type}`, tenantId: 'workspace', invoiceId: invoice.id, orderId, type, error: null, meta: {}, occurredAt: now,
+    });
+    expect(await invoices.create('workspace', invoice, event('requested'))).toBe(true);
+    await eventually('workspace', cursor, [orderId]);
+    const afterRequest = await settledCursor('workspace');
+    expect(await invoices.update('workspace', { ...invoice, status: 'issued', invoiceNumber: 'FV/1/2026', issuedAt: now }, event('issued')))
+      .toMatchObject({ status: 'issued' });
+    await eventually('workspace', afterRequest, [orderId]);
   });
 
   it('does not log an update that leaves the order row unchanged', async () => {

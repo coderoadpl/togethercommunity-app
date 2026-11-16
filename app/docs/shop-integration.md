@@ -660,13 +660,10 @@ list:
 Each `order` has the shape of an entry in `data.orders` of the order list, in
 its state at the time of the read, not at the time of the change. An order
 changed several times within one page appears once, at its latest cursor.
-Payment, refunds, collection and shipping all produce a change. Fields that
-the entry takes from other records do not yet: a change of the invoice
-(`invoice`), of the buyer's e-mail address or name (`memberEmail`,
-`memberName`), of the product title (`productTitle`) or of the sales link title
-(`salesLinkTitle`) alone produces no entry. The entry shows their current values
-the next time the order itself changes; read the order list when they are
-needed sooner. The coupon code (`couponCode`) cannot change.
+Payment, refunds, collection, shipping and issuing or changing the invoice all
+produce a change. The member name and e-mail address, the product title and the
+sales link title (`memberName`, `memberEmail`, `productTitle`,
+`salesLinkTitle`) are read at fetch time, and editing them produces no entry.
 `limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`
 selects one mode, and an omitted mode returns both. A malformed cursor or limit
 is a validation error (HTTP 400).

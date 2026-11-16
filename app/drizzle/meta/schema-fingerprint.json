@@ -1,6 +1,6 @@
 {
-  "hash": "54862c245adb132df89b4207485a5cd4812912a5566472de794e8a58157856d0",
-  "shortId": "54862c245adb",
+  "hash": "5e0111c7e53ba97e45280b5db196562bdc6d2c702567f47b684a0357900adaf8",
+  "shortId": "5e0111c7e53b",
   "schema": {
     "constraints": [
       {
@@ -2044,6 +2044,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
         "name": "project_marketing_signup_confirmation"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_invoice_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.order_id); RETURN NULL; END; $function$",
+        "name": "record_invoice_order_change"
       },
       {
         "arguments": "",
@@ -14860,6 +14865,16 @@
       }
     ],
     "triggers": [
+      {
+        "definition": "CREATE TRIGGER invoices_record_insert AFTER INSERT ON invoices FOR EACH ROW EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_insert",
+        "table": "invoices"
+      },
+      {
+        "definition": "CREATE TRIGGER invoices_record_update AFTER UPDATE ON invoices FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_update",
+        "table": "invoices"
+      },
       {
         "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
         "name": "marketing_member_directory_trigger",

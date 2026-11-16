@@ -270,14 +270,16 @@ remember it: payment, test checkout completion, refunds, collection, shipping an
 member erasure are all captured. An update that leaves the order row identical
 is not logged.
 
-Only `orders` has the triggers. The feed entry (the order list entry) also
-carries values from `invoices` (the invoice), `members` (the buyer's e-mail
-address and name), `products` (the title) and `sales_links` (the title); a
+`invoices` has the same pair of triggers through `record_invoice_order_change()`,
+which logs the invoice's order in the invoice's workspace, so issuing an invoice
+or changing it produces an entry. The feed entry (the order list entry) also
+carries values from `members` (the buyer's e-mail address and name), `products`
+(the title) and `sales_links` (the title); they are read at fetch time, and a
 write to those tables alone is not logged. `coupons` adds the coupon code,
 which no write path changes. Triggers on `members` and `products` would have to
 log one row per order that references the changed row, and both tables are
 written in bulk by the import, which updates every changed member and product in
-one transaction, so logging them is left for a later change.
+one transaction.
 
 The read is scoped to one workspace, ordered by `(xact_id, id)` and returns only
 rows whose `xact_id` is below the `xmin` of the reader's snapshot, so every
@@ -309,7 +311,8 @@ runs it.
 The rows are kept without a retention purge for now. Deleting an order, for
 example through a product deletion, deletes its change rows.
 
-Creating the triggers takes a `SHARE ROW EXCLUSIVE` lock on `orders`, which
-blocks order writes until the migration transaction commits. Deploy migration
+Creating the triggers takes a `SHARE ROW EXCLUSIVE` lock on `orders` and
+`invoices`, which blocks order and invoice writes until the migration
+transaction commits. Deploy migration
 `0157_order_changes` in a quiet window. The column type and the snapshot
 functions need PostgreSQL 13 or later.

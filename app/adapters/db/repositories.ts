@@ -3695,6 +3695,7 @@ export const createOrderRepository = (
               eq(orders.tenantId, tenantId),
               eq(orders.mode, 'live'),
               eq(orders.status, 'paid'),
+              isNull(orders.cancelReason),
               sql`${orders.createdAt} <= ${query.paidBefore}`,
             ),
           )

@@ -10790,6 +10790,40 @@ describe('cart checkout over the public checkout routes', () => {
     });
   });
 
+  it('stores the client reference of a cart on its snapshot without sending it to Stripe', async () => {
+    const h = cartApp();
+    const clientReference = `shop-${'c'.repeat(195)}`;
+    const response = await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, clientReference });
+    expect(response.status).toBe(200);
+    expect([...h.snapshots.values()].map((snapshot) => snapshot.clientReference)).toEqual([clientReference]);
+    expect(h.createCheckoutSession).toHaveBeenCalledOnce();
+    expect(JSON.stringify(h.createCheckoutSession.mock.calls[0]?.[0])).not.toContain('shop-');
+  });
+
+  it('copies the client reference of a cart that a full coupon makes free onto its paid order', async () => {
+    const h = cartApp({ couponPercent: 100 });
+    const response = await h.post(API_PATHS.checkoutSession, { lines: [{ productId: ebook, quantity: 1 }], email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART', clientReference: 'shop-cart-8812' });
+    expect(response.status).toBe(200);
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ status: 'paid', clientReference: 'shop-cart-8812' });
+  });
+
+  it.each([
+    ['201 characters', 'r'.repeat(201)],
+    ['only spaces', '   '],
+    ['a line break', 'cart\n8812'],
+    ['a non-ASCII character', 'cart-\u00e9'],
+  ])('refuses a client reference of %s on both request forms', async (_case, clientReference) => {
+    const h = cartApp();
+    for (const body of [{ ...sessionBody, clientReference }, { productId: poster, email: 'buyer@example.test', termsAccepted: true, clientReference }]) {
+      const response = await h.post(API_PATHS.checkoutSession, body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { clientReference: expect.arrayContaining([expect.any(String)]) } } } });
+    }
+    expect(h.snapshots.size).toBe(0);
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
   describe('a cart that a full coupon makes free', () => {
     const freeBody = { email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART' };
 

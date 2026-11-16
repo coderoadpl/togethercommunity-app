@@ -22,7 +22,7 @@ export const getCheckoutSessionStatus = async (
     metaCapi?: MetaCapiDeps;
   },
   locale?: Language,
-): Promise<Result<{ status: 'pending' | 'paid'; analytics?: CheckoutPurchaseAnalytics; metaCapi?: MetaCapiConfig }, AppError>> => {
+): Promise<Result<{ status: 'pending' | 'paid'; clientReference?: string; analytics?: CheckoutPurchaseAnalytics; metaCapi?: MetaCapiConfig }, AppError>> => {
   const parsed = checkoutSessionStatusInputSchema.safeParse({ session_id: sessionId });
   if (!parsed.success) return err(validation('Invalid checkout session id'));
   const mode = parsed.data.session_id.startsWith('cs_test_') ? 'test' : 'live';
@@ -37,12 +37,14 @@ export const getCheckoutSessionStatus = async (
   const metaCapiEnabled = settings?.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId;
   const metaCapi = deps.metaCapi && metaCapiEnabled ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi, locale) : undefined;
   const capi = metaCapi === undefined ? {} : { metaCapi };
-  if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid', ...capi });
+  const reference = order.clientReference == null ? {} : { clientReference: order.clientReference };
+  if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid', ...reference, ...capi });
   const lines = productLines(order.lines ?? []);
   const product = lines.length === 0 ? await deps.products.findById(tenantId, order.productId) : null;
   const salesLink = order.salesLinkId == null ? null : await deps.salesLinks?.findById(tenantId, order.salesLinkId);
   return ok({
     status: 'paid',
+    ...reference,
     ...capi,
     analytics: {
       transactionId: order.id,

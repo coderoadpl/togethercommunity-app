@@ -367,6 +367,16 @@ address field in this session request. Optional `email`, `billing`, `couponCode`
 and `marketingConsentDefinitionIds` must follow `checkoutSessionRequestSchema`.
 Display the returned consent wording and never preselect marketing consent.
 
+Optional `clientReference` is the storefront's own reference for the checkout,
+such as its cart or order number: 1–200 printable ASCII characters (space to
+`~`), with surrounding spaces trimmed; any other value is a `validation` error
+(400). The platform stores it with the checkout and copies it onto the paid
+order, so it appears as `clientReference` in the order list, detail and verify
+answers and the JSON export, in the `client_reference` CSV export column, and
+in the session-status answer of a paid session. It is not sent to Stripe, it
+need not be unique, and it must not carry personal data. A request without it
+behaves as before, and its order has no `clientReference`.
+
 For bundles the same session route takes `productId` equal to the bundle's first
 base product and `salesLinkSlug` (or `salesLinkId`, not both), without `priceId`.
 The server derives the product selection and amounts from the stored sales link.
@@ -408,8 +418,8 @@ window.location.assign(cartSession.url);
 Each line has `productId`, `quantity` and an optional `priceId` (an active
 one-time price of that product; without it the product needs exactly one).
 `email`, `language`, `termsAccepted`, `marketingConsentDefinitionIds`,
-`couponCode`, `billing`, `shipping` and `attribution` work as in the
-single-product request. A cart request must not contain `productId`, `priceId`,
+`couponCode`, `billing`, `shipping`, `attribution` and `clientReference` work
+as in the single-product request. A cart request must not contain `productId`, `priceId`,
 `salesLinkId`, `salesLinkSlug` or `variantSelections`, and the cart schema is
 strict: an unknown field in the body or in a line, such as a price or an amount,
 is rejected, not ignored. The client sends product IDs and quantities only; the
@@ -454,7 +464,7 @@ single-product page for every product, including one whose slug is `cart`.
 
 The CLI posts the same cart with `checkout session --line '<product-id>:2'
 --line '<product-id>:1'`; repeat `--line` once per product and leave out
-`--product`.
+`--product`. Both forms take `--client-reference '<reference>'`.
 
 ### Errors, caching and retry behavior
 
@@ -498,8 +508,9 @@ it does not provide an external success return for shipped books. This guide
 does not change which documents load vendor scripts.
 
 A browser success URL is not proof of payment. The public session-status route
-returns `data.status` (`pending` or `paid`) and may include optional analytics
-fields; use it for buyer display only. Fulfil from the authenticated paid-order
+returns `data.status` (`pending` or `paid`), for a paid session the
+`clientReference` sent with it, and may include optional analytics fields; use
+it for buyer display only. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ## 8. Poll live orders and record fulfilment

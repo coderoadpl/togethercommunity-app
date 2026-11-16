@@ -161,7 +161,8 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
-`shipping_country` and `fulfilment_status`.
+`shipping_country` and `fulfilment_status`, followed by `client_reference`
+(the storefront's `clientReference`, empty when the checkout had none).
 
 ## Fulfilment
 

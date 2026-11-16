@@ -468,6 +468,13 @@ describe('cart checkout CLI', () => {
     expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/cart' } });
   });
 
+  it('sends --client-reference with both request forms', async () => {
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:1`, '--client-reference', 'shop-cart-8812');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({ lines: [{ productId: paperback, quantity: 1 }], clientReference: 'shop-cart-8812' });
+    await run('--json', 'checkout', 'session', '--product', paperback, '--client-reference', 'shop-order-17');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: paperback, clientReference: 'shop-order-17' });
+  });
+
   it('keeps the single-product request of --product unchanged', async () => {
     await run('--json', 'checkout', 'session', '--product', paperback, '--email', 'buyer@example.com');
     expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: paperback, email: 'buyer@example.com' });
@@ -1787,6 +1794,13 @@ describe('orders list CLI text', () => {
     ] }], total: 1, page: 1, pageSize: 20, sources: [] }));
     await run('orders', 'list');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\t2 × Paperback; Poster\tbuyer@example.com\t'));
+  });
+
+  it('shows the client reference only of an order that has one', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, clientReference: 'shop-cart-8812' }, { ...order, id: 'order-87654321' }], total: 2, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tbuyer@example.com\tref shop-cart-8812\t(order-12)\n'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tbuyer@example.com\t(order-87)\n'));
   });
 
   it('keeps the product title for orders of one unit per line', async () => {

@@ -106,6 +106,28 @@ const analyticsSettings = tenantSettingsSchema.parse({
   name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, analyticsTagId: 'G-ABCDEF',
 });
 
+describe('checkout session client reference', () => {
+  const referenced: Order = { ...order, clientReference: 'shop-cart-8812' };
+
+  it.each([
+    ['without analytics', null],
+    ['with analytics', analyticsSettings],
+  ])('returns the client reference of its own paid session %s', async (_case, settings) => {
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', harness([referenced], settings))).toMatchObject({
+      ok: true, value: { status: 'paid', clientReference: 'shop-cart-8812' },
+    });
+  });
+
+  it.each([
+    ['a pending order', { ...referenced, status: 'pending' }, 'cs_live_paid123'],
+    ['another session', referenced, 'cs_live_other123'],
+  ] as const)('withholds the client reference of %s', async (_case, row, sessionId) => {
+    expect(await getCheckoutSessionStatus('tenant-1', sessionId, harness([row]))).toEqual({
+      ok: true, value: { status: 'pending' },
+    });
+  });
+});
+
 describe('checkout session purchase analytics', () => {
   it.each([
     analyticsSettings,

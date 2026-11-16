@@ -3436,6 +3436,7 @@ export const createOrderRepository = (
           discountCents: order.discountCents,
           billing: order.billing ?? null,
           attribution: order.attribution ?? null,
+          clientReference: order.clientReference ?? null,
           paidAt: order.paidAt ?? null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],

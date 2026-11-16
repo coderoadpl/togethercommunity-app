@@ -1,6 +1,6 @@
 {
-  "hash": "9cbf912d7efb948b6d4c82a081b627ed47082b6693ff3e83e0b4a26dbdad964b",
-  "shortId": "9cbf912d7efb",
+  "hash": "24a940a732a7aa2e41d69ee8daf69f687579a8485a582f666df3574b0ec5d83b",
+  "shortId": "24a940a732a7",
   "schema": {
     "constraints": [
       {
@@ -3943,6 +3943,14 @@
             "name": "billing",
             "notNull": false,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,
@@ -10670,6 +10678,14 @@
             "name": "attribution",
             "notNull": false,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

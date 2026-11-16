@@ -3,7 +3,7 @@ import { salesLinkVariantSelectionSchema } from './sales-link-variants.js';
 import { attributionSchema } from './attribution.js';
 
 import { languageSchema } from './language.js';
-import { billingDataSchema, type BillingData } from './commerce.js';
+import { billingDataSchema, clientReferenceSchema, type BillingData } from './commerce.js';
 import { COUPON_CODE_MAX_LENGTH } from './coupon.js';
 import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.js';
 import { cartLinesSchema } from './checkout-cart.js';
@@ -27,6 +27,7 @@ export const checkoutSessionInputSchema = z.object({
   couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
   shipping: checkoutShippingInputSchema.optional(),
+  clientReference: clientReferenceSchema.optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;

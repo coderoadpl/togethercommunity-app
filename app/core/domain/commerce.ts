@@ -174,8 +174,14 @@ export const allocatePaidOrderLineGross = (
   return lines.map((line) => isShippingLine(line) ? line.grossCents : allocated[index++] ?? 0);
 };
 
+export const CLIENT_REFERENCE_MAX_LENGTH = 200;
+
+export const clientReferenceSchema = z.string().trim().min(1).max(CLIENT_REFERENCE_MAX_LENGTH)
+  .regex(/^[\x20-\x7E]+$/, 'clientReference may contain only printable ASCII characters');
+
 export const checkoutSnapshotSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
+  clientReference: clientReferenceSchema.nullable().optional(),
   mode: stripeModeSchema.nullable().optional(),
   providerSessionId: z.string().nullable().optional(),
   id: z.string(),
@@ -191,6 +197,7 @@ export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
 export const orderSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
+  clientReference: clientReferenceSchema.nullable().optional(),
   mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),

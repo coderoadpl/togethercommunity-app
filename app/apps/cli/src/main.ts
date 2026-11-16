@@ -364,6 +364,7 @@ const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   line: z.array(checkoutLineOptionSchema).default([]),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
+  clientReference: z.string().optional(),
 });
 const memberExportOptionsSchema = z.object({
   format: memberExportFormatSchema,
@@ -964,6 +965,7 @@ checkout
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
       const shipping = shippingSelection(options);
@@ -975,6 +977,7 @@ checkout
         ...(options.email === undefined ? {} : { email: options.email }),
         ...(options.language === undefined ? {} : { language: options.language }),
         ...(shipping.value === null ? {} : { shipping: shipping.value }),
+        ...(options.clientReference === undefined ? {} : { clientReference: options.clientReference }),
       };
       if (options.line.length > 0) {
         const lines = cartLinesSchema.safeParse(options.line);
@@ -1911,7 +1914,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),

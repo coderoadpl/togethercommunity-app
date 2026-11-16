@@ -553,6 +553,7 @@ export const orders = pgTable(
     discountCents: integer('discount_cents').notNull().default(0),
     billing: jsonb('billing').$type<BillingData>(),
     attribution: jsonb('attribution').$type<OrderAttribution>(),
+    clientReference: text('client_reference'),
     salesLinkId: text('sales_link_id'),
     lines: jsonb('lines').$type<OrderLine[]>().notNull().default([]),
     metaCapiConsent: text('meta_capi_consent', { enum: ['undecided', 'granted', 'denied'] }).notNull().default('undecided'),

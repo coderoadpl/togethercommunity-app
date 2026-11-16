@@ -217,7 +217,7 @@ export const startCheckoutSession = async (
   if (fields !== undefined && deps.clock === undefined) return err(validation('Checkout clock is not configured'));
   const attribution = fields === undefined || deps.clock === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
   if (await freeShippedOrder(tenant.id, input, selection, deps)) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution, input.clientReference);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const shippingCents = captured.value.shippingCents ?? 0;
@@ -362,6 +362,7 @@ export const startCheckoutSession = async (
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
         productId: product.id, priceId: price?.id ?? null, mode: 'test',
         kind: price?.kind ?? 'one_time', status: 'pending', attribution: attribution ?? null,
+        ...(input.clientReference === undefined ? {} : { clientReference: input.clientReference }),
         amountCents: totalCents + shippingCents, currency,
         provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
         couponId: null, discountCents: 0, billing: null, lines, salesLinkId: selection.salesLinkId ?? null, createdAt: deps.clock.nowIso(),

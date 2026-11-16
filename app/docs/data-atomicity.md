@@ -216,7 +216,13 @@ that lookup off the product's full event history.
 The simulated purchase records its order (taking the sales-link lock) before it
 reserves and commits stock, the same lock order as the payment webhook. `on_hand` and
 `reserved` carry `CHECK (>= 0)`; the commit clamps `on_hand` at zero and records
-the shortfall as an `oversold` event. Stock events are never updated or deleted
+the shortfall as an `oversold` event. The payment webhook first calls
+`lockForCommit` in the payment transaction, which takes the same locks in the
+same order and keeps them until that transaction ends; a late line that no
+longer fits cancels the whole order instead of committing, and the
+`order_refund_jobs` row of that order is inserted in the same transaction. Its
+unique `(tenant_id, order_id)` and `idempotency_key` indexes keep one refund job
+per order. Stock events are never updated or deleted
 except through the product foreign-key cascade when a draft product is deleted.
 
 ## Sales links and order lines

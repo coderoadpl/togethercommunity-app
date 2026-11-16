@@ -759,7 +759,9 @@ API accepts tracking for any product type; Studio shows the section only for
 physical products. Tracking cannot be switched off once enabled; the count is
 corrected with an adjustment. Counts are capped at 1,000,000 pieces. An
 adjustment may lower `on_hand` below the pieces reserved by open checkouts (for
-example damaged goods); a later commit then records `oversold` and alerts.
+example damaged goods); a later commit of a live hold then records `oversold`
+and alerts, while a late payment that no longer fits cancels the order (see
+Payment and expiry).
 
 ### Model
 
@@ -841,9 +843,34 @@ transaction that records the order:
   recorded as a `committed` reservation of that quantity;
 - an order without a checkout snapshot is committed late once: a retry finds
   the earlier commit event of that order and changes nothing;
-- when `on_hand` would go below zero it is clamped at zero, an `oversold` event
-  is appended, a warning is logged and the low-stock e-mail carries the
-  oversold flag.
+- when `on_hand` would go below zero for a line held by the snapshot's own
+  `active` reservation it is clamped at zero, an `oversold` event is appended,
+  a warning is logged and the low-stock e-mail carries the oversold flag.
+
+Before any of this, still inside the payment transaction and before the buyer
+is enrolled, `StockRepository.lockForCommit` locks the snapshot's reservations
+and the stock rows in product-id order and checks every tracked line that is
+not covered by the snapshot's own `active` or `committed` reservation (a
+`released` reservation, a line without one, an order without a snapshot)
+against `on_hand - reserved`. The locks stay held until the payment transaction
+ends, so two payments for the last piece are serialized. When any line is
+short the whole order is cancelled and nothing is decremented:
+
+- the order is recorded as `paid` with `cancel_reason = 'out_of_stock'`
+  (the money arrived) and without a fulfilment status, so it never reaches the
+  packing list;
+- the buyer becomes a member because the order needs one, but no product is
+  granted, no purchase or welcome e-mail is queued, no automatic invoice job is
+  queued and the order is never eligible for Meta conversions;
+- one `order_refund_jobs` row is inserted in the same transaction (`pending`,
+  the full paid amount, idempotency key `oos-refund-<orderId>`, unique per
+  order); an order paid with zero gets no job;
+- staff get the `order-out-of-stock` e-mail (support address, or every staff
+  member in their language) with the short products, the amount being refunded
+  and a Studio link to the order.
+
+A later event for a checkout session whose order is already cancelled changes
+nothing. Recurring prices keep the commit above.
 
 `checkout.session.expired` is not handled. The expiry sweep
 `releaseExpiredStockReservations` runs on the existing minute tick (the

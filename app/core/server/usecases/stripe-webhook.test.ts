@@ -2764,6 +2764,40 @@ describe('checkout stock commit in the payment webhook', () => {
     expect(stock.events).toEqual([]);
   });
 
+  it('cancels a delayed payment that succeeds after the stock ran out and queues one refund instead of fulfilling it', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    h.deps.tenantAccess = { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.com', staffRole: 'owner', language: 'en' }] };
+    const event = completedEvent({ id: 'evt-async', type: 'checkout.session.async_payment_succeeded', paymentIntentId: 'pi-async', amountTotalCents: 4900 });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+
+    expect(h.orders).toEqual([expect.objectContaining({ status: 'paid', cancelReason: 'out_of_stock', amountCents: 4900 })]);
+    expect(h.orders[0]).not.toHaveProperty('fulfilmentStatus');
+    const orderId = h.orders[0]?.id ?? '';
+    expect(h.refundJobs).toEqual([expect.objectContaining({ orderId, paymentIntentId: 'pi-async', amountCents: 4900, idempotencyKey: `oos-refund-${orderId}`, status: 'pending' })]);
+    expect(h.autoInvoiceJobs).toEqual([]);
+    expect([...h.grants.values()]).toEqual([]);
+    expect(h.enrollmentEmails).toEqual([]);
+    expect(h.queued).toEqual([{ to: 'owner@example.com', payload: expect.objectContaining({ kind: 'order-out-of-stock', orderId, amountCents: 4900, productTitles: [expect.any(String)] }) }]);
+    expect(stock.events).toEqual([]);
+    expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 0, reserved: 0 });
+  });
+
+  it('records a cancelled order paid with zero without a refund job', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, completedEvent({ amountTotalCents: 0 }), h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toEqual([expect.objectContaining({ cancelReason: 'out_of_stock', amountCents: 0 })]);
+    expect(h.refundJobs).toEqual([]);
+    expect(stock.events).toEqual([]);
+  });
+
   it('never touches live stock for a test-mode order', async () => {
     const { h, event } = await testCheckout();
     const stock = createStockRepositoryFake();

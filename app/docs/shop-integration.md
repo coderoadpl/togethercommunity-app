@@ -245,8 +245,10 @@ Checkout atomically reserves available tracked stock. On-hand stock is deducted
 when paid checkout is fulfilled, **not** when staff marks a shipment. A cancelled
 or abandoned browser flow does not immediately release the hold; the expiry
 sweep releases expired reservations. Verify the sweep runs on the deployment.
-Late payments can produce an oversold event, so retain an operational response
-rather than promising that overselling is impossible.
+A late payment for goods that are gone is recorded as a paid order with
+`cancelReason: "out_of_stock"`, is never fulfilled and is queued for a full
+refund. Skip such orders when you ship, and do not promise that a paid order is
+always delivered.
 
 ## 6. Connect an anonymous storefront from another origin
 

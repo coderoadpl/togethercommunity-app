@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { orderCancelReasonSchema } from './commerce.js';
+import { orderCancelReasonSchema, type Order } from './commerce.js';
 import { currencySchema } from './product.js';
 
 export const ORDER_REFUND_JOB_STATUSES = [
@@ -36,3 +36,28 @@ export const orderRefundJobSchema = z.object({
 });
 
 export type OrderRefundJob = z.infer<typeof orderRefundJobSchema>;
+
+const outOfStockRefundIdempotencyKey = (orderId: string): string => `oos-refund-${orderId}`;
+
+export const outOfStockRefundJob = (
+  order: Pick<Order, 'id' | 'tenantId' | 'amountCents' | 'currency' | 'providerObjectIds'>,
+  input: { id: string; now: string },
+): OrderRefundJob => orderRefundJobSchema.parse({
+  id: input.id,
+  tenantId: order.tenantId,
+  orderId: order.id,
+  paymentIntentId: order.providerObjectIds['paymentIntent'] ?? null,
+  amountCents: order.amountCents,
+  currency: order.currency,
+  reason: 'out_of_stock',
+  idempotencyKey: outOfStockRefundIdempotencyKey(order.id),
+  status: 'pending',
+  attempts: 0,
+  nextAttemptAt: input.now,
+  lockedAt: null,
+  lastError: null,
+  providerRefundId: null,
+  providerRefundStatus: null,
+  createdAt: input.now,
+  updatedAt: input.now,
+});

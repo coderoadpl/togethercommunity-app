@@ -1,0 +1,273 @@
+import { asc, eq } from 'drizzle-orm';
+import pg from 'pg';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { checkoutSessionInputSchema, ok, type CheckoutSessionInput } from '#core/domain/index.js';
+import { fulfillStripeWebhook, releaseExpiredStockReservations, startCheckoutSession, validateCheckoutSelection, type PaymentWebhookEvent } from '#core/server/index.js';
+import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
+
+import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
+import { createEmailOutboxRepository } from './email-outbox.js';
+import { createOrderRefundJobRepository } from './order-refund-jobs.js';
+import { createPaymentTransactionPort } from './payment-transaction.js';
+import {
+  createMemberRepository,
+  createOrderRepository,
+  createPaymentRefundRepository,
+  createProcessedPaymentEventRepository,
+  createProductGrantRepository,
+} from './repositories.js';
+import {
+  autoInvoiceJobs, checkoutSnapshots, emailEvents, emailOutbox, members, metaCapiOutbox, orderRefundJobs, orders, processedPaymentEvents, productGrants,
+  memberEvents, productPrices, products, productStock, stockEvents, stockReservations, consents, tenants,
+} from './schema.js';
+import { createStockRepository } from './stock.js';
+import { createTestDatabase } from './test-database-name.js';
+
+const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
+
+type Harness = ReturnType<typeof createLegacyCheckoutHarness>;
+
+const harness = () => {
+  const h = createLegacyCheckoutHarness({ stock: createStockRepository(database.db), checkoutSnapshots: createCheckoutSnapshotRepository(database.db) });
+  h.captures.set('capture-1', {
+    termsAccepted: true, termsUrl: 'https://acme.togethercommunity.app/terms', privacyUrl: 'https://acme.togethercommunity.app/privacy',
+    selectedDefinitionIds: [], attachedDefinitionIds: [], collectedAt: '2026-11-15T10:00:00.000Z', confirmationBaseUrl: `${legacyBaseUrl}/marketing/confirm`,
+  });
+  Object.assign(h.webhookDeps, {
+    paymentTransaction: createPaymentTransactionPort(database.db),
+    processedPaymentEvents: createProcessedPaymentEventRepository(database.db),
+    paymentRefunds: createPaymentRefundRepository(database.db),
+    members: createMemberRepository(database.db),
+    grants: createProductGrantRepository(database.db),
+    orders: createOrderRepository(database.db),
+    emailOutbox: createEmailOutboxRepository(database.db),
+    tenantAccess: { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.com', staffRole: 'owner', language: 'en' }] },
+  });
+  return h;
+};
+
+const track = async (productId: string, onHand: number) => {
+  const enabled = await createStockRepository(database.db).enableTracking(legacyTenant.id, { productId, onHand, lowStockThreshold: null, actorUserId: 'staff', now: '2026-11-15T09:00:00.000Z' });
+  if (!enabled.ok) throw new Error(enabled.error.message);
+};
+
+const damage = async (productId: string, now: string) => {
+  const adjusted = await createStockRepository(database.db).adjust(legacyTenant.id, { productId, delta: -1, reason: 'damaged', actorUserId: 'staff', now });
+  if (!adjusted.ok) throw new Error(adjusted.error.message);
+};
+
+const publicCheckout = async (h: Harness, input: CheckoutSessionInput) => {
+  const parsed = checkoutSessionInputSchema.parse(input);
+  const selection = await validateCheckoutSelection(legacyTenant.id, parsed, h.checkoutDeps);
+  if (!selection.ok) throw new Error(selection.error.message);
+  const started = await startCheckoutSession(legacyTenant, legacyBaseUrl, parsed, selection.value, h.checkoutDeps, 'capture-1');
+  if (!started.ok) throw new Error(started.error.message);
+  const snapshotId = h.paymentInputs.at(-1)?.checkoutSnapshotId;
+  if (snapshotId == null) throw new Error('Checkout started without a snapshot');
+  return snapshotId;
+};
+
+const sweep = (h: Harness, now: string) => {
+  h.setNow(now);
+  return releaseExpiredStockReservations({ stock: createStockRepository(database.db), clock: { nowIso: () => now }, logger: h.checkoutDeps.logger });
+};
+
+const sessionBase = {
+  email: 'buyer@example.com', customerName: 'Buyer Example', customerCountry: null, billing: null, termsAccepted: false, paymentStatus: 'paid',
+  subscriptionId: null, invoiceId: null, discountTotalCents: 0, shipping: null, shippingCostCents: null,
+} as const;
+
+const printedPaid = (input: { eventId: string; session: string; snapshotId: string; paymentIntentId: string }): PaymentWebhookEvent => ({
+  id: input.eventId, type: 'checkout.session.completed', objectId: input.session, tenantIds: ['tenant-a'], livemode: true,
+  checkoutSession: {
+    ...sessionBase, paymentIntentId: input.paymentIntentId, customerName: 'Jane Buyer', amountTotalCents: 4099, shippingCostCents: 1999,
+    shipping: { name: 'Jane Buyer', phone: '+48600100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
+    metadata: { attribution: null, tenantId: 'tenant-a', productId: 'printed-1', priceId: 'price-printed-1', memberEmail: 'buyer@example.com', language: 'en', checkoutConsentCaptureId: 'capture-1', couponCheckoutSessionId: null, checkoutSnapshotId: input.snapshotId },
+  },
+});
+
+const bundlePaid = (snapshotId: string): PaymentWebhookEvent => ({
+  id: 'evt_oos_bundle', type: 'checkout.session.completed', objectId: 'cs_live_golden1', tenantIds: ['tenant-a'], livemode: true,
+  checkoutSession: {
+    ...sessionBase, paymentIntentId: 'pi_oos_bundle', amountTotalCents: 8400,
+    metadata: { attribution: null, tenantId: 'tenant-a', productId: 'course-1', priceId: null, memberEmail: 'buyer@example.com', language: null, checkoutConsentCaptureId: 'capture-1', couponCheckoutSessionId: null, checkoutSnapshotId: snapshotId, salesLinkId: 'link-1', productIds: '["course-1","poster-1"]' },
+  },
+});
+
+const printedRequest: CheckoutSessionInput = { productId: 'printed-1', priceId: 'price-printed-1', email: 'buyer@example.com', language: 'en', termsAccepted: true, shipping: { rateId: 'courier' } };
+
+const tenantRows = async () => ({
+  orders: await database.db.select({
+    id: orders.id, status: orders.status, cancelReason: orders.cancelReason, fulfilmentStatus: orders.fulfilmentStatus, amountCents: orders.amountCents,
+    providerObjectIds: orders.providerObjectIds,
+  }).from(orders).where(eq(orders.tenantId, legacyTenant.id)).orderBy(asc(orders.createdAt), asc(orders.id)),
+  refundJobs: await database.db.select({
+    orderId: orderRefundJobs.orderId, paymentIntentId: orderRefundJobs.paymentIntentId, amountCents: orderRefundJobs.amountCents, currency: orderRefundJobs.currency,
+    reason: orderRefundJobs.reason, idempotencyKey: orderRefundJobs.idempotencyKey, status: orderRefundJobs.status, attempts: orderRefundJobs.attempts,
+  }).from(orderRefundJobs).where(eq(orderRefundJobs.tenantId, legacyTenant.id)).orderBy(asc(orderRefundJobs.orderId)),
+  levels: await database.db.select({ productId: productStock.productId, onHand: productStock.onHand, reserved: productStock.reserved })
+    .from(productStock).where(eq(productStock.tenantId, legacyTenant.id)).orderBy(asc(productStock.productId)),
+  stockEventTypes: (await database.db.select({ type: stockEvents.type }).from(stockEvents)
+    .where(eq(stockEvents.tenantId, legacyTenant.id)).orderBy(asc(stockEvents.occurredAt), asc(stockEvents.type))).map((row) => row.type),
+  grants: await database.db.select({ productId: productGrants.productId }).from(productGrants).where(eq(productGrants.tenantId, legacyTenant.id)),
+  invoiceJobs: await database.db.select({ orderId: autoInvoiceJobs.orderId }).from(autoInvoiceJobs).where(eq(autoInvoiceJobs.tenantId, legacyTenant.id)),
+  capiOutbox: await database.db.select({ orderId: metaCapiOutbox.orderId }).from(metaCapiOutbox).where(eq(metaCapiOutbox.tenantId, legacyTenant.id)),
+  emails: await database.db.select({ kind: emailOutbox.kind, to: emailOutbox.to }).from(emailOutbox)
+    .where(eq(emailOutbox.tenantId, legacyTenant.id)).orderBy(asc(emailOutbox.kind), asc(emailOutbox.to)),
+});
+
+const cancelledJob = (orderId: string, paymentIntentId: string, amountCents: number) => ({
+  orderId, paymentIntentId, amountCents, currency: 'PLN', reason: 'out_of_stock', idempotencyKey: `oos-refund-${orderId}`, status: 'pending', attempts: 0,
+});
+
+const waitForLockWaiters = async (observer: pg.Client, count: number) => {
+  for (;;) {
+    const waiting = await observer.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+    );
+    if ((waiting.rows[0]?.count ?? 0) >= count) return;
+  }
+};
+
+beforeAll(async () => {
+  database = await createTestDatabase('together_checkout_out_of_stock', baseDatabaseUrl);
+  await database.db.insert(tenants).values({ id: legacyTenant.id, slug: legacyTenant.slug, name: legacyTenant.name, createdAt: '2026-11-01T09:00:00.000Z' });
+  await database.db.insert(products).values(legacyProducts.map((product) => ({
+    id: product.id, tenantId: product.tenantId, type: product.type, slug: product.slug, title: product.title, description: product.description,
+    priceCents: product.priceCents, currency: product.currency, published: product.published, deliveryMethod: product.deliveryMethod ?? 'pickup',
+    vatRate: typeof product.vatRate === 'number' ? product.vatRate : null, createdAt: product.createdAt,
+  })));
+  await database.db.insert(productPrices).values([
+    { id: 'price-printed-1', tenantId: legacyTenant.id, productId: 'printed-1', kind: 'one_time', interval: null, amountCents: 2100, currency: 'PLN', active: true, createdAt: '2026-11-01T09:00:00.000Z' },
+  ]);
+}, 60_000);
+afterAll(async () => { await database?.close(); });
+beforeEach(async () => {
+  for (const table of [orderRefundJobs, autoInvoiceJobs, metaCapiOutbox, emailEvents, emailOutbox, consents, productGrants, processedPaymentEvents, orders, memberEvents, members, stockReservations, stockEvents, productStock, checkoutSnapshots]) {
+    await database.db.delete(table);
+  }
+});
+
+describe('payment for goods that sold out after the hold ended', () => {
+  it('records the order as paid and cancelled, decrements nothing and queues exactly one refund job', async () => {
+    const h = harness();
+    await track('printed-1', 1);
+    const snapshotId = await publicCheckout(h, printedRequest);
+    expect(await sweep(h, '2026-11-15T10:40:00.000Z')).toStrictEqual(ok({ released: 1 }));
+    await damage('printed-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+
+    expect(await fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_oos_1', session: 'cs_live_golden1', snapshotId, paymentIntentId: 'pi_oos_1' }), h.webhookDeps))
+      .toStrictEqual(ok({ processed: true }));
+
+    const rows = await tenantRows();
+    const orderId = rows.orders[0]?.id ?? '';
+    expect(rows).toStrictEqual({
+      orders: [{ id: orderId, status: 'paid', cancelReason: 'out_of_stock', fulfilmentStatus: null, amountCents: 4099, providerObjectIds: { checkoutSession: 'cs_live_golden1', paymentIntent: 'pi_oos_1' } }],
+      refundJobs: [cancelledJob(orderId, 'pi_oos_1', 4099)],
+      levels: [{ productId: 'printed-1', onHand: 0, reserved: 0 }],
+      stockEventTypes: ['tracking_enabled', 'reserved', 'released', 'adjusted'],
+      grants: [],
+      invoiceJobs: [],
+      capiOutbox: [],
+      emails: [{ kind: 'order-out-of-stock', to: 'owner@example.com' }],
+    });
+    expect(await createOrderRefundJobRepository(database.db).findByOrderId(legacyTenant.id, orderId)).toMatchObject({
+      idempotencyKey: `oos-refund-${orderId}`, status: 'pending', nextAttemptAt: '2026-11-15T10:42:00.000Z', providerRefundId: null,
+    });
+    expect(await createOrderRefundJobRepository(database.db).findByOrderId('other-tenant', orderId)).toBeNull();
+    expect(h.warnings).toContain(`[stock] out of stock tenant=tenant-a order=${orderId} products=printed-1 refund=oos-refund-${orderId}`);
+    expect(h.warnings.some((line) => line.includes('oversold'))).toBe(false);
+  });
+
+  it('cancels a two-line order when one line is short and decrements neither line nor grants the other one', async () => {
+    const h = harness();
+    await track('course-1', 5);
+    await track('poster-1', 1);
+    const snapshotId = await publicCheckout(h, { productId: 'course-1', salesLinkId: 'link-1', email: 'buyer@example.com', termsAccepted: true });
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('poster-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+
+    expect(await fulfillStripeWebhook(legacyTenant, bundlePaid(snapshotId), h.webhookDeps)).toStrictEqual(ok({ processed: true }));
+
+    const rows = await tenantRows();
+    const orderId = rows.orders[0]?.id ?? '';
+    expect(rows.orders).toStrictEqual([{ id: orderId, status: 'paid', cancelReason: 'out_of_stock', fulfilmentStatus: null, amountCents: 8400, providerObjectIds: { checkoutSession: 'cs_live_golden1', paymentIntent: 'pi_oos_bundle' } }]);
+    expect(rows.refundJobs).toStrictEqual([cancelledJob(orderId, 'pi_oos_bundle', 8400)]);
+    expect(rows.levels).toStrictEqual([{ productId: 'course-1', onHand: 5, reserved: 0 }, { productId: 'poster-1', onHand: 0, reserved: 0 }]);
+    expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual([]);
+    expect(rows.grants).toStrictEqual([]);
+    expect(rows.emails).toStrictEqual([{ kind: 'order-out-of-stock', to: 'owner@example.com' }]);
+  });
+
+  it('keeps one order and one refund job when the same webhook is delivered again or the session is reported twice', async () => {
+    const h = harness();
+    await track('printed-1', 1);
+    const snapshotId = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('printed-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+    const event = printedPaid({ eventId: 'evt_oos_dup', session: 'cs_live_golden1', snapshotId, paymentIntentId: 'pi_oos_dup' });
+
+    expect(await fulfillStripeWebhook(legacyTenant, event, h.webhookDeps)).toStrictEqual(ok({ processed: true }));
+    const first = await tenantRows();
+    expect(await fulfillStripeWebhook(legacyTenant, event, h.webhookDeps)).toStrictEqual(ok({ processed: false }));
+    expect((await createStockRepository(database.db).adjust(legacyTenant.id, { productId: 'printed-1', delta: 3, reason: 'restock', actorUserId: 'staff', now: '2026-11-15T10:43:00.000Z' })).ok).toBe(true);
+    expect(await fulfillStripeWebhook(legacyTenant, { ...event, id: 'evt_oos_dup_other' }, h.webhookDeps)).toStrictEqual(ok({ processed: false }));
+
+    const rows = await tenantRows();
+    expect(rows.orders).toStrictEqual(first.orders);
+    expect(rows.refundJobs).toStrictEqual(first.refundJobs);
+    expect(rows.refundJobs).toHaveLength(1);
+    expect(rows.levels).toStrictEqual([{ productId: 'printed-1', onHand: 3, reserved: 0 }]);
+    expect(rows.emails).toStrictEqual(first.emails);
+    expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual([]);
+  });
+
+  it('fulfils exactly one of two payments racing for the last piece and cancels the other with a refund job', async () => {
+    const h = harness();
+    await track('printed-1', 1);
+    const firstSnapshot = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    h.setNow('2026-11-15T10:41:00.000Z');
+    const secondSnapshot = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T11:20:00.000Z');
+    expect(await tenantRows().then((rows) => rows.levels)).toStrictEqual([{ productId: 'printed-1', onHand: 1, reserved: 0 }]);
+
+    const blocker = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await blocker.connect();
+    await observer.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT 1 FROM product_stock WHERE tenant_id = $1 AND product_id = $2 FOR UPDATE', [legacyTenant.id, 'printed-1']);
+      const racing = Promise.all([
+        fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_race_1', session: 'cs_live_golden1', snapshotId: firstSnapshot, paymentIntentId: 'pi_race_1' }), h.webhookDeps),
+        fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_race_2', session: 'cs_live_golden2', snapshotId: secondSnapshot, paymentIntentId: 'pi_race_2' }), h.webhookDeps),
+      ]);
+      await waitForLockWaiters(observer, 2);
+      await blocker.query('COMMIT');
+      expect(await racing).toStrictEqual([ok({ processed: true }), ok({ processed: true })]);
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+
+    const rows = await tenantRows();
+    const fulfilled = rows.orders.filter((order) => order.cancelReason === null);
+    const cancelled = rows.orders.filter((order) => order.cancelReason === 'out_of_stock');
+    expect(fulfilled).toHaveLength(1);
+    expect(fulfilled[0]).toMatchObject({ status: 'paid', fulfilmentStatus: 'to_pack' });
+    expect(cancelled).toHaveLength(1);
+    expect(cancelled[0]).toMatchObject({ status: 'paid', fulfilmentStatus: null });
+    const cancelledOrder = cancelled[0];
+    if (cancelledOrder === undefined) throw new Error('Expected a cancelled order');
+    expect(rows.refundJobs).toStrictEqual([cancelledJob(cancelledOrder.id, cancelledOrder.providerObjectIds['paymentIntent'] ?? '', 4099)]);
+    expect(rows.levels).toStrictEqual([{ productId: 'printed-1', onHand: 0, reserved: 0 }]);
+    expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual(['committed_late']);
+    expect(rows.invoiceJobs.map((job) => job.orderId)).toStrictEqual(fulfilled.map((order) => order.id));
+  });
+});

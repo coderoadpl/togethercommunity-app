@@ -40,6 +40,7 @@ const sourceKindLabelKey: Record<EmailSendSourceKind, keyof Messages['marketing'
   'stock-low': 'stockLow',
   'order-out-of-stock': 'orderOutOfStock',
   'order-refund-alert': 'orderRefundAlert',
+  'order-sold-out-refund': 'orderSoldOutRefund',
   'marketing-consent-confirmation': 'marketingConsentConfirmation',
   'm2m-transactional': 'm2mTransactional',
   'marketing-campaign': 'marketingCampaign',

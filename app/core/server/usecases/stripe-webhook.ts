@@ -449,10 +449,41 @@ const outOfStockProductIds = async (
   return existing === null ? checked.shortProductIds : [];
 };
 
+const enqueueSoldOutRefundEmail = async (
+  tenant: Tenant,
+  order: Order,
+  input: { buyerEmail: string; buyerLanguage: string | null; productTitles: string[]; tenantOrigin: string; now: string },
+  deps: CheckoutCompletionDeps,
+): Promise<Result<unknown, AppError>> => {
+  const [member, settings] = await Promise.all([
+    deps.members.findById(tenant.id, order.memberId),
+    deps.tenants.findSettings(tenant.id),
+  ]);
+  const shopUrl = `${input.tenantOrigin}/`;
+  return deps.emailOutbox.enqueue({
+    id: `order-sold-out-refund:${tenant.id}:${order.id}`,
+    tenantId: tenant.id,
+    to: member?.email ?? input.buyerEmail,
+    payload: {
+      kind: 'order-sold-out-refund',
+      language: resolveEmailLanguage(member?.language, input.buyerLanguage, settings?.defaultLanguage),
+      tenantName: tenant.name,
+      orderId: order.id,
+      amountCents: order.amountCents,
+      currency: order.currency,
+      productTitles: input.productTitles,
+      shopUrl,
+      ...(settings === null ? {} : { branding: emailBrandingFrom(settings, shopUrl) }),
+    },
+    now: input.now,
+    onConflict: 'keep-existing',
+  });
+};
+
 const recordOutOfStockCancellation = async (
   tenant: Tenant,
   order: Order,
-  input: { buyerEmail: string; shortProductIds: readonly string[] },
+  input: { buyerEmail: string; buyerLanguage: string | null; shortProductIds: readonly string[] },
   deps: CheckoutCompletionDeps,
 ): Promise<Result<{ job: OrderRefundJob | null; refundQueued: boolean; emailsQueued: boolean }, AppError>> => {
   const now = deps.clock.nowIso();
@@ -461,7 +492,10 @@ const recordOutOfStockCancellation = async (
   deps.logger.warn(`[stock] out of stock tenant=${tenant.id} order=${order.id} products=${input.shortProductIds.join(',')} refund=${job === null ? 'none' : job.idempotencyKey}`);
   const recipients = deps.tenantAccess === undefined ? [] : await tenantStaffRecipients(tenant.id, { tenants: deps.tenants, tenantAccess: deps.tenantAccess });
   const productTitles = await Promise.all(input.shortProductIds.map(async (productId) => (await deps.products.findById(tenant.id, productId))?.title ?? productId));
-  const orderUrl = `${await resolveTenantOrigin(tenant, deps)}/panel/sales/${encodeURIComponent(order.id)}`;
+  const tenantOrigin = await resolveTenantOrigin(tenant, deps);
+  const orderUrl = `${tenantOrigin}/panel/sales/${encodeURIComponent(order.id)}`;
+  const buyerQueued = await enqueueSoldOutRefundEmail(tenant, order, { ...input, productTitles, tenantOrigin, now }, deps);
+  if (!buyerQueued.ok) return buyerQueued;
   for (const recipient of recipients) {
     const queued = await deps.emailOutbox.enqueue({
       id: deps.ids.nextId(),
@@ -475,7 +509,7 @@ const recordOutOfStockCancellation = async (
     });
     if (!queued.ok) return queued;
   }
-  return ok({ job, refundQueued, emailsQueued: recipients.length > 0 });
+  return ok({ job, refundQueued, emailsQueued: true });
 };
 
 const checkoutShipping = (
@@ -653,7 +687,7 @@ const applyCheckoutCompleted = async (
   }
   if (outOfStock) {
     const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
-    const cancelled = await recordOutOfStockCancellation(tenant, persistedOrder ?? paidOrder, { buyerEmail: normalizeEmail(email), shortProductIds }, deps);
+    const cancelled = await recordOutOfStockCancellation(tenant, persistedOrder ?? paidOrder, { buyerEmail: normalizeEmail(email), buyerLanguage: metadata.language ?? null, shortProductIds }, deps);
     if (!cancelled.ok) return cancelled;
     return ok({ processed: true, paidOrder, emailsQueued: cancelled.value.emailsQueued, refundQueued: cancelled.value.refundQueued });
   }

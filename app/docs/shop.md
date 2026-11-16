@@ -867,7 +867,9 @@ short the whole order is cancelled and nothing is decremented:
   order); an order paid with zero gets no job;
 - staff get the `order-out-of-stock` e-mail (support address, or every staff
   member in their language) with the short products, the amount being refunded
-  and a Studio link to the order.
+  and a Studio link to the order;
+- the buyer gets the `order-sold-out-refund` e-mail (see Buyer communication
+  below), queued in the same transaction.
 
 A later event for a checkout session whose order is already cancelled changes
 nothing. Recurring prices keep the commit above.
@@ -918,6 +920,34 @@ subscribed), so the dispatcher reads the refund back 24 hours and 7 days after
 it was issued. A refund Stripe then reports as `failed` or `canceled` marks the
 job `failed` and alerts staff to return the money another way. A read that
 fails is retried hourly for up to 8 days after the refund was issued.
+
+#### Buyer communication for a cancelled order
+
+The buyer's `order-sold-out-refund` e-mail is queued with the order in the
+payment transaction under the outbox id
+`order-sold-out-refund:<workspaceId>:<orderId>`, so it is sent once per
+cancelled order: a repeated or later event for the same session queues nothing
+new. It goes to the member's address in the member's language, then the
+checkout language, then the workspace default (English or Polish), with the
+workspace branding. It says the whole order was cancelled because the goods
+sold out before the payment completed, lists the sold-out products and says a
+full refund of the paid amount was started automatically, with the usual
+timing by payment method from Stripe's documentation: a card refund made soon
+after the payment usually shows as a reversal, otherwise as a separate credit
+after about 5-10 business days; BLIK about 120 minutes; Przelewy24 a separate
+transfer within 3 business days; other methods depend on the provider. An order
+paid with zero says nothing was charged instead.
+
+`GET /api/public/checkout/session-status` returns `{ "status": "cancelled" }`
+for such an order, whether it is still `paid` or already `refunded`, without
+the purchase analytics payload and without the Meta conversion consent payload.
+The hosted success page (`status=success`) then stops polling and shows the
+sold-out message without the sign-in button; it sends no purchase event. The
+document keeps its script policy: the analytics libraries may still load as on
+any success return, and the full-navigation exit rule is unchanged.
+
+Studio shows a "Cancelled: sold out" badge, with the state of the automatic
+refund job, in the order list (status column) and on the order page.
 
 `checkout.session.expired` is not handled. The expiry sweep
 `releaseExpiredStockReservations` runs on the existing minute tick (the

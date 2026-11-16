@@ -250,6 +250,26 @@ A late payment for goods that are gone is recorded as a paid order with
 refund. Skip such orders when you ship, and do not promise that a paid order is
 always delivered.
 
+The whole order is cancelled when any tracked line no longer fits at payment,
+even if other lines are still available; nothing is taken from stock. Together
+then refunds the full amount automatically through Stripe, once per order, and
+sends the buyer one "sold out, refund" e-mail in the checkout language (English
+or Polish). The e-mail says the order was cancelled because the goods sold out
+before the payment completed, that the full refund was started and how long it
+usually takes: a card refund made soon after the payment often shows as a
+reversal, otherwise as a credit after about 5-10 business days; a BLIK refund
+takes about 120 minutes; a Przelewy24 refund arrives as a separate transfer
+within 3 business days. The public session-status route reports such an order
+as `cancelled` (section 6), the hosted success page shows a sold-out message
+instead of the purchase confirmation and no purchase analytics event is sent.
+Studio marks the order "Cancelled: sold out" in the order list and on the order
+page, together with the state of its automatic refund.
+
+The automatic refund needs the Charges and Refunds (write) permission
+(`charge_write`) on the workspace's Stripe restricted key, in each mode you use.
+Without it the refund is not attempted again, staff get an alert e-mail and the
+refund has to be made by hand in the Stripe Dashboard.
+
 ## 6. Connect an anonymous storefront from another origin
 
 Use the workspace origin and `credentials: 'omit'`. These public JSON routes
@@ -262,7 +282,7 @@ allow open CORS without credentialed requests:
 | `/api/public/sales-links/<slug>` | `GET`, `OPTIONS` | Active fixed bundle, VAT lines, total and public workspace context |
 | `/api/public/checkout/coupon` | `POST`, `OPTIONS` | Server-side coupon validation |
 | `/api/public/checkout/session` | `POST`, `OPTIONS` | Create the checkout handoff |
-| `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending` or `paid` status, not buyer/address details |
+| `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending`, `paid` or `cancelled` status, not buyer/address details |
 
 The allowed request headers are `x-tenant, content-type, if-none-match`, not
 Authorization or API-key headers. Never widen authenticated-origin rules or send
@@ -500,8 +520,11 @@ it does not provide an external success return for shipped books. This guide
 does not change which documents load vendor scripts.
 
 A browser success URL is not proof of payment. The public session-status route
-returns `data.status` (`pending` or `paid`) and may include optional analytics
-fields; use it for buyer display only. Fulfil from the authenticated paid-order
+returns `data.status` (`pending`, `paid` or `cancelled`) and may include optional
+analytics fields with `paid` only; use it for buyer display only. `cancelled`
+means the payment arrived after the goods sold out: the order is cancelled and
+refunded automatically (section 5), and the response carries no analytics or
+Meta conversion data. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ## 8. Poll live orders and record fulfilment

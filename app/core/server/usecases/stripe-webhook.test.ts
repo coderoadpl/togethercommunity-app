@@ -2782,9 +2782,33 @@ describe('checkout stock commit in the payment webhook', () => {
     expect(h.autoInvoiceJobs).toEqual([]);
     expect([...h.grants.values()]).toEqual([]);
     expect(h.enrollmentEmails).toEqual([]);
-    expect(h.queued).toEqual([{ to: 'owner@example.com', payload: expect.objectContaining({ kind: 'order-out-of-stock', orderId, amountCents: 4900, productTitles: [expect.any(String)] }) }]);
+    expect(h.queued).toEqual([
+      { to: 'buyer@example.com', payload: expect.objectContaining({ kind: 'order-sold-out-refund', orderId, amountCents: 4900, currency: 'PLN', productTitles: [expect.any(String)] }) },
+      { to: 'owner@example.com', payload: expect.objectContaining({ kind: 'order-out-of-stock', orderId, amountCents: 4900, productTitles: [expect.any(String)] }) },
+    ]);
     expect(stock.events).toEqual([]);
     expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 0, reserved: 0 });
+  });
+
+  it('queues one sold-out refund e-mail for the buyer under an order-scoped id that a repeated enqueue keeps', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    const enqueued: Parameters<typeof h.deps.emailOutbox.enqueue>[0][] = [];
+    const enqueue = h.deps.emailOutbox.enqueue;
+    h.deps.emailOutbox = { ...h.deps.emailOutbox, enqueue: async (message) => { enqueued.push(message); return enqueue(message); } };
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent({ amountTotalCents: 4900 }), h.deps)).toEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(tenantA, completedEvent({ id: 'evt-redelivered', amountTotalCents: 4900 }), h.deps)).toEqual(ok({ processed: false }));
+
+    const orderId = h.orders[0]?.id ?? '';
+    const buyerEmails = enqueued.filter((message) => message.payload.kind === 'order-sold-out-refund');
+    expect(buyerEmails).toEqual([expect.objectContaining({
+      id: `order-sold-out-refund:${tenantA.id}:${orderId}`, tenantId: tenantA.id, to: 'buyer@example.com', onConflict: 'keep-existing',
+      payload: expect.objectContaining({ language: 'pl', tenantName: tenantA.name, shopUrl: expect.stringMatching(/^https?:\/\/.+\/$/) }),
+    })]);
+    expect(h.refundJobs).toHaveLength(1);
   });
 
   it('records a cancelled order paid with zero without a refund job', async () => {

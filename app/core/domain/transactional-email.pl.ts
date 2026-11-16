@@ -167,6 +167,28 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       text: `Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amount} jest w toku.\nZamówienie: ${orderId}\nKupujący: ${buyerEmail}\nBrak towaru: ${productTitles}\n${orderUrl}`,
     }),
   },
+  orderSoldOutRefundEmail: {
+    shopLabel: 'Przejdź do sklepu',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+      const timing = [
+        'Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.',
+        'BLIK: zwrot trwa około 120 minut.',
+        'Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.',
+        'Inne metody płatności: czas zależy od operatora płatności.',
+      ];
+      const refundText = refund === null
+        ? 'Nie pobraliśmy żadnej opłaty, więc nie ma czego zwracać.'
+        : `Automatycznie zleciliśmy zwrot całej kwoty ${refund.amount} na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n${timing.map((line) => `- ${line}`).join('\n')}`;
+      const refundHtml = refund === null
+        ? '<p>Nie pobraliśmy żadnej opłaty, więc nie ma czego zwracać.</p>'
+        : `<p>Automatycznie zleciliśmy zwrot całej kwoty ${refund.amountHtml} na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
+      return {
+        subject: `Zamówienie ${orderId} anulowane: towar wyprzedany, ${refund === null ? 'bez opłaty' : 'zwracamy całą kwotę'}`,
+        html: `${header}<p>Cześć!</p><p>Płatność za zamówienie ${orderIdHtml} na platformie ${tenantNameHtml} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Wyprzedane: ${productTitlesHtml}</p>${refundHtml}<p>Przepraszamy za kłopot.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Cześć!\n\nPłatność za zamówienie ${orderId} na platformie ${tenantName} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nWyprzedane: ${productTitles}\n\n${refundText}\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

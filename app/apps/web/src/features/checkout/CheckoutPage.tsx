@@ -78,18 +78,20 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const paymentStatus = useQuery({
     ...actions.publicCheckoutSessionStatus(sessionId ?? '', language),
     enabled: (query) => checkoutStatus === 'success' && hasSessionId &&
-      !statusTimedOut && query.state.data?.status !== 'paid',
-    refetchInterval: (query) => query.state.data?.status === 'paid' ||
+      !statusTimedOut && (query.state.data?.status ?? 'pending') === 'pending',
+    refetchInterval: (query) => (query.state.data?.status ?? 'pending') !== 'pending' ||
       statusTimedOut || Date.now() >= statusDeadline ? false : 3000,
     retry: false,
   });
   const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
+  const soldOutRefund = hasSessionId && paymentStatus.data?.status === 'cancelled';
+  const paymentSettled = paymentPaid || soldOutRefund;
 
   useEffect(() => {
-    if (checkoutStatus !== 'success' || paymentPaid) return;
+    if (checkoutStatus !== 'success' || paymentSettled) return;
     const timeout = window.setTimeout(() => setStatusTimedOut(true), Math.max(0, statusDeadline - Date.now()));
     return () => window.clearTimeout(timeout);
-  }, [checkoutStatus, paymentPaid, statusDeadline]);
+  }, [checkoutStatus, paymentSettled, statusDeadline]);
   const testSession = useMutation({
     ...actions.stripeTestSession,
     onSuccess: () => { void paymentConfig.refetch(); },
@@ -258,10 +260,12 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
-    const title = paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
-    const eyebrow = paymentPaid
-      ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
-      : t.checkout.successEyebrow;
+    const title = soldOutRefund ? t.checkout.soldOutRefundTitle : paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
+    const eyebrow = soldOutRefund
+      ? t.checkout.soldOutRefundEyebrow
+      : paymentPaid
+        ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
+        : t.checkout.successEyebrow;
     return (
       <FocusCard brand={<BrandMark size="compact" />} eyebrow={eyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
@@ -275,14 +279,16 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">
-            {testPurchase ? t.checkout.testPurchaseBody : paymentPaid
+            {testPurchase ? t.checkout.testPurchaseBody : soldOutRefund ? t.checkout.soldOutRefundBody : paymentPaid
               ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
               : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
           </Typography>
-          {paymentPaid ? null : <LinearProgress aria-label={title} />}
-          <Button component={Link} to="/login" variant={paymentPaid ? 'contained' : 'text'} fullWidth>
-            {t.checkout.goToLogin}
-          </Button>
+          {paymentSettled ? null : <LinearProgress aria-label={title} />}
+          {soldOutRefund ? null : (
+            <Button component={Link} to="/login" variant={paymentPaid ? 'contained' : 'text'} fullWidth>
+              {t.checkout.goToLogin}
+            </Button>
+          )}
         </Stack>
       </FocusCard>
     );

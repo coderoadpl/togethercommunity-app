@@ -477,7 +477,7 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInputSchema;
 
 export const publicCheckoutSessionStatusOutputSchema = z.object({
-  status: z.enum(['pending', 'paid']),
+  status: z.enum(['pending', 'paid', 'cancelled']),
   analytics: checkoutPurchaseAnalyticsSchema.optional(),
   metaCapi: metaCapiConfigSchema.optional(),
 }).strict();

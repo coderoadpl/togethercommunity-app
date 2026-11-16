@@ -167,6 +167,28 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       text: `A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amount} is in progress.\nOrder: ${orderId}\nBuyer: ${buyerEmail}\nOut of stock: ${productTitles}\n${orderUrl}`,
     }),
   },
+  orderSoldOutRefundEmail: {
+    shopLabel: 'Visit the shop',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+      const timing = [
+        'Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it appears as a separate credit after about 5–10 business days.',
+        'BLIK: the refund takes about 120 minutes.',
+        'Przelewy24: the refund arrives as a separate transfer within 3 business days.',
+        'Other payment methods: the time depends on the payment provider.',
+      ];
+      const refundText = refund === null
+        ? 'You were not charged, so there is nothing to refund.'
+        : `A full refund of ${refund.amount} to the payment method you used has been started automatically. You do not need to do anything.\n\nWhen the money comes back:\n${timing.map((line) => `- ${line}`).join('\n')}`;
+      const refundHtml = refund === null
+        ? '<p>You were not charged, so there is nothing to refund.</p>'
+        : `<p>A full refund of ${refund.amountHtml} to the payment method you used has been started automatically. You do not need to do anything.</p><p>When the money comes back:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
+      return {
+        subject: `Order ${orderId} cancelled: sold out, ${refund === null ? 'nothing charged' : 'full refund on its way'}`,
+        html: `${header}<p>Hello!</p><p>Your payment for order ${orderIdHtml} on ${tenantNameHtml} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.</p><p>Sold out: ${productTitlesHtml}</p>${refundHtml}<p>We are sorry for the trouble.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Hello!\n\nYour payment for order ${orderId} on ${tenantName} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.\n\nSold out: ${productTitles}\n\n${refundText}\n\nWe are sorry for the trouble.\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

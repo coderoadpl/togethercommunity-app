@@ -22,7 +22,7 @@ export const getCheckoutSessionStatus = async (
     metaCapi?: MetaCapiDeps;
   },
   locale?: Language,
-): Promise<Result<{ status: 'pending' | 'paid'; analytics?: CheckoutPurchaseAnalytics; metaCapi?: MetaCapiConfig }, AppError>> => {
+): Promise<Result<{ status: 'pending' | 'paid' | 'cancelled'; analytics?: CheckoutPurchaseAnalytics; metaCapi?: MetaCapiConfig }, AppError>> => {
   const parsed = checkoutSessionStatusInputSchema.safeParse({ session_id: sessionId });
   if (!parsed.success) return err(validation('Invalid checkout session id'));
   const mode = parsed.data.session_id.startsWith('cs_test_') ? 'test' : 'live';
@@ -33,6 +33,7 @@ export const getCheckoutSessionStatus = async (
     order.providerObjectIds.checkoutSession === parsed.data.session_id &&
     ['paid', 'partially_refunded', 'refunded'].includes(order.status);
   if (!paid || order === null) return ok({ status: 'pending' });
+  if (order.cancelReason != null) return ok({ status: 'cancelled' });
   const settings = await deps.tenants.findSettings(tenantId);
   const metaCapiEnabled = settings?.analyticsMetaCapiEnabled === true && !!settings.analyticsMetaPixelId;
   const metaCapi = deps.metaCapi && metaCapiEnabled ? await getMetaCapiConfig(tenantId, sessionId, deps.metaCapi, locale) : undefined;

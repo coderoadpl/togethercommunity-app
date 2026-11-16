@@ -13,6 +13,7 @@ import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { OrderShipment } from './OrderShipment.js';
 import { OrderRefundJob } from './OrderRefundJob.js';
+import { OrderCancelledChip } from './OrderCancelledChip.js';
 import { OrderShipx } from './OrderShipx.js';
 
 const saveLabel = (file: { filename: string; contentType: string; bytes: Uint8Array }) => {
@@ -149,6 +150,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+            <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={detail.data.refundJob?.status} />
             {order.fulfilmentStatus == null ? null : (
               <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
                 label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />

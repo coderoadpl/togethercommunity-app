@@ -1,19 +1,7 @@
 import { z } from 'zod';
 
-import { orderCancelReasonSchema, type Order } from './commerce.js';
+import { orderCancelReasonSchema, orderRefundJobStatusSchema, type Order } from './commerce.js';
 import { currencySchema } from './product.js';
-
-export const ORDER_REFUND_JOB_STATUSES = [
-  'pending',
-  'running',
-  'submitted',
-  'succeeded',
-  'failed',
-  'blocked_permission',
-  'skipped_refunded',
-] as const;
-
-const orderRefundJobStatusSchema = z.enum(ORDER_REFUND_JOB_STATUSES);
 
 export const orderRefundJobSchema = z.object({
   id: z.string().min(1),

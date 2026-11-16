@@ -636,6 +636,38 @@ export const orderOutOfStockEmail = (
   }));
 };
 
+export const orderSoldOutRefundEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    productTitles: readonly string[];
+    shopUrl: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const productTitles = input.productTitles.join(', ');
+  return emailMessageSchema.parse(messages.orderSoldOutRefundEmail.render({
+    header: brandHeader(input.branding),
+    socialLinks: brandSocialLinks(input.branding),
+    tenantName: input.tenantName,
+    tenantNameHtml: escapeHtml(input.tenantName),
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    productTitles,
+    productTitlesHtml: escapeHtml(productTitles),
+    refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,
+    shopUrl: input.shopUrl,
+    shopLink: link(input.shopUrl, messages.orderSoldOutRefundEmail.shopLabel),
+  }));
+};
+
 export const orderRefundAlertEmail = (
   language: string,
   input: {

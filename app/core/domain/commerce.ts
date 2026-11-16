@@ -191,6 +191,18 @@ export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
 export const orderCancelReasonSchema = z.enum(['out_of_stock']);
 
+export const ORDER_REFUND_JOB_STATUSES = [
+  'pending',
+  'running',
+  'submitted',
+  'succeeded',
+  'failed',
+  'blocked_permission',
+  'skipped_refunded',
+] as const;
+
+export const orderRefundJobStatusSchema = z.enum(ORDER_REFUND_JOB_STATUSES);
+
 export const orderSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
   mode: stripeModeSchema.default('live'),
@@ -240,6 +252,7 @@ export const orderListItemSchema = orderSchema.extend({
   memberName: z.string().nullable(),
   productTitle: z.string(),
   couponCode: z.string().nullable(),
+  refundJobStatus: orderRefundJobStatusSchema.nullable().optional(),
 });
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { contrastRatio, deriveLightAccent } from './color.js';
-import { emailOutboxPayloadSchema } from './email-outbox.js';
+import { emailOutboxPayloadSchema, renderEmailOutboxPayload } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
 import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
@@ -22,6 +22,7 @@ import {
   stockLowEmail,
   orderOutOfStockEmail,
   orderRefundAlertEmail,
+  orderSoldOutRefundEmail,
   subscriptionEnded,
   orderShipped,
   subscriptionPaymentFailed,
@@ -540,6 +541,10 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', alert: 'retrying', orderId: 'order-1', amountCents: 4099, currency: 'PLN',
       error: 'Stripe is unavailable', orderUrl: 'https://acme.test/panel/sales/order-1',
     })],
+    ['order-sold-out-refund', (language) => orderSoldOutRefundEmail(language, {
+      tenantName: 'Acme Courses', orderId: 'order-1', amountCents: 4099, currency: 'PLN',
+      productTitles: ['Printed poster'], shopUrl: 'https://acme.test/',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -694,6 +699,63 @@ describe('order refund alert email', () => {
 
   it('renders the Polish alert with a Polish amount', () => {
     expect(orderRefundAlertEmail('pl', { ...input, alert: 'failed' })).toEqual(expectedTransactionalEmailPl.orderRefundAlertEmail);
+  });
+});
+
+describe('order sold out refund email', () => {
+  const input = {
+    tenantName: 'Acme <Shop>', orderId: 'order-<1>', amountCents: 4099, currency: 'PLN',
+    productTitles: ['Printed <poster>', 'Mug'], shopUrl: 'https://acme.example.com/',
+  };
+
+  it('tells the buyer the order was cancelled because it sold out and gives the refund timing by payment method', () => {
+    const message = orderSoldOutRefundEmail('en', input);
+    expect(message.subject).toBe('Order order-<1> cancelled: sold out, full refund on its way');
+    expect(message.text).toBe([
+      'Hello!',
+      '',
+      'Your payment for order order-<1> on Acme <Shop> arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.',
+      '',
+      'Sold out: Printed <poster>, Mug',
+      '',
+      'A full refund of PLN\u00a040.99 to the payment method you used has been started automatically. You do not need to do anything.',
+      '',
+      'When the money comes back:',
+      '- Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it appears as a separate credit after about 5–10 business days.',
+      '- BLIK: the refund takes about 120 minutes.',
+      '- Przelewy24: the refund arrives as a separate transfer within 3 business days.',
+      '- Other payment methods: the time depends on the payment provider.',
+      '',
+      'We are sorry for the trouble.',
+      '',
+      'Visit the shop: https://acme.example.com/',
+    ].join('\n'));
+    expect(message.html).toContain('order order-&lt;1&gt; on Acme &lt;Shop&gt;');
+    expect(message.html).toContain('Sold out: Printed &lt;poster&gt;, Mug');
+    expect(message.html).toContain('<li>BLIK: the refund takes about 120 minutes.</li>');
+    expect(message.html).toContain('<a href="https://acme.example.com/">Visit the shop</a>');
+  });
+
+  it('says nothing was charged instead of promising a refund for an order paid with zero', () => {
+    const message = orderSoldOutRefundEmail('en', { ...input, amountCents: 0 });
+    expect(message.subject).toBe('Order order-<1> cancelled: sold out, nothing charged');
+    expect(message.text).toContain('You were not charged, so there is nothing to refund.');
+    expect(message.text).not.toContain('BLIK');
+  });
+
+  it('renders the Polish message with a Polish amount', () => {
+    expect(orderSoldOutRefundEmail('pl', input)).toEqual(expectedTransactionalEmailPl.orderSoldOutRefundEmail);
+  });
+
+  it('round-trips through the outbox payload and renders the branded header', () => {
+    const payload = emailOutboxPayloadSchema.parse({
+      kind: 'order-sold-out-refund', language: 'pl', ...input,
+      branding: { logoUrl: 'https://acme.example.com/logo.png', accentColor: null },
+    });
+    expect(payload.kind).toBe('order-sold-out-refund');
+    const rendered = renderEmailOutboxPayload(payload);
+    expect(rendered).toMatchObject({ success: true, data: { subject: expectedTransactionalEmailPl.orderSoldOutRefundEmail?.subject } });
+    expect(rendered.success && rendered.data.html).toContain('https://acme.example.com/logo.png');
   });
 });
 

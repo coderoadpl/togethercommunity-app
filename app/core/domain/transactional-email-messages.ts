@@ -251,6 +251,20 @@ export interface TransactionalEmailMessages {
       orderUrlHtml: string;
     }) => TransactionalEmailMessageContent;
   };
+  orderSoldOutRefundEmail: {
+    shopLabel: string;
+    render: (input: BrandedInput & {
+      tenantName: string;
+      tenantNameHtml: string;
+      orderId: string;
+      orderIdHtml: string;
+      productTitles: string;
+      productTitlesHtml: string;
+      refund: { amount: string; amountHtml: string } | null;
+      shopUrl: string;
+      shopLink: string;
+    }) => TransactionalEmailMessageContent;
+  };
   orderRefundAlertEmail: {
     render: (input: {
       tenantName: string;

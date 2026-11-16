@@ -172,8 +172,12 @@ describe('payment for goods that sold out after the hold ended', () => {
       grants: [],
       invoiceJobs: [],
       capiOutbox: [],
-      emails: [{ kind: 'order-out-of-stock', to: 'owner@example.com' }],
+      emails: [{ kind: 'order-out-of-stock', to: 'owner@example.com' }, { kind: 'order-sold-out-refund', to: 'buyer@example.com' }],
     });
+    const buyerEmail = await database.db.select({ id: emailOutbox.id, payload: emailOutbox.payload }).from(emailOutbox).where(eq(emailOutbox.kind, 'order-sold-out-refund'));
+    expect(buyerEmail).toStrictEqual([{ id: `order-sold-out-refund:${legacyTenant.id}:${orderId}`, payload: expect.objectContaining({ language: 'en', orderId, amountCents: 4099, currency: 'PLN', productTitles: ['Printed book'] }) }]);
+    expect((await createOrderRepository(database.db).list(legacyTenant.id, { page: 1, pageSize: 20 })).orders)
+      .toStrictEqual([expect.objectContaining({ id: orderId, cancelReason: 'out_of_stock', refundJobStatus: 'pending' })]);
     expect(await createOrderRefundJobRepository(database.db).findByOrderId(legacyTenant.id, orderId)).toMatchObject({
       idempotencyKey: `oos-refund-${orderId}`, status: 'pending', nextAttemptAt: '2026-11-15T10:42:00.000Z', providerRefundId: null,
     });
@@ -200,7 +204,7 @@ describe('payment for goods that sold out after the hold ended', () => {
     expect(rows.levels).toStrictEqual([{ productId: 'course-1', onHand: 5, reserved: 0 }, { productId: 'poster-1', onHand: 0, reserved: 0 }]);
     expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual([]);
     expect(rows.grants).toStrictEqual([]);
-    expect(rows.emails).toStrictEqual([{ kind: 'order-out-of-stock', to: 'owner@example.com' }]);
+    expect(rows.emails).toStrictEqual([{ kind: 'order-out-of-stock', to: 'owner@example.com' }, { kind: 'order-sold-out-refund', to: 'buyer@example.com' }]);
   });
 
   it('keeps one order and one refund job when the same webhook is delivered again or the session is reported twice', async () => {

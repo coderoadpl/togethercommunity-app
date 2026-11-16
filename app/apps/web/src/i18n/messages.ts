@@ -885,6 +885,8 @@ export interface Messages {
     refreshInvoice: string;
     refreshingInvoice: string;
     invoiceStatus: string;
+    cancelledOutOfStock: string;
+    cancelledOutOfStockRefund: (params: { refund: string }) => string;
     refundJobTitle: string;
     refundJobStatuses: Record<OrderRefundJobView['status'], string>;
     refundJobAttempts: string;
@@ -2751,6 +2753,9 @@ export interface Messages {
     subscriptionSuccessTitle: string;
     subscriptionSuccessBody: string;
     goToLogin: string;
+    soldOutRefundEyebrow: string;
+    soldOutRefundTitle: string;
+    soldOutRefundBody: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
     cancelledBody: string;
@@ -3051,6 +3056,7 @@ export interface Messages {
       stockLow: string;
       orderOutOfStock: string;
       orderRefundAlert: string;
+      orderSoldOutRefund: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

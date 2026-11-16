@@ -703,8 +703,8 @@ describe('order refund alert email', () => {
     const en = orderRefundAlertEmail('en', { ...input, alert: 'blocked_permission_failed' });
     expect(en.subject).toBe('[Acme] Automatic refund still blocked after 72 hours, refund by hand: order-<1>');
     expect(en.text).toContain('after 72 hours of hourly attempts and is no longer retried. Refund the payment by hand in the Stripe Dashboard.');
-    expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission_failed' })).toMatchObject(expectedTransactionalEmailPl.orderRefundBlockedFailedAlertEmail);
-    expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission' })).toMatchObject(expectedTransactionalEmailPl.orderRefundBlockedAlertEmail);
+    expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission_failed' })).toEqual(expectedTransactionalEmailPl.orderRefundBlockedFailedAlertEmail);
+    expect(orderRefundAlertEmail('pl', { ...input, alert: 'blocked_permission' })).toEqual(expectedTransactionalEmailPl.orderRefundBlockedAlertEmail);
   });
 
   it('tells staff to check a refund Stripe never confirmed and to return the money another way if it failed, in English and Polish', () => {
@@ -713,7 +713,7 @@ describe('order refund alert email', () => {
     expect(en.subject).toBe('[Acme] Refund not confirmed by Stripe, check it by hand: order-<1>');
     expect(en.text).toBe('Stripe has not confirmed the refund of PLN\u00a040.99 for cancelled order order-<1>, and the refund is no longer checked automatically. Check it in the Stripe Dashboard; if it failed or was canceled, return the money to the buyer another way.\nLast error: Refund still pending at the last scheduled status check\nhttps://acme.example.com/panel/sales/order-1');
     expect(en.html).toContain('cancelled order order-&lt;1&gt;, and the refund is no longer checked automatically.');
-    expect(orderRefundAlertEmail('pl', unconfirmed)).toMatchObject(expectedTransactionalEmailPl.orderRefundUnconfirmedAlertEmail);
+    expect(orderRefundAlertEmail('pl', unconfirmed)).toEqual(expectedTransactionalEmailPl.orderRefundUnconfirmedAlertEmail);
   });
 
   it('gives every alert its own subject', () => {

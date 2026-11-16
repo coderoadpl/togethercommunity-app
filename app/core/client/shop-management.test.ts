@@ -247,7 +247,7 @@ describe('shop management client order calls', () => {
       await client.verifyOrder({ reference: 'order-1' }),
       await client.getOrder('order-1'),
       await client.shipOrder({ orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' }),
-      await client.issueOrderLine({ orderId: 'order-1', productId: 'product-1' }),
+      await client.issueOrderLine({ orderId: 'order-1', productId: 'product-1', count: 2 }),
       await client.shipxShipment({ orderId: 'order-1' }),
       await client.shipxCreate({ orderId: 'order-1' }),
       await client.shipxRefresh({ orderId: 'order-1' }),
@@ -261,6 +261,7 @@ describe('shop management client order calls', () => {
     expect(seen[0]?.url.search).toBe('?mode=live&page=2&pageSize=50');
     expect(seen[1]?.url.search).toBe('?format=csv&fulfilmentStatus=to_pack');
     expect(seen[5]?.body).toEqual({ orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' });
+    expect(seen[6]?.body).toEqual({ orderId: 'order-1', productId: 'product-1', count: 2 });
     expect(results[11]).toMatchObject({ ok: true, value: { filename: 'inpost-1.pdf', contentType: 'application/pdf' } });
     for (const call of seen) {
       expect(call.headers.get('x-api-key')).toBe('shop-secret');

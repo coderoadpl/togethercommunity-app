@@ -282,6 +282,7 @@ describe('shop management key replay on a clean workspace', () => {
     const [order] = toPack.orders;
     if (order === undefined) throw new Error('The paid order is missing from the to-pack list');
     expect(order).toMatchObject({ id: paidOrders[0]?.id, mode: 'live', status: 'paid', fulfilmentStatus: 'to_pack', shipping: { rateId: 'courier', address: { city: 'Warsaw', country: 'PL' } } });
+    expect(order.lines?.find((line) => line.productType === 'physical')).toMatchObject({ quantity: 1, issuedCount: 0 });
     const shipped = unwrapped(await warehouse.shipOrder({ orderId: order.id, carrier: 'other', trackingNumber: 'TRACK0001' })).order;
     expect(shipped).toMatchObject({ fulfilmentStatus: 'shipped', shipment: { carrier: 'other', trackingNumber: 'TRACK0001' } });
     expect(await warehouse.shipOrder({ orderId: order.id, carrier: 'other', trackingNumber: 'TRACK0002' }))

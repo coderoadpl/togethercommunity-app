@@ -20,6 +20,7 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
+import { issueCountOf } from './order-verification-routes.js';
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
 import { shipxLabelResponse, shipxOrderDeps } from './shipx-routes.js';
@@ -92,9 +93,11 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
     ...SHOP_ORDER_ROUTES.issueOrderLine,
     handler: async (c, { ctx }) => {
       if (deps.orderVerification === undefined) return unavailable('Order verification is unavailable');
+      const count = await issueCountOf(c.req.raw);
+      if (!count.ok) return respond(count);
       return respond(await issueOrderLine(
         ctx,
-        { orderId: orderIdParam(c), productId: c.req.param('productId') ?? '' },
+        { ...count.value, orderId: orderIdParam(c), productId: c.req.param('productId') ?? '' },
         { orderVerification: deps.orderVerification, clock: deps.clock },
       ));
     },

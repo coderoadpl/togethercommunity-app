@@ -276,6 +276,7 @@ describe('shop orders CLI', () => {
     [['shop', 'orders', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1', '', null],
     [['shop', 'orders', 'ship', 'order-1', '--carrier', 'other', '--tracking', 'MANUAL0001'], 'POST', '/api/m2m/shop/orders/order-1/ship', '', { orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' }],
     [['shop', 'orders', 'issue', 'order-1', 'product-1'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1' }],
+    [['shop', 'orders', 'issue', 'order-1', 'product-1', '--count', '2'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1', count: 2 }],
     [['shop', 'orders', 'shipx', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1/shipx', '', null],
     [['shop', 'orders', 'shipx', 'create', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', {}],
     [['shop', 'orders', 'shipx', 'refresh', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/refresh', '', {}],
@@ -308,6 +309,17 @@ describe('shop orders CLI', () => {
 
   it('rejects an unknown order mode before any request', async () => {
     await run('shop', 'orders', 'list', '--mode', 'staging');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('sends no count when issue has no --count', async () => {
+    await run('shop', 'orders', 'issue', 'order-1', 'product-1');
+    expect(calls[0]?.body).toEqual({ orderId: 'order-1', productId: 'product-1' });
+  });
+
+  it.each([['0'], ['-1'], ['1.5'], ['two']])('rejects issue --count %s before any request', async (count) => {
+    await run('shop', 'orders', 'issue', 'order-1', 'product-1', '--count', count);
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(calls).toEqual([]);
   });

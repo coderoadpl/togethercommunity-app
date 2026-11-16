@@ -122,13 +122,16 @@ const courierShipping = {
   ...lockerShipping, rateId: 'courier', label: 'Courier', carrier: 'other', pickupPoint: null,
 };
 
-const order = (tenantId: string, id: string, options: { mode?: 'live' | 'test'; shipping?: typeof lockerShipping | typeof courierShipping | null } = {}) => orderSchema.parse({
+const order = (tenantId: string, id: string, options: { mode?: 'live' | 'test'; shipping?: typeof lockerShipping | typeof courierShipping | null; quantity?: number } = {}) => orderSchema.parse({
   id, tenantId, memberId: `member-${tenantId}`, productId: `book-${tenantId}`, priceId: null, kind: 'one_time', status: 'paid',
   mode: options.mode ?? 'live', amountCents: 6398, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null,
   discountCents: 0, createdAt: now, paidAt: now,
   ...(options.shipping === null ? {} : { shipping: options.shipping ?? lockerShipping, fulfilmentStatus: 'to_pack' }),
   lines: [
-    { productId: `book-${tenantId}`, name: 'Printed handbook', productType: 'physical', grossCents: 4899, netCents: 4666, vatCents: 233, vatRate: 5, vatExemptionBasis: null, issuedCount: 0 },
+    {
+      productId: `book-${tenantId}`, name: 'Printed handbook', productType: 'physical', grossCents: 4899, netCents: 4666, vatCents: 233, vatRate: 5, vatExemptionBasis: null, issuedCount: 0,
+      ...(options.quantity === undefined ? {} : { quantity: options.quantity }),
+    },
     ...(options.shipping === null ? [] : [
       { productId: 'shipping:locker', name: 'Parcel locker', productType: 'shipping', grossCents: 1499, netCents: 1219, vatCents: 280, vatRate: 23, vatExemptionBasis: null, issuedCount: null },
     ]),
@@ -298,6 +301,62 @@ describe('shop order routes with a shop management key', () => {
     const events = (await database.db.select().from(orderIssueEvents)).filter((event) => event.orderId === 'acme-live-pickup');
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ tenantId: 'acme', productId: 'book-acme', staffUserId: ownerId });
+  });
+
+  it('issues a line of several units with the session count body, then the rest, and refuses an over-issue', async () => {
+    const orderId = 'acme-live-pickup-units';
+    await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: null, quantity: 3 }));
+    const secret = await createShopKey([FULFIL]);
+    const path = orderPath(SHOP_ORDER_ROUTES.issueOrderLine.path, orderId, 'book-acme');
+    const issuedLine = async (response: Response) => {
+      expect(response.status).toBe(200);
+      return envelope(shopOrderContracts.issueOrderLine.output).parse(await response.json()).data.order.lines?.[0];
+    };
+
+    for (const body of [{ count: 0 }, { count: 1.5 }, { count: '2' }, { count: 2, force: true }]) {
+      const invalid = await keyed(secret, 'POST', path, body);
+      expect(invalid.status, JSON.stringify(body)).toBe(400);
+      expect((await errorOf(invalid)).code).toBe('validation');
+    }
+    expect(await issuedLine(await keyed(secret, 'POST', path, { orderId: 'other-order', productId: 'other-product', count: 2 })))
+      .toMatchObject({ productId: 'book-acme', quantity: 3, issuedCount: 2 });
+
+    const overIssued = await keyed(secret, 'POST', path, { count: 2 });
+    expect(overIssued.status).toBe(409);
+    expect(await errorOf(overIssued)).toEqual({ code: 'conflict', message: 'Issue count exceeds the quantity left to issue' });
+
+    expect(await issuedLine(await keyed(secret, 'POST', path))).toMatchObject({ quantity: 3, issuedCount: 3 });
+    const repeated = await keyed(secret, 'POST', path, { count: 1 });
+    expect(repeated.status).toBe(409);
+    expect(await errorOf(repeated)).toEqual({ code: 'conflict', message: 'Order line has already been issued' });
+
+    const events = (await database.db.select().from(orderIssueEvents)).filter((event) => event.orderId === orderId);
+    expect(events.map((event) => event.issuedCount).toSorted()).toEqual([2, 3]);
+  });
+
+  it('serves the line quantity on the keyed list, detail, export and packing list', async () => {
+    const orderId = 'acme-live-courier-units';
+    await createOrderRepository(database.db).create('acme', order('acme', orderId, { shipping: courierShipping, quantity: 2 }));
+    const secret = await createShopKey([READ]);
+    const quantityOf = (lines: { productId: string; quantity?: number | undefined }[] | undefined) =>
+      lines?.find((line) => line.productId === 'book-acme')?.quantity;
+
+    const listed = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.listOrders.path}?mode=live&fulfilmentStatus=to_pack`);
+    const listedOrders = envelope(shopOrderContracts.listOrders.output).parse(await listed.json()).data.orders;
+    expect(quantityOf(listedOrders.find((entry) => entry.id === orderId)?.lines)).toBe(2);
+
+    const detail = await keyed(secret, 'GET', orderPath(SHOP_ORDER_ROUTES.getOrder.path, orderId));
+    expect(quantityOf(envelope(shopOrderContracts.getOrder.output).parse(await detail.json()).data.order.lines)).toBe(2);
+
+    const exported = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.exportOrders.path}?format=json&fulfilmentStatus=to_pack`);
+    const exportedOrders = z.array(z.object({ id: z.string(), lines: z.array(z.object({ productId: z.string(), quantity: z.number().optional() })) }))
+      .parse(JSON.parse(envelope(shopOrderContracts.exportOrders.output).parse(await exported.json()).data.content));
+    expect(quantityOf(exportedOrders.find((entry) => entry.id === orderId)?.lines)).toBe(2);
+
+    const packing = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.ordersPackingList.path}?format=csv`);
+    const rows = envelope(shopOrderContracts.ordersPackingList.output).parse(await packing.json()).data.content.split('\n');
+    expect(rows[0]).toMatch(/,quantity$/);
+    expect(rows.find((row) => row.startsWith(`"${orderId}"`))).toMatch(/"Printed handbook × 2",.*,"2"$/);
   });
 
   it('treats an order of another workspace as not found on every route and leaves it untouched', async () => {

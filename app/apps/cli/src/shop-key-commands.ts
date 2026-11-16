@@ -118,6 +118,7 @@ const packingListSchema = z.object({
   out: z.string().min(1).optional(),
 });
 const shipSchema = keyOnlySchema.extend({ carrier: shippingCarrierSchema, tracking: z.string().min(1) });
+const issueSchema = keyOnlySchema.extend({ count: positiveIntSchema.optional() });
 const labelSchema = keyOnlySchema.extend({ out: z.string().min(1) });
 const settingsSetSchema = keyOnlySchema.extend({ jsonFile: z.string().min(1) });
 const brandingKindSchema = z.enum(['logo', 'logo-dark', 'favicon', 'share-image']);
@@ -536,8 +537,11 @@ export const registerShopKeyCommands = (
     .action(run(z.tuple([idSchema, shipSchema]), (client, [orderId, options]) =>
       client.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
     (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`));
-  keyed(orders.command('issue <orderId> <productId>').description('Record collection of a physical order line'))
-    .action(run(z.tuple([idSchema, idSchema, keyOnlySchema]), (client, [orderId, productId]) => client.issueOrderLine({ orderId, productId }), (data) => JSON.stringify(data.order, null, 2)));
+  keyed(orders.command('issue <orderId> <productId>').description('Record collection of a physical order line')
+    .option('--count <n>', 'units handed over now (default 1, at most the units not yet issued)'))
+    .action(run(z.tuple([idSchema, idSchema, issueSchema]), (client, [orderId, productId, options]) =>
+      client.issueOrderLine({ orderId, productId, ...(options.count === undefined ? {} : { count: options.count }) }),
+    (data) => JSON.stringify(data.order, null, 2)));
 
   const shipx = orders.command('shipx').description('InPost ShipX shipments and labels');
   keyed(shipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment'))

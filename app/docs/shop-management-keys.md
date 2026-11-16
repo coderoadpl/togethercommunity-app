@@ -476,9 +476,17 @@ and the packing list answer the session JSON envelope with `filename`,
 route's `content-type`, `content-disposition: attachment` and
 `cache-control: private, no-store` headers.
 
+Each order line in the list, detail and verify responses carries `quantity`
+(1 for lines stored without one) and `issuedCount`, as on the session routes;
+the packing list ends with the session's `quantity` column. Issuing a line takes
+the session issue body: no body issues one unit, and an optional JSON body
+`{ "count": 2 }` hands over several units of a line at once (`validation` for
+any other body, as described in the
+[shop integration guide](shop-integration.md#8-poll-live-orders-and-record-fulfilment)).
+
 Fulfilment keeps the session rules. Shipping an order that has already been
-shipped answers `409 fulfilment_conflict`; issuing a line that has already been
-issued answers `409 conflict`. A manual shipment (`carrier` `other` or
+shipped answers `409 fulfilment_conflict`; issuing more units of a line than
+are left to issue answers `409 conflict`. A manual shipment (`carrier` `other` or
 `inpost` with a tracking number) needs no ShipX configuration and e-mails the
 buyer the tracking number for a live order. `POST .../shipx` creates and pays
 a real InPost shipment when the workspace's ShipX integration is configured for
@@ -531,6 +539,7 @@ curl -s -H "$KEY" "$SHOP/orders/export?format=csv&fulfilmentStatus=to_pack"
 curl -s -H "$KEY" "$SHOP/orders/packing-list?format=csv&mode=live"
 curl -s -H "$KEY" -H "$JSON" -d '{"carrier":"other","trackingNumber":"<tracking-number>"}' "$SHOP/orders/<order-id>/ship"
 curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/lines/<product-id>/issue"
+curl -s -H "$KEY" -H "$JSON" -d '{"count":2}' "$SHOP/orders/<order-id>/lines/<product-id>/issue"
 curl -s -H "$KEY" "$SHOP/orders/<order-id>/shipx"
 curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx"
 curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx/refresh"
@@ -551,7 +560,7 @@ pnpm --silent run cli --tenant acme shop orders verify <qr-token-or-order-id>
 pnpm --silent run cli --tenant acme shop orders export --format csv --out orders.csv
 pnpm --silent run cli --tenant acme shop orders packing-list --format csv --out packing.csv
 pnpm --silent run cli --tenant acme shop orders ship <order-id> --carrier other --tracking <tracking-number>
-pnpm --silent run cli --tenant acme shop orders issue <order-id> <product-id>
+pnpm --silent run cli --tenant acme shop orders issue <order-id> <product-id> [--count 2]
 pnpm --silent run cli --tenant acme shop orders shipx show <order-id>
 pnpm --silent run cli --tenant acme shop orders shipx create <order-id>
 pnpm --silent run cli --tenant acme shop orders shipx refresh <order-id>

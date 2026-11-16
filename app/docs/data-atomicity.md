@@ -258,3 +258,30 @@ tenant-scoped order row with `FOR UPDATE`, re-checks the payment status and the
 fails, the transaction rolls back and the order stays `to_pack`. A unique index
 on the tenant, order and event type backs the row lock. The e-mail is
 dispatched only after commit, so a refused shipment never sends a message.
+
+## Order change log
+
+Every insert into `orders`, and every update that changes at least one column,
+appends a row to `order_changes` with the workspace, the order ID, the writing
+transaction's ID (`xact_id`, `xid8`) and `changed_at`. Two `AFTER ... FOR EACH
+ROW` triggers on `orders` share the `record_order_change()` function, so the row
+commits or rolls back with the order write and no repository method has to
+remember it: payment, test checkout completion, refunds, collection, shipping and
+member erasure are all captured. An update that leaves the order row identical
+is not logged.
+
+The read is scoped to one workspace, ordered by `(xact_id, id)` and returns only
+rows whose `xact_id` is below the `xmin` of the reader's snapshot, so every
+transaction that could still add a row before the cursor has already finished.
+The cursor is `<xact_id>.<id>`; clients treat it as opaque. Ordering by `id`
+alone would skip changes: a transaction can take a lower `id` and commit after a
+reader has passed a higher one. The price is that the feed lags behind the
+oldest transaction still open on the database server.
+
+The rows are kept without a retention purge for now. Deleting an order, for
+example through a product deletion, deletes its change rows.
+
+Creating the triggers takes a `SHARE ROW EXCLUSIVE` lock on `orders`, which
+blocks order writes until the migration transaction commits. Deploy migration
+`0155_order_changes` in a quiet window. The column type and the snapshot
+functions need PostgreSQL 13 or later.

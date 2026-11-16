@@ -1,6 +1,6 @@
 {
-  "hash": "9cbf912d7efb948b6d4c82a081b627ed47082b6693ff3e83e0b4a26dbdad964b",
-  "shortId": "9cbf912d7efb",
+  "hash": "43819a71ca134becf74621059b028c6ff4f565926dba585af4d6226584c0e690",
+  "shortId": "43819a71ca13",
   "schema": {
     "constraints": [
       {
@@ -865,6 +865,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_id_fkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_fulfilment_events_tenant_id_fkey",
         "table": "order_fulfilment_events"
       },
@@ -1244,6 +1249,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_order_fk",
+        "table": "order_changes"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1587,6 +1597,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "notifications_pkey",
         "table": "notifications"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_changes_pkey",
+        "table": "order_changes"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2014,6 +2029,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
         "name": "project_marketing_signup_confirmation"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.id); RETURN NULL; END; $function$",
+        "name": "record_order_change"
       },
       {
         "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
@@ -2496,6 +2516,16 @@
         "definition": "CREATE INDEX notifications_tenant_recipient_read_created_idx ON notifications USING btree (tenant_id, recipient_user_id, read_at, created_at DESC NULLS LAST)",
         "name": "notifications_tenant_recipient_read_created_idx",
         "table": "notifications"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_cursor_idx ON order_changes USING btree (tenant_id, xact_id, id)",
+        "name": "order_changes_tenant_cursor_idx",
+        "table": "order_changes"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_order_idx ON order_changes USING btree (tenant_id, order_id)",
+        "name": "order_changes_tenant_order_idx",
+        "table": "order_changes"
       },
       {
         "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
@@ -3197,6 +3227,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "member_events_sequence_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "order_changes_id_seq",
         "start": "1"
       },
       {
@@ -8423,6 +8462,51 @@
           }
         ],
         "name": "member_events"
+      },
+      {
+        "columns": [
+          {
+            "default": "nextval('order_changes_id_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "changed_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "pg_current_xact_id()",
+            "generated": "",
+            "identity": "",
+            "name": "xact_id",
+            "notNull": true,
+            "type": "xid8"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_changes"
       },
       {
         "columns": [
@@ -14718,6 +14802,16 @@
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_insert AFTER INSERT ON orders FOR EACH ROW EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_insert",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_update",
         "table": "orders"
       },
       {

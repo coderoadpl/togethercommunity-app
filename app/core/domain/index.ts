@@ -58,6 +58,7 @@ export * from './attribution.js';
 export * from './commerce.js';
 export * from './shipping.js';
 export * from './fulfilment.js';
+export * from './order-change.js';
 export * from './shipx.js';
 export * from './product-compliance.js';
 export * from './order-vat.js';

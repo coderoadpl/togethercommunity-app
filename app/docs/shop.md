@@ -161,7 +161,11 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
-`shipping_country` and `fulfilment_status`.
+`shipping_country` and `fulfilment_status`. The CSV export ends with a
+`cancel_reason` column: `out_of_stock` for an order cancelled because its goods
+sold out before the payment arrived, empty otherwise; it is the last column so
+the earlier column positions stay unchanged, and `status` keeps the payment
+status. The JSON export carries the same value as `cancelReason`.
 
 ## Fulfilment
 

@@ -197,11 +197,24 @@ describe('exportOrders — CSV', () => {
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
     expect(lines[0]).toBe(
-      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid,shipping_rate,shipping_point,shipping_name,shipping_phone,shipping_address,shipping_postal_code,shipping_city,shipping_country,fulfilment_status',
+      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid,shipping_rate,shipping_point,shipping_name,shipping_phone,shipping_address,shipping_postal_code,shipping_city,shipping_country,fulfilment_status,cancel_reason',
     );
     expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
     expect(lines[2]).toContain('""');
     expect(lines[2]).toContain('"Course, Deluxe"');
+  });
+
+  it('appends the cancel reason as the last column, empty for an order that was not cancelled, and keeps the status', async () => {
+    const h = harness([orderItem('cancelled', { cancelReason: 'out_of_stock' }), orderItem('kept')]);
+    const result = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
+    if (!result.ok) throw new Error(result.error.message);
+    const [header, cancelled, kept] = result.value.content.split('\n');
+    expect(header?.split(',').at(-1)).toBe('cancel_reason');
+    expect(header?.split(',').indexOf('status')).toBe(7);
+    expect(cancelled).toMatch(/,"out_of_stock"$/u);
+    expect(cancelled?.split(',')[7]).toBe('"paid"');
+    expect(kept?.split(',')).toHaveLength(header?.split(',').length ?? 0);
+    expect(kept?.split(',').at(-1)).toBe('""');
   });
 
   it('exports the immutable billing snapshot in CSV and JSON', async () => {

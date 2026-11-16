@@ -915,6 +915,20 @@ refunding the payment by hand in the Stripe Dashboard (the order then becomes
 refunds run automatically. Requeueing a blocked job from Studio is not
 available yet.
 
+When `charge.refunded` reports a full refund of a cancelled order, the same
+payment transaction marks the order `refunded` and moves a `pending`,
+`blocked_permission` or `failed` job, or a `running` job without a Stripe
+refund, to `resolved_externally`; the dispatcher never picks that job up again.
+A `submitted` job keeps its scheduled status reads. A refund or dispute of a
+cancelled order revokes no access, because the cancelled order granted none.
+
+A cancelled order never counts as a purchase: it keeps no access when another
+order for the same product is refunded, is not listed under My products, is
+not reported by order reconciliation as a paid order missing its grant, is
+never the order a download copy is attributed to, and its physical lines
+cannot be handed over at pickup (the verification page shows the cancellation
+and no issue button).
+
 Stripe does not send `refund.failed` to the platform (the event is not
 subscribed), so the dispatcher reads the refund back 24 hours and 7 days after
 it was issued. A refund Stripe then reports as `failed` or `canceled` marks the

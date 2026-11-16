@@ -1002,6 +1002,9 @@ When `charge.refunded` reports a full refund of a cancelled order, the same
 payment transaction marks the order `refunded` and moves a job that never
 called Stripe (`pending` with no attempt and no Stripe refund) or a `failed`
 job to `resolved_externally`; the dispatcher never picks that job up again.
+A `failed` job is resolved too because the dispatcher never picks a failed job
+again either, so without this the order page in Studio would keep showing the
+failed refund after staff refunded the payment by hand.
 Every other job is left as it is, because the event may report the job's own
 refund: a `submitted` job keeps its scheduled status reads, a `running` job
 keeps its lease, and a `pending` or `blocked_permission` job that already

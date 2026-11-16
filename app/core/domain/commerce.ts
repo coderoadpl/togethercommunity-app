@@ -175,7 +175,7 @@ export const allocatePaidOrderLineGross = (
   return lines.map((line) => isShippingLine(line) ? line.grossCents : allocated[index++] ?? 0);
 };
 
-export const CLIENT_REFERENCE_MAX_LENGTH = 200;
+const CLIENT_REFERENCE_MAX_LENGTH = 200;
 
 export const clientReferenceSchema = z.string().trim().min(1).max(CLIENT_REFERENCE_MAX_LENGTH)
   .regex(/^[\x20-\x7E]+$/, 'clientReference may contain only printable ASCII characters');

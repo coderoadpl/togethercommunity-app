@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CHECKOUT_RETURN_ORIGINS_MAX = 5;
+const CHECKOUT_RETURN_ORIGINS_MAX = 5;
 export const CHECKOUT_RETURN_URL_MAX_LENGTH = 2000;
 
 const ORIGIN_FORM = /^https:\/\/[^/?#\\@\s]+\/?$/iu;
@@ -27,7 +27,7 @@ const normalizeCheckoutReturnOrigin = (value: string): string | null => {
   return url.origin;
 };
 
-export const checkoutReturnOriginSchema = z.string().trim().transform((value, context) => {
+const checkoutReturnOriginSchema = z.string().trim().transform((value, context) => {
   const origin = normalizeCheckoutReturnOrigin(value);
   if (origin === null) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: CHECKOUT_RETURN_ORIGIN_MESSAGE });

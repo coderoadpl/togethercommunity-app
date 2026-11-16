@@ -18,7 +18,9 @@ import { Link } from '@tanstack/react-router';
 import {
   attributionFromSearchParams,
   attributionToSearchParams,
+  CART_CURRENCY_MISMATCH_MESSAGE,
   CART_LINES_PARAM,
+  cartCurrencies,
   cartLineMaxQuantity,
   formatCartLinesParam,
   parseCartLinesParam,
@@ -38,7 +40,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, EmberCtaButton, FinePrint } from '../../theme.js';
 import { CheckoutPage } from './CheckoutPage.js';
-import { checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
+import { checkoutRefusal, checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo } from './ProductSafetyInfo.js';
 import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
@@ -190,7 +192,9 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const cartLines = readyItems.map((item) => ({ productId: item.productId, quantity: item.quantity }));
   const cartKey = formatCartLinesParam(cartLines);
   const allReady = readyItems.length === items.length && items.length > 0;
-  const currency = readyItems[0]?.currency ?? 'PLN';
+  const currencies = cartCurrencies(readyItems);
+  const currency = currencies.length === 1 ? currencies[0] ?? null : null;
+  const currencyRefusal = currencies.length > 1 ? checkoutRefusal(CART_CURRENCY_MISMATCH_MESSAGE, t) : null;
   const subtotalCents = readyItems.reduce((total, item) => total + item.unitCents * item.quantity, 0);
   const soldOut = readyItems.some((item) => item.product.stock.soldOut);
   const shippingRequired = readyItems.some((item) => item.product.deliveryMethod === 'shipping');
@@ -215,7 +219,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const appliedCoupon = testEnabled ? undefined : couponValidation.data;
   const [autoValidatedFor, setAutoValidatedFor] = useState<string | null>(null);
   const autoValidationKey = `${email}|${cartKey}`;
-  const autoValidationDue = initialCouponCode !== '' && couponCode === initialCouponCode && allReady &&
+  const autoValidationDue = initialCouponCode !== '' && couponCode === initialCouponCode && allReady && currency !== null &&
     completeEmail(email) && autoValidatedFor !== autoValidationKey;
   const couponResolving = couponValidation.isPending || autoValidationDue;
 
@@ -267,12 +271,11 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   if (items.length === 0) return <CartNotice title={t.checkout.cartEmptyTitle} body={t.checkout.cartEmptyBody} />;
 
   const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
-  const formattedPayable = formatPrice(payableCents, currency, language);
   const formDisabled = checkoutSession.isPending;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (couponResolving || delivery.status === 'incomplete' || !allReady) return;
+    if (couponResolving || delivery.status === 'incomplete' || !allReady || currency === null) return;
     if (!stripeConfigured && payableCents > 0) return;
     checkoutSession.mutate({
       lines: cartLines,
@@ -314,8 +317,11 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             );
           })}
         </Stack>
-        <Typography data-testid="cart-subtotal">{t.checkout.cartSubtotal({ price: formatPrice(subtotalCents, currency, language) })}</Typography>
-        {delivery.status === 'ready' ? (
+        {currencyRefusal === null ? null : <Alert severity="error" data-testid="cart-currency-refusal">{currencyRefusal}</Alert>}
+        {currency === null ? null : (
+          <Typography data-testid="cart-subtotal">{t.checkout.cartSubtotal({ price: formatPrice(subtotalCents, currency, language) })}</Typography>
+        )}
+        {currency !== null && delivery.status === 'ready' ? (
           <Typography data-testid="cart-delivery">{t.checkout.cartDelivery({ price: formatPrice(deliveryCents, currency, language) })}</Typography>
         ) : null}
         {readyItems.flatMap(({ product }) => product.compliance == null ? [] : [
@@ -344,7 +350,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           error={testSession.error}
         /> : null}
         <InvoiceFields invoice={invoice} />
-        <CouponField
+        {currency === null ? null : <CouponField
           visible={couponVisible}
           testEnabled={testEnabled}
           code={couponCode}
@@ -358,7 +364,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           currency={currency}
           language={language}
           recurring={false}
-        />
+        />}
         {consentRequired ? <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} /> : null}
         <MarketingConsentFields
           consents={marketingConsents}
@@ -366,7 +372,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           onChange={(definitionId, checked) => setMarketingConsentDefinitionIds((current) =>
             checked ? [...current, definitionId] : current.filter((id) => id !== definitionId))}
         />
-        {shippingRequired ? (
+        {shippingRequired && currency !== null ? (
           <DeliveryStep
             rates={shippingRates}
             state={checkoutState}
@@ -389,6 +395,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           disabled={
             soldOut ||
             !allReady ||
+            currency === null ||
             delivery.status === 'incomplete' ||
             testSession.isPending || checkoutSession.isPending ||
             couponResolving ||
@@ -396,11 +403,11 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             (payableCents > 0 && !stripeConfigured)
           }
         >
-          {soldOut ? t.checkout.soldOut : payableCents === 0
-            ? checkoutSession.isPending ? t.checkout.freePending : t.checkout.freeIdle({ price: formattedPayable })
-            : checkoutSession.isPending ? t.checkout.payPending : t.checkout.payIdle({ price: formattedPayable })}
+          {soldOut ? t.checkout.soldOut : currency === null ? t.checkout.cartPay : payableCents === 0
+            ? checkoutSession.isPending ? t.checkout.freePending : t.checkout.freeIdle({ price: formatPrice(payableCents, currency, language) })
+            : checkoutSession.isPending ? t.checkout.payPending : t.checkout.payIdle({ price: formatPrice(payableCents, currency, language) })}
         </EmberCtaButton>
-        {payableCents > 0 && !stripeConfigured ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
+        {currency !== null && payableCents > 0 && !stripeConfigured ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
         {checkoutSession.isError ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
       </Stack>
     </FocusCard>

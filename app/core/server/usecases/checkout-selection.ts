@@ -1,4 +1,4 @@
-import { CART_PRICE_REQUIRED_MESSAGE, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
 import type { TenantRepository } from '../ports.js';
 
 export interface CheckoutSelection {
@@ -66,7 +66,7 @@ export const resolveCartPrices = (
     if (!sellableOneTimePrice(price, line.productId)) return err(validation('Cart products require a one-time price'));
     resolved.push(price);
   }
-  if (new Set(resolved.map((price) => price.currency)).size > 1) return err(validation('Cart products must use the same currency'));
+  if (cartCurrencies(resolved).length > 1) return err(validation(CART_CURRENCY_MISMATCH_MESSAGE));
   return ok(resolved);
 };
 

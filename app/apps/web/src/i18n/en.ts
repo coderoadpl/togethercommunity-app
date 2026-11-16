@@ -3064,6 +3064,8 @@ export const en: Messages = {
     cartDelivery: ({ price }) => format('Delivery: {price}', { price }),
     cartLineUnavailable: 'This product cannot be bought in a cart. Remove it to continue.',
     cartProductMissing: 'A product of this cart is no longer available. Remove it to continue.',
+    cartCurrencyMismatch: 'The products of this cart are priced in different currencies and cannot be paid together. Remove the products in the other currency to continue.',
+    cartPay: 'Pay',
   },
   directory: {
     activeConsent: 'Consent granted',

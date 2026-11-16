@@ -445,8 +445,11 @@ single-product page does. A malformed or empty `lines` parameter shows an error
 and sends no request. The page picks each line's price by the session route's
 rule, so a product with one one-time and one recurring price is sold at its
 one-time price, while a membership or a product without exactly one active
-one-time price has to be removed before paying. The cart page has two path segments below `/checkout/`,
-so `/checkout/<product-id>` and `/checkout/<slug>` keep opening the
+one-time price has to be removed before paying. A cart whose products are
+priced in different currencies shows the session route's refusal, no total and
+no coupon field, and cannot be paid until the products in the other currency
+are removed. The cart page has two path segments below `/checkout/`, so
+`/checkout/<product-id>` and `/checkout/<slug>` keep opening the
 single-product page for every product, including one whose slug is `cart`.
 
 The CLI posts the same cart with `checkout session --line '<product-id>:2'

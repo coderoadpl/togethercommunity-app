@@ -5,6 +5,7 @@ import {
   CART_MAX_LINES,
   CART_MAX_UNITS,
   CART_PHYSICAL_LINE_MAX_QUANTITY,
+  cartCurrencies,
   cartLineMaxQuantity,
   cartLineQuantityError,
   cartLinesSchema,
@@ -167,5 +168,13 @@ describe('cart line price', () => {
 
   it('ignores inactive and imported one-time prices', () => {
     expect(singleSellableOneTimePrice([oneTime, { ...oneTime, id: 'inactive', active: false }, { ...oneTime, id: 'imported', imported: true }])).toBe(oneTime);
+  });
+});
+
+describe('cart currencies', () => {
+  it('lists each currency of the cart prices once', () => {
+    expect(cartCurrencies([{ currency: 'PLN' }, { currency: 'PLN' }])).toEqual(['PLN']);
+    expect(cartCurrencies([{ currency: 'PLN' }, { currency: 'EUR' }])).toEqual(['PLN', 'EUR']);
+    expect(cartCurrencies([])).toEqual([]);
   });
 });

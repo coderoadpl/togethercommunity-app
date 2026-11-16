@@ -4,7 +4,7 @@ import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { HOSTED_CART_PATH } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, HOSTED_CART_PATH } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
 import { formatPrice } from '../../lib/format.js';
@@ -21,7 +21,9 @@ const ebook = '00000000-0000-4000-8000-0000000000a2';
 const organizer = '00000000-0000-4000-8000-0000000000a3';
 const journal = '00000000-0000-4000-8000-0000000000a4';
 const bag = '00000000-0000-4000-8000-0000000000a5';
+const mug = '00000000-0000-4000-8000-0000000000a6';
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
+const eur = (cents: number) => formatPrice(cents, 'EUR', 'en');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
 const analyticsConfig = { cookieScope: 'host' as const, metaPixelId: '12345678', tagId: 'G-ABC1234', consentCookieName: 'consent', consentCookieValue: null, loadWithoutConsent: true };
@@ -56,6 +58,10 @@ const products = {
       { id: 'price-bag-large', kind: 'one_time', interval: null, amountCents: 1200, currency: 'PLN' },
     ],
   },
+  [mug]: {
+    id: mug, type: 'physical', deliveryMethod: 'shipping', slug: 'mug', title: 'Mug', description: '', coverUrl: null,
+    priceCents: 1200, currency: 'EUR', marketingConsents: [], prices: [{ id: 'price-mug', kind: 'one_time', interval: null, amountCents: 1200, currency: 'EUR' }],
+  },
 };
 
 const shippingRates = [
@@ -69,6 +75,7 @@ const serve = (input: {
   testEnabled?: boolean;
   missing?: readonly string[];
   requests?: string[];
+  sessionError?: string;
   onSession?: (body: unknown) => void;
   onCoupon?: (body: unknown) => void;
 } = {}) => {
@@ -96,7 +103,7 @@ const serve = (input: {
     http.post('/api/public/checkout/session', async ({ request }) => {
       record(request);
       input.onSession?.(await request.json());
-      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Stop before redirect' } }, { status: 400 });
+      return HttpResponse.json({ ok: false, error: { code: 'validation', message: input.sessionError ?? 'Stop before redirect' } }, { status: 400 });
     }),
     http.post('/api/public/checkout/coupon', async ({ request }) => {
       record(request);
@@ -291,6 +298,53 @@ describe('hosted cart checkout', () => {
     renderCart(`${HOSTED_CART_PATH}?lines=${bag}.1~${ebook}.1`);
     expect(await screen.findByText(`Bag: ${en.checkout.cartLineUnavailable}`)).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+  });
+
+  it('refuses a cart in two currencies as the server does, with no total, payment or coupon check', async () => {
+    const requests: string[] = [];
+    serve({ requests });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1~${mug}.2&code=CART`);
+    expect(await screen.findByTestId('cart-currency-refusal')).toHaveTextContent(exact(en.checkout.cartCurrencyMismatch));
+    expect(line(mug).getByTestId(`cart-line-total-${mug}`)).toHaveTextContent(exact(en.checkout.cartLineTotal({ price: eur(2400) })));
+    expect(screen.queryByTestId('cart-subtotal')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-coupon-reveal')).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.cartPay));
+
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await act(() => new Promise((resolve) => { setTimeout(resolve, 400); }));
+    expect(requests.filter((request) => request.startsWith('POST'))).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.cartRemove({ title: 'Mug' }) }));
+    expect(screen.queryByTestId('cart-currency-refusal')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(3500) })));
+    await waitFor(() => expect(requests).toContain('POST /api/public/checkout/coupon'));
+  });
+
+  it('prices a cart in the currency of its products', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${mug}.1`);
+    expect(await screen.findByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: eur(1200) })));
+    expect(screen.getByLabelText(exact(`Courier — ${eur(1999)}`))).toBeInTheDocument();
+  });
+
+  it('shows no amount while no line has a price', async () => {
+    serve({ missing: [poster] });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+    expect(await screen.findByText(en.checkout.cartProductMissing)).toBeInTheDocument();
+    expect(screen.queryByTestId('cart-subtotal')).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.cartPay));
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+  });
+
+  it('shows the server\'s currency refusal in the buyer\'s language', async () => {
+    serve({ sessionError: CART_CURRENCY_MISMATCH_MESSAGE });
+    renderCart(`${HOSTED_CART_PATH}?lines=${ebook}.1`);
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    expect(await screen.findByText(en.checkout.cartCurrencyMismatch)).toBeInTheDocument();
   });
 
   it('checks a coupon with the lines, the email and the code only', async () => {

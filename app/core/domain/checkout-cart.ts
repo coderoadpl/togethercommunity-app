@@ -30,6 +30,7 @@ export const cartLinesSchema = z.array(cartLineSchema).min(1).max(CART_MAX_LINES
 });
 
 export const CART_PRICE_REQUIRED_MESSAGE = 'Every cart product requires exactly one active one-time price';
+export const CART_CURRENCY_MISMATCH_MESSAGE = 'Cart products must use the same currency';
 
 interface SellablePriceCandidate {
   kind: PriceKind;
@@ -44,6 +45,9 @@ export const singleSellableOneTimePrice = <T extends SellablePriceCandidate>(pri
   const [price, ...others] = prices.filter(isSellableOneTimePrice);
   return price === undefined || others.length > 0 ? null : price;
 };
+
+export const cartCurrencies = (prices: readonly { currency: string }[]): string[] =>
+  [...new Set(prices.map((price) => price.currency))];
 
 export const cartLineMaxQuantity = (
   productType: ProductType,

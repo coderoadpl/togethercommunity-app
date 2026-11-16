@@ -2765,6 +2765,8 @@ export interface Messages {
     cartDelivery: (params: { price: string }) => string;
     cartLineUnavailable: string;
     cartProductMissing: string;
+    cartCurrencyMismatch: string;
+    cartPay: string;
   };
   directory: {
     activeConsent: string;

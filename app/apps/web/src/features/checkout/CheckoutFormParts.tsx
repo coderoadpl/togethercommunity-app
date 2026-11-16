@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { FREE_ORDER_DELIVERY_UNAVAILABLE, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, FREE_ORDER_DELIVERY_UNAVAILABLE, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { localizeError, useTranslations } from '../../i18n/index.js';
@@ -45,10 +45,19 @@ const couponError = (error: unknown, t: Translations): string => {
   }
 };
 
+export const checkoutRefusal = (message: string, t: Translations): string | null => {
+  switch (message) {
+    case FREE_ORDER_DELIVERY_UNAVAILABLE:
+      return t.shipping.freeOrderUnavailable;
+    case CART_CURRENCY_MISMATCH_MESSAGE:
+      return t.checkout.cartCurrencyMismatch;
+    default:
+      return null;
+  }
+};
+
 export const checkoutSessionError = (error: unknown, t: Translations): string =>
-  error instanceof ApiError && error.appError.message === FREE_ORDER_DELIVERY_UNAVAILABLE
-    ? t.shipping.freeOrderUnavailable
-    : localizeError(error, t);
+  (error instanceof ApiError ? checkoutRefusal(error.appError.message, t) : null) ?? localizeError(error, t);
 
 export const useInvoiceFields = () => {
   const t = useTranslations();

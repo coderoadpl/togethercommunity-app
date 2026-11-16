@@ -3088,6 +3088,8 @@ export const pl: Messages = {
     cartDelivery: ({ price }) => format('Dostawa: {price}', { price }),
     cartLineUnavailable: 'Tego produktu nie można kupić w koszyku. Usuń go, aby kontynuować.',
     cartProductMissing: 'Jeden z produktów w koszyku nie jest już dostępny. Usuń go, aby kontynuować.',
+    cartCurrencyMismatch: 'Produkty w tym koszyku mają ceny w różnych walutach i nie można za nie zapłacić razem. Usuń produkty w innej walucie, aby kontynuować.',
+    cartPay: 'Zapłać',
   },
   directory: {
     activeConsent: 'Zgoda udzielona',

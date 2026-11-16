@@ -24,7 +24,7 @@ CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN (OL
 --> statement-breakpoint
 CREATE FUNCTION record_invoice_order_change() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.order_id);
+  INSERT INTO order_changes (tenant_id, order_id) SELECT tenant_id, id FROM orders WHERE tenant_id = NEW.tenant_id AND id = NEW.order_id;
   RETURN NULL;
 END;
 $$;

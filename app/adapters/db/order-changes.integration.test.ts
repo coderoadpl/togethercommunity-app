@@ -10,7 +10,7 @@ import { createOrderChangeRepository, rotateOrderFeedEpoch } from './order-chang
 import { createOrderFulfilmentRepository } from './order-fulfilment.js';
 import { createOrderVerificationRepository } from './order-verification.js';
 import { createOrderRepository, createPaymentRefundRepository } from './repositories.js';
-import { members, products, tenants, user } from './schema.js';
+import { invoices, members, products, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const now = '2026-11-16T12:00:00.000Z';
@@ -209,7 +209,7 @@ describe('order change log on Postgres', () => {
   it('logs the order when its invoice is issued or changed', async () => {
     const orderId = await createOrder('workspace');
     const cursor = await settledCursor('workspace');
-    const invoices = createInvoiceRepository(database.db);
+    const repository = createInvoiceRepository(database.db);
     const invoice = invoiceSchema.parse({
       id: `invoice-${orderId}`, tenantId: 'workspace', orderId, status: 'requested', provider: 'simulated', providerInvoiceId: null,
       invoiceNumber: null, pdfUrl: null, error: null, issuedAt: null, createdAt: now,
@@ -217,12 +217,22 @@ describe('order change log on Postgres', () => {
     const event = (type: InvoiceEvent['type']): InvoiceEvent => invoiceEventSchema.parse({
       id: `${invoice.id}-${type}`, tenantId: 'workspace', invoiceId: invoice.id, orderId, type, error: null, meta: {}, occurredAt: now,
     });
-    expect(await invoices.create('workspace', invoice, event('requested'))).toBe(true);
+    expect(await repository.create('workspace', invoice, event('requested'))).toBe(true);
     await eventually('workspace', cursor, [orderId]);
     const afterRequest = await settledCursor('workspace');
-    expect(await invoices.update('workspace', { ...invoice, status: 'issued', invoiceNumber: 'FV/1/2026', issuedAt: now }, event('issued')))
+    expect(await repository.update('workspace', { ...invoice, status: 'issued', invoiceNumber: 'FV/1/2026', issuedAt: now }, event('issued')))
       .toMatchObject({ status: 'issued' });
     await eventually('workspace', afterRequest, [orderId]);
+  });
+
+  it('keeps an invoice whose workspace differs from its order out of every feed without refusing the invoice', async () => {
+    const orderId = await createOrder('workspace');
+    const ownCursor = await settledCursor('workspace');
+    const otherCursor = await settledCursor('other');
+    await database.db.insert(invoices).values({ id: `foreign-${orderId}`, tenantId: 'other', orderId, status: 'issued', provider: 'simulated', createdAt: now });
+    const later = await createOrder('workspace');
+    await eventually('workspace', ownCursor, [later]);
+    expect(await listAll('other', otherCursor)).toEqual([]);
   });
 
   it('does not log an update that leaves the order row unchanged', async () => {

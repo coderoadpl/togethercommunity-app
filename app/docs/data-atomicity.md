@@ -272,7 +272,9 @@ is not logged.
 
 `invoices` has the same pair of triggers through `record_invoice_order_change()`,
 which logs the invoice's order in the invoice's workspace, so issuing an invoice
-or changing it produces an entry. The feed entry (the order list entry) also
+or changing it produces an entry. It logs only an order of that same workspace,
+so an invoice row whose workspace disagrees with its order's is still written
+and appears in no feed. The feed entry (the order list entry) also
 carries values from `members` (the buyer's e-mail address and name), `products`
 (the title) and `sales_links` (the title); they are read at fetch time, and a
 write to those tables alone is not logged. `coupons` adds the coupon code,

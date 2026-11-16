@@ -253,10 +253,11 @@ always delivered.
 The whole order is cancelled when any tracked line no longer fits at payment,
 even if other lines are still available; nothing is taken from stock. Together
 then refunds the full amount automatically through Stripe, once per order, and
-sends the buyer one "sold out, refund" e-mail in the checkout language (English
-or Polish). The e-mail says the order was cancelled because the goods sold out
-before the payment completed, that the full refund was started and how long it
-usually takes: a card refund made soon after the payment often shows as a
+sends the buyer one "sold out, refund" e-mail (English or Polish) in the
+member's saved language, otherwise the checkout language, otherwise the
+workspace default language. The e-mail says the order was cancelled because the
+goods sold out before the payment completed, that the full refund was started
+and how long it usually takes: a card refund made soon after the payment often shows as a
 reversal, otherwise as a credit after about 5-10 business days; a BLIK refund
 takes about 120 minutes; a Przelewy24 refund arrives as a separate transfer
 within 3 business days. The public session-status route reports such an order
@@ -267,8 +268,9 @@ page, together with the state of its automatic refund.
 
 The automatic refund needs the Charges and Refunds (write) permission
 (`charge_write`) on the workspace's Stripe restricted key, in each mode you use.
-Without it the refund is not attempted again, staff get an alert e-mail and the
-refund has to be made by hand in the Stripe Dashboard.
+Without it staff get an alert e-mail and the refund is attempted again every
+hour for 72 hours, so adding the permission lets the next attempt pay it; after
+72 hours the refund has to be made by hand in the Stripe Dashboard.
 
 ## 6. Connect an anonymous storefront from another origin
 
@@ -524,7 +526,8 @@ returns `data.status` (`pending`, `paid` or `cancelled`) and may include optiona
 analytics fields with `paid` only; use it for buyer display only. `cancelled`
 means the payment arrived after the goods sold out: the order is cancelled and
 refunded automatically (section 5), and the response carries no analytics or
-Meta conversion data. Fulfil from the authenticated paid-order
+Meta conversion data. With `cancelled`, `data.charged` is `false` when the
+order was paid with zero, so there is nothing to refund. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ## 8. Poll live orders and record fulfilment

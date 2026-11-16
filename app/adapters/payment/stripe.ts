@@ -437,6 +437,8 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
     amountCents: parsed.data.amount,
     status: parsed.data.status,
     failureReason: parsed.data.failure_reason ?? null,
+    orderId: parsed.data.metadata?.['orderId'] ?? null,
+    reason: parsed.data.metadata?.['reason'] ?? null,
   });
 };
 

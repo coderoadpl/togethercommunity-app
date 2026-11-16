@@ -47,7 +47,7 @@ describe('Stripe createRefund', () => {
   it('posts the payment intent, amount, metadata and the idempotency key with the live key', async () => {
     const h = providerOverFetch(() => stripeJson(refundObject({ status: 'pending' })));
     expect(await h.createRefund(refundInput)).toEqual(ok({
-      refundId: 're_123', paymentIntentId: 'pi_paid', amountCents: 4900, status: 'pending', failureReason: null,
+      refundId: 're_123', paymentIntentId: 'pi_paid', amountCents: 4900, status: 'pending', failureReason: null, orderId: 'order-1', reason: 'out_of_stock',
     }));
     expect(h.requests).toHaveLength(1);
     const request = h.requests[0];
@@ -207,7 +207,7 @@ describe('Stripe getRefund', () => {
   it('reads the refund by id and maps its status', async () => {
     const h = providerOverFetch(() => stripeJson(refundObject({ status: 'failed', failure_reason: 'declined', payment_intent: { id: 'pi_paid' } })));
     expect(await h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' })).toEqual(ok({
-      refundId: 're_123', paymentIntentId: 'pi_paid', amountCents: 4900, status: 'failed', failureReason: 'declined',
+      refundId: 're_123', paymentIntentId: 'pi_paid', amountCents: 4900, status: 'failed', failureReason: 'declined', orderId: 'order-1', reason: 'out_of_stock',
     }));
     const request = h.requests[0];
     expect(request?.method).toBe('GET');
@@ -223,14 +223,14 @@ describe('Stripe getRefund', () => {
 });
 
 describe('Stripe listRefunds', () => {
-  it('lists the refunds of the payment intent', async () => {
+  it('lists the refunds of the payment intent with the order and reason a refund was issued for', async () => {
     const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [
       refundObject({ id: 're_2', amount: 2000, status: 'pending' }),
-      refundObject({ id: 're_1', amount: 1000, status: 'failed', failure_reason: 'declined' }),
+      refundObject({ id: 're_1', amount: 1000, status: 'failed', failure_reason: 'declined', metadata: {} }),
     ] }));
     expect(await h.listRefunds({ mode: 'test', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toEqual(ok([
-      { refundId: 're_2', paymentIntentId: 'pi_paid', amountCents: 2000, status: 'pending', failureReason: null },
-      { refundId: 're_1', paymentIntentId: 'pi_paid', amountCents: 1000, status: 'failed', failureReason: 'declined' },
+      { refundId: 're_2', paymentIntentId: 'pi_paid', amountCents: 2000, status: 'pending', failureReason: null, orderId: 'order-1', reason: 'out_of_stock' },
+      { refundId: 're_1', paymentIntentId: 'pi_paid', amountCents: 1000, status: 'failed', failureReason: 'declined', orderId: null, reason: null },
     ]));
     const request = h.requests[0];
     expect(request?.method).toBe('GET');

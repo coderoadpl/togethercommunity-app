@@ -10,6 +10,7 @@ export const stripeRefundObjectSchema = z.object({
   status: refundStatusSchema.nullable(),
   failure_reason: z.string().nullable().optional(),
   payment_intent: z.union([z.string(), z.object({ id: z.string() })]).nullable().optional(),
+  metadata: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 export interface ProviderRefund {
@@ -18,6 +19,8 @@ export interface ProviderRefund {
   amountCents: number;
   status: RefundStatus | null;
   failureReason: string | null;
+  orderId: string | null;
+  reason: string | null;
 }
 
 const refundFailureKindSchema = z.enum([

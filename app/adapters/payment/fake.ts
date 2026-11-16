@@ -54,7 +54,7 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
   const charges = new Map<string, number>();
   const resolveKey = (tenantId: string, mode: 'live' | 'test') =>
     resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
-  const execute = (tenantId: string, paymentIntentId: string, amountCents: number): Result<ProviderRefund, AppError> => {
+  const execute = (tenantId: string, paymentIntentId: string, amountCents: number, metadata: { orderId: string; reason: string }): Result<ProviderRefund, AppError> => {
     const chargeKey = JSON.stringify([tenantId, paymentIntentId]);
     // Without a configured charge, the first refund asked of a payment intent stands for its whole amount.
     const chargeCents = charges.get(chargeKey) ?? options.chargeAmountCents?.[paymentIntentId] ?? amountCents;
@@ -64,7 +64,9 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
       .reduce((sum, refund) => sum + refund.amountCents, 0);
     if (remainingCents <= 0) return err(refundFailure('already_refunded', `Charge for ${paymentIntentId} has already been refunded.`, 'charge_already_refunded'));
     if (amountCents > remainingCents) return err(refundFailure('refund_failed', 'Refund amount is greater than the unrefunded amount on the charge'));
-    const refund: ProviderRefund = { refundId: `re_fake_${randomUUID()}`, paymentIntentId, amountCents, status: 'succeeded', failureReason: null };
+    const refund: ProviderRefund = {
+      refundId: `re_fake_${randomUUID()}`, paymentIntentId, amountCents, status: 'succeeded', failureReason: null, orderId: metadata.orderId, reason: metadata.reason,
+    };
     refunds.set(refund.refundId, { tenantId, refund });
     return ok(refund);
   };
@@ -80,7 +82,7 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
         }
         return saved.response;
       }
-      const response = execute(input.tenantId, input.paymentIntentId, input.amountCents);
+      const response = execute(input.tenantId, input.paymentIntentId, input.amountCents, input.metadata);
       responses.set(responseKey, { paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, response });
       return response;
     },

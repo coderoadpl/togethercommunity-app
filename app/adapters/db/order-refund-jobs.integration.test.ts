@@ -92,6 +92,26 @@ describe('order refund jobs of two workspaces', () => {
     expect(await jobRows()).toStrictEqual(before);
   });
 
+  it('resolves externally only a job that never called Stripe or one that failed for good', async () => {
+    const repository = createOrderRefundJobRepository(database.db);
+    const resolve = (orderId: string) => repository.resolveExternally('tenant-a', orderId, '2026-11-15T10:02:00.000Z');
+    await database.db.delete(orderRefundJobs).where(eq(orderRefundJobs.orderId, 'order-a'));
+    for (const id of ['order-attempted', 'order-submitted', 'order-failed']) await insertOrder('tenant-a', id, 'out_of_stock');
+    await insertJob('tenant-a', 'order-a');
+    await insertJob('tenant-a', 'order-attempted', { attempts: 1, lastError: 'Request aborted due to timeout being reached (5000ms)' });
+    await insertJob('tenant-a', 'order-submitted', { status: 'submitted', attempts: 1, providerRefundId: 're_ours' });
+    await insertJob('tenant-a', 'order-failed', { status: 'failed', attempts: 19, nextAttemptAt: null });
+
+    expect(await resolve('order-attempted')).toBeNull();
+    expect(await resolve('order-submitted')).toBeNull();
+    expect(await repository.resolveExternally('tenant-b', 'order-b', '2026-11-15T10:02:00.000Z')).toBeNull();
+    expect(await resolve('order-a')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
+    expect(await resolve('order-failed')).toMatchObject({ status: 'resolved_externally' });
+    expect((await jobRows()).map((row) => [row.orderId, row.status])).toStrictEqual([
+      ['order-a', 'resolved_externally'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-failed', 'resolved_externally'], ['order-submitted', 'submitted'],
+    ]);
+  });
+
   it('refuses to queue a job for another workspace\'s order', async () => {
     const repository = createOrderRefundJobRepository(database.db);
     await database.db.delete(orderRefundJobs).where(eq(orderRefundJobs.orderId, 'order-a'));

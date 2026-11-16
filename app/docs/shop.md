@@ -899,13 +899,20 @@ whose lease expired goes back to `pending` and is retried with the same key.
 
 For each claimed job the dispatcher reads the order of that workspace again:
 
-- an order that is already `refunded` (for example refunded by hand in the
-  Stripe Dashboard) ends as `skipped_refunded` without calling Stripe;
-- otherwise it lists the payment intent's refunds (`GET /v1/refunds`, covered
-  by the Charges and Refunds permission) and adds up every refund that is not
-  `failed` or `canceled`. When nothing is left to refund the job ends as
-  `skipped_refunded`; when staff refunded part of the payment by hand, only the
-  remainder is refunded;
+- it lists the payment intent's refunds (`GET /v1/refunds`, covered by the
+  Charges and Refunds permission). A listed refund whose metadata names this
+  order (`orderId`) and the job's reason (`reason`) was issued by the job
+  itself, for example by a call whose answer never arrived: the job takes it
+  over, stores its Stripe refund id and status, becomes `submitted` (or
+  `succeeded`) and gets the 24-hour and 7-day status reads, without a new
+  refund call;
+- otherwise it adds up every listed refund that is not `failed` or `canceled`
+  (only refunds made outside the job, such as by hand in the Stripe Dashboard,
+  remain at this point). When nothing is left to refund, or the order is
+  already `refunded`, the job ends as `skipped_refunded` without a refund call;
+  when staff refunded part of the payment by hand, only the remainder is
+  refunded. For an order already `refunded`, a list call that fails for a
+  reason other than a temporary error also ends the job as `skipped_refunded`;
 - it then refunds that amount through `POST /v1/refunds` with the payment
   intent, the workspace's restricted key in the order's mode and the job's
   current idempotency key, stores the Stripe refund id and status and marks the
@@ -932,9 +939,9 @@ same key only when the outcome of the last call is unknown: no HTTP answer
 call was running) or a `409 idempotency_key_in_use`, which means the first
 request with that key is still executing. After any other error answer the
 next attempt uses the next generation. A second refund cannot follow: every
-attempt first subtracts the refunds Stripe already lists for the payment, and
-Stripe never refunds more than the charge (`charge_already_refunded` ends the
-job as `skipped_refunded`).
+attempt first lists the payment's refunds, takes over one the job issued under
+any key generation and subtracts the others, and Stripe never refunds more than
+the charge (`charge_already_refunded` ends the job as `skipped_refunded`).
 
 Staff get the `order-refund-alert` e-mail (support address, or every staff
 member in their language) on the first failed attempt, on the first missing
@@ -954,10 +961,16 @@ Stripe Dashboard (the order then becomes `refunded`). Requeueing a failed job
 from Studio is not available yet.
 
 When `charge.refunded` reports a full refund of a cancelled order, the same
-payment transaction marks the order `refunded` and moves a `pending`,
-`blocked_permission` or `failed` job, or a `running` job without a Stripe
-refund, to `resolved_externally`; the dispatcher never picks that job up again.
-A `submitted` job keeps its scheduled status reads. A refund or dispute of a
+payment transaction marks the order `refunded` and moves a job that never
+called Stripe (`pending` with no attempt and no Stripe refund) or a `failed`
+job to `resolved_externally`; the dispatcher never picks that job up again.
+Every other job is left as it is, because the event may report the job's own
+refund: a `submitted` job keeps its scheduled status reads, a `running` job
+keeps its lease, and a `pending` or `blocked_permission` job that already
+attempted a refund is settled by its next attempt, whose refund list tells the
+job's own refund (taken over and tracked) from one made by hand (no matching
+metadata, so the job ends as `skipped_refunded`). A blocked job whose payment
+staff refund by hand therefore heals at its next hourly attempt. A refund or dispute of a
 cancelled order revokes no access, because the cancelled order granted none.
 
 A cancelled order never counts as a purchase: it keeps no access when another

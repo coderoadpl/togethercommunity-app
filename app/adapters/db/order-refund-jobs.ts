@@ -87,8 +87,8 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
         eq(orderRefundJobs.tenantId, tenantId),
         eq(orderRefundJobs.orderId, orderId),
         or(
-          inArray(orderRefundJobs.status, ['pending', 'blocked_permission', 'failed']),
-          and(eq(orderRefundJobs.status, 'running'), isNull(orderRefundJobs.providerRefundId)),
+          and(eq(orderRefundJobs.status, 'pending'), eq(orderRefundJobs.attempts, 0), isNull(orderRefundJobs.providerRefundId)),
+          eq(orderRefundJobs.status, 'failed'),
         ),
       ))
       .returning();

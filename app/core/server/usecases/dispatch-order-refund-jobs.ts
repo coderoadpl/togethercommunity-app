@@ -101,9 +101,12 @@ const settlePermissionMissing = (job: OrderRefundJob, lastError: string, now: st
   };
 };
 
+const skippedRefunded = (lastError: string | null = null): Settlement =>
+  ({ update: { status: 'skipped_refunded', nextAttemptAt: null, lastError }, outcome: 'skipped_refunded', alert: null });
+
 const settleRefundFailure = (job: OrderRefundJob, error: AppError, now: string): Settlement => {
   const kind = refundFailureOf(error)?.kind ?? 'transient';
-  if (kind === 'already_refunded') return { update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: error.message }, outcome: 'skipped_refunded', alert: null };
+  if (kind === 'already_refunded') return skippedRefunded(error.message);
   if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
   if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(error.message);
   const retryAt = orderRefundRetryAt(job.attempts, now, job.createdAt);
@@ -111,16 +114,29 @@ const settleRefundFailure = (job: OrderRefundJob, error: AppError, now: string):
   return { update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message }, outcome: 'retrying', alert: job.lastError === null ? 'retrying' : null };
 };
 
+const isCommitted = (refund: ProviderRefund): boolean => refund.status !== 'failed' && refund.status !== 'canceled';
+
 const committedRefundCents = (refunds: readonly ProviderRefund[]): number =>
-  refunds.filter((refund) => refund.status !== 'failed' && refund.status !== 'canceled').reduce((sum, refund) => sum + refund.amountCents, 0);
+  refunds.filter(isCommitted).reduce((sum, refund) => sum + refund.amountCents, 0);
+
+const issuedRefundOf = (job: OrderRefundJob, refunds: readonly ProviderRefund[]): ProviderRefund | undefined => {
+  const issued = refunds.filter((refund) => refund.orderId === job.orderId && refund.reason === job.reason);
+  return issued.find(isCommitted) ?? issued[0];
+};
 
 const attemptRefund = async (job: OrderRefundJob, order: OrderListItem, paymentIntentId: string, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   const { createRefund, listRefunds } = deps.payment;
-  if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
+  const orderRefunded = order.status === 'refunded';
+  if (createRefund === undefined || listRefunds === undefined) return orderRefunded ? skippedRefunded() : settleRefundFailure(job, providerUnavailable, now);
   const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId });
-  if (!listed.ok) return settleRefundFailure(job, listed.error, now);
+  if (!listed.ok) {
+    const transient = (refundFailureOf(listed.error)?.kind ?? 'transient') === 'transient';
+    return orderRefunded && !transient ? skippedRefunded() : settleRefundFailure(job, listed.error, now);
+  }
+  const issued = issuedRefundOf(job, listed.value);
+  if (issued !== undefined) return settleSubmittedRefund(issued, now);
   const remainingCents = job.amountCents - committedRefundCents(listed.value);
-  if (remainingCents <= 0) return { update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: null }, outcome: 'skipped_refunded', alert: null };
+  if (orderRefunded || remainingCents <= 0) return skippedRefunded();
   const created = await createRefund({
     mode: order.mode,
     tenantId: job.tenantId,
@@ -138,7 +154,8 @@ const attemptRefund = async (job: OrderRefundJob, order: OrderListItem, paymentI
 
 const refundJob = async (job: OrderRefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   if (order === null) return finalFailure('The cancelled order was not found');
-  if (order.status === 'refunded') return { update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: null }, outcome: 'skipped_refunded', alert: null };
+  const refundable = order.cancelReason === job.reason && job.paymentIntentId !== null;
+  if (!refundable && order.status === 'refunded') return skippedRefunded();
   if (order.cancelReason !== job.reason) return finalFailure('The order is not cancelled for this refund reason');
   if (job.paymentIntentId === null) return finalFailure('The order has no payment intent to refund');
   const settlement = await attemptRefund(job, order, job.paymentIntentId, now, deps);

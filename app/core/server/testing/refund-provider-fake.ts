@@ -41,7 +41,7 @@ export const createRefundProviderFake = (input: {
     if (call.amountCents > remainingCents) return err(refundFailure('refund_failed', 'Refund amount is greater than the unrefunded amount on the charge'));
     const refund: ProviderRefund = {
       refundId: `re_${String(created.length + 1)}`, paymentIntentId: call.paymentIntentId, amountCents: call.amountCents,
-      status, failureReason: status === 'failed' ? 'expired_or_canceled_card' : null,
+      status, failureReason: status === 'failed' ? 'expired_or_canceled_card' : null, orderId: call.metadata.orderId, reason: call.metadata.reason,
     };
     refunds.push(refund);
     created.push(refund);
@@ -86,5 +86,7 @@ export const createRefundProviderFake = (input: {
     },
   };
 
-  return { payment, calls, readCalls, listCalls, created };
+  const refundByHand = (refund: ProviderRefund) => { refunds.push(refund); };
+
+  return { payment, calls, readCalls, listCalls, created, refundByHand };
 };

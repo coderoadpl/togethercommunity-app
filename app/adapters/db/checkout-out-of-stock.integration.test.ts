@@ -329,10 +329,10 @@ const refundDispatcher = (h: Harness, release: Promise<void> = Promise.resolve()
       createRefund: async (input: RefundInput) => {
         calls.push(input);
         await release;
-        const refund: ProviderRefund = { refundId: `re_${input.idempotencyKey}`, paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, status: 'succeeded', failureReason: null };
+        const refund: ProviderRefund = { refundId: `re_${input.idempotencyKey}`, paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, status: 'succeeded', failureReason: null, orderId: null, reason: null };
         return ok(refund);
       },
-      getRefund: async () => ok<ProviderRefund>({ refundId: 're_unused', paymentIntentId: null, amountCents: 0, status: 'succeeded', failureReason: null }),
+      getRefund: async () => ok<ProviderRefund>({ refundId: 're_unused', paymentIntentId: null, amountCents: 0, status: 'succeeded', failureReason: null, orderId: null, reason: null }),
       listRefunds: async () => ok<ProviderRefund[]>([]),
     },
   };
@@ -428,7 +428,7 @@ const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing
       },
       getRefund: async (input: { refundId: string }) => {
         calls.push(`get:${input.refundId}`);
-        return ok<ProviderRefund>({ refundId: input.refundId, paymentIntentId: null, amountCents: 0, status: 'pending', failureReason: null });
+        return ok<ProviderRefund>({ refundId: input.refundId, paymentIntentId: null, amountCents: 0, status: 'pending', failureReason: null, orderId: null, reason: null });
       },
       listRefunds: async () => ok<ProviderRefund[]>([]),
     },
@@ -506,14 +506,10 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'blocked_permission' });
   });
 
-  it.each([
-    { state: 'pending', prepare: async () => undefined },
-    { state: 'blocked_permission', prepare: async (h: Harness) => { await providerCalls(h, 'permission_missing').run(); } },
-  ])('resolves a $state refund job when the cancelled order is refunded by hand and never calls Stripe for it again', async ({ state, prepare }) => {
+  it('resolves a refund job that never called Stripe when the cancelled order is refunded by hand and never calls Stripe for it again', async () => {
     const h = harness();
     const cancelled = await cancelBundle(h);
-    await prepare(h);
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: state });
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'pending', attempts: 0 });
     h.setNow('2026-11-15T11:00:00.000Z');
 
     expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
@@ -523,12 +519,29 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect((await createOrderRepository(database.db).list(legacyTenant.id, { page: 1, pageSize: 20 })).orders)
       .toStrictEqual([expect.objectContaining({ id: cancelled.id, status: 'refunded', refundJobStatus: 'resolved_externally' })]);
     expect(h.warnings).toContain(`[order-refund] resolved externally tenant=tenant-a order=${cancelled.id} job=${(await refundJobOf(cancelled.id))?.id ?? ''} event=evt_refund_by_hand`);
-    const dispatcher = providerCalls(h, { refundId: 're_never', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null });
+    const dispatcher = providerCalls(h, { refundId: 're_never', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: null, reason: null });
     for (const now of ['2026-11-15T11:01:00.000Z', '2026-11-16T12:00:00.000Z', '2026-11-25T12:00:00.000Z']) {
       h.setNow(now);
       expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
     }
     expect(dispatcher.calls).toStrictEqual([]);
+  });
+
+  it('leaves a blocked refund job to its next hourly attempt when the order is refunded by hand, which ends it as skipped_refunded without a refund call', async () => {
+    const h = harness();
+    const cancelled = await cancelBundle(h);
+    const blocked = providerCalls(h, 'permission_missing');
+    await blocked.run();
+    h.setNow('2026-11-15T11:00:00.000Z');
+
+    expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
+      .toStrictEqual(ok({ processed: true }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'blocked_permission', nextAttemptAt: '2026-11-15T11:42:00.000Z' });
+
+    h.setNow('2026-11-15T11:42:00.000Z');
+    expect(await blocked.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { skipped_refunded: 1 } }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null, providerRefundId: null });
+    expect(blocked.calls).toStrictEqual([`create:oos-refund-${cancelled.id}`]);
   });
 
   it('claims a blocked refund again an hour later and sends the next key generation', async () => {
@@ -543,7 +556,7 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(await blocked.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
 
     h.setNow('2026-11-15T11:42:00.000Z');
-    const paying = providerCalls(h, { refundId: 're_after_permission', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null });
+    const paying = providerCalls(h, { refundId: 're_after_permission', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: null, reason: null });
     expect(await paying.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
 
     expect([...blocked.calls, ...paying.calls]).toStrictEqual([`create:oos-refund-${cancelled.id}`, `create:oos-refund-${cancelled.id}-1`]);
@@ -574,7 +587,7 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(await refundAlerts()).toStrictEqual([{ id: `order-refund-alert:${jobId}:blocked_permission:2:0`, to: 'owner@example.com' }]);
   });
 
-  it('resolves a job whose refund attempt is still running and makes that attempt lose its lease', async () => {
+  it('leaves a running refund attempt its lease when the charge is reported refunded, so the attempt saves the refund it made', async () => {
     const h = harness();
     const cancelled = await cancelBundle(h);
     const repository = createOrderRefundJobRepository(database.db);
@@ -585,16 +598,16 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_while_running', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
       .toStrictEqual(ok({ processed: true }));
 
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'resolved_externally', lockedAt: null });
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'running', lockedAt: '2026-11-15T10:42:00.000Z' });
     if (claim === null) throw new Error('Expected a claimed job');
-    expect(await repository.release(legacyTenant.id, claim.job.id, claim.lease, { status: 'succeeded', now: '2026-11-15T10:44:00.000Z' })).toBeNull();
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'resolved_externally' });
+    expect(await repository.release(legacyTenant.id, claim.job.id, claim.lease, { status: 'succeeded', providerRefundId: 're_ours', now: '2026-11-15T10:44:00.000Z' }))
+      .toMatchObject({ status: 'succeeded', providerRefundId: 're_ours' });
   });
 
   it('leaves a submitted refund with its scheduled status reads when the charge is reported refunded', async () => {
     const h = harness();
     const cancelled = await cancelBundle(h);
-    const submitting = providerCalls(h, { refundId: 're_pending', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'pending', failureReason: null });
+    const submitting = providerCalls(h, { refundId: 're_pending', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'pending', failureReason: null, orderId: null, reason: null });
     expect(await submitting.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { submitted: 1 } }));
     h.setNow('2026-11-15T10:43:00.000Z');
 

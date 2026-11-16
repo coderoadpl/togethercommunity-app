@@ -801,5 +801,55 @@ describe('organization repositories', () => {
       })).toMatchObject({ status: 'unlinked', organizationId: 'org-held' });
       expect(await linkOf('held-in')).toBeNull();
     });
+
+    it('refuses a workspace-side unlink whose workspace moved to another organization while it waited for the organization lock', async () => {
+      await insertOrganization(organization('org-move-a', 'move-a'));
+      await insertOrganization(organization('org-move-b', 'move-b'));
+      await database.db.insert(tenants).values({ id: 'move-ws', slug: 'move-ws', name: 'Move', createdAt: at, organizationId: 'org-move-a' });
+      await database.db.insert(tenantAdmins).values({ id: 'move-grant', tenantId: 'move-ws', userId: 'move-ws-owner', role: 'owner' });
+      await insertMember('org-move-a', { id: 'move-m-a', userId: 'move-a-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      await insertMember('org-move-b', { id: 'move-m-b', userId: 'move-ws-owner', role: 'owner', createdAt: at, createdByUserId: 'operator' });
+      const workspaces = createOrganizationWorkspaceRepository(database.db);
+      const workspaceSide = (id: string) => ({
+        actorUserId: 'move-ws-owner',
+        organizationAudit: workspaceChange('org-move-a', 'move-ws', 'move-ws-owner', id, false).organizationAudit,
+        tenantAudit: { id: `tenant-${id}`, kind: 'organization.unlinked' as const, actorUserId: 'move-ws-owner', actorEmail: 'move-ws-owner@example.test', subjectMemberId: null, at },
+      });
+      const auditOf = async (organizationId: string) => (await database.db.select().from(organizationAuditEvents)
+        .where(eq(organizationAuditEvents.organizationId, organizationId))).map((row) => [row.id, row.kind]);
+
+      let waited = false;
+      const started: Array<ReturnType<typeof workspaces.unlinkAsWorkspaceOwner>> = [];
+      await database.db.transaction(async (tx) => {
+        await tx.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, 'org-move-a')).for('no key update');
+        const pending = workspaces.unlinkAsWorkspaceOwner('move-ws', workspaceSide('move-ws-side'));
+        pending.catch(() => undefined);
+        started.push(pending);
+        for (let attempt = 0; attempt < 200 && !waited; attempt += 1) {
+          waited = hasRows(await database.db.execute(sql`SELECT pid FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`));
+          if (!waited) await new Promise((resolve) => { setTimeout(resolve, 10); });
+        }
+        const moving = createOrganizationWorkspaceRepository(tx);
+        expect(await moving.unlink('move-ws', workspaceChange('org-move-a', 'move-ws', 'move-a-owner', 'move-unlink-a', false)))
+          .toMatchObject({ status: 'unlinked' });
+        expect(await moving.link('move-ws', workspaceChange('org-move-b', 'move-ws', 'move-ws-owner', 'move-link-b', true)))
+          .toMatchObject({ status: 'linked' });
+      });
+      expect(waited).toBe(true);
+      const [raced] = started;
+      if (raced === undefined) throw new Error('workspace-side unlink did not start');
+
+      expect(await raced).toEqual({ status: 'linked_elsewhere' });
+      expect(await linkOf('move-ws')).toBe('org-move-b');
+      expect(await auditOf('org-move-a')).toEqual([['org-move-unlink-a', 'workspace.unlinked']]);
+      expect(await auditOf('org-move-b')).toEqual([['org-move-link-b', 'workspace.linked']]);
+      expect((await database.db.select().from(tenantAuditEvents).where(eq(tenantAuditEvents.tenantId, 'move-ws'))).map((row) => row.id).toSorted())
+        .toEqual(['tenant-move-link-b', 'tenant-move-unlink-a']);
+
+      expect(await workspaces.unlinkAsWorkspaceOwner('move-ws', workspaceSide('move-ws-retry')))
+        .toMatchObject({ status: 'unlinked', organizationId: 'org-move-b' });
+      expect(await linkOf('move-ws')).toBeNull();
+    });
   });
 });

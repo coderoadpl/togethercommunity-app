@@ -380,14 +380,17 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     return { status: 'unlinked', workspace: locked.workspace } as const;
   }),
   unlinkAsWorkspaceOwner: async (tenantId, input) => db.transaction(async (tx) => {
-    const [linked] = await tx.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId));
-    if (linked !== undefined && linked.organizationId !== null) await lockOrganization(tx, linked.organizationId);
+    const [read] = await tx.select({ organizationId: tenants.organizationId }).from(tenants).where(eq(tenants.id, tenantId));
+    const lockedOrganizationId = read?.organizationId ?? null;
+    if (lockedOrganizationId !== null) await lockOrganization(tx, lockedOrganizationId);
     const locked = await lockWorkspace(tx, tenantId);
     if (locked === null || !await holdsDirectOwnerGrant(tx, tenantId, input.actorUserId)) {
       return { status: 'workspace_owner_required' } as const;
     }
     const { organizationId, workspace } = locked;
     if (organizationId === null) return { status: 'not_linked', workspace } as const;
+    // Locking the new organization now would take it after the tenant row, so a move between the read and the lock is refused.
+    if (organizationId !== lockedOrganizationId) return { status: 'linked_elsewhere' } as const;
     if (await hasConfigSources(tx, tenantId)) return { status: 'config_sources_present' } as const;
     await tx.update(tenants).set({ organizationId: null }).where(eq(tenants.id, tenantId));
     await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId });

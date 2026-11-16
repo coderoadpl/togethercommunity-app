@@ -2746,13 +2746,15 @@ type WorkspaceOwnerUnlinkResult =
   | { status: 'unlinked'; workspace: OrganizationWorkspace; organizationId: string }
   | { status: 'not_linked'; workspace: OrganizationWorkspace }
   | { status: 'workspace_owner_required' }
+  | { status: 'linked_elsewhere' }
   | { status: 'config_sources_present' };
 
 /**
  * Every change re-checks its authority inside one transaction with the change and both audit rows.
  * Linking needs a direct workspace owner who owns the organization. Unlinking needs either side:
  * `unlink` an organization owner, `unlinkAsWorkspaceOwner` a direct owner grant in the workspace.
- * `link` and `unlink` refuse a suspended organization; `unlinkAsWorkspaceOwner` stays open to the workspace side.
+ * `link` and `unlink` refuse a suspended organization; `unlinkAsWorkspaceOwner` stays open to the workspace side
+ * and answers `linked_elsewhere` when the workspace moved to another organization while the call waited for its locks.
  */
 export interface OrganizationWorkspaceRepository {
   link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;

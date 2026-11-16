@@ -137,6 +137,7 @@ export const unlinkWorkspaceFromOrganization = async (
     case 'unlinked': return ok({ workspace: result.workspace, changed: true });
     case 'not_linked': return ok({ workspace: result.workspace, changed: false });
     case 'workspace_owner_required': return directOwnerRequired();
+    case 'linked_elsewhere': return linkedElsewhere();
     case 'config_sources_present': return configSourcesPresent();
   }
 };

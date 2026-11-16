@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 
 import { checkoutSessionInputSchema, type CheckoutSessionInput } from '#core/domain/index.js';
@@ -34,7 +34,7 @@ const startPoster = async (request: CheckoutSessionInput) => {
 };
 
 const storedReturnUrl = async () => {
-  const [row] = await database.db.select({ returnUrl: sql<string | null>`return_url` }).from(checkoutSnapshots)
+  const [row] = await database.db.select({ returnUrl: checkoutSnapshots.returnUrl }).from(checkoutSnapshots)
     .where(eq(checkoutSnapshots.id, 'checkout-id-1'));
   return row?.returnUrl;
 };

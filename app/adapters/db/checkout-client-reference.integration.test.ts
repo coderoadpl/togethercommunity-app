@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 
 import { checkoutSessionInputSchema, type CheckoutSessionInput, type Order } from '#core/domain/index.js';
@@ -40,7 +40,7 @@ const payPoster = async (request: CheckoutSessionInput) => {
   if (!selection.ok) throw new Error(selection.error.message);
   const started = await startCheckoutSession(legacyTenant, legacyBaseUrl, parsed, selection.value, h.checkoutDeps, 'capture-1');
   if (!started.ok) throw new Error(started.error.message);
-  const [snapshotRow] = await database.db.select({ clientReference: sql<string | null>`client_reference` }).from(checkoutSnapshots)
+  const [snapshotRow] = await database.db.select({ clientReference: checkoutSnapshots.clientReference }).from(checkoutSnapshots)
     .where(eq(checkoutSnapshots.id, 'checkout-id-1'));
   const storedReference = snapshotRow?.clientReference;
   const snapshot = await createCheckoutSnapshotRepository(database.db).findById(legacyTenant.id, 'checkout-id-1');

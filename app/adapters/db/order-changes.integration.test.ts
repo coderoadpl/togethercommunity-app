@@ -2,10 +2,10 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { listOrderChangesQuerySchema, orderLineSchema, orderSchema, type Order, type OrderChange, type OrderShipping } from '#core/domain/index.js';
+import { decodeOrderChangeCursor, listOrderChangesQuerySchema, orderLineSchema, orderSchema, type Order, type OrderChange, type OrderChangeRead, type OrderShipping } from '#core/domain/index.js';
 
-import { orderChanges } from './order-change-schema.js';
-import { createOrderChangeRepository } from './order-changes.js';
+import { orderChanges, orderFeedEpoch } from './order-change-schema.js';
+import { createOrderChangeRepository, rotateOrderFeedEpoch } from './order-changes.js';
 import { createOrderFulfilmentRepository } from './order-fulfilment.js';
 import { createOrderVerificationRepository } from './order-verification.js';
 import { createOrderRepository, createPaymentRefundRepository } from './repositories.js';
@@ -35,11 +35,32 @@ const createOrder = async (tenantId: string, extra: Partial<Order> = {}): Promis
 
 const changes = createOrderChangeRepository;
 
+const changesOf = (read: OrderChangeRead): OrderChange[] => {
+  if (read.kind === 'reset') throw new Error(`Unexpected feed reset to ${read.cursor}`);
+  return read.changes;
+};
+
+const resetOf = (read: OrderChangeRead): string => {
+  if (read.kind !== 'reset') throw new Error('Expected a feed reset');
+  return read.cursor;
+};
+
+const storedEpoch = async (): Promise<string> => {
+  const [row] = await database.db.select({ epoch: orderFeedEpoch.epoch }).from(orderFeedEpoch);
+  if (row === undefined) throw new Error('The order feed epoch row is missing');
+  return row.epoch;
+};
+
+const withEpoch = (cursor: string | undefined, epoch: string): string => {
+  const position = cursor === undefined ? null : decodeOrderChangeCursor(cursor);
+  return `${epoch}.${position?.xactId ?? '0'}.${position?.id ?? '0'}`;
+};
+
 const listAll = async (tenantId: string, after?: string): Promise<OrderChange[]> => {
   const collected: OrderChange[] = [];
   let cursor = after;
   for (;;) {
-    const page = await changes(database.db).listOrderChanges(tenantId, { after: cursor, limit: 200 });
+    const page = changesOf(await changes(database.db).listOrderChanges(tenantId, { after: cursor, limit: 200 }));
     collected.push(...page);
     if (page.length < 200) return collected;
     cursor = page.at(-1)?.cursor;
@@ -94,7 +115,7 @@ const touch = (client: pg.Client, orderId: string) =>
 
 beforeAll(async () => {
   database = await createTestDatabase('together_order_changes', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
-  await database.db.insert(tenants).values(['workspace', 'other'].map((id) => ({ id, slug: id, name: id, createdAt: now })));
+  await database.db.insert(tenants).values(['workspace', 'other', 'quiet'].map((id) => ({ id, slug: id, name: id, createdAt: now })));
   await database.db.insert(user).values({ id: 'buyer', email: 'buyer@example.org', name: 'Buyer' });
   for (const tenantId of ['workspace', 'other']) {
     await database.db.insert(members).values({ id: 'member', tenantId, userId: 'buyer', email: 'buyer@example.org', displayName: 'Buyer', createdAt: now });
@@ -195,25 +216,104 @@ describe('order change log on Postgres', () => {
     const created = [await createOrder('workspace'), await createOrder('workspace'), await createOrder('workspace')];
     await eventually('workspace', cursor, created);
     const repository = changes(database.db);
-    const firstPage = await repository.listOrderChanges('workspace', { after: cursor, limit: 2 });
+    const firstPage = changesOf(await repository.listOrderChanges('workspace', { after: cursor, limit: 2 }));
     expect(firstPage.map((change) => change.orderId)).toEqual(created.slice(0, 2));
-    const secondPage = await repository.listOrderChanges('workspace', { after: firstPage.at(-1)?.cursor, limit: 2 });
+    const secondPage = changesOf(await repository.listOrderChanges('workspace', { after: firstPage.at(-1)?.cursor, limit: 2 }));
     expect(secondPage.map((change) => change.orderId)).toEqual(created.slice(2));
     await expect(repository.listOrderChanges('workspace', { after: cursor, limit: 201 })).rejects.toThrow();
     await expect(repository.listOrderChanges('workspace', { after: cursor, limit: 0 })).rejects.toThrow();
   });
 });
 
+describe('order change feed epoch on Postgres', () => {
+  it('answers a cursor of another epoch with a fresh cursor at the end of the log that then returns only later changes', async () => {
+    const delivered = await createOrder('workspace');
+    const tail = await settledCursor('workspace');
+    const reset = resetOf(await changes(database.db).listOrderChanges('workspace', { after: withEpoch(tail, 'f'.repeat(32)), limit: 200 }));
+    expect(reset).toBe(tail);
+    expect(changesOf(await changes(database.db).listOrderChanges('workspace', { after: reset, limit: 200 })).map((change) => change.orderId)).not.toContain(delivered);
+    const later = await createOrder('workspace');
+    await eventually('workspace', reset, [later]);
+  });
+
+  it('rotates the epoch once for a cursor the database has not reached and keeps answering old cursors with a reset', async () => {
+    const tail = await settledCursor('workspace');
+    const before = await storedEpoch();
+    const ahead = `${before}.18446744073709551615.1`;
+    const reset = resetOf(await changes(database.db).listOrderChanges('workspace', { after: ahead, limit: 200 }));
+    const rotated = await storedEpoch();
+    expect(rotated).not.toBe(before);
+    expect(reset).toBe(withEpoch(tail, rotated));
+    expect(resetOf(await changes(database.db).listOrderChanges('workspace', { after: withEpoch(tail, before), limit: 200 }))).toBe(reset);
+    expect(await storedEpoch()).toBe(rotated);
+    expect(changesOf(await changes(database.db).listOrderChanges('workspace', { after: reset, limit: 200 }))).toEqual([]);
+  });
+
+  it('lets two requests that both see a cursor ahead of the database converge on one new epoch', async () => {
+    const before = await storedEpoch();
+    const ahead = `${before}.18446744073709551615.1`;
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT epoch FROM order_feed_epoch FOR UPDATE');
+      const reads = Promise.all([
+        changes(database.db).listOrderChanges('workspace', { after: ahead, limit: 200 }),
+        changes(database.db).listOrderChanges('other', { after: ahead, limit: 200 }),
+      ]);
+      await waitFor(async () => {
+        const [row] = await database.db.select({ waiting: sql<string>`count(*)::text` }).from(sql`pg_stat_activity`)
+          .where(sql`datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE 'update "order_feed_epoch"%'`);
+        return row?.waiting === '2';
+      });
+      await holder.query('COMMIT');
+      const [first, second] = await reads;
+      const rotated = await storedEpoch();
+      expect(rotated).not.toBe(before);
+      expect(decodeOrderChangeCursor(resetOf(first))?.epoch).toBe(rotated);
+      expect(decodeOrderChangeCursor(resetOf(second))?.epoch).toBe(rotated);
+    } finally {
+      await holder.end();
+    }
+  });
+
+  it('gives each workspace a fresh cursor of its own log and never one that reveals another workspace', async () => {
+    const ownTail = await settledCursor('workspace');
+    const foreign = await createOrder('other');
+    await settledCursor('other');
+    const stale = withEpoch(ownTail, 'f'.repeat(32));
+    const epoch = await storedEpoch();
+    expect(resetOf(await changes(database.db).listOrderChanges('workspace', { after: stale, limit: 200 }))).toBe(withEpoch(ownTail, epoch));
+    expect(resetOf(await changes(database.db).listOrderChanges('quiet', { after: stale, limit: 200 }))).toBe(`${epoch}.0.0`);
+    const ownFresh = resetOf(await changes(database.db).listOrderChanges('workspace', { after: stale, limit: 200 }));
+    expect(changesOf(await changes(database.db).listOrderChanges('workspace', { after: ownFresh, limit: 200 })).map((change) => change.orderId)).not.toContain(foreign);
+    expect(changesOf(await changes(database.db).listOrderChanges('quiet', { after: `${epoch}.0.0`, limit: 200 }))).toEqual([]);
+  });
+
+  it('rotates the epoch on demand so every earlier cursor is answered with a reset', async () => {
+    const tail = await settledCursor('workspace');
+    const before = await storedEpoch();
+    const rotated = await rotateOrderFeedEpoch(database.db);
+    expect(rotated).toMatch(/^[0-9a-f]{32}$/);
+    expect(rotated).not.toBe(before);
+    expect(await storedEpoch()).toBe(rotated);
+    expect(resetOf(await changes(database.db).listOrderChanges('workspace', { after: tail, limit: 200 }))).toBe(withEpoch(tail, rotated));
+  });
+});
+
 describe('order change query', () => {
+  const epoch = '0123456789abcdef0123456789abcdef';
+
   it('accepts limits from 1 to 200 and opaque cursors only', () => {
     expect(listOrderChangesQuerySchema.safeParse({ limit: 1 }).success).toBe(true);
-    expect(listOrderChangesQuerySchema.safeParse({ limit: '200', after: '18446744073709551615.9223372036854775807' }).success).toBe(true);
+    expect(listOrderChangesQuerySchema.safeParse({ limit: '200', after: `${epoch}.18446744073709551615.9223372036854775807` }).success).toBe(true);
     for (const limit of [0, 201, 1.5, 'many']) {
       expect(listOrderChangesQuerySchema.safeParse({ limit }).success).toBe(false);
     }
-    for (const after of ['', '12', '-1.2', '01.2', '1.02', '1.2.3', ' 1.2', '18446744073709551616.1', '1.9223372036854775808']) {
+    for (const after of ['', '12', '1.2', '-1.2', `${epoch}.01.2`, `${epoch}.1.02`, `${epoch}.1.2.3`, ` ${epoch}.1.2`, `${epoch}.18446744073709551616.1`,
+      `${epoch}.1.9223372036854775808`, `${epoch.toUpperCase()}.1.2`, `${epoch.slice(1)}.1.2`, `${epoch}0.1.2`]) {
       expect(listOrderChangesQuerySchema.safeParse({ limit: 10, after }).success).toBe(false);
     }
-    expect(listOrderChangesQuerySchema.safeParse({ limit: 10, before: '1.1' }).success).toBe(false);
+    expect(listOrderChangesQuerySchema.safeParse({ limit: 10, before: `${epoch}.1.1` }).success).toBe(false);
   });
 });

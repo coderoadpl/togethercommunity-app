@@ -1,7 +1,7 @@
-import type { ListOrderChangesQuery, OrderChange, OrderListItem } from '#core/domain/index.js';
+import type { ListOrderChangesQuery, OrderChangeRead, OrderListItem } from '#core/domain/index.js';
 
 export interface OrderChangeRepository {
-  listOrderChanges(tenantId: string, query: ListOrderChangesQuery): Promise<OrderChange[]>;
+  listOrderChanges(tenantId: string, query: ListOrderChangesQuery): Promise<OrderChangeRead>;
 }
 
 export interface OrderListItemReader {

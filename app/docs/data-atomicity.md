@@ -273,10 +273,30 @@ is not logged.
 The read is scoped to one workspace, ordered by `(xact_id, id)` and returns only
 rows whose `xact_id` is below the `xmin` of the reader's snapshot, so every
 transaction that could still add a row before the cursor has already finished.
-The cursor is `<xact_id>.<id>`; clients treat it as opaque. Ordering by `id`
+The cursor is `<epoch>.<xact_id>.<id>`; clients treat it as opaque. Ordering by `id`
 alone would skip changes: a transaction can take a lower `id` and commit after a
 reader has passed a higher one. The price is that the feed lags behind the
 oldest transaction still open on the database server.
+
+Transaction IDs and `id` values are meaningful only on the database that issued
+them, so a move or a restore would leave clients holding positions of another
+timeline. The single-row table `order_feed_epoch` holds a random epoch (32
+hexadecimal characters, created by the migration with `gen_random_uuid()`), and
+every cursor carries it. A cursor with another epoch is answered with
+`feed_cursor_reset` and a fresh cursor at the current end of the workspace's
+log: the largest settled `(xact_id, id)` of that workspace, or position `0.0`
+when it has none, so it never points into another workspace's rows. A cursor
+of the current epoch whose `xact_id` is at or beyond `pg_snapshot_xmax` of the
+current snapshot cannot come from this database, so the read rotates the epoch
+and answers the same way. The rotation is
+`UPDATE order_feed_epoch ... WHERE epoch = <the epoch read>`: when two readers
+race, the second waits for the first's row lock, finds the epoch already
+changed, updates nothing and reads the new one, so both answer with one epoch.
+The guard uses only the snapshot functions, no control functions that a hosted
+database may refuse. A restore to an earlier state can leave cursors behind the
+current position that the guard cannot tell apart, so the
+[move and restore runbook](deployment-environments.md#order-change-feed-after-a-move-or-restore)
+rotates the epoch with `pnpm run orders:rotate-feed-epoch`.
 
 The rows are kept without a retention purge for now. Deleting an order, for
 example through a product deletion, deletes its change rows.

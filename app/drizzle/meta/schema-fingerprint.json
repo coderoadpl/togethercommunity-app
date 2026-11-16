@@ -1,6 +1,6 @@
 {
-  "hash": "7fa414057c7514eab556c6a9b7628b7206fc37b4595863d353a8746fc313d3a6",
-  "shortId": "7fa414057c75",
+  "hash": "54862c245adb132df89b4207485a5cd4812912a5566472de794e8a58157856d0",
+  "shortId": "54862c245adb",
   "schema": {
     "constraints": [
       {
@@ -102,6 +102,11 @@
         "definition": "CHECK ((environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "order_shipments_environment_check",
         "table": "order_shipments"
+      },
+      {
+        "definition": "CHECK ((epoch ~ '^[0-9a-f]{32}$'::text))",
+        "name": "order_feed_epoch_epoch_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "CHECK ((interval_count > 0))",
@@ -287,6 +292,11 @@
         "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
         "name": "products_visibility_check",
         "table": "products"
+      },
+      {
+        "definition": "CHECK (singleton)",
+        "name": "order_feed_epoch_singleton_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES tenant_api_keys(id) ON DELETE CASCADE",
@@ -1822,6 +1832,11 @@
         "definition": "PRIMARY KEY (sequence)",
         "name": "telemetry_outbox_pkey",
         "table": "telemetry_outbox"
+      },
+      {
+        "definition": "PRIMARY KEY (singleton)",
+        "name": "order_feed_epoch_pkey",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "PRIMARY KEY (tenant_id)",
@@ -8868,6 +8883,35 @@
           }
         ],
         "name": "session"
+      },
+      {
+        "columns": [
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "rotated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "singleton",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "epoch",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_feed_epoch"
       },
       {
         "columns": [

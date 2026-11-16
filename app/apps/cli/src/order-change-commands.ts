@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import type { ApiClient } from '#core/client/index.js';
-import { err, stripeModeSchema, validation, type AppError, type OrderChangeFeed, type Result } from '#core/domain/index.js';
+import { err, feedCursorResetCursor, stripeModeSchema, validation, type AppError, type OrderChangeFeed, type Result } from '#core/domain/index.js';
 
 import { emit } from './output.js';
 
@@ -43,6 +43,14 @@ const pause = (milliseconds: number, signal: AbortSignal): Promise<void> => new 
   signal.addEventListener('abort', stop, { once: true });
 });
 
+const report = <T>(ctx: OrderChangeCliContext, result: Result<T, AppError>, human: (value: T) => string): void => {
+  emit(result, ctx.json, human);
+  const resetCursor = result.ok ? null : feedCursorResetCursor(result.error);
+  if (resetCursor !== null && !ctx.json) {
+    console.error(`Resync from the order list, then continue with: orders changes --after '${resetCursor}'`);
+  }
+};
+
 const follow = async (
   ctx: OrderChangeCliContext,
   options: z.output<typeof optionsSchema>,
@@ -52,7 +60,7 @@ const follow = async (
   while (!signal.aborted) {
     const page = await ctx.api.orderChanges(feedQuery(options, cursor), signal);
     if (signal.aborted) return;
-    if (!page.ok) { emit(page, ctx.json, () => ''); return; }
+    if (!page.ok) { report(ctx, page, () => ''); return; }
     if (page.value.changes.length > 0) {
       console.log(ctx.json ? JSON.stringify({ ok: true, data: page.value }) : page.value.changes.map(changeLine).join('\n'));
     }
@@ -78,7 +86,7 @@ export const runOrderChanges = async (
     }
     return;
   }
-  emit(await ctx.api.orderChanges(feedQuery(options.data, options.data.after)), ctx.json, (feed) => [
+  report(ctx, await ctx.api.orderChanges(feedQuery(options.data, options.data.after)), (feed) => [
     ...feed.changes.map(changeLine),
     `next cursor: ${feed.nextCursor ?? 'none'}`,
   ].join('\n'));

@@ -746,6 +746,17 @@ it('reads the order change feed with the cursor, limit and mode in the query', a
   ]);
 });
 
+it('returns a feed reset as its own error with the fresh cursor, and refuses a reset without one', async () => {
+  const cursor = '0123456789abcdef0123456789abcdef.12.4';
+  const error = { code: 'feed_cursor_reset', message: 'Order change feed reset: resync from the order list, then start from the cursor in this answer' };
+  const answers = [{ ...error, details: { cursor } }, error, { ...error, details: { cursor: '12.4' } }];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async () => jsonResponse({ ok: false, error: answers.shift() }, 409) });
+  expect(await client.orderChanges({ after: `${'f'.repeat(32)}.1.1` })).toEqual({ ok: false, error: { ...error, details: { cursor } } });
+  for (let index = 0; index < 2; index += 1) {
+    expect(await client.orderChanges({ after: `${'f'.repeat(32)}.1.1` })).toEqual({ ok: false, error: { code: 'internal', message: 'Response from /api/orders/changes does not match the contract' } });
+  }
+});
+
 it('sends source filters for order listing and export and parses tenant source options', async () => {
   const urls: string[] = [];
   const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {

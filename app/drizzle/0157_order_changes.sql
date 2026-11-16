@@ -21,3 +21,11 @@ $$;
 CREATE TRIGGER orders_record_insert AFTER INSERT ON orders FOR EACH ROW EXECUTE FUNCTION record_order_change();
 --> statement-breakpoint
 CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*) EXECUTE FUNCTION record_order_change();
+--> statement-breakpoint
+CREATE TABLE order_feed_epoch (
+  singleton boolean PRIMARY KEY DEFAULT true CONSTRAINT order_feed_epoch_singleton_check CHECK (singleton),
+  epoch text NOT NULL CONSTRAINT order_feed_epoch_epoch_check CHECK (epoch ~ '^[0-9a-f]{32}$'),
+  rotated_at timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
+INSERT INTO order_feed_epoch (epoch) VALUES (replace(gen_random_uuid()::text, '-', ''));

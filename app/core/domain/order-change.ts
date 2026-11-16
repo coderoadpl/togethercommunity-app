@@ -1,27 +1,31 @@
 import { z } from 'zod';
 
 import { orderListItemSchema } from './commerce.js';
+import { appError, type AppError } from './errors.js';
 import { stripeModeSchema } from './integration.js';
 
 const XID8_MAX = 2n ** 64n - 1n;
 const BIGINT_MAX = 2n ** 63n - 1n;
-const cursorPattern = /^(0|[1-9][0-9]{0,19})\.(0|[1-9][0-9]{0,18})$/;
+const cursorPattern = /^([0-9a-f]{32})\.(0|[1-9][0-9]{0,19})\.(0|[1-9][0-9]{0,18})$/;
 
 interface OrderChangePosition {
+  epoch: string;
   xactId: string;
   id: string;
 }
 
 export const decodeOrderChangeCursor = (cursor: string): OrderChangePosition | null => {
   const match = cursorPattern.exec(cursor);
-  const xactId = match?.[1];
-  const id = match?.[2];
-  if (xactId === undefined || id === undefined) return null;
+  const epoch = match?.[1];
+  const xactId = match?.[2];
+  const id = match?.[3];
+  if (epoch === undefined || xactId === undefined || id === undefined) return null;
   if (BigInt(xactId) > XID8_MAX || BigInt(id) > BIGINT_MAX) return null;
-  return { xactId, id };
+  return { epoch, xactId, id };
 };
 
-export const encodeOrderChangeCursor = (position: OrderChangePosition): string => `${position.xactId}.${position.id}`;
+export const encodeOrderChangeCursor = (position: OrderChangePosition): string =>
+  `${position.epoch}.${position.xactId}.${position.id}`;
 
 const orderChangeCursorSchema = z.string().refine(
   (cursor) => decodeOrderChangeCursor(cursor) !== null,
@@ -41,6 +45,23 @@ export interface OrderChange {
   orderId: string;
   changedAt: string;
 }
+
+export type OrderChangeRead =
+  | { kind: 'changes'; changes: OrderChange[] }
+  | { kind: 'reset'; cursor: string };
+
+export const ORDER_CHANGE_FEED_RESET_MESSAGE = 'Order change feed reset: resync from the order list, then start from the cursor in this answer';
+
+export const orderChangeFeedResetDetailsSchema = z.object({ cursor: orderChangeCursorSchema }).strict();
+
+export const feedCursorReset = (cursor: string): AppError =>
+  appError('feed_cursor_reset', ORDER_CHANGE_FEED_RESET_MESSAGE, { cursor });
+
+export const feedCursorResetCursor = (error: AppError): string | null => {
+  if (error.code !== 'feed_cursor_reset') return null;
+  const details = orderChangeFeedResetDetailsSchema.safeParse(error.details);
+  return details.success ? details.data.cursor : null;
+};
 
 const ORDER_CHANGE_FEED_DEFAULT_LIMIT = 100;
 

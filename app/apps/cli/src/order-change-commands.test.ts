@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type { ApiClient } from '#core/client/index.js';
-import { err, forbidden, ok, orderListItemSchema, type OrderChangeFeed } from '#core/domain/index.js';
+import { err, feedCursorReset, forbidden, ok, orderListItemSchema, type OrderChangeFeed } from '#core/domain/index.js';
 
 import { runOrderChanges } from './order-change-commands.js';
 
@@ -11,6 +11,8 @@ const order = (id: string, over: Record<string, unknown> = {}) => orderListItemS
   createdAt: '2026-11-04T09:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed stand',
   couponCode: null, ...over,
 });
+
+const FRESH = '0123456789abcdef0123456789abcdef.12.4';
 
 const page = (changes: OrderChangeFeed['changes'], nextCursor: string | null): OrderChangeFeed => ({ changes, nextCursor });
 
@@ -63,6 +65,27 @@ describe('orders changes command', () => {
     await h.run();
     expect(errorSpy).toHaveBeenCalledWith('error(forbidden): Not allowed');
     expect(process.exitCode).not.toBe(0);
+  });
+
+  it('prints the reset message and the cursor to continue from, with its own exit code', async () => {
+    const h = harness();
+    h.orderChanges.mockResolvedValue(err(feedCursorReset(FRESH)));
+    await h.run({ after: 'stale.9.1' });
+    expect(errorSpy.mock.calls.map(([line]) => line)).toEqual([
+      'error(feed_cursor_reset): Order change feed reset: resync from the order list, then start from the cursor in this answer',
+      `Resync from the order list, then continue with: orders changes --after '${FRESH}'`,
+    ]);
+    expect(process.exitCode).toBe(30);
+  });
+
+  it('stops following on a feed reset instead of polling again', async () => {
+    const h = harness(true);
+    h.orderChanges.mockResolvedValue(err(feedCursorReset(FRESH)));
+    await h.run({ after: 'stale.9.1', follow: true, interval: '1' });
+    expect(h.orderChanges).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({ ok: false, error: { code: 'feed_cursor_reset', details: { cursor: FRESH } } });
+    expect(process.exitCode).toBe(30);
+    expect(h.dispose).toHaveBeenCalledOnce();
   });
 
   it('rejects a limit outside 1-200 without calling the API', async () => {

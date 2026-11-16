@@ -55,7 +55,9 @@ The build runs append-only migrations against the environment database before
 building the web bundle. Preview databases are disposable. Staging and
 production migrations are forward-only and use expand then contract across
 separate releases. A production release containing a constraint or destructive
-migration requires a recorded Neon restore point before promotion.
+migration requires a recorded Neon restore point before promotion. Restoring
+one is followed by an
+[order change feed epoch rotation](#order-change-feed-after-a-move-or-restore).
 
 The `product_download_assets_default_lineage` insert trigger is the expand step for the
 NOT NULL `lineage_id` column, so a release that omits it keeps inserting; the contract
@@ -381,6 +383,28 @@ applies nothing. A dump taken before the upgrade carries the journal only in
 the `drizzle` schema, which a role without `CREATE` on the database cannot
 restore, and leaving that schema out of such a dump produces a database the
 runner refuses.
+
+After the restore, and before the application serves from the new database,
+rotate the [order change feed epoch](#order-change-feed-after-a-move-or-restore).
+
+### Order change feed after a move or restore
+
+Order change feed cursors (`GET /api/orders/changes`) carry the epoch stored in
+`order_feed_epoch` and positions that are valid only on the database that
+issued them. A dump, a restore point or a backup copies the epoch, so after
+moving to another PostgreSQL or restoring an earlier state, rotate it once with
+the target database's `DATABASE_URL`:
+
+```bash
+DATABASE_URL='<target database URL>' pnpm run orders:rotate-feed-epoch
+```
+
+It prints `{"epoch":"<new epoch>"}`. Every cursor issued before then is
+answered with `feed_cursor_reset` (HTTP 409) and a fresh cursor, and each shop
+backend resyncs once from the order list. A cursor whose position the database
+has not reached yet rotates the epoch on its own, but a restore to an earlier
+state can leave older cursors that look valid, so the command is part of every
+move and restore.
 
 The function runs in Vercel `fra1`; the Neon project must remain in
 `aws-eu-central-1`. Moving either side requires moving both. Deployed tenant

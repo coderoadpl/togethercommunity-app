@@ -23,11 +23,15 @@ const order = (id: string, mode: 'live' | 'test'): OrderListItem => orderListIte
   couponCode: null, fulfilmentStatus: 'shipped',
 });
 
+const EPOCH = '0123456789abcdef0123456789abcdef';
+
 const harness = (staffRole: 'owner' | null) => {
   const stored = [order('live-order', 'live'), order('test-order', 'test')];
-  const listOrderChanges = vi.fn<OrderChangeRepository['listOrderChanges']>(async (_tenantId, query) => stored
-    .filter((item) => query.mode === undefined || item.mode === query.mode)
-    .map((item, index) => ({ cursor: `9.${String(index + 1)}`, orderId: item.id, changedAt: item.createdAt })));
+  const listOrderChanges = vi.fn<OrderChangeRepository['listOrderChanges']>(async (_tenantId, query) => query.after?.startsWith(EPOCH) === false
+    ? { kind: 'reset', cursor: `${EPOCH}.12.4` }
+    : { kind: 'changes', changes: stored
+      .filter((item) => query.mode === undefined || item.mode === query.mode)
+      .map((item, index) => ({ cursor: `${EPOCH}.9.${String(index + 1)}`, orderId: item.id, changedAt: item.createdAt })) });
   const listByIds = vi.fn<OrderListItemReader['listByIds']>(async (_tenantId, ids) => stored.filter((item) => ids.includes(item.id)));
   const app = new Hono<AppVars>();
   app.use('*', async (c, next) => { c.set('identity', identity(staffRole)); await next(); });
@@ -38,12 +42,25 @@ const harness = (staffRole: 'owner' | null) => {
 describe('order changes HTTP route', () => {
   it('returns the changed orders in the order list shape with the next cursor', async () => {
     const h = harness('owner');
-    const response = await h.app.request('/api/orders/changes?after=8.1&limit=50');
+    const response = await h.app.request(`/api/orders/changes?after=${EPOCH}.8.1&limit=50`);
     expect(response.status).toBe(200);
     const { data } = z.object({ ok: z.literal(true), data: orderChangeContracts.orderChanges.output }).parse(await response.json());
     expect(data.changes.map((change) => change.order.id)).toEqual(['live-order', 'test-order']);
-    expect(data.nextCursor).toBe('9.2');
-    expect(h.listOrderChanges).toHaveBeenCalledExactlyOnceWith('workspace', { after: '8.1', limit: 50 });
+    expect(data.nextCursor).toBe(`${EPOCH}.9.2`);
+    expect(h.listOrderChanges).toHaveBeenCalledExactlyOnceWith('workspace', { after: `${EPOCH}.8.1`, limit: 50 });
+  });
+
+  it('answers 409 feed_cursor_reset with a typed fresh cursor to a cursor from another database timeline', async () => {
+    const h = harness('owner');
+    const response = await h.app.request(`/api/orders/changes?after=${'f'.repeat(32)}.8.1`);
+    expect(response.status).toBe(409);
+    const body = z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string(), details: orderChangeContracts.orderChanges.resetDetails }) })
+      .parse(await response.json());
+    expect(body.error).toEqual({
+      code: 'feed_cursor_reset',
+      message: 'Order change feed reset: resync from the order list, then start from the cursor in this answer',
+      details: { cursor: `${EPOCH}.12.4` },
+    });
   });
 
   it('forwards mode=live so test orders stay out', async () => {
@@ -61,7 +78,7 @@ describe('order changes HTTP route', () => {
     expect(h.listOrderChanges).not.toHaveBeenCalled();
   });
 
-  it.each(['limit=0', 'limit=201', 'after=not-a-cursor', 'mode=staging'])('answers 400 to %s', async (query) => {
+  it.each(['limit=0', 'limit=201', 'after=not-a-cursor', 'after=8.1', 'mode=staging'])('answers 400 to %s', async (query) => {
     const h = harness('owner');
     const response = await h.app.request(`/api/orders/changes?${query}`);
     expect(response.status).toBe(400);

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigserial, customType, foreignKey, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, check, customType, foreignKey, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 import { orders, tenants } from './app-schema.js';
 
@@ -15,4 +15,13 @@ export const orderChanges = pgTable('order_changes', {
   foreignKey({ name: 'order_changes_tenant_order_fk', columns: [table.tenantId, table.orderId], foreignColumns: [orders.tenantId, orders.id] }).onDelete('cascade'),
   index('order_changes_tenant_cursor_idx').on(table.tenantId, table.xactId, table.id),
   index('order_changes_tenant_order_idx').on(table.tenantId, table.orderId),
+]);
+
+export const orderFeedEpoch = pgTable('order_feed_epoch', {
+  singleton: boolean('singleton').primaryKey().default(true),
+  epoch: text('epoch').notNull(),
+  rotatedAt: timestamp('rotated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (table) => [
+  check('order_feed_epoch_singleton_check', sql`${table.singleton}`),
+  check('order_feed_epoch_epoch_check', sql`${table.epoch} ~ '^[0-9a-f]{32}$'`),
 ]);

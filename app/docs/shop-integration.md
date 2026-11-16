@@ -685,12 +685,33 @@ visible only after every earlier database transaction has finished, so it can
 appear a little later than the write that caused it, but it never lands behind
 a cursor that was already returned.
 
+After a move or restore of its database the platform rotates the feed epoch,
+and a cursor issued before that is answered with HTTP 409:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "feed_cursor_reset",
+    "message": "Order change feed reset: resync from the order list, then start from the cursor in this answer",
+    "details": { "cursor": "<cursor>" }
+  }
+}
+```
+
+The client resyncs once: read the order list, update the shop's database from
+it, then store `error.details.cursor` and continue the feed from it. Changes
+made while the order list was read appear again in the feed, which the
+idempotent processing absorbs.
+
 CLI: `orders changes --mode live --after '<cursor>'` prints one line per change
 (cursor, order ID, status, fulfilment status, client reference) and the next
 cursor; `--json` prints the envelope above. `orders changes --mode live --after
 '<cursor>' --follow` keeps polling every `--interval` seconds (default 10)
 while nothing changes, prints each change once and stops cleanly on Ctrl+C; with
-`--json` it prints one single-line envelope per page that has changes.
+`--json` it prints one single-line envelope per page that has changes. On
+`feed_cursor_reset` the command prints the cursor to continue from after the
+resync and exits with code 30 instead of polling again.
 
 For shipping, select live, paid orders whose `fulfilmentStatus` is `to_pack`.
 Packing-list/export tools are also available, but they are not proof of carrier

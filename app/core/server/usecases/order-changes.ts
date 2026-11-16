@@ -1,5 +1,6 @@
 import {
   err,
+  feedCursorReset,
   ok,
   orderChangeFeedQuerySchema,
   validation,
@@ -38,7 +39,9 @@ export const listOrderChangeFeed = async (
   const parsed = orderChangeFeedQuerySchema.safeParse(query);
   if (!parsed.success) return err(validation('Invalid order changes query', parsed.error.flatten()));
 
-  const page = await deps.changes.listOrderChanges(tenant.value, parsed.data);
+  const read = await deps.changes.listOrderChanges(tenant.value, parsed.data);
+  if (read.kind === 'reset') return err(feedCursorReset(read.cursor));
+  const page = read.changes;
   const latest = latestChangePerOrder(page);
   const orders = new Map((await deps.orders.listByIds(tenant.value, latest.map((change) => change.orderId)))
     .map((order) => [order.id, order]));

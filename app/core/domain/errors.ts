@@ -29,6 +29,7 @@ export const ERROR_CODES = [
   'fulfilment_conflict',
   'shipx_unavailable',
   'shipx_rejected',
+  'feed_cursor_reset',
   'internal',
 ] as const;
 

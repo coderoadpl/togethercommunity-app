@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
+import { orderListItemSchema, outOfStockRefundJob, type Identity, type OrderListItem } from '#core/domain/index.js';
 
 import type { OrderListQuery } from '../ports.js';
+import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
 import { exportOrders, getOrder, getSalesSummary, listOrders, type OrdersDeps } from './orders.js';
 
 const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null = 't1'): Identity => ({
@@ -275,6 +276,36 @@ it('shows the originating sales-link title in staff order details', async () => 
     orders: { findById: async () => order },
   });
   expect(result).toMatchObject({ ok: true, value: { order: { salesLinkId: 'link', salesLinkTitle: 'In-person offer' } } });
+});
+
+
+describe('getOrder refund job', () => {
+  const cancelled = orderItem('cancelled-order', { cancelReason: 'out_of_stock', provider: 'stripe', providerObjectIds: { paymentIntent: 'pi_cancelled' } });
+  const jobOf = (tenantId: string) => ({
+    ...outOfStockRefundJob({ ...cancelled, tenantId }, { id: `job-${tenantId}`, now: '2026-07-10T00:01:00.000Z' }),
+    status: 'submitted' as const, attempts: 2, keyGeneration: 1, lockedAt: '2026-07-10T00:05:00.000Z', providerRefundId: 're_1', providerRefundStatus: 'pending',
+  });
+
+  it('projects the job of the order for staff, with the idempotency key of its current generation and without lease fields', async () => {
+    const refundJobs = createOrderRefundJobFake();
+    refundJobs.jobs.push(jobOf('t1'));
+    const result = await getOrder({ identity: identity('owner') }, cancelled.id, { orders: { findById: async () => cancelled }, refundJobs: refundJobs.repository });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.refundJob).toStrictEqual({
+      status: 'submitted', attempts: 2, nextAttemptAt: '2026-07-10T00:01:00.000Z', lastError: null, amountCents: 4900, currency: 'PLN',
+      idempotencyKey: 'oos-refund-cancelled-order-1', providerRefundId: 're_1', providerRefundStatus: 'pending', submittedAt: null,
+      createdAt: '2026-07-10T00:01:00.000Z', updatedAt: '2026-07-10T00:01:00.000Z',
+    });
+  });
+
+  it('returns no refund job when the only job for that order id belongs to another workspace or no job repository is wired', async () => {
+    const refundJobs = createOrderRefundJobFake();
+    refundJobs.jobs.push(jobOf('t2'));
+    const foreign = await getOrder({ identity: identity('owner') }, cancelled.id, { orders: { findById: async () => cancelled }, refundJobs: refundJobs.repository });
+    expect(foreign).toMatchObject({ ok: true, value: { order: { id: cancelled.id }, refundJob: null } });
+    const unwired = await getOrder({ identity: identity('owner') }, cancelled.id, { orders: { findById: async () => cancelled } });
+    expect(unwired).toMatchObject({ ok: true, value: { refundJob: null } });
+  });
 });
 
 

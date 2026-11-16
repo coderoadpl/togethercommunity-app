@@ -256,6 +256,26 @@ describe('entry.node composition', () => {
     );
   });
 
+  it('starts order refund dispatch on the minute ticker only after e-mail dispatch has finished', async () => {
+    vi.useFakeTimers();
+    harness.env.NODE_ENV = 'production';
+    let finishEmails = (): void => undefined;
+    harness.deps.dispatchEmails.mockImplementationOnce(() => new Promise((resolve) => {
+      finishEmails = () => { resolve({ ok: true, value: undefined }); };
+    }));
+    harness.deps.dispatchAutoInvoices.mockResolvedValue({ ok: true, value: undefined });
+    harness.deps.releaseExpiredStockReservations.mockResolvedValue(undefined);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await importEntry();
+    await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
+    expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(harness.deps.dispatchOrderRefundJobs).not.toHaveBeenCalled();
+    finishEmails();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+  });
+
   it('waits for an in-flight Meta conversion tick when the tickers stop', async () => {
     vi.useFakeTimers();
     harness.env.NODE_ENV = 'production';

@@ -3409,6 +3409,28 @@ describe('email dispatch route', () => {
     expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });
 
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('dispatches e-mail on the %s tick before order refunds, so a refund dispatch that hangs cannot hold e-mail back', async (trigger, init) => {
+    const calls: string[] = [];
+    let finishRefunds: () => void = () => undefined;
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async (dispatchTrigger) => {
+      calls.push(`email:${dispatchTrigger}`);
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(() => {
+      calls.push('refunds');
+      return new Promise((resolve) => { finishRefunds = () => { resolve(ok({ processedCount: 0, outcomes: {} })); }; });
+    });
+    const app = buildApp(deps({ dispatchEmails, dispatchOrderRefundJobs }));
+    const response = app.request(API_PATHS.emailDispatch, init);
+    await vi.waitFor(() => { expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce(); });
+    expect(calls).toStrictEqual([`email:${trigger}`, 'refunds']);
+    finishRefunds();
+    expect((await response).status).toBe(200);
+  });
+
   it('preserves the email result when the Meta tenant directory fails', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
     const result = { attemptsMade: 3, sentCount: 2, failedCount: 1 };

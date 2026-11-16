@@ -823,8 +823,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
+    const emails = await deps.dispatchEmails('manual');
     await dispatchDueOrderRefunds(deps);
-    return respond(await deps.dispatchEmails('manual'));
+    return respond(emails);
   });
 
   app.get(API_PATHS.emailDispatch, async (c) => {
@@ -833,9 +834,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    await dispatchDueOrderRefunds(deps);
     const emails = await deps.dispatchEmails('cron');
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
+    await dispatchDueOrderRefunds(deps);
     return respond(emails);
   });
 

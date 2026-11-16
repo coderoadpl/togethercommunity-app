@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type { ApiClient } from '#core/client/index.js';
-import { err, feedCursorReset, forbidden, ok, orderListItemSchema, type OrderChangeFeed } from '#core/domain/index.js';
+import { err, feedCursorReset, forbidden, internal, ok, orderListItemSchema, rateLimited, unauthorized, validation, type OrderChangeFeed } from '#core/domain/index.js';
 
 import { runOrderChanges } from './order-change-commands.js';
 
@@ -109,6 +109,69 @@ describe('orders changes command', () => {
     expect(logSpy.mock.calls.map(([line]) => line)).toEqual(['9.1\torder-1\tpaid', '9.3\torder-1\tpaid\tshipped']);
     expect(h.dispose).toHaveBeenCalledOnce();
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('retries a rejected poll from the same cursor and prints the change once when the next poll succeeds', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      h.orderChanges
+        .mockResolvedValueOnce(err(internal('Network error calling /api/orders/changes: TypeError: fetch failed')))
+        .mockResolvedValueOnce(ok(page([{ cursor: '9.1', order: order('order-1') }], '9.1')))
+        .mockImplementationOnce(async () => {
+          h.controller.abort();
+          return ok(page([], '9.1'));
+        });
+      const running = h.run({ after: '8.7', follow: true, interval: '5' });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(h.orderChanges).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      await running;
+      expect(h.orderChanges.mock.calls.map(([input]) => input)).toEqual([{ after: '8.7' }, { after: '8.7' }, { after: '9.1' }]);
+      expect(logSpy.mock.calls.map(([line]) => line)).toEqual(['9.1\torder-1\tpaid']);
+      expect(errorSpy).toHaveBeenCalledExactlyOnceWith('orders changes: Network error calling /api/orders/changes: TypeError: fetch failed; retrying in 5 s');
+      expect(process.exitCode).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('doubles the pause after each failed poll up to 60 s and starts again from the interval after a success', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      const busy = err(rateLimited());
+      h.orderChanges
+        .mockResolvedValueOnce(busy).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy)
+        .mockResolvedValueOnce(ok(page([{ cursor: '9.1', order: order('order-1') }], '9.1')))
+        .mockResolvedValueOnce(busy)
+        .mockImplementationOnce(async () => {
+          h.controller.abort();
+          return busy;
+        });
+      const running = h.run({ after: '8.7', follow: true, interval: '10' });
+      await vi.advanceTimersByTimeAsync(10_000 + 20_000 + 40_000 + 60_000 + 60_000 + 10_000);
+      await running;
+      expect(errorSpy.mock.calls.map(([line]) => line)).toEqual([10, 20, 40, 60, 60, 10].map((seconds) => `orders changes: Too many requests; retrying in ${String(seconds)} s`));
+      expect(h.orderChanges).toHaveBeenCalledTimes(8);
+      expect(h.orderChanges.mock.calls.at(-1)?.[0]).toEqual({ after: '9.1' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    { error: unauthorized(), exitCode: 3 },
+    { error: forbidden(), exitCode: 4 },
+    { error: validation('Invalid order changes query'), exitCode: 2 },
+    { error: feedCursorReset(FRESH), exitCode: 30 },
+  ])('stops following on $error.code with exit code $exitCode', async ({ error, exitCode }) => {
+    const h = harness();
+    h.orderChanges.mockResolvedValue(err(error));
+    await h.run({ after: '8.7', follow: true, interval: '1' });
+    expect(h.orderChanges).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(`error(${error.code}): ${error.message}`);
+    expect(process.exitCode).toBe(exitCode);
   });
 
   it('waits the interval when nothing changed, then polls from the same cursor', async () => {

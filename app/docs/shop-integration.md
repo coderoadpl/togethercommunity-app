@@ -709,9 +709,16 @@ CLI: `orders changes --mode live --after '<cursor>'` prints one line per change
 cursor; `--json` prints the envelope above. `orders changes --mode live --after
 '<cursor>' --follow` keeps polling every `--interval` seconds (default 10)
 while nothing changes, prints each change once and stops cleanly on Ctrl+C; with
-`--json` it prints one single-line envelope per page that has changes. On
-`feed_cursor_reset` the command prints the cursor to continue from after the
-resync and exits with code 30 instead of polling again.
+`--json` it prints one single-line envelope per page that has changes. A poll
+that fails with a network error, a server error (HTTP 5xx) or rate limiting
+(HTTP 429) is repeated from the same cursor after a pause that starts at
+`--interval` and doubles after each further failure up to 60 seconds (or
+`--interval` when that is longer), with one line per failure on stderr; the
+first successful poll resets the pause. Any other answer stops the command with
+its message and the taxonomy exit code, for example `unauthorized` (3),
+`forbidden` (4) and `validation` (2). On `feed_cursor_reset` the command prints
+the cursor to continue from after the resync and exits with code 30 instead of
+polling again.
 
 For shipping, select live, paid orders whose `fulfilmentStatus` is `to_pack`.
 Packing-list/export tools are also available, but they are not proof of carrier

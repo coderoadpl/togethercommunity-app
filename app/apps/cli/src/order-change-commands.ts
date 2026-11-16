@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import type { ApiClient } from '#core/client/index.js';
+import { HTTP_STATUS_BY_ERROR_CODE } from '#core/contract/index.js';
 import { err, feedCursorResetCursor, stripeModeSchema, validation, type AppError, type OrderChangeFeed, type Result } from '#core/domain/index.js';
 
 import { emit } from './output.js';
@@ -43,6 +44,16 @@ const pause = (milliseconds: number, signal: AbortSignal): Promise<void> => new 
   signal.addEventListener('abort', stop, { once: true });
 });
 
+const RETRY_DELAY_CAP_MS = 60_000;
+
+const isTransient = (error: AppError): boolean => {
+  const status = HTTP_STATUS_BY_ERROR_CODE[error.code];
+  return status >= 500 || status === 429;
+};
+
+const retryDelay = (intervalSeconds: number, failures: number): number =>
+  Math.min(intervalSeconds * 1000 * 2 ** (failures - 1), Math.max(RETRY_DELAY_CAP_MS, intervalSeconds * 1000));
+
 const report = <T>(ctx: OrderChangeCliContext, result: Result<T, AppError>, human: (value: T) => string): void => {
   emit(result, ctx.json, human);
   const resetCursor = result.ok ? null : feedCursorResetCursor(result.error);
@@ -57,10 +68,19 @@ const follow = async (
   signal: AbortSignal,
 ): Promise<void> => {
   let cursor = options.after;
+  let failures = 0;
   while (!signal.aborted) {
     const page = await ctx.api.orderChanges(feedQuery(options, cursor), signal);
     if (signal.aborted) return;
-    if (!page.ok) { report(ctx, page, () => ''); return; }
+    if (!page.ok) {
+      if (!isTransient(page.error)) { report(ctx, page, () => ''); return; }
+      failures += 1;
+      const delay = retryDelay(options.interval, failures);
+      console.error(`orders changes: ${page.error.message}; retrying in ${String(delay / 1000)} s`);
+      await pause(delay, signal);
+      continue;
+    }
+    failures = 0;
     if (page.value.changes.length > 0) {
       console.log(ctx.json ? JSON.stringify({ ok: true, data: page.value }) : page.value.changes.map(changeLine).join('\n'));
     }
@@ -102,7 +122,7 @@ export const registerOrderChangeCommands = (
     .option('--after <cursor>', 'the cursor of the last change already processed; omit to start from the oldest change')
     .option('--limit <n>', 'changes read per request, 1-200 (default 100)')
     .option('--mode <mode>', 'live or test; omit to include both')
-    .option('--follow', 'keep polling and print each new change once; stop with Ctrl+C')
+    .option('--follow', 'keep polling and print each new change once; retry failed polls with a growing pause of up to 60 s; stop with Ctrl+C')
     .option('--interval <seconds>', 'seconds between polls with --follow when nothing changed (default 10)')
     .action(async (raw: unknown) => {
       const ctx = context();

@@ -3,7 +3,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { checkoutSessionInputSchema, err, ok, refundFailure, type CheckoutSessionInput, type ProviderRefund } from '#core/domain/index.js';
-import { dispatchOrderRefundJobs, fulfillStripeWebhook, releaseExpiredStockReservations, startCheckoutSession, validateCheckoutSelection, type PaymentProvider, type PaymentWebhookEvent } from '#core/server/index.js';
+import { dispatchOrderRefundJobs, fulfillStripeWebhook, releaseExpiredStockReservations, simulatePurchase, startCheckoutSession, validateCheckoutSelection, type PaymentProvider, type PaymentWebhookEvent } from '#core/server/index.js';
 import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
@@ -273,6 +273,46 @@ describe('payment for goods that sold out after the hold ended', () => {
     expect(rows.levels).toStrictEqual([{ productId: 'printed-1', onHand: 0, reserved: 0 }]);
     expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual(['committed_late']);
     expect(rows.invoiceJobs.map((job) => job.orderId)).toStrictEqual(fulfilled.map((order) => order.id));
+  });
+});
+
+describe('lock order of the payment webhook and a simulated sales-link purchase', () => {
+  it('finishes both without a deadlock when they wait on the same stock row', async () => {
+    const h = harness();
+    await track('course-1', 5);
+    await track('poster-1', 2);
+    const snapshotId = await publicCheckout(h, { productId: 'course-1', salesLinkId: 'link-1', email: 'buyer@example.com', termsAccepted: true });
+    h.setNow('2026-11-15T10:20:00.000Z');
+    const simulatedDeps = {
+      ...h.checkoutDeps,
+      ...h.webhookDeps,
+      purchases: { createMemberGrant: async () => { throw new Error('A sales-link purchase never takes the single-grant path'); } },
+    };
+
+    const blocker = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await blocker.connect();
+    await observer.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT 1 FROM product_stock WHERE tenant_id = $1 AND product_id = $2 FOR UPDATE', [legacyTenant.id, 'course-1']);
+      const paid = fulfillStripeWebhook(legacyTenant, bundlePaid(snapshotId), h.webhookDeps);
+      await waitForLockWaiters(observer, 1);
+      const simulated = simulatePurchase(legacyTenant.id, { email: 'walk-in@example.com', productId: 'course-1', salesLinkId: 'link-1' }, simulatedDeps);
+      await waitForLockWaiters(observer, 2);
+      await blocker.query('COMMIT');
+      expect(await paid).toStrictEqual(ok({ processed: true }));
+      expect(await simulated).toMatchObject({ ok: true, value: { productId: 'course-1', alreadyOwned: false } });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+
+    const rows = await tenantRows();
+    expect(rows.orders.map((order) => [order.status, order.cancelReason])).toStrictEqual([['paid', null], ['paid', null]]);
+    expect(rows.refundJobs).toStrictEqual([]);
+    expect(rows.levels).toStrictEqual([{ productId: 'course-1', onHand: 3, reserved: 0 }, { productId: 'poster-1', onHand: 0, reserved: 0 }]);
+    expect(h.errors).toStrictEqual([]);
   });
 });
 

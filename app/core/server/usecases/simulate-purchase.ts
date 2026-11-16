@@ -77,6 +77,8 @@ export const simulatePurchase = async (
     if (deps.paymentTransaction === undefined) return err(validation('Simulated purchase transaction is not configured'));
     return deps.paymentTransaction.run(async (transaction) => {
       const checkoutSession = `sim_cs_${deps.ids.nextId()}`;
+      const hold = await reserveCheckoutStock(tenantId, { checkoutSnapshotId: checkoutSession, products: selectedProducts, lines: built.value.lines }, { stock: transaction.stock, clock: deps.clock });
+      if (!hold.ok) return hold;
       const member = await ensureMember(tenantId, input.email, { ...deps, members: transaction.members });
       if (!member.ok) return member;
       for (const line of built.value.lines) {
@@ -90,8 +92,6 @@ export const simulatePurchase = async (
         billing: input.billing ?? null, salesLinkId: selection.value.salesLinkId ?? null, lines: built.value.lines,
         ...(shipping === null ? {} : { shipping: shipping.value, fulfilmentStatus: 'to_pack' as const }),
       }, { ...deps, orders: transaction.orders });
-      const hold = await reserveCheckoutStock(tenantId, { checkoutSnapshotId: checkoutSession, products: selectedProducts, lines: built.value.lines }, { stock: transaction.stock, clock: deps.clock });
-      if (!hold.ok) return hold;
       if (hold.value !== null) {
         const tenant = await deps.tenants.findById(tenantId);
         if (tenant === null) return err(tenantNotFound());

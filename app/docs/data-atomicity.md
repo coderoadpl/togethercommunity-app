@@ -213,8 +213,11 @@ nothing when it finds one, so webhook retries of such an order decrement once;
 the partial index `stock_events_tenant_product_order_commit_idx` on
 `(tenant_id, product_id, reference->>'orderId')` for those two event types keeps
 that lookup off the product's full event history.
-The simulated purchase records its order (taking the sales-link lock) before it
-reserves and commits stock, the same lock order as the payment webhook. `on_hand` and
+The payment webhook locks the `product_stock` rows through `lockForCommit`
+before it records its order, which takes the sales-link lock. The simulated
+purchase therefore reserves stock before it records its order and commits the
+stock afterwards, so both purchase paths take the stock rows first and the
+sales-link lock second and never deadlock on each other. `on_hand` and
 `reserved` carry `CHECK (>= 0)`; the commit clamps `on_hand` at zero and records
 the shortfall as an `oversold` event. The payment webhook first calls
 `lockForCommit` in the payment transaction, which takes the same locks in the

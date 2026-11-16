@@ -437,7 +437,9 @@ The cart answers with the same error envelope as the other routes:
 A storefront without its own form can send the buyer to the hosted cart page
 instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
 `<product-id>.<quantity>` pair per product, separated by `~`, within the same
-limits. The page lets the buyer change the quantities within the limits or
+limits. The page reads product IDs in lower case, as the platform issues them,
+so an upper-case ID finds its product and two IDs that differ only in case are
+a duplicate. The page lets the buyer change the quantities within the limits or
 remove a line, and collects delivery, billing, consents and a coupon as the
 single-product page does. A malformed or empty `lines` parameter shows an error
 and sends no request. The page picks each line's price by the session route's

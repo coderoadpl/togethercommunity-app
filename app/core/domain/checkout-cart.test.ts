@@ -112,6 +112,14 @@ describe('cart lines URL parameter', () => {
     expect(parseCartLinesParam(value)).toEqual(lines);
   });
 
+  it('reads upper-case product IDs as the lower-case IDs the platform issues', () => {
+    const lower = 'abcdef01-0000-4000-8000-00000000000a';
+    expect(parseCartLinesParam(`${lower.toUpperCase()}.2~${productId(11)}.1`)).toEqual([
+      { productId: lower, quantity: 2 },
+      { productId: productId(11), quantity: 1 },
+    ]);
+  });
+
   it.each([
     ['a missing parameter', null],
     ['an empty parameter', ''],
@@ -122,6 +130,7 @@ describe('cart lines URL parameter', () => {
     ['a quantity above 99', `${productId(1)}.100`],
     ['a fractional quantity', `${productId(1)}.1.5`],
     ['a duplicate product', `${productId(1)}.1~${productId(1)}.2`],
+    ['a duplicate product that differs only in case', 'abcdef01-0000-4000-8000-000000000001.1~ABCDEF01-0000-4000-8000-000000000001.2'],
     ['21 lines', Array.from({ length: 21 }, (_, index) => `${productId(index + 1)}.1`).join('~')],
   ])('rejects %s', (_case, value) => {
     expect(parseCartLinesParam(value)).toBeNull();

@@ -214,6 +214,25 @@ describe('hosted cart checkout', () => {
     expect(bodies[0]).toMatchObject({ lines: [{ productId: poster, quantity: 2 }] });
   });
 
+  it('finds the products of upper-case IDs and posts the lower-case IDs the platform issues', async () => {
+    const bodies: unknown[] = [];
+    const requests: string[] = [];
+    serve({ requests, onSession: (body) => bodies.push(body) });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster.toUpperCase()}.1~${ebook.toUpperCase()}.1`);
+    expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
+    expect(line(poster).getByRole('heading', { name: 'Poster' })).toBeInTheDocument();
+    expect(line(ebook).getByRole('heading', { name: 'E-book' })).toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.cartProductMissing)).not.toBeInTheDocument();
+    expect(requests).toContain(`GET /api/public/offer?productRef=${poster}`);
+
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ lines: [{ productId: poster, quantity: 1 }, { productId: ebook, quantity: 1 }] });
+  });
+
   it('caps a quantity above the line limit at the limit', async () => {
     serve();
     renderCart(`${HOSTED_CART_PATH}?lines=${poster}.25~${ebook}.3`);
@@ -229,6 +248,7 @@ describe('hosted cart checkout', () => {
     ['a product reference that is not a UUID', `${HOSTED_CART_PATH}?lines=poster.1`],
     ['a zero quantity', `${HOSTED_CART_PATH}?lines=${poster}.0`],
     ['a duplicate product', `${HOSTED_CART_PATH}?lines=${poster}.1~${poster}.2`],
+    ['a duplicate product that differs only in case', `${HOSTED_CART_PATH}?lines=${poster}.1~${poster.toUpperCase()}.2`],
   ])('shows an error and sends no request for %s', async (_case, path) => {
     const requests: string[] = [];
     serve({ requests });

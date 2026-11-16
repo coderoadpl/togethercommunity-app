@@ -82,6 +82,7 @@ export const createLegacyCheckoutHarness = (options: {
       if (row !== undefined && row.providerSessionId == null) row.providerSessionId = providerSessionId;
     },
     findById: async (tenantId, id) => structuredClone(snapshotRows.find((item) => item.tenantId === tenantId && item.id === id) ?? null),
+    findByProviderSession: async (tenantId, providerSessionId) => structuredClone(snapshotRows.find((item) => item.tenantId === tenantId && item.providerSessionId === providerSessionId) ?? null),
   };
   const paymentInputs: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
   const captures = new Map<string, CheckoutConsentCapture>();

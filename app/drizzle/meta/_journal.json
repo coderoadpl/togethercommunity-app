@@ -1086,6 +1086,20 @@
       "when": 1790964000061,
       "tag": "0154_meta_capi",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1790964000071,
+      "tag": "0155_checkout_client_reference",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1790964000081,
+      "tag": "0156_checkout_return_address",
+      "breakpoints": true
     }
   ]
 }

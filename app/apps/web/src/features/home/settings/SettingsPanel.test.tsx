@@ -68,6 +68,7 @@ interface StoredSettings {
   defaultLanguage?: 'pl' | 'en';
   shippingRates?: Array<{ id: string; label: string; amountCents: number; vatRatePercent: 5 | 8 | 23; carrier: 'inpost' | 'other'; pickupPoint: 'none' | 'inpost_locker'; active: boolean; deliveryEstimateDays?: { min: number; max: number } }>;
   inpostGeowidgetToken?: string | null;
+  checkoutReturnOrigins?: string[];
 }
 
 interface StubSpace {
@@ -1747,6 +1748,22 @@ describe('SettingsPanel shipping', () => {
     await userEvent.click(screen.getByRole('button', { name: en.common.save }));
     expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
     expect(updates).toEqual([]);
+  });
+
+  it('saves the checkout return origins one per line and refuses an origin with a path before saving', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, checkoutReturnOrigins: ['https://shop.example.test'] });
+    await openSettingsSection(en.shipping.settingsHeading);
+    const origins = await screen.findByRole('textbox', { name: en.shipping.returnOriginsLabel });
+    await waitFor(() => expect(origins).toHaveValue('https://shop.example.test'));
+    expect(origins).toHaveAccessibleDescription(en.shipping.returnOriginsHint);
+    await userEvent.type(origins, '\nhttps://shop.example.test/cart');
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.returnOriginsSave }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.shipping.returnOriginsInvalid);
+    expect(updates).toEqual([]);
+    await userEvent.clear(origins);
+    await userEvent.type(origins, ' https://Shop.Example.Test \n\nhttps://www.shop.example.test:8443');
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.returnOriginsSave }));
+    await waitFor(() => expect(updates).toContainEqual({ checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test:8443'] }));
   });
 
   it('saves the InPost ShipX credentials write-only with the sender and the environment', async () => {

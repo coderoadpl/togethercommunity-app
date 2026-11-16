@@ -49,6 +49,7 @@ export const pl: Messages = {
     firstIssued: 'Wydano po raz pierwszy',
     staff: 'Osoba wydająca',
     unpaidHelp: 'Można wydać tylko opłacone zamówienia.',
+    cancelledHelp: 'To zamówienie anulowano, bo towar się wyprzedał, i zwracamy za nie pieniądze. Nie wydawaj towaru.',
   },
   salesLinks: {
     heading: 'Linki sprzedażowe',

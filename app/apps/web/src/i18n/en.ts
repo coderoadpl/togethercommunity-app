@@ -43,6 +43,7 @@ export const en: Messages = {
     firstIssued: 'First issued',
     staff: 'Issued by',
     unpaidHelp: 'Only paid orders can be issued.',
+    cancelledHelp: 'This order was cancelled because it sold out and is being refunded. Do not hand over the goods.',
   },
   salesLinks: {
     heading: 'Sales links',

@@ -59,6 +59,7 @@ export interface Messages {
     firstIssued: string;
     staff: string;
     unpaidHelp: string;
+    cancelledHelp: string;
   };
   salesLinks: {
     heading: string;

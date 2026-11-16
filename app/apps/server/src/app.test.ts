@@ -26,6 +26,7 @@ import {
   envelopeSchema,
   healthOutputSchema,
   imageAssetUploadOutputSchema,
+  myProductsOutputSchema,
   ordersListOutputSchema,
   salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
@@ -1222,6 +1223,79 @@ describe('order list payment mode', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.list).not.toHaveBeenCalled();
+  });
+});
+
+describe('buyer physical order fulfilment', () => {
+  it('shows the buyer the packing status and then the shipment staff recorded', async () => {
+    const stand: Product = { ...product({ id: 'printed-stand', tenantId: acme.id, title: 'Printed stand', published: true }), type: 'physical' };
+    let stored = orderListItemSchema.parse({
+      id: 'order-1', tenantId: acme.id, memberId: 'member-1', productId: stand.id, priceId: null, kind: 'one_time', status: 'paid',
+      mode: 'live', amountCents: 7398, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '1998-07-10T09:00:00.000Z', paidAt: '1998-07-10T09:01:00.000Z', memberEmail: 'user@acme.test', memberName: 'User',
+      productTitle: stand.title, couponCode: null, fulfilmentStatus: 'to_pack',
+      lines: [
+        { productId: stand.id, name: stand.title, productType: 'physical', grossCents: 5899, netCents: 4796, vatRate: 23, vatCents: 1103, vatExemptionBasis: null, issuedCount: 0 },
+        { productId: 'shipping:locker', name: 'Parcel locker', productType: 'shipping', grossCents: 1499, netCents: 1219, vatRate: 23, vatCents: 280, vatExemptionBasis: null, issuedCount: null },
+      ],
+      shipping: {
+        rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
+        pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+        address: { name: 'User', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' },
+        phone: null,
+      },
+    });
+    const base = deps();
+    const overrides: Partial<AppDeps> = {
+      products: {
+        ...base.products,
+        findByIds: async (tenantId, ids) => (tenantId === acme.id && ids.includes(stand.id) ? [stand] : []),
+      },
+      orders: {
+        ...base.orders,
+        listForMember: async (tenantId, memberId) => (tenantId === acme.id && memberId === stored.memberId ? [stored] : []),
+      },
+      orderDetails: { findById: async (tenantId, id) => (tenantId === acme.id && id === stored.id ? stored : null) },
+      orderFulfilment: {
+        ship: async (tenantId, input) => {
+          if (tenantId !== acme.id || input.orderId !== stored.id) return err(notFound('Order was not found'));
+          stored = { ...stored, fulfilmentStatus: 'shipped', shipment: input.shipment };
+          return ok(stored);
+        },
+      },
+    };
+    const headers = { [TENANT_HEADER]: 'acme' };
+    const myProducts = async () => {
+      const response = await scopedApp('member', { overrides }).request(API_PATHS.myProducts, { headers });
+      expect(response.status).toBe(200);
+      const payload = envelopeSchema(myProductsOutputSchema).parse(await response.json());
+      if (!payload.ok) throw new Error(payload.error.message);
+      return payload.data.products;
+    };
+
+    expect(await myProducts()).toEqual([expect.objectContaining({
+      id: stand.id,
+      shippedTo: 'WAW01M',
+      fulfilment: { status: 'to_pack', shippedAt: null, carrier: null, trackingNumber: null, trackingUrl: null },
+    })]);
+
+    const shipped = await scopedApp('owner', { overrides }).request(API_PATHS.shipOrder.replace(':orderId', stored.id), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ carrier: 'inpost', trackingNumber: '620000000000000000000001' }),
+    });
+    expect(shipped.status).toBe(200);
+
+    expect(await myProducts()).toEqual([expect.objectContaining({
+      id: stand.id,
+      fulfilment: {
+        status: 'shipped',
+        shippedAt: '1998-07-12T00:00:00.000Z',
+        carrier: 'inpost',
+        trackingNumber: '620000000000000000000001',
+        trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=620000000000000000000001',
+      },
+    })]);
   });
 });
 
@@ -6635,7 +6709,7 @@ describe('public offer route', () => {
     expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
     expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
     expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
-    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', productIds: ['acme-published'], expiresAt: '2026-11-05T10:35:00.000Z', quantity: 1, now: '2026-11-05T10:00:00.000Z' });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 1 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
     const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
     expect(soldOut.status).toBe(200);
     expect(soldOut.headers.get('etag')).not.toBe(etag);

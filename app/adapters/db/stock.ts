@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 
-import { appError, err, MAX_STOCK_QUANTITY, notFound, ok, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel } from '#core/domain/index.js';
+import { appError, err, MAX_STOCK_QUANTITY, mergeStockQuantities, notFound, ok, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel, type StockQuantity } from '#core/domain/index.js';
 import type { StockRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -33,6 +33,12 @@ const notTracked = () => notFound('Stock tracking is not enabled for this produc
 const aboveStockCap = () => validation(`Stock quantities cannot exceed ${String(MAX_STOCK_QUANTITY)}`);
 
 const sortedUnique = (values: readonly string[]): string[] => [...new Set(values)].sort();
+
+const lockOrderedQuantities = (items: readonly StockQuantity[]): StockQuantity[] => {
+  const invalid = items.find((item) => !Number.isSafeInteger(item.quantity) || item.quantity < 1);
+  if (invalid !== undefined) throw new Error(`Stock quantity for ${invalid.productId} must be a positive integer`);
+  return mergeStockQuantities(items).sort((left, right) => left.productId < right.productId ? -1 : 1);
+};
 
 const stockKey = (tenantId: string, productId: string) => and(eq(productStock.tenantId, tenantId), eq(productStock.productId, productId));
 
@@ -231,10 +237,10 @@ export const createStockRepository = (db: Db): StockRepository => ({
     try {
       const reservationIds = await db.transaction(async (tx) => {
         const ids: string[] = [];
-        for (const productId of sortedUnique(input.productIds)) {
+        for (const { productId, quantity } of lockOrderedQuantities(input.items)) {
           const updated = await tx.update(productStock)
-            .set({ reserved: sql`${productStock.reserved} + ${input.quantity}`, updatedAt: input.now })
-            .where(and(stockKey(tenantId, productId), sql`${productStock.onHand} - ${productStock.reserved} >= ${input.quantity}`))
+            .set({ reserved: sql`${productStock.reserved} + ${quantity}`, updatedAt: input.now })
+            .where(and(stockKey(tenantId, productId), sql`${productStock.onHand} - ${productStock.reserved} >= ${quantity}`))
             .returning({ productId: productStock.productId });
           if (updated.length === 0) {
             const [tracked] = await tx.select({ productId: productStock.productId }).from(productStock).where(stockKey(tenantId, productId));
@@ -245,7 +251,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
             tenantId,
             productId,
             checkoutSnapshotId: input.checkoutSnapshotId,
-            quantity: input.quantity,
+            quantity,
             status: 'active',
             expiresAt: input.expiresAt,
             createdAt: input.now,
@@ -255,7 +261,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
           await appendEvent(tx, tenantId, {
             productId,
             type: 'reserved',
-            quantity: input.quantity,
+            quantity,
             reference: { checkoutSnapshotId: input.checkoutSnapshotId, reservationId: reservation.id },
             occurredAt: input.now,
           });
@@ -285,6 +291,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
 
   commit: async (tenantId, input) => db.transaction(async (tx) => {
     const effects: StockCommitEffect[] = [];
+    const items = lockOrderedQuantities(input.items);
     const reservations = input.checkoutSnapshotId === null
       ? []
       : await tx.select().from(stockReservations)
@@ -292,7 +299,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
         .orderBy(asc(stockReservations.productId))
         .for('update');
     const tracked = new Set<string>();
-    for (const productId of sortedUnique([...reservations.map((reservation) => reservation.productId), ...input.productIds])) {
+    for (const productId of sortedUnique([...reservations.map((reservation) => reservation.productId), ...items.map((item) => item.productId)])) {
       if (await lockStock(tx, tenantId, productId) !== null) tracked.add(productId);
     }
     const reference = (reservationId?: string): StockEventReference => ({
@@ -320,7 +327,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
       if (effect !== null) effects.push(effect);
     }
     const reservedProducts = new Set(reservations.map((reservation) => reservation.productId));
-    for (const productId of sortedUnique(input.productIds)) {
+    for (const { productId, quantity } of items) {
       if (reservedProducts.has(productId) || !tracked.has(productId)) continue;
       let reservationId: string | undefined;
       if (input.checkoutSnapshotId === null) {
@@ -334,7 +341,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
           tenantId,
           productId,
           checkoutSnapshotId: input.checkoutSnapshotId,
-          quantity: 1,
+          quantity,
           status: 'committed',
           expiresAt: input.now,
           createdAt: input.now,
@@ -349,7 +356,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
       }
       const effect = await applyCommit(tx, tenantId, {
         productId,
-        quantity: 1,
+        quantity,
         releaseReserved: false,
         outcome: 'committed_late',
         reference: reference(reservationId),

@@ -13,6 +13,10 @@ const order = (id: string) => orderSchema.parse({ id, tenantId: 'workspace', mem
   { productId: 'physical', name: 'Printed material', productType: 'physical', grossCents: 10500, netCents: 10000, vatCents: 500, vatRate: 5, vatExemptionBasis: null, issuedCount: 0 },
   { productId: 'digital', name: 'Digital material', productType: 'digital_download', grossCents: 0, netCents: 0, vatCents: 0, vatRate: 23, vatExemptionBasis: null, issuedCount: null },
 ] });
+const orderOfUnits = (id: string, quantity: number) => {
+  const base = order(id);
+  return { ...base, lines: base.lines?.map((line) => line.productId === 'physical' ? { ...line, quantity } : line) };
+};
 beforeAll(async () => {
   database = await createTestDatabase('together_order_verification', baseDatabaseUrl);
   await database.db.insert(tenants).values([{ id: 'workspace', slug: 'workspace', name: 'Workspace', createdAt: now }, { id: 'other', slug: 'other', name: 'Other workspace', createdAt: now }]);
@@ -73,8 +77,8 @@ describe('order verification storage', () => {
     await createOrderRepository(database.db).create('workspace', { ...order('concurrent-order'), paidAt });
     const repo = createOrderVerificationRepository(database.db);
     const attempts = [
-      { orderId: 'concurrent-order', productId: 'physical', staffUserId: 'first-staff', occurredAt: now },
-      { orderId: 'concurrent-order', productId: 'physical', staffUserId: 'second-staff', occurredAt: '2026-10-08T13:00:00.000Z' },
+      { orderId: 'concurrent-order', productId: 'physical', count: 1, staffUserId: 'first-staff', occurredAt: now },
+      { orderId: 'concurrent-order', productId: 'physical', count: 1, staffUserId: 'second-staff', occurredAt: '2026-10-08T13:00:00.000Z' },
     ];
     const results = await Promise.all(attempts.map((input) => repo.issueLine('workspace', input)));
     expect(results.filter((result) => result.ok)).toHaveLength(1);
@@ -83,12 +87,48 @@ describe('order verification storage', () => {
     expect(winner).toBeDefined();
     const issuedLine = { issuedCount: 1, issuedAt: winner?.occurredAt, issuedBy: winner?.staffUserId };
     expect(await repo.findByReference('workspace', 'concurrent-order')).toMatchObject({ paidAt, lines: [issuedLine, { issuedCount: null }] });
-    expect(await repo.issueLine('workspace', { orderId: 'concurrent-order', productId: 'physical', staffUserId: 'later-staff', occurredAt: '2026-10-09T12:00:00.000Z' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await repo.issueLine('workspace', { orderId: 'concurrent-order', productId: 'physical', count: 1, staffUserId: 'later-staff', occurredAt: '2026-10-09T12:00:00.000Z' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await repo.findByReference('workspace', 'concurrent-order')).toMatchObject({ lines: [issuedLine, { issuedCount: null }] });
     const events = await database.db.select().from(orderIssueEvents).where(and(eq(orderIssueEvents.tenantId, 'workspace'), eq(orderIssueEvents.orderId, 'concurrent-order')));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ issuedCount: 1, staffUserId: winner?.staffUserId });
     expect(new Date(events[0]?.occurredAt ?? '').toISOString()).toBe(winner?.occurredAt);
+  });
+  it('issues a line of two units twice and refuses the third issue', async () => {
+    await createOrderRepository(database.db).create('workspace', orderOfUnits('two-units', 2));
+    const repo = createOrderVerificationRepository(database.db);
+    const input = { orderId: 'two-units', productId: 'physical', count: 1, staffUserId: 'named-staff', occurredAt: now };
+    expect(await repo.issueLine('workspace', input)).toMatchObject({ ok: true, value: { lines: [{ issuedCount: 1, quantity: 2 }, { issuedCount: null }] } });
+    expect(await repo.issueLine('workspace', { ...input, occurredAt: '2026-10-08T13:00:00.000Z' })).toMatchObject({ ok: true, value: { lines: [{ issuedCount: 2, issuedAt: now }, { issuedCount: null }] } });
+    expect(await repo.issueLine('workspace', input)).toEqual({ ok: false, error: { code: 'conflict', message: 'Order line has already been issued' } });
+    const events = await database.db.select().from(orderIssueEvents).where(and(eq(orderIssueEvents.tenantId, 'workspace'), eq(orderIssueEvents.orderId, 'two-units')));
+    expect(events.map((event) => event.issuedCount).toSorted()).toEqual([1, 2]);
+  });
+  it('issues several units at once only within the quantity left', async () => {
+    await createOrderRepository(database.db).create('workspace', orderOfUnits('batch-units', 2));
+    await createOrderRepository(database.db).create('workspace', orderOfUnits('over-units', 2));
+    const repo = createOrderVerificationRepository(database.db);
+    const input = { productId: 'physical', staffUserId: 'named-staff', occurredAt: now };
+    expect(await repo.issueLine('workspace', { ...input, orderId: 'batch-units', count: 2 })).toMatchObject({ ok: true, value: { lines: [{ issuedCount: 2 }, { issuedCount: null }] } });
+    expect(await repo.issueLine('workspace', { ...input, orderId: 'batch-units', count: 1 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await repo.issueLine('workspace', { ...input, orderId: 'over-units', count: 3 })).toEqual({ ok: false, error: { code: 'conflict', message: 'Issue count exceeds the quantity left to issue' } });
+    expect(await repo.issueLine('workspace', { ...input, orderId: 'over-units', count: 1 })).toMatchObject({ ok: true });
+    expect(await repo.issueLine('workspace', { ...input, orderId: 'over-units', count: 2 })).toMatchObject({ ok: false, error: { code: 'conflict', message: 'Issue count exceeds the quantity left to issue' } });
+    expect(await repo.findByReference('workspace', 'over-units')).toMatchObject({ lines: [{ issuedCount: 1 }, { issuedCount: null }] });
+    expect(await database.db.select().from(orderIssueEvents).where(eq(orderIssueEvents.orderId, 'over-units'))).toHaveLength(1);
+  });
+  it('lets concurrent issues of a two-unit line pass only up to its quantity', async () => {
+    await createOrderRepository(database.db).create('workspace', orderOfUnits('racing-units', 2));
+    const repo = createOrderVerificationRepository(database.db);
+    const results = await Promise.all(['first', 'second', 'third'].map((staffUserId) => repo.issueLine('workspace', { orderId: 'racing-units', productId: 'physical', count: 1, staffUserId, occurredAt: now })));
+    expect(results.filter((result) => result.ok)).toHaveLength(2);
+    expect(await repo.findByReference('workspace', 'racing-units')).toMatchObject({ lines: [{ issuedCount: 2 }, { issuedCount: null }] });
+  });
+  it('reports one unit for a stored line without a quantity', async () => {
+    await createOrderRepository(database.db).create('workspace', order('legacy-units'));
+    expect((await createOrderVerificationRepository(database.db).findByReference('workspace', 'legacy-units'))?.lines?.map((line) => line.quantity)).toEqual([1, 1]);
+    const [stored] = await database.db.select().from(orders).where(and(eq(orders.tenantId, 'workspace'), eq(orders.id, 'legacy-units')));
+    expect(stored?.lines[0]).not.toHaveProperty('quantity');
   });
   it.each([
     { staffUserId: 'named-staff', issuedByDisplayName: 'Jordan Smith' },
@@ -98,7 +138,7 @@ describe('order verification storage', () => {
     const orderId = `display-${staffUserId}`;
     await createOrderRepository(database.db).create('workspace', order(orderId));
     const repo = createOrderVerificationRepository(database.db);
-    expect(await repo.issueLine('workspace', { orderId, productId: 'physical', staffUserId, occurredAt: now })).toMatchObject({
+    expect(await repo.issueLine('workspace', { orderId, productId: 'physical', count: 1, staffUserId, occurredAt: now })).toMatchObject({
       ok: true,
       value: { lines: [{ issuedBy: staffUserId, issuedByDisplayName }, { issuedCount: null }] },
     });
@@ -111,7 +151,7 @@ describe('order verification storage', () => {
   it('does not issue another tenant, non-physical, missing or non-paid lines', async () => {
     await createOrderRepository(database.db).create('workspace', order('restricted-order'));
     const repo = createOrderVerificationRepository(database.db);
-    const input = { orderId: 'restricted-order', productId: 'physical', staffUserId: 'staff', occurredAt: now };
+    const input = { orderId: 'restricted-order', productId: 'physical', count: 1, staffUserId: 'staff', occurredAt: now };
     expect(await repo.issueLine('other', input)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await repo.issueLine('workspace', { ...input, productId: 'missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await repo.issueLine('workspace', { ...input, productId: 'digital' })).toMatchObject({ ok: false, error: { code: 'validation' } });

@@ -161,7 +161,7 @@ table still starts at v26.0, so no release date is inferred for v27.0.
 | `user_data.fbc` | `fb.1.<attribution_at milliseconds>.<stored fbclid>`, when available |
 | `user_data.country` | SHA-256 of lower-case ISO-2 country captured from Stripe customer address, when known |
 | `custom_data.value`, `currency` | Paid gross amount in major units and ISO currency |
-| `content_type`, `content_ids`, `contents`, `num_items`, `order_id` | Product order lines, one quantity per immutable order line, and transaction ID |
+| `content_type`, `content_ids`, `contents`, `num_items`, `order_id` | Product order lines with each line's quantity and gross unit price (`item_price`), the sum of quantities (`num_items`) and transaction ID |
 | `test_event_code` | Optional workspace test code, outside the event object |
 
 Existing fbclid/gclid attribution persistence is unchanged. Gclid and UTM fields

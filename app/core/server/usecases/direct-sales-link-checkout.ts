@@ -120,7 +120,7 @@ export const createDirectSalesLinkCheckout = async (
     attributionToSearchParams(fields).forEach((value, key) => attributedUrl.searchParams.set(key, value));
     cancelUrl = attributedUrl.toString();
   }
-  const hold = await reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.value.products ?? [selection.value.product] }, deps);
+  const hold = await reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.value.products ?? [selection.value.product], lines: built.value.lines }, deps);
   if (!hold.ok) return hold;
   const created = await withCheckoutStockHold(tenant.id, hold.value, deps, () => deps.payment.createCheckoutSession({
     tenantId: tenant.id,

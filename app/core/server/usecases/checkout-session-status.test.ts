@@ -130,6 +130,16 @@ describe('checkout session purchase analytics', () => {
     expect(deps.salesLinks.findById).not.toHaveBeenCalled();
   });
 
+  it('sends the units and the unit price of a line above one unit', async () => {
+    const deps = harness([{ ...order, amountCents: 13500, lines: [
+      { productId: 'product-1', name: 'Printed accessory', productType: 'physical', quantity: 3, grossCents: 13500,
+        netCents: 12857, vatRate: 5, vatCents: 643, vatExemptionBasis: null, issuedCount: 0 },
+    ] }], analyticsSettings);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
+      ok: true, value: { status: 'paid', analytics: { value: 135, items: [{ itemId: 'product-1', itemName: 'Printed accessory', price: 45, quantity: 3 }] } },
+    });
+  });
+
   it('keeps the shipping fee in the value but not among the purchased items', async () => {
     const deps = harness([{ ...order, amountCents: 6399, lines: [
       { productId: 'product-1', name: 'Printed accessory', productType: 'physical', grossCents: 4900,

@@ -70,7 +70,8 @@ Physical products use one-time prices and grant no course access, download or
 access grant. Each has a delivery method. Collected in person (`pickup`, the
 default and the behaviour of every product created before delivery methods)
 keeps the purchased record in My products with the collection note, and each
-such order line starts with `issuedCount = 0` for the **issued N of 1** count.
+such order line starts with `issuedCount = 0` for the **issued N of Q** count, where
+Q is the line quantity (1 for every line without a stored quantity).
 Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
 page: the buyer picks a workspace delivery option, and a parcel locker when the
 option needs one, before Stripe collects the address and phone number. A link
@@ -212,7 +213,8 @@ The existing `welcome-sign-in` email also serves as the purchase confirmation;
 its timing and number of messages do not change. With a purchase block, its
 subject is "Purchase confirmation <order number> — <workspace name>" in English
 or the equivalent in Polish. Without a purchase block, the account-ready subject
-is unchanged. It lists the order number, then a table of purchased item names,
+is unchanged. It lists the order number, then a table of purchased item names (a line above
+one unit is named "<units> × <name>"),
 gross amounts formatted in the order currency, and VAT rates (5, 8 or 23 percent,
 or a localized exemption label). The amounts use the same discount allocation
 as invoice positions and sum to the paid total. VAT treatment uses explicit
@@ -245,12 +247,17 @@ placed date for existing paid orders without a stored payment timestamp. Unpaid
 orders show no paid date.
 Unknown tokens and tokens from another workspace return not found.
 
-Each physical line shows **issued N of 1**. Staff with `order:write` can select
-**Mark as issued** on a paid order while the count is zero. Collection sets the
-count to one and records the staff user and timestamp. Later scans show that
-count and the first issue time, without another issue action. Concurrent or
-repeated issue requests return a conflict once the line has been issued; they
-do not change the counter or append another event. Scanning alone never changes
+Each physical line shows **issued N of Q**, where Q is the line quantity, and a
+line above one unit is named "Q × name". Staff with `order:write` can select
+**Mark as issued** on a paid order while the count is below the quantity; each
+selection issues one unit. Collection adds the issued units to the count, records
+the staff user and timestamp of the first issue and appends one issue event per
+request. Later scans show that count and the first issue time, and offer another
+issue action only while units remain. An issue request takes an optional `count`
+of units (a positive integer, default 1). A request returns a conflict, without
+changing the counter or appending an event, when the line is fully issued or when
+the count would exceed the units left; concurrent requests are serialised on the
+order row, so together they never issue more than the quantity. Scanning alone never changes
 the count. Unpaid, refunded and partially refunded orders cannot be marked as issued. Physical collection changes neither
 the order's financial amounts nor the invoice's sale-time tax point.
 
@@ -270,7 +277,7 @@ accept `--sales-link <id>` with `--product <first-product-id>`. Product commands
 See [Import API](import-api.md).
 
 The `orders verify <reference>` command accepts the same token or order number
-as Studio. `orders issue <orderId> <productId>` records a physical collection
+as Studio. `orders issue <orderId> <productId> [--count <n>]` records a physical collection
 with the same workspace scope, capabilities and payment checks.
 
 ## Rollout

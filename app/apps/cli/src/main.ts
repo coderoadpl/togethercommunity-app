@@ -226,6 +226,9 @@ const ordersShipOptionsSchema = z.object({
   carrier: shippingCarrierSchema,
   tracking: z.string().min(1),
 });
+const ordersIssueOptionsSchema = z.object({
+  count: z.string().regex(/^[1-9]\d*$/, 'Count must be a positive integer').transform((value) => Number.parseInt(value, 10)).optional(),
+});
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
   environment: shipxEnvironmentSchema.optional(),
@@ -1746,11 +1749,13 @@ ordersCommand.command('verify <reference>').description('Verify an order by QR t
     emit(await ctx.api.verifyOrder({ reference }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
   }),
 );
-ordersCommand.command('issue <orderId> <productId>').description('Record collection of a physical order line').action(
-  withInput(z.tuple([z.string().min(1), z.string().min(1), z.object({})]), async (ctx, [orderId, productId]) => {
-    emit(await ctx.api.issueOrderLine({ orderId, productId }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
-  }),
-);
+ordersCommand.command('issue <orderId> <productId>').description('Record collection of a physical order line')
+  .option('--count <n>', 'units handed over now (default 1, at most the units not yet issued)')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.string().min(1), ordersIssueOptionsSchema]), async (ctx, [orderId, productId, options]) => {
+      emit(await ctx.api.issueOrderLine({ orderId, productId, ...(options.count === undefined ? {} : { count: options.count }) }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
+    }),
+  );
 ordersCommand
   .command('ship <orderId>')
   .description('Mark a paid order to pack as shipped and e-mail the buyer the tracking number')

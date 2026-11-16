@@ -198,7 +198,8 @@ the number without a link. A new carrier is one entry in that map.
 
 The buyer receives the `order-shipped` e-mail at the member e-mail address:
 "Your order <number> has been shipped — <workspace>" with the order number, the
-shipped items (product lines, not the delivery line), the delivery option with
+shipped items (product lines, not the delivery line; a line above one unit is
+named "<units> × <name>"), the delivery option with
 the locker code and details or the postal address, the carrier, the tracking
 number and, for InPost, the tracking link. The language follows the member's
 language, then the workspace default. Test-mode orders send no e-mail, like
@@ -221,7 +222,9 @@ orders page; with the **All** payment-mode filter it sends `live` and shows
 `paid_at` (Europe/Warsaw, `YYYY-MM-DD HH:mm`), `buyer_name`, `email`, `phone`,
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
-(`name × 1; name × 1`, product lines only) and an empty `notes` column. Every
+(`name × <units>; name × <units>`, product lines only), an empty `notes` column
+and `quantity`, the total units of the product lines. `quantity` is the last
+column so the earlier column positions stay unchanged. Every
 cell is quoted and cells starting with `=`, `+`, `-`, `@`, a tab or a carriage
 return are prefixed with an apostrophe so spreadsheets do not run them as
 formulas; a phone number such as `+48…` therefore appears as `'+48…`.
@@ -240,7 +243,8 @@ My products shows "Being prepared for shipping" for a physical line of an order
 to pack and "Shipped on <date> · <carrier> <tracking number>" with the tracking
 link once shipped, with the date in Europe/Warsaw. When the buyer ordered the
 same product more than once, the purchase date, the status and the destination
-all come from the newest order.
+all come from the newest order. A line of that order above one unit is named
+"<units> × <title>"; one unit keeps the plain title.
 
 ## InPost ShipX
 
@@ -756,11 +760,16 @@ example damaged goods); a later commit then records `oversold` and alerts.
 ### Checkout
 
 1. `validateCheckoutSelection` reads the stock of the selected products and
-   returns `sold_out` early when any tracked product has no available piece.
-   This read is advisory only.
+   returns `sold_out` early when any tracked product has fewer available pieces
+   than requested (one per product today). This read is advisory only.
 2. After the checkout snapshot is captured and before the Stripe session is
-   created, `StockRepository.reserve` reserves one piece of every tracked
-   product in one transaction. The conditional update is the only authority:
+   created, `StockRepository.reserve` reserves the quantity of every tracked
+   product line of the snapshot (a line without a quantity counts as one piece,
+   and every checkout today has one piece per product) in one transaction,
+   updating products in product-id order so concurrent multi-product
+   reservations cannot deadlock. Repeated products in one call are merged into
+   one reservation of the summed quantity. The conditional update is the only
+   authority:
 
    ```sql
    update "product_stock" set "reserved" = "product_stock"."reserved" + $1, "updated_at" = $2
@@ -800,12 +809,14 @@ The paid branch of `checkout.session.completed` and
 transaction that records the order:
 
 - an `active` reservation becomes `committed`: `on_hand` and `reserved` both
-  drop by one;
+  drop by the reserved quantity;
 - a `committed` reservation is left unchanged, so webhook retries are safe;
 - a `released` reservation (the session outlived the sweep) becomes
-  `committed` with a `committed_late` event and `on_hand` drops by one;
+  `committed` with a `committed_late` event and `on_hand` drops by the
+  reserved quantity;
 - a tracked product of the snapshot without any reservation (orders started
-  before tracking) is committed late the same way;
+  before tracking) is committed late by the quantity of its snapshot line,
+  recorded as a `committed` reservation of that quantity;
 - an order without a checkout snapshot is committed late once: a retry finds
   the earlier commit event of that order and changes nothing;
 - when `on_hand` would go below zero it is clamped at zero, an `oversold` event

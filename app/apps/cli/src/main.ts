@@ -182,6 +182,7 @@ const tenantSettingsOptionsSchema = z.object({
   memberVideoAutoplayOverride: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   shippingRates: z.string().optional(),
   inpostGeowidgetToken: z.string().optional(),
+  checkoutReturnOrigins: z.string().optional(),
 });
 const storageConfigurationOptionsSchema = z.object({
   provider: storageProviderKindSchema,
@@ -364,6 +365,7 @@ const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   line: z.array(checkoutLineOptionSchema).default([]),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
+  clientReference: z.string().optional(),
 });
 const memberExportOptionsSchema = z.object({
   format: memberExportFormatSchema,
@@ -964,6 +966,7 @@ checkout
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
       const shipping = shippingSelection(options);
@@ -975,6 +978,7 @@ checkout
         ...(options.email === undefined ? {} : { email: options.email }),
         ...(options.language === undefined ? {} : { language: options.language }),
         ...(shipping.value === null ? {} : { shipping: shipping.value }),
+        ...(options.clientReference === undefined ? {} : { clientReference: options.clientReference }),
       };
       if (options.line.length > 0) {
         const lines = cartLinesSchema.safeParse(options.line);
@@ -1085,7 +1089,11 @@ const shippingSettingsLines = (settings: TenantSettings): string[] => [
   `shipping rates: ${(settings.shippingRates ?? []).length === 0 ? '(none)' : (settings.shippingRates ?? [])
     .map((rate) => `${rate.id} ${rate.label} ${rate.amountCents} (${rate.active ? 'active' : 'inactive'})`).join('; ')}`,
   `InPost parcel locker map token: ${settings.inpostGeowidgetToken == null ? '(not set)' : '(set)'}`,
+  `checkout return origins: ${(settings.checkoutReturnOrigins ?? []).length === 0 ? '(none)' : (settings.checkoutReturnOrigins ?? []).join(', ')}`,
 ];
+
+const splitCheckoutReturnOrigins = (value: string): string[] =>
+  value.split(',').map((origin) => origin.trim()).filter((origin) => origin !== '');
 
 tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
@@ -1175,6 +1183,7 @@ tenant
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
   .option('--shipping-rates <json>', 'inline JSON array of up to five shipping rates, e.g. [{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]')
   .option('--inpost-geowidget-token <token>', 'public InPost parcel locker map token; empty string clears')
+  .option('--checkout-return-origins <origins>', 'comma-separated https origins (at most five) an external shop may send buyers back to; empty string clears')
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
       let shippingRates: ShippingRate[] | undefined;
@@ -1215,7 +1224,8 @@ tenant
         options.analyticsConsentCookieValue === undefined &&
         options.analyticsLoadWithoutConsent === undefined &&
         shippingRates === undefined &&
-        options.inpostGeowidgetToken === undefined
+        options.inpostGeowidgetToken === undefined &&
+        options.checkoutReturnOrigins === undefined
       ) {
         emit(
           err(validation('Pass at least one tenant setting option')),
@@ -1243,6 +1253,7 @@ tenant
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
         ...(shippingRates === undefined ? {} : { shippingRates }),
         ...(options.inpostGeowidgetToken === undefined ? {} : { inpostGeowidgetToken: options.inpostGeowidgetToken }),
+        ...(options.checkoutReturnOrigins === undefined ? {} : { checkoutReturnOrigins: splitCheckoutReturnOrigins(options.checkoutReturnOrigins) }),
       }), ctx.json, (data) =>
         [
           `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
@@ -1911,7 +1922,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),

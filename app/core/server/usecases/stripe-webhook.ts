@@ -262,6 +262,9 @@ const couponPaymentContext = async (
   return { coupon, session, price, memberEmail };
 };
 
+const snapshotClientReference = (snapshot: CheckoutSnapshot | null): Pick<Order, 'clientReference'> =>
+  snapshot?.clientReference == null ? {} : { clientReference: snapshot.clientReference };
+
 const snapshotCouponProducts = (snapshot: CheckoutSnapshot | null) => {
   const lines = snapshot === null ? [] : productLines(snapshot.lines);
   if (snapshot?.salesLinkId == null && lines.every((line) => line.quantity === undefined)) return {};
@@ -383,6 +386,7 @@ const claimDiscountedOrder = async (
     billing: billing ?? null,
     attribution: snapshot?.attribution ?? event.checkoutSession?.metadata.attribution ?? null,
     ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
+    ...snapshotClientReference(snapshot),
     ...shippingFields(shipping),
     createdAt: deps.clock.nowIso(),
   };
@@ -567,6 +571,7 @@ const applyCheckoutCompleted = async (
         billing,
         attribution: snapshot?.attribution ?? metadata.attribution ?? null,
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
+        ...snapshotClientReference(snapshot),
         ...shippingFields(shipping.value),
       },
       deps,

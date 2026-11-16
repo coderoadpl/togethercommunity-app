@@ -68,18 +68,23 @@ export const captureCheckoutSelection = async (
   selection: CheckoutSelection,
   deps: CheckoutLineDeps,
   attribution?: OrderAttribution,
+  clientReference?: string,
 ): Promise<Result<CheckoutLines & { checkoutSnapshotId?: string }, AppError>> => {
   const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
   if (deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined) {
     if (selection.cartLines !== undefined) return err(validation('Cart checkout is not configured'));
+    if (clientReference !== undefined) return err(validation('Checkout client references are not configured'));
+    if (selection.returnUrl !== undefined) return err(validation('Checkout return addresses are not configured'));
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
   const shipping = selection.shipping === undefined ? undefined : checkoutShippingSnapshotSchema.safeParse(selection.shipping);
   if (shipping?.success === false) return err(validation('Checkout shipping selection is invalid'));
   const checkoutSnapshotId = deps.ids.nextId();
   await deps.checkoutSnapshots.create(tenantId, {
-    attribution: attribution ?? null, id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null,
+    attribution: attribution ?? null, ...(clientReference === undefined ? {} : { clientReference }),
+    ...(selection.returnUrl === undefined ? {} : { returnUrl: selection.returnUrl }),
+    id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null,
     lines: built.value.lines, ...(shipping === undefined ? {} : { shipping: shipping.data }), currency: built.value.currency, createdAt: deps.clock.nowIso(),
   });
   return ok({ ...built.value, checkoutSnapshotId });

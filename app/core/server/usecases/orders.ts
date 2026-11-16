@@ -149,6 +149,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'fbclid',
       'gclid',
       ...SHIPPING_COLUMN_NAMES,
+      'client_reference',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -170,6 +171,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         order.billing?.country ?? '',
         ...Object.values(attributionColumns(order)),
         ...Object.values(shippingColumns(order)),
+        order.clientReference ?? '',
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),

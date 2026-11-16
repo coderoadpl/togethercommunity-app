@@ -283,5 +283,5 @@ example through a product deletion, deletes its change rows.
 
 Creating the triggers takes a `SHARE ROW EXCLUSIVE` lock on `orders`, which
 blocks order writes until the migration transaction commits. Deploy migration
-`0155_order_changes` in a quiet window. The column type and the snapshot
+`0157_order_changes` in a quiet window. The column type and the snapshot
 functions need PostgreSQL 13 or later.

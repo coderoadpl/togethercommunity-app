@@ -45,7 +45,7 @@ import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
+import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
 import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
 import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
@@ -169,13 +169,16 @@ const selectCheckoutProducts = async (
 
 export const validateCheckoutSelection = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping' | 'returnUrl' | 'cancelUrl'>,
   deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants'>,
   options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
 ): Promise<Result<CheckoutSelection, AppError>> => {
+  const returns = await resolveCheckoutReturnAddresses(tenantId, input, deps);
+  if (!returns.ok) return returns;
   const selection = await selectCheckoutProducts(tenantId, input, deps);
-  if (!selection.ok || options.shipping === 'ignore') return selection;
-  return withCheckoutShipping(tenantId, selection.value, input.shipping, deps);
+  if (!selection.ok) return selection;
+  const withReturns = { ...selection.value, ...returns.value };
+  return options.shipping === 'ignore' ? ok(withReturns) : withCheckoutShipping(tenantId, withReturns, input.shipping, deps);
 };
 
 const freeShippedOrder = async (
@@ -217,7 +220,7 @@ export const startCheckoutSession = async (
   if (fields !== undefined && deps.clock === undefined) return err(validation('Checkout clock is not configured'));
   const attribution = fields === undefined || deps.clock === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
   if (await freeShippedOrder(tenant.id, input, selection, deps)) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution, input.clientReference);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const shippingCents = captured.value.shippingCents ?? 0;
@@ -328,7 +331,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${cartQuery}${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
+    cancelUrl: selection.cancelUrl ?? `${checkoutPath}?status=cancelled${cartQuery}${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -362,6 +365,7 @@ export const startCheckoutSession = async (
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
         productId: product.id, priceId: price?.id ?? null, mode: 'test',
         kind: price?.kind ?? 'one_time', status: 'pending', attribution: attribution ?? null,
+        ...(input.clientReference === undefined ? {} : { clientReference: input.clientReference }),
         amountCents: totalCents + shippingCents, currency,
         provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
         couponId: null, discountCents: 0, billing: null, lines, salesLinkId: selection.salesLinkId ?? null, createdAt: deps.clock.nowIso(),

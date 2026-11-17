@@ -20,6 +20,7 @@
       "bunnyStreamCdnHostname": null,
       "bunnyStreamLibraryId": null,
       "checkoutAppearance": null,
+      "checkoutReturnOrigins": [],
       "defaultHomeSpaceId": null,
       "defaultLanguage": "en",
       "directMessagesEnabled": true,

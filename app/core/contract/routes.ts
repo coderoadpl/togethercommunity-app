@@ -5,6 +5,7 @@ import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
 import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
+import { ORDER_CHANGE_ROUTES } from './order-changes.js';
 import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
@@ -29,6 +30,7 @@ import {
   signInNoticeSchema,
   accessItemSchema,
   attachModuleToCourseInputSchema,
+  checkoutCartInputSchema,
   checkoutSessionInputSchema,
   salesLinkVariantSelectionSchema,
   checkoutSessionStatusInputSchema,
@@ -462,6 +464,8 @@ export const publicOfferOutputSchema = z.object({
   inpostGeowidgetToken: z.string().nullable().default(null),
 });
 
+export type PublicOfferOutput = z.infer<typeof publicOfferOutputSchema>;
+
 export const publicNavigationOutputSchema = z.object({
   navigation: publicNavigationSchema,
 });
@@ -475,6 +479,9 @@ export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInput
 
 export const publicCheckoutSessionStatusOutputSchema = z.object({
   status: z.enum(['pending', 'paid']),
+  clientReference: z.string().optional(),
+  returnUrl: z.string().optional(),
+  checkoutRef: z.string().optional(),
   analytics: checkoutPurchaseAnalyticsSchema.optional(),
   metaCapi: metaCapiConfigSchema.optional(),
 }).strict();
@@ -495,8 +502,17 @@ export const checkoutSessionRequestSchema = checkoutSessionInputSchema;
 
 export type CheckoutSessionRequest = z.input<typeof checkoutSessionRequestSchema>;
 
+export const checkoutCartSessionRequestSchema = checkoutCartInputSchema;
+
+export type CheckoutCartSessionRequest = z.input<typeof checkoutCartSessionRequestSchema>;
+
+export const isCheckoutCartRequest = (body: unknown): boolean =>
+  typeof body === 'object' && body !== null && Object.hasOwn(body, 'lines');
+
 export const checkoutSessionOutputSchema = z.object({
   url: z.string().url(),
+  free: z.boolean().optional(),
+  coupon: couponCheckoutBreakdownSchema.optional(),
 });
 
 export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.pick({
@@ -511,6 +527,16 @@ export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.
 
 export type CouponCheckoutValidationRequest = z.input<
   typeof couponCheckoutValidationRequestSchema
+>;
+
+export const couponCartCheckoutValidationRequestSchema = checkoutCartInputSchema.pick({
+  lines: true,
+  email: true,
+  couponCode: true,
+}).required({ couponCode: true });
+
+export type CouponCartCheckoutValidationRequest = z.input<
+  typeof couponCartCheckoutValidationRequestSchema
 >;
 
 export const couponCheckoutValidationOutputSchema = z.object({
@@ -1980,6 +2006,7 @@ export const API_ROUTES = {
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
   ...ORDER_FULFILMENT_ROUTES,
+  ...ORDER_CHANGE_ROUTES,
   ...SHIPX_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
@@ -2312,6 +2339,7 @@ export const API_PATHS = {
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
+  orderChanges: API_ROUTES.orderChanges.path,
   shipxShipment: API_ROUTES.shipxShipment.path,
   shipxRefresh: API_ROUTES.shipxRefresh.path,
   shipxCreate: API_ROUTES.shipxCreate.path,

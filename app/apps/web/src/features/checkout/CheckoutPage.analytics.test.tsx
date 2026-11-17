@@ -3,9 +3,12 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } fr
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
+import { HOSTED_CART_PATH } from '#core/domain/index.js';
+
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { CartCheckoutPage } from './CartCheckoutPage.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const analytics = vi.hoisted(() => ({ loadGoogleTag: vi.fn(), loadMetaPixel: vi.fn(), trackCheckoutPurchase: vi.fn() }));
@@ -59,6 +62,27 @@ it.each(['/checkout/course-1', '/offer/bundle'])('leaves %s through a full docum
   const assign = vi.fn();
   vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
   await renderCheckout(returnPath);
+  expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(config);
+
+  fireEvent.click(screen.getByRole('link', { name: en.checkout.goToLogin }));
+
+  expect(assign).toHaveBeenCalledExactlyOnceWith('/login');
+  expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+});
+
+it('leaves the hosted cart success return through a full document navigation when the sign-in button is clicked after loading a vendor', async () => {
+  const returnPath = `${HOSTED_CART_PATH}?status=success&purchase_kind=one_time&session_id=cs_live_one`;
+  window.history.replaceState(null, '', returnPath);
+  const location = window.location;
+  const assign = vi.fn();
+  vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
+  const root = createRootRoute({ component: CartCheckoutPage });
+  const router = createRouter({ routeTree: root, history: createMemoryHistory({ initialEntries: [returnPath] }) });
+  renderWithProviders(<RouterProvider router={router} />);
+  await act(async () => {
+    await router.load();
+    await vi.advanceTimersByTimeAsync(1);
+  });
   expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(config);
 
   fireEvent.click(screen.getByRole('link', { name: en.checkout.goToLogin }));

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   configureShipxInputSchema,
   orderListItemSchema,
+  shipxCreateInputSchema,
   shipxDiscardOutputSchema,
   shipxOrderInputSchema,
   shipxOrderViewSchema,
@@ -18,7 +19,7 @@ const shipxLabelFileSchema = z.object({
 export const shipxContracts = {
   shipxShipment: { input: shipxOrderInputSchema, output: shipxOrderViewSchema },
   shipxRefresh: { input: shipxOrderInputSchema, output: shipxOrderViewSchema },
-  shipxCreate: { input: shipxOrderInputSchema, output: z.object({ order: orderListItemSchema, shipment: shipxShipmentSchema }) },
+  shipxCreate: { input: shipxCreateInputSchema, output: z.object({ order: orderListItemSchema, shipment: shipxShipmentSchema }) },
   shipxDiscard: { input: shipxOrderInputSchema, output: shipxDiscardOutputSchema },
   shipxLabel: { input: shipxOrderInputSchema, output: shipxLabelFileSchema },
   shipxSettings: { input: z.object({}).strict(), output: shipxSettingsViewSchema },

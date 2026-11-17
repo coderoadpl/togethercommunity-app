@@ -553,6 +553,7 @@ const bundleCheckout = () => {
         if (snapshot !== undefined) snapshot.providerSessionId = providerSessionId;
       },
       findById: async () => snapshots[0] ?? null,
+      findByProviderSession: async () => null,
     },
     payment: { ...base.payment, createCheckoutSession: async (input) => {
       calls.push(input); return ok({ sessionId: 'bundle-session', url: 'https://checkout.stripe.test/bundle' });

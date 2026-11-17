@@ -23,7 +23,7 @@ const shopManifestSettingsSchema = updateTenantSettingsInputSchema.pick({
   invoiceSellerName: true, invoiceSellerAddress: true, invoiceVatMode: true,
   invoiceVatRatePercent: true, invoiceExemptionBasisKind: true, invoiceExemptionBasis: true,
   invoicingProvider: true, autoIssueInvoices: true, autoIssueInvoiceScope: true, ksefSubmissionMode: true,
-  inpostGeowidgetToken: true,
+  inpostGeowidgetToken: true, checkoutReturnOrigins: true,
 }).extend({
   checkoutAppearance: checkoutAppearanceSchema.strict().nullable().optional(),
   socialLinks: z.array(tenantSocialLinkSchema.strict()).max(SOCIAL_LINKS_MAX_COUNT).optional(),

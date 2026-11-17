@@ -1,17 +1,12 @@
 {
-  "hash": "3ca2bb25261fb34adfd46f6016d3da0282da8efc3309c5d26a18af6f7445f50c",
-  "shortId": "3ca2bb25261f",
+  "hash": "e19de09772963e19f867b8fa38e60a2a097e97528566193a9c16c9ad27b35c92",
+  "shortId": "e19de0977296",
   "schema": {
     "constraints": [
       {
         "definition": "CHECK ((((kind = 'amount'::text) AND (currency ~ '^[A-Z]{3}$'::text)) OR ((kind = 'percent'::text) AND (currency IS NULL))))",
         "name": "coupons_amount_currency_check",
         "table": "coupons"
-      },
-      {
-        "definition": "CHECK ((((kind = 'request'::text) AND (method IS NOT NULL) AND (route IS NOT NULL)) OR ((kind <> 'request'::text) AND (method IS NULL) AND (route IS NULL) AND (resource_id IS NULL))))",
-        "name": "shop_management_key_events_shape_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
@@ -27,11 +22,6 @@
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
-      },
-      {
-        "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb) AND (scopes <@ '[\"shop:catalog:read\", \"shop:catalog:write\", \"shop:orders:read\", \"shop:fulfilment:write\", \"shop:settings:read\", \"shop:settings:write\", \"shop:integrations:read\", \"shop:integrations:write\"]'::jsonb)))",
-        "name": "shop_management_keys_scopes_check",
-        "table": "shop_management_keys"
       },
       {
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
@@ -89,11 +79,6 @@
         "table": "posts"
       },
       {
-        "definition": "CHECK ((char_length(resource_id) <= 200))",
-        "name": "shop_management_key_events_resource_id_length_check",
-        "table": "shop_management_key_events"
-      },
-      {
         "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",
         "name": "meta_capi_consent_evidence_decision_check",
         "table": "meta_capi_consent_evidence"
@@ -119,6 +104,11 @@
         "table": "order_shipments"
       },
       {
+        "definition": "CHECK ((epoch ~ '^[0-9a-f]{32}$'::text))",
+        "name": "order_feed_epoch_epoch_check",
+        "table": "order_feed_epoch"
+      },
+      {
         "definition": "CHECK ((interval_count > 0))",
         "name": "product_prices_interval_count_positive",
         "table": "product_prices"
@@ -127,11 +117,6 @@
         "definition": "CHECK ((invoice_vat_mode = ANY (ARRAY['rate'::text, 'exempt'::text])))",
         "name": "tenants_invoice_vat_mode_check",
         "table": "tenants"
-      },
-      {
-        "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
-        "name": "shop_management_key_events_kind_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((length(comment) <= 2000))",
@@ -147,11 +132,6 @@
         "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
         "name": "orders_meta_capi_consent_check",
         "table": "orders"
-      },
-      {
-        "definition": "CHECK ((method = ANY (ARRAY['POST'::text, 'PUT'::text, 'PATCH'::text, 'DELETE'::text])))",
-        "name": "shop_management_key_events_method_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -189,11 +169,6 @@
         "table": "telemetry_accounting"
       },
       {
-        "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
-        "name": "shop_management_key_rate_limit_buckets_period_check",
-        "table": "shop_management_key_rate_limit_buckets"
-      },
-      {
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
@@ -217,11 +192,6 @@
         "definition": "CHECK ((reserved >= 0))",
         "name": "product_stock_reserved_check",
         "table": "product_stock"
-      },
-      {
-        "definition": "CHECK ((resource_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'::text))",
-        "name": "shop_management_key_events_resource_id_pattern_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((revision > 0))",
@@ -324,9 +294,9 @@
         "table": "products"
       },
       {
-        "definition": "FOREIGN KEY (api_key_id) REFERENCES shop_management_keys(id) ON DELETE CASCADE",
-        "name": "shop_management_key_rate_limit_buckets_api_key_id_fkey",
-        "table": "shop_management_key_rate_limit_buckets"
+        "definition": "CHECK (singleton)",
+        "name": "order_feed_epoch_singleton_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES tenant_api_keys(id) ON DELETE CASCADE",
@@ -905,6 +875,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_id_fkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_fulfilment_events_tenant_id_fkey",
         "table": "order_fulfilment_events"
       },
@@ -997,16 +972,6 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "scheduler_run_tenants_tenant_id_tenants_id_fk",
         "table": "scheduler_run_tenants"
-      },
-      {
-        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
-        "name": "shop_management_key_events_tenant_id_fkey",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
-        "name": "shop_management_keys_tenant_id_fkey",
-        "table": "shop_management_keys"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1294,6 +1259,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_order_fk",
+        "table": "order_changes"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1397,11 +1367,6 @@
         "definition": "PRIMARY KEY (api_key_id, period)",
         "name": "api_key_rate_limit_buckets_api_key_id_period_pk",
         "table": "api_key_rate_limit_buckets"
-      },
-      {
-        "definition": "PRIMARY KEY (api_key_id, period)",
-        "name": "shop_management_key_rate_limit_buckets_api_key_id_period_pk",
-        "table": "shop_management_key_rate_limit_buckets"
       },
       {
         "definition": "PRIMARY KEY (email)",
@@ -1645,6 +1610,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "order_changes_pkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "order_fulfilment_events_pkey",
         "table": "order_fulfilment_events"
       },
@@ -1727,16 +1697,6 @@
         "definition": "PRIMARY KEY (id)",
         "name": "session_pkey",
         "table": "session"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "shop_management_key_events_pkey",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "shop_management_keys_pkey",
-        "table": "shop_management_keys"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1872,6 +1832,11 @@
         "definition": "PRIMARY KEY (sequence)",
         "name": "telemetry_outbox_pkey",
         "table": "telemetry_outbox"
+      },
+      {
+        "definition": "PRIMARY KEY (singleton)",
+        "name": "order_feed_epoch_pkey",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "PRIMARY KEY (tenant_id)",
@@ -2079,6 +2044,16 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
         "name": "project_marketing_signup_confirmation"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_invoice_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) SELECT tenant_id, id FROM orders WHERE tenant_id = NEW.tenant_id AND id = NEW.order_id; RETURN NULL; END; $function$",
+        "name": "record_invoice_order_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.id); RETURN NULL; END; $function$",
+        "name": "record_order_change"
       },
       {
         "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
@@ -2563,6 +2538,16 @@
         "table": "notifications"
       },
       {
+        "definition": "CREATE INDEX order_changes_tenant_cursor_idx ON order_changes USING btree (tenant_id, xact_id, id)",
+        "name": "order_changes_tenant_cursor_idx",
+        "table": "order_changes"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_order_idx ON order_changes USING btree (tenant_id, order_id)",
+        "name": "order_changes_tenant_order_idx",
+        "table": "order_changes"
+      },
+      {
         "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
         "name": "order_shipment_events_tenant_order_created_idx",
         "table": "order_shipment_events"
@@ -2686,21 +2671,6 @@
         "definition": "CREATE INDEX scheduler_runs_status_started_idx ON scheduler_runs USING btree (status, started_at)",
         "name": "scheduler_runs_status_started_idx",
         "table": "scheduler_runs"
-      },
-      {
-        "definition": "CREATE INDEX shop_management_key_events_tenant_at_idx ON shop_management_key_events USING btree (tenant_id, at)",
-        "name": "shop_management_key_events_tenant_at_idx",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "CREATE INDEX shop_management_key_events_tenant_key_at_idx ON shop_management_key_events USING btree (tenant_id, api_key_id, at)",
-        "name": "shop_management_key_events_tenant_key_at_idx",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "CREATE INDEX shop_management_keys_tenant_id_idx ON shop_management_keys USING btree (tenant_id)",
-        "name": "shop_management_keys_tenant_id_idx",
-        "table": "shop_management_keys"
       },
       {
         "definition": "CREATE INDEX space_event_rsvps_tenant_event_idx ON space_event_rsvps USING btree (tenant_id, event_id)",
@@ -3128,11 +3098,6 @@
         "table": "scheduler_run_tenants"
       },
       {
-        "definition": "CREATE UNIQUE INDEX shop_management_keys_key_hash_uidx ON shop_management_keys USING btree (key_hash)",
-        "name": "shop_management_keys_key_hash_uidx",
-        "table": "shop_management_keys"
-      },
-      {
         "definition": "CREATE UNIQUE INDEX space_event_rsvps_tenant_event_user_uidx ON space_event_rsvps USING btree (tenant_id, event_id, user_id)",
         "name": "space_event_rsvps_tenant_event_user_uidx",
         "table": "space_event_rsvps"
@@ -3282,6 +3247,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "member_events_sequence_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "order_changes_id_seq",
         "start": "1"
       },
       {
@@ -3815,6 +3789,467 @@
             "default": "'[]'::jsonb",
             "generated": "",
             "identity": "",
+            "name": "checkout_return_origins",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "shipping_rates",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "social_links",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'active'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'automatic'::text",
+            "generated": "",
+            "identity": "",
+            "name": "ksef_submission_mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'b2b_only'::text",
+            "generated": "",
+            "identity": "",
+            "name": "auto_issue_invoice_scope",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'en'::text",
+            "generated": "",
+            "identity": "",
+            "name": "default_language",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'rate'::text",
+            "generated": "",
+            "identity": "",
+            "name": "invoice_vat_mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'sandbox'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'self_hosted'::text",
+            "generated": "",
+            "identity": "",
+            "name": "plan",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'{\"text\": \"\", \"enabled\": false}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "sign_in_notice",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "content_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "analytics_load_without_consent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_enabled",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "auto_issue_invoices",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "member_video_autoplay_override",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "video_autoplay_default",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "direct_messages_enabled",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "accent_color",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "accent_light",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_value",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_accept_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_body",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_decline_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_heading",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_test_event_code",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_pixel_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_tag_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "billing_portal_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bunny_stream_cdn_hostname",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bunny_stream_library_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_appearance",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "default_home_space_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "favicon_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "inpost_geowidget_token",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_exemption_basis",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_exemption_basis_kind",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_seller_address",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_seller_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_vat_rate_percent",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoicing_provider",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "logo_dark_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "logo_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "og_description",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "og_image_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "og_title",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "onboarding_dismissed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "privacy_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sender",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "support_email",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "support_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "terms_url",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "tenants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
             "name": "completed_lesson_ids",
             "notNull": true,
             "type": "jsonb"
@@ -4028,6 +4463,14 @@
             "name": "billing",
             "notNull": false,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,
@@ -4486,459 +4929,6 @@
           }
         ],
         "name": "tenant_domains"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "shipping_rates",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "social_links",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'active'::text",
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'automatic'::text",
-            "generated": "",
-            "identity": "",
-            "name": "ksef_submission_mode",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'b2b_only'::text",
-            "generated": "",
-            "identity": "",
-            "name": "auto_issue_invoice_scope",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'en'::text",
-            "generated": "",
-            "identity": "",
-            "name": "default_language",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'rate'::text",
-            "generated": "",
-            "identity": "",
-            "name": "invoice_vat_mode",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'sandbox'::text",
-            "generated": "",
-            "identity": "",
-            "name": "shipx_environment",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'self_hosted'::text",
-            "generated": "",
-            "identity": "",
-            "name": "plan",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'{\"text\": \"\", \"enabled\": false}'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "sign_in_notice",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "1",
-            "generated": "",
-            "identity": "",
-            "name": "content_version",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "analytics_load_without_consent",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_enabled",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "auto_issue_invoices",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "member_video_autoplay_override",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "video_autoplay_default",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "true",
-            "generated": "",
-            "identity": "",
-            "name": "direct_messages_enabled",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "accent_color",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "accent_light",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_consent_cookie_name",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_consent_cookie_value",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_accept_label",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_body",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_decline_label",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_consent_heading",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_capi_test_event_code",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_meta_pixel_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "analytics_tag_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "billing_portal_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "bunny_stream_cdn_hostname",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "bunny_stream_library_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "checkout_appearance",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "default_home_space_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "favicon_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "inpost_geowidget_token",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_exemption_basis",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_exemption_basis_kind",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_seller_address",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_seller_name",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_vat_rate_percent",
-            "notNull": false,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoicing_provider",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "logo_dark_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "logo_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "og_description",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "og_image_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "og_title",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "onboarding_dismissed_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "privacy_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "shipx_sender",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "slug",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "support_email",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "support_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "terms_url",
-            "notNull": false,
-            "type": "text"
-          }
-        ],
-        "name": "tenants"
       },
       {
         "columns": [
@@ -8512,6 +8502,51 @@
       {
         "columns": [
           {
+            "default": "nextval('order_changes_id_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "changed_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "pg_current_xact_id()",
+            "generated": "",
+            "identity": "",
+            "name": "xact_id",
+            "notNull": true,
+            "type": "xid8"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_changes"
+      },
+      {
+        "columns": [
+          {
             "default": "nextval('post_report_events_sequence_seq'::regclass)",
             "generated": "",
             "identity": "",
@@ -8853,6 +8888,35 @@
           }
         ],
         "name": "session"
+      },
+      {
+        "columns": [
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "rotated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "singleton",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "epoch",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_feed_epoch"
       },
       {
         "columns": [
@@ -9872,83 +9936,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "method",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "resource_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "route",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "shop_management_key_events"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "actor_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -10242,43 +10229,6 @@
           }
         ],
         "name": "api_key_rate_limit_buckets"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "count",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "period",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "window_started_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          }
-        ],
-        "name": "shop_management_key_rate_limit_buckets"
       },
       {
         "columns": [
@@ -10874,6 +10824,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "created_at",
             "notNull": true,
             "type": "text"
@@ -10915,6 +10873,14 @@
             "generated": "",
             "identity": "",
             "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "return_url",
             "notNull": false,
             "type": "text"
           },
@@ -13564,83 +13530,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "expires_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "issued_by_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "key_hash",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "revoked_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "scopes",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "shop_management_keys"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -14977,6 +14866,16 @@
     ],
     "triggers": [
       {
+        "definition": "CREATE TRIGGER invoices_record_insert AFTER INSERT ON invoices FOR EACH ROW EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_insert",
+        "table": "invoices"
+      },
+      {
+        "definition": "CREATE TRIGGER invoices_record_update AFTER UPDATE ON invoices FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_update",
+        "table": "invoices"
+      },
+      {
         "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
         "name": "marketing_member_directory_trigger",
         "table": "members"
@@ -14994,6 +14893,16 @@
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_insert AFTER INSERT ON orders FOR EACH ROW EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_insert",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_update",
         "table": "orders"
       },
       {

@@ -120,6 +120,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   MemberOrderListReader,
+  OrderListItemReader,
   PaymentRefundRepository,
   ProductPriceRepository,
   ProductDownloadAssetRepository,
@@ -3373,7 +3374,7 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
 
 export const createOrderRepository = (
   db: Db,
-): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
+): OrderRepository & OrderDetailRepository & MemberOrderListReader & OrderListItemReader => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.mode !== undefined) conditions.push(eq(orders.mode, query.mode));
@@ -3395,6 +3396,36 @@ export const createOrderRepository = (
       if (search) conditions.push(search);
     }
     return conditions;
+  };
+
+  const selectListRows = () => db
+    .select({
+      order: orders,
+      memberEmail: members.email,
+      memberName: members.displayName,
+      productTitle: products.title,
+      couponCode: coupons.code,
+      salesLinkTitle: salesLinks.title,
+    })
+    .from(orders)
+    .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+    .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+    .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
+    .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)));
+
+  const toListItems = async (tenantId: string, rows: Awaited<ReturnType<typeof selectListRows>>): Promise<OrderListItem[]> => {
+    const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
+      .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
+      .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
+    return rows.map((row) => orderListItemSchema.parse({
+      ...normalizeOrderDates(row.order),
+      memberEmail: row.memberEmail,
+      memberName: row.memberName,
+      productTitle: row.productTitle,
+      couponCode: row.couponCode,
+      salesLinkTitle: row.salesLinkTitle ?? undefined,
+      invoice: invoiceRows.find((invoice) => invoice.orderId === row.order.id) ?? null,
+    }));
   };
 
   return {
@@ -3437,6 +3468,7 @@ export const createOrderRepository = (
           discountCents: order.discountCents,
           billing: order.billing ?? null,
           attribution: order.attribution ?? null,
+          clientReference: order.clientReference ?? null,
           paidAt: order.paidAt ?? null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
@@ -3504,20 +3536,7 @@ export const createOrderRepository = (
     },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
-      const rows = await db
-        .select({
-          order: orders,
-          memberEmail: members.email,
-          memberName: members.displayName,
-          productTitle: products.title,
-          couponCode: coupons.code,
-          salesLinkTitle: salesLinks.title,
-        })
-        .from(orders)
-        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
-        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
-        .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
-        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+      const rows = await selectListRows()
         .where(and(...conditions))
         .orderBy(desc(orders.createdAt), desc(orders.id))
         .limit(query.pageSize)
@@ -3534,25 +3553,17 @@ export const createOrderRepository = (
           ...(query.mode === undefined ? [] : [eq(orders.mode, query.mode)]),
           sql`${orders.attribution}->>'utmSource' IS NOT NULL`,
         )).orderBy(sql`${orders.attribution}->>'utmSource'`);
-      const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
-        .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
-        .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
       return {
-        orders: rows.map(
-          (row): OrderListItem =>
-            orderListItemSchema.parse({
-              ...normalizeOrderDates(row.order),
-              memberEmail: row.memberEmail,
-              memberName: row.memberName,
-              productTitle: row.productTitle,
-              couponCode: row.couponCode,
-              salesLinkTitle: row.salesLinkTitle ?? undefined,
-              invoice: invoiceRows.find((invoice) => invoice.orderId === row.order.id) ?? null,
-            }),
-        ),
+        orders: await toListItems(tenantId, rows),
         total: totals[0]?.value ?? 0,
         sources: sourceRows.map((row) => row.value),
       };
+    },
+    listByIds: async (tenantId, orderIds) => {
+      if (orderIds.length === 0) return [];
+      const rows = await selectListRows()
+        .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, [...orderIds])));
+      return toListItems(tenantId, rows);
     },
     listForMember: async (tenantId, memberId) => {
       const rows = await db
@@ -4490,6 +4501,7 @@ export const createTenantRepository = (
         checkoutAppearance: tenants.checkoutAppearance,
         shippingRates: tenants.shippingRates,
         inpostGeowidgetToken: tenants.inpostGeowidgetToken,
+        checkoutReturnOrigins: tenants.checkoutReturnOrigins,
         accentColor: tenants.accentColor,
         accentLight: tenants.accentLight,
         faviconUrl: tenants.faviconUrl,
@@ -4544,6 +4556,7 @@ export const createTenantRepository = (
           checkoutAppearance: row.checkoutAppearance === null ? null : checkoutAppearanceSchema.parse(row.checkoutAppearance),
           shippingRates: shippingRatesSchema.parse(row.shippingRates),
           inpostGeowidgetToken: row.inpostGeowidgetToken,
+          checkoutReturnOrigins: row.checkoutReturnOrigins,
           accentColor: row.accentColor,
           accentLight: row.accentLight,
           faviconUrl: row.faviconUrl,
@@ -4614,6 +4627,7 @@ export const createTenantRepository = (
         checkoutAppearance: settings.checkoutAppearance,
         shippingRates: settings.shippingRates,
         inpostGeowidgetToken: settings.inpostGeowidgetToken,
+        checkoutReturnOrigins: settings.checkoutReturnOrigins,
         accentColor: settings.accentColor,
         accentLight: settings.accentLight,
         faviconUrl: settings.faviconUrl,
@@ -4664,6 +4678,7 @@ export const createTenantRepository = (
       checkoutAppearance: settings.checkoutAppearance,
       shippingRates: settings.shippingRates,
       inpostGeowidgetToken: settings.inpostGeowidgetToken,
+      checkoutReturnOrigins: settings.checkoutReturnOrigins,
       accentColor: settings.accentColor,
       accentLight: settings.accentLight,
       faviconUrl: settings.faviconUrl,

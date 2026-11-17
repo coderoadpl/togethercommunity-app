@@ -161,7 +161,8 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
-`shipping_country` and `fulfilment_status`.
+`shipping_country` and `fulfilment_status`, followed by `client_reference`
+(the storefront's `clientReference`, empty when the checkout had none).
 
 ## Fulfilment
 
@@ -294,8 +295,11 @@ the InPost locker sizes A (8 × 38 × 64 cm), B (19 × 38 × 64 cm) and C
 (41 × 38 × 64 cm). Studio shows **InPost parcel size** in the editor and on the
 create page of physical products shipped by parcel; the API and the CLI accept
 it on every product. A shipment uses the largest size among the order's product
-lines. Locker shipments send the size as the ShipX `template`; courier
-shipments send the size's dimensions and a fixed weight of 5 kg
+lines, unless staff choose another size for that shipment (see
+[Creating the shipment](#creating-the-shipment)). One order is one parcel with
+one label; an order that does not fit one large locker parcel goes by courier
+or is shipped by hand. Locker shipments send the size as the ShipX
+`template`; courier shipments send the size's dimensions and a fixed weight of 5 kg
 (`SHIPX_COURIER_PARCEL_WEIGHT_KG` in `core/domain/shipx.ts`). Product
 snapshots carry the parcel size from version 9
 (`core/domain/snapshots/product/v9.ts`); version 8 snapshots read unchanged
@@ -338,9 +342,19 @@ delivery option has the carrier `inpost`, when the staff role has `order:write`
 and the workspace is ready. The service follows the option: a parcel locker
 option sends `inpost_locker_standard` with the locker code as `target_point`,
 an address option sends `inpost_courier_standard` with the delivery address.
-The confirmation names the service, the parcel size and the buyer e-mail. The
-receiver is the delivery name (split into first and last name at the last
-space), the member e-mail and the delivery phone. For courier shipments the
+The confirmation names the service, the parcel size and the buyer e-mail, and
+offers **Parcel size for this shipment**: **Automatic** (the largest product
+size, the default) or one of the three sizes. The chosen size is sent as the
+optional `parcelTemplate` (`small`, `medium` or `large`) in the body of
+`POST /api/orders/<orderId>/shipx`, or with
+`order shipx create <orderId> --parcel-template <size>` in the CLI; another
+value is refused with `validation` before anything is claimed or sent to ShipX.
+Without it the parcel takes the largest product size. The size applies only
+when the request creates the ShipX shipment: a retry that finishes the payment
+of a stored shipment or looks up an unconfirmed attempt keeps the shipment
+ShipX already has, and **Discard the attempt and create again** offers the same
+choice for the new shipment. The receiver is the delivery name (split into
+first and last name at the last space), the member e-mail and the delivery phone. For courier shipments the
 street line is split into street and building number; an address without a
 building number is refused with a validation message so staff can dispatch it
 manually. ShipX e-mail and SMS notifications (`additional_services`) stay off
@@ -662,7 +676,8 @@ hint without the map.
 Following the same decision, the checkout form documents add
 `https://geowidget.inpost.pl` to `script-src` and `style-src`:
 
-- `/checkout/<productRef>` without `status=success`;
+- `/checkout/<productRef>` and the hosted cart page `/checkout/cart/pay`
+  without `status=success`;
 - `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled`.
 
 The server middleware (`apps/server/src/app.ts`) and the static hosting headers
@@ -693,10 +708,14 @@ any `connect-src` change for them needs a separate owner decision.
 pnpm --silent run cli --tenant acme tenant settings-set \
   --shipping-rates '[{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]' \
   --inpost-geowidget-token '<public token>'
+pnpm --silent run cli --tenant acme tenant settings-set \
+  --checkout-return-origins 'https://shop.example.test,https://www.shop.example.test'
 pnpm --silent run cli --tenant acme product create --title 'Printed holder' \
   --type physical --delivery-method shipping --price-cents 4900
 pnpm --silent run cli --tenant acme product update <id> --delivery-method pickup
 pnpm --silent run cli --tenant acme checkout session --product <id> \
+  --shipping-rate locker --pickup-point WAW01M
+pnpm --silent run cli --tenant acme checkout session --line <id>:2 --line <other-id>:1 \
   --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com \
   --product <id> --shipping-rate locker --pickup-point WAW01M
@@ -721,8 +740,15 @@ pnpm --silent run cli --tenant acme product update <id> \
 ```
 
 `--shipping-rates` replaces the whole list; an empty string for
-`--inpost-geowidget-token` clears the token. `--pickup-point` needs
-`--shipping-rate`. `--compliance null` removes the safety information and
+`--inpost-geowidget-token` clears the token. `--checkout-return-origins` replaces
+the list of shop origins that checkout return and cancel addresses may use
+(see [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses));
+an empty string clears it. `--pickup-point` needs
+`--shipping-rate`. `checkout session --line <product-id>:<quantity>` posts a
+cart; repeat it once per product and leave out `--product` and `--sales-link`
+(see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
+For an order with a line above one unit, `orders list` shows its product lines
+as `2 × Title; Title`; other orders keep the product title. `--compliance null` removes the safety information and
 `--clear-variant` removes the variant group and label. `order` is an alias of
 `orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
 id and token; `--sender null` removes the sender. Passing the token as a flag
@@ -759,13 +785,15 @@ example damaged goods); a later commit then records `oversold` and alerts.
 
 ### Checkout
 
-1. `validateCheckoutSelection` reads the stock of the selected products and
-   returns `sold_out` early when any tracked product has fewer available pieces
-   than requested (one per product today). This read is advisory only.
+1. `validateCheckoutSelection` (`validateCartSelection` for a cart) reads the
+   stock of the selected products and returns `sold_out` early when any tracked
+   product has fewer available pieces than requested (the line quantity of a
+   cart, one per product otherwise). This read is advisory only.
 2. After the checkout snapshot is captured and before the Stripe session is
    created, `StockRepository.reserve` reserves the quantity of every tracked
-   product line of the snapshot (a line without a quantity counts as one piece,
-   and every checkout today has one piece per product) in one transaction,
+   product line of the snapshot (a line without a quantity counts as one piece;
+   only a cart request sets a quantity, at most 10 per physical line while this
+   hold applies) in one transaction,
    updating products in product-id order so concurrent multi-product
    reservations cannot deadlock. Repeated products in one call are merged into
    one reservation of the summed quantity. The conditional update is the only

@@ -6,6 +6,7 @@ import { registerMetaCapiRoutes } from './meta-capi-routes.js';
 import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
+import { registerOrderChangeRoutes } from './order-change-routes.js';
 import { registerShipxRoutes } from './shipx-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
@@ -1384,6 +1385,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {

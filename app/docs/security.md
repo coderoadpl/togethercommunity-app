@@ -235,8 +235,9 @@ not depend on which matching entry takes precedence: the catch-all excludes
 entry below lists `status=success` under `missing`. All other header entries
 retain the baseline policy, except the checkout form entries below.
 
-Checkout form documents — `/checkout/<productRef>` without `status=success`,
-`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+Checkout form documents — `/checkout/<productRef>` and the hosted cart page
+`/checkout/cart/pay` without `status=success`, `/offer/<slug>?checkout=together`
+and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
 the server middleware and the static hosting headers. `connect-src` is not part
@@ -448,7 +449,7 @@ scopes on every shop key.
   switch for one workspace: it deletes every shop key of the workspace, revoked
   or not, with its rate-limit buckets, in one transaction. The legacy keys are
   untouched.
-- **Rollback.** Migration 0155 only adds the three shop tables and leaves
+- **Rollback.** Migration 0158 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
   owner controls, not rollback steps.

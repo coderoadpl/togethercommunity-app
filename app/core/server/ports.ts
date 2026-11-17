@@ -1183,7 +1183,7 @@ export interface PaymentProvider {
     checkoutSnapshotId?: string;
     checkoutBranding?: CheckoutBranding;
     directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string; disclosureMessage?: string };
-    lines?: { productId: string; name: string; grossCents: number }[];
+    lines?: { productId: string; name: string; grossCents: number; quantity?: number | undefined }[];
     shipping?: {
       allowedCountries: string[];
       phone: true;

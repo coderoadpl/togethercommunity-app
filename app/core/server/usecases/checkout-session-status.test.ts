@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { err, notFound, ok, metaCapiCopy, salesLinkSchema, tenantSettingsSchema, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
+import { err, notFound, ok, metaCapiCopy, salesLinkSchema, tenantSettingsSchema, type CheckoutSnapshot, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
 import { type PaymentRefundRepository } from '../ports.js';
 import type { MetaCapiDeps } from './meta-capi.js';
 import { getCheckoutSessionStatus } from './checkout-session-status.js';
@@ -104,6 +104,28 @@ describe('getCheckoutSessionStatus', () => {
 
 const analyticsSettings = tenantSettingsSchema.parse({
   name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, analyticsTagId: 'G-ABCDEF',
+});
+
+describe('checkout session client reference', () => {
+  const referenced: Order = { ...order, clientReference: 'shop-cart-8812' };
+
+  it.each([
+    ['without analytics', null],
+    ['with analytics', analyticsSettings],
+  ])('returns the client reference of its own paid session %s', async (_case, settings) => {
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', harness([referenced], settings))).toMatchObject({
+      ok: true, value: { status: 'paid', clientReference: 'shop-cart-8812' },
+    });
+  });
+
+  it.each([
+    ['a pending order', { ...referenced, status: 'pending' }, 'cs_live_paid123'],
+    ['another session', referenced, 'cs_live_other123'],
+  ] as const)('withholds the client reference of %s', async (_case, row, sessionId) => {
+    expect(await getCheckoutSessionStatus('tenant-1', sessionId, harness([row]))).toEqual({
+      ok: true, value: { status: 'pending' },
+    });
+  });
 });
 
 describe('checkout session purchase analytics', () => {
@@ -291,4 +313,56 @@ it.each([
   expect(result.ok && 'metaCapi' in result.value).toBe(false);
   expect(findOrder).not.toHaveBeenCalled();
   expect(deps.tenants.findSettings).toHaveBeenCalledTimes(2);
+});
+
+describe('checkout session shop return address', () => {
+  const shopSettings = tenantSettingsSchema.parse({
+    name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, checkoutReturnOrigins: ['https://shop.example.test'],
+  });
+  const snapshot: CheckoutSnapshot = {
+    id: 'checkout-1', tenantId: 'tenant-1', salesLinkId: null, providerSessionId: 'cs_live_paid123', mode: 'live',
+    returnUrl: 'https://shop.example.test/thanks?lang=pl', currency: 'PLN', createdAt: order.createdAt,
+    lines: [{ productId: 'product-1', name: 'Poster', productType: 'physical', grossCents: 1000, netCents: 813, vatRate: 23, vatCents: 187, vatExemptionBasis: null, issuedCount: null }],
+  };
+  const withSnapshots = (settings: TenantSettings | null, rows: CheckoutSnapshot[] = [snapshot], orders: Order[] = [order]) => {
+    const findByProviderSession = vi.fn(async (tenantId: string, providerSessionId: string) =>
+      rows.find((row) => row.tenantId === tenantId && row.providerSessionId === providerSessionId) ?? null);
+    return { ...harness(orders, settings), checkoutSnapshots: { findByProviderSession } };
+  };
+
+  it('returns the stored return address and checkout reference of its own paid session', async () => {
+    const deps = withSnapshots(shopSettings);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
+      ok: true, value: { status: 'paid', returnUrl: 'https://shop.example.test/thanks?lang=pl', checkoutRef: 'checkout-1' },
+    });
+    expect(deps.checkoutSnapshots.findByProviderSession).toHaveBeenCalledExactlyOnceWith('tenant-1', 'cs_live_paid123');
+  });
+
+  it('does not return the address of another session', async () => {
+    const other: Order = { ...order, providerObjectIds: { checkoutSession: 'cs_live_other123' } };
+    const deps = withSnapshots(shopSettings, [snapshot], [order, other]);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_other123', deps)).toEqual({ ok: true, value: { status: 'paid' } });
+  });
+
+  it('does not return the address when the lookup answers with a row of another session or workspace', async () => {
+    for (const row of [{ ...snapshot, providerSessionId: 'cs_live_other123' }, { ...snapshot, tenantId: 'tenant-2' }]) {
+      const deps = withSnapshots(shopSettings);
+      deps.checkoutSnapshots.findByProviderSession.mockResolvedValue(row);
+      expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({ ok: true, value: { status: 'paid' } });
+    }
+  });
+
+  it('does not return the address once its origin is no longer allowed', async () => {
+    const moved = tenantSettingsSchema.parse({ ...shopSettings, checkoutReturnOrigins: ['https://store.example.test'] });
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', withSnapshots(moved))).toEqual({ ok: true, value: { status: 'paid' } });
+    const deps = withSnapshots(null);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({ ok: true, value: { status: 'paid' } });
+    expect(deps.checkoutSnapshots.findByProviderSession).not.toHaveBeenCalled();
+  });
+
+  it('does not return the address before the session is paid', async () => {
+    const deps = withSnapshots(shopSettings, [snapshot], [{ ...order, status: 'pending' }]);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({ ok: true, value: { status: 'pending' } });
+    expect(deps.checkoutSnapshots.findByProviderSession).not.toHaveBeenCalled();
+  });
 });

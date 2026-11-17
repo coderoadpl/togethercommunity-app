@@ -29,7 +29,8 @@ consent rule passes. The member session is not otherwise isolated from those
 libraries, as on any site using GA4 or Meta Pixel.
 
 Each configured library loads only when the live success card mounts on
-`/offer/<slug>?status=success` or `/checkout/<reference>?status=success`. It never
+`/offer/<slug>?status=success`, `/checkout/<reference>?status=success` or the hosted
+cart page's return `/checkout/cart/pay?status=success`. It never
 loads for `test_purchase=1`, a test checkout session, the server-rendered checkout
 handoff, cancellation, Studio or member pages. Each library is injected once per
 document. A SPA is a single document, so a loaded tag remains active until reload;
@@ -136,8 +137,9 @@ not depend on which matching entry takes precedence: the catch-all excludes
 entry below lists `status=success` under `missing`. All other header entries
 retain the baseline policy, except the checkout form entries below.
 
-Checkout form documents — `/checkout/<productRef>` without `status=success`,
-`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+Checkout form documents — `/checkout/<productRef>` and the hosted cart page
+`/checkout/cart/pay` without `status=success`, `/offer/<slug>?checkout=together`
+and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
 the server middleware and the static hosting headers. `connect-src` is not part

@@ -186,7 +186,7 @@ so public sales links can render the server checkout handoff and crawler metadat
 The explicit `checkout=together` fallback and `status=success|cancelled` return
 pages serve the existing web app and never restart the automatic handoff.
 
-Shop management keys (owner decision 2026-11-14): a program may add,
+Shop management keys (owner decision 2026-11-14, approved for PR #410 and #411): a program may add,
 configure and operate a workspace's shop with tokens and without manual steps,
 including delivery, carrier and payment configuration. Workspace-bound,
 expiring, revocable keys with explicit scopes may therefore call the shop

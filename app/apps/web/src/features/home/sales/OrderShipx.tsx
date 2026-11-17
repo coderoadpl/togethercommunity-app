@@ -1,6 +1,6 @@
-import { Alert, Button, Stack, Typography } from '@mui/material';
+import { Alert, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
-import { SHIPX_SETUP_GAPS, shipxAttemptUnconfirmed, shipxShipmentBought, type OrderListItem, type ShipxOrderView } from '#core/domain/index.js';
+import { PARCEL_TEMPLATES, parcelTemplateSchema, SHIPX_SETUP_GAPS, shipxAttemptUnconfirmed, shipxShipmentBought, type OrderListItem, type ParcelTemplate, type ShipxOrderView } from '#core/domain/index.js';
 
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizeShipxError, useTranslations } from '../../../i18n/index.js';
@@ -13,10 +13,12 @@ interface OrderShipxProps {
   discarding: boolean;
   downloading: boolean;
   error: unknown;
-  onCreate: () => void;
-  onDiscard: () => void;
+  onCreate: (parcelTemplate: ParcelTemplate | undefined) => void;
+  onDiscard: (parcelTemplate: ParcelTemplate | undefined) => void;
   onDownloadLabel: () => void;
 }
+
+const AUTOMATIC = 'automatic';
 
 const hintReason = (reason: ShipxOrderView['reason']): (typeof SHIPX_SETUP_GAPS)[number] | null =>
   SHIPX_SETUP_GAPS.find((candidate) => candidate === reason) ?? null;
@@ -24,6 +26,7 @@ const hintReason = (reason: ShipxOrderView['reason']): (typeof SHIPX_SETUP_GAPS)
 export const OrderShipx = ({ order, view, canCreate, pending, discarding, downloading, error, onCreate, onDiscard, onDownloadLabel }: OrderShipxProps) => {
   const t = useTranslations();
   const [confirming, setConfirming] = useState<'create' | 'discard' | null>(null);
+  const [parcelTemplate, setParcelTemplate] = useState<ParcelTemplate | undefined>(undefined);
   if (view === undefined || view.service === null) return null;
   const shipment = view.shipment;
   const labelReady = shipment?.shipxShipmentId != null && shipxShipmentBought(shipment);
@@ -32,12 +35,28 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const awaitingPayment = shipment?.shipxShipmentId != null && !shipxShipmentBought(shipment) && view.reason === null;
   const failure = error === null ? null : localizeShipxError(error, t);
   const service = t.shipx.services[view.service];
-  const size = t.shipx.parcelTemplates[view.parcelTemplate];
+  const createsShipment = shipment?.shipxShipmentId == null && !unconfirmed;
+  const chosenTemplate = createsShipment ? parcelTemplate : undefined;
+  const size = t.shipx.parcelTemplates[chosenTemplate ?? view.parcelTemplate];
   const showCreate = canCreate && view.available;
   const reason = canCreate ? hintReason(view.reason) : null;
   const hint = reason === null ? null : t.shipx.unavailableReasons[reason];
   const busy = pending || discarding;
   if (!labelReady && !showCreate && hint === null && shipment === null) return null;
+  const parcelTemplateField = (
+    <TextField
+      select
+      fullWidth
+      id="order-shipx-parcel-template"
+      label={t.shipx.parcelTemplateOverrideLabel}
+      value={parcelTemplate ?? AUTOMATIC}
+      onChange={(event) => setParcelTemplate(event.target.value === AUTOMATIC ? undefined : parcelTemplateSchema.parse(event.target.value))}
+      slotProps={{ htmlInput: { 'data-testid': 'order-shipx-parcel-template' } }}
+    >
+      <MenuItem value={AUTOMATIC}>{t.shipx.parcelTemplateAutomatic({ size: t.shipx.parcelTemplates[view.parcelTemplate] })}</MenuItem>
+      {PARCEL_TEMPLATES.map((template) => <MenuItem key={template} value={template}>{t.shipx.parcelTemplates[template]}</MenuItem>)}
+    </TextField>
+  );
 
   return (
     <Stack useFlexGap spacing="0.75rem" data-testid="order-shipx">
@@ -73,16 +92,21 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       <ConfirmDialog
         open={confirming === 'create'}
         title={t.shipx.createConfirmTitle}
-        body={<Typography>{order.mode === 'test'
-          ? t.shipx.createConfirmBodyTest({ service, size })
-          : t.shipx.createConfirmBody({ service, size, email: order.memberEmail })}</Typography>}
+        body={(
+          <>
+            {createsShipment ? parcelTemplateField : null}
+            <Typography>{order.mode === 'test'
+              ? t.shipx.createConfirmBodyTest({ service, size })
+              : t.shipx.createConfirmBody({ service, size, email: order.memberEmail })}</Typography>
+          </>
+        )}
         confirmLabel={t.shipx.createConfirm}
         cancelLabel={t.common.cancel}
         confirmColor="primary"
         pending={pending}
         onConfirm={() => {
           setConfirming(null);
-          onCreate();
+          onCreate(chosenTemplate);
         }}
         onClose={() => setConfirming(null)}
         confirmTestId="order-shipx-confirm"
@@ -90,14 +114,19 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       <ConfirmDialog
         open={confirming === 'discard'}
         title={unconfirmed ? t.shipx.discardConfirmTitle : t.shipx.discardClaimConfirmTitle}
-        body={<Typography>{unconfirmed ? t.shipx.discardConfirmBody : t.shipx.discardClaimConfirmBody}</Typography>}
+        body={(
+          <>
+            <Typography>{unconfirmed ? t.shipx.discardConfirmBody : t.shipx.discardClaimConfirmBody}</Typography>
+            {parcelTemplateField}
+          </>
+        )}
         confirmLabel={t.shipx.discardConfirm}
         cancelLabel={t.common.cancel}
         confirmColor="warning"
         pending={discarding}
         onConfirm={() => {
           setConfirming(null);
-          onDiscard();
+          onDiscard(parcelTemplate);
         }}
         onClose={() => setConfirming(null)}
         confirmTestId="order-shipx-discard-confirm"

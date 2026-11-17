@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { API_ROUTES, checkoutSessionOutputSchema, checkoutSessionRequestSchema, publicOfferOutputSchema } from '#core/contract/index.js';
+import { API_ROUTES, checkoutCartSessionRequestSchema, checkoutSessionOutputSchema, checkoutSessionRequestSchema, publicOfferOutputSchema } from '#core/contract/index.js';
 import { instanceDescriptionSchema, newProductSchema, newProductPriceSchema, provisionTenantInputSchema, updateTenantSettingsInputSchema } from '#core/domain/index.js';
 import { effectiveShopIntegrations, effectiveShopSettings, manifestWorkspaceSlug, productMetadata, shopManifestSchema } from '#core/domain/shop-manifest.js';
 import { resolveManifestIntegrations } from './integrations.js';
@@ -107,6 +107,23 @@ describe('shop manifest documentation', () => {
     const typedStart = document.indexOf('```ts\nimport');
     expect(document.slice(document.lastIndexOf('```\n', typedStart), typedStart)).toContain('Inside this repository only');
     expect(document.slice(typedStart)).toContain("from '#core/contract/index.js'");
+  });
+
+  it('gives external sites a plain fetch cart example that the strict cart schema accepts', async () => {
+    const document = await readFile(new URL('../../../../docs/shop-integration.md', import.meta.url), 'utf8');
+    const section = document.slice(document.indexOf('### Cart: several products and quantities'));
+    const cart = /```js\n([\s\S]*?)\n```/u.exec(section)?.[1];
+    if (cart === undefined) throw new Error('Expected a plain JavaScript cart example');
+    expect(cart).not.toMatch(/\bimport\b|#core\//u);
+    expect(cart).toContain(`\${workspaceOrigin}${API_ROUTES.publicOffer.path}\``);
+    expect(cart).toContain(`\${workspaceOrigin}${API_ROUTES.checkoutSession.path}\``);
+    expect(cart).toContain(`method: '${API_ROUTES.checkoutSession.method}'`);
+    const paperback = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    const bookmark = '7a2b3c4d-5e6f-4a70-8b8c-9d0e1f2a3b4c';
+    const body = checkoutRequestBodyOf(cart, { 'paperback.id': paperback, 'bookmark.id': bookmark });
+    expect(checkoutCartSessionRequestSchema.parse(body)).toMatchObject({
+      lines: [{ productId: paperback, quantity: 2 }, { productId: bookmark, quantity: 1 }],
+    });
   });
 
   it.each(['shop-manifest.md', 'shop-integration.md'])('runs every --json example in %s without the script banner', async (name) => {

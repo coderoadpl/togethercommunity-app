@@ -447,7 +447,7 @@ scopes on every shop key.
   switch for one workspace: it deletes every shop key of the workspace, revoked
   or not, with its rate-limit buckets, in one transaction. The legacy keys are
   untouched.
-- **Rollback.** Migration 0155 only adds the three shop tables and leaves
+- **Rollback.** Migration 0158 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
   owner controls, not rollback steps.

@@ -1107,6 +1107,13 @@
       "when": 1790964000091,
       "tag": "0157_order_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1790964000101,
+      "tag": "0158_shop_management_keys",
+      "breakpoints": true
     }
   ]
 }

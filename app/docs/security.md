@@ -333,6 +333,11 @@ finding without blocking, and an unaccepted advisory is handled by a dependency
 bump or acceptance before the next promotion. Accepting an advisory requires both
 an `auditConfig.ignoreGhsas` entry in `app/pnpm-workspace.yaml` and its written
 justification under Accepted dependency advisories.
+`app/.pnpmfile.cjs` removes the optional `vitest` peer that `better-auth`
+declares (and any `@better-auth/*` package that declares it), so the test
+runner stays out of the production graph the audit sees;
+`config-regression/auth-library-test-peer.test.ts` fails when the lockfile
+carries that peer again.
 The audit allowlist contains these reviewed advisories:
 
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
@@ -359,20 +364,6 @@ The audit allowlist contains these reviewed advisories:
   still validates every element. Revisit with the zod 4 migration; until then a
   new parse of unbounded, unauthenticated input must stay behind a route body
   limit in `body-limits.ts` or check the array length before the schema runs.
-- `GHSA-fc5q-39xc-vjpf` (picomatch, high): a glob pattern with a
-  single-branch repeated extglob such as `+(*)` compiles to a regular
-  expression that backtracks exponentially on short crafted strings, so whoever
-  controls the pattern can block the event loop. Every picomatch release up to
-  the latest, 4.0.7, is affected and no fixed version exists. The production
-  audit reaches picomatch only through `better-auth`, which declares `vitest`
-  as an optional peer dependency; the lockfile resolves that peer to the test
-  runner the repository installs for development, and inside `better-auth`
-  only its test utilities (`dist/test-utils`) import `vitest`. No production
-  source in `apps/server`, `apps/web/src`, `apps/cli`, `core`, `adapters` or
-  `api` imports picomatch, micromatch, tinyglobby, fast-glob or `vitest`, and
-  no code path builds a glob from request data, so no request-derived pattern
-  can reach a matcher. Revisit when a fixed picomatch release appears or when
-  `better-auth` no longer brings `vitest` into the production graph.
 
 ## Tenant API keys
 

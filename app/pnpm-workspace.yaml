@@ -17,5 +17,3 @@ auditConfig:
     - GHSA-67mh-4wv8-2f99
     # zod 3 has no fix (patched only in zod 4.6.6); request bodies are size-limited by apps/server/src/body-limits.ts
     - GHSA-mrhx-c7xc-m3w5
-    # picomatch has no fix (<=4.0.7 = latest); reached only via better-auth's optional vitest peer, no production code matches globs
-    - GHSA-fc5q-39xc-vjpf

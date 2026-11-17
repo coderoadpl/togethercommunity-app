@@ -622,6 +622,13 @@ describe('getCourseStructureWithAccess — durations and upsell', () => {
     expect(lessonsAt(result).some((l) => l.unlockProductId === 'p-draft')).toBe(false);
   });
 
+  it('never suggests a product sold only through sales links even when it is cheapest', async () => {
+    const linkOnly = { ...priced('p-link', 100, [{ level: 'course', courseId: 'c1' }]), salesChannel: 'sales_links_only' as const };
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], [...catalogue, linkOnly]));
+    expect(lessonsAt(result).some((l) => l.unlockProductId === 'p-link')).toBe(false);
+    expect(nn(lessonsAt(result).find((l) => l.lessonId === 'l1')).unlockProductId).toBe('p-full');
+  });
+
   it('omits the upsell on accessible lessons and when nothing covers a lesson', async () => {
     const covered = await getCourseStructureWithAccess(
       ctx({}),

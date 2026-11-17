@@ -17,7 +17,7 @@ export const productVisibilitySchema = z.enum(['listed', 'unlisted']);
 
 export type ProductVisibility = z.infer<typeof productVisibilitySchema>;
 
-export const productSalesChannelSchema = z.enum(['any', 'sales_links_only']);
+const productSalesChannelSchema = z.enum(['any', 'sales_links_only']);
 
 export type ProductSalesChannel = z.infer<typeof productSalesChannelSchema>;
 

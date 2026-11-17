@@ -2,6 +2,7 @@ import {
   cartLineQuantityError,
   cartLinesSchema,
   err,
+  isStandalonePurchasable,
   notFound,
   ok,
   resolveProductVat,
@@ -34,7 +35,7 @@ const selectCartProducts = async (
   const items: { product: Product; quantity: number }[] = [];
   for (const line of lines) {
     const product = await deps.products.findById(tenantId, line.productId);
-    if (product === null || !product.published) return err(notFound(`No published product "${line.productId}" in this tenant`));
+    if (product === null || !isStandalonePurchasable(product)) return err(notFound(`No published product "${line.productId}" in this tenant`));
     if (product.type === 'membership') return err(validation('Subscriptions cannot be included in a cart'));
     const quantityError = cartLineQuantityError(product, line.quantity);
     if (quantityError !== null) return err(validation(quantityError));

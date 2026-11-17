@@ -10176,6 +10176,32 @@ describe('staff Stripe test mode routes', () => {
     expect(createSession).not.toHaveBeenCalled();
   });
 
+  it('refuses a staff test checkout of a product sold only through sales links exactly like an unknown product', async () => {
+    const answer = async (stored: 'sales_links_only' | 'missing') => {
+      const base = deps();
+      const createSession = vi.fn(base.payment.createCheckoutSession);
+      const createOrder = vi.fn(base.orders.create);
+      const app = scopedApp('staff', { overrides: testSlotDeps(base, {
+        products: { ...base.products, findById: async (tenantId, id) => {
+          const found = await base.products.findById(tenantId, id);
+          if (id !== 'acme-published' || found === null) return found;
+          return stored === 'missing' ? null : { ...found, salesChannel: 'sales_links_only' };
+        } },
+        payment: { ...base.payment, createCheckoutSession: createSession },
+        orders: { ...base.orders, create: createOrder },
+      }) });
+      const cookie = await enableTestSession(app);
+      const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers: { ...headers, cookie },
+        body: JSON.stringify({ productId: 'acme-published', termsAccepted: true }) });
+      expect(createSession).not.toHaveBeenCalled();
+      expect(createOrder).not.toHaveBeenCalled();
+      return { status: response.status, body: await response.text() };
+    };
+    const refused = await answer('sales_links_only');
+    expect(refused.status).toBe(404);
+    expect(refused).toEqual(await answer('missing'));
+  });
+
   it('keeps a started test checkout out of the consent capture table', async () => {
     const base = deps();
     const createCapture = vi.fn(base.checkoutConsentCaptures.create);
@@ -10679,6 +10705,71 @@ it('uses current bundle price amounts, currencies and identifiers for coupon pre
 });
 
 
+describe('a product sold only through sales links over the public routes', () => {
+  const bundleApp = (digital: 'sales_links_only' | 'missing') => {
+    const h = simulatedBundleApp();
+    const index = h.products.findIndex((item) => item.id === 'digital');
+    const found = h.products[index];
+    if (found === undefined) throw new Error('Missing bundle product');
+    if (digital === 'missing') h.products.splice(index, 1);
+    else h.products[index] = { ...found, salesChannel: 'sales_links_only' };
+    return h;
+  };
+  const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+  const post = (app: ReturnType<typeof buildApp>, path: string, body: Record<string, unknown>) =>
+    app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
+
+  it.each([
+    ['the public offer by reference', (app: ReturnType<typeof buildApp>) => app.request(`${API_PATHS.publicOffer}?productRef=digital`, { headers })],
+    ['a standalone checkout session', (app: ReturnType<typeof buildApp>) => post(app, API_PATHS.checkoutSession, { productId: 'digital', email: 'buyer@example.test', termsAccepted: true })],
+    ['a standalone coupon check', (app: ReturnType<typeof buildApp>) => post(app, API_PATHS.couponCheckoutValidation, { productId: 'digital', email: 'buyer@example.test', couponCode: 'BUNDLE' })],
+    ['a simulated purchase', (app: ReturnType<typeof buildApp>) => purchase(app, { host: 'acme.localhost' }, { productId: 'digital', email: 'buyer@example.test' })],
+  ])('answers %s exactly like an unknown product', async (_entry, send) => {
+    const linkOnly = bundleApp('sales_links_only');
+    const refused = await send(linkOnly.app);
+    const unknown = await send(bundleApp('missing').app);
+    expect(refused.status).toBe(unknown.status);
+    expect(await refused.text()).toBe(await unknown.text());
+    expect(linkOnly.orders).toEqual([]);
+  });
+
+  it('leaves it out of the listed catalogue', async () => {
+    const response = await requestPublicOffer(bundleApp('sales_links_only').app, headers);
+    expect((await response.json()).data.products.map((item: { id: string }) => item.id)).toEqual(['print']);
+  });
+
+  it('still sells it through the sales link and keeps its checkout consents in the sales-link read', async () => {
+    const h = bundleApp('sales_links_only');
+    const consentDefinitions = new InMemoryConsentDefinitionRepository();
+    await consentDefinitions.create(acme.id, {
+      id: 'definition-news', tenantId: acme.id, key: 'news', kind: 'optional_marketing', channel: 'email', doubleOptIn: false,
+      documentRef: { mode: 'url', url: 'https://acme.example/news' }, status: 'active', createdAt: h.base.clock.nowIso(), updatedAt: h.base.clock.nowIso(),
+    }, {
+      id: 'definition-news-1', tenantId: acme.id, definitionId: 'definition-news', version: 1, label: 'Workshop news',
+      documentVersionRef: { mode: 'url', url: 'https://acme.example/news-v1' }, createdAt: h.base.clock.nowIso(), createdBy: null,
+    });
+    const index = h.products.findIndex((item) => item.id === 'digital');
+    const digital = h.products[index];
+    if (digital === undefined) throw new Error('Missing bundle product');
+    h.products[index] = { ...digital, checkoutConsentDefinitionIds: ['definition-news'] };
+    h.base.marketing = { ...marketingDeps(), definitions: consentDefinitions };
+    h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+    const app = buildApp(h.base);
+    const read = await app.request('/api/public/sales-links/bundle', { headers });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({ ok: true, data: {
+      lines: [{ productId: 'print' }, { productId: 'digital' }],
+      marketingConsents: [{ definitionId: 'definition-news', label: 'Workshop news' }],
+    } });
+    const standalone = await app.request(`${API_PATHS.publicOffer}?productRef=digital`, { headers });
+    expect((await standalone.json()).data.products).toEqual([]);
+    const purchased = await purchase(app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });
+    expect(purchased.status).toBe(200);
+    expect(h.orders).toMatchObject([{ salesLinkId: 'bundle-link', lines: [{ productId: 'print' }, { productId: 'digital' }] }]);
+    expect(h.grants.map((grant) => grant.productId)).toEqual(['digital']);
+  });
+});
+
 describe('cart checkout over the public checkout routes', () => {
   const poster = '00000000-0000-4000-8000-0000000000a1';
   const mug = '00000000-0000-4000-8000-0000000000a2';
@@ -10687,14 +10778,16 @@ describe('cart checkout over the public checkout routes', () => {
   const foreignLamp = '00000000-0000-4000-8000-0000000000b1';
   const unknownProduct = '00000000-0000-4000-8000-0000000000c1';
   const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
-  const cartApp = (options: { couponPercent?: number; deliveryCents?: number; returnOrigins?: string[] } = {}) => {
-    const products: Product[] = [
+  const cartApp = (options: { couponPercent?: number; deliveryCents?: number; returnOrigins?: string[]; linkOnlyProductId?: string; missingProductId?: string } = {}) => {
+    const catalogue: Product[] = [
       { ...product({ id: poster, tenantId: acme.id, title: 'Poster', published: true }), type: 'physical', vatRate: 8 },
       { ...product({ id: mug, tenantId: acme.id, title: 'Mug', published: true }), type: 'physical', vatRate: 23 },
       { ...product({ id: ebook, tenantId: acme.id, title: 'Ebook', published: true }), type: 'digital_download', vatRate: 5 },
       { ...product({ id: frame, tenantId: acme.id, title: 'Frame', published: true }), type: 'physical', deliveryMethod: 'shipping', vatRate: 23 },
       { ...product({ id: foreignLamp, tenantId: globex.id, title: 'Globex Secret Lamp', published: true }), type: 'physical', vatRate: 23, priceCents: 7777, currency: 'EUR' },
     ];
+    const products: Product[] = catalogue.filter((item) => item.id !== options.missingProductId)
+      .map((item) => item.id === options.linkOnlyProductId ? { ...item, salesChannel: 'sales_links_only' } : item);
     const base = deps({ products });
     const now = base.clock.nowIso();
     const amounts: Record<string, number> = { [poster]: 3500, [mug]: 2500, [ebook]: 1500, [frame]: 4000, [foreignLamp]: 7777 };
@@ -10964,6 +11057,23 @@ describe('cart checkout over the public checkout routes', () => {
     const unknown = await cartApp().post(path, { ...body, lines: [{ productId: unknownProduct, quantity: 1 }] });
     expect(unknown.status).toBe(404);
     expect(await unknown.json()).toEqual(notFoundBody(unknownProduct));
+  });
+
+  it.each([
+    ['session', API_PATHS.checkoutSession, { email: 'buyer@example.test', termsAccepted: true }],
+    ['coupon', API_PATHS.couponCheckoutValidation, { email: 'buyer@example.test', couponCode: 'CART' }],
+  ])('refuses a whole cart holding a product sold only through sales links on the %s route exactly like an unknown product', async (_route, path, body) => {
+    for (const lines of [[{ productId: ebook, quantity: 1 }], [{ productId: poster, quantity: 1 }, { productId: ebook, quantity: 1 }]]) {
+      const h = cartApp({ linkOnlyProductId: ebook });
+      const refused = await h.post(path, { ...body, lines });
+      const unknown = await cartApp({ missingProductId: ebook }).post(path, { ...body, lines });
+      expect(refused.status).toBe(404);
+      expect(refused.status).toBe(unknown.status);
+      expect(await refused.text()).toBe(await unknown.text());
+      expect(h.createCheckoutSession).not.toHaveBeenCalled();
+      expect(h.snapshots.size).toBe(0);
+      expect(h.stock.events).toEqual([]);
+    }
   });
 });
 

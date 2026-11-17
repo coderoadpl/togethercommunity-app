@@ -1,5 +1,6 @@
 import {
   err,
+  isCatalogueListed,
   listSpaceEventsInputSchema,
   listSpaceFeedInputSchema,
   MAX_PINNED_POSTS_PER_SPACE,
@@ -92,7 +93,7 @@ export const getPublicNavigation = async (
     deps.products.listPublishedByTenant(tenant.id),
     deps.tenants.findSettings(tenant.id),
   ]);
-  const products = publishedProducts.filter((product) => product.visibility === 'listed');
+  const products = publishedProducts.filter(isCatalogueListed);
   const publishedProductIds = new Set(products.map((product) => product.id));
   const productsById = new Map(
     products.map((product) => [product.id, { id: product.id, title: product.title }]),
@@ -173,7 +174,7 @@ export const getPublicCourseStructure = async (
     deps.lessons.list(tenant.id),
     deps.products.listPublishedByTenant(tenant.id),
   ]);
-  const products = publishedProducts.filter((product) => product.visibility === 'listed');
+  const products = publishedProducts.filter(isCatalogueListed);
   const product = products
     .filter((entry) => entry.published && entry.accessItems.some((item) => item.courseId === courseId))
     .sort((a, b) => a.priceCents - b.priceCents || a.id.localeCompare(b.id))[0];

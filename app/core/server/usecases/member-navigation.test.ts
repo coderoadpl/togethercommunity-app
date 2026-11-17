@@ -727,6 +727,19 @@ it('hides unlisted purchase suggestions while preserving spaces already owned', 
 });
 
 
+it('hides purchase suggestions of products sold only through sales links while preserving spaces already owned', async () => {
+  const result = await getMemberNavigation(memberCtx(), deps({
+    ...entitledToModuleM1,
+    products: entitledToModuleM1.products.map((entry) => ({ ...entry, salesChannel: 'sales_links_only' })),
+  }));
+  expect(result).toMatchObject({ ok: true, value: {
+    spaces: [{ id: 's-open' }, { id: 's-module' }], lockedSpaces: [],
+  } });
+  if (!result.ok) throw new Error('Expected navigation');
+  expect(result.value.spaces.flatMap((entry) => entry.products)).toEqual([]);
+});
+
+
 it('hides archived courses from member navigation and restores them', async () => {
   const courses: Course[] = [{ ...course('c1'), archivedAt: NOW }];
   const d = deps({ ...entitledToModuleM1, courses });

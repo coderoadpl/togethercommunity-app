@@ -273,6 +273,13 @@ describe('m2mEnroll', () => {
     });
   });
 
+  it('enrols into a product sold only through sales links', async () => {
+    const h = harness({ products: [{ ...product('p1', true), salesChannel: 'sales_links_only' }] });
+    const result = await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1', expiresAt: NEW_EXPIRY }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { renewed: false } });
+    expect(h.grants).toMatchObject([{ productId: 'p1', expiresAt: NEW_EXPIRY }]);
+  });
+
   it('renews an active grant by extending its expiry, keeping startsAt', async () => {
     const h = harness({ products: [product('p1', true)], grants: [activeGrant()] });
     await seedMember(h.deps);

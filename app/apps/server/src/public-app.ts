@@ -563,7 +563,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const workspace = tenant.value.tenant;
     const contexts = await Promise.all(result.value.lines.map(({ productId: productRef }) => getPublicOffer(workspace, {
       courses: deps.courses, products: deps.products, lessons: deps.lessons, prices: deps.prices, tenants: deps.tenants, definitions: deps.marketing?.definitions, documents: deps.marketing?.documents,
-    }, productRef)));
+    }, productRef, 'sales_link')));
     const context = contexts[0];
     if (context === undefined || !context.ok) return respondPublic(err(internal('Offer context is unavailable')));
     const consents = contexts.flatMap((item) => item.ok ? item.value.products.flatMap((product) => product.marketingConsents) : []);

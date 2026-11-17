@@ -8,7 +8,7 @@ interface DoctrineRequirement {
 export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
   {
     file: 'app/CLAUDE.md',
-    text: 'Shop management keys (owner decision 2026-11-14):',
+    text: 'Shop management keys (owner decision 2026-11-14, approved for PR #410 and #411):',
     reason: 'must record the dated owner decision on shop management keys',
   },
   {

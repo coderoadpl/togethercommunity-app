@@ -264,6 +264,24 @@ describe('shop settings routes with a shop management key', () => {
     expect(await sessionSettings()).not.toMatchObject({ analyticsTagId: 'G-ABCDEF1234' });
   });
 
+  it('answers 400 to checkout return origins from a key with the settings write scope and writes nothing', async () => {
+    expect(Object.keys(shopSettingsPatchSchema.shape)).not.toContain('checkoutReturnOrigins');
+    const secret = await createShopKey([READ, WRITE]);
+    const before = await readSettings(secret);
+    const sessionBefore = await sessionSettings();
+
+    for (const body of [
+      { checkoutReturnOrigins: ['https://shop.example.test'] },
+      { supportEmail: 'returns@example.test', checkoutReturnOrigins: ['https://shop.example.test'] },
+    ]) {
+      const response = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, body);
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    expect(await readSettings(secret)).toEqual(before);
+    expect(await sessionSettings()).toEqual(sessionBefore);
+  });
+
   it('keeps VAT coherent through the reused settings update', async () => {
     const secret = await createShopKey([READ, WRITE]);
     const missing = await keyed(secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { invoiceVatMode: 'exempt' });

@@ -165,6 +165,22 @@ describe('shop management key settings allow-list', () => {
     expect(h.writes).toEqual([]);
   });
 
+  it('refuses a key ctx the checkout return origins even with the settings write scope', async () => {
+    expect(Object.keys(SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS)).not.toContain('checkoutReturnOrigins');
+    expect(shopManagementKeyMayWriteSetting('checkoutReturnOrigins')).toBe(false);
+    expect(authorizeTenant(keyCtx, 'tenant:settings:write', {
+      shopManagementKeyGrant: { operation: 'shop-settings:update', fields: ['checkoutReturnOrigins'] },
+    })).toMatchObject(forbidden);
+    const h = harness();
+    expect(await updateTenantSettings(keyCtx, { checkoutReturnOrigins: ['https://shop.example.test'] }, h.deps, {
+      shopManagementKeyGrant: { operation: 'shop-settings:update', fields: ['checkoutReturnOrigins'] },
+    })).toMatchObject(forbidden);
+    expect(await updateTenantSettings(keyCtx, { name: 'Renamed', checkoutReturnOrigins: ['https://shop.example.test'] }, h.deps, {
+      shopManagementKeyGrant: { operation: 'shop-settings:update', fields: ['name'] },
+    })).toMatchObject(forbidden);
+    expect(h.writes).toEqual([]);
+  });
+
   it('lets a key ctx update an allow-listed field its grant names', async () => {
     const h = harness();
     expect(await updateTenantSettings(keyCtx, { name: 'Renamed', supportUrl: 'https://alpha.example.test/help' }, h.deps, {

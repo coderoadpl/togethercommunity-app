@@ -20,7 +20,7 @@ const DRAFT = id(7);
 const TWO_PRICES = id(8);
 
 const product = (productId: string, fields: Pick<Product, 'type' | 'title' | 'deliveryMethod' | 'vatRate'> & Partial<Product>): Product => ({
-  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', published: true,
+  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', salesChannel: 'any', published: true,
   accessItems: [], legacyId: null, createdAt: '2026-11-01T09:00:00.000Z', id: productId, slug: `product-${productId.slice(-2)}`, priceCents: 0,
   ...fields,
 });

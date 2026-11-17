@@ -36,6 +36,7 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   visibility: 'unlisted',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],

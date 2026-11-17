@@ -34,6 +34,7 @@ const product = (id: string, published: boolean): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published,
   accessItems: [],

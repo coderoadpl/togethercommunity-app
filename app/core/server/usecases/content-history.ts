@@ -284,6 +284,7 @@ const restoreProduct = (
       description: snapshot.description,
       coverUrl: snapshot.coverUrl,
       visibility: snapshot.visibility,
+      salesChannel: snapshot.salesChannel,
     },
     deps,
   );

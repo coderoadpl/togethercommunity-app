@@ -55,6 +55,7 @@ const product = (tenantId: string, overrides: Partial<Product> = {}): Product =>
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],

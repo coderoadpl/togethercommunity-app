@@ -170,6 +170,7 @@ const product = (input: {
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: input.published,
   accessItems: [],

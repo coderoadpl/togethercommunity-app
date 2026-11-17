@@ -2,6 +2,8 @@ import {
   buildSnapshot,
   deliveryMethodAllowed,
   resolveProductVat,
+  SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
+  salesChannelAllowed,
   err,
   newProductSchema,
   notFound,
@@ -94,6 +96,9 @@ export const createProduct = async (
   if (!deliveryMethodAllowed(parsed.data.type, parsed.data.deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
+  if (!salesChannelAllowed(parsed.data.type, parsed.data.salesChannel)) {
+    return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  }
   const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
   if (parsed.data.vatRate === 'exempt' && resolveProductVat(parsed.data, settings) === null) {
     return err(validation('VAT exemption requires a legal basis'));
@@ -117,6 +122,7 @@ export const createProduct = async (
     currency: parsed.data.currency,
     published: false,
     visibility: parsed.data.visibility,
+    salesChannel: parsed.data.salesChannel,
     deliveryMethod: parsed.data.deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate,
     compliance: parsed.data.compliance ?? null,
@@ -154,6 +160,10 @@ export const updateProduct = async (
   if (!deliveryMethodAllowed(existing.type, deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
+  const salesChannel = parsed.data.salesChannel ?? existing.salesChannel;
+  if (!salesChannelAllowed(existing.type, salesChannel)) {
+    return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  }
 
   const vatInput = {
     vatRate: parsed.data.vatRate === undefined ? existing.vatRate : parsed.data.vatRate,
@@ -171,6 +181,7 @@ export const updateProduct = async (
     vatRate: vatInput.vatRate ?? null,
     vatExemptionBasis: vatInput.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     visibility: parsed.data.visibility ?? existing.visibility,
+    salesChannel,
     deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate ?? existing.parcelTemplate,
     compliance: parsed.data.compliance === undefined ? existing.compliance ?? null : parsed.data.compliance,

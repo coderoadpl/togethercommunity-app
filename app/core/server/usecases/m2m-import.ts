@@ -559,6 +559,7 @@ const prepareProduct = async (
       priceCents: record.priceCents,
       currency: record.currency,
       visibility: 'listed',
+      salesChannel: 'any',
       deliveryMethod: 'pickup',
       compliance: record.compliance ?? null,
       variantGroup: record.variantGroup ?? null,

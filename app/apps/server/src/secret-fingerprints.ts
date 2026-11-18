@@ -28,7 +28,10 @@ export const FINGERPRINTED_SECRET_NAMES = [
   'SMOKE_CREATOR_PASSWORD',
 ] as const satisfies readonly (keyof Env)[];
 
+export const OUT_OF_SCHEMA_SECRET_NAMES = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] as const;
+
 type FingerprintedSecretName = typeof FINGERPRINTED_SECRET_NAMES[number];
+type OutOfSchemaSecretName = typeof OUT_OF_SCHEMA_SECRET_NAMES[number];
 
 const schemaDefaultOf = (name: FingerprintedSecretName): unknown =>
   envSchema._def.schema.shape[name].safeParse(undefined).data;
@@ -40,8 +43,11 @@ const fingerprintOf = (name: string, value: string | undefined, unsetValue: unkn
 
 export const secretFingerprintsOf = (
   env: Pick<Env, FingerprintedSecretName>,
-): readonly SecretFingerprint[] =>
-  FINGERPRINTED_SECRET_NAMES.map((name) => fingerprintOf(name, env[name], schemaDefaultOf(name)));
+  processEnv: Readonly<Partial<Record<OutOfSchemaSecretName, string>>>,
+): readonly SecretFingerprint[] => [
+  ...FINGERPRINTED_SECRET_NAMES.map((name) => fingerprintOf(name, env[name], schemaDefaultOf(name))),
+  ...OUT_OF_SCHEMA_SECRET_NAMES.map((name) => fingerprintOf(name, processEnv[name], undefined)),
+];
 
 export const registerSecretFingerprintsRoute = (
   app: Hono<AppVars>,

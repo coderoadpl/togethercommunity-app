@@ -11,7 +11,12 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import { envSchema } from './env.js';
-import { FINGERPRINTED_SECRET_NAMES, registerSecretFingerprintsRoute, secretFingerprintsOf } from './secret-fingerprints.js';
+import {
+  FINGERPRINTED_SECRET_NAMES,
+  OUT_OF_SCHEMA_SECRET_NAMES,
+  registerSecretFingerprintsRoute,
+  secretFingerprintsOf,
+} from './secret-fingerprints.js';
 
 const NOT_FINGERPRINTED_ENV_NAMES = [
   'PLATFORM_EGRESS_IP', 'PLATFORM_EGRESS_ECHO_URL', 'TELEMETRY_FREE_PLAN_HIDES_STATS', 'NODE_ENV', 'APP_ENV',
@@ -50,10 +55,12 @@ const values = {
   DATABASE_URL: 'postgres://user:test-only-db-password@db.example.test:5432/together',
   SMTP_PASSWORD: '',
 };
+const processEnv = { AWS_ACCESS_KEY_ID: '', AWS_SECRET_ACCESS_KEY: ' test-only-aws-secret-access-key\n' };
+const allNames = [...FINGERPRINTED_SECRET_NAMES, ...OUT_OF_SCHEMA_SECRET_NAMES];
 
 const harness = (env: Parameters<typeof secretFingerprintsOf>[0] = envSchema.parse(values)) => {
   const app = new Hono<AppVars>();
-  registerSecretFingerprintsRoute(app, { operatorSecret, secretFingerprints: secretFingerprintsOf(env) });
+  registerSecretFingerprintsRoute(app, { operatorSecret, secretFingerprints: secretFingerprintsOf(env, processEnv) });
   return app;
 };
 
@@ -68,23 +75,41 @@ describe('fingerprinted secret names', () => {
   it('leave no secret-looking variable without a fingerprint', () => {
     expect(NOT_FINGERPRINTED_ENV_NAMES.filter((name) => SECRET_LIKE_NAME.test(name))).toEqual([]);
   });
+
+  it('pin the secrets read from the process environment outside the schema to the AWS SDK credential pair', () => {
+    expect([...OUT_OF_SCHEMA_SECRET_NAMES]).toEqual(['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']);
+    const schemaNames = new Set(Object.keys(envSchema._def.schema.shape));
+    expect(OUT_OF_SCHEMA_SECRET_NAMES.filter((name) => schemaNames.has(name))).toEqual([]);
+  });
 });
 
 describe('secretFingerprintsOf', () => {
   it('fingerprints the exact value the server parsed and marks absent or empty values as not set', () => {
     const env = envSchema.parse({ ...values, CRON_SECRET: ` ${values.CRON_SECRET}\n` });
-    const byName = new Map(secretFingerprintsOf(env).map((entry) => [entry.name, entry]));
+    const byName = new Map(secretFingerprintsOf(env, processEnv).map((entry) => [entry.name, entry]));
     expect(byName.get('CRON_SECRET')).toEqual({
       name: 'CRON_SECRET', set: true, fingerprint: secretFingerprint('CRON_SECRET', ` ${values.CRON_SECRET}\n`),
     });
     expect(byName.get('BETTER_AUTH_SECRET')?.fingerprint).toBe('55cfdafba1172c2d');
     expect(byName.get('SMTP_PASSWORD')).toEqual({ name: 'SMTP_PASSWORD', set: false, fingerprint: null });
     expect(byName.get('GOOGLE_CLIENT_SECRET')).toEqual({ name: 'GOOGLE_CLIENT_SECRET', set: false, fingerprint: null });
-    expect([...byName.keys()]).toEqual([...FINGERPRINTED_SECRET_NAMES]);
+    expect([...byName.keys()]).toEqual(allNames);
+  });
+
+  it('fingerprints the raw process value of an out-of-schema secret and marks an absent or empty one as not set', () => {
+    const byName = new Map(secretFingerprintsOf(envSchema.parse(values), processEnv).map((entry) => [entry.name, entry]));
+    expect(byName.get('AWS_SECRET_ACCESS_KEY')).toEqual({
+      name: 'AWS_SECRET_ACCESS_KEY',
+      set: true,
+      fingerprint: secretFingerprint('AWS_SECRET_ACCESS_KEY', processEnv.AWS_SECRET_ACCESS_KEY),
+    });
+    expect(byName.get('AWS_ACCESS_KEY_ID')).toEqual({ name: 'AWS_ACCESS_KEY_ID', set: false, fingerprint: null });
+    expect(secretFingerprintsOf(envSchema.parse(values), {}).find((entry) => entry.name === 'AWS_SECRET_ACCESS_KEY'))
+      .toEqual({ name: 'AWS_SECRET_ACCESS_KEY', set: false, fingerprint: null });
   });
 
   it('reports a value left at its schema default as not set, so a missing DATABASE_URL never fingerprints the localhost default', () => {
-    const byName = new Map(secretFingerprintsOf(envSchema.parse({ CRON_SECRET: values.CRON_SECRET })).map((entry) => [entry.name, entry]));
+    const byName = new Map(secretFingerprintsOf(envSchema.parse({ CRON_SECRET: values.CRON_SECRET }), {}).map((entry) => [entry.name, entry]));
     expect(byName.get('DATABASE_URL')).toEqual({ name: 'DATABASE_URL', set: false, fingerprint: null });
     expect(byName.get('EMAIL_DISPATCH_SECRET')).toEqual({ name: 'EMAIL_DISPATCH_SECRET', set: false, fingerprint: null });
     expect(byName.get('CRON_SECRET')?.set).toBe(true);
@@ -93,7 +118,7 @@ describe('secretFingerprintsOf', () => {
   it('reports an empty DATABASE_URL, the one fingerprinted name the schema keeps empty, as not set', () => {
     const env = envSchema.parse({ ...values, DATABASE_URL: '' });
     expect(env.DATABASE_URL).toBe('');
-    expect(secretFingerprintsOf(env).find((entry) => entry.name === 'DATABASE_URL'))
+    expect(secretFingerprintsOf(env, {}).find((entry) => entry.name === 'DATABASE_URL'))
       .toEqual({ name: 'DATABASE_URL', set: false, fingerprint: null });
   });
 });
@@ -114,8 +139,9 @@ describe('secret fingerprint route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     const text = await response.text();
     const payload = envelopeSchema(secretFingerprintsOutputSchema).parse(JSON.parse(text));
-    expect(payload.ok && payload.data.secrets.map((entry) => entry.name)).toEqual([...FINGERPRINTED_SECRET_NAMES]);
-    for (const value of [...Object.values(values).filter((value) => value !== ''), operatorSecret, 'test-only', 'db-password']) {
+    expect(payload.ok && payload.data.secrets.map((entry) => entry.name)).toEqual(allNames);
+    const leakable = [...Object.values(values), ...Object.values(processEnv)].map((value) => value.trim()).filter((value) => value !== '');
+    for (const value of [...leakable, operatorSecret, 'test-only', 'db-password']) {
       expect(text).not.toContain(value);
     }
     expect(text).not.toMatch(/length|prefix|value/i);

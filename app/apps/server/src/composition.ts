@@ -1613,7 +1613,7 @@ export const createDeps = (
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     operatorSecret: selectOperatorSecret(env),
-    secretFingerprints: secretFingerprintsOf(env),
+    secretFingerprints: secretFingerprintsOf(env, process.env),
     ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
     sanitizeStagingSecrets,
     checkTenantDomains: () => runTenantDomainChecks(tenantDomainDeps),

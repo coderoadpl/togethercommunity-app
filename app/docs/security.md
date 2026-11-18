@@ -464,19 +464,25 @@ The fingerprinted variables are the secrets the server environment schema reads:
 `MARKETING_TICK_SECRET`, `CRON_SECRET`, `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET`,
 `STAGING_OPERATOR_SECRET`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
 `REALTIME_DATABASE_URL`, `DOMAIN_PROVISIONER_TOKEN`, `SMTP_PASSWORD`,
-`GOOGLE_CLIENT_SECRET`, `SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD`.
-A test classifies every schema variable as fingerprinted or not, so a new
-variable fails it until someone decides.
+`GOOGLE_CLIENT_SECRET`, `SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD`,
+followed by `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, which the AWS SDK
+reads for platform SES mail straight from the process environment, outside the
+schema. A test classifies every schema variable as fingerprinted or not, so a
+new variable fails it until someone decides; a second list pins the
+out-of-schema names. Other secrets that libraries read outside
+`apps/server/src/env.ts`, such as OTLP exporter headers
+(`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TRACES_HEADERS`) or an
+`AWS_SESSION_TOKEN`, are not fingerprinted, so this check does not cover them.
 
 ```text
 fingerprint(name, value) = first 16 lowercase hex characters of
   HMAC-SHA256(key = UTF-8 bytes of value, message = "together-secret-fingerprint-v1:" + name)
 ```
 
-The key is the value exactly as the process parsed it, without trimming or
-decoding, so a stray space or line break changes the fingerprint. The name in the
-message keeps one value stored under two names from producing equal
-fingerprints. A variable that is absent, empty or equal to its schema default
+The key is the value exactly as the process parsed it (for the AWS pair, as the
+process received it), without trimming or decoding, so a stray space or line
+break changes the fingerprint. The name in the message keeps one value stored
+under two names from producing equal fingerprints. A variable that is absent, empty or equal to its schema default
 reports `set: false` and a null fingerprint, so a deployment that never set
 `DATABASE_URL` shows it as not set instead of fingerprinting the localhost
 default the schema falls back to.

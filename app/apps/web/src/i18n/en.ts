@@ -1522,6 +1522,10 @@ export const en: Messages = {
     listed: 'Listed',
     unlisted: 'Unlisted',
     visibilityHelper: 'Unlisted products are available only through a direct checkout link and stay in buyers’ libraries.',
+    salesChannelLabel: 'Where it can be bought',
+    salesChannelAny: 'Anywhere',
+    salesChannelSalesLinksOnly: 'Sales links only',
+    salesChannelHelper: 'Sales links only: the product can be bought only inside a sales link, never on its own, and is never shown in the catalogue whatever its visibility.',
 
     newProduct: 'New product',
     detailsHeading: 'Product details',

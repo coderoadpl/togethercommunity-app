@@ -208,7 +208,7 @@ describe('checkout session purchase analytics', () => {
     const product: Product = {
       id: order.productId, tenantId: order.tenantId, type: 'digital_download', slug: 'historical-product',
       title: 'Historical product', description: '', coverUrl: null, priceCents: 9999, currency: 'PLN',
-      published: false, visibility: 'listed', deliveryMethod: 'pickup', accessItems: [], legacyId: null, createdAt: order.createdAt,
+      published: false, visibility: 'listed', salesChannel: 'any', deliveryMethod: 'pickup', accessItems: [], legacyId: null, createdAt: order.createdAt,
     };
     const deps = harness([order], analyticsSettings, product);
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({

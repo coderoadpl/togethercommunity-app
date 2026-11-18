@@ -1,6 +1,6 @@
 {
-  "hash": "e19de09772963e19f867b8fa38e60a2a097e97528566193a9c16c9ad27b35c92",
-  "shortId": "e19de0977296",
+  "hash": "c6e4cd2a4648ae70fcbf9e094f4134a0e355b2954ecec3172774ea4199f66eb7",
+  "shortId": "c6e4cd2a4648",
   "schema": {
     "constraints": [
       {
@@ -212,6 +212,11 @@
         "definition": "CHECK ((revision > 0))",
         "name": "surveys_revision_check",
         "table": "surveys"
+      },
+      {
+        "definition": "CHECK ((sales_channel = ANY (ARRAY['any'::text, 'sales_links_only'::text])))",
+        "name": "products_sales_channel_check",
+        "table": "products"
       },
       {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
@@ -3542,6 +3547,14 @@
             "name": "checkout_consent_definition_ids",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": "'any'::text",
+            "generated": "",
+            "identity": "",
+            "name": "sales_channel",
+            "notNull": true,
+            "type": "text"
           },
           {
             "default": "'course'::text",

@@ -136,6 +136,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems,
@@ -717,6 +718,19 @@ it('hides unlisted purchase suggestions while preserving spaces already owned', 
   const result = await getMemberNavigation(memberCtx(), deps({
     ...entitledToModuleM1,
     products: entitledToModuleM1.products.map((entry) => ({ ...entry, visibility: 'unlisted' })),
+  }));
+  expect(result).toMatchObject({ ok: true, value: {
+    spaces: [{ id: 's-open' }, { id: 's-module' }], lockedSpaces: [],
+  } });
+  if (!result.ok) throw new Error('Expected navigation');
+  expect(result.value.spaces.flatMap((entry) => entry.products)).toEqual([]);
+});
+
+
+it('hides purchase suggestions of products sold only through sales links while preserving spaces already owned', async () => {
+  const result = await getMemberNavigation(memberCtx(), deps({
+    ...entitledToModuleM1,
+    products: entitledToModuleM1.products.map((entry) => ({ ...entry, salesChannel: 'sales_links_only' })),
   }));
   expect(result).toMatchObject({ ok: true, value: {
     spaces: [{ id: 's-open' }, { id: 's-module' }], lockedSpaces: [],

@@ -37,6 +37,7 @@ const product: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -1117,4 +1118,55 @@ it.each(['base', 'group', 'no-group', 'unpublished', 'tenant', 'membership', 'ty
   expect(h.reserve).not.toHaveBeenCalled();
   expect(h.snapshots).toHaveLength(0);
   expect(h.calls).toHaveLength(0);
+});
+
+describe('a product sold only through sales links', () => {
+  const standaloneAnswer = async (present: boolean, input: { productId: string; priceId?: string; couponCode?: string }) => {
+    const base = checkoutDeps();
+    const { createCheckoutSession } = await import('./checkout.js');
+    return createCheckoutSession(tenant, 'https://alpha.example.com', input, {
+      ...base,
+      products: { ...base.products, findById: async (_tenantId, id) => present && id === product.id ? { ...product, salesChannel: 'sales_links_only' } : null },
+      prices: { ...base.prices, findById: async () => recurringPrice },
+    });
+  };
+
+  it.each([
+    ['without a price', { productId: product.id }],
+    ['with a price and a coupon', { productId: product.id, priceId: recurringPrice.id, couponCode: 'FREE' }],
+  ])('refuses a standalone checkout %s exactly like an unknown product', async (_case, input) => {
+    const refused = await standaloneAnswer(true, input);
+    expect(refused).toEqual(await standaloneAnswer(false, input));
+    expect(refused).toEqual(err({ code: 'not_found', message: `No published product "${product.id}" in this tenant` }));
+  });
+
+  it('refuses every caller of the standalone selection the same way', async () => {
+    const { validateCheckoutSelection } = await import('./checkout.js');
+    const base = checkoutDeps();
+    const answer = async (present: boolean) => validateCheckoutSelection(tenant.id, { productId: product.id }, {
+      ...base,
+      products: { ...base.products, findById: async () => present ? { ...product, salesChannel: 'sales_links_only' } : null },
+    });
+    expect(await answer(true)).toEqual(await answer(false));
+  });
+
+  it('still sells it as a line of an active sales link', async () => {
+    const h = bundleCheckout();
+    for (const item of h.products) item.salesChannel = 'sales_links_only';
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id }, h.deps))
+      .toMatchObject({ ok: true });
+    expect(h.calls[0]).toMatchObject({ salesLinkId: h.link.id, lines: [{ productId: product.id }, { productId: 'physical-1' }] });
+  });
+
+  it('still sells it as a variant chosen inside a sales link', async () => {
+    const h = variantBundleCheckout();
+    h.first.salesChannel = 'sales_links_only';
+    h.sibling.salesChannel = 'sales_links_only';
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: h.first.id, salesLinkSlug: h.link.slug, variantSelections: h.variantSelections,
+    }, h.deps)).toMatchObject({ ok: true });
+    expect(h.calls[0]).toMatchObject({ productId: h.sibling.id, lines: [{ productId: h.sibling.id }, { productId: 'physical-1' }] });
+  });
 });

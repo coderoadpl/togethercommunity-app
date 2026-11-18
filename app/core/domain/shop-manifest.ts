@@ -38,6 +38,7 @@ export const shopManifestProductSchema = newProductSchema.omit({
   description: newProductSchema.shape.description.removeDefault().optional(),
   deliveryMethod: newProductSchema.shape.deliveryMethod.removeDefault().optional(),
   parcelTemplate: newProductSchema.shape.parcelTemplate.removeDefault().optional(),
+  salesChannel: newProductSchema.shape.salesChannel.removeDefault().optional(),
   coverUrl: newProductSchema.shape.coverUrl.removeDefault().optional(),
   price: z.object({ amountCents: z.number().int().nonnegative(), currency: newProductSchema.shape.currency.removeDefault() }).strict(),
   stock: z.object({ onHand: z.number().int().min(0).max(MAX_STOCK_QUANTITY) }).strict().optional(),

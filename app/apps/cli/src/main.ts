@@ -48,12 +48,14 @@ import {
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
   updateProductAccessItemsInputSchema,
+  productSalesChannelSchema,
   productVisibilitySchema,
   validation,
   type AccessStatus,
   type AppError,
   type LessonReferences,
   type OrderLineType,
+  type ProductSalesChannel,
   type Result,
 } from '#core/domain/index.js';
 
@@ -198,6 +200,7 @@ const productCreateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   type: z.enum(['course', 'digital_download', 'membership', 'physical']).optional(),
@@ -217,6 +220,7 @@ const productUpdateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
@@ -1463,6 +1467,9 @@ onboarding.command('dismiss').description('Hide the checklist for the active ten
 
 const product = program.command('product').description('Products in the active tenant');
 
+const salesChannelLabel = (product: { salesChannel?: ProductSalesChannel }): string =>
+  product.salesChannel === 'sales_links_only' ? '  [sales links only]' : '';
+
 product.command('list').description('List products').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.listProducts(), ctx.json, (data) =>
@@ -1471,7 +1478,7 @@ product.command('list').description('List products').action(
         : data.products
             .map((p) => {
               const stock = data.stock.find((entry) => entry.productId === p.id);
-              return `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]${stock === undefined ? '' : `  {${formatProductStock(stock)}}`}  (${p.id.slice(0, 8)})`;
+              return `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]${salesChannelLabel(p)}${stock === undefined ? '' : `  {${formatProductStock(stock)}}`}  (${p.id.slice(0, 8)})`;
             })
             .join('\n'),
     );
@@ -1499,6 +1506,7 @@ product
   .command('create')
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (shipping requires --type physical)')
   .option('--parcel-template <size>', 'InPost parcel size: small, medium (default) or large')
   .requiredOption('--title <title>')
@@ -1555,6 +1563,7 @@ product
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.salesChannel === undefined ? {} : { salesChannel: options.salesChannel }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }),
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
@@ -1569,7 +1578,7 @@ product
           ...(accessItems === undefined ? {} : { accessItems }),
         }),
         ctx.json,
-        (data) => `created: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+        (data) => `created: ${data.product.title}${salesChannelLabel(data.product)} (${data.product.id.slice(0, 8)})`,
       );
     }),
   );
@@ -1612,8 +1621,9 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, delivery method, parcel size, safety information or variant')
+  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
   .option('--parcel-template <size>', 'InPost parcel size: small, medium or large')
   .option('--vat-rate <rate>', '5, 8, 23 or exempt')
@@ -1648,6 +1658,7 @@ product
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.salesChannel === undefined ? {} : { salesChannel: options.salesChannel }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }),
           id,
@@ -1660,7 +1671,7 @@ product
             : { coverUrl: options.clearCover ? null : options.coverUrl }),
         }),
         ctx.json,
-        (data) => `updated: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+        (data) => `updated: ${data.product.title}${salesChannelLabel(data.product)} (${data.product.id.slice(0, 8)})`,
       );
     }),
   );

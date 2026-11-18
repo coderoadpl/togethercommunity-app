@@ -11,6 +11,7 @@ import { imageAssetKindSchema } from './image-asset.js';
 import { redirectPathSchema } from './tenant-redirect.js';
 import {
   currencySchema,
+  productSalesChannelSchema,
   productSlugSchema,
   productTypeSchema,
 } from './product.js';
@@ -220,6 +221,7 @@ export const importProductRecordSchema = z
     }).nullable().optional(),
     variantGroup: variantGroupSchema.nullable().optional(),
     variantLabel: variantLabelSchema.nullable().optional(),
+    salesChannel: productSalesChannelSchema.optional(),
   })
   .strict();
 

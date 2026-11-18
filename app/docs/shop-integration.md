@@ -453,7 +453,7 @@ The cart answers with the same error envelope as the other routes:
 | a body or line that breaks the schema or the limits below, a duplicate product, a forbidden or unknown field | `validation` (400) |
 | a line above the quantity allowed for its product (`"<title>" can be ordered in a quantity of at most <n>`) | `validation` (400) |
 | a membership product, a product without exactly one active one-time price, a recurring `priceId`, products in different currencies, a product without a VAT rate | `validation` (400) |
-| an unknown or unpublished product, an unknown or inactive `priceId` | `not_found` (404) |
+| an unknown or unpublished product, a product sold only through sales links, an unknown or inactive `priceId` | `not_found` (404) |
 | a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
 | a shipped product without `shipping` | `shipping_required` (400) |
 
@@ -798,6 +798,13 @@ or certify a live provider/KSeF submission.
   a price or an amount.
 - **Fixed bundles stay sales links.** A sales link keeps its stored products and
   one unit of each; use a cart request for a buyer-chosen selection.
+- **Products sold only through sales links.** A product with the sales channel
+  `sales_links_only` answers every standalone request exactly as an unknown
+  product: `?productRef=` returns an empty `products` list, and the session,
+  cart and coupon requests without a sales link return `not_found` (404). It is
+  never in the listed catalogue. Sell it through its sales link (`salesLinkSlug`
+  or `salesLinkId`, `/offer/<slug>`); see
+  [Sales links](sales-links.md#products-sold-only-through-sales-links).
 - **One cover.** The product exposes `coverUrl`, not a product gallery.
 - **Delivery in Poland.** Shipping is limited to `PL`, with at most five rates.
   Pickup instructions remain seller/storefront content.

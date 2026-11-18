@@ -116,6 +116,7 @@ const updateResource = async (
     compliance: product.compliance ?? null,
     variantGroup: product.variantGroup ?? null,
     variantLabel: product.variantLabel ?? null,
+    salesChannel: product.salesChannel,
     accessItems: product.accessItems,
     legacyId: product.legacyId,
     createdAt: product.createdAt,

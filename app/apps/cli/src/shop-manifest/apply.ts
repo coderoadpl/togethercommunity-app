@@ -99,6 +99,7 @@ export const applyManifest = async (
       }
     }
     const ids = new Map<PreparedProduct, string>();
+    const widened = new Set<PreparedProduct>();
     for (const entry of shop.products) {
       const { desired, diff, current } = entry;
       if (current) ids.set(entry, current.product.id);
@@ -110,7 +111,11 @@ export const applyManifest = async (
         if (!result.ok) return fail(result.error);
         ids.set(entry, result.value.product.id);
       } else if (diff.product === 'update' && current) {
-        const changes = Object.fromEntries(Object.entries(productMetadata(desired)).filter(([key]) => diff.fields.includes(key)));
+        const widens = diff.fields.includes('salesChannel') && desired.salesChannel === 'any' && current.product.salesChannel === 'sales_links_only';
+        if (widens) widened.add(entry);
+        const changes = Object.fromEntries(Object.entries(productMetadata(desired))
+          .filter(([key]) => diff.fields.includes(key) && !(widens && key === 'salesChannel')));
+        if (Object.keys(changes).length === 0) continue;
         const result = await write('product:update', () => api.updateProduct(updateProductInputSchema.parse({ id: current.product.id, ...changes })), desired.slug);
         if (!result.ok) return fail(result.error);
       }
@@ -126,6 +131,12 @@ export const applyManifest = async (
         const result = await write('price:deactivate', () => api.deactivateProductPrice({ id }), entry.desired.slug);
         if (!result.ok) return fail(result.error);
       }
+    }
+    for (const entry of widened) {
+      const id = ids.get(entry);
+      if (id === undefined) return fail(internal('Missing reconciled product identifier'));
+      const result = await write('product:update', () => api.updateProduct({ id, salesChannel: 'any' }), entry.desired.slug);
+      if (!result.ok) return fail(result.error);
     }
     for (const entry of shop.products) {
       const productId = ids.get(entry);

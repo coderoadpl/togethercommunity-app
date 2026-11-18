@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   beginVercelBuildOnce,
   completeVercelBuildOnce,
+  feedEpochRotationDecision,
   isStagingDeployment,
   migrationJournalDecision,
   readVercelBuildOnceMarker,
@@ -146,6 +147,43 @@ describe('vercel build staging seed policy', () => {
       message:
         'the database has 24 tables but no migration journal; it looks like a schema-only copy. Recreate it as an empty database (see docs/staging.md).',
     });
+  });
+});
+
+describe('vercel build order feed epoch rotation policy', () => {
+  const database = { DATABASE_URL: 'postgres://example' };
+
+  it.each([
+    { APP_ENV: 'preview', VERCEL_ENV: 'preview', NODE_ENV: 'production' },
+    { APP_ENV: 'staging', VERCEL_ENV: 'preview', NODE_ENV: 'production' },
+    { APP_ENV: 'development' },
+  ])('rotates on a database of the known non-production environment $APP_ENV', (env) => {
+    expect(feedEpochRotationDecision({ ...env, ...database }, allowedVerdict)).toEqual({ action: 'rotate' });
+  });
+
+  it.each([
+    { name: 'production', env: { APP_ENV: 'production', VERCEL_ENV: 'production', NODE_ENV: 'production' }, reason: 'production' },
+    { name: 'a production slot with a disposable app environment', env: { APP_ENV: 'staging', VERCEL_ENV: 'production', NODE_ENV: 'production' }, reason: 'production' },
+    { name: 'a production app environment in a preview slot', env: { APP_ENV: 'production', VERCEL_ENV: 'preview', NODE_ENV: 'production' }, reason: 'production' },
+    { name: 'a missing app environment on a production build', env: { VERCEL_ENV: 'preview', NODE_ENV: 'production' }, reason: 'production' },
+    { name: 'a missing app environment', env: {}, reason: 'unknown-environment' },
+    { name: 'an empty app environment', env: { APP_ENV: '' }, reason: 'unknown-environment' },
+    { name: 'a mistyped app environment', env: { APP_ENV: 'Staging' }, reason: 'unknown-environment' },
+    { name: 'a padded app environment', env: { APP_ENV: 'preview ' }, reason: 'unknown-environment' },
+    { name: 'a self-hosted app environment', env: { APP_ENV: 'self-host' }, reason: 'unknown-environment' },
+    { name: 'a development app environment built as production', env: { APP_ENV: 'development', NODE_ENV: 'production' }, reason: 'production' },
+  ])('keeps the epoch on $name', ({ env, reason }) => {
+    expect(feedEpochRotationDecision({ ...env, ...database }, allowedVerdict)).toEqual({ action: 'skip', reason });
+  });
+
+  it('keeps the epoch when the deployment database guard did not allow data writes', () => {
+    expect(feedEpochRotationDecision({ APP_ENV: 'preview', VERCEL_ENV: 'preview', ...database }, warnedVerdict))
+      .toEqual({ action: 'skip', reason: 'database-not-allowed' });
+  });
+
+  it('keeps the epoch without a database URL', () => {
+    expect(feedEpochRotationDecision({ APP_ENV: 'preview', VERCEL_ENV: 'preview', DATABASE_URL: '' }, allowedVerdict))
+      .toEqual({ action: 'skip', reason: 'missing-database-url' });
   });
 });
 

@@ -55,3 +55,18 @@ An empty string clears the test code or restores a default copy field.
 `meta-capi events` lists the selected workspace's latest delivery evidence.
 See [Meta CAPI](integrations/meta-capi.md) for payload, consent, withdrawal,
 privacy obligations, retry behavior and verification.
+
+## Checkout return origins
+
+`checkoutReturnOrigins` lists at most five origins of the workspace's own shop
+site, each an exact `https://host` or `https://host:port` with no path, query,
+fragment, user name, password or wildcard. A checkout request may send the buyer
+back to that site only through an address on one of these origins: a validated
+`cancelUrl` becomes the payment cancel address and a validated `returnUrl` is
+stored with the checkout. The payment success address and the confirmation page
+do not change. A workspace without origins refuses both fields. The owner edits
+the list in **Studio → Settings → Shipping → Return to your shop**, through
+`tenant settings-set --checkout-return-origins '<origin>,<origin>'` (an empty
+string clears it) or through the shop manifest's `checkoutReturnOrigins`. See
+[Return and cancel addresses](shop-integration.md#return-and-cancel-addresses)
+for the request rules and error answers.

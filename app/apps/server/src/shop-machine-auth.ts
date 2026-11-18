@@ -57,6 +57,8 @@ export interface ShopMachineRoute {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   scope: ShopManagementScope;
+  resourceIdField?: string;
+  resourceIdSchema?: z.ZodType<string>;
   handler: (c: Context<AppVars>, request: ShopMachineRequest) => Response | Promise<Response>;
 }
 
@@ -101,16 +103,25 @@ const retryAfterHeaders = (error: AppError): HeadersInit => {
 
 const requestBodySchema = z.record(z.string(), z.unknown());
 
-const resourceIdOf = async (c: Context<AppVars>, body: Request): Promise<string | null> => {
-  const fromPath = Object.values(c.req.param()).find((value) => value.length > 0);
-  if (fromPath !== undefined) return shopManagementKeyEventResourceId(fromPath);
+const RESOURCE_ID_BODY_FIELDS = ['id', 'productId'] as const;
+
+const pathParamNames = (path: string): string[] =>
+  path.split('/').filter((segment) => segment.startsWith(':')).map((segment) => segment.slice(1));
+
+const routeResourceId = (route: ShopMachineRoute, candidate: string | undefined): string | null => {
+  if (candidate === undefined || (route.resourceIdSchema !== undefined && !route.resourceIdSchema.safeParse(candidate).success)) return null;
+  return shopManagementKeyEventResourceId(candidate);
+};
+
+const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: Request): Promise<string | null> => {
+  const fromPath = pathParamNames(route.path).map((name) => c.req.param(name)).find((value) => value !== undefined && value.length > 0);
+  if (fromPath !== undefined) return routeResourceId(route, fromPath);
   const parsed = requestBodySchema.safeParse(await body.json().catch(() => null));
   if (!parsed.success) return null;
-  const candidates = [parsed.data['id'], ...Object.entries(parsed.data)
-    .filter(([name]) => name.endsWith('Id'))
-    .map(([, value]) => value)];
-  return shopManagementKeyEventResourceId(
-    candidates.find((value): value is string => typeof value === 'string' && value.length > 0),
+  const fields = route.resourceIdField === undefined ? RESOURCE_ID_BODY_FIELDS : [route.resourceIdField];
+  return routeResourceId(
+    route,
+    fields.map((field) => parsed.data[field]).find((value): value is string => typeof value === 'string' && value.length > 0),
   );
 };
 
@@ -135,7 +146,7 @@ export const registerShopMachineRoute = (
       actorUserId: result.value.ctx.identity.userId,
       method,
       route: route.path,
-      resourceId: await resourceIdOf(c, body),
+      resourceId: await resourceIdOf(c, route, body),
     }, deps).then(() => true, (error: unknown) => {
       recordException(error);
       return false;

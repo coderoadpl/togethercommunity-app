@@ -28,8 +28,8 @@ export const legacyNow = '2026-11-15T10:00:00.000Z';
 export const legacyBaseUrl = 'https://acme.togethercommunity.app';
 export const legacyTenant: Tenant = { id: 'tenant-a', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1 };
 
-const productBase: Pick<Product, 'tenantId' | 'description' | 'coverUrl' | 'currency' | 'visibility' | 'published' | 'accessItems' | 'legacyId' | 'createdAt'> = {
-  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', published: true,
+const productBase: Pick<Product, 'tenantId' | 'description' | 'coverUrl' | 'currency' | 'visibility' | 'salesChannel' | 'published' | 'accessItems' | 'legacyId' | 'createdAt'> = {
+  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', salesChannel: 'any', published: true,
   accessItems: [], legacyId: null, createdAt: '2026-11-01T09:00:00.000Z',
 };
 
@@ -82,6 +82,7 @@ export const createLegacyCheckoutHarness = (options: {
       if (row !== undefined && row.providerSessionId == null) row.providerSessionId = providerSessionId;
     },
     findById: async (tenantId, id) => structuredClone(snapshotRows.find((item) => item.tenantId === tenantId && item.id === id) ?? null),
+    findByProviderSession: async (tenantId, providerSessionId) => structuredClone(snapshotRows.find((item) => item.tenantId === tenantId && item.providerSessionId === providerSessionId) ?? null),
   };
   const paymentInputs: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
   const captures = new Map<string, CheckoutConsentCapture>();

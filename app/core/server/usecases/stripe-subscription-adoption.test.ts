@@ -39,7 +39,7 @@ const harness = (published = true) => {
     } },
     products: { findById: async (tenantId, id) => (tenantId === 't1' || tenantId === tenantB) && id === input.productId ? {
       id, tenantId, type: 'course', slug: 'course', title: 'Course', description: '', coverUrl: null,
-      priceCents: 0, currency: 'EUR', visibility: 'listed', deliveryMethod: 'pickup', published, accessItems: [], legacyId: null, createdAt: now,
+      priceCents: 0, currency: 'EUR', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'pickup', published, accessItems: [], legacyId: null, createdAt: now,
     } : null },
     prices: { listByProduct: async (tenantId, productId) => prices.filter((price) => price.tenantId === tenantId && price.productId === productId),
       findById: async (tenantId, id) => prices.find((price) => price.tenantId === tenantId && price.id === id) ?? null,

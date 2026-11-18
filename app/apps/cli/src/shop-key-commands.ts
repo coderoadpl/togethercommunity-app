@@ -1,3 +1,6 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
+
 import type { Command } from 'commander';
 import { z } from 'zod';
 
@@ -6,20 +9,35 @@ import {
   type ShopManagementClient,
   type ShopManagementClientOptions,
 } from '#core/client/index.js';
-import { shopCatalogContracts } from '#core/contract/index.js';
+import {
+  imageAssetUploadRequestSchema,
+  shopAssetsContracts,
+  shopCatalogContracts,
+  shopIntegrationContracts,
+  shopSettingsContracts,
+} from '#core/contract/index.js';
 import {
   currencySchema,
   deliveryMethodSchema,
   err,
+  fulfilmentStatusSchema,
+  IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   ok,
   parcelTemplateSchema,
+  priceKindSchema,
   priceMajorSchema,
+  productSalesChannelSchema,
   productVisibilitySchema,
+  shippingCarrierSchema,
+  stripeModeSchema,
   validation,
   type AppError,
+  type OrderListItem,
   type ProductPrice,
   type ProductStock,
   type Result,
+  type ShipxOrderView,
+  type ShipxSettingsView,
 } from '#core/domain/index.js';
 
 import { emit } from './output.js';
@@ -43,6 +61,7 @@ const productFieldsSchema = z.object({
   vatRate: vatRateSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   description: z.string().optional(),
@@ -75,6 +94,185 @@ const priceAddSchema = z.object({
   currency: currencySchema.optional(),
 });
 
+const positiveIntSchema = z.string().regex(/^[1-9]\d*$/, 'Expected a positive whole number').transform((value) => Number.parseInt(value, 10));
+const orderFiltersSchema = z.object({
+  apiKeyEnv: z.string(),
+  status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
+  product: idSchema.optional(),
+  kind: priceKindSchema.optional(),
+  coupon: idSchema.optional(),
+  fulfilment: fulfilmentStatusSchema.optional(),
+  source: z.string().min(1).max(200).optional(),
+  sourceExact: z.boolean().optional(),
+  search: z.string().min(1).optional(),
+});
+const ordersListSchema = orderFiltersSchema.extend({
+  mode: stripeModeSchema.optional(),
+  page: positiveIntSchema.optional(),
+  pageSize: positiveIntSchema.optional(),
+});
+const ordersExportSchema = orderFiltersSchema.extend({ format: z.enum(['csv', 'json']), out: z.string().min(1).optional() });
+const packingListSchema = z.object({
+  apiKeyEnv: z.string(),
+  format: z.literal('csv'),
+  fulfilment: fulfilmentStatusSchema.optional(),
+  mode: stripeModeSchema.default('live'),
+  out: z.string().min(1).optional(),
+});
+const shipSchema = keyOnlySchema.extend({ carrier: shippingCarrierSchema, tracking: z.string().min(1) });
+const issueSchema = keyOnlySchema.extend({ count: positiveIntSchema.optional() });
+const labelSchema = keyOnlySchema.extend({ out: z.string().min(1) });
+const settingsSetSchema = keyOnlySchema.extend({ jsonFile: z.string().min(1) });
+const brandingKindSchema = z.enum(['logo', 'logo-dark', 'favicon', 'share-image']);
+const imageExtensionSchema = z.enum(['png', 'jpg', 'jpeg', 'webp', 'svg', 'ico'])
+  .transform((extension) => IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION[extension === 'jpeg' ? 'jpg' : extension]);
+
+const readStdin = async (): Promise<string> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  return Buffer.concat(chunks).toString('utf8');
+};
+
+const shopSettingsPatchInput = async (source: string) => {
+  let raw: string;
+  try {
+    raw = source === '-' ? await readStdin() : await readFile(source, 'utf8');
+  } catch (cause) {
+    return err(validation(`Could not read the shop settings JSON from "${source}": ${String(cause)}`));
+  }
+  const parsed = inlineJson(raw, 'shop settings');
+  return parsed.ok ? contractInput(shopSettingsContracts.updateSettings.input, parsed.value, 'Invalid shop settings') : parsed;
+};
+
+const salesLinkFileInput = async <S extends z.ZodTypeAny>(source: string, schema: S, id?: string) => {
+  let raw: string;
+  try {
+    raw = source === '-' ? await readStdin() : await readFile(source, 'utf8');
+  } catch (cause) {
+    return err(validation(`Could not read the sales-link JSON from "${source}": ${String(cause)}`));
+  }
+  const parsed = inlineJson(raw, 'sales link');
+  if (!parsed.ok) return parsed;
+  if (id === undefined) return contractInput(schema, parsed.value, 'Invalid sales link');
+  const fields = z.record(z.unknown()).safeParse(parsed.value);
+  if (!fields.success) return err(validation('Invalid sales-link update'));
+  if (fields.data['id'] !== undefined && fields.data['id'] !== id) return err(validation('Sales-link id must match the command argument'));
+  return contractInput(schema, { ...fields.data, id }, 'Invalid sales-link update');
+};
+
+const imageUploadInput = async (kind: z.output<typeof brandingKindSchema> | 'product-cover', file: string) => {
+  const contentType = imageExtensionSchema.safeParse(extname(file).slice(1).toLowerCase());
+  if (!contentType.success) return err(validation('The image file must end in .png, .jpg, .jpeg, .webp, .svg or .ico'));
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = new Uint8Array(await readFile(file));
+  } catch (cause) {
+    return err(validation(`Could not read the image file "${file}": ${String(cause)}`));
+  }
+  const input = contractInput(imageAssetUploadRequestSchema, {
+    kind, fileName: basename(file), contentType: contentType.data, sizeBytes: bytes.byteLength,
+  }, kind === 'product-cover' ? 'Invalid product cover image' : 'Invalid branding image');
+  return input.ok ? ok({ ...input.value, body: bytes }) : input;
+};
+
+const envNameSchema = z.string().min(1).optional();
+const secretSetSchema = keyOnlySchema.extend({ valueEnv: envNameSchema });
+const stripeConfigureSchema = keyOnlySchema.extend({ mode: stripeModeSchema, restrictedKeyEnv: envNameSchema });
+const storageConfigureSchema = keyOnlySchema.extend({
+  provider: z.string(),
+  endpoint: z.string(),
+  region: z.string(),
+  bucket: z.string(),
+  accessKeyId: z.string(),
+  secretAccessKeyEnv: envNameSchema,
+});
+const shipxConfigureSchema = keyOnlySchema.extend({
+  environment: z.string().optional(),
+  senderJsonFile: z.string().min(1).optional(),
+  clearSender: z.boolean().optional(),
+  organizationId: z.string().optional(),
+  tokenEnv: envNameSchema,
+  tokenStdin: z.boolean().optional(),
+  clearCredentials: z.boolean().optional(),
+});
+
+const secretInput = async (envName: string | undefined, label: string): Promise<Result<string, AppError>> => {
+  const value = envName === undefined ? (await readStdin()).trim() : process.env[envName]?.trim();
+  if (value) return ok(value);
+  return err(validation(envName === undefined
+    ? `Pipe the ${label} on stdin or name an environment variable holding it`
+    : `Environment variable ${envName} must hold the ${label}`));
+};
+
+const shipxConfigureInput = async (options: z.output<typeof shipxConfigureSchema>) => {
+  if (options.senderJsonFile !== undefined && options.clearSender === true) return err(validation('Provide only one of --sender-json-file and --clear-sender'));
+  if (options.tokenEnv !== undefined && options.tokenStdin === true) return err(validation('Provide only one of --token-env and --token-stdin'));
+  if (options.senderJsonFile === '-' && options.tokenStdin === true) return err(validation('Only one of the sender JSON and the token can come from stdin'));
+  let sender: unknown;
+  if (options.senderJsonFile !== undefined) {
+    let raw: string;
+    try {
+      raw = options.senderJsonFile === '-' ? await readStdin() : await readFile(options.senderJsonFile, 'utf8');
+    } catch (cause) {
+      return err(validation(`Could not read the sender JSON from "${options.senderJsonFile}": ${String(cause)}`));
+    }
+    const parsed = inlineJson(raw, 'ShipX sender');
+    if (!parsed.ok) return parsed;
+    sender = parsed.value;
+  }
+  const token = options.tokenEnv !== undefined || options.tokenStdin === true ? await secretInput(options.tokenEnv, 'ShipX token') : ok(undefined);
+  if (!token.ok) return token;
+  return contractInput(shopIntegrationContracts.shipxConfigure.input, {
+    ...(options.environment === undefined ? {} : { environment: options.environment }),
+    ...(options.senderJsonFile === undefined ? {} : { sender }),
+    ...(options.clearSender === true ? { sender: null } : {}),
+    ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
+    ...(token.value === undefined ? {} : { token: token.value }),
+    ...(options.clearCredentials === true ? { clearCredentials: true } : {}),
+  }, 'Invalid InPost ShipX settings');
+};
+
+const shipxSettingsLines = (view: ShipxSettingsView): string => [
+  `environment: ${view.environment}`,
+  `configured: ${String(view.configured)}`,
+  `organization id: ${view.organizationId?.maskedPreview ?? '(not set)'}`,
+  `token: ${view.token?.maskedPreview ?? '(not set)'}`,
+  `sender: ${view.sender === null ? '(not set)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
+].join('\n');
+
+const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
+  ...(options.status === undefined ? {} : { status: options.status }),
+  ...(options.product === undefined ? {} : { productId: options.product }),
+  ...(options.kind === undefined ? {} : { kind: options.kind }),
+  ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+  ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
+  ...(options.source === undefined ? {} : { source: options.source }),
+  ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
+  ...(options.search === undefined ? {} : { search: options.search }),
+});
+
+const orderLine = (order: OrderListItem): string =>
+  `${order.createdAt}\t${order.status}\t${order.mode ?? 'live'}\t${order.fulfilmentStatus ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
+
+const shipxOrderLines = (view: ShipxOrderView): string => [
+  `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
+  `service: ${view.service ?? '(none)'}`,
+  `parcel template: ${view.parcelTemplate}`,
+  `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
+].join('\n');
+
+const writeExport = async <T extends { filename: string; content: string }>(
+  result: Result<T, AppError>,
+  out: string | undefined,
+): Promise<Result<T & { out?: string }, AppError>> => {
+  if (!result.ok || out === undefined) return result;
+  await writeFile(out, result.value.content);
+  return ok({ ...result.value, out });
+};
+
+const exportSummary = (file: { filename: string; content: string; out?: string }): string =>
+  file.out === undefined ? file.content : `wrote ${file.filename} to ${file.out}`;
+
 const inlineJson = (raw: string | undefined, label: string): Result<unknown, AppError> => {
   if (raw === undefined) return ok(undefined);
   try {
@@ -101,6 +299,7 @@ const sharedProductFields = (options: z.output<typeof productFieldsSchema>, comp
   vatRate: options.vatRate,
   vatExemptionBasis: options.vatExemptionBasis,
   visibility: options.visibility,
+  salesChannel: options.salesChannel,
   deliveryMethod: options.deliveryMethod,
   parcelTemplate: options.parcelTemplate,
   description: options.description,
@@ -172,7 +371,7 @@ export const registerShopKeyCommands = (
   createClient: ShopClientFactory = createShopManagementClient,
 ): void => {
   const shop = (program.commands.find((command) => command.name() === 'shop') ?? program.command('shop'))
-    .description(`Plan, apply and detect drift from a declarative shop manifest, or manage the shop catalog with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
+    .description(`Plan, apply and detect drift from a declarative shop manifest, or manage the shop catalog, orders, settings and integrations with a shop management key read from an environment variable (default ${DEFAULT_SHOP_KEY_ENV})`);
   const run = <S extends z.ZodTypeAny, T>(
     schema: S,
     action: (client: ShopManagementClient, input: z.output<S>) => Promise<Result<T, AppError>> | Result<T, AppError>,
@@ -201,6 +400,7 @@ export const registerShopKeyCommands = (
     command.option('--api-key-env <name>', 'Environment variable holding the shop management key', DEFAULT_SHOP_KEY_ENV);
   const withProductFields = (command: Command): Command => command
     .option('--visibility <visibility>', 'listed or unlisted')
+    .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
     .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
     .option('--parcel-template <size>', 'InPost parcel size: small, medium or large')
     .option('--vat-rate <rate>', '5, 8, 23 or exempt')
@@ -288,4 +488,201 @@ export const registerShopKeyCommands = (
     .action(run(z.tuple([idSchema, keyOnlySchema.extend({ value: z.union([z.literal('none').transform(() => null), countSchema]) })]), (client, [productId, options]) =>
       client.setProductStockThreshold({ productId, lowStockThreshold: options.value }),
     (data) => `low-stock threshold updated: ${describeStock(data.stock)}`));
+
+  const orders = shop.command('orders').description('Orders and physical fulfilment of the key\'s workspace');
+  const withOrderFilters = (command: Command): Command => command
+    .option('--status <status>', 'paid, pending, failed, refunded or partially_refunded')
+    .option('--product <id>')
+    .option('--kind <kind>', 'one_time or recurring')
+    .option('--coupon <id>')
+    .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
+    .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
+    .option('--source-exact', 'treat --source literally, including the campaign source none')
+    .option('--search <text>', 'search by member e-mail or name');
+  keyed(withOrderFilters(orders.command('list').description('List orders with filters and paging; use --mode live for fulfilment automation'))
+    .option('--mode <mode>', 'live or test (default: both)')
+    .option('--page <n>')
+    .option('--page-size <n>'))
+    .action(run(z.tuple([ordersListSchema]), (client, [options]) =>
+      client.listOrders({
+        ...orderFilters(options),
+        ...(options.mode === undefined ? {} : { mode: options.mode }),
+        ...(options.page === undefined ? {} : { page: options.page }),
+        ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
+      }),
+    (data) => data.orders.length === 0
+      ? `no orders (total ${String(data.total)})`
+      : [...data.orders.map(orderLine), `page ${String(data.page)}/${String(Math.max(1, Math.ceil(data.total / data.pageSize)))} — ${String(data.total)} order(s)`].join('\n')));
+  keyed(withOrderFilters(orders.command('export').description('Export live orders as CSV or JSON'))
+    .requiredOption('--format <format>', 'csv or json')
+    .option('--out <file>', 'write the export to a file instead of stdout'))
+    .action(run(z.tuple([ordersExportSchema]), async (client, [options]) =>
+      writeExport(await client.exportOrders({ ...orderFilters(options), format: options.format }), options.out),
+    exportSummary));
+  keyed(orders.command('packing-list').description('Export the orders to pack as a CSV packing list')
+    .requiredOption('--format <format>', 'csv')
+    .option('--fulfilment <status>', 'to_pack (default) or shipped')
+    .option('--mode <mode>', 'live (default) or test')
+    .option('--out <file>', 'write the packing list to a file instead of stdout'))
+    .action(run(z.tuple([packingListSchema]), async (client, [options]) =>
+      writeExport(await client.ordersPackingList({
+        format: options.format,
+        mode: options.mode,
+        ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
+      }), options.out),
+    exportSummary));
+  keyed(orders.command('verify <reference>').description('Verify an order by QR token or order number'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [reference]) => client.verifyOrder({ reference }), (data) => JSON.stringify(data.order, null, 2)));
+  keyed(orders.command('show <orderId>').description('Show one order with its current invoice'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.getOrder(orderId), (data) => JSON.stringify(data, null, 2)));
+  keyed(orders.command('ship <orderId>').description('Mark a paid order to pack as shipped and e-mail the buyer the tracking number')
+    .requiredOption('--carrier <carrier>', 'inpost or other')
+    .requiredOption('--tracking <number>', 'parcel tracking number, 4-64 characters'))
+    .action(run(z.tuple([idSchema, shipSchema]), (client, [orderId, options]) =>
+      client.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
+    (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`));
+  keyed(orders.command('issue <orderId> <productId>').description('Record collection of a physical order line')
+    .option('--count <n>', 'units handed over now (default 1, at most the units not yet issued)'))
+    .action(run(z.tuple([idSchema, idSchema, issueSchema]), (client, [orderId, productId, options]) =>
+      client.issueOrderLine({ orderId, productId, ...(options.count === undefined ? {} : { count: options.count }) }),
+    (data) => JSON.stringify(data.order, null, 2)));
+
+  const shipx = orders.command('shipx').description('InPost ShipX shipments and labels');
+  keyed(shipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxShipment({ orderId }), shipxOrderLines));
+  keyed(shipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxCreate({ orderId }), (data) =>
+      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`));
+  keyed(shipx.command('refresh <orderId>').description('Read the live ShipX status of a shipment not yet paid, store it and show the order'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxRefresh({ orderId }), shipxOrderLines));
+  keyed(shipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek; this never cancels a shipment in ShipX'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxDiscard({ orderId }), () => 'discarded the unconfirmed InPost attempt'));
+  keyed(shipx.command('label <orderId>').description('Download the A6 PDF label of the InPost shipment')
+    .requiredOption('--out <file>', 'write the PDF label to this file'))
+    .action(run(z.tuple([idSchema, labelSchema]), async (client, [orderId, options]) => {
+      const result = await client.shipxLabel({ orderId });
+      if (!result.ok) return result;
+      await writeFile(options.out, result.value.bytes);
+      return ok({ filename: result.value.filename, contentType: result.value.contentType, bytes: result.value.bytes.byteLength, out: options.out });
+    }, (file) => `wrote ${file.filename} (${String(file.bytes)} bytes) to ${file.out}`));
+
+  const settings = shop.command('settings').description('Shop settings of the key\'s workspace: brand, legal, seller, invoicing and shipping');
+  keyed(settings.command('show').description('Show the shop settings'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.getSettings(), (data) => JSON.stringify(data.settings, null, 2)));
+  keyed(settings.command('set').description('Change the shop settings fields given in a JSON object; omitted fields keep their value and null clears a clearable field')
+    .requiredOption('--json-file <path>', 'JSON file with the changed fields, or - to read it from stdin'))
+    .action(run(z.tuple([settingsSetSchema]), async (client, [options]) => {
+      const input = await shopSettingsPatchInput(options.jsonFile);
+      return input.ok ? client.updateSettings(input.value) : input;
+    }, (data) => JSON.stringify(data.settings, null, 2)));
+
+  const branding = shop.command('branding').description('Brand images of the key\'s workspace');
+  keyed(branding.command('upload <kind> <file>').description('Upload a logo, logo-dark, favicon or share-image file and print its URL for shop settings set'))
+    .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema]), async (client, [kind, file]) => {
+      const input = await imageUploadInput(kind, file);
+      return input.ok ? client.uploadBrandingAsset(input.value) : input;
+    }, (data) => data.url));
+
+  const cover = shop.command('cover').description('Product cover images');
+  keyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read), upload a product cover and attach the completed image to the product'))
+    .action(run(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file]) => {
+      const input = await imageUploadInput('product-cover', file);
+      if (!input.ok) return input;
+      const product = await client.listProductPrices(id);
+      if (!product.ok) return product;
+      const uploaded = await client.uploadProductCover(input.value);
+      if (!uploaded.ok) return uploaded;
+      return client.updateProduct({ id, coverUrl: uploaded.value.url });
+    }, (data) => JSON.stringify(data.product, null, 2)));
+
+  const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');
+  keyed(salesLinks.command('list').description('List sales links'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.listSalesLinks(), (data) => JSON.stringify(data.salesLinks, null, 2)));
+  keyed(salesLinks.command('show <id>').description('Show a sales link and its current revision'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.getSalesLink({ id }), (data) => JSON.stringify(data.salesLink, null, 2)));
+  keyed(salesLinks.command('create').description('Create a sales link from a JSON object')
+    .requiredOption('--json-file <path>', 'JSON file with sales-link fields, or - for stdin'))
+    .action(run(z.tuple([settingsSetSchema]), async (client, [options]) => {
+      const input = await salesLinkFileInput(options.jsonFile, shopAssetsContracts.createSalesLink.input);
+      return input.ok ? client.createSalesLink(input.value) : input;
+    }, (data) => JSON.stringify(data.salesLink, null, 2)));
+  keyed(salesLinks.command('update <id>').description('Replace sales-link fields using expectedRevision from the JSON object')
+    .requiredOption('--json-file <path>', 'JSON file with all fields and expectedRevision, or - for stdin'))
+    .action(run(z.tuple([idSchema, settingsSetSchema]), async (client, [id, options]) => {
+      const input = await salesLinkFileInput(options.jsonFile, shopAssetsContracts.updateSalesLink.input, id);
+      return input.ok ? client.updateSalesLink(input.value) : input;
+    }, (data) => JSON.stringify(data.salesLink, null, 2)));
+  keyed(salesLinks.command('delete <id>').description('Delete a sales link'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deleteSalesLink({ id }), () => 'deleted'));
+
+  const integrations = shop.command('integrations').description('Payment, storage, shipping and invoicing integrations; keep a shop:integrations:write key only in a provisioning backend');
+  const secrets = integrations.command('secrets').description('Masked integration secrets and the iFirma and KSeF credentials');
+  keyed(secrets.command('list').description('List every stored secret as a masked preview'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.listIntegrationSecrets(), (data) =>
+      [
+        ...data.secrets.map((secret) => `- ${secret.key}  ${secret.maskedPreview}  (${secret.updatedAt})`),
+        `stripe mode: ${data.stripeMode ?? '(not configured)'}`,
+        `stripe webhook URL: ${data.stripeWebhookUrl}`,
+      ].join('\n')));
+  keyed(secrets.command('set <key>').description('Store an iFirma or KSeF credential read from --value-env or stdin, never from the command line')
+    .option('--value-env <name>', 'environment variable holding the value (default: read stdin)'))
+    .action(run(z.tuple([z.string(), secretSetSchema]), async (client, [key, options]) => {
+      const value = await secretInput(options.valueEnv, `${key} value`);
+      if (!value.ok) return value;
+      const input = contractInput(shopIntegrationContracts.setSecret.input, { key, value: value.value }, 'Invalid integration secret');
+      return input.ok ? client.setIntegrationSecret(input.value) : input;
+    }, (data) => `stored ${data.secret.key}: ${data.secret.maskedPreview}`));
+  keyed(secrets.command('delete <key>').description('Delete a stored iFirma or KSeF credential'))
+    .action(run(z.tuple([z.string(), keyOnlySchema]), (client, [key]) => {
+      const input = contractInput(shopIntegrationContracts.deleteSecret.input, { key }, 'Invalid integration secret key');
+      return input.ok ? client.deleteIntegrationSecret(input.value) : input;
+    }, (data) => `deleted ${data.key}`));
+
+  const stripe = integrations.command('stripe').description('Stripe payments');
+  keyed(stripe.command('configure').description('Store a Stripe restricted key read from --restricted-key-env or stdin and register this workspace\'s webhook endpoint')
+    .requiredOption('--mode <mode>', 'live or test; must match the restricted key prefix')
+    .option('--restricted-key-env <name>', 'environment variable holding the restricted key (default: read stdin)'))
+    .action(run(z.tuple([stripeConfigureSchema]), async (client, [options]) => {
+      const restrictedKey = await secretInput(options.restrictedKeyEnv, 'Stripe restricted key');
+      if (!restrictedKey.ok) return restrictedKey;
+      return client.configureStripe({ mode: options.mode, restrictedKey: restrictedKey.value });
+    }, (data) => `configured Stripe ${data.mode} mode; webhook ${data.webhookUrl}`));
+  keyed(stripe.command('probe').description('Check the permissions of the stored Stripe restricted key')
+    .requiredOption('--mode <mode>', 'live or test'))
+    .action(run(z.tuple([keyOnlySchema.extend({ mode: stripeModeSchema })]), (client, [options]) => client.probeStripe({ mode: options.mode }), (data) =>
+      [...data.checks.map((check) => `- ${check.resource} ${check.permission}: ${check.status}`), `all ok: ${String(data.allOk)}`].join('\n')));
+
+  const storage = integrations.command('storage').description('S3-compatible file storage');
+  keyed(storage.command('configure').description('Probe and store an S3-compatible bucket; the secret access key comes from --secret-access-key-env or stdin')
+    .requiredOption('--provider <provider>', 'aws_s3, cloudflare_r2, backblaze_b2 or minio')
+    .requiredOption('--endpoint <url>')
+    .requiredOption('--region <region>')
+    .requiredOption('--bucket <bucket>')
+    .requiredOption('--access-key-id <id>')
+    .option('--secret-access-key-env <name>', 'environment variable holding the secret access key (default: read stdin)'))
+    .action(run(z.tuple([storageConfigureSchema]), async (client, [options]) => {
+      const secretAccessKey = await secretInput(options.secretAccessKeyEnv, 'secret access key');
+      if (!secretAccessKey.ok) return secretAccessKey;
+      const input = contractInput(shopIntegrationContracts.storageConfigure.input, {
+        provider: options.provider, endpoint: options.endpoint, region: options.region, bucket: options.bucket,
+        accessKeyId: options.accessKeyId, secretAccessKey: secretAccessKey.value,
+      }, 'Invalid storage configuration');
+      return input.ok ? client.configureStorage(input.value) : input;
+    }, (data) => `stored storage configuration: ${data.diagnostic.message}`));
+
+  const shipxSettings = integrations.command('shipx').description('InPost ShipX sender and credentials');
+  keyed(shipxSettings.command('show').description('Show the ShipX environment, sender and masked credentials'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.getShipxSettings(), shipxSettingsLines));
+  keyed(shipxSettings.command('configure').description('Change the ShipX environment, sender or credentials; omitted parts keep their value')
+    .option('--environment <environment>', 'production or sandbox')
+    .option('--sender-json-file <path>', 'JSON file with the sender address, or - for stdin')
+    .option('--clear-sender', 'remove the sender address')
+    .option('--organization-id <id>', 'ShipX organization id')
+    .option('--token-env <name>', 'environment variable holding the ShipX token')
+    .option('--token-stdin', 'read the ShipX token from stdin')
+    .option('--clear-credentials', 'remove the stored organization id and token'))
+    .action(run(z.tuple([shipxConfigureSchema]), async (client, [options]) => {
+      const input = await shipxConfigureInput(options);
+      return input.ok ? client.configureShipx(input.value) : input;
+    }, shipxSettingsLines));
 };

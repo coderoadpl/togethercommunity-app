@@ -6,6 +6,7 @@ import { registerMetaCapiRoutes } from './meta-capi-routes.js';
 import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
+import { registerOrderChangeRoutes } from './order-change-routes.js';
 import { registerShipxRoutes } from './shipx-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
@@ -488,6 +489,10 @@ import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
+import { shopOrderRoutes } from './shop-order-routes.js';
+import { shopAssetsRoutes } from './shop-assets-routes.js';
+import { shopIntegrationRoutes } from './shop-integration-routes.js';
+import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -1315,7 +1320,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, shopCatalogRoutes(deps));
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -1382,6 +1387,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
   registerOrganizationRoutes(app, deps);
 

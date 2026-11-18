@@ -20,17 +20,21 @@ import {
 } from '#core/contract/index.js';
 import {
   accessItemSchema,
+  cartLinesSchema,
   currencySchema,
   contactCampaignAudienceInputSchema,
   devGrantInputSchema,
   err,
   internal,
+  isShippingLine,
   m2mEnrollInputSchema,
   memberExportFormatSchema,
   newCourseLessonSchema,
   newCourseModuleSchema,
   notFound,
   ok,
+  orderLineLabel,
+  orderLineQuantity,
   PASSWORD_MIN_LENGTH,
   priceMajorSchema,
   reactionEmojiSchema,
@@ -44,11 +48,14 @@ import {
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
   updateProductAccessItemsInputSchema,
+  productSalesChannelSchema,
   productVisibilitySchema,
   validation,
   type AccessStatus,
   type AppError,
   type LessonReferences,
+  type OrderLineType,
+  type ProductSalesChannel,
   type Result,
 } from '#core/domain/index.js';
 
@@ -64,6 +71,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
+import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
@@ -179,6 +187,7 @@ const tenantSettingsOptionsSchema = z.object({
   memberVideoAutoplayOverride: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   shippingRates: z.string().optional(),
   inpostGeowidgetToken: z.string().optional(),
+  checkoutReturnOrigins: z.string().optional(),
 });
 const storageConfigurationOptionsSchema = z.object({
   provider: storageProviderKindSchema,
@@ -193,6 +202,7 @@ const productCreateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   type: z.enum(['course', 'digital_download', 'membership', 'physical']).optional(),
@@ -212,6 +222,7 @@ const productUpdateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
@@ -230,6 +241,7 @@ const ordersShipOptionsSchema = z.object({
 const ordersIssueOptionsSchema = z.object({
   count: z.string().regex(/^[1-9]\d*$/, 'Count must be a positive integer').transform((value) => Number.parseInt(value, 10)).optional(),
 });
+const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
   environment: shipxEnvironmentSchema.optional(),
@@ -272,6 +284,7 @@ const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
   email: z.string().email(),
   product: z.string().min(1),
   priceId: z.string().min(1).optional(),
+  acceptTerms: z.literal(true).optional(),
 });
 const priceAddOptionsSchema = z.object({
   product: z.string().min(1),
@@ -348,11 +361,20 @@ const couponExportOptionsSchema = z.object({
   partner: z.string().trim().min(1).optional(),
   out: z.string().min(1).optional(),
 });
+const checkoutLineOptionSchema = z.string()
+  .regex(/^[^:\s]+:[1-9]\d*$/u, 'Pass each --line as <productId>:<quantity> with a positive whole quantity')
+  .transform((value) => {
+    const [productId = '', quantity = ''] = value.split(':');
+    return { productId, quantity: Number.parseInt(quantity, 10) };
+  });
 const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   salesLink: z.string().min(1).optional(),
-  product: z.string().min(1),
+  product: z.string().min(1).optional(),
+  line: z.array(checkoutLineOptionSchema).default([]),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
+  acceptTerms: z.literal(true).optional(),
+  clientReference: z.string().optional(),
 });
 const memberExportOptionsSchema = z.object({
   format: memberExportFormatSchema,
@@ -947,13 +969,16 @@ checkout.command('session-status').description('Show checkout payment confirmati
 
 checkout
   .command('session')
-  .description('Start a paid or free checkout')
+  .description('Start a paid or free checkout of one product, a sales link or a cart')
   .option('--sales-link <id>', 'buy every product in a sales link; --product is its first product')
-  .requiredOption('--product <id>')
+  .option('--product <id>', 'the product to buy; required unless --line is given')
+  .option('--line <productId:quantity>', 'a cart line; repeat for each product, without --product or --sales-link', (value: string, previous: string[]) => [...previous, value], [])
   .option('--email <email>')
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
+  .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
       const shipping = shippingSelection(options);
@@ -961,19 +986,49 @@ checkout
         emit(shipping, ctx.json, () => '');
         return;
       }
+      const common = {
+        ...(options.email === undefined ? {} : { email: options.email }),
+        ...(options.language === undefined ? {} : { language: options.language }),
+        ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
+        ...(shipping.value === null ? {} : { shipping: shipping.value }),
+        ...(options.clientReference === undefined ? {} : { clientReference: options.clientReference }),
+      };
+      if (options.line.length > 0) {
+        const lines = cartLinesSchema.safeParse(options.line);
+        if (options.product !== undefined || options.salesLink !== undefined) {
+          emit(err(validation('Pass --line without --product or --sales-link')), ctx.json, () => '');
+        } else if (!lines.success) {
+          emit(err(validation('Invalid cart', lines.error.flatten())), ctx.json, () => '');
+        } else {
+          emit(await ctx.api.createCartCheckoutSession({ lines: lines.data, ...common }), ctx.json, (data) => data.url);
+        }
+        return;
+      }
+      if (options.product === undefined) {
+        emit(err(validation('Pass --product <id> or at least one --line <productId:quantity>')), ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createCheckoutSession({
           productId: options.product,
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
-          ...(options.email === undefined ? {} : { email: options.email }),
-          ...(options.language === undefined ? {} : { language: options.language }),
-          ...(shipping.value === null ? {} : { shipping: shipping.value }),
+          ...common,
         }),
         ctx.json,
         (data) => data.url,
       );
     }),
   );
+
+const orderProductsLabel = (order: {
+  productTitle: string;
+  lines?: { name: string; productType: OrderLineType; quantity?: number | undefined }[] | undefined;
+}): string => {
+  const productLines = (order.lines ?? []).filter((line) => !isShippingLine(line));
+  return productLines.some((line) => orderLineQuantity(line) > 1)
+    ? productLines.map(orderLineLabel).join('; ')
+    : order.productTitle;
+};
 
 const shippingSelection = (
   options: z.output<typeof shippingSelectionOptionsSchema>,
@@ -1047,7 +1102,11 @@ const shippingSettingsLines = (settings: TenantSettings): string[] => [
   `shipping rates: ${(settings.shippingRates ?? []).length === 0 ? '(none)' : (settings.shippingRates ?? [])
     .map((rate) => `${rate.id} ${rate.label} ${rate.amountCents} (${rate.active ? 'active' : 'inactive'})`).join('; ')}`,
   `InPost parcel locker map token: ${settings.inpostGeowidgetToken == null ? '(not set)' : '(set)'}`,
+  `checkout return origins: ${(settings.checkoutReturnOrigins ?? []).length === 0 ? '(none)' : (settings.checkoutReturnOrigins ?? []).join(', ')}`,
 ];
+
+const splitCheckoutReturnOrigins = (value: string): string[] =>
+  value.split(',').map((origin) => origin.trim()).filter((origin) => origin !== '');
 
 tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
@@ -1137,6 +1196,7 @@ tenant
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
   .option('--shipping-rates <json>', 'inline JSON array of up to five shipping rates, e.g. [{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]')
   .option('--inpost-geowidget-token <token>', 'public InPost parcel locker map token; empty string clears')
+  .option('--checkout-return-origins <origins>', 'comma-separated https origins (at most five) an external shop may send buyers back to; empty string clears')
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
       let shippingRates: ShippingRate[] | undefined;
@@ -1177,7 +1237,8 @@ tenant
         options.analyticsConsentCookieValue === undefined &&
         options.analyticsLoadWithoutConsent === undefined &&
         shippingRates === undefined &&
-        options.inpostGeowidgetToken === undefined
+        options.inpostGeowidgetToken === undefined &&
+        options.checkoutReturnOrigins === undefined
       ) {
         emit(
           err(validation('Pass at least one tenant setting option')),
@@ -1205,6 +1266,7 @@ tenant
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
         ...(shippingRates === undefined ? {} : { shippingRates }),
         ...(options.inpostGeowidgetToken === undefined ? {} : { inpostGeowidgetToken: options.inpostGeowidgetToken }),
+        ...(options.checkoutReturnOrigins === undefined ? {} : { checkoutReturnOrigins: splitCheckoutReturnOrigins(options.checkoutReturnOrigins) }),
       }), ctx.json, (data) =>
         [
           `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
@@ -1413,6 +1475,9 @@ onboarding.command('dismiss').description('Hide the checklist for the active ten
 
 const product = program.command('product').description('Products in the active tenant');
 
+const salesChannelLabel = (product: { salesChannel?: ProductSalesChannel }): string =>
+  product.salesChannel === 'sales_links_only' ? '  [sales links only]' : '';
+
 product.command('list').description('List products').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.listProducts(), ctx.json, (data) =>
@@ -1421,7 +1486,7 @@ product.command('list').description('List products').action(
         : data.products
             .map((p) => {
               const stock = data.stock.find((entry) => entry.productId === p.id);
-              return `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]${stock === undefined ? '' : `  {${formatProductStock(stock)}}`}  (${p.id.slice(0, 8)})`;
+              return `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]${salesChannelLabel(p)}${stock === undefined ? '' : `  {${formatProductStock(stock)}}`}  (${p.id.slice(0, 8)})`;
             })
             .join('\n'),
     );
@@ -1449,6 +1514,7 @@ product
   .command('create')
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (shipping requires --type physical)')
   .option('--parcel-template <size>', 'InPost parcel size: small, medium (default) or large')
   .requiredOption('--title <title>')
@@ -1505,6 +1571,7 @@ product
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.salesChannel === undefined ? {} : { salesChannel: options.salesChannel }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }),
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
@@ -1519,7 +1586,7 @@ product
           ...(accessItems === undefined ? {} : { accessItems }),
         }),
         ctx.json,
-        (data) => `created: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+        (data) => `created: ${data.product.title}${salesChannelLabel(data.product)} (${data.product.id.slice(0, 8)})`,
       );
     }),
   );
@@ -1562,8 +1629,9 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, delivery method, parcel size, safety information or variant')
+  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
   .option('--parcel-template <size>', 'InPost parcel size: small, medium or large')
   .option('--vat-rate <rate>', '5, 8, 23 or exempt')
@@ -1598,6 +1666,7 @@ product
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.salesChannel === undefined ? {} : { salesChannel: options.salesChannel }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }),
           id,
@@ -1610,7 +1679,7 @@ product
             : { coverUrl: options.clearCover ? null : options.coverUrl }),
         }),
         ctx.json,
-        (data) => `updated: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+        (data) => `updated: ${data.product.title}${salesChannelLabel(data.product)} (${data.product.id.slice(0, 8)})`,
       );
     }),
   );
@@ -1745,6 +1814,7 @@ priceCommand
   );
 
 const ordersCommand = program.command('orders').alias('order').description('Sales ledger of the active tenant (staff only)');
+registerOrderChangeCommands(ordersCommand, cliCtx);
 
 ordersCommand.command('verify <reference>').description('Verify an order by QR token or order number').action(
   withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [reference]) => {
@@ -1783,12 +1853,19 @@ ordersShipx.command('refresh <orderId>').description('Read the live ShipX status
     emit(await ctx.api.shipxRefresh({ orderId }), ctx.json, shipxOrderLines);
   }),
 );
-ordersShipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped').action(
-  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
-    emit(await ctx.api.shipxCreate({ orderId }), ctx.json, (data) =>
-      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`);
-  }),
-);
+ordersShipx
+  .command('create <orderId>')
+  .description('Create and pay the InPost shipment, then mark the order as shipped')
+  .option('--parcel-template <size>', 'InPost parcel size for this shipment: small, medium or large (default: the largest product template)')
+  .action(
+    withInput(z.tuple([z.string().min(1), ordersShipxCreateOptionsSchema]), async (ctx, [orderId, options]) => {
+      emit(
+        await ctx.api.shipxCreate({ orderId, ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }) }),
+        ctx.json,
+        (data) => `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`,
+      );
+    }),
+  );
 ordersShipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
     emit(await ctx.api.shipxDiscard({ orderId }), ctx.json, () => `discarded the unconfirmed InPost attempt of ${orderId}`);
@@ -1866,7 +1943,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${order.productTitle}\t${order.memberEmail}\t(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),
@@ -3360,6 +3437,7 @@ program
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
@@ -3377,6 +3455,7 @@ program
           email: options.email,
           productId: options.product,
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
+          ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
           ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,

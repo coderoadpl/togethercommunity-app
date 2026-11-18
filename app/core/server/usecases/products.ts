@@ -2,6 +2,8 @@ import {
   buildSnapshot,
   deliveryMethodAllowed,
   resolveProductVat,
+  SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
+  salesChannelAllowed,
   err,
   newProductSchema,
   notFound,
@@ -25,6 +27,7 @@ import type {
   IdGenerator,
   ProductDownloadAssetRepository,
   ProductMetadataRepository,
+  ProductMetadataUpdate,
   ProductPriceRepository,
   ProductRepository,
   SpaceRepository,
@@ -94,6 +97,9 @@ export const createProduct = async (
   if (!deliveryMethodAllowed(parsed.data.type, parsed.data.deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
+  if (!salesChannelAllowed(parsed.data.type, parsed.data.salesChannel)) {
+    return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  }
   const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
   if (parsed.data.vatRate === 'exempt' && resolveProductVat(parsed.data, settings) === null) {
     return err(validation('VAT exemption requires a legal basis'));
@@ -117,6 +123,7 @@ export const createProduct = async (
     currency: parsed.data.currency,
     published: false,
     visibility: parsed.data.visibility,
+    salesChannel: parsed.data.salesChannel,
     deliveryMethod: parsed.data.deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate,
     compliance: parsed.data.compliance ?? null,
@@ -154,6 +161,10 @@ export const updateProduct = async (
   if (!deliveryMethodAllowed(existing.type, deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
+  const { salesChannel: existingSalesChannel, ...unchanged } = existing;
+  if (!salesChannelAllowed(existing.type, parsed.data.salesChannel ?? existingSalesChannel)) {
+    return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  }
 
   const vatInput = {
     vatRate: parsed.data.vatRate === undefined ? existing.vatRate : parsed.data.vatRate,
@@ -166,8 +177,9 @@ export const updateProduct = async (
   const vat = resolveProductVat(vatInput, settings);
   const snapshot = snapshotOf(ctx, existing, deps);
   if (!snapshot.ok) return snapshot;
-  const updated: Product = {
-    ...existing,
+  const updated: ProductMetadataUpdate = {
+    ...unchanged,
+    ...(parsed.data.salesChannel === undefined ? {} : { salesChannel: parsed.data.salesChannel }),
     vatRate: vatInput.vatRate ?? null,
     vatExemptionBasis: vatInput.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     visibility: parsed.data.visibility ?? existing.visibility,

@@ -73,6 +73,7 @@
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
           "checkoutAppearance": null,
+          "checkoutReturnOrigins": [],
           "defaultHomeSpaceId": "space-studio-community",
           "defaultLanguage": "en",
           "directMessagesEnabled": true,

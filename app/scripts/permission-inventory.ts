@@ -257,6 +257,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
+  if (path === '/api/orders/changes') return 'order:read';
   if (path === '/api/orders/:orderId/shipx') return method === 'GET' ? 'order:read' : 'order:write';
   if (['/api/orders/:orderId/shipx/refresh', '/api/orders/:orderId/shipx/label', '/api/orders/:orderId/shipx/discard'].includes(path)) return 'order:write';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
@@ -638,6 +639,8 @@ const beforeForUseCase = (
   if (file === 'tenant-team.ts') return owner;
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
+  if (file === 'shop-settings.ts') return name === 'getShopSettings' ? staff : owner;
+  if (file === 'shop-integrations.ts') return name === 'getShopIntegrationSecrets' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'shop-management-keys.ts') return owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;

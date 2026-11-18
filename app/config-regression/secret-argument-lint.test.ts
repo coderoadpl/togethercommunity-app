@@ -26,6 +26,9 @@ describe('secret argument lint', () => {
     'curl -s -H "$KEY" --data-raw "$STORAGE_SECRET" "$SHOP/integrations/storage/configure"',
     'pnpm --silent run cli shop integrations shipx configure --token "$SHIPX_TOKEN"',
     'pnpm --silent run cli shop integrations storage configure --secret-access-key=$STORAGE_SECRET',
+    "curl -s -X PUT -H 'content-type: image/png' --data-binary @cover.png '<signed-storage-url>'",
+    'curl -s -X PUT -H \'content-type: image/png\' --data-binary @cover.png "$UPLOAD_URL"',
+    'curl -s -X PUT --data-binary @cover.png "$(jq -r .data.upload.url cover-upload.json)"',
   ])('rejects %s', (line) => {
     expect(lint(line)).toEqual([expect.stringMatching(/^\[secret-argument\] app\/docs\/guide\.md:4 /)]);
   });
@@ -38,6 +41,7 @@ describe('secret argument lint', () => {
     'pnpm --silent run cli shop integrations stripe configure --mode test --restricted-key-env STRIPE_RESTRICTED_KEY',
     'pnpm --silent run cli shop integrations storage configure --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET',
     'pnpm --silent run cli shop products list --api-key-env CATALOG_KEY',
+    'jq -r \'"url = \\"\\(.data.upload.url)\\""\' cover-upload.json | curl -s -K - -X PUT -H \'content-type: image/png\' --data-binary @cover.png',
   ])('accepts %s', (line) => {
     expect(lint(line)).toEqual([]);
   });

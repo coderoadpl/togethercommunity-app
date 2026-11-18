@@ -17,7 +17,15 @@ import {
   tenants,
   user,
 } from '#adapters/db/schema.js';
-import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
+import {
+  API_PATHS,
+  API_ROUTES,
+  SHOP_ASSETS_ROUTES,
+  SHOP_CATALOG_ROUTES,
+  SHOP_INTEGRATION_ROUTES,
+  SHOP_ORDER_ROUTES,
+  SHOP_SETTINGS_ROUTES,
+} from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
   shopManagementScopeSchema,
@@ -191,11 +199,11 @@ describe('shop management route registration', () => {
     expect(() => assertShopMachineRouteCoverage([])).not.toThrow();
   });
 
-  it('registers only the catalog routes under the shop management prefix', () => {
+  it('registers only the catalog, order, settings, asset and integration routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
       .map((route) => `${route.method} ${route.path}`))
-      .toEqual(Object.values(SHOP_CATALOG_ROUTES).map((route) => `${route.method} ${route.path}`));
+      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES)].map((route) => `${route.method} ${route.path}`));
   });
 });
 

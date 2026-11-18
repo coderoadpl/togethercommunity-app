@@ -55,6 +55,7 @@ const product = (tenantId: string, overrides: Partial<Product> = {}): Product =>
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -2998,6 +2999,7 @@ const bundlePayment = () => {
     return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: 'Edited after checkout', priceCents: 1 });
   };
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? {
@@ -3011,6 +3013,37 @@ const bundlePayment = () => {
   }
   return { ...h, event, lines };
 };
+
+it.each([
+  [{ kind: 'all' as const }, 'coupon-1'],
+  [{ kind: 'products' as const, productIds: ['product-1'] }, null],
+])('re-checks a cart coupon against every cart product at its unit price and quantity (scope %o)', async (scope, couponId) => {
+  const h = couponHarness({ coupon: { scope }, session: { originalCents: 15200, discountCents: 7600, finalCents: 7600 } });
+  const lines: OrderLine[] = [
+    { productId: 'product-1', name: 'Poster', productType: 'physical', quantity: 2, grossCents: 9800, netCents: 9074, vatRate: 8, vatCents: 726, vatExemptionBasis: null, issuedCount: 0 },
+    { productId: 'product-2', name: 'Course item', productType: 'course', quantity: 1, grossCents: 5400, netCents: 5000, vatRate: 8, vatCents: 400, vatExemptionBasis: null, issuedCount: null },
+  ];
+  h.deps.products.findById = async (tenantId, id) => {
+    const line = lines.find((item) => item.productId === id);
+    return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: line.name, priceCents: 1 });
+  };
+  h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
+    create: async () => undefined,
+    attachProviderSession: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? { id, tenantId, salesLinkId: null, lines, currency: 'PLN', createdAt: now } : null,
+  };
+  const lowestSince = vi.fn(async (_tenantId: string, input: { currentAmountCents: number }) => input.currentAmountCents);
+  h.deps.priceHistory = { lowestSince };
+  const event = completedEvent({ objectId: 'cs-coupon', amountTotalCents: 7600, discountTotalCents: 7600, couponCheckoutSessionId: 'coupon-session-1' });
+  if (event.checkoutSession !== null) event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ amountCents: 7600, couponId, lines });
+  if (couponId !== null) {
+    expect(lowestSince.mock.calls.map(([, input]) => input.currentAmountCents)).toEqual([4900, 5400]);
+  }
+});
 
 it('fulfills a bundle as one payment with immutable VAT lines and no physical grant', async () => {
   const h = bundlePayment();
@@ -3034,6 +3067,18 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
   expect(replay.ok).toBe(true);
   expect(h.orders).toHaveLength(1);
   expect(h.grants.size).toBe(2);
+});
+
+it('fulfils a sales-link payment for products sold only through sales links', async () => {
+  const h = bundlePayment();
+  const findById = h.deps.products.findById;
+  h.deps.products.findById = async (tenantId, id) => {
+    const found = await findById(tenantId, id);
+    return found === null ? null : { ...found, salesChannel: 'sales_links_only' };
+  };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ salesLinkId: 'link-1', amountCents: 12400 }]);
+  expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
 });
 
 it('carries a line quantity above one into the purchase confirmation only for that line', async () => {
@@ -3060,6 +3105,7 @@ it('queues allocated amounts for a coupon-discounted two-line order', async () =
   const h = couponHarness({ session: { originalCents: 10300, discountCents: 5151, finalCents: 5149 } });
   h.deps.products = bundle.deps.products;
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now }),
@@ -3178,6 +3224,7 @@ it('revokes all nonphysical bundle grants after one full payment refund', async 
 const directBundlePayment = async () => {
   const h = bundlePayment();
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
@@ -3255,6 +3302,7 @@ const directTestPayment = async () => {
   h.event.mode = 'test';
   h.event.livemode = false;
   h.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1'
@@ -3381,6 +3429,7 @@ const shippedPayment = (productLinesFor: (lines: OrderLine[]) => OrderLine[] = (
   const lines = [...productLinesFor(bundle.lines), shippingLine];
   const snapshot = { id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, shipping: lockerShipping, currency: 'PLN', createdAt: now };
   bundle.deps.checkoutSnapshots = {
+    findByProviderSession: async () => null,
     create: async () => undefined,
     attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? snapshot : null,

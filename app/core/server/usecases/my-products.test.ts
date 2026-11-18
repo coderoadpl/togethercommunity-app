@@ -36,6 +36,7 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   visibility: 'unlisted',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
@@ -275,6 +276,18 @@ describe('listMyProducts', () => {
     });
     expect(result).toMatchObject({ ok: true, value: [{ grantStatus: 'expired', purchasable }] });
     expect(listActiveByProducts).toHaveBeenCalledWith('t-acme', ['p1']);
+  });
+
+  it('keeps the access to a product sold only through sales links but offers no standalone renewal', async () => {
+    const linkOnly = { ...granted, salesChannel: 'sales_links_only' as const };
+    const active = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
+      grants: grants([linkOnly], [memberGrant()]), clock, subscriptions, downloadAssets, prices,
+    });
+    expect(active).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'active', accessItems: [{ level: 'course', courseId: 'course-1' }], purchasable: false }] });
+    const expired = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
+      grants: grants([linkOnly], [memberGrant({ active: false, expiresAt: '2026-07-08T00:00:00.000Z' })]), clock, subscriptions, downloadAssets, prices,
+    });
+    expect(expired).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'expired', purchasable: false }] });
   });
 
   it('marks an elapsed window as expired', async () => {

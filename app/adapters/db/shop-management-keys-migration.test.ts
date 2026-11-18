@@ -480,7 +480,7 @@ describe('shop management key purge', () => {
 describe('shop management key rollback guide', () => {
   const guide = readFileSync('docs/shop-management-keys.md', 'utf8');
   const rollback = /## Rollback\n([\s\S]*?)(?=\n## |\nSee also)/u.exec(guide)?.[1] ?? '';
-  const migration = readFileSync('drizzle/0155_shop_management_keys.sql', 'utf8');
+  const migration = readFileSync('drizzle/0159_shop_management_keys.sql', 'utf8');
 
   it('names every table the migration adds, and the migration changes no existing table', () => {
     const created = [...migration.matchAll(/CREATE TABLE "?(\w+)"?/gu)].map((match) => match[1]);
@@ -494,5 +494,15 @@ describe('shop management key rollback guide', () => {
     expect(rollback).toMatch(/reads `tenant_api_keys` exactly as before/u);
     expect(rollback).not.toMatch(/^\d\. /mu);
     expect(rollback).toMatch(/owner\s+controls, not rollback steps/u);
+  });
+
+  it('warns that the previous release reports a fingerprint mismatch and the health monitor alerts once', () => {
+    const monitor = readFileSync('../.github/workflows/prod-health.yml', 'utf8');
+    expect(monitor).toMatch(/\$fingerprint" = "false"/u);
+    expect(monitor).toMatch(/uses: \.\/\.github\/actions\/alert-gate/u);
+    expect(rollback).toMatch(/`\/api\/health` answer reports\s+`schemaFingerprintMatch: false`/u);
+    expect(rollback).toMatch(/`\.github\/workflows\/prod-health\.yml`/u);
+    expect(rollback).toMatch(/so it alerts once/u);
+    expect(rollback).toMatch(/same failing set and sends none/u);
   });
 });

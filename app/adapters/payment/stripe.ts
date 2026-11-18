@@ -10,6 +10,7 @@ import {
   nipSchema,
   err,
   ok,
+  orderLineQuantity,
   refundCoverage,
   SHIPPING_ALLOWED_COUNTRIES,
   stripeCancelErrorSchema,
@@ -165,6 +166,12 @@ const stripePromotionCodeTaken = (cause: unknown): boolean => {
     (parsed.data.code === 'resource_already_exists' || /already exists/i.test(parsed.data.message ?? ''));
 };
 
+const orderLineUnitGrossCents = (line: { grossCents: number; quantity?: number | undefined }): number => {
+  const quantity = orderLineQuantity(line);
+  if (line.grossCents % quantity !== 0) throw new Error('Checkout line total is not a whole unit price times its quantity');
+  return line.grossCents / quantity;
+};
+
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
 ): Stripe.Checkout.SessionCreateParams => {
@@ -226,10 +233,10 @@ export const stripeCheckoutSessionParams = (
     ...(input.customerEmail === undefined ? {} : { customer_email: input.customerEmail }),
     ...(locale === undefined ? {} : { locale }),
     line_items: (input.lines ?? [{ productId: input.productId, name: input.productName, grossCents: input.priceCents }]).map((line) => ({
-      quantity: 1,
+      quantity: orderLineQuantity(line),
       price_data: {
         currency: input.currency.toLowerCase(),
-        unit_amount: line.grossCents,
+        unit_amount: orderLineUnitGrossCents(line),
         product_data: { name: line.name },
         ...(input.recurringInterval === undefined ? {} : { recurring: { interval: input.recurringInterval } }),
       },

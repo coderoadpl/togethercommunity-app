@@ -70,6 +70,7 @@ const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' 
   };
   const fake = createFakeShipxClient();
   const carrier = {
+    createShipment: vi.spyOn(fake, 'createShipment'),
     getShipment: vi.spyOn(fake, 'getShipment'),
     fetchLabel: vi.spyOn(fake, 'fetchLabel'),
   };
@@ -160,6 +161,23 @@ describe('InPost ShipX HTTP routes', () => {
     expect(label.headers.get('content-disposition')).toBe(`attachment; filename="inpost-${tracking}.pdf"`);
     expect(label.headers.get('cache-control')).toBe('private, no-store');
     expect(new TextDecoder().decode((await label.arrayBuffer()).slice(0, 5))).toBe('%PDF-');
+  });
+
+  it('passes the parcel template staff chose to ShipX and keeps the product template without one', async () => {
+    const createWith = async (init: RequestInit) => {
+      const h = harness();
+      await configure(h.app, 'production');
+      const response = await h.app.request('/api/orders/order-1/shipx', { method: 'POST', ...init });
+      const body: unknown = await response.json();
+      return { status: response.status, body, templates: h.carrier.createShipment.mock.calls.map((call) => call[1].parcelTemplate) };
+    };
+    const json = (body: unknown): RequestInit => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+    expect(await createWith(json({ orderId: 'order-1', parcelTemplate: 'large' }))).toMatchObject({ status: 200, templates: ['large'] });
+    expect(await createWith({})).toMatchObject({ status: 200, templates: ['medium'] });
+    expect(await createWith(json({}))).toMatchObject({ status: 200, templates: ['medium'] });
+    expect(await createWith(json({ parcelTemplate: 'huge' }))).toMatchObject({ status: 400, body: { ok: false, error: { code: 'validation' } }, templates: [] });
+    expect(await createWith({ headers: { 'content-type': 'application/json' }, body: '{' })).toMatchObject({ status: 400, body: { ok: false, error: { code: 'validation' } }, templates: [] });
   });
 
   it('refuses a paid order while ShipX is set to the sandbox, without calling ShipX', async () => {

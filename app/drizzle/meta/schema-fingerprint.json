@@ -1,6 +1,6 @@
 {
-  "hash": "09df59019069e3e0f543e65808aaa0832ac0635884cb7e827581f9b1130ae473",
-  "shortId": "09df59019069",
+  "hash": "4da5ac21e02ad44758a6d74a772fb70190d8c0e36b94eda89b4f61295a173b8c",
+  "shortId": "4da5ac21e02a",
   "schema": {
     "constraints": [
       {
@@ -117,6 +117,11 @@
         "definition": "CHECK ((environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "order_shipments_environment_check",
         "table": "order_shipments"
+      },
+      {
+        "definition": "CHECK ((epoch ~ '^[0-9a-f]{32}$'::text))",
+        "name": "order_feed_epoch_epoch_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "CHECK ((interval_count > 0))",
@@ -259,6 +264,11 @@
         "table": "organization_members"
       },
       {
+        "definition": "CHECK ((sales_channel = ANY (ARRAY['any'::text, 'sales_links_only'::text])))",
+        "name": "products_sales_channel_check",
+        "table": "products"
+      },
+      {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "tenants_shipx_environment_check",
         "table": "tenants"
@@ -342,6 +352,11 @@
         "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
         "name": "products_visibility_check",
         "table": "products"
+      },
+      {
+        "definition": "CHECK (singleton)",
+        "name": "order_feed_epoch_singleton_check",
+        "table": "order_feed_epoch"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES shop_management_keys(id) ON DELETE CASCADE",
@@ -940,6 +955,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_id_fkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_fulfilment_events_tenant_id_fkey",
         "table": "order_fulfilment_events"
       },
@@ -1339,6 +1359,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "order_changes_tenant_order_fk",
+        "table": "order_changes"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1690,6 +1715,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "order_changes_pkey",
+        "table": "order_changes"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "order_fulfilment_events_pkey",
         "table": "order_fulfilment_events"
       },
@@ -1939,6 +1969,11 @@
         "table": "telemetry_outbox"
       },
       {
+        "definition": "PRIMARY KEY (singleton)",
+        "name": "order_feed_epoch_pkey",
+        "table": "order_feed_epoch"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "marketing_throttle_buckets_pkey",
         "table": "marketing_throttle_buckets"
@@ -2144,6 +2179,16 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
         "name": "project_marketing_signup_confirmation"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_invoice_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) SELECT tenant_id, id FROM orders WHERE tenant_id = NEW.tenant_id AND id = NEW.order_id; RETURN NULL; END; $function$",
+        "name": "record_invoice_order_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.id); RETURN NULL; END; $function$",
+        "name": "record_order_change"
       },
       {
         "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
@@ -2626,6 +2671,16 @@
         "definition": "CREATE INDEX notifications_tenant_recipient_read_created_idx ON notifications USING btree (tenant_id, recipient_user_id, read_at, created_at DESC NULLS LAST)",
         "name": "notifications_tenant_recipient_read_created_idx",
         "table": "notifications"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_cursor_idx ON order_changes USING btree (tenant_id, xact_id, id)",
+        "name": "order_changes_tenant_cursor_idx",
+        "table": "order_changes"
+      },
+      {
+        "definition": "CREATE INDEX order_changes_tenant_order_idx ON order_changes USING btree (tenant_id, order_id)",
+        "name": "order_changes_tenant_order_idx",
+        "table": "order_changes"
       },
       {
         "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
@@ -3385,6 +3440,15 @@
         "increment": "1",
         "maximum": "9223372036854775807",
         "minimum": "1",
+        "name": "order_changes_id_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
         "name": "order_shipment_events_sequence_seq",
         "start": "1"
       },
@@ -3665,6 +3729,14 @@
             "type": "jsonb"
           },
           {
+            "default": "'any'::text",
+            "generated": "",
+            "identity": "",
+            "name": "sales_channel",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'course'::text",
             "generated": "",
             "identity": "",
@@ -3910,680 +3982,10 @@
             "default": "'[]'::jsonb",
             "generated": "",
             "identity": "",
-            "name": "completed_lesson_ids",
+            "name": "checkout_return_origins",
             "notNull": true,
             "type": "jsonb"
           },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "course_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_viewed_chapter_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_viewed_lesson_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_viewed_module_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "updated_at",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "member_course_progress"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "contents",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "is_preview",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "duration_minutes",
-            "notNull": false,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "legacy_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "course_lessons"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "lines",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'live'::text",
-            "generated": "",
-            "identity": "",
-            "name": "mode",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'undecided'::text",
-            "generated": "",
-            "identity": "",
-            "name": "meta_capi_consent",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'{}'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "provider_object_ids",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "discount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "replace(((gen_random_uuid())::text || (gen_random_uuid())::text), '-'::text, ''::text)",
-            "generated": "",
-            "identity": "",
-            "name": "verification_token",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "amount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "attribution",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "billing",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "coupon_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "fulfilment_status",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "meta_capi_consent_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "meta_capi_consent_source",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "meta_capi_consent_text_version",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "meta_capi_consent_withdrawn_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "paid_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "price_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sales_link_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "shipment",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "shipping",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "orders"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "module_order",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "publicly_visible",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "archived_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "description",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "image_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "legacy_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sales_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "courses"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "product_ids",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "position",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "public_read_only",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "archived_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "description",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "slug",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "visibility",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "spaces"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "records",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "verification",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'manual'::text",
-            "generated": "",
-            "identity": "",
-            "name": "provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "provider_verified",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "verified",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "now()",
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "domain",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_checked_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_error",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "verified_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          }
-        ],
-        "name": "tenant_domains"
-      },
-      {
-        "columns": [
           {
             "default": "'[]'::jsonb",
             "generated": "",
@@ -5042,6 +4444,692 @@
           }
         ],
         "name": "tenants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "completed_lesson_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "course_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_viewed_chapter_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_viewed_lesson_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_viewed_module_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "member_course_progress"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "contents",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "is_preview",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "duration_minutes",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legacy_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "course_lessons"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "lines",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'live'::text",
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'undecided'::text",
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'{}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "provider_object_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "discount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "replace(((gen_random_uuid())::text || (gen_random_uuid())::text), '-'::text, ''::text)",
+            "generated": "",
+            "identity": "",
+            "name": "verification_token",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attribution",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "billing",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "coupon_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fulfilment_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_source",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_text_version",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_withdrawn_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "paid_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "price_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipment",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipping",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "orders"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "module_order",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "publicly_visible",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "archived_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "description",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "image_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legacy_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "courses"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "product_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "position",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "public_read_only",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "archived_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "description",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "visibility",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "spaces"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "records",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "verification",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'manual'::text",
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "provider_verified",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "verified",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "domain",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_checked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "verified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "tenant_domains"
       },
       {
         "columns": [
@@ -8761,6 +8849,51 @@
       {
         "columns": [
           {
+            "default": "nextval('order_changes_id_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "changed_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "pg_current_xact_id()",
+            "generated": "",
+            "identity": "",
+            "name": "xact_id",
+            "notNull": true,
+            "type": "xid8"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_changes"
+      },
+      {
+        "columns": [
+          {
             "default": "nextval('post_report_events_sequence_seq'::regclass)",
             "generated": "",
             "identity": "",
@@ -9102,6 +9235,35 @@
           }
         ],
         "name": "session"
+      },
+      {
+        "columns": [
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "rotated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "singleton",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "epoch",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_feed_epoch"
       },
       {
         "columns": [
@@ -11123,6 +11285,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "client_reference",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "created_at",
             "notNull": true,
             "type": "text"
@@ -11164,6 +11334,14 @@
             "generated": "",
             "identity": "",
             "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "return_url",
             "notNull": false,
             "type": "text"
           },
@@ -15324,6 +15502,16 @@
     ],
     "triggers": [
       {
+        "definition": "CREATE TRIGGER invoices_record_insert AFTER INSERT ON invoices FOR EACH ROW EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_insert",
+        "table": "invoices"
+      },
+      {
+        "definition": "CREATE TRIGGER invoices_record_update AFTER UPDATE ON invoices FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_invoice_order_change()",
+        "name": "invoices_record_update",
+        "table": "invoices"
+      },
+      {
         "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
         "name": "marketing_member_directory_trigger",
         "table": "members"
@@ -15341,6 +15529,16 @@
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_insert AFTER INSERT ON orders FOR EACH ROW EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_insert",
+        "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_record_update AFTER UPDATE ON orders FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION record_order_change()",
+        "name": "orders_record_update",
         "table": "orders"
       },
       {

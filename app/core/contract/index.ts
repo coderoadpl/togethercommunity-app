@@ -26,9 +26,14 @@ export * from './surveys.js';
 export * from './sales-links.js';
 export * from './order-verification.js';
 export * from './order-fulfilment.js';
+export * from './order-changes.js';
 export * from './shipx.js';
 
 export * from './consumer-sales.js';
 
 export * from './catalog-cleanup.js';
 export * from './shop-catalog.js';
+export * from './shop-orders.js';
+export * from './shop-settings.js';
+export * from './shop-integrations.js';
+export * from './shop-assets.js';

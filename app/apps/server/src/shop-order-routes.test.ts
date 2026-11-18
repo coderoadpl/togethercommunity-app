@@ -466,7 +466,7 @@ describe('shop order routes with a shop management key', () => {
     const createWith = async (orderId: string, body?: unknown) => {
       createShipment.mockClear();
       const response = await keyed(secret, 'POST', orderPath(SHOP_ORDER_ROUTES.shipxCreate.path, orderId), body, akademiaHost);
-      return { status: response.status, body: await response.json() as unknown, templates: createShipment.mock.calls.map((call) => call[1].parcelTemplate) };
+      return { status: response.status, body: z.unknown().parse(await response.json()), templates: createShipment.mock.calls.map((call) => call[1].parcelTemplate) };
     };
 
     try {

@@ -4,8 +4,7 @@ import { parseArgs } from 'node:util';
 import { secretFingerprint } from '#adapters/crypto/secret-fingerprint.js';
 import { createApiClient } from '#core/client/index.js';
 import type { SecretFingerprint } from '#core/contract/index.js';
-
-import { isLocalHostname } from '../apps/server/src/env.js';
+import { secureApiOrigin } from '#core/domain/network.js';
 
 type LocalEnv = Readonly<Record<string, string | undefined>>;
 
@@ -63,10 +62,7 @@ const parseBaseUrl = (argv: readonly string[]): string | null => {
       strict: true,
     });
     const raw = values['base-url'];
-    if (raw === undefined) return null;
-    const url = new URL(raw);
-    const safe = url.protocol === 'https:' || (url.protocol === 'http:' && isLocalHostname(url.hostname));
-    return safe ? url.origin : null;
+    return raw === undefined ? null : secureApiOrigin(raw);
   } catch {
     return null;
   }

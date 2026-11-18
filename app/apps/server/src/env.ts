@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isProductionEnvironment } from '#core/domain/index.js';
+import { isLocalHostname } from '#core/domain/network.js';
 import { MARKETING_RETENTION_DAYS } from '#core/server/index.js';
 
 const optionalNonEmptyString = z.preprocess(
@@ -24,12 +25,6 @@ const optionalCount = z.preprocess(
   (value) => value === '' ? undefined : value,
   z.coerce.number().int().min(0).optional(),
 );
-
-export const isLocalHostname = (hostname: string): boolean =>
-  hostname === 'localhost'
-  || hostname.endsWith('.localhost')
-  || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-  || hostname === '[::1]';
 
 const LOCAL_DEVELOPMENT_APP_ENVS: readonly string[] = ['', 'development'];
 

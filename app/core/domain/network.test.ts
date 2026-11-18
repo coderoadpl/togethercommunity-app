@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { privateNetworkAddress, privateNetworkHostname } from './network.js';
+import { privateNetworkAddress, privateNetworkHostname, secureApiOrigin } from './network.js';
 
 describe('private network addresses', () => {
   it.each([
@@ -30,5 +30,23 @@ describe('private network addresses', () => {
     ['localhost', true], ['a.localhost', true], ['cluster.example.test', false],
   ] as const)('classifies hostname %s', (hostname, expected) => {
     expect(privateNetworkHostname(hostname)).toBe(expected);
+  });
+});
+
+describe('secure API origins', () => {
+  it.each([
+    ['https://platform.example.test/path?q=1', 'https://platform.example.test'],
+    ['http://localhost:48730/api', 'http://localhost:48730'],
+    ['http://acme.localhost:48730', 'http://acme.localhost:48730'],
+    ['http://127.0.0.1:48730', 'http://127.0.0.1:48730'],
+    ['http://[::1]:48730', 'http://[::1]:48730'],
+  ])('accepts %s as %s', (raw, origin) => {
+    expect(secureApiOrigin(raw)).toBe(origin);
+  });
+
+  it.each([
+    'http://platform.example.test', 'http://10.0.0.5', 'ftp://platform.example.test', 'not a url', '',
+  ])('refuses %j', (raw) => {
+    expect(secureApiOrigin(raw)).toBeNull();
   });
 });

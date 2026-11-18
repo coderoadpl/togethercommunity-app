@@ -370,12 +370,13 @@ import {
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
+import { isLocalHostname } from '#core/domain/network.js';
 import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER, type SecretFingerprint } from '#core/contract/index.js';
 
 import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
-import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
+import { type Env, isLocalDevelopmentEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { secretFingerprintsOf } from './secret-fingerprints.js';

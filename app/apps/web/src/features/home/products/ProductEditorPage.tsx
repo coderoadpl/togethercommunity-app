@@ -28,6 +28,7 @@ import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 import {
   DEFAULT_PARCEL_TEMPLATE,
   priceMajorSchema,
+  productSalesChannelSchema,
   productVisibilitySchema,
   productVatRateSchema,
   SUPPORTED_CURRENCIES,
@@ -57,6 +58,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [visibility, setVisibility] = useState<ProductVisibility>(product.visibility);
+  const [salesChannel, setSalesChannel] = useState(product.salesChannel);
   const [title, setTitle] = useState(product.title);
   const [description, setDescription] = useState(product.description);
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
@@ -86,6 +88,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       id: product.id,
       title: title.trim(),
       visibility,
+      ...(product.type === 'membership' ? {} : { salesChannel }),
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       ...(product.type === 'physical' ? {
@@ -153,6 +156,24 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         </Select>
         <FormHelperText id="product-visibility-helper">{t.products.visibilityHelper}</FormHelperText>
       </FormControl>
+      {product.type === 'membership' ? null : (
+        <FormControl fullWidth>
+          <FormLabel id="product-sales-channel-label">{t.products.salesChannelLabel}</FormLabel>
+          <Select
+            labelId="product-sales-channel-label"
+            value={salesChannel}
+            inputProps={{ 'aria-describedby': 'product-sales-channel-helper' }}
+            onChange={(event) => {
+              resetFeedback();
+              setSalesChannel(productSalesChannelSchema.parse(event.target.value));
+            }}
+          >
+            <MenuItem value="any">{t.products.salesChannelAny}</MenuItem>
+            <MenuItem value="sales_links_only">{t.products.salesChannelSalesLinksOnly}</MenuItem>
+          </Select>
+          <FormHelperText id="product-sales-channel-helper">{t.products.salesChannelHelper}</FormHelperText>
+        </FormControl>
+      )}
       <TextField select label={t.salesLinks.vatRate} value={vatRate ?? ''} onChange={(event) => { resetFeedback(); setVatRate(event.target.value === '' ? null : productVatRateSchema.parse(event.target.value === 'exempt' ? 'exempt' : Number(event.target.value))); }}>
         <MenuItem value="">{t.salesLinks.vatDefault}</MenuItem>
         {[5, 8, 23].map((rate) => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}

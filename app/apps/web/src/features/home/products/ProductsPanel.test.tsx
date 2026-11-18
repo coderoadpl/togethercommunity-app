@@ -71,6 +71,7 @@ const renderProductsPanel = async (
   let assets = [...seededAssets];
   let directUploadCalled = false;
   let updatedProduct: Product | null = null;
+  const updateInputs: unknown[] = [];
   const created: Product[] = [];
 
   server.use(
@@ -106,12 +107,15 @@ const renderProductsPanel = async (
       return HttpResponse.json({ ok: true, data: { deleted: true } });
     }),
     http.post('/api/products/update', async ({ request }) => {
-      const input = updateProductInputSchema.parse(await request.json());
+      const body: unknown = await request.json();
+      updateInputs.push(body);
+      const input = updateProductInputSchema.parse(body);
       const existing = products.find((candidate) => candidate.id === input.id);
       if (existing === undefined) return HttpResponse.json({ ok: false }, { status: 404 });
       const product: Product = {
         ...existing,
         visibility: input.visibility ?? existing.visibility,
+        salesChannel: input.salesChannel ?? existing.salesChannel,
         title: input.title ?? existing.title,
         description: input.description ?? existing.description,
         coverUrl: input.coverUrl === undefined ? existing.coverUrl : input.coverUrl,
@@ -256,6 +260,7 @@ const renderProductsPanel = async (
     created,
     directUploadCalled: () => directUploadCalled,
     updatedProduct: () => updatedProduct,
+    updateInputs,
   };
 };
 
@@ -707,6 +712,35 @@ describe('ProductsPanel', () => {
     });
   });
 
+  it('limits a product to sales links from the editor next to its visibility', async () => {
+    const user = userEvent.setup();
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+
+    const channel = await screen.findByRole('combobox', { name: en.products.salesChannelLabel });
+    expect(channel).toHaveTextContent(en.products.salesChannelAny);
+    expect(channel).toHaveAccessibleDescription(en.products.salesChannelHelper);
+    await user.click(channel);
+    await user.click(screen.getByRole('option', { name: en.products.salesChannelSalesLinksOnly }));
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updatedProduct()).toMatchObject({ visibility: 'listed', salesChannel: 'sales_links_only' });
+  });
+
+  it('offers no sales channel for a membership and leaves it out of the saved details', async () => {
+    const user = userEvent.setup();
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const rendered = await renderProductsPanel([], '/panel/products/membership-1', [{ ...baseProduct, id: 'membership-1', type: 'membership', slug: 'creator-club', title: 'Creator Club' }]);
+
+    await screen.findByRole('combobox', { name: en.products.visibilityLabel });
+    expect(screen.queryByRole('combobox', { name: en.products.salesChannelLabel })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ salesChannel: expect.anything() })]);
+  });
+
   it('saves product safety information and variant fields for a physical product', async () => {
     const user = userEvent.setup();
     const physical: Product = {
@@ -853,6 +887,20 @@ it('keeps unlisted products in Studio with a chip and copyable checkout link', a
   expect(screen.getByRole('button', { name: en.products.copyCheckoutLink })).toBeEnabled();
 });
 
+
+it('marks a product sold only through sales links and offers no standalone checkout link for it', async () => {
+  const base = initialProducts[0];
+  if (base === undefined) throw new Error('Missing fixture');
+  await renderProductsPanel([], '/panel/products', [
+    { ...base, published: true, visibility: 'unlisted', salesChannel: 'sales_links_only' },
+    { ...base, id: 'open-1', slug: 'open-course', title: 'Open Course', published: true },
+  ]);
+  expect(await screen.findByTestId('product-sales-links-only-draft-1')).toHaveTextContent(en.products.salesChannelSalesLinksOnly);
+  expect(screen.getByText(en.products.unlisted)).toBeInTheDocument();
+  expect(screen.queryByTestId('copy-checkout-draft-1')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('product-sales-links-only-open-1')).not.toBeInTheDocument();
+  expect(screen.getByTestId('copy-checkout-open-1')).toBeEnabled();
+});
 
 it('reuses the upload control with replacement details and hides earlier versions initially', async () => {
   const user = userEvent.setup();

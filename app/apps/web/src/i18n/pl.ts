@@ -1530,6 +1530,10 @@ export const pl: Messages = {
     listed: 'Widoczny w ofercie',
     unlisted: 'Ukryty w ofercie',
     visibilityHelper: 'Produkty ukryte w ofercie są dostępne przez bezpośredni link do zakupu i pozostają w bibliotekach kupujących.',
+    salesChannelLabel: 'Gdzie można kupić',
+    salesChannelAny: 'Wszędzie',
+    salesChannelSalesLinksOnly: 'Tylko w linkach sprzedażowych',
+    salesChannelHelper: 'Tylko w linkach sprzedażowych: produkt można kupić wyłącznie w linku sprzedażowym, nigdy osobno, i nie pojawia się w ofercie bez względu na widoczność.',
 
     newProduct: 'Nowy produkt',
     detailsHeading: 'Dane produktu',

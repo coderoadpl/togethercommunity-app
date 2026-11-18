@@ -622,8 +622,11 @@ order:
 
 1. Changed workspace settings.
 2. With `--integrations` only: Stripe, ShipX, then parcel-locker configuration.
-3. All product creations and metadata updates by slug.
+3. All product creations and metadata updates by slug. Narrowing a product to
+   `sales_links_only` happens here.
 4. Active prices: add a replacement if needed, then deactivate alternatives.
+   Widening a product from `sales_links_only` to `any` follows as a separate
+   product update, so the old price never sells on its own.
 5. Stock enablement or on-hand adjustments.
 6. Cover attachment or clearing.
 7. Publication changes.

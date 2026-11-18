@@ -140,6 +140,48 @@ describe('shop apply', () => {
     expect(state.products.map((product) => product.salesChannel)).toEqual(['any', 'sales_links_only']);
   });
 
+  it.each([
+    { stored: 'sales_links_only', desired: 'any', channelAtNewPrice: 'sales_links_only', updates: [{ id: 'p1', title: 'New title' }, { id: 'p1', salesChannel: 'any' }] },
+    { stored: 'any', desired: 'sales_links_only', channelAtNewPrice: 'sales_links_only', updates: [{ id: 'p1', title: 'New title', salesChannel: 'sales_links_only' }] },
+  ] as const)('swaps the price while the product is still sold only through sales links when the channel goes from $stored to $desired', async ({ stored, desired, channelAtNewPrice, updates }) => {
+    const { api, state } = createManifestFake();
+    state.products = [existingProduct({ salesChannel: stored })];
+    state.prices = [existingPrice({ amountCents: 3900 })];
+    const sent: unknown[] = [];
+    const channelsAtNewPrice: string[] = [];
+    const client: typeof api = {
+      ...api,
+      updateProduct: (input, signal) => { sent.push(input); return api.updateProduct(input, signal); },
+      createProductPrice: (input, signal) => { channelsAtNewPrice.push(state.products[0]?.salesChannel ?? ''); return api.createProductPrice(input, signal); },
+    };
+    const input = { version: 1, shops: [{ workspace: 'acme', products: [{ slug: 'paperback', title: 'New title', price: { amountCents: 4900, currency: 'PLN' }, published: false, salesChannel: desired }] }] };
+    const result = await applyManifest(input, () => client);
+    expect(result.ok).toBe(true);
+    expect(channelsAtNewPrice).toEqual([channelAtNewPrice]);
+    expect(sent).toEqual(updates);
+    expect(writes(state.requests)).toEqual([
+      'POST /api/products/update', 'POST /api/products/prices', 'POST /api/products/prices/deactivate',
+      ...(desired === 'any' ? ['POST /api/products/update'] : []),
+    ]);
+    expect(state.products[0]).toMatchObject({ title: 'New title', salesChannel: desired });
+    state.requests.length = 0;
+    expect(await applyManifest(input, () => client)).toMatchObject({ ok: true, value: { applied: [] } });
+    expect(writes(state.requests)).toEqual([]);
+  });
+
+  it('widens a product whose only change is the sales channel in one update after the price swap', async () => {
+    const { api, state } = createManifestFake();
+    state.products = [existingProduct({ salesChannel: 'sales_links_only' })];
+    state.prices = [existingPrice({ amountCents: 3900 })];
+    const input = { version: 1, shops: [{ workspace: 'acme', products: [{ slug: 'paperback', title: 'Paperback', price: { amountCents: 4900, currency: 'PLN' }, published: false, salesChannel: 'any' }] }] };
+    const result = await applyManifest(input, () => api);
+    expect(result).toMatchObject({ ok: true, value: { applied: [
+      { operation: 'price:add', slug: 'paperback' }, { operation: 'price:deactivate', slug: 'paperback' }, { operation: 'product:update', slug: 'paperback' },
+    ] } });
+    expect(writes(state.requests)).toEqual(['POST /api/products/prices', 'POST /api/products/prices/deactivate', 'POST /api/products/update']);
+    expect(state.products[0]?.salesChannel).toBe('any');
+  });
+
   it('finishes all products in each phase before starting the next phase', async () => {
     const { api, state } = createManifestFake();
     const input = { version: 1, shops: [{ workspace: 'acme', products: ['paperback', 'hardback'].map((slug) => ({ slug, title: slug, price: { amountCents: 4900, currency: 'PLN' }, published: true })) }] };

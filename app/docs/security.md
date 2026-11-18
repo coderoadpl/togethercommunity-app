@@ -515,6 +515,12 @@ such as a short password does not. The endpoint therefore answers only an
 authenticated operator, and fingerprints belong in the same places as the
 operator secret, never in tickets or public logs.
 
+**Whoever holds a deployment's operator secret can read its fingerprint list,
+wherever that secret is stored.** That includes every copy outside 1Password,
+such as a GitHub Actions secret: any workflow that can read it can read the
+list. With a fingerprint, the holder can test guesses for a low-entropy value
+offline, without the server seeing an attempt.
+
 The operator CLI prints the server's list, one `NAME=fingerprint` line per
 variable (`not-set` when absent), or the usual envelope with `--json`. It reads
 the secret only from `OPERATOR_SECRET`:

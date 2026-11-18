@@ -2,13 +2,13 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import type { ApiClient } from '#core/client/index.js';
-import { operatorTenantSlugSchema, provisionTenantInputSchema, type OperatorTenantReadiness } from '#core/contract/index.js';
+import { operatorTenantSlugSchema, provisionTenantInputSchema, type OperatorTenantReadiness, type SecretFingerprints } from '#core/contract/index.js';
 import { err, internal, validation, type AppError, type Result } from '#core/domain/index.js';
 
 import { emit } from './output.js';
 
 type OperatorCliContext = {
-  api: Pick<ApiClient, 'provisionOperatorTenant' | 'getOperatorTenantReadiness'>;
+  api: Pick<ApiClient, 'provisionOperatorTenant' | 'getOperatorTenantReadiness' | 'getSecretFingerprints'>;
   json: boolean;
 };
 
@@ -29,13 +29,18 @@ const checklist = (readiness: OperatorTenantReadiness): string => [
   `publishedProducts=${readiness.publishedProducts}`,
 ].join('\n');
 
+const fingerprintLines = ({ secrets }: SecretFingerprints): string =>
+  secrets.map((entry) => `${entry.name}=${entry.fingerprint ?? 'not-set'}`).join('\n');
+
 export const registerOperatorCommands = (
   program: Command,
   context: () => Result<OperatorCliContext, AppError>,
 ): void => {
-  const tenant = program.command('operator').description('Instance operator commands')
-    .command('tenant').description('Operator workspace provisioning and readiness');
-  const run = (provision: boolean) => async (raw: unknown) => {
+  const operator = program.command('operator').description('Instance operator commands');
+  const tenant = operator.command('tenant').description('Operator workspace provisioning and readiness');
+  const withOperatorSecret = (
+    action: (ctx: OperatorCliContext, secret: string, raw: unknown) => Promise<void>,
+  ) => async (raw: unknown) => {
     const ctx = context();
     if (!ctx.ok) { emit(ctx, program.opts()['json'] === true, () => ''); return; }
     const secret = process.env['OPERATOR_SECRET'];
@@ -44,37 +49,44 @@ export const registerOperatorCommands = (
       return;
     }
     try {
-      if (provision) {
-        const options = provisionOptionsSchema.safeParse(raw);
-        const parsed = options.success ? provisionTenantInputSchema.safeParse({
-          slug: options.data.slug, name: options.data.name, ownerEmail: options.data.ownerEmail,
-          ...(options.data.language === undefined ? {} : { defaultLanguage: options.data.language }),
-        }) : options;
-        if (!parsed.success) {
-          emit(err(validation('Invalid tenant provisioning payload')), ctx.value.json, () => '');
-          return;
-        }
-        const result = await ctx.value.api.provisionOperatorTenant(parsed.data, secret);
-        emit(result, ctx.value.json, (value) =>
-          `${value.tenant.slug}: created=${value.created}\n${checklist(value.readiness)}`);
-      } else {
-        const parsed = z.object({ slug: operatorTenantSlugSchema }).safeParse(raw);
-        if (!parsed.success) {
-          emit(err(validation('Invalid tenant slug')), ctx.value.json, () => '');
-          return;
-        }
-        emit(await ctx.value.api.getOperatorTenantReadiness(parsed.data.slug, secret), ctx.value.json, checklist);
-      }
+      await action(ctx.value, secret, raw);
     } catch {
       emit(err(internal('Operator request failed')), ctx.value.json, () => '');
     }
   };
+  const provision = withOperatorSecret(async (ctx, secret, raw) => {
+    const options = provisionOptionsSchema.safeParse(raw);
+    const parsed = options.success ? provisionTenantInputSchema.safeParse({
+      slug: options.data.slug, name: options.data.name, ownerEmail: options.data.ownerEmail,
+      ...(options.data.language === undefined ? {} : { defaultLanguage: options.data.language }),
+    }) : options;
+    if (!parsed.success) {
+      emit(err(validation('Invalid tenant provisioning payload')), ctx.json, () => '');
+      return;
+    }
+    emit(await ctx.api.provisionOperatorTenant(parsed.data, secret), ctx.json, (value) =>
+      `${value.tenant.slug}: created=${value.created}\n${checklist(value.readiness)}`);
+  });
+  const readiness = withOperatorSecret(async (ctx, secret, raw) => {
+    const parsed = z.object({ slug: operatorTenantSlugSchema }).safeParse(raw);
+    if (!parsed.success) {
+      emit(err(validation('Invalid tenant slug')), ctx.json, () => '');
+      return;
+    }
+    emit(await ctx.api.getOperatorTenantReadiness(parsed.data.slug, secret), ctx.json, checklist);
+  });
+  const fingerprints = withOperatorSecret(async (ctx, secret) => {
+    emit(await ctx.api.getSecretFingerprints(secret), ctx.json, fingerprintLines);
+  });
   tenant.command('provision').description('Create a workspace for an existing verified owner')
     .requiredOption('--slug <slug>', 'Workspace slug')
     .requiredOption('--name <name>', 'Workspace name')
     .requiredOption('--owner-email <email>', 'Verified owner email')
     .option('--language <language>', 'Default workspace language (en or pl)')
-    .action(run(true));
+    .action(provision);
   tenant.command('readiness').description('Read the workspace readiness checklist')
-    .requiredOption('--slug <slug>', 'Workspace slug').action(run(false));
+    .requiredOption('--slug <slug>', 'Workspace slug').action(readiness);
+  operator.command('secrets').description('Operator checks of deployment secrets')
+    .command('fingerprints').description('Print the HMAC fingerprint of every server secret, never a value')
+    .action(fingerprints);
 };

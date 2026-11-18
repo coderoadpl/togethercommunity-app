@@ -6,7 +6,7 @@ import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import { consumerSalesSummarySchema } from '#core/contract/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
-import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
+import { operatorTenantReadinessSchema, provisionTenantOutputSchema, secretFingerprintsOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
@@ -585,6 +585,9 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.operatorTenantReadiness.method,
       API_ROUTES.operatorTenantReadiness.path.replace(':slug', encodeURIComponent(slug)),
       operatorTenantReadinessSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  getSecretFingerprints: (secret: string) =>
+    request(options, API_ROUTES.secretFingerprints.method, API_ROUTES.secretFingerprints.path,
+      secretFingerprintsOutputSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
 
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),

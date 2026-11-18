@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { secretFingerprint } from '#adapters/crypto/secret-fingerprint.js';
+import { REDACTED_OPERATOR_SECRET } from '#core/client/index.js';
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, type SecretFingerprint } from '#core/contract/index.js';
 
 import { compareSecretFingerprints, formatVerdict, runSecretsVerify, verificationPassed } from './secrets-verify.js';
@@ -153,6 +154,17 @@ describe('runSecretsVerify', () => {
     const { code, output } = await verify(['--base-url', 'https://platform.example.test'], local, fetchImpl);
     expect(code).toBe(1);
     expect(output).toBe('secrets:verify: FAIL unauthorized: Invalid operator secret');
+  });
+
+  it('replaces the sent operator secret in a server error that reflects it', async () => {
+    const reflecting: typeof fetch = async (_url, init) => {
+      const sent = new Headers(init?.headers).get(SCHEDULER_OPERATOR_SECRET_HEADER) ?? '';
+      return Response.json({ ok: false, error: { code: 'unauthorized', message: `Rejected ${sent}`, details: { sent } } }, { status: 401 });
+    };
+    const { code, output } = await verify(['--base-url', 'https://platform.example.test'], local, reflecting);
+    expect(code).toBe(1);
+    expect(output).toBe(`secrets:verify: FAIL unauthorized: Rejected ${REDACTED_OPERATOR_SECRET}`);
+    expect(output).not.toContain(local.PROD_OPERATOR_SECRET);
   });
 
   const baseUrlRefusal = '--base-url must be an https URL, or http on a local host';

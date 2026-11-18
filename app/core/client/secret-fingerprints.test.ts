@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER } from '#core/contract/index.js';
 
-import { createApiClient } from './http.js';
+import { createApiClient, REDACTED_OPERATOR_SECRET } from './http.js';
 
 const secrets = [
   { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
@@ -34,6 +34,53 @@ describe('secret fingerprints client', () => {
     const result = await api.getSecretFingerprints('hidden-secret');
     expect(result.ok).toBe(false);
     expect(JSON.stringify(result)).not.toContain('hidden-secret');
+  });
+
+  it('replaces the sent secret in a server error envelope and keeps the rest of the server message', async () => {
+    const api = createApiClient({ baseUrl: '', fetchImpl: async () => Response.json({
+      ok: false,
+      error: {
+        code: 'unauthorized',
+        message: 'Invalid operator secret: hidden-secret',
+        details: { header: 'hidden-secret', seen: ['prefix hidden-secret suffix', 7, null], 'hidden-secret': true },
+      },
+    }, { status: 401 }) });
+    const result = await api.getSecretFingerprints('hidden-secret');
+    expect(JSON.stringify(result)).not.toContain('hidden-secret');
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'unauthorized',
+        message: `Invalid operator secret: ${REDACTED_OPERATOR_SECRET}`,
+        details: {
+          header: REDACTED_OPERATOR_SECRET,
+          seen: [`prefix ${REDACTED_OPERATOR_SECRET} suffix`, 7, null],
+          [REDACTED_OPERATOR_SECRET]: true,
+        },
+      },
+    });
+  });
+
+  it.each([
+    ['getOperatorTenantReadiness', (api: ReturnType<typeof createApiClient>) => api.getOperatorTenantReadiness('acme', 'hidden-secret')],
+    ['provisionOperatorTenant', (api: ReturnType<typeof createApiClient>) =>
+      api.provisionOperatorTenant({ slug: 'acme', name: 'Acme', ownerEmail: 'owner@example.test' }, 'hidden-secret')],
+  ] as const)('replaces the sent secret in the server error of %s', async (_name, call) => {
+    const api = createApiClient({ baseUrl: '', fetchImpl: async () => Response.json(
+      { ok: false, error: { code: 'unauthorized', message: 'hidden-secret', details: ['hidden-secret'] } }, { status: 401 },
+    ) });
+    expect(await call(api)).toEqual({
+      ok: false, error: { code: 'unauthorized', message: REDACTED_OPERATOR_SECRET, details: [REDACTED_OPERATOR_SECRET] },
+    });
+  });
+
+  it('passes a server message that does not carry the secret through unchanged', async () => {
+    const api = createApiClient({ baseUrl: '', fetchImpl: async () => Response.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } }, { status: 401 },
+    ) });
+    expect(await api.getSecretFingerprints('hidden-secret')).toEqual({
+      ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' },
+    });
   });
 
   it('redacts a thrown transport diagnostic', async () => {

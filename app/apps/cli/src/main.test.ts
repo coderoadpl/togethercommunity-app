@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
+import { SCHEDULER_OPERATOR_SECRET_HEADER } from '#core/contract/index.js';
 import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
@@ -1531,6 +1532,23 @@ describe('operator secret fingerprint command', () => {
     await run('--json', 'operator', 'secrets', 'fingerprints');
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'internal', message: 'Operator request failed' } });
     expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-operator-secret');
+  });
+
+  it('prints a server error envelope that reflects the operator secret with the secret replaced', async () => {
+    const { createApiClient, REDACTED_OPERATOR_SECRET } = await vi.importActual<typeof ClientModule>('#core/client/index.js');
+    const reflecting = createApiClient({ baseUrl: 'https://platform.example.test', fetchImpl: async (_url, init) => {
+      const sent = new Headers(init?.headers).get(SCHEDULER_OPERATOR_SECRET_HEADER) ?? '';
+      return Response.json({ ok: false, error: { code: 'unauthorized', message: `Rejected ${sent}`, details: { sent } } }, { status: 401 });
+    } });
+    h.getSecretFingerprints.mockResolvedValueOnce(await reflecting.getSecretFingerprints('hidden-operator-secret'));
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(h.getSecretFingerprints).toHaveBeenCalledExactlyOnceWith('hidden-operator-secret');
+    expect(soleJson()).toEqual({
+      ok: false,
+      error: { code: 'unauthorized', message: `Rejected ${REDACTED_OPERATOR_SECRET}`, details: { sent: REDACTED_OPERATOR_SECRET } },
+    });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-operator-secret');
+    expect(process.exitCode).toBe(3);
   });
 });
 

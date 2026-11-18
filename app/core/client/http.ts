@@ -356,6 +356,7 @@ import {
   type WriteMethod,
 } from '#core/contract/index.js';
 import {
+  appError,
   err,
   internal,
   ok,
@@ -439,6 +440,20 @@ const failedAt = (source: Exclude<ApiFailureSource, 'client'>, error: AppError):
 // A failure the client makes up while reading an answer shares the `internal` code with the server's own internal error; only the source tells them apart.
 export const apiFailureSource = (error: AppError): ApiFailureSource => failureSources.get(error) ?? 'client';
 
+export const REDACTED_OPERATOR_SECRET = '[redacted operator secret]';
+
+const withoutSecret = (value: unknown, secret: string): unknown => {
+  if (typeof value === 'string') return value.replaceAll(secret, REDACTED_OPERATOR_SECRET);
+  if (Array.isArray(value)) return value.map((item) => withoutSecret(item, secret));
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [withoutSecret(key, secret), withoutSecret(item, secret)]));
+};
+
+const serverErrorWithout = (error: AppError, secret: string | undefined): AppError =>
+  secret === undefined || secret === ''
+    ? error
+    : appError(error.code, error.message.replaceAll(secret, REDACTED_OPERATOR_SECRET), withoutSecret(error.details, secret));
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -505,7 +520,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   if (!envelope.success) {
     return err(internal(`Response from ${path} does not match the contract envelope`));
   }
-  if (!envelope.data.ok) return err(failedAt('server', envelope.data.error));
+  if (!envelope.data.ok) {
+    const sentSecret = raw?.redactErrors === true ? raw.headers[SCHEDULER_OPERATOR_SECRET_HEADER] : undefined;
+    return err(failedAt('server', serverErrorWithout(envelope.data.error, sentSecret)));
+  }
 
   const data = outputSchema.safeParse(envelope.data.data);
   if (!data.success) {

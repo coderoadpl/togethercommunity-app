@@ -262,12 +262,26 @@ describe('shop management client order calls', () => {
     expect(seen[1]?.url.search).toBe('?format=csv&fulfilmentStatus=to_pack');
     expect(seen[5]?.body).toEqual({ orderId: 'order-1', carrier: 'other', trackingNumber: 'MANUAL0001' });
     expect(seen[6]?.body).toEqual({ orderId: 'order-1', productId: 'product-1', count: 2 });
+    expect(seen[8]?.body).toEqual({});
     expect(results[11]).toMatchObject({ ok: true, value: { filename: 'inpost-1.pdf', contentType: 'application/pdf' } });
     for (const call of seen) {
       expect(call.headers.get('x-api-key')).toBe('shop-secret');
       expect(call.headers.has('authorization')).toBe(false);
       expect(call.headers.has('cookie')).toBe(false);
     }
+  });
+
+  it('sends the chosen parcel template in the keyed ShipX create body', async () => {
+    const bodies: unknown[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      bodies.push(typeof init?.body === 'string' ? JSON.parse(init.body) : null);
+      const shipment = { shipxShipmentId: '1', status: 'confirmed', environment: 'production', trackingNumber: 'T1', createAttemptedAt: null, boughtAt: null, labelFetchedAt: null, createdAt: order.createdAt, updatedAt: order.createdAt };
+      return new Response(JSON.stringify({ ok: true, data: { order, shipment } }), { headers: { 'content-type': 'application/json' } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+
+    expect(await client.shipxCreate({ orderId: 'order-1', parcelTemplate: 'large' })).toMatchObject({ ok: true });
+    expect(bodies).toEqual([{ parcelTemplate: 'large' }]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
@@ -445,6 +445,42 @@ describe('shop order routes with a shop management key', () => {
     expect(await shipments.findByOrder('akademia', leased)).toBeNull();
     const leasedOrder = await keyed(secret, 'GET', at(SHOP_ORDER_ROUTES.getOrder.path, leased), undefined, akademiaHost);
     expect(envelope(shopOrderContracts.getOrder.output).parse(await leasedOrder.json()).data.order).toMatchObject({ fulfilmentStatus: 'to_pack' });
+  });
+
+  it('passes the parcel template from the keyed create body to ShipX, keeps the product template without one and refuses an unknown template', async () => {
+    const configured = await ownerRequest(API_ROUTES.shipxConfigure.method, API_ROUTES.shipxConfigure.path, {
+      environment: 'production',
+      organizationId: '1234',
+      token: 'shipx-token-5678',
+      sender: { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' },
+    }, akademiaHost);
+    expect(configured.status).toBe(200);
+    const orders = createOrderRepository(database.db);
+    for (const id of ['akademia-template-large', 'akademia-template-default', 'akademia-template-invalid']) {
+      await orders.create('akademia', order('akademia', id));
+    }
+    const shipx = deps.shipxIntegration?.shipx;
+    if (shipx === undefined) throw new Error('Expected the ShipX integration');
+    const createShipment = vi.spyOn(shipx.fake, 'createShipment');
+    const secret = await createShopKey([READ, FULFIL], akademiaHost);
+    const createWith = async (orderId: string, body?: unknown) => {
+      createShipment.mockClear();
+      const response = await keyed(secret, 'POST', orderPath(SHOP_ORDER_ROUTES.shipxCreate.path, orderId), body, akademiaHost);
+      return { status: response.status, body: await response.json() as unknown, templates: createShipment.mock.calls.map((call) => call[1].parcelTemplate) };
+    };
+
+    try {
+      expect(await createWith('akademia-template-large', { parcelTemplate: 'large' })).toMatchObject({ status: 200, templates: ['large'] });
+      expect(await createWith('akademia-template-default')).toMatchObject({ status: 200, templates: ['medium'] });
+      expect(await createWith('akademia-template-invalid', { parcelTemplate: 'huge' }))
+        .toMatchObject({ status: 400, body: { ok: false, error: { code: 'validation' } }, templates: [] });
+      expect(await createWith('akademia-template-invalid', { parcelTemplate: 'large', carrier: 'inpost' }))
+        .toMatchObject({ status: 400, body: { ok: false, error: { code: 'validation' } }, templates: [] });
+    } finally {
+      createShipment.mockRestore();
+    }
+    const untouched = await keyed(secret, 'GET', orderPath(SHOP_ORDER_ROUTES.getOrder.path, 'akademia-template-invalid'), undefined, akademiaHost);
+    expect(envelope(shopOrderContracts.getOrder.output).parse(await untouched.json()).data.order).toMatchObject({ fulfilmentStatus: 'to_pack', shipment: null });
   });
 
   it('refuses a catalog-only key with forbidden and legacy keys as invalid', async () => {

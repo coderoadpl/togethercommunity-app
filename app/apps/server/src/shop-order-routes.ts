@@ -115,7 +115,11 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null || deps.orderFulfilment === undefined || deps.shipxIntegration === undefined) return unavailable('InPost ShipX is unavailable');
-      return respond(await createInpostShipment(ctx, { orderId: orderIdParam(c) }, {
+      const body = shipBodySchema.safeParse(c.req.raw.body === null ? {} : await readJson(c.req.raw));
+      if (!body.success) return respond(err(validation('Invalid InPost shipment request', body.error.flatten())));
+      const parsed = shopOrderContracts.shipxCreate.input.safeParse({ ...body.data, orderId: orderIdParam(c) });
+      if (!parsed.success) return respond(err(validation('Invalid InPost shipment request', parsed.error.flatten())));
+      return respond(await createInpostShipment(ctx, parsed.data, {
         ...shipxDeps,
         ids: deps.ids,
         wait: deps.shipxIntegration.wait,

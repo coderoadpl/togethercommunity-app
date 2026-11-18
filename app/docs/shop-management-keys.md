@@ -490,8 +490,11 @@ are left to issue answers `409 conflict`. A manual shipment (`carrier` `other` o
 `inpost` with a tracking number) needs no ShipX configuration and e-mails the
 buyer the tracking number for a live order. `POST .../shipx` creates and pays
 a real InPost shipment when the workspace's ShipX integration is configured for
-production, so automate it only with explicit operational approval; a request
-that finds another request working on the same shipment answers
+production, so automate it only with explicit operational approval. Its body
+may carry the optional `parcelTemplate` (`small`, `medium` or `large`) for this
+shipment; without it the parcel takes the largest product size, and any other
+value or an unknown field answers `400 validation` before anything is sent to
+ShipX. A request that finds another request working on the same shipment answers
 `409 fulfilment_conflict` and should be retried later. Every such call that
 reaches its handler has its key history `request` row, written before the
 handler runs, including a call the handler refuses: a validation error, a
@@ -542,6 +545,7 @@ curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/lines/<product-id>/issue"
 curl -s -H "$KEY" -H "$JSON" -d '{"count":2}' "$SHOP/orders/<order-id>/lines/<product-id>/issue"
 curl -s -H "$KEY" "$SHOP/orders/<order-id>/shipx"
 curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx"
+curl -s -H "$KEY" -H "$JSON" -d '{"parcelTemplate":"large"}' "$SHOP/orders/<order-id>/shipx"
 curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx/refresh"
 curl -s -H "$KEY" -X POST -o label.pdf "$SHOP/orders/<order-id>/shipx/label"
 curl -s -H "$KEY" -X POST "$SHOP/orders/<order-id>/shipx/discard"

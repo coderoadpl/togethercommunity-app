@@ -573,6 +573,65 @@ describe('restoring a content version', () => {
     expect(harness.products[0]).toMatchObject({ title: 'Older title', description: 'Older copy' });
   });
 
+  const productSnapshotPayload = {
+    id: 'p1',
+    tenantId: 't-acme',
+    type: 'course',
+    slug: 'product-one',
+    title: 'Older title',
+    description: 'Older copy',
+    coverUrl: null,
+    priceCents: 9_900,
+    currency: 'PLN',
+    visibility: 'listed',
+    deliveryMethod: 'pickup',
+    published: false,
+    accessItems: [],
+    checkoutConsentDefinitionIds: [],
+    legacyId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  const restoreProductVersion = async (
+    currentSalesChannel: Product['salesChannel'],
+    snapshot: { schemaVersion: number; payload: Record<string, unknown> },
+  ): Promise<Product | undefined> => {
+    const harness = restoreHarness([
+      record({ tenantId: 't-acme', id: 'v9', entityKind: 'product', entityId: 'p1', ...snapshot }),
+    ]);
+    harness.products[0] = { ...productRow, salesChannel: currentSalesChannel };
+
+    const result = await restoreContentVersion(
+      { identity: identity('t-acme', 'owner') },
+      { versionId: 'v9' },
+      harness.deps,
+    );
+
+    expect(result.ok).toBe(true);
+    return harness.products[0];
+  };
+
+  it.each(['sales_links_only', 'any'] as const)(
+    'keeps the current %s sales channel when the restored snapshot predates the field',
+    async (current) => {
+      const restored = await restoreProductVersion(current, { schemaVersion: 9, payload: productSnapshotPayload });
+
+      expect(restored).toMatchObject({ title: 'Older title', salesChannel: current });
+    },
+  );
+
+  it.each([
+    ['sales_links_only', 'any'],
+    ['any', 'sales_links_only'],
+  ] as const)('restores a %s product to the %s sales channel its snapshot carries', async (current, stored) => {
+    const restored = await restoreProductVersion(current, {
+      schemaVersion: 10,
+      payload: { ...productSnapshotPayload, salesChannel: stored },
+    });
+
+    expect(restored).toMatchObject({ title: 'Older title', salesChannel: stored });
+  });
+
   it('refuses a restore without the write capability', async () => {
     const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9' })]);
 

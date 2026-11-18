@@ -5,6 +5,7 @@ import {
   err,
   notFound,
   ok,
+  PRODUCT_SALES_CHANNEL_SNAPSHOT_VERSION,
   readSnapshot,
   restoreContentVersionInputSchema,
   validation,
@@ -272,6 +273,7 @@ const restoreLesson = (
 const restoreProduct = (
   ctx: Ctx,
   payload: unknown,
+  storedSchemaVersion: number,
   entityId: string,
   deps: ContentRestoreDeps,
 ): Promise<Result<unknown, AppError>> => {
@@ -284,7 +286,9 @@ const restoreProduct = (
       description: snapshot.description,
       coverUrl: snapshot.coverUrl,
       visibility: snapshot.visibility,
-      salesChannel: snapshot.salesChannel,
+      // An older snapshot only carries the upcast default, which must never reopen a sales-links-only product.
+      salesChannel:
+        storedSchemaVersion >= PRODUCT_SALES_CHANNEL_SNAPSHOT_VERSION ? snapshot.salesChannel : undefined,
     },
     deps,
   );
@@ -321,7 +325,7 @@ export const restoreContentVersion = async (
         ? await restoreModule(ctx, read.value.payload, record.entityId, deps)
         : record.entityKind === 'course_lesson'
           ? await restoreLesson(ctx, read.value.payload, record.entityId, deps)
-          : await restoreProduct(ctx, read.value.payload, record.entityId, deps);
+          : await restoreProduct(ctx, read.value.payload, record.schemaVersion, record.entityId, deps);
   if (!applied.ok) return err(applied.error);
 
   await deps.auditEvents.record(tenant.value, {

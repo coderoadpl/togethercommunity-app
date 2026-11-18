@@ -9,6 +9,7 @@ import {
   validation,
   type AppError,
   type Result,
+  type ShopManagementKeySettingsGrant,
   type TenantSettings,
   type UpdateTenantSettingsInput,
 } from '#core/domain/index.js';
@@ -64,12 +65,24 @@ export const getMemberSettings = async (
   });
 };
 
+interface UpdateTenantSettingsOptions {
+  shopManagementKeyGrant?: ShopManagementKeySettingsGrant;
+}
+
+const keyGrantCoversPatch = (
+  grant: ShopManagementKeySettingsGrant | undefined,
+  patch: Readonly<Record<string, unknown>>,
+): boolean =>
+  grant?.operation === 'shop-settings:update'
+  && Object.entries(patch).every(([field, value]) => value === undefined || grant.fields.includes(field));
+
 export const updateTenantSettings = async (
   ctx: Ctx,
   input: UpdateTenantSettingsInput,
   deps: TenantSettingsDeps,
+  options: UpdateTenantSettingsOptions = {},
 ): Promise<Result<TenantSettings, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = authorizeTenant(ctx, 'tenant:settings:write', options);
   if (!tenant.ok) return tenant;
   const parsed = updateTenantSettingsInputSchema.safeParse(input);
   if (!parsed.success) {
@@ -78,6 +91,9 @@ export const updateTenantSettings = async (
     return err(exemptionError
       ? appError('invoice_exemption_basis_missing', 'VAT exemption is selected but the legal basis is missing.')
       : validation('Invalid tenant settings', parsed.error.flatten()));
+  }
+  if (ctx.machineActor !== undefined && !keyGrantCoversPatch(options.shopManagementKeyGrant, parsed.data)) {
+    return err(forbidden('tenant:settings:write is not permitted for a shop management key on a field its operation does not name'));
   }
   const current = await deps.tenants.findSettings(tenant.value);
   if (!current) return err(tenantNotFound());

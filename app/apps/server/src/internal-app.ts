@@ -39,6 +39,9 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
+  apiKeysShopManagementCreateInputSchema,
+  apiKeysShopManagementEventsQuerySchema,
+  apiKeysShopManagementRevokeInputSchema,
   authSendLogLatestOutputSchema,
   authSendLogLatestQuerySchema,
   bunnyVideosInputSchema,
@@ -368,6 +371,11 @@ import {
   listSpacesForStaff,
   listTenantApiKeys,
   listImportAuditForApiKey,
+  createShopManagementKey,
+  listShopManagementKeys,
+  revokeShopManagementKey,
+  purgeShopManagementKeys,
+  listShopManagementKeyEvents,
   listTenantDocuments,
   m2mEnroll,
   createEvent,
@@ -479,6 +487,8 @@ import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
+import { shopCatalogRoutes } from './shop-catalog-routes.js';
+import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
   parseLastEventId,
@@ -1304,6 +1314,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
+  registerShopMachineRoutes(app, deps, shopCatalogRoutes(deps));
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -2342,6 +2353,46 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid API key id', parsed.error.flatten())));
     const result = await revokeTenantApiKey(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.get(API_PATHS.apiKeysShopManagement, async (c) => {
+    const result = await listShopManagementKeys(ctxOf(c), deps);
+    return respond(result.ok ? ok({ apiKeys: result.value }) : result);
+  });
+
+  app.post(API_PATHS.apiKeysShopManagement, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = apiKeysShopManagementCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid shop management key payload', parsed.error.flatten())));
+    return respond(await createShopManagementKey(ctxOf(c), parsed.data, deps));
+  });
+
+  app.delete(API_PATHS.apiKeysShopManagementRevoke, async (c) => {
+    const parsed = apiKeysShopManagementRevokeInputSchema.safeParse({ id: c.req.param('id') });
+    if (!parsed.success) return respond(err(validation('Invalid shop management key id', parsed.error.flatten())));
+    const result = await revokeShopManagementKey(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.post(API_PATHS.apiKeysShopManagementPurge, async (c) =>
+    respond(await purgeShopManagementKeys(ctxOf(c), deps)));
+
+  app.get(API_PATHS.apiKeysShopManagementEvents, async (c) => {
+    const parsed = apiKeysShopManagementEventsQuerySchema.safeParse({
+      keyId: c.req.query('keyId'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid shop management key event query', parsed.error.flatten())));
+    return respond(await listShopManagementKeyEvents(
+      ctxOf(c),
+      {
+        limit: parsed.data.limit,
+        ...(parsed.data.keyId === undefined ? {} : { apiKeyId: parsed.data.keyId }),
+        ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
+      },
+      deps,
+    ));
   });
 
   app.get(API_PATHS.apiKeyImportAudit, async (c) => {

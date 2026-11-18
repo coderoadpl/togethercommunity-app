@@ -1114,6 +1114,13 @@
       "when": 1790964000101,
       "tag": "0158_product_sales_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1790964000102,
+      "tag": "0159_shop_management_keys",
+      "breakpoints": true
     }
   ]
 }

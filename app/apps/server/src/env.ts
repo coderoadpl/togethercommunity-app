@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isProductionEnvironment } from '#core/domain/index.js';
+import { isProductionEnvironment, shopManagementKeysSwitchSchema } from '#core/domain/index.js';
 import { MARKETING_RETENTION_DAYS } from '#core/server/index.js';
 
 const optionalNonEmptyString = z.preprocess(
@@ -91,6 +91,7 @@ export const envSchema = z
     VERCEL_BRANCH_URL: optionalNonEmptyString,
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
+    SHOP_MANAGEMENT_KEYS: shopManagementKeysSwitchSchema.default('enabled'),
     /** Comma-separated e-mail allowlist for the platform-owner surface. */
     PLATFORM_OWNER_EMAILS: optionalNonEmptyString,
     /** Fingerprint of the production database; a match refuses every destructive platform action. */

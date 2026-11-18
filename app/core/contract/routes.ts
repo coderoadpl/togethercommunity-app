@@ -1,4 +1,5 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
+import { createShopManagementKeyInputSchema, shopManagementKeyEventSchema, shopManagementKeyPublicSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
@@ -1484,6 +1485,44 @@ export const apiKeyRevokeOutputSchema = z.object({
   apiKey: tenantApiKeyPublicSchema,
 });
 
+export const apiKeysShopManagementListOutputSchema = z.object({
+  apiKeys: z.array(shopManagementKeyPublicSchema),
+});
+
+export const apiKeysShopManagementCreateInputSchema = createShopManagementKeyInputSchema;
+
+export type ApiKeysShopManagementCreateInput = z.input<typeof apiKeysShopManagementCreateInputSchema>;
+
+export const apiKeysShopManagementCreateOutputSchema = z.object({
+  apiKey: shopManagementKeyPublicSchema,
+  secret: z.string(),
+});
+
+export const apiKeysShopManagementRevokeInputSchema = z.object({
+  id: z.string().min(1),
+});
+
+export const apiKeysShopManagementRevokeOutputSchema = z.object({
+  apiKey: shopManagementKeyPublicSchema,
+});
+
+export const apiKeysShopManagementPurgeOutputSchema = z.object({
+  purged: z.number().int().min(0),
+});
+
+export const apiKeysShopManagementEventsQuerySchema = z.object({
+  keyId: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export type ApiKeysShopManagementEventsQuery = z.input<typeof apiKeysShopManagementEventsQuerySchema>;
+
+export const apiKeysShopManagementEventsOutputSchema = z.object({
+  events: z.array(shopManagementKeyEventSchema),
+  nextCursor: z.string().nullable(),
+});
+
 export const apiKeyImportAuditQuerySchema = z.object({
   id: z.string().min(1),
   cursor: z.string().min(1).optional(),
@@ -2174,6 +2213,11 @@ export const API_ROUTES = {
   apiKeys: { method: 'GET', path: '/api/api-keys' },
   apiKeysCreate: { method: 'POST', path: '/api/api-keys' },
   apiKeyRevoke: { method: 'DELETE', path: '/api/api-keys/:id' },
+  apiKeysShopManagement: { method: 'GET', path: '/api/api-keys/shop-management' },
+  apiKeysShopManagementCreate: { method: 'POST', path: '/api/api-keys/shop-management' },
+  apiKeysShopManagementRevoke: { method: 'DELETE', path: '/api/api-keys/shop-management/:id' },
+  apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
+  apiKeysShopManagementEvents: { method: 'GET', path: '/api/api-keys/shop-management/events' },
   apiKeyImportAudit: { method: 'GET', path: '/api/api-keys/:id/import-audit' },
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
@@ -2577,6 +2621,10 @@ export const API_PATHS = {
   devEmail: API_ROUTES.devEmail.path,
   apiKeys: API_ROUTES.apiKeys.path,
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
+  apiKeysShopManagement: API_ROUTES.apiKeysShopManagement.path,
+  apiKeysShopManagementRevoke: API_ROUTES.apiKeysShopManagementRevoke.path,
+  apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
+  apiKeysShopManagementEvents: API_ROUTES.apiKeysShopManagementEvents.path,
   apiKeyImportAudit: API_ROUTES.apiKeyImportAudit.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,

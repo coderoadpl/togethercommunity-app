@@ -9,6 +9,7 @@ import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
+import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, shopCatalogContracts, TENANT_HEADER } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
@@ -31,6 +32,13 @@ import {
   apiKeyImportAuditOutputSchema,
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
+  apiKeysShopManagementEventsOutputSchema,
+  apiKeysShopManagementListOutputSchema,
+  apiKeysShopManagementPurgeOutputSchema,
+  apiKeysShopManagementRevokeOutputSchema,
+  type ApiKeysShopManagementCreateInput,
+  type ApiKeysShopManagementEventsQuery,
   authConfigOutputSchema,
   authResolveOutputSchema,
   avatarRemoveOutputSchema,
@@ -389,7 +397,8 @@ export interface ApiClientOptions {
   /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;
   fetchImpl?: typeof fetch;
-  refuseRedirects?: boolean;
+  /** Never follow a redirect: the extra headers carry a credential that must not reach another URL. */
+  refuseRedirects?: boolean | { label: string };
   /** Extra headers per request: Authorization bearer token, X-Tenant, ... */
   headers?: () => Record<string, string>;
   /**
@@ -450,7 +459,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
-  const refuseRedirects = options.refuseRedirects === true;
+  const refuseRedirects = options.refuseRedirects !== undefined && options.refuseRedirects !== false;
+  const redirectRefused = typeof options.refuseRedirects === 'object'
+    ? `${options.refuseRedirects.label} request to ${path} refused a redirect`
+    : REDIRECT_REFUSED;
   let response: Response;
   try {
     const headers: Record<string, string> = {
@@ -471,13 +483,13 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     });
   } catch (cause) {
     if (isRedirectFailure(cause) && (raw?.redactErrors === true || refuseRedirects)) {
-      return err(internal(raw?.redactErrors === true ? OPERATOR_REDIRECT_REFUSED : REDIRECT_REFUSED));
+      return err(internal(raw?.redactErrors === true ? OPERATOR_REDIRECT_REFUSED : redirectRefused));
     }
     return err(failedAt('network', internal(raw?.redactErrors === true ? 'Operator request failed' : `Network error calling ${path}: ${String(cause)}`)));
   }
 
   if (refuseRedirects && (response.redirected || (response.status >= 300 && response.status < 400))) {
-    return err(internal(REDIRECT_REFUSED));
+    return err(internal(redirectRefused));
   }
 
   if (response.ok && raw?.responseFilename !== undefined) {
@@ -2488,6 +2500,58 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listShopManagementKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagement.method,
+      API_ROUTES.apiKeysShopManagement.path,
+      apiKeysShopManagementListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createShopManagementKey: (input: ApiKeysShopManagementCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementCreate.method,
+      API_ROUTES.apiKeysShopManagementCreate.path,
+      apiKeysShopManagementCreateOutputSchema,
+      input,
+      signal,
+    ),
+  revokeShopManagementKey: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementRevoke.method,
+      API_ROUTES.apiKeysShopManagementRevoke.path.replace(':id', encodeURIComponent(input.id)),
+      apiKeysShopManagementRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
+  listShopManagementKeyEvents: (input: ApiKeysShopManagementEventsQuery = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.keyId !== undefined) params.set('keyId', input.keyId);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    const path = API_ROUTES.apiKeysShopManagementEvents.path;
+    return request(
+      options,
+      API_ROUTES.apiKeysShopManagementEvents.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      apiKeysShopManagementEventsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  purgeShopManagementKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementPurge.method,
+      API_ROUTES.apiKeysShopManagementPurge.path,
+      apiKeysShopManagementPurgeOutputSchema,
+      undefined,
+      signal,
+    ),
   listTenantSecrets: (signal?: AbortSignal) =>
     request(
       options,
@@ -2876,6 +2940,63 @@ export const createApiClient = (options: ApiClientOptions) => ({
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+export interface ShopManagementClientOptions {
+  baseUrl: string;
+  apiKey: string;
+  tenant?: string;
+  fetchImpl?: typeof fetch;
+  traceparent?: () => string | undefined;
+}
+
+type ShopCatalogInput<K extends keyof typeof shopCatalogContracts> =
+  (typeof shopCatalogContracts)[K] extends { input: infer S extends z.ZodTypeAny } ? z.input<S> : never;
+
+export const createShopManagementClient = (shopOptions: ShopManagementClientOptions) => {
+  const options: ApiClientOptions = {
+    baseUrl: shopOptions.baseUrl,
+    ...(shopOptions.fetchImpl === undefined ? {} : { fetchImpl: shopOptions.fetchImpl }),
+    ...(shopOptions.traceparent === undefined ? {} : { traceparent: shopOptions.traceparent }),
+    refuseRedirects: { label: 'Shop management' },
+    headers: () => ({
+      [API_KEY_HEADER]: shopOptions.apiKey,
+      ...(shopOptions.tenant === undefined ? {} : { [TENANT_HEADER]: shopOptions.tenant }),
+    }),
+  };
+  const routes = SHOP_CATALOG_ROUTES;
+  const contracts = shopCatalogContracts;
+  const productPath = (path: string, productId: string): string => path.replace(':productId', encodeURIComponent(productId));
+  return {
+    listProducts: (signal?: AbortSignal) =>
+      request(options, routes.listProducts.method, routes.listProducts.path, contracts.listProducts.output, undefined, signal),
+    createProduct: (input: ShopCatalogInput<'createProduct'>, signal?: AbortSignal) =>
+      request(options, routes.createProduct.method, routes.createProduct.path, contracts.createProduct.output, input, signal),
+    updateProduct: (input: ShopCatalogInput<'updateProduct'>, signal?: AbortSignal) =>
+      request(options, routes.updateProduct.method, routes.updateProduct.path, contracts.updateProduct.output, input, signal),
+    publishProduct: (input: ShopCatalogInput<'publishProduct'>, signal?: AbortSignal) =>
+      request(options, routes.publishProduct.method, routes.publishProduct.path, contracts.publishProduct.output, input, signal),
+    unpublishProduct: (input: ShopCatalogInput<'unpublishProduct'>, signal?: AbortSignal) =>
+      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, contracts.unpublishProduct.output, input, signal),
+    deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal) =>
+      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, contracts.deleteProductDraft.output, input, signal),
+    listProductPrices: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
+    createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal) =>
+      request(options, routes.createProductPrice.method, routes.createProductPrice.path, contracts.createProductPrice.output, input, signal),
+    deactivateProductPrice: (input: ShopCatalogInput<'deactivateProductPrice'>, signal?: AbortSignal) =>
+      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, contracts.deactivateProductPrice.output, input, signal),
+    getProductStock: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.getProductStock.method, productPath(routes.getProductStock.path, productId), contracts.getProductStock.output, undefined, signal),
+    enableProductStock: (input: ShopCatalogInput<'enableProductStock'>, signal?: AbortSignal) =>
+      request(options, routes.enableProductStock.method, routes.enableProductStock.path, contracts.enableProductStock.output, input, signal),
+    adjustProductStock: (input: ShopCatalogInput<'adjustProductStock'>, signal?: AbortSignal) =>
+      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, contracts.adjustProductStock.output, input, signal),
+    setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
+      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
+  };
+};
+
+export type ShopManagementClient = ReturnType<typeof createShopManagementClient>;
 
 /** For TanStack Query: converts a Result into value-or-throw at the query boundary. */
 export const unwrap = <T>(result: Result<T, AppError>): T => {

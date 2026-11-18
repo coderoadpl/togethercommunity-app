@@ -6,6 +6,7 @@ import {
   collectPermissionInventory,
   collectUseCasesInSource,
   renderPermissionTable,
+  SHOP_MANAGEMENT_KEY_PRINCIPAL,
 } from './permission-inventory.js';
 
 const root = join(import.meta.dirname, '..');
@@ -13,8 +14,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(454);
-    expect(inventory.useCases).toHaveLength(356);
+    expect(inventory.routes).toHaveLength(472);
+    expect(inventory.useCases).toHaveLength(361);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -22,6 +23,15 @@ describe('permission inventory', () => {
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(13);
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
+      .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+    const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
+    expect(shopRoutes).toHaveLength(13);
+    for (const row of shopRoutes) {
+      expect(row, row.subject).toMatchObject({ before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+      expect([...row.before, ...row.after], row.subject).not.toContain('owner');
     }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),

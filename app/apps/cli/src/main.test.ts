@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok, PASSWORD_MIN_LENGTH, type AppError, type Result } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -22,6 +22,7 @@ interface Hoisted {
   createCheckoutSession: ReturnType<typeof vi.fn>;
   createCartCheckoutSession: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
+  getSalesLink: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
   consumerSalesSummary: ReturnType<typeof vi.fn>;
@@ -101,6 +102,7 @@ const h = vi.hoisted(
     createCheckoutSession: vi.fn(),
     createCartCheckoutSession: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
+    getSalesLink: vi.fn(),
     updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
     consumerSalesSummary: vi.fn(),
@@ -228,6 +230,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     createCheckoutSession: h.createCheckoutSession,
     createCartCheckoutSession: h.createCartCheckoutSession,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
+    getSalesLink: h.getSalesLink,
     updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
     consumerSalesSummary: h.consumerSalesSummary,
@@ -337,6 +340,7 @@ beforeEach(() => {
   h.createCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.createCartCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/cart' }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
+  h.getSalesLink.mockReset();
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
   h.updateTenantSettings.mockReset();
@@ -528,6 +532,21 @@ it('updates a sales link with a cancel return address from JSON', async () => {
   expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(input);
   expect(soleJson()).toEqual({ ok: true, data: { salesLink: { id: 'link-1' } } });
   expect(process.exitCode).toBe(0);
+});
+
+it.each([['activate', true], ['deactivate', false]] as const)('%s resends every editable field of the stored sales link', async (command, active) => {
+  const editable = {
+    id: 'link-1', slug: 'offer-one', title: 'Offer', heading: 'One offer', description: '<p>Two products</p>',
+    productIds: ['product-1', 'product-2'], listed: true, validFrom: '2026-11-01T10:00:00.000Z', validTo: '2026-12-01T10:00:00.000Z',
+    cancelReturnUrl: 'https://togethercommunity.app/offer',
+  };
+  h.getSalesLink.mockResolvedValue(ok({ salesLink: {
+    ...editable, active: !active, tenantId: 't1', revision: 4, createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-10-02T10:00:00.000Z',
+  } }));
+  await run('--json', 'sales-link', command, 'link-1');
+  const expected = { ...editable, expectedRevision: 4, active };
+  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(expected);
+  expect(Object.keys(salesLinkUpdateSchema.innerType().shape).sort()).toEqual(Object.keys(expected).sort());
 });
 
 describe('one-envelope discipline', () => {
@@ -1275,6 +1294,23 @@ it('passes visibility through product create and update', async () => {
   expect(h.createProduct).toHaveBeenCalledWith(expect.objectContaining({ priceCents: 0, visibility: 'unlisted' }));
   await run('--json', 'product', 'update', 'product-1', '--visibility', 'listed');
   expect(h.updateProduct).toHaveBeenCalledWith({ id: 'product-1', visibility: 'listed' });
+});
+
+it('passes the sales channel through product create and update and names a limited product in text output', async () => {
+  const limited = { id: 'product-1', title: 'Course', salesChannel: 'sales_links_only' };
+  h.createProduct.mockResolvedValue(ok({ product: limited }));
+  h.updateProduct.mockResolvedValue(ok({ product: { ...limited, salesChannel: 'any' } }));
+  await run('product', 'create', '--title', 'Course', '--price-cents', '0', '--sales-channel', 'sales_links_only');
+  expect(h.createProduct).toHaveBeenCalledWith(expect.objectContaining({ salesChannel: 'sales_links_only' }));
+  expect(logSpy).toHaveBeenCalledWith('created: Course  [sales links only] (product-)');
+  await run('product', 'update', 'product-1', '--sales-channel', 'any');
+  expect(h.updateProduct).toHaveBeenCalledWith({ id: 'product-1', salesChannel: 'any' });
+  expect(logSpy).toHaveBeenCalledWith('updated: Course (product-)');
+});
+
+it('rejects an unknown sales channel before invoking the product client', async () => {
+  await run('--json', 'product', 'update', 'product-1', '--sales-channel', 'links');
+  expect(h.updateProduct).not.toHaveBeenCalled();
 });
 
 it('rejects invalid visibility before invoking the product client', async () => {

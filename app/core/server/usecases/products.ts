@@ -27,6 +27,7 @@ import type {
   IdGenerator,
   ProductDownloadAssetRepository,
   ProductMetadataRepository,
+  ProductMetadataUpdate,
   ProductPriceRepository,
   ProductRepository,
   SpaceRepository,
@@ -160,8 +161,8 @@ export const updateProduct = async (
   if (!deliveryMethodAllowed(existing.type, deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
-  const salesChannel = parsed.data.salesChannel ?? existing.salesChannel;
-  if (!salesChannelAllowed(existing.type, salesChannel)) {
+  const { salesChannel: existingSalesChannel, ...unchanged } = existing;
+  if (!salesChannelAllowed(existing.type, parsed.data.salesChannel ?? existingSalesChannel)) {
     return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
   }
 
@@ -176,12 +177,12 @@ export const updateProduct = async (
   const vat = resolveProductVat(vatInput, settings);
   const snapshot = snapshotOf(ctx, existing, deps);
   if (!snapshot.ok) return snapshot;
-  const updated: Product = {
-    ...existing,
+  const updated: ProductMetadataUpdate = {
+    ...unchanged,
+    ...(parsed.data.salesChannel === undefined ? {} : { salesChannel: parsed.data.salesChannel }),
     vatRate: vatInput.vatRate ?? null,
     vatExemptionBasis: vatInput.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     visibility: parsed.data.visibility ?? existing.visibility,
-    salesChannel,
     deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate ?? existing.parcelTemplate,
     compliance: parsed.data.compliance === undefined ? existing.compliance ?? null : parsed.data.compliance,

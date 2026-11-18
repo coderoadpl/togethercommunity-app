@@ -456,7 +456,7 @@ export const createProductRepository = (
         description: product.description,
         coverUrl: product.coverUrl,
         visibility: product.visibility,
-        salesChannel: product.salesChannel,
+        ...(product.salesChannel === undefined ? {} : { salesChannel: product.salesChannel }),
         deliveryMethod: product.deliveryMethod,
         parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
         compliance: product.compliance ?? null,

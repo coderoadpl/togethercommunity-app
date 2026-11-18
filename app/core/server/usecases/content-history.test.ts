@@ -256,10 +256,12 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       bumpContentVersion: async () => undefined,
       update: async (tenantId, item, version) => {
         const index = products.findIndex((row) => row.tenantId === tenantId && row.id === item.id);
-        if (index < 0) return null;
+        const current = products[index];
+        if (current === undefined) return null;
         writtenVersions.push(version);
-        products[index] = item;
-        return item;
+        const saved = { ...current, ...item };
+        products[index] = saved;
+        return saved;
       },
     },
     userDisplays: { findDisplayNames: async () => new Map() },

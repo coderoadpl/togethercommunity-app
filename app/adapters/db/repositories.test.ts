@@ -367,9 +367,15 @@ describe('product repository', () => {
       id: 'version-sales-channel', entityKind: 'product' as const, entityId: linkOnly.id, schemaVersion: 10,
       payload: linkOnly, createdAt: NOW, createdBy: null,
     };
-    expect(await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'any' }, version)).toMatchObject({ salesChannel: 'any' });
+    const staleRead = await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'any' }, version);
+    expect(staleRead).toMatchObject({ salesChannel: 'any' });
     expect(await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'sales_links_only' }, { ...version, id: 'version-sales-channel-2' }))
       .toMatchObject({ salesChannel: 'sales_links_only' });
+    if (staleRead === null) throw new Error('Stale read missing');
+    const { salesChannel: staleChannel, ...staleWithoutChannel } = staleRead;
+    expect(staleChannel).toBe('any');
+    expect(await repo.update(GLOBEX, { ...staleWithoutChannel, title: 'Renamed link-only' }, { ...version, id: 'version-sales-channel-3' }))
+      .toMatchObject({ title: 'Renamed link-only', salesChannel: 'sales_links_only' });
 
     await createMemberRepository(db).create(GLOBEX, member({ id: 'mem-globex-link', tenantId: GLOBEX, userId: 'user-globex-link', email: 'link-buyer@together.dev' }));
     await createProductGrantRepository(db).createGrant(GLOBEX, grant({ id: 'grant-globex-link', tenantId: GLOBEX, memberId: 'mem-globex-link', productId: 'prod-globex-link-only' }));

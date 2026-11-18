@@ -53,10 +53,12 @@ const fakeRepo = (initial: Product[] = []) => {
     },
     update: async (tenantId, product, version) => {
       const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === product.id);
-      if (index === -1) return null;
-      store[index] = product;
+      const current = store[index];
+      if (current === undefined) return null;
+      const saved = { ...current, ...product };
+      store[index] = saved;
       entityVersions.push(version);
-      return product;
+      return saved;
     },
     updateAccessItems: async (tenantId, id, accessItems) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
@@ -200,6 +202,16 @@ describe('products use-cases', () => {
     expect(await updateProduct(ctx, { id: 'p1', salesChannel: 'any' }, deps(repo, ['version-3']))).toMatchObject({ ok: true, value: { salesChannel: 'any' } });
     expect(await updateProduct(ctx, { id: 'club', salesChannel: 'sales_links_only' }, deps(repo, ['version-4']))).toEqual(membershipRefusal);
     expect(updateProductInputSchema.safeParse({ id: 'p1', salesChannel: 'catalogue' }).success).toBe(false);
+  });
+
+  it('keeps a sales channel committed after its read when an update leaves the channel out', async () => {
+    const stale = draft('p1', 't-acme');
+    const { repo, store } = fakeRepo([{ ...stale, salesChannel: 'sales_links_only' }]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const staleRead = { ...repo, findById: async () => stale };
+
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed workshop' }, deps(staleRead, ['version-1']))).toMatchObject({ ok: true });
+    expect(store[0]).toMatchObject({ title: 'Renamed workshop', salesChannel: 'sales_links_only' });
   });
 
   it('switches a physical product to shipping and refuses shipping for other product types', async () => {

@@ -11,7 +11,9 @@ Deletion removes the product, prices, price history, access items, and download 
 Every product has a sales channel: `any` (the default) or `sales_links_only`. A
 `sales_links_only` product can be bought only inside an active sales link; every
 standalone purchase answers exactly as for an unknown product, and the product
-never appears in the listed catalogue whatever its visibility. Access of people
+never appears in the listed catalogue whatever its visibility. A variant group
+makes the product available in every link that contains one of its siblings, at
+its own price. Access of people
 who already own it does not change. A membership cannot be `sales_links_only`.
 Set it in the product editor next to **Visibility**, with `--sales-channel` in
 `product create|update`, or with `salesChannel` in the product API, the import API

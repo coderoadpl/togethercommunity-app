@@ -32,7 +32,9 @@ A product's sales channel is `any` (the default) or `sales_links_only`. Visibili
 `unlisted` only keeps a product out of the listed catalogue, and every sales-link
 read publishes its product IDs, so an unlisted product can still be bought on its
 own. A `sales_links_only` product can be bought only as a line, or a chosen
-variant, of an active sales link.
+variant, of an active sales link. A variant group makes the product available in
+every link that contains one of its siblings, at its own price; leave it out of
+the group to keep it out of those links.
 
 Set it in the Studio product editor (**Where it can be bought**, next to
 **Visibility**), with `product create|update --sales-channel any|sales_links_only`,
@@ -81,7 +83,9 @@ memberships, have exactly one active non-imported one-time price in the link
 currency, and have resolvable VAT. The total is the sum of the chosen prices;
 each product may occur only once in the final bundle. A chip already chosen on
 another line is disabled; a simultaneous exchange remains valid when the final
-product IDs are unique.
+product IDs are unique. The sales channel does not narrow the choices: a variant
+group makes the product available in every link that contains one of its
+siblings, including a `sales_links_only` product.
 
 The public GET ignores stale or invalid pairs and discards all pairs if they
 would duplicate a product. Checkout session, coupon validation and simulation

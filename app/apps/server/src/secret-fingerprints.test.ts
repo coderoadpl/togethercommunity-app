@@ -5,7 +5,10 @@ import { secretFingerprint } from '#adapters/crypto/secret-fingerprint.js';
 import {
   API_PATHS,
   envelopeSchema,
+  FINGERPRINTED_SECRET_NAMES,
+  OUT_OF_SCHEMA_SECRET_NAMES,
   SCHEDULER_OPERATOR_SECRET_HEADER,
+  SECRET_FINGERPRINT_NAMES,
   secretFingerprintsOutputSchema,
 } from '#core/contract/index.js';
 
@@ -13,8 +16,6 @@ import type { AppVars } from './app-vars.js';
 import { operatorSecretConfigured, selectOperatorSecret } from './composition.js';
 import { DEV_EMAIL_DISPATCH_SECRET, envSchema } from './env.js';
 import {
-  FINGERPRINTED_SECRET_NAMES,
-  OUT_OF_SCHEMA_SECRET_NAMES,
   registerSecretFingerprintsRoute,
   secretFingerprintsGuard,
   secretFingerprintsOf,
@@ -58,7 +59,7 @@ const values = {
   SMTP_PASSWORD: '',
 };
 const processEnv = { AWS_ACCESS_KEY_ID: '', AWS_SECRET_ACCESS_KEY: ' test-only-aws-secret-access-key\n' };
-const allNames = [...FINGERPRINTED_SECRET_NAMES, ...OUT_OF_SCHEMA_SECRET_NAMES];
+const allNames = SECRET_FINGERPRINT_NAMES;
 
 const harness = (env: Parameters<typeof secretFingerprintsOf>[0] = envSchema.parse(values)) => {
   const app = new Hono<AppVars>();

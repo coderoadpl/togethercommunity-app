@@ -3,43 +3,50 @@ import { parseArgs } from 'node:util';
 
 import { secretFingerprint } from '#adapters/crypto/secret-fingerprint.js';
 import { createApiClient } from '#core/client/index.js';
-import type { SecretFingerprint } from '#core/contract/index.js';
+import { SECRET_FINGERPRINT_NAMES, type SecretFingerprint } from '#core/contract/index.js';
 import { secureApiOrigin } from '#core/domain/network.js';
 
 type LocalEnv = Readonly<Record<string, string | undefined>>;
 
 export type SecretVerdict =
-  | { name: string; outcome: 'MATCH' | 'NOT SET ON SERVER' | 'NOT IN LOCAL ENV' }
+  | { name: string; outcome: 'MATCH' | 'NOT SET ON SERVER' | 'NOT IN LOCAL ENV' | 'NOT LISTED BY SERVER' }
   | { name: string; outcome: 'MISMATCH'; trimmedMatches: boolean; serverAddsLineBreak: boolean };
 
 const USAGE = 'usage: pnpm --silent run secrets:verify -- --base-url <https://host> [--auth-with <NAME>]';
 
 const present = (value: string | undefined): value is string => value !== undefined && value !== '';
 
+const compareListed = (entry: SecretFingerprint, local: LocalEnv): SecretVerdict => {
+  const value = local[entry.name];
+  if (!present(value)) return { name: entry.name, outcome: 'NOT IN LOCAL ENV' };
+  if (!entry.set) return { name: entry.name, outcome: 'NOT SET ON SERVER' };
+  const matches = (candidate: string): boolean => secretFingerprint(entry.name, candidate) === entry.fingerprint;
+  if (matches(value)) return { name: entry.name, outcome: 'MATCH' };
+  return {
+    name: entry.name,
+    outcome: 'MISMATCH',
+    trimmedMatches: matches(value.trim()),
+    serverAddsLineBreak: matches(`${value}\n`) || matches(`${value}\r\n`),
+  };
+};
+
 export const compareSecretFingerprints = (
   server: readonly SecretFingerprint[],
   local: LocalEnv,
-): SecretVerdict[] =>
-  server.map((entry): SecretVerdict => {
-    const value = local[entry.name];
-    if (!present(value)) return { name: entry.name, outcome: 'NOT IN LOCAL ENV' };
-    if (!entry.set) return { name: entry.name, outcome: 'NOT SET ON SERVER' };
-    const matches = (candidate: string): boolean => secretFingerprint(entry.name, candidate) === entry.fingerprint;
-    if (matches(value)) return { name: entry.name, outcome: 'MATCH' };
-    return {
-      name: entry.name,
-      outcome: 'MISMATCH',
-      trimmedMatches: matches(value.trim()),
-      serverAddsLineBreak: matches(`${value}\n`) || matches(`${value}\r\n`),
-    };
-  });
+): SecretVerdict[] => {
+  const listed = new Set(server.map((entry) => entry.name));
+  const unlisted = SECRET_FINGERPRINT_NAMES
+    .filter((name) => present(local[name]) && !listed.has(name))
+    .map((name): SecretVerdict => ({ name, outcome: 'NOT LISTED BY SERVER' }));
+  return [...server.map((entry) => compareListed(entry, local)), ...unlisted];
+};
 
 export const verificationPassed = (verdicts: readonly SecretVerdict[]): boolean =>
   verdicts.some((verdict) => verdict.outcome === 'MATCH')
   && verdicts.every((verdict) => verdict.outcome === 'MATCH' || verdict.outcome === 'NOT IN LOCAL ENV');
 
 export const formatVerdict = (verdict: SecretVerdict): string => {
-  const line = `${verdict.outcome.padEnd(17)} ${verdict.name}`;
+  const line = `${verdict.outcome.padEnd(20)} ${verdict.name}`;
   if (verdict.outcome !== 'MISMATCH') return line;
   const trimmed = verdict.trimmedMatches
     ? 'trimmed local value matches (whitespace difference)'

@@ -598,8 +598,12 @@ The tool accepts only an `https` base URL (or `http` on a local host) and
 prints one line per server variable: `MATCH`, `MISMATCH`, `NOT SET ON SERVER`
 or `NOT IN LOCAL ENV`. A `MISMATCH` also says whether the trimmed local value
 matches, which points at surrounding whitespace, and whether the server value is
-the local value followed by a line break. It exits 0 only when at least one
-variable matched and every variable present locally matched. A line for a
+the local value followed by a line break. A fingerprinted name that is set
+locally but missing from the server's list gets its own `NOT LISTED BY SERVER`
+line; the tool and the server read the fingerprinted names from one list in
+`core/contract/secret-fingerprints.ts`. It exits 0 only when at least one
+variable matched and every fingerprinted name present locally is listed by the
+server and matched; otherwise it exits 1. A line for a
 variable the deployment does not set reports `NOT SET ON SERVER` and fails the
 run; when that is intended, remove the line from the env file, but keep the line
 of the operator name the tool authenticates with. The items have no AWS fields,

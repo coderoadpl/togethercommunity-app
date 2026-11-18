@@ -47,8 +47,22 @@ describe('compareSecretFingerprints', () => {
   });
 
   it('treats an empty local value as absent', () => {
-    expect(compareSecretFingerprints([unset('SMTP_PASSWORD')], { SMTP_PASSWORD: '' }))
+    expect(compareSecretFingerprints([unset('SMTP_PASSWORD')], { SMTP_PASSWORD: '', CRON_SECRET: '' }))
       .toEqual([{ name: 'SMTP_PASSWORD', outcome: 'NOT IN LOCAL ENV' }]);
+  });
+
+  it('reports a supported name that is set locally but missing from the server list, and ignores unsupported names', () => {
+    const operator = set('OPERATOR_SECRET', 'test-only-operator');
+    expect(compareSecretFingerprints([operator], {
+      OPERATOR_SECRET: 'test-only-operator',
+      BETTER_AUTH_SECRET: 'test-only-better-auth-secret',
+      AWS_SECRET_ACCESS_KEY: 'test-only-aws-secret',
+      UNRELATED_SECRET: 'test-only-unrelated',
+    })).toEqual([
+      { name: 'OPERATOR_SECRET', outcome: 'MATCH' },
+      { name: 'BETTER_AUTH_SECRET', outcome: 'NOT LISTED BY SERVER' },
+      { name: 'AWS_SECRET_ACCESS_KEY', outcome: 'NOT LISTED BY SERVER' },
+    ]);
   });
 });
 
@@ -58,16 +72,17 @@ describe('verificationPassed', () => {
     expect(verificationPassed([{ name: 'A', outcome: 'MATCH' }, { name: 'B', outcome: 'NOT SET ON SERVER' }])).toBe(false);
     expect(verificationPassed([{ name: 'A', outcome: 'MISMATCH', trimmedMatches: true, serverAddsLineBreak: false }])).toBe(false);
     expect(verificationPassed([{ name: 'A', outcome: 'NOT IN LOCAL ENV' }])).toBe(false);
+    expect(verificationPassed([{ name: 'A', outcome: 'MATCH' }, { name: 'B', outcome: 'NOT LISTED BY SERVER' }])).toBe(false);
   });
 });
 
 describe('formatVerdict', () => {
   it('names the whitespace hint of a mismatch', () => {
-    expect(formatVerdict({ name: 'CRON_SECRET', outcome: 'MATCH' })).toBe('MATCH             CRON_SECRET');
+    expect(formatVerdict({ name: 'CRON_SECRET', outcome: 'MATCH' })).toBe('MATCH                CRON_SECRET');
     expect(formatVerdict({ name: 'CRON_SECRET', outcome: 'MISMATCH', trimmedMatches: true, serverAddsLineBreak: false }))
-      .toBe('MISMATCH          CRON_SECRET  trimmed local value matches (whitespace difference)');
+      .toBe('MISMATCH             CRON_SECRET  trimmed local value matches (whitespace difference)');
     expect(formatVerdict({ name: 'CRON_SECRET', outcome: 'MISMATCH', trimmedMatches: false, serverAddsLineBreak: false }))
-      .toBe('MISMATCH          CRON_SECRET  trimmed local value does not match either');
+      .toBe('MISMATCH             CRON_SECRET  trimmed local value does not match either');
     expect(formatVerdict({ name: 'CRON_SECRET', outcome: 'MISMATCH', trimmedMatches: false, serverAddsLineBreak: true }))
       .toContain('the server value is the local value followed by a line break');
   });
@@ -98,8 +113,8 @@ describe('runSecretsVerify', () => {
     expect(code).toBe(1);
     expect(calls).toEqual([expect.objectContaining({ url: `https://platform.example.test${API_PATHS.secretFingerprints}` })]);
     expect(output.split('\n')).toHaveLength(server.length + 1);
-    expect(output).toContain('NOT SET ON SERVER SECRETS_MASTER_KEY');
-    expect(output).toContain('NOT IN LOCAL ENV  SMTP_PASSWORD');
+    expect(output).toContain('NOT SET ON SERVER    SECRETS_MASTER_KEY');
+    expect(output).toContain('NOT IN LOCAL ENV     SMTP_PASSWORD');
     expect(output).toContain('secrets:verify: FAIL (2 of 7 matched)');
     for (const value of [...Object.values(local), 'test-only']) expect(output).not.toContain(value.trim());
   });
@@ -110,7 +125,13 @@ describe('runSecretsVerify', () => {
     STAGING_OPERATOR_SECRET: 'test-only-staging-operator',
     BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET,
   };
-  const passingSecrets = [set('BETTER_AUTH_SECRET', local.BETTER_AUTH_SECRET), unset('SMTP_PASSWORD')];
+  const passingSecrets = [
+    set('BETTER_AUTH_SECRET', allOperatorSecrets.BETTER_AUTH_SECRET),
+    set('OPERATOR_SECRET', allOperatorSecrets.OPERATOR_SECRET),
+    set('PROD_OPERATOR_SECRET', allOperatorSecrets.PROD_OPERATOR_SECRET),
+    set('STAGING_OPERATOR_SECRET', allOperatorSecrets.STAGING_OPERATOR_SECRET),
+    unset('SMTP_PASSWORD'),
+  ];
 
   it.each([
     { env: allOperatorSecrets, present: 'OPERATOR_SECRET, PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET' },
@@ -134,9 +155,28 @@ describe('runSecretsVerify', () => {
       const { code, output } = await verify(['--base-url', 'http://localhost:48730', '--auth-with', name], allOperatorSecrets, fetchImpl);
       expect(code).toBe(0);
       expect(calls.map((call) => call.headers.get(SCHEDULER_OPERATOR_SECRET_HEADER))).toEqual([allOperatorSecrets[name]]);
-      expect(output).toContain('secrets:verify: PASS (1 of 2 matched)');
+      expect(output).toBe([
+        'MATCH                BETTER_AUTH_SECRET',
+        'MATCH                OPERATOR_SECRET',
+        'MATCH                PROD_OPERATOR_SECRET',
+        'MATCH                STAGING_OPERATOR_SECRET',
+        'NOT IN LOCAL ENV     SMTP_PASSWORD',
+        'secrets:verify: PASS (4 of 5 matched)',
+      ].join('\n'));
     },
   );
+
+  it('fails with its own line when the server list omits a supported name set locally', async () => {
+    const env = { OPERATOR_SECRET: 'test-only-operator', BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET };
+    const { fetchImpl } = fakeServer([set('OPERATOR_SECRET', env.OPERATOR_SECRET)], env.OPERATOR_SECRET);
+    const { code, output } = await verify(['--base-url', 'https://platform.example.test'], env, fetchImpl);
+    expect(code).toBe(1);
+    expect(output).toBe([
+      'MATCH                OPERATOR_SECRET',
+      'NOT LISTED BY SERVER BETTER_AUTH_SECRET',
+      'secrets:verify: FAIL (1 of 2 matched)',
+    ].join('\n'));
+  });
 
   it.each([
     { authWith: 'STAGING_OPERATOR_SECRET', message: '--auth-with STAGING_OPERATOR_SECRET is not set in the local environment' },

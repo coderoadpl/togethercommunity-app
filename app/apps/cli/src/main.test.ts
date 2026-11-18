@@ -503,6 +503,24 @@ describe('terms acceptance flag', () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it('starts a cart checkout session with termsAccepted only when --accept-terms is given', async () => {
+    const paperback = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--email', 'buyer@example.test');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({ lines: [{ productId: paperback, quantity: 2 }], email: 'buyer@example.test' });
+
+    h.createCartCheckoutSession.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      lines: [{ productId: paperback, quantity: 2 }],
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/cart' } });
+    expect(process.exitCode).toBe(0);
+  });
+
   it('simulates a purchase with termsAccepted only when --accept-terms is given', async () => {
     await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test');
     expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });

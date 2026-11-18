@@ -5,7 +5,7 @@ import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, type SecretFingerprint } f
 import { err, ok, unauthorized } from '#core/domain/index.js';
 
 import type { AppVars } from './app-vars.js';
-import type { Env } from './env.js';
+import { envSchema, type Env } from './env.js';
 import { respond } from './respond.js';
 import { secretEquals } from './secret-equals.js';
 
@@ -30,15 +30,18 @@ export const FINGERPRINTED_SECRET_NAMES = [
 
 type FingerprintedSecretName = typeof FINGERPRINTED_SECRET_NAMES[number];
 
+const schemaDefaultOf = (name: FingerprintedSecretName): unknown =>
+  envSchema._def.schema.shape[name].safeParse(undefined).data;
+
+const fingerprintOf = (name: string, value: string | undefined, unsetValue: unknown): SecretFingerprint =>
+  value === undefined || value === '' || value === unsetValue
+    ? { name, set: false, fingerprint: null }
+    : { name, set: true, fingerprint: secretFingerprint(name, value) };
+
 export const secretFingerprintsOf = (
   env: Pick<Env, FingerprintedSecretName>,
 ): readonly SecretFingerprint[] =>
-  FINGERPRINTED_SECRET_NAMES.map((name): SecretFingerprint => {
-    const value = env[name];
-    return value === undefined || value === ''
-      ? { name, set: false, fingerprint: null }
-      : { name, set: true, fingerprint: secretFingerprint(name, value) };
-  });
+  FINGERPRINTED_SECRET_NAMES.map((name) => fingerprintOf(name, env[name], schemaDefaultOf(name)));
 
 export const registerSecretFingerprintsRoute = (
   app: Hono<AppVars>,

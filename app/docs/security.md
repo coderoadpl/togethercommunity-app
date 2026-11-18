@@ -476,9 +476,10 @@ fingerprint(name, value) = first 16 lowercase hex characters of
 The key is the value exactly as the process parsed it, without trimming or
 decoding, so a stray space or line break changes the fingerprint. The name in the
 message keeps one value stored under two names from producing equal
-fingerprints. A variable that is absent or empty reports `set: false` and a null
-fingerprint; a variable left at a built-in development default is fingerprinted
-as that default, which production boot validation refuses anyway.
+fingerprints. A variable that is absent, empty or equal to its schema default
+reports `set: false` and a null fingerprint, so a deployment that never set
+`DATABASE_URL` shows it as not set instead of fingerprinting the localhost
+default the schema falls back to.
 
 `GET /api/internal/secret-fingerprints` returns
 `{ secrets: [{ name, set, fingerprint }] }`. It authenticates exactly like the

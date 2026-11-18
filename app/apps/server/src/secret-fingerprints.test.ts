@@ -82,6 +82,20 @@ describe('secretFingerprintsOf', () => {
     expect(byName.get('GOOGLE_CLIENT_SECRET')).toEqual({ name: 'GOOGLE_CLIENT_SECRET', set: false, fingerprint: null });
     expect([...byName.keys()]).toEqual([...FINGERPRINTED_SECRET_NAMES]);
   });
+
+  it('reports a value left at its schema default as not set, so a missing DATABASE_URL never fingerprints the localhost default', () => {
+    const byName = new Map(secretFingerprintsOf(envSchema.parse({ CRON_SECRET: values.CRON_SECRET })).map((entry) => [entry.name, entry]));
+    expect(byName.get('DATABASE_URL')).toEqual({ name: 'DATABASE_URL', set: false, fingerprint: null });
+    expect(byName.get('EMAIL_DISPATCH_SECRET')).toEqual({ name: 'EMAIL_DISPATCH_SECRET', set: false, fingerprint: null });
+    expect(byName.get('CRON_SECRET')?.set).toBe(true);
+  });
+
+  it('reports an empty DATABASE_URL, the one fingerprinted name the schema keeps empty, as not set', () => {
+    const env = envSchema.parse({ ...values, DATABASE_URL: '' });
+    expect(env.DATABASE_URL).toBe('');
+    expect(secretFingerprintsOf(env).find((entry) => entry.name === 'DATABASE_URL'))
+      .toEqual({ name: 'DATABASE_URL', set: false, fingerprint: null });
+  });
 });
 
 describe('secret fingerprint route', () => {

@@ -448,6 +448,10 @@ The provisioning body rejects unknown fields, including storage and Stripe
 credentials. The owner configures those integrations in the panel or with the
 existing owner CLI commands after creation. Operator CLI commands read the secret
 only from `OPERATOR_SECRET`, never a flag, and redact transport exceptions.
+Before reading it they refuse, with exit 2, an API URL that is not `https`
+(plain `http` only on a local host), whether it comes from `--api-url`,
+`TOGETHER_CLI_API_URL` or the stored origin; `secrets:verify` applies the same
+rule to `--base-url`.
 Requests carrying the operator secret refuse redirects, preventing the header
 from being forwarded to another origin.
 See [operator tenant provisioning](tenant-provisioning.md) for the procedure,

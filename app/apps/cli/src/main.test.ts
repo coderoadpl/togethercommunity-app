@@ -1535,6 +1535,56 @@ describe('operator secret fingerprint command', () => {
 });
 
 
+describe('operator API URL check', () => {
+  const fetchSpy = vi.fn<typeof fetch>();
+  beforeEach(() => {
+    fetchSpy.mockReset();
+    vi.stubGlobal('fetch', fetchSpy);
+    h.getSecretFingerprints.mockReset().mockResolvedValue(ok({ secrets: [] }));
+    h.getOperatorTenantReadiness.mockReset().mockResolvedValue(ok(operatorReadiness));
+    h.provisionOperatorTenant.mockReset();
+    vi.stubEnv('OPERATOR_SECRET', 'hidden-operator-secret');
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  const refused = {
+    ok: false,
+    error: { code: 'validation', message: 'Operator commands need an https API URL, or http on a local host' },
+  };
+
+  it.each([
+    ['operator', 'secrets', 'fingerprints'],
+    ['operator', 'tenant', 'readiness', '--slug', 'acme'],
+    operatorProvisionArgs,
+  ])('refuses a plain http --api-url on a non-local host before sending the secret: %j', async (...args) => {
+    await run('--json', '--api-url', 'http://platform.example.test', ...args);
+    expect(soleJson()).toMatchObject(refused);
+    expect(process.exitCode).toBe(2);
+    expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+    expect(h.getOperatorTenantReadiness).not.toHaveBeenCalled();
+    expect(h.provisionOperatorTenant).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('applies the check to TOGETHER_CLI_API_URL and before reading OPERATOR_SECRET', async () => {
+    vi.stubEnv('TOGETHER_CLI_API_URL', 'http://10.0.0.5:48730');
+    vi.stubEnv('OPERATOR_SECRET', '');
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(soleJson()).toMatchObject(refused);
+    expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(['https://platform.example.test', 'http://localhost:48730', 'http://127.0.0.1:48730'])(
+    'accepts %s', async (apiUrl) => {
+      await run('--json', '--api-url', apiUrl, 'operator', 'secrets', 'fingerprints');
+      expect(soleJson()).toEqual({ ok: true, data: { secrets: [] } });
+      expect(h.getSecretFingerprints).toHaveBeenCalledExactlyOnceWith('hidden-operator-secret');
+    },
+  );
+});
+
+
 describe('survey commands', () => {
   it('lists surveys using one standard JSON envelope', async () => {
     await run('--json', 'survey', 'list');

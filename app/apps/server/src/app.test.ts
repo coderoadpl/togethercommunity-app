@@ -10352,13 +10352,20 @@ describe('operator provisioning public-surface regression', () => {
   });
 
   it('rejects the matching secret at the early guard when the operator secret was not explicitly configured', async () => {
-    const app = buildApp({ ...deps(), operatorSecretConfigured: false });
-    const headers = { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' };
+    const base = deps();
+    const getAuthenticatedUser = vi.fn(base.authPort.getAuthenticatedUser);
+    const app = buildApp({ ...base, operatorSecretConfigured: false, authPort: { ...base.authPort, getAuthenticatedUser } });
+    const headers = {
+      cookie: `${impersonationCookieName(base.secureCookies)}=untrusted-view-cookie`,
+      [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret',
+    };
     const fingerprints = await app.request(API_PATHS.secretFingerprints, { headers });
     const wrong = await app.request(API_PATHS.secretFingerprints, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' } });
     expect(fingerprints.status).toBe(401);
     expect(await fingerprints.text()).toBe(await wrong.text());
+    expect(getAuthenticatedUser).not.toHaveBeenCalled();
     expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).not.toBe(401);
+    expect(getAuthenticatedUser).toHaveBeenCalled();
   });
 
   it('serves the composed fingerprints to the operator without a session', async () => {

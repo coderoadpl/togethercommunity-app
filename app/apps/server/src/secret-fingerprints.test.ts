@@ -16,6 +16,7 @@ import {
   FINGERPRINTED_SECRET_NAMES,
   OUT_OF_SCHEMA_SECRET_NAMES,
   registerSecretFingerprintsRoute,
+  secretFingerprintsGuard,
   secretFingerprintsOf,
 } from './secret-fingerprints.js';
 
@@ -123,6 +124,39 @@ describe('secretFingerprintsOf', () => {
     expect(env.DATABASE_URL).toBe('');
     expect(secretFingerprintsOf(env, {}).find((entry) => entry.name === 'DATABASE_URL'))
       .toEqual({ name: 'DATABASE_URL', set: false, fingerprint: null });
+  });
+});
+
+describe('secret fingerprint guard', () => {
+  const guarded = (operatorSecretConfigured: boolean) => {
+    const downstream = vi.fn(() => new Response('downstream', { status: 200 }));
+    const app = new Hono<AppVars>();
+    app.use('*', secretFingerprintsGuard({ operatorSecret, operatorSecretConfigured }));
+    app.get('*', downstream);
+    return { app, downstream };
+  };
+
+  it('rejects the matching secret with the shared operator error when the operator secret was not explicitly configured', async () => {
+    const { app, downstream } = guarded(false);
+    const response = await app.request('/', { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
+    expect(downstream).not.toHaveBeenCalled();
+  });
+
+  it('passes the matching secret on when the operator secret was explicitly configured', async () => {
+    const { app, downstream } = guarded(true);
+    const response = await app.request('/', { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('downstream');
+    expect(downstream).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a wrong secret even when the operator secret was explicitly configured', async () => {
+    const { app, downstream } = guarded(true);
+    const response = await app.request('/', { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' } });
+    expect(response.status).toBe(401);
+    expect(downstream).not.toHaveBeenCalled();
   });
 });
 

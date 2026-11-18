@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderFa3Invoice, validateFa3Structure } from './fa3.js';
+import { invoicePositionQuantity, renderFa3Invoice, validateFa3Structure } from './fa3.js';
+import { lineInvoicePositions } from './invoice-positions.js';
+import { splitProductGross } from './product-vat.js';
+import type { InvoiceVatTreatment } from './tenant.js';
 
 const input = {
   invoiceNumber: 'FV/2026/000001',
@@ -57,6 +60,67 @@ describe('FA(3) renderer', () => {
     expect(xml.indexOf('<P_7>Printed material')).toBeLessThan(xml.indexOf('<P_7>Download'));
     expect(xml).toContain('<NrWierszaFa>3</NrWierszaFa>');
     expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('renders the quantity, unit net and position net of a multi-unit position', () => {
+    const xml = renderFa3Invoice({ ...input, grossAmountCents: 9000, discountCents: 0, positions: [
+      { name: 'Poster', quantity: 3, grossCents: 9000, netCents: 7317, vatCents: 1683, vat: { kind: 'rate', percent: 23 } },
+    ] });
+    expect(xml).toContain('<P_7>Poster</P_7><P_8A>szt.</P_8A><P_8B>3</P_8B><P_9A>24.39</P_9A><P_11>73.17</P_11><P_12>23</P_12>');
+    expect(xml).toContain('<P_13_1>73.17</P_13_1><P_14_1>16.83</P_14_1>');
+    expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('carries the unit net with the decimals that make quantity times unit price round to the position net', () => {
+    const render = (quantity: number, grossCents: number): string => renderFa3Invoice({ ...input, grossAmountCents: grossCents, discountCents: 0,
+      positions: lineInvoicePositions({ name: 'Poster', quantity, grossCents, vat: { kind: 'rate', percent: 23 } }) });
+
+    expect(render(3, 300)).toContain('<P_8B>3</P_8B><P_9A>0.81333333</P_9A><P_11>2.44</P_11>');
+    expect(render(99, 9999)).toContain('<P_8B>99</P_8B><P_9A>0.82111111</P_9A><P_11>81.29</P_11>');
+    expect(render(1, 7900)).toContain('<P_8B>1</P_8B><P_9A>64.23</P_9A><P_11>64.23</P_11>');
+  });
+
+  it('keeps every multi-unit position arithmetically consistent and the totals equal to the line', () => {
+    const treatments: InvoiceVatTreatment[] = [
+      { kind: 'rate', percent: 5 },
+      { kind: 'rate', percent: 8 },
+      { kind: 'rate', percent: 23 },
+      { kind: 'exempt', basisKind: 'art_113_1', basis: 'art. 113 ust. 1' },
+    ];
+    const grosses = [0, 1, 2, 99, 100, 101, 300, 4900, 7999, 9999, 10001, 12345, 99999, 123457, 1999999];
+    const cents = (amount: string): bigint => BigInt(amount.replace('.', ''));
+    const unitSubunits = (amount: string): bigint => {
+      const [whole = '', fraction = ''] = amount.split('.');
+      return BigInt(whole) * 100_000_000n + BigInt(fraction.padEnd(8, '0'));
+    };
+    for (const vat of treatments) {
+      const rate = vat.kind === 'exempt' ? 'exempt' : vat.percent;
+      for (let quantity = 1; quantity <= 99; quantity += 1) {
+        for (const grossCents of grosses) {
+          const label = `${String(grossCents)} x ${String(quantity)} at ${String(rate)}`;
+          const positions = lineInvoicePositions({ name: 'Item', quantity, grossCents, vat });
+          const xml = renderFa3Invoice({ ...input, grossAmountCents: grossCents, discountCents: 0, vat, positions });
+          const rows = [...xml.matchAll(/<P_8B>(\d+)<\/P_8B><P_9A>([^<]+)<\/P_9A><P_11>([^<]+)<\/P_11>/gu)];
+          expect(rows, label).toHaveLength(positions.length);
+          rows.forEach(([, rowQuantity = '', unit = '', value = ''], index) => {
+            expect(unit, label).toMatch(/^([1-9]\d{0,13}|0)\.\d{2,8}$/u);
+            expect(value, label).toMatch(/^([1-9]\d{0,15}|0)\.\d{2}$/u);
+            expect(Number(rowQuantity), label).toBe(invoicePositionQuantity(positions[index] ?? { quantity: 0 }));
+            expect((BigInt(rowQuantity) * unitSubunits(unit) + 500_000n) / 1_000_000n, label).toBe(cents(value));
+            expect(cents(value), label).toBe(BigInt(positions[index]?.netCents ?? -1));
+          });
+          const line = splitProductGross(grossCents, rate);
+          const net = rows.reduce((total, [, , , value = '']) => total + cents(value), 0n);
+          expect(net, label).toBe(BigInt(line.netCents));
+          const suffix = vat.kind === 'exempt' ? '7' : { 5: '3', 8: '2', 23: '1' }[vat.percent];
+          const summary = vat.kind === 'exempt'
+            ? `<P_13_7>${(line.netCents / 100).toFixed(2)}</P_13_7>`
+            : `<P_13_${suffix}>${(line.netCents / 100).toFixed(2)}</P_13_${suffix}><P_14_${suffix}>${(line.vatCents / 100).toFixed(2)}</P_14_${suffix}>`;
+          expect(xml, label).toContain(summary);
+          expect(xml, label).toContain(`<P_15>${(line.grossCents / 100).toFixed(2)}</P_15>`);
+        }
+      }
+    }
   });
 
   it('is deterministic and emits the official FA(3) identity in schema order', () => {

@@ -61,7 +61,8 @@ analytics form. Empty copy fields restore the defaults shown as placeholders.
 The separate write-only token card saves or removes the encrypted secret and
 shows only whether it is configured. Only workspace owners can manage it.
 
-On `/checkout/<slug>?status=success` and `/offer/<slug>?status=success`, an eligible
+On `/checkout/<slug>?status=success`, the hosted cart page's return
+`/checkout/cart/pay?status=success` and `/offer/<slug>?status=success`, an eligible
 paid order with no decision opens an accessible consent dialog over the return
 page. Accept and decline have equal visual weight. Neither is preselected;
 Escape or the backdrop closes the dialog without recording a choice. Dismissal
@@ -161,7 +162,7 @@ table still starts at v26.0, so no release date is inferred for v27.0.
 | `user_data.fbc` | `fb.1.<attribution_at milliseconds>.<stored fbclid>`, when available |
 | `user_data.country` | SHA-256 of lower-case ISO-2 country captured from Stripe customer address, when known |
 | `custom_data.value`, `currency` | Paid gross amount in major units and ISO currency |
-| `content_type`, `content_ids`, `contents`, `num_items`, `order_id` | Product order lines, one quantity per immutable order line, and transaction ID |
+| `content_type`, `content_ids`, `contents`, `num_items`, `order_id` | Product order lines with each line's quantity and gross unit price (`item_price`), the sum of quantities (`num_items`) and transaction ID |
 | `test_event_code` | Optional workspace test code, outside the event object |
 
 Existing fbclid/gclid attribution persistence is unchanged. Gclid and UTM fields

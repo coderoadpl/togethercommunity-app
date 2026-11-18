@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { orderAttributionSchema } from './attribution.js';
+import { CHECKOUT_RETURN_URL_MAX_LENGTH } from './checkout-return.js';
 
 import { invoiceSchema } from './invoice.js';
 import { stripeModeSchema } from './integration.js';
@@ -127,6 +128,7 @@ export const orderLineSchema = z.object({
   productId: z.string().min(1),
   name: z.string().min(1),
   productType: orderLineTypeSchema,
+  quantity: z.number().int().min(1).optional(),
   grossCents: z.number().int().nonnegative(),
   netCents: z.number().int().nonnegative(),
   vatRate: productVatRateSchema.nullable(),
@@ -139,6 +141,11 @@ export const orderLineSchema = z.object({
 });
 
 export type OrderLine = z.infer<typeof orderLineSchema>;
+
+export const orderLineQuantity = (line: { quantity?: number | undefined }): number => line.quantity ?? 1;
+
+export const orderLineLabel = (line: { name: string; quantity?: number | undefined }): string =>
+  orderLineQuantity(line) > 1 ? `${orderLineQuantity(line)} × ${line.name}` : line.name;
 
 export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCents: number): number[] => {
   const total = lines.reduce((sum, line) => sum + line.grossCents, 0);
@@ -168,8 +175,15 @@ export const allocatePaidOrderLineGross = (
   return lines.map((line) => isShippingLine(line) ? line.grossCents : allocated[index++] ?? 0);
 };
 
+const CLIENT_REFERENCE_MAX_LENGTH = 200;
+
+export const clientReferenceSchema = z.string().trim().min(1).max(CLIENT_REFERENCE_MAX_LENGTH)
+  .regex(/^[\x20-\x7E]+$/, 'clientReference may contain only printable ASCII characters');
+
 export const checkoutSnapshotSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
+  clientReference: clientReferenceSchema.nullable().optional(),
+  returnUrl: z.string().max(CHECKOUT_RETURN_URL_MAX_LENGTH).nullable().optional(),
   mode: stripeModeSchema.nullable().optional(),
   providerSessionId: z.string().nullable().optional(),
   id: z.string(),
@@ -185,6 +199,7 @@ export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
 export const orderSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
+  clientReference: clientReferenceSchema.nullable().optional(),
   mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),
@@ -220,7 +235,11 @@ export const orderProviderIdentifiers = (providerObjectIds: Record<string, strin
 
 export const orderListItemSchema = orderSchema.extend({
   invoice: invoiceSchema.nullable().optional(),
-  lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
+  lines: z.array(orderLineSchema.extend({
+    // Typed as optional so order fixtures written before quantities compile; parsing always fills it.
+    quantity: orderLineSchema.shape.quantity.transform((quantity): number | undefined => quantity ?? 1),
+    issuedByDisplayName: z.string().min(1).optional(),
+  })).optional(),
   shipment: orderShipmentSchema.extend({ shippedByDisplayName: z.string().min(1).optional() }).nullable().optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
@@ -232,7 +251,7 @@ export const orderListItemSchema = orderSchema.extend({
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
 
 export const orderVerificationReferenceSchema = z.string().trim().min(1).max(256);
-export const issueOrderLineInputSchema = z.object({ orderId: z.string().min(1), productId: z.string().min(1) }).strict();
+export const issueOrderLineInputSchema = z.object({ orderId: z.string().min(1), productId: z.string().min(1), count: z.number().int().min(1).default(1) }).strict();
 
 const orderExportFormatSchema = z.enum(['csv', 'json']);
 

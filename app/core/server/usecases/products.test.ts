@@ -53,10 +53,12 @@ const fakeRepo = (initial: Product[] = []) => {
     },
     update: async (tenantId, product, version) => {
       const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === product.id);
-      if (index === -1) return null;
-      store[index] = product;
+      const current = store[index];
+      if (current === undefined) return null;
+      const saved = { ...current, ...product };
+      store[index] = saved;
       entityVersions.push(version);
-      return product;
+      return saved;
     },
     updateAccessItems: async (tenantId, id, accessItems) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
@@ -98,6 +100,7 @@ const draft = (id: string, tenantId: string, published = false): Product => ({
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published,
   accessItems: [],
@@ -185,6 +188,30 @@ describe('products use-cases', () => {
     expect(await createProduct(ctx, { title: 'Printed accessory', type: 'physical', priceCents: 4900, deliveryMethod: 'shipping' }, deps(repo))).toMatchObject({ ok: true, value: { deliveryMethod: 'shipping' } });
     expect(await createProduct(ctx, { title: 'Printed handout', type: 'physical', priceCents: 4900 }, deps(repo, ['product-2']))).toMatchObject({ ok: true, value: { deliveryMethod: 'pickup' } });
     expect(await createProduct(ctx, { title: 'Course', type: 'course', priceCents: 4900, deliveryMethod: 'shipping' }, deps(repo, ['product-3']))).toMatchObject({ ok: false, error: { code: 'validation', message: 'Only physical products can be shipped' } });
+  });
+
+  it('sells through any channel by default, keeps the channel across unrelated edits and refuses limiting a membership to sales links', async () => {
+    const { repo } = fakeRepo([draft('p1', 't-acme'), { ...draft('club', 't-acme'), type: 'membership' }]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const membershipRefusal = { ok: false, error: { code: 'validation', message: 'Sales links cannot sell memberships, so a membership cannot be limited to sales links' } };
+    expect(await createProduct(ctx, { title: 'Workshop', priceCents: 4900 }, deps(repo, ['product-2']))).toMatchObject({ ok: true, value: { salesChannel: 'any' } });
+    expect(await createProduct(ctx, { title: 'Private workshop', priceCents: 4900, salesChannel: 'sales_links_only' }, deps(repo, ['product-3']))).toMatchObject({ ok: true, value: { salesChannel: 'sales_links_only', visibility: 'listed' } });
+    expect(await createProduct(ctx, { title: 'Club', type: 'membership', priceCents: 4900, salesChannel: 'sales_links_only' }, deps(repo, ['product-4']))).toEqual(membershipRefusal);
+    expect(await updateProduct(ctx, { id: 'p1', salesChannel: 'sales_links_only' }, deps(repo, ['version-1']))).toMatchObject({ ok: true, value: { salesChannel: 'sales_links_only' } });
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed workshop' }, deps(repo, ['version-2']))).toMatchObject({ ok: true, value: { salesChannel: 'sales_links_only', title: 'Renamed workshop' } });
+    expect(await updateProduct(ctx, { id: 'p1', salesChannel: 'any' }, deps(repo, ['version-3']))).toMatchObject({ ok: true, value: { salesChannel: 'any' } });
+    expect(await updateProduct(ctx, { id: 'club', salesChannel: 'sales_links_only' }, deps(repo, ['version-4']))).toEqual(membershipRefusal);
+    expect(updateProductInputSchema.safeParse({ id: 'p1', salesChannel: 'catalogue' }).success).toBe(false);
+  });
+
+  it('keeps a sales channel committed after its read when an update leaves the channel out', async () => {
+    const stale = draft('p1', 't-acme');
+    const { repo, store } = fakeRepo([{ ...stale, salesChannel: 'sales_links_only' }]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const staleRead = { ...repo, findById: async () => stale };
+
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed workshop' }, deps(staleRead, ['version-1']))).toMatchObject({ ok: true });
+    expect(store[0]).toMatchObject({ title: 'Renamed workshop', salesChannel: 'sales_links_only' });
   });
 
   it('switches a physical product to shipping and refuses shipping for other product types', async () => {

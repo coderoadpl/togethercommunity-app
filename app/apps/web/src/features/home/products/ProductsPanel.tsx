@@ -173,6 +173,9 @@ const ProductRow = ({
           {product.visibility === 'unlisted' ? (
             <Chip size="small" variant="outlined" label={t.products.unlisted} />
           ) : null}
+          {product.salesChannel === 'sales_links_only' ? (
+            <Chip size="small" variant="outlined" label={t.products.salesChannelSalesLinksOnly} data-testid={`product-sales-links-only-${product.id}`} />
+          ) : null}
           {issue ? (
             <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
           ) : null}
@@ -184,16 +187,18 @@ const ProductRow = ({
       actions={
         <>
           <DeleteProductDraftAction product={product} />
-          <Tooltip title={t.products.copyCheckoutLink}>
-            <IconButton
-              size="small"
-              onClick={() => void copyCheckoutLink()}
-              aria-label={t.products.copyCheckoutLink}
-              data-testid={`copy-checkout-${product.id}`}
-            >
-              <CopyLinkGlyph />
-            </IconButton>
-          </Tooltip>
+          {product.salesChannel === 'sales_links_only' ? null : (
+            <Tooltip title={t.products.copyCheckoutLink}>
+              <IconButton
+                size="small"
+                onClick={() => void copyCheckoutLink()}
+                aria-label={t.products.copyCheckoutLink}
+                data-testid={`copy-checkout-${product.id}`}
+              >
+                <CopyLinkGlyph />
+              </IconButton>
+            </Tooltip>
+          )}
           <Button
             size="small"
             variant="outlined"

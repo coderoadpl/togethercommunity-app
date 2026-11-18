@@ -68,7 +68,10 @@ describe('production self-host stack', () => {
     const compose = composeSchema.parse(parse(read('docker-compose.yml')));
 
     expect(Object.keys(compose.services)).toEqual(['postgres', 'app', 'caddy']);
-    expect(compose.services.postgres.image).toBe('public.ecr.aws/docker/library/postgres:16-bookworm');
+    expect(compose.services.postgres.image)
+      .toMatch(/^public\.ecr\.aws\/docker\/library\/postgres:16-bookworm@sha256:[a-f0-9]{64}$/u);
+    expect(compose.services.caddy.image)
+      .toMatch(/^public\.ecr\.aws\/docker\/library\/caddy:2-alpine@sha256:[a-f0-9]{64}$/u);
     expect(compose.services.postgres.healthcheck.test).toContain('pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}');
     expect(compose.services.postgres.volumes).toContain('postgres_data:/var/lib/postgresql/data');
     expect(compose.services.app.build).toEqual({ context: '.', dockerfile: 'Dockerfile' });
@@ -83,6 +86,16 @@ describe('production self-host stack', () => {
       '${SELF_HOST_HTTPS_PORT:-443}:443/udp',
     ]);
     expect(Object.keys(compose.volumes)).toEqual(['postgres_data', 'caddy_data', 'caddy_config']);
+  });
+
+  it('pins the quickstart mail server by digest while retaining its version tag', () => {
+    const quickstartSchema = z.object({
+      services: z.object({ mailpit: z.object({ image: z.string() }) }),
+    });
+    const compose = quickstartSchema.parse(parse(read('docker-compose.quickstart.yml')));
+
+    expect(compose.services.mailpit.image)
+      .toMatch(/^ghcr\.io\/axllent\/mailpit:v1\.30\.0@sha256:[a-f0-9]{64}$/u);
   });
 
   it('lets the app finish its shutdown before Docker kills it', () => {

@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { API_PATHS } from '#core/contract/index.js';
-import { err, internal } from '#core/domain/index.js';
+import { err, internal, validation } from '#core/domain/index.js';
 import {
   configureShipx,
   createInpostShipment,
@@ -72,7 +72,9 @@ export const registerShipxRoutes = (
   app.post(API_PATHS.shipxCreate, async (c) => {
     const shipxDeps = orderDeps();
     if (shipxDeps === null || deps.orderFulfilment === undefined || deps.shipxIntegration === undefined) return unavailable();
-    return respond(await createInpostShipment(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, {
+    const body = bodySchema.safeParse(c.req.raw.body === null ? {} : await readJson(c.req.raw));
+    if (!body.success) return respond(err(validation('Invalid InPost shipment request', body.error.flatten())));
+    return respond(await createInpostShipment(ctxOf(c), { ...body.data, orderId: c.req.param('orderId') ?? '' }, {
       ...shipxDeps,
       ids: deps.ids,
       wait: deps.shipxIntegration.wait,

@@ -52,6 +52,7 @@ export * from './usecases/storage-configuration.js';
 export * from './usecases/configure-stripe.js';
 export * from './usecases/bunny-videos.js';
 export * from './usecases/checkout.js';
+export { validateCartCoupon, validateCartSelection } from './usecases/checkout-cart.js';
 export * from './usecases/checkout-session-status.js';
 export * from './usecases/direct-sales-link-checkout.js';
 export * from './usecases/coupon-checkout.js';
@@ -106,6 +107,7 @@ export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';
 export * from './usecases/ses-webhook-url.js';
 export * from './usecases/deep-health.js';
+export * from './usecases/describe-instance.js';
 
 export * from './marketing-contact-ports.js';
 
@@ -155,6 +157,8 @@ export * from './order-verification-ports.js';
 export * from './stock-ports.js';
 export * from './usecases/order-verification.js';
 export * from './order-fulfilment-ports.js';
+export * from './order-change-ports.js';
+export * from './usecases/order-changes.js';
 export * from './usecases/order-fulfilment.js';
 export * from './shipx-ports.js';
 export * from './usecases/shipx.js';

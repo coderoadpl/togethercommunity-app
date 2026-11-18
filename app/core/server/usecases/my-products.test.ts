@@ -36,6 +36,7 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   visibility: 'unlisted',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
@@ -123,6 +124,25 @@ describe('listMyProducts', () => {
     })).toMatchObject({ ok: true, value: [{ type: 'physical', downloads: [], subscription: null }] });
     expect(orders.listForMember).toHaveBeenCalledWith('t-acme', 'm1');
     expect(products.findByIds).toHaveBeenCalledWith('t-acme', [physical.id]);
+  });
+
+  it('reports the units of a physical line above one and omits them for one unit', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const single: Product = { ...physical, id: 'single-item' };
+    const line = (product: Product, quantity: number | undefined) => ({ productId: product.id, name: product.title, productType: 'physical' as const, ...(quantity === undefined ? {} : { quantity }), grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 });
+    const orders = { listForMember: async () => [{
+      mode: 'live' as const, id: 'order-1', tenantId: 't-acme', memberId: 'm1', productId: physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 19800, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null,
+      lines: [line(physical, 3), line(single, 1)],
+    }] };
+    const result = await listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock, orders, products: { findByIds: async () => [physical, single] },
+    });
+    if (!result.ok) throw new Error('my products failed');
+    expect(result.value.find((item) => item.id === physical.id)?.quantity).toBe(3);
+    expect(result.value.find((item) => item.id === single.id)).not.toHaveProperty('quantity');
   });
 
   it('names the parcel locker or city for physical lines of a shipped order', async () => {
@@ -256,6 +276,18 @@ describe('listMyProducts', () => {
     });
     expect(result).toMatchObject({ ok: true, value: [{ grantStatus: 'expired', purchasable }] });
     expect(listActiveByProducts).toHaveBeenCalledWith('t-acme', ['p1']);
+  });
+
+  it('keeps the access to a product sold only through sales links but offers no standalone renewal', async () => {
+    const linkOnly = { ...granted, salesChannel: 'sales_links_only' as const };
+    const active = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
+      grants: grants([linkOnly], [memberGrant()]), clock, subscriptions, downloadAssets, prices,
+    });
+    expect(active).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'active', accessItems: [{ level: 'course', courseId: 'course-1' }], purchasable: false }] });
+    const expired = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
+      grants: grants([linkOnly], [memberGrant({ active: false, expiresAt: '2026-07-08T00:00:00.000Z' })]), clock, subscriptions, downloadAssets, prices,
+    });
+    expect(expired).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'expired', purchasable: false }] });
   });
 
   it('marks an elapsed window as expired', async () => {

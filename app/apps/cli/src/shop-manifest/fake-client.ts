@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createApiClient } from '#core/client/index.js';
-import { newProductSchema, newProductPriceSchema, productPriceSchema, productSchema, productStockSchema, tenantSettingsSchema, updateProductInputSchema, updateTenantSettingsInputSchema, enableStockTrackingInputSchema, adjustStockInputSchema, type AppError, type Product, type ProductPrice, type ProductStock, type TenantSettings } from '#core/domain/index.js';
+import { newProductSchema, newProductPriceSchema, productPriceSchema, productSchema, productStockSchema, tenantSettingsSchema, updateProductInputSchema, updateTenantSettingsInputSchema, enableStockTrackingInputSchema, adjustStockInputSchema, type AppError, type Product, type ProductPrice, type ProductStock, type TenantSecretKey, type TenantSettings } from '#core/domain/index.js';
 
 export const manifestFixture = {
   version: 1,
@@ -25,10 +25,10 @@ export const existingStock = (onHand: number): ProductStock => productStockSchem
 export const createManifestFake = (workspace = 'acme') => {
   const state: {
     exists: boolean; settings: TenantSettings; products: Product[]; prices: ProductPrice[]; stock: ProductStock | null;
-    requests: string[]; failure: { path: string; method?: string; error: AppError } | null;
+    secretKeys: TenantSecretKey[]; requests: string[]; failure: { path: string; method?: string; error: AppError } | null;
   } = {
     settings: tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null }),
-    exists: true, products: [], prices: [], stock: null, requests: [], failure: null,
+    exists: true, products: [], prices: [], stock: null, secretKeys: [], requests: [], failure: null,
   };
   const api = createApiClient({
     baseUrl: 'https://togethercommunity.app',
@@ -92,6 +92,12 @@ export const createManifestFake = (workspace = 'acme') => {
       }
       if (path === '/api/me') return send({ userId: 'u1', email: 'owner@togethercommunity.app', name: 'Owner', emailVerified: true, tenant: { id: 't1', slug: workspace, name: 'Acme', staffRole: 'owner', memberId: null, banned: false } });
       if (path === '/api/tenant/settings') return send({ settings: state.settings });
+      if (path === '/api/tenant-secrets') {
+        return send({
+          secrets: state.secretKeys.map((key) => ({ key, maskedPreview: '••••xxxx', updatedAt: '2026-01-01T00:00:00Z' })),
+          stripeMode: null, stripeWebhookUrl: `https://${workspace}.togethercommunity.app/api/webhooks/stripe/t1`,
+        });
+      }
       if (path === '/api/products') return send({ products: state.products });
       if (path.endsWith('/prices')) return send({ prices: state.prices.filter((price) => path === `/api/products/${price.productId}/prices`) });
       if (path.endsWith('/stock')) return send({ stock: state.stock });

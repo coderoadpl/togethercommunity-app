@@ -26,6 +26,53 @@ read or checkout begins. Delete is available only before the first paid order;
 after payment, deactivate instead. Refunded orders still preserve that history.
 Edits use a revision check so one editor cannot silently overwrite another.
 
+## Products sold only through sales links
+
+A product's sales channel is `any` (the default) or `sales_links_only`. Visibility
+`unlisted` only keeps a product out of the listed catalogue, and every sales-link
+read publishes its product IDs, so an unlisted product can still be bought on its
+own. A `sales_links_only` product can be bought only as a line, or a chosen
+variant, of an active sales link. A variant group makes the product available in
+every link that contains one of its siblings, at its own price; leave it out of
+the group to keep it out of those links.
+
+Set it in the Studio product editor (**Where it can be bought**, next to
+**Visibility**), with `product create|update --sales-channel any|sales_links_only`,
+with `salesChannel` in `POST /api/products` and `POST /api/products/update`, in an
+[import](import-api.md#product) product record, or in a
+[shop manifest](shop-manifest.md#products) product. A product without the field is
+`any`; an update without it keeps the stored channel.
+
+Every standalone purchase answers exactly as for an unknown product, at the same
+point in the checks, so the answer does not reveal that the product exists:
+
+- `GET /api/public/offer?productRef=<id|slug>` returns an empty `products` list;
+- `/checkout/<ref>` shows the unavailable state;
+- `POST /api/public/checkout/session` without `salesLinkId` or `salesLinkSlug`,
+  a cart (`lines`) containing such a product, coupon validation, the staff test
+  checkout, `simulate-purchase` and `checkout session` return `not_found` (404);
+  a cart is refused as a whole.
+
+Such a product never appears in the listed catalogue, the navigation offers or
+the course and locked-lesson upsells, whatever its visibility; the two fields
+stay independent. The Studio product list marks it **Sales links only** and
+offers no **Copy checkout link** for it.
+
+Still allowed: checkout through a sales link (`/offer/<slug>`, the direct handoff
+and `?checkout=together`), variant choices inside a link, and the public
+sales-link read with the product's checkout consents. Nothing that is not a
+purchase changes: owners keep My products, downloads and course content; staff
+grants, M2M enrolment, order history, invoices and refunds work as before.
+
+A membership cannot be `sales_links_only`, because sales links cannot sell
+memberships. Every editing surface refuses it with a `validation` error,
+including an import update that would turn a `sales_links_only` product into a
+membership.
+
+Known limit: My products offers no **Renew access** for an expired grant of a
+`sales_links_only` product and shows that renewal is unavailable; access itself
+does not change. Renewal through a sales link is a later item.
+
 ## Variant choices
 
 Each line can offer chips for published siblings in its variant group, including
@@ -36,7 +83,9 @@ memberships, have exactly one active non-imported one-time price in the link
 currency, and have resolvable VAT. The total is the sum of the chosen prices;
 each product may occur only once in the final bundle. A chip already chosen on
 another line is disabled; a simultaneous exchange remains valid when the final
-product IDs are unique.
+product IDs are unique. The sales channel does not narrow the choices: a variant
+group makes the product available in every link that contains one of its
+siblings, including a `sales_links_only` product.
 
 The public GET ignores stale or invalid pairs and discards all pairs if they
 would duplicate a product. Checkout session, coupon validation and simulation
@@ -70,7 +119,8 @@ Physical products use one-time prices and grant no course access, download or
 access grant. Each has a delivery method. Collected in person (`pickup`, the
 default and the behaviour of every product created before delivery methods)
 keeps the purchased record in My products with the collection note, and each
-such order line starts with `issuedCount = 0` for the **issued N of 1** count.
+such order line starts with `issuedCount = 0` for the **issued N of Q** count, where
+Q is the line quantity (1 for every line without a stored quantity).
 Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
 page: the buyer picks a workspace delivery option, and a parcel locker when the
 option needs one, before Stripe collects the address and phone number. A link
@@ -212,7 +262,8 @@ The existing `welcome-sign-in` email also serves as the purchase confirmation;
 its timing and number of messages do not change. With a purchase block, its
 subject is "Purchase confirmation <order number> — <workspace name>" in English
 or the equivalent in Polish. Without a purchase block, the account-ready subject
-is unchanged. It lists the order number, then a table of purchased item names,
+is unchanged. It lists the order number, then a table of purchased item names (a line above
+one unit is named "<units> × <name>"),
 gross amounts formatted in the order currency, and VAT rates (5, 8 or 23 percent,
 or a localized exemption label). The amounts use the same discount allocation
 as invoice positions and sum to the paid total. VAT treatment uses explicit
@@ -245,12 +296,17 @@ placed date for existing paid orders without a stored payment timestamp. Unpaid
 orders show no paid date.
 Unknown tokens and tokens from another workspace return not found.
 
-Each physical line shows **issued N of 1**. Staff with `order:write` can select
-**Mark as issued** on a paid order while the count is zero. Collection sets the
-count to one and records the staff user and timestamp. Later scans show that
-count and the first issue time, without another issue action. Concurrent or
-repeated issue requests return a conflict once the line has been issued; they
-do not change the counter or append another event. Scanning alone never changes
+Each physical line shows **issued N of Q**, where Q is the line quantity, and a
+line above one unit is named "Q × name". Staff with `order:write` can select
+**Mark as issued** on a paid order while the count is below the quantity; each
+selection issues one unit. Collection adds the issued units to the count, records
+the staff user and timestamp of the first issue and appends one issue event per
+request. Later scans show that count and the first issue time, and offer another
+issue action only while units remain. An issue request takes an optional `count`
+of units (a positive integer, default 1). A request returns a conflict, without
+changing the counter or appending an event, when the line is fully issued or when
+the count would exceed the units left; concurrent requests are serialised on the
+order row, so together they never issue more than the quantity. Scanning alone never changes
 the count. Unpaid, refunded and partially refunded orders cannot be marked as issued. Physical collection changes neither
 the order's financial amounts nor the invoice's sale-time tax point.
 
@@ -266,11 +322,11 @@ Create and update accept `--input` JSON; update includes `id` and
 `expectedRevision`. The JSON can include `cancelReturnUrl` as an HTTPS address
 or `null` to clear it. Activate and deactivate preserve the configured address.
 `checkout session` and the local `simulate-purchase` command
-accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT.
+accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT and the sales channel.
 See [Import API](import-api.md).
 
 The `orders verify <reference>` command accepts the same token or order number
-as Studio. `orders issue <orderId> <productId>` records a physical collection
+as Studio. `orders issue <orderId> <productId> [--count <n>]` records a physical collection
 with the same workspace scope, capabilities and payment checks.
 
 ## Rollout
@@ -280,6 +336,13 @@ rolling out the bundle-aware release. An older release ignores the checkout
 snapshot metadata and can grant only the first product, recording one line for
 the full payment; reconciliation cannot recover the omitted product list from
 that order. Activate sales links only after the rollout is complete.
+
+Migration 0158 adds `products.sales_channel` with the default `any`. A release
+older than this one ignores the column, so after a rollback past 0158 a
+`sales_links_only` product can be bought on its own again. Prefer rolling
+forward. Before an unavoidable rollback, find such products (`product list`
+marks them `[sales links only]`) and decide for each whether to unpublish it,
+which also stops the sales links that contain it.
 
 Migration 0149 makes `coupon_checkout_sessions.member_email` nullable for
 direct-checkout coupon sessions. The migration relaxes a NOT NULL constraint

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_LANGUAGE, languageSchema } from './language.js';
-import { productLines, type Order } from './commerce.js';
+import { orderLineQuantity, productLines, type Order } from './commerce.js';
 export { metaCapiCopy } from './meta-capi-settings.js';
 
 const metaCapiConsentSchema = z.enum(['undecided', 'granted', 'denied']);
@@ -68,7 +68,7 @@ export const buildMetaCapiPayload = (input: {
   sha256: (value: string) => string;
 }): MetaCapiPayload => {
   const { order, sha256 } = input;
-  const lines = order.lines?.length ? productLines(order.lines) : [{ productId: order.productId, grossCents: order.amountCents }];
+  const lines = order.lines?.length ? productLines(order.lines) : [{ productId: order.productId, grossCents: order.amountCents, quantity: 1 }];
   const country = order.providerObjectIds.customerCountry;
   return {
     event_name: 'Purchase', action_source: 'website', event_time: Math.floor(Date.parse(order.paidAt ?? '') / 1000),
@@ -85,8 +85,8 @@ export const buildMetaCapiPayload = (input: {
     custom_data: {
       value: order.amountCents / 100, currency: order.currency, content_type: 'product',
       content_ids: lines.map((line) => line.productId),
-      contents: lines.map((line) => ({ id: line.productId, quantity: 1, item_price: line.grossCents / 100 })),
-      num_items: lines.length, order_id: order.id,
+      contents: lines.map((line) => ({ id: line.productId, quantity: orderLineQuantity(line), item_price: line.grossCents / orderLineQuantity(line) / 100 })),
+      num_items: lines.reduce((units, line) => units + orderLineQuantity(line), 0), order_id: order.id,
     },
   };
 };

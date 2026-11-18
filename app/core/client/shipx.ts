@@ -17,7 +17,7 @@ export const refreshedShipxShipmentQuery = (api: ApiClient, orderId: string) => 
 });
 
 export const createShipxShipmentMutation = (api: ApiClient) => ({
-  mutationFn: async (orderId: string) => unwrap(await api.shipxCreate({ orderId })),
+  mutationFn: async (input: Parameters<ApiClient['shipxCreate']>[0]) => unwrap(await api.shipxCreate(input)),
 });
 
 export const discardShipxAttemptMutation = (api: ApiClient) => ({

@@ -2,8 +2,9 @@ import {
   adjustStockInputSchema,
   enableStockTrackingInputSchema,
   err,
-  firstSoldOutProductId,
+  firstShortStockProductId,
   lowStockAlertFor,
+  mergeStockQuantities,
   notFound,
   ok,
   productStockView,
@@ -11,12 +12,15 @@ import {
   stockCheckoutExpiry,
   stockThresholdInputSchema,
   STOCK_SWEEP_BATCH_SIZE,
+  stockQuantitiesFromLines,
   validation,
   type AppError,
+  type OrderLine,
   type Product,
   type ProductStock,
   type Result,
   type StockLevel,
+  type StockQuantity,
   type Tenant,
 } from '#core/domain/index.js';
 
@@ -110,14 +114,14 @@ export const setProductStockThreshold = async (
 
 export const ensureProductsInStock = async (
   tenantId: string,
-  products: readonly Product[],
+  items: readonly { product: Product; quantity: number }[],
   deps: { stock?: StockRepository | undefined },
 ): Promise<Result<StockLevel[], AppError>> => {
   if (deps.stock === undefined) return ok([]);
-  const productIds = products.map((product) => product.id);
-  const levels = await deps.stock.listByProducts(tenantId, productIds);
-  const soldOutId = firstSoldOutProductId(productIds, levels);
-  const soldOutProduct = products.find((product) => product.id === soldOutId);
+  const quantities = mergeStockQuantities(items.map(({ product, quantity }) => ({ productId: product.id, quantity })));
+  const levels = await deps.stock.listByProducts(tenantId, quantities.map((item) => item.productId));
+  const soldOutId = firstShortStockProductId(quantities, levels);
+  const soldOutProduct = items.find(({ product }) => product.id === soldOutId)?.product;
   return soldOutProduct === undefined ? ok(levels) : err(soldOut(soldOutProduct.title, soldOutProduct.id));
 };
 
@@ -147,7 +151,7 @@ export const cleanUpFailedCheckout = async (
 
 export const reserveCheckoutStock = async (
   tenantId: string,
-  input: { checkoutSnapshotId: string | undefined; products: readonly Product[] },
+  input: { checkoutSnapshotId: string | undefined; products: readonly Product[]; lines: readonly OrderLine[] },
   deps: CheckoutStockDeps,
 ): Promise<Result<CheckoutStockHold | null, AppError>> => {
   if (deps.stock === undefined || deps.clock === undefined || input.checkoutSnapshotId === undefined) return ok(null);
@@ -155,9 +159,8 @@ export const reserveCheckoutStock = async (
   const expiry = stockCheckoutExpiry(now);
   const reserved = await deps.stock.reserve(tenantId, {
     checkoutSnapshotId: input.checkoutSnapshotId,
-    productIds: input.products.map((product) => product.id),
+    items: stockQuantitiesFromLines(input.lines),
     expiresAt: expiry.reservationExpiresAt,
-    quantity: 1,
     now,
   });
   if (!reserved.ok) {
@@ -210,7 +213,7 @@ export interface CommitCheckoutStockDeps extends TenantUrlDeps {
 
 export const commitCheckoutStock = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
-  input: { checkoutSnapshotId: string | null; orderId: string; productIds: readonly string[] },
+  input: { checkoutSnapshotId: string | null; orderId: string; items: readonly StockQuantity[] },
   deps: CommitCheckoutStockDeps,
 ): Promise<{ alertsQueued: boolean }> => {
   if (deps.stock === undefined) return { alertsQueued: false };

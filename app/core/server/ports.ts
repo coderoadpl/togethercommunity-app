@@ -255,8 +255,10 @@ export interface ProductBatchReader {
   findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
 }
 
+export type ProductMetadataUpdate = Omit<Product, 'salesChannel'> & Partial<Pick<Product, 'salesChannel'>>;
+
 export interface ProductMetadataRepository {
-  update(tenantId: string, product: Product, version: EntityVersionRecord): Promise<Product | null>;
+  update(tenantId: string, product: ProductMetadataUpdate, version: EntityVersionRecord): Promise<Product | null>;
 }
 
 export interface CourseRepository {
@@ -1145,7 +1147,7 @@ export interface PaymentProvider {
     checkoutSnapshotId?: string;
     checkoutBranding?: CheckoutBranding;
     directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string; disclosureMessage?: string };
-    lines?: { productId: string; name: string; grossCents: number }[];
+    lines?: { productId: string; name: string; grossCents: number; quantity?: number | undefined }[];
     shipping?: {
       allowedCountries: string[];
       phone: true;

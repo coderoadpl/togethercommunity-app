@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
 import { provisionTenantInputSchema } from './operator-tenant.js';
 import { stripeModeSchema } from './integration.js';
-import { configureShipxInputSchema, shipxSenderSchema } from './shipx.js';
+import { configureShipxInputSchema, DEFAULT_PARCEL_TEMPLATE, shipxSenderSchema } from './shipx.js';
 import type { ProductPrice } from './commerce.js';
 import { newProductSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
@@ -23,7 +23,7 @@ const shopManifestSettingsSchema = updateTenantSettingsInputSchema.pick({
   invoiceSellerName: true, invoiceSellerAddress: true, invoiceVatMode: true,
   invoiceVatRatePercent: true, invoiceExemptionBasisKind: true, invoiceExemptionBasis: true,
   invoicingProvider: true, autoIssueInvoices: true, autoIssueInvoiceScope: true, ksefSubmissionMode: true,
-  inpostGeowidgetToken: true,
+  inpostGeowidgetToken: true, checkoutReturnOrigins: true,
 }).extend({
   checkoutAppearance: checkoutAppearanceSchema.strict().nullable().optional(),
   socialLinks: z.array(tenantSocialLinkSchema.strict()).max(SOCIAL_LINKS_MAX_COUNT).optional(),
@@ -35,6 +35,10 @@ export const shopManifestProductSchema = newProductSchema.omit({
 }).extend({
   type: z.literal('physical').default('physical'),
   slug: productSlugSchema,
+  description: newProductSchema.shape.description.removeDefault().optional(),
+  deliveryMethod: newProductSchema.shape.deliveryMethod.removeDefault().optional(),
+  parcelTemplate: newProductSchema.shape.parcelTemplate.removeDefault().optional(),
+  salesChannel: newProductSchema.shape.salesChannel.removeDefault().optional(),
   coverUrl: newProductSchema.shape.coverUrl.removeDefault().optional(),
   price: z.object({ amountCents: z.number().int().nonnegative(), currency: newProductSchema.shape.currency.removeDefault() }).strict(),
   stock: z.object({ onHand: z.number().int().min(0).max(MAX_STOCK_QUANTITY) }).strict().optional(),
@@ -107,8 +111,13 @@ const workspaceFormsSchema = z.union([
 export const manifestWorkspaceSlug = (workspace: z.output<typeof workspaceFormsSchema>): string =>
   typeof workspace === 'string' ? workspace : workspace.slug;
 
-const workspaceSchema = workspaceFormsSchema.refine((workspace) => !isReservedTenantSlug(manifestWorkspaceSlug(workspace)),
-  'Workspace slug is a reserved platform name');
+const HOST_LABEL_MAX_LENGTH = 63;
+
+const workspaceSchema = workspaceFormsSchema
+  .refine((workspace) => manifestWorkspaceSlug(workspace).length <= HOST_LABEL_MAX_LENGTH,
+    `Workspace slug must not exceed ${HOST_LABEL_MAX_LENGTH} characters, the limit of a host label`)
+  .refine((workspace) => !isReservedTenantSlug(manifestWorkspaceSlug(workspace)),
+    'Workspace slug is a reserved platform name');
 
 const shopSchema = z.object({
   workspace: workspaceSchema,
@@ -198,11 +207,11 @@ export const diffManifestProduct = (
   desired: ShopManifestProduct,
   current: { product: Product; prices: ProductPrice[]; stock: ProductStock | null } | null,
 ) => {
-  const fields = Object.entries(productMetadata(desired)).filter(([key, value]) => {
-    const stored = current?.product;
-    const record: Record<string, unknown> = stored ?? {};
-    return value !== undefined && !manifestValuesEqual(value, record[key] ?? (key === 'parcelTemplate' ? 'medium' : null));
-  }).map(([key]) => key);
+  const stored: Record<string, unknown> = current?.product ?? {};
+  const managed = Object.entries(productMetadata(desired)).filter(([, value]) => value !== undefined);
+  const fields = managed
+    .filter(([key, value]) => !manifestValuesEqual(value, stored[key] ?? (key === 'parcelTemplate' ? DEFAULT_PARCEL_TEMPLATE : null)))
+    .map(([key]) => key);
   const active = current?.prices.filter((price) => price.active) ?? [];
   const matching = active.find((price) => price.kind === 'one_time' && !price.imported &&
     price.amountCents === desired.price.amountCents && price.currency === desired.price.currency);
@@ -211,6 +220,7 @@ export const diffManifestProduct = (
     slug: desired.slug,
     product: current === null ? 'create' as const : fields.length > 0 ? 'update' as const : 'unchanged' as const,
     fields,
+    managedFields: managed.map(([key]) => key),
     price: matching ? 'unchanged' as const : 'add' as const,
     deactivatePriceIds,
     stock: desired.stock === undefined ? 'unmanaged' as const : current?.stock?.onHand === desired.stock.onHand

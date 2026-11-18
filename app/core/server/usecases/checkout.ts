@@ -1,21 +1,24 @@
 import {
+  CART_LINES_PARAM,
+  HOSTED_CART_PATH,
   SALES_LINK_VARIANT_PARAM,
+  formatCartLinesParam,
   formatSalesLinkVariantParam,
   attributionSchema,
   attributionToSearchParams,
   checkoutSessionInputSchema,
-  checkoutShippingInputSchema,
   err,
   FREE_ORDER_DELIVERY_UNAVAILABLE,
+  isStandalonePurchasable,
   normalizeCouponCode,
   notFound,
   ok,
   productLines,
   resolveCheckoutBranding,
-  resolveCheckoutShipping,
   stripeKeyModeConflicts,
   validation,
   type AppError,
+  type CheckoutCartInput,
   type CheckoutSessionInput,
   type CouponCheckoutBreakdown,
   type Product,
@@ -43,7 +46,7 @@ import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, type CheckoutSelection } from './checkout-selection.js';
+import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
 import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
 import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
@@ -136,12 +139,12 @@ const selectCheckoutProducts = async (
     if (!resolvedPrices.ok) return resolvedPrices;
     const product = products[0];
     if (product === undefined) return err(notFound('Sales link not found'));
-    const inStock = await ensureProductsInStock(tenantId, products, deps);
+    const inStock = await ensureProductsInStock(tenantId, products.map((item) => ({ product: item, quantity: 1 })), deps);
     if (!inStock.ok) return inStock;
     return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug, variantSelections: selections.filter((selection) => selection.productId !== selection.variantProductId) });
   }
   const product = await deps.products.findById(tenantId, input.productId);
-  if (!product || !product.published) {
+  if (!product || !isStandalonePurchasable(product)) {
     return err(notFound(`No published product "${input.productId}" in this tenant`));
   }
 
@@ -159,7 +162,7 @@ const selectCheckoutProducts = async (
   if (product.type === 'membership' && price?.kind !== 'recurring') {
     return err(validation('Membership products require a recurring price'));
   }
-  const inStock = await ensureProductsInStock(tenantId, [product], deps);
+  const inStock = await ensureProductsInStock(tenantId, [{ product, quantity: 1 }], deps);
   if (!inStock.ok) return inStock;
 
   return ok({ product, price });
@@ -167,19 +170,16 @@ const selectCheckoutProducts = async (
 
 export const validateCheckoutSelection = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping' | 'returnUrl' | 'cancelUrl'>,
   deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants'>,
   options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
 ): Promise<Result<CheckoutSelection, AppError>> => {
+  const returns = await resolveCheckoutReturnAddresses(tenantId, input, deps);
+  if (!returns.ok) return returns;
   const selection = await selectCheckoutProducts(tenantId, input, deps);
-  if (!selection.ok || options.shipping === 'ignore') return selection;
-  const shippingInput = input.shipping === undefined ? undefined : checkoutShippingInputSchema.safeParse(input.shipping);
-  if (shippingInput !== undefined && !shippingInput.success) return err(validation('Invalid delivery selection', shippingInput.error.flatten()));
-  const products = selection.value.products ?? [selection.value.product];
-  const settings = products.some((product) => product.deliveryMethod === 'shipping') ? await deps.tenants?.findSettings(tenantId) : null;
-  const shipping = resolveCheckoutShipping(products, settings?.shippingRates, shippingInput?.data);
-  if (!shipping.ok) return shipping;
-  return ok(shipping.value === null ? selection.value : { ...selection.value, shipping: shipping.value });
+  if (!selection.ok) return selection;
+  const withReturns = { ...selection.value, ...returns.value };
+  return options.shipping === 'ignore' ? ok(withReturns) : withCheckoutShipping(tenantId, withReturns, input.shipping, deps);
 };
 
 const freeShippedOrder = async (
@@ -204,7 +204,7 @@ const freeShippedOrder = async (
 export const startCheckoutSession = async (
   tenant: Tenant,
   tenantBaseUrl: string,
-  input: CheckoutSessionInput,
+  input: CheckoutSessionInput | CheckoutCartInput,
   selection: CheckoutSelection,
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
@@ -221,7 +221,7 @@ export const startCheckoutSession = async (
   if (fields !== undefined && deps.clock === undefined) return err(validation('Checkout clock is not configured'));
   const attribution = fields === undefined || deps.clock === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
   if (await freeShippedOrder(tenant.id, input, selection, deps)) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution, input.clientReference);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const shippingCents = captured.value.shippingCents ?? 0;
@@ -234,12 +234,14 @@ export const startCheckoutSession = async (
   if (testSession !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }
-  const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
+  const checkoutPath = selection.cartLines !== undefined ? `${tenantBaseUrl}${HOSTED_CART_PATH}`
+    : selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
+  const cartQuery = selection.cartLines === undefined ? '' : `&${CART_LINES_PARAM}=${encodeURIComponent(formatCartLinesParam(selection.cartLines))}`;
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const campaignQuery = attributionToSearchParams(fields).toString();
   const variantQuery = new URLSearchParams((selection.variantSelections ?? []).map((item) => [SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam(item)])).toString();
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
-  const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product] }, deps);
+  const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product], lines }, deps);
   let applied:
     | {
         breakdown: CouponCheckoutBreakdown;
@@ -330,7 +332,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
+    cancelUrl: selection.cancelUrl ?? `${checkoutPath}?status=cancelled${cartQuery}${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -364,6 +366,7 @@ export const startCheckoutSession = async (
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
         productId: product.id, priceId: price?.id ?? null, mode: 'test',
         kind: price?.kind ?? 'one_time', status: 'pending', attribution: attribution ?? null,
+        ...(input.clientReference === undefined ? {} : { clientReference: input.clientReference }),
         amountCents: totalCents + shippingCents, currency,
         provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
         couponId: null, discountCents: 0, billing: null, lines, salesLinkId: selection.salesLinkId ?? null, createdAt: deps.clock.nowIso(),

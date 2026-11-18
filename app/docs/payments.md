@@ -29,7 +29,8 @@ consent rule passes. The member session is not otherwise isolated from those
 libraries, as on any site using GA4 or Meta Pixel.
 
 Each configured library loads only when the live success card mounts on
-`/offer/<slug>?status=success` or `/checkout/<reference>?status=success`. It never
+`/offer/<slug>?status=success`, `/checkout/<reference>?status=success` or the hosted
+cart page's return `/checkout/cart/pay?status=success`. It never
 loads for `test_purchase=1`, a test checkout session, the server-rendered checkout
 handoff, cancellation, Studio or member pages. Each library is injected once per
 document. A SPA is a single document, so a loaded tag remains active until reload;
@@ -87,8 +88,9 @@ When session status becomes `paid` and either ID is configured, its response add
 ```
 
 The transaction ID is the order ID; the value is the gross order total in major
-currency units, and each item's price is the gross order-line amount in major
-units. `offerSlug` is the order's sales-link slug, or `null` when no link is
+currency units, and each item's price is the gross unit price in major units: the
+gross order-line amount divided by the line quantity. A line above one unit also
+carries `quantity`; a line of one unit omits it. `offerSlug` is the order's sales-link slug, or `null` when no link is
 available. `fbclid` and `attributionAt` come from the order's captured attribution,
 or are `null` when absent. Pending and unknown sessions retain identical responses without analytics.
 Unconfigured tenants receive no analytics payload even when paid. Rate limits
@@ -96,16 +98,17 @@ and `Cache-Control: no-store` remain unchanged.
 
 Once GA4 has loaded, the success card emits
 `gtag('event', 'purchase', { transaction_id, value, currency, items, offer_slug })`.
-Each item uses `item_id`, `item_name`, `price` and `quantity: 1`. The creator can
+Each item uses `item_id`, `item_name`, `price` (the unit price) and `quantity`
+(the line quantity, 1 when absent). The creator can
 register `offer_slug` as a custom dimension in GA4. The client writes
 `together.analytics.purchase.<session_id>` to local storage before emission,
 preventing another GA4 event for that session on reload.
 
 Once Meta has loaded, the card emits
 `fbq('track', 'Purchase', { value, currency, content_type: 'product', content_ids, contents, num_items }, { eventID: transactionId })`.
-`content_ids` lists the product IDs; each `contents` entry has `id`, `quantity: 1`
-and `item_price` in gross major currency units. `num_items` is the number of order
-lines. The order ID is the event ID for future server-side deduplication. The
+`content_ids` lists the product IDs; each `contents` entry has `id`, `quantity`
+(the line quantity) and `item_price`, the gross unit price in major currency units.
+`num_items` is the sum of the line quantities. The order ID is the event ID for future server-side deduplication. The
 separate local-storage key `together.analytics.meta-purchase.<session_id>` is set
 before emission, preventing another Meta event for that session on reload.
 Returns without a session ID, including free checkouts and legacy links, may load
@@ -134,8 +137,9 @@ not depend on which matching entry takes precedence: the catch-all excludes
 entry below lists `status=success` under `missing`. All other header entries
 retain the baseline policy, except the checkout form entries below.
 
-Checkout form documents — `/checkout/<productRef>` without `status=success`,
-`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+Checkout form documents — `/checkout/<productRef>` and the hosted cart page
+`/checkout/cart/pay` without `status=success`, `/offer/<slug>?checkout=together`
+and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
 the server middleware and the static hosting headers. `connect-src` is not part

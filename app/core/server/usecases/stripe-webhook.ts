@@ -9,10 +9,12 @@ import {
   normalizeEmail,
   ok,
   isShippingLine,
+  orderLineQuantity,
   orderProviderIdentifiers,
   orderShippingFrom,
   productLines,
   resolveEmailLanguage,
+  stockQuantitiesFromLines,
   validation,
   type AppError,
   type ProcessedPaymentEvent,
@@ -260,6 +262,21 @@ const couponPaymentContext = async (
   return { coupon, session, price, memberEmail };
 };
 
+const snapshotClientReference = (snapshot: CheckoutSnapshot | null): Pick<Order, 'clientReference'> =>
+  snapshot?.clientReference == null ? {} : { clientReference: snapshot.clientReference };
+
+const snapshotCouponProducts = (snapshot: CheckoutSnapshot | null) => {
+  const lines = snapshot === null ? [] : productLines(snapshot.lines);
+  if (snapshot?.salesLinkId == null && lines.every((line) => line.quantity === undefined)) return {};
+  return {
+    productIds: lines.map((line) => line.productId),
+    products: lines.map((line) => ({
+      productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents / orderLineQuantity(line),
+      ...(line.quantity === undefined ? {} : { quantity: line.quantity }),
+    })),
+  };
+};
+
 const couponStillAttributable = async (
   tenant: Tenant,
   context: CouponPaymentContext,
@@ -279,7 +296,7 @@ const couponStillAttributable = async (
       code: context.coupon.code,
       email: context.memberEmail,
       productId: context.session.productId,
-      ...(snapshot?.salesLinkId == null ? {} : { productIds: productLines(snapshot.lines).map((line) => line.productId), products: productLines(snapshot.lines).map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
+      ...snapshotCouponProducts(snapshot),
       priceId: context.session.priceId,
       priceKind: context.price?.kind ?? 'one_time',
       amountCents: context.session.originalCents,
@@ -369,6 +386,7 @@ const claimDiscountedOrder = async (
     billing: billing ?? null,
     attribution: snapshot?.attribution ?? event.checkoutSession?.metadata.attribution ?? null,
     ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
+    ...snapshotClientReference(snapshot),
     ...shippingFields(shipping),
     createdAt: deps.clock.nowIso(),
   };
@@ -553,6 +571,7 @@ const applyCheckoutCompleted = async (
         billing,
         attribution: snapshot?.attribution ?? metadata.attribution ?? null,
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
+        ...snapshotClientReference(snapshot),
         ...shippingFields(shipping.value),
       },
       deps,
@@ -566,7 +585,7 @@ const applyCheckoutCompleted = async (
     : await commitCheckoutStock(tenant, {
       checkoutSnapshotId: snapshot?.id ?? null,
       orderId: paidOrder.id,
-      productIds: snapshot === null ? [metadata.productId] : productLines(snapshot.lines).map((line) => line.productId),
+      items: snapshot === null ? [{ productId: metadata.productId, quantity: 1 }] : stockQuantitiesFromLines(snapshot.lines),
     }, deps);
   let emailsQueued = stockCommit.alertsQueued;
   if (event.mode !== 'test' && product !== null) {

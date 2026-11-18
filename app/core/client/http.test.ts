@@ -143,6 +143,22 @@ describe('createApiClient', () => {
     });
   });
 
+  it('parses the instance description of the health answer and rejects a malformed one', async () => {
+    const answer = (instance: unknown): typeof fetch => async () => jsonResponse({
+      ok: true,
+      data: {
+        status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up', environment: 'production', production: true,
+        commit: 'cafe1234', databaseFingerprint: 'b1bfbb98b4f7', expectedMigrations: 82, appliedMigrations: 82,
+        schemaCurrent: true, schemaFingerprint: 'c087b16a6bb6', schemaFingerprintMatch: true, instance,
+      },
+    });
+    const instance = { baseDomain: 'togethercommunity.app', singleTenant: false, databaseIdentity: '0123456789abcdef' };
+    await expect(createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: answer(instance) }).health())
+      .resolves.toMatchObject({ ok: true, value: { instance } });
+    await expect(createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: answer({ ...instance, databaseIdentity: 'postgres://db' }) }).health())
+      .resolves.toMatchObject({ ok: false });
+  });
+
   it('requests and parses signed student lesson playback', async () => {
     const video: LessonPlaybackVideo = {
       kind: 'bunny',
@@ -715,6 +731,31 @@ it.each(['test', 'live'])('preserves obsolete direct checkout mode %s for server
   await expect(client.directSalesLinkCheckout(input)).resolves.toEqual(refusal);
 });
 
+
+it('reads the order change feed with the cursor, limit and mode in the query', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {
+    urls.push(String(input));
+    return jsonResponse({ ok: true, data: { changes: [], nextCursor: '42.7' } });
+  } });
+  expect(await client.orderChanges({ after: '42.7', limit: 50, mode: 'live' })).toEqual({ ok: true, value: { changes: [], nextCursor: '42.7' } });
+  await client.orderChanges();
+  expect(urls).toEqual([
+    'https://api.example.test/api/orders/changes?after=42.7&limit=50&mode=live',
+    'https://api.example.test/api/orders/changes',
+  ]);
+});
+
+it('returns a feed reset as its own error with the fresh cursor, and refuses a reset without one', async () => {
+  const cursor = '0123456789abcdef0123456789abcdef.12.4';
+  const error = { code: 'feed_cursor_reset', message: 'Order change feed reset: resync from the order list, then start from the cursor in this answer' };
+  const answers = [{ ...error, details: { cursor } }, error, { ...error, details: { cursor: '12.4' } }];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async () => jsonResponse({ ok: false, error: answers.shift() }, 409) });
+  expect(await client.orderChanges({ after: `${'f'.repeat(32)}.1.1` })).toEqual({ ok: false, error: { ...error, details: { cursor } } });
+  for (let index = 0; index < 2; index += 1) {
+    expect(await client.orderChanges({ after: `${'f'.repeat(32)}.1.1` })).toEqual({ ok: false, error: { code: 'internal', message: 'Response from /api/orders/changes does not match the contract' } });
+  }
+});
 
 it('sends source filters for order listing and export and parses tenant source options', async () => {
   const urls: string[] = [];

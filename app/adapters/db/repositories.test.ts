@@ -166,6 +166,7 @@ const product = (over: Partial<Product> & { id: string; tenantId: string }): Pro
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -348,6 +349,42 @@ describe('product repository', () => {
       tenantId: ACME,
       slug: 'prod-acme',
     }))).resolves.toBe('slug_taken');
+  });
+
+  it('stores the sales channel, defaults it to any, and returns it on every product read', async () => {
+    const repo = createProductRepository(db);
+    await repo.create(GLOBEX, product({ id: 'prod-globex-link-only', tenantId: GLOBEX, salesChannel: 'sales_links_only' }));
+    await db.insert(products).values({
+      id: 'prod-globex-sql-default', tenantId: GLOBEX, slug: 'prod-globex-sql-default', title: 'Raw insert', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW,
+    });
+    expect(await repo.findById(GLOBEX, 'prod-globex-link-only')).toMatchObject({ salesChannel: 'sales_links_only' });
+    expect(await repo.findById(GLOBEX, 'prod-globex-sql-default')).toMatchObject({ salesChannel: 'any' });
+
+    const linkOnly = await repo.findById(GLOBEX, 'prod-globex-link-only');
+    if (linkOnly === null) throw new Error('Link-only product missing');
+    const version = {
+      id: 'version-sales-channel', entityKind: 'product' as const, entityId: linkOnly.id, schemaVersion: 10,
+      payload: linkOnly, createdAt: NOW, createdBy: null,
+    };
+    const staleRead = await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'any' }, version);
+    expect(staleRead).toMatchObject({ salesChannel: 'any' });
+    expect(await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'sales_links_only' }, { ...version, id: 'version-sales-channel-2' }))
+      .toMatchObject({ salesChannel: 'sales_links_only' });
+    if (staleRead === null) throw new Error('Stale read missing');
+    const { salesChannel: staleChannel, ...staleWithoutChannel } = staleRead;
+    expect(staleChannel).toBe('any');
+    expect(await repo.update(GLOBEX, { ...staleWithoutChannel, title: 'Renamed link-only' }, { ...version, id: 'version-sales-channel-3' }))
+      .toMatchObject({ title: 'Renamed link-only', salesChannel: 'sales_links_only' });
+
+    await createMemberRepository(db).create(GLOBEX, member({ id: 'mem-globex-link', tenantId: GLOBEX, userId: 'user-globex-link', email: 'link-buyer@together.dev' }));
+    await createProductGrantRepository(db).createGrant(GLOBEX, grant({ id: 'grant-globex-link', tenantId: GLOBEX, memberId: 'mem-globex-link', productId: 'prod-globex-link-only' }));
+    expect(await createProductGrantRepository(db).listGrantedProducts(GLOBEX, 'mem-globex-link'))
+      .toEqual([expect.objectContaining({ id: 'prod-globex-link-only', salesChannel: 'sales_links_only' })]);
+    await expect(db.insert(products).values({
+      id: 'prod-globex-bad-channel', tenantId: GLOBEX, slug: 'prod-globex-bad-channel', title: 'Bad channel', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW, salesChannel: sql`'catalogue'`,
+    })).rejects.toThrow();
   });
 });
 

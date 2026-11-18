@@ -7,6 +7,7 @@ import {
   ok,
   type CheckoutSnapshot,
   type EmailOutboxPayload,
+  type OrderLine,
   type Identity,
   type Product,
   type TenantSecret,
@@ -20,8 +21,10 @@ import {
   adjustProductStock,
   commitCheckoutStock,
   enableProductStock,
+  ensureProductsInStock,
   getProductStock,
   releaseExpiredStockReservations,
+  reserveCheckoutStock,
   setProductStockThreshold,
   type CommitCheckoutStockDeps,
 } from './stock.js';
@@ -41,6 +44,7 @@ const poster: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   published: true,
   accessItems: [],
   legacyId: null,
@@ -78,6 +82,7 @@ const checkoutHarness = (items: Product[] = [poster]) => {
       verifyWebhookEvent: async () => ok({ id: 'evt', type: 'ignored', objectId: null, checkoutSession: null }),
     },
     checkoutSnapshots: {
+      findByProviderSession: async () => null,
       create: async (_tenantId, snapshot) => { snapshots.set(snapshot.id, snapshot); },
       attachProviderSession: async () => undefined,
       findById: async (_tenantId, id) => snapshots.get(id) ?? null,
@@ -120,7 +125,7 @@ const alertHarness = () => {
     tenantDomains: { listByTenant: async () => [] },
   };
   const commit = (orderId: string, checkoutSnapshotId: string | null = null) =>
-    commitCheckoutStock(tenant, { checkoutSnapshotId, orderId, productIds: [poster.id] }, deps);
+    commitCheckoutStock(tenant, { checkoutSnapshotId, orderId, items: [{ productId: poster.id, quantity: 1 }] }, deps);
   return { stock, queued, warnings, deps, commit };
 };
 
@@ -165,7 +170,7 @@ describe('checkout stock reservations', () => {
     h.stock.track(tenant.id, poster.id, 1);
     const expire = vi.fn<PaymentProvider['expireCheckoutSession']>(async () => ok({ expired: true }));
     h.deps.payment.expireCheckoutSession = expire;
-    h.deps.checkoutSnapshots = { ...h.deps.checkoutSnapshots ?? { create: async () => undefined, findById: async () => null, attachProviderSession: async () => undefined }, attachProviderSession: async () => { throw new Error('database unavailable'); } };
+    h.deps.checkoutSnapshots = { ...h.deps.checkoutSnapshots ?? { create: async () => undefined, findById: async () => null, attachProviderSession: async () => undefined, findByProviderSession: async () => null }, attachProviderSession: async () => { throw new Error('database unavailable'); } };
     await expect(createCheckoutSession(tenant, 'https://alpha.example.com', { productId: poster.id }, h.deps)).rejects.toThrow('database unavailable');
     expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'cs-1', mode: 'live' });
     expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 1, reserved: 0 });
@@ -186,7 +191,7 @@ describe('checkout stock reservations', () => {
     h.stock.track(tenant.id, poster.id, 1);
     const selection = await validateCheckoutSelection(tenant.id, { productId: poster.id }, h.deps);
     if (!selection.ok) throw new Error('selection failed');
-    await h.stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'other-buyer', productIds: [poster.id], expiresAt: now, quantity: 1, now });
+    await h.stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'other-buyer', items: [{ productId: poster.id, quantity: 1 }], expiresAt: now, now });
     const started = await startCheckoutSession(tenant, 'https://alpha.example.com', { productId: poster.id }, selection.value, h.deps);
     expect(started).toMatchObject({ ok: false, error: { code: 'sold_out', message: '"Printed poster" is sold out' } });
     expect(h.createSession).not.toHaveBeenCalled();
@@ -213,10 +218,37 @@ describe('checkout stock reservations', () => {
     const snapshotId = started.ok ? started.value.checkoutSnapshotId ?? null : null;
     expect(h.stock.reservations).toEqual([expect.objectContaining({ checkoutSnapshotId: snapshotId, status: 'active' })]);
     const alerts = alertHarness();
-    const effects = await commitCheckoutStock(tenant, { checkoutSnapshotId: snapshotId, orderId: 'order-free', productIds: [free.id] }, { ...alerts.deps, stock: h.stock.repository });
+    const effects = await commitCheckoutStock(tenant, { checkoutSnapshotId: snapshotId, orderId: 'order-free', items: [{ productId: free.id, quantity: 1 }] }, { ...alerts.deps, stock: h.stock.repository });
     expect(effects).toEqual({ alertsQueued: false });
     expect(h.stock.levels.get(tenant.id, free.id)).toMatchObject({ onHand: 1, reserved: 0 });
     expect(h.stock.events.map((event) => event.type)).toEqual(['reserved', 'committed']);
+  });
+});
+
+describe('checkout stock quantities', () => {
+  const posterLine = (quantity?: number): OrderLine => ({
+    productId: poster.id, name: poster.title, productType: 'physical', ...(quantity === undefined ? {} : { quantity }),
+    grossCents: 4900, netCents: 4667, vatRate: 5, vatCents: 233, vatExemptionBasis: null, issuedCount: 0,
+  });
+
+  it('reports a product as sold out when fewer pieces are available than requested', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track(tenant.id, poster.id, 2);
+    expect(await ensureProductsInStock(tenant.id, [{ product: poster, quantity: 2 }], { stock: stock.repository })).toMatchObject({ ok: true });
+    expect(await ensureProductsInStock(tenant.id, [{ product: poster, quantity: 3 }], { stock: stock.repository }))
+      .toEqual(err(expect.objectContaining({ code: 'sold_out', details: { productId: poster.id } })));
+  });
+
+  it('holds the quantity of each snapshot line and counts a line without quantity as one piece', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track(tenant.id, poster.id, 3);
+    const deps = { stock: stock.repository, clock: { nowIso: () => now } };
+    expect((await reserveCheckoutStock(tenant.id, { checkoutSnapshotId: 'snapshot-q2', products: [poster], lines: [posterLine(2)] }, deps)).ok).toBe(true);
+    expect(await reserveCheckoutStock(tenant.id, { checkoutSnapshotId: 'snapshot-q2-again', products: [poster], lines: [posterLine(2)] }, deps))
+      .toEqual(err(expect.objectContaining({ code: 'sold_out', message: '"Printed poster" is sold out' })));
+    expect((await reserveCheckoutStock(tenant.id, { checkoutSnapshotId: 'snapshot-legacy', products: [poster], lines: [posterLine()] }, deps)).ok).toBe(true);
+    expect(stock.reservations.map((reservation) => [reservation.checkoutSnapshotId, reservation.quantity])).toEqual([['snapshot-q2', 2], ['snapshot-legacy', 1]]);
+    expect(stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 3, reserved: 3 });
   });
 });
 
@@ -224,7 +256,7 @@ describe('checkout stock commit', () => {
   it('is idempotent for webhook retries of the same snapshot', async () => {
     const h = alertHarness();
     h.stock.track(tenant.id, poster.id, 5);
-    await h.stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'snapshot-1', productIds: [poster.id], expiresAt: now, quantity: 1, now });
+    await h.stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: poster.id, quantity: 1 }], expiresAt: now, now });
     await h.commit('order-1', 'snapshot-1');
     await h.commit('order-1', 'snapshot-1');
     expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 4, reserved: 0 });
@@ -234,7 +266,7 @@ describe('checkout stock commit', () => {
   it('still decrements on hand when the paid webhook arrives after the reservation expired', async () => {
     const h = alertHarness();
     h.stock.track(tenant.id, poster.id, 5);
-    await h.stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'snapshot-late', productIds: [poster.id], expiresAt: now, quantity: 1, now });
+    await h.stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'snapshot-late', items: [{ productId: poster.id, quantity: 1 }], expiresAt: now, now });
     expect((await releaseExpiredStockReservations({ stock: h.stock.repository, clock: { nowIso: () => '2026-11-05T11:00:00.000Z' }, logger: h.deps.logger })).ok).toBe(true);
     await h.commit('order-late', 'snapshot-late');
     expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 4, reserved: 0 });
@@ -275,7 +307,7 @@ describe('checkout stock commit', () => {
     const h = alertHarness();
     h.stock.track(tenant.id, poster.id, 3, 2);
     const snapshots = ['snapshot-1', 'snapshot-2', 'snapshot-3'];
-    const reserve = (checkoutSnapshotId: string) => h.stock.repository.reserve(tenant.id, { checkoutSnapshotId, productIds: [poster.id], expiresAt: '2026-11-05T10:36:00.000Z', quantity: 1, now });
+    const reserve = (checkoutSnapshotId: string) => h.stock.repository.reserve(tenant.id, { checkoutSnapshotId, items: [{ productId: poster.id, quantity: 1 }], expiresAt: '2026-11-05T10:36:00.000Z', now });
     if (flow === 'three open checkouts') for (const snapshot of snapshots) await reserve(snapshot);
     for (const [index, snapshot] of snapshots.entries()) {
       if (flow === 'one buyer after another') await reserve(snapshot);
@@ -292,7 +324,7 @@ describe('checkout stock commit', () => {
     const h = alertHarness();
     h.stock.track(tenant.id, poster.id, 4, 3);
     const later = '2026-11-05T10:36:00.000Z';
-    const reserve = (checkoutSnapshotId: string, expiresAt: string) => h.stock.repository.reserve(tenant.id, { checkoutSnapshotId, productIds: [poster.id], expiresAt, quantity: 1, now });
+    const reserve = (checkoutSnapshotId: string, expiresAt: string) => h.stock.repository.reserve(tenant.id, { checkoutSnapshotId, items: [{ productId: poster.id, quantity: 1 }], expiresAt, now });
     await h.commit('order-1', 'snapshot-1');
     expect(h.queued.map((message) => message.payload)).toEqual([expect.objectContaining({ available: 3, threshold: 3, oversold: false })]);
     await reserve('snapshot-held-1', later);
@@ -352,8 +384,8 @@ describe('expired reservation sweep', () => {
   it('releases only expired reservations and logs one line when it released any', async () => {
     const stock = createStockRepositoryFake();
     stock.track(tenant.id, poster.id, 5);
-    await stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'expired', productIds: [poster.id], expiresAt: '2026-11-05T09:59:00.000Z', quantity: 1, now });
-    await stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'current', productIds: [poster.id], expiresAt: '2026-11-05T10:30:00.000Z', quantity: 1, now });
+    await stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'expired', items: [{ productId: poster.id, quantity: 1 }], expiresAt: '2026-11-05T09:59:00.000Z', now });
+    await stock.repository.reserve(tenant.id, { checkoutSnapshotId: 'current', items: [{ productId: poster.id, quantity: 1 }], expiresAt: '2026-11-05T10:30:00.000Z', now });
     const warnings: string[] = [];
     const deps = { stock: stock.repository, clock: { nowIso: () => now }, logger: { warn: (message: string) => { warnings.push(message); } } };
     expect(await releaseExpiredStockReservations(deps)).toEqual({ ok: true, value: { released: 1 } });

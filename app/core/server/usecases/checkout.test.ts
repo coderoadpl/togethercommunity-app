@@ -37,6 +37,7 @@ const product: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -553,6 +554,7 @@ const bundleCheckout = () => {
         if (snapshot !== undefined) snapshot.providerSessionId = providerSessionId;
       },
       findById: async () => snapshots[0] ?? null,
+      findByProviderSession: async () => null,
     },
     payment: { ...base.payment, createCheckoutSession: async (input) => {
       calls.push(input); return ok({ sessionId: 'bundle-session', url: 'https://checkout.stripe.test/bundle' });
@@ -1081,7 +1083,7 @@ it('uses a swapped first line for the payment identity, ordered snapshot, hold, 
   expect(h.calls[0]?.cancelUrl).toContain(`&variant=${h.first.id}.${h.sibling.id}`);
   expect(h.snapshots[0]?.lines.map((line) => line.productId)).toEqual([h.sibling.id, 'physical-1']);
   expect(h.reserve).toHaveBeenCalledOnce();
-  expect(h.reserve.mock.calls[0]?.[1]).toMatchObject({ productIds: [h.sibling.id, 'physical-1'] });
+  expect(h.reserve.mock.calls[0]?.[1]).toMatchObject({ items: [{ productId: h.sibling.id, quantity: 1 }, { productId: 'physical-1', quantity: 1 }] });
   expect(h.findById.mock.calls.every(([tenantId]) => tenantId === tenant.id)).toBe(true);
 });
 
@@ -1116,4 +1118,55 @@ it.each(['base', 'group', 'no-group', 'unpublished', 'tenant', 'membership', 'ty
   expect(h.reserve).not.toHaveBeenCalled();
   expect(h.snapshots).toHaveLength(0);
   expect(h.calls).toHaveLength(0);
+});
+
+describe('a product sold only through sales links', () => {
+  const standaloneAnswer = async (present: boolean, input: { productId: string; priceId?: string; couponCode?: string }) => {
+    const base = checkoutDeps();
+    const { createCheckoutSession } = await import('./checkout.js');
+    return createCheckoutSession(tenant, 'https://alpha.example.com', input, {
+      ...base,
+      products: { ...base.products, findById: async (_tenantId, id) => present && id === product.id ? { ...product, salesChannel: 'sales_links_only' } : null },
+      prices: { ...base.prices, findById: async () => recurringPrice },
+    });
+  };
+
+  it.each([
+    ['without a price', { productId: product.id }],
+    ['with a price and a coupon', { productId: product.id, priceId: recurringPrice.id, couponCode: 'FREE' }],
+  ])('refuses a standalone checkout %s exactly like an unknown product', async (_case, input) => {
+    const refused = await standaloneAnswer(true, input);
+    expect(refused).toEqual(await standaloneAnswer(false, input));
+    expect(refused).toEqual(err({ code: 'not_found', message: `No published product "${product.id}" in this tenant` }));
+  });
+
+  it('refuses every caller of the standalone selection the same way', async () => {
+    const { validateCheckoutSelection } = await import('./checkout.js');
+    const base = checkoutDeps();
+    const answer = async (present: boolean) => validateCheckoutSelection(tenant.id, { productId: product.id }, {
+      ...base,
+      products: { ...base.products, findById: async () => present ? { ...product, salesChannel: 'sales_links_only' } : null },
+    });
+    expect(await answer(true)).toEqual(await answer(false));
+  });
+
+  it('still sells it as a line of an active sales link', async () => {
+    const h = bundleCheckout();
+    for (const item of h.products) item.salesChannel = 'sales_links_only';
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id }, h.deps))
+      .toMatchObject({ ok: true });
+    expect(h.calls[0]).toMatchObject({ salesLinkId: h.link.id, lines: [{ productId: product.id }, { productId: 'physical-1' }] });
+  });
+
+  it('still sells it as a variant chosen inside a sales link', async () => {
+    const h = variantBundleCheckout();
+    h.first.salesChannel = 'sales_links_only';
+    h.sibling.salesChannel = 'sales_links_only';
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: h.first.id, salesLinkSlug: h.link.slug, variantSelections: h.variantSelections,
+    }, h.deps)).toMatchObject({ ok: true });
+    expect(h.calls[0]).toMatchObject({ productId: h.sibling.id, lines: [{ productId: h.sibling.id }, { productId: 'physical-1' }] });
+  });
 });

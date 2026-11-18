@@ -1,4 +1,5 @@
 import {
+  HOSTED_CART_PATH,
   shouldLoadCheckoutAnalytics,
   type CheckoutAnalyticsConfig,
   type CheckoutPurchaseAnalytics,
@@ -29,7 +30,8 @@ declare global {
 let loadedTagId: string | null = null;
 let loadedPixelId: string | null = null;
 
-const isReturnPage = (): boolean => /^\/(?:checkout|offer)\/[^/]+$/u.test(window.location.pathname) &&
+const isReturnPage = (): boolean =>
+  (/^\/(?:checkout|offer)\/[^/]+$/u.test(window.location.pathname) || window.location.pathname === HOSTED_CART_PATH) &&
   new URLSearchParams(window.location.search).get('status') === 'success';
 
 const isTestPurchase = (): boolean => {
@@ -156,7 +158,7 @@ export const trackCheckoutPurchase = (
         item_id: item.itemId,
         item_name: item.itemName,
         price: item.price,
-        quantity: 1,
+        quantity: item.quantity ?? 1,
       })),
       offer_slug: purchase.offerSlug,
     });
@@ -167,8 +169,8 @@ export const trackCheckoutPurchase = (
       currency: purchase.currency,
       content_type: 'product',
       content_ids: purchase.items.map((item) => item.itemId),
-      contents: purchase.items.map((item) => ({ id: item.itemId, quantity: 1, item_price: item.price })),
-      num_items: purchase.items.length,
+      contents: purchase.items.map((item) => ({ id: item.itemId, quantity: item.quantity ?? 1, item_price: item.price })),
+      num_items: purchase.items.reduce((units, item) => units + (item.quantity ?? 1), 0),
     }, { eventID: purchase.transactionId });
   }
 };

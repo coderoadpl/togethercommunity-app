@@ -2,23 +2,34 @@ import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import { z } from 'zod';
 import { createApiClient } from '#core/client/index.js';
-import { TENANT_HEADER } from '#core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
 import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import { emit } from '../output.js';
 import { planManifest, preflightManifest } from './plan.js';
 import { applyManifest } from './apply.js';
 import { driftManifest } from './drift.js';
-import { baseDomainSchema, manifestWorkspaceOrigins } from './instance.js';
+import { baseDomainSchema, cachedHealthReader, manifestWorkspaceOrigins, workspaceHostGuard } from './instance.js';
+import { confirmingOperator, readConfirmedWorkspaces } from './workspaces.js';
 
 export type ManifestCliContext = { apiUrl: string; profile: { token: string | null }; json: boolean };
 const optionsSchema = z.object({
-  manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
+  manifest: z.string().min(1), shop: z.string().min(1).optional(), integrations: z.boolean().optional(),
+  reconfigurePayments: z.boolean().optional(), baseDomain: baseDomainSchema.optional(),
 }).strict();
 
-const sessionClient = (baseUrl: string, token: string | null, workspace: string) => createApiClient({
+type HostCheck = () => Promise<Result<true, AppError>>;
+
+const checkedFetch = (check: HostCheck): typeof fetch => async (input, init) => {
+  const checked = await check();
+  if (!checked.ok) return Response.json({ ok: false, error: checked.error }, { status: 400 });
+  return fetch(input, init);
+};
+
+const sessionClient = (baseUrl: string, token: string | null, workspace: string | null, check?: HostCheck) => createApiClient({
   baseUrl,
   refuseRedirects: true,
-  headers: () => ({ ...(token ? { authorization: `Bearer ${token}` } : {}), [TENANT_HEADER]: workspace }),
+  ...(check === undefined ? {} : { fetchImpl: checkedFetch(check) }),
+  headers: () => ({ ...(token ? { authorization: `Bearer ${token}` } : {}), ...(workspace === null ? {} : { [TENANT_HEADER]: workspace }) }),
 });
 
 export const readManifestFile = async (path: string): Promise<Result<unknown, AppError>> => {
@@ -42,8 +53,11 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
     const subcommand = shop.command(command)
       .description(descriptions[command])
       .requiredOption('--manifest <file>', 'JSON manifest file').option('--shop <slug>', 'Select one manifest workspace')
-      .option('--base-domain <domain>', 'Instance base domain, needed when the API origin does not report it (the platform host)');
-    if (command === 'apply') subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks');
+      .option('--base-domain <domain>', 'Instance base domain, needed only when an API origin of an older release does not report it (its platform host)');
+    if (command === 'apply') {
+      subcommand.option('--integrations', 'Configure integration credentials and register workspace Stripe webhooks')
+        .option('--reconfigure-payments', 'With --integrations, configure Stripe again even when the workspace reports that mode as configured; registers a new webhook endpoint and signing secret');
+    }
     subcommand.action(async (raw: unknown) => {
       const ctx = context();
       if (!ctx.ok) {
@@ -58,10 +72,19 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const preflight = preflightManifest(input.value, options.data.shop);
       if (!preflight.ok) { emit(preflight, ctx.value.json, () => ''); return; }
       const { apiUrl, profile } = ctx.value;
+      const confirmed = await readConfirmedWorkspaces(sessionClient(apiUrl, profile.token, null));
+      if (!confirmed.ok) { emit(confirmed, ctx.value.json, () => ''); return; }
+      const healthOf = cachedHealthReader((origin) => createApiClient({ baseUrl: origin, refuseRedirects: true }));
       const workspaceOrigin = await manifestWorkspaceOrigins(apiUrl, (workspace) => sessionClient(apiUrl, profile.token, workspace),
-        preflight.value.map((shop) => shop.slug), options.data.baseDomain);
+        preflight.value.map((shop) => shop.slug).filter((slug) => confirmed.value.has(slug)),
+        { baseDomain: options.data.baseDomain, healthOf }, (message) => { process.stderr.write(`Warning: ${message}\n`); });
       if (!workspaceOrigin.ok) { emit(workspaceOrigin, ctx.value.json, () => ''); return; }
-      const clientFor = (workspace: string) => sessionClient(workspaceOrigin.value(workspace), profile.token, workspace);
+      const hostServedByInstance = workspaceHostGuard(new URL(apiUrl).origin, healthOf);
+      const clientFor = (workspace: string) => {
+        if (!confirmed.value.has(workspace)) return null;
+        const origin = workspaceOrigin.value(workspace);
+        return sessionClient(origin, profile.token, workspace, () => hostServedByInstance(origin));
+      };
       if (command === 'drift') {
         const result = await driftManifest(input.value, clientFor, options.data.shop);
         emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
@@ -71,9 +94,13 @@ export const registerShopManifestCommands = (program: Command, context: () => Re
       const result = command === 'plan'
         ? await planManifest(input.value, clientFor, options.data.shop)
         : await applyManifest(input.value, clientFor, options.data.shop, {
-          integrations: options.data.integrations, environment: process.env, operator: createApiClient({ baseUrl: apiUrl, refuseRedirects: true }),
+          integrations: options.data.integrations, reconfigurePayments: options.data.reconfigurePayments, environment: process.env,
+          operator: confirmingOperator(createApiClient({ baseUrl: apiUrl, refuseRedirects: true }), confirmed.value),
         });
       emit(result, ctx.value.json, (value) => JSON.stringify(value, null, 2));
+      if (command === 'plan' && result.ok && result.value.shops.some((entry) => entry.provisioning === 'missing')) {
+        process.exitCode = EXIT_CODE_BY_ERROR_CODE.validation;
+      }
     });
   }
 };

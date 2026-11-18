@@ -21,7 +21,10 @@ import {
   lessonEditionsOutputSchema,
   API_PATHS,
   authResolveRequestSchema,
+  checkoutCartSessionRequestSchema,
   checkoutSessionRequestSchema,
+  couponCartCheckoutValidationRequestSchema,
+  isCheckoutCartRequest,
   publicCheckoutSessionStatusInputSchema,
   couponCheckoutValidationRequestSchema,
   courseStructureOutputSchema,
@@ -83,12 +86,15 @@ import {
   getPublicSpaceEvents,
   getPublicSpaceFeed,
   getPublicSpaceThread,
+  describeInstance,
   resolveIdentity,
   resolveSignInMethods,
   resolveTenant,
   startCheckoutSession,
   hasStripeTestSession,
   ensureMember,
+  validateCartCoupon,
+  validateCartSelection,
   validateCheckoutSelection,
   validateCouponForCheckout,
   validateTermsConsent,
@@ -333,6 +339,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         database: (await deps.health.pingDatabase()) ? ('up' as const) : ('down' as const),
         ...deps.deploymentIdentity,
         ...(await deps.health.schemaStatus()),
+        instance: describeInstance(deps),
       }),
     ),
   );
@@ -556,7 +563,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const workspace = tenant.value.tenant;
     const contexts = await Promise.all(result.value.lines.map(({ productId: productRef }) => getPublicOffer(workspace, {
       courses: deps.courses, products: deps.products, lessons: deps.lessons, prices: deps.prices, tenants: deps.tenants, definitions: deps.marketing?.definitions, documents: deps.marketing?.documents,
-    }, productRef)));
+    }, productRef, 'sales_link')));
     const context = contexts[0];
     if (context === undefined || !context.ok) return respondPublic(err(internal('Offer context is unavailable')));
     const consents = contexts.flatMap((item) => item.ok ? item.value.products.flatMap((product) => product.marketingConsents) : []);
@@ -686,11 +693,39 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     );
   });
 
+  const checkoutRequestSelection = async (tenantId: string, body: unknown) => {
+    if (!isCheckoutCartRequest(body)) {
+      const parsed = checkoutSessionRequestSchema.safeParse(body);
+      if (!parsed.success) return err(validation('Invalid checkout payload', parsed.error.flatten()));
+      const selection = await validateCheckoutSelection(tenantId, parsed.data, deps);
+      return selection.ok ? ok({ input: parsed.data, selection: selection.value }) : selection;
+    }
+    const parsed = checkoutCartSessionRequestSchema.safeParse(body);
+    if (!parsed.success) return err(validation('Invalid checkout payload', parsed.error.flatten()));
+    const selection = await validateCartSelection(tenantId, parsed.data, deps);
+    return selection.ok ? ok({ input: parsed.data, selection: selection.value }) : selection;
+  };
+
+  const validateCartCouponRequest = async (tenantId: string, body: unknown) => {
+    const parsed = couponCartCheckoutValidationRequestSchema.safeParse(body);
+    if (!parsed.success) return err(validation('Invalid coupon payload', parsed.error.flatten()));
+    const selection = await validateCartSelection(tenantId, parsed.data, deps, { shipping: 'ignore' });
+    if (!selection.ok) return selection;
+    if (deps.coupons === undefined || deps.couponRedemptions === undefined || deps.priceHistory === undefined) {
+      return err(internal('Coupon checkout is not configured'));
+    }
+    const result = await validateCartCoupon(tenantId, { code: parsed.data.couponCode, email: parsed.data.email }, selection.value, {
+      coupons: deps.coupons, couponRedemptions: deps.couponRedemptions, priceHistory: deps.priceHistory, clock: deps.clock, payment: deps.payment,
+    });
+    return result.ok ? ok({ breakdown: result.value.breakdown, recurringDuration: result.value.coupon.recurringDuration }) : result;
+  };
+
   app.post(API_PATHS.couponCheckoutValidation, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
     const body: unknown = await readJson(c.req.raw);
+    if (isCheckoutCartRequest(body)) return respondPublic(await validateCartCouponRequest(tenant.value.tenant.id, body));
     const parsed = couponCheckoutValidationRequestSchema.safeParse(body);
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid coupon payload', parsed.error.flatten())));
@@ -739,42 +774,41 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
     const body: unknown = await readJson(c.req.raw);
-    const parsed = checkoutSessionRequestSchema.safeParse(body);
-    if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
-    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
-    if (!selection.ok) return respondPublic(selection);
-    const identity = selection.value.salesLinkId === undefined
+    const request = await checkoutRequestSelection(tenant.value.tenant.id, body);
+    if (!request.ok) return respondPublic(request);
+    const { input, selection } = request.value;
+    const identity = selection.salesLinkId === undefined
       ? await checkoutIdentity(c, deps) : await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
     const testMode = identity?.tenantId === tenant.value.tenant.id &&
       hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const consent = await validateTermsConsent(
       tenant.value.tenant.id,
-      parsed.data.termsAccepted,
+      input.termsAccepted,
       deps.tenants,
-      { requireLegalUrls: selection.value.salesLinkId !== undefined },
+      { requireLegalUrls: selection.salesLinkId !== undefined },
     );
     if (!consent.ok) return respondPublic(consent);
     if (testMode) {
-      const rejected = testCheckoutRejection(parsed.data, selection.value);
+      const rejected = testCheckoutRejection(input, selection);
       if (rejected !== null) return respondPublic(err(rejected));
     }
-    const testEmail = testMode && identity !== null ? identity.email : parsed.data.email;
+    const testEmail = testMode && identity !== null ? identity.email : input.email;
     const testMember = testMode && identity !== null ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
     if (testMember !== null && !testMember.ok) return respondPublic(testMember);
     const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsentCaptureId = deps.ids.nextId();
-    const captureConsent = !testMode || selection.value.salesLinkId !== undefined;
+    const captureConsent = !testMode || selection.salesLinkId !== undefined;
     if (captureConsent) {
       const legal = testMode ? await deps.tenants.findSettings(tenant.value.tenant.id) : null;
       const checkoutConsent = {
-        termsAccepted: parsed.data.termsAccepted === true,
+        termsAccepted: input.termsAccepted === true,
         ...(legal?.termsUrl == null ? {} : { termsUrl: legal.termsUrl }),
         ...(legal?.privacyUrl == null ? {} : { privacyUrl: legal.privacyUrl }),
-        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-        attachedDefinitionIds: [...new Set((selection.value.products ?? [selection.value.product]).flatMap((product) => product.checkoutConsentDefinitionIds ?? []))],
+        selectedDefinitionIds: input.marketingConsentDefinitionIds,
+        attachedDefinitionIds: [...new Set((selection.products ?? [selection.product]).flatMap((product) => product.checkoutConsentDefinitionIds ?? []))],
         collectedAt: deps.clock.nowIso(),
         confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
-        ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
+        ...(input.billing === undefined ? {} : { billing: input.billing }),
         ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
       };
       await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
@@ -786,8 +820,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const session = await startCheckoutSession(
       tenant.value.tenant,
       baseUrl,
-      testMode && testEmail !== undefined ? { ...parsed.data, email: testEmail } : parsed.data,
-      selection.value,
+      testMode && testEmail !== undefined ? { ...input, email: testEmail } : input,
+      selection,
       deps,
       captureConsent ? checkoutConsentCaptureId : undefined,
       testMember?.ok === true ? { mode: 'test', memberId: testMember.value.id } : undefined,
@@ -802,24 +836,24 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         type: 'checkout.session.completed',
         objectId,
         checkoutSession: {
-          email: parsed.data.email ?? null,
+          email: input.email ?? null,
           paymentStatus: 'no_payment_required',
           subscriptionId:
-            selection.value.price?.kind === 'recurring' ? `subscription_${objectId}` : null,
+            selection.price?.kind === 'recurring' ? `subscription_${objectId}` : null,
           paymentIntentId: null,
           invoiceId: null,
           amountTotalCents: session.value.coupon?.finalCents ?? 0,
           discountTotalCents: session.value.coupon?.discountCents ?? 0,
           metadata: {
             tenantId: tenant.value.tenant.id,
-            productId: selection.value.product.id,
-            priceId: selection.value.price?.id ?? null,
-            memberEmail: parsed.data.email ?? null,
-            language: parsed.data.language ?? null,
+            productId: selection.product.id,
+            priceId: selection.price?.id ?? null,
+            memberEmail: input.email ?? null,
+            language: input.language ?? null,
             checkoutConsentCaptureId,
             couponCheckoutSessionId: session.value.couponCheckoutSessionId ?? null,
             checkoutSnapshotId: session.value.checkoutSnapshotId ?? null,
-            salesLinkId: selection.value.salesLinkId ?? null,
+            salesLinkId: selection.salesLinkId ?? null,
           },
         },
       };

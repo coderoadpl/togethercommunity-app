@@ -2,7 +2,8 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal } from '#core/domain/index.js';
+import { useRef } from 'react';
+import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel, type ParcelTemplate } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -56,11 +57,15 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
+  const createShipmentWith = (parcelTemplate: ParcelTemplate | undefined) => {
+    createShipment.mutate({ orderId, ...(parcelTemplate === undefined ? {} : { parcelTemplate }) });
+  };
+  const recreateTemplate = useRef<ParcelTemplate | undefined>(undefined);
   const discardShipment = useMutation({
     ...actions.shipxDiscard,
     onSuccess: async () => {
       await queryClient.invalidateQueries(actions.shipxShipmentInvalidates(orderId));
-      createShipment.mutate(orderId);
+      createShipmentWith(recreateTemplate.current);
     },
   });
   const downloadLabel = useMutation({
@@ -150,7 +155,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </Stack>
       </SectionCard>
-      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
+      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} lineName={orderLineLabel} /></SectionCard>}
       {order.shipping == null ? null : (
         <SectionCard title={t.shipping.orderDeliveryHeading} data-testid="order-delivery">
           <Stack useFlexGap spacing="0.75rem">
@@ -179,14 +184,15 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
               error={createShipment.error ?? discardShipment.error ?? downloadLabel.error}
               discarding={discardShipment.isPending}
               downloading={downloadLabel.isPending}
-              onCreate={() => {
+              onCreate={(parcelTemplate) => {
                 downloadLabel.reset();
                 discardShipment.reset();
-                createShipment.mutate(order.id);
+                createShipmentWith(parcelTemplate);
               }}
-              onDiscard={() => {
+              onDiscard={(parcelTemplate) => {
                 createShipment.reset();
                 downloadLabel.reset();
+                recreateTemplate.current = parcelTemplate;
                 discardShipment.mutate(order.id);
               }}
               onDownloadLabel={() => {

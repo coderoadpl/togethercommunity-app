@@ -117,6 +117,8 @@ Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and 
 
 Optional product fields `vatRate` (`5`, `8`, `23`, or `"exempt"`) and `vatExemptionBasis` set the rate and legal basis used by sales-link checkout and invoice positions. An omitted or null rate stores no product override and follows the current workspace invoicing setting; unrelated edits do not freeze that default. Sales-link checkout freezes the resolved rate on each order line, while a single-product invoice without an explicit override uses the setting current at issue time. A workspace without a configured rate may retain an unresolved draft, but must configure VAT before activating a sales link. Exemption requires a legal basis, which can default to the workspace basis. A physical product is collected in person and must have an empty `accessItems` array; it supplies no course or download access.
 
+Optional `salesChannel` is `any` or `sales_links_only` (see [sales links](sales-links.md#products-sold-only-through-sales-links)). An omitted field creates a product with `any` and leaves the stored channel of an existing imported product unchanged on update; a channel set later in the panel therefore survives a re-import that omits the field. A `membership` cannot be `sales_links_only`: such a record, or an update that turns a `sales_links_only` product into a membership, fails with `validation`.
+
 ### Member
 
 ```jsonl

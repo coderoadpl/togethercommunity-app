@@ -10,10 +10,11 @@ import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
 import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
+import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
 import { createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -170,7 +171,7 @@ import {
 import { createAuth, createAuthPort, type Auth } from '#adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
-import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
+import { databaseHostFingerprint, databaseIdentityFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
@@ -507,6 +508,7 @@ export interface AppDeps {
   orderDetails?: OrderDetailRepository;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
+  orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
@@ -587,6 +589,7 @@ export interface AppDeps {
   appVersion: string;
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
+  databaseIdentity: string | null;
   tenantCreationMode: TenantCreationMode;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
@@ -1525,6 +1528,7 @@ export const createDeps = (
     metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
+    orderChangeFeed: { changes: createOrderChangeRepository(db), orders: orderRepository },
     shipxIntegration: {
       shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
       shipxShipments: createShipxShipmentRepository(db),
@@ -1627,6 +1631,7 @@ export const createDeps = (
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
     deploymentIdentity: selectDeploymentIdentity(env),
+    databaseIdentity: databaseIdentityFingerprint(env.DATABASE_URL),
     tenantCreationMode,
     ids,
     clock,

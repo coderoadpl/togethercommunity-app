@@ -40,6 +40,7 @@ describe('DEMO_TENANT_WIPE_TABLES', () => {
       schema.apiKeyRateLimitBuckets,
       schema.rateLimitBuckets,
       schema.platformAuditEvents,
+      schema.orderFeedEpoch,
     ].map(getTableName).toSorted();
 
     expect(tablesWithoutTenantId).toEqual(allowedTablesWithoutTenantId);

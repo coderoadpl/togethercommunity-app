@@ -46,6 +46,8 @@ describe('secure API origins', () => {
 
   it.each([
     'http://platform.example.test', 'http://10.0.0.5', 'ftp://platform.example.test', 'not a url', '',
+    'http://localhost.evil.example', 'http://127.0.0.1.evil.example', 'http://localhost:48730@evil.example',
+    'http://[::ffff:127.0.0.1]',
   ])('refuses %j', (raw) => {
     expect(secureApiOrigin(raw)).toBeNull();
   });

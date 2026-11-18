@@ -5,6 +5,7 @@ const bearerPattern = /authorization:\s*bearer\s+[^\n]*\$/i;
 const dataArgumentPattern = /(?:^|\s)(?:-d|--data(?:-raw|-binary|-urlencode)?)(?:\s+|=)("(?:[^"\\]|\\.)*"|'[^']*'|\S+)/g;
 const shellBuiltinPattern = /^\s*(?:printf|echo|read)\s/;
 const secretOptionPattern = /--(?![a-z-]*-(?:env|id|file|stdin)[\s=])[a-z-]*(?:key|token|secret|password)[a-z-]*[\s=]+["']?\$/;
+const signedUrlArgumentPattern = /<signed-[a-z-]*url>|\$\{?[A-Z0-9_]*(?:SIGNED|UPLOAD)_?URL[A-Z0-9_]*\}?|\$\([^)]*\.url\b[^)]*\)/;
 
 const lineProblem = (line: string): string | null => {
   if (shellBuiltinPattern.test(line)) return null;
@@ -17,6 +18,7 @@ const lineProblem = (line: string): string | null => {
     }
   }
   if (secretOptionPattern.test(line)) return 'passes a secret as a command-line option; use the option that names an environment variable, or stdin';
+  if (signedUrlArgumentPattern.test(line)) return 'passes a signed storage URL as a command-line argument; give curl a url = "..." config line on stdin with -K -';
   return null;
 };
 

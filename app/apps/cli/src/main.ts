@@ -283,6 +283,7 @@ const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
   email: z.string().email(),
   product: z.string().min(1),
   priceId: z.string().min(1).optional(),
+  acceptTerms: z.literal(true).optional(),
 });
 const priceAddOptionsSchema = z.object({
   product: z.string().min(1),
@@ -371,6 +372,7 @@ const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   line: z.array(checkoutLineOptionSchema).default([]),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
+  acceptTerms: z.literal(true).optional(),
   clientReference: z.string().optional(),
 });
 const memberExportOptionsSchema = z.object({
@@ -973,6 +975,7 @@ checkout
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
@@ -984,6 +987,7 @@ checkout
       const common = {
         ...(options.email === undefined ? {} : { email: options.email }),
         ...(options.language === undefined ? {} : { language: options.language }),
+        ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
         ...(shipping.value === null ? {} : { shipping: shipping.value }),
         ...(options.clientReference === undefined ? {} : { clientReference: options.clientReference }),
       };
@@ -3431,6 +3435,7 @@ program
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
@@ -3448,6 +3453,7 @@ program
           email: options.email,
           productId: options.product,
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
+          ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
           ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,

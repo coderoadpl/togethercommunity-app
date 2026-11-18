@@ -58,6 +58,20 @@ describe('shop management key doctrine lint', () => {
     expect(collectShopKeyDoctrineProblems(files)).toEqual([]);
   });
 
+  it('requires the keyed ShipX routes in the carrier credentials section', () => {
+    expect(shopKeyDoctrineRequirements
+      .filter((requirement) => requirement.section === '## InPost ShipX credentials')
+      .map((requirement) => requirement.text)).toEqual([
+      '`POST /api/m2m/shop/integrations/shipx/configure`',
+      '`/api/m2m/shop/orders/<orderId>/shipx`',
+      'classified `api-key`',
+      "act as the key's issuer",
+      "buys the shipment at InPost, charged to the workspace's carrier account, so a key with `shop:fulfilment:write` can spend carrier money",
+      'so a call the use-case then refuses (a lease conflict, a missing configuration, an order of another workspace) keeps its history row',
+      'A shop management key may write them only through the ShipX configure use-case, never through the generic tenant-secret write',
+    ]);
+  });
+
   it('reports a surface that is not tracked markdown', () => {
     expect(collectShopKeyDoctrineProblems(new Map())).toEqual([
       '[shop-key-doctrine] app/CLAUDE.md is not tracked markdown',

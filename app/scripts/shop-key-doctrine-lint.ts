@@ -53,6 +53,24 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
   {
     file: 'app/docs/security.md',
     section: '## Tenant API keys',
+    text: '`POST /api/m2m/shop/integrations/stripe/configure`',
+    reason: 'must state that a key configures Stripe, the live slot included',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`POST /api/m2m/shop/integrations/storage/configure`',
+    reason: 'must state that a key configures the storage connection',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
+    text: '`ksef.test.contextNip`',
+    reason: 'must list the finite generic secret allow-list of shop keys',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## Tenant API keys',
     text: 'A refusal returned by the handler (a validation error, an id of another workspace, a conflict) does have a request row',
     reason: 'must state that a refusal returned by a shop route handler has a key history row',
   },
@@ -67,6 +85,42 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     section: '## Tenant API keys',
     text: '`shop:fulfilment:write` grants `order:write`, which includes creating carrier shipments (InPost ShipX), a paid action at the carrier',
     reason: 'must state that the fulfilment scope can create paid carrier shipments',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: '`POST /api/m2m/shop/integrations/shipx/configure`',
+    reason: 'must name the keyed ShipX credential write route',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: '`/api/m2m/shop/orders/<orderId>/shipx`',
+    reason: 'must name the keyed ShipX shipment routes',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: 'classified `api-key`',
+    reason: 'must state the api-key origin classification of the keyed ShipX routes',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: "act as the key's issuer",
+    reason: "must state that the keyed ShipX routes act as the key's issuer",
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: "buys the shipment at InPost, charged to the workspace's carrier account, so a key with `shop:fulfilment:write` can spend carrier money",
+    reason: 'must state that a keyed ShipX shipment creation is paid at the carrier',
+  },
+  {
+    file: 'app/docs/security.md',
+    section: '## InPost ShipX credentials',
+    text: 'so a call the use-case then refuses (a lease conflict, a missing configuration, an order of another workspace) keeps its history row',
+    reason: 'must state that a keyed ShipX call refused by its use-case keeps its key history row',
   },
   {
     file: 'app/docs/shop-management-keys.md',
@@ -149,6 +203,11 @@ export const shopKeyDoctrineRequirements: readonly DoctrineRequirement[] = [
     text: '`shop:settings:read` grants `tenant:settings:read`',
     reason: 'must state that the shop settings read scope grants the settings read capability',
   },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'A call refused before the handler (an invalid key, an issuer who no longer qualifies, the rate limit, a missing scope, mixed credentials, the off switch or the body size limit) has no row',
+    reason: 'must state that a carrier call refused before its handler has no key history row',
+  },
 ];
 
 export const shopKeyDoctrineContradictions: readonly DoctrineRequirement[] = [
@@ -156,6 +215,11 @@ export const shopKeyDoctrineContradictions: readonly DoctrineRequirement[] = [
     file: 'app/docs/observability.md',
     text: 'none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow',
     reason: 'must not claim that no key grants the settings read capability',
+  },
+  {
+    file: 'app/docs/shop-management-keys.md',
+    text: 'the refused ones included, has its key history `request` row',
+    reason: 'must not claim that every refused carrier call has a key history row',
   },
 ];
 

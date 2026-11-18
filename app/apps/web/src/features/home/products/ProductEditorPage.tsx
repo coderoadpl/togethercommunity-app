@@ -36,6 +36,7 @@ import {
   type Product,
   type ProductPrice,
   type ProductDownloadAssetMetadata,
+  type ProductSalesChannel,
   type ProductVisibility,
 } from '#core/domain/index.js';
 
@@ -57,8 +58,8 @@ import { ProductStockSection } from './ProductStockSection.js';
 const ProductDetailsSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
-  const [visibility, setVisibility] = useState<ProductVisibility>(product.visibility);
-  const [salesChannel, setSalesChannel] = useState(product.salesChannel);
+  const [visibilityDraft, setVisibilityDraft] = useState<ProductVisibility | null>(null);
+  const [salesChannelDraft, setSalesChannelDraft] = useState<ProductSalesChannel | null>(null);
   const [title, setTitle] = useState(product.title);
   const [description, setDescription] = useState(product.description);
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
@@ -76,6 +77,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         queryClient.invalidateQueries(actions.productsInvalidates()),
         queryClient.invalidateQueries(actions.publicOfferInvalidates()),
       ]);
+      setVisibilityDraft(null);
+      setSalesChannelDraft(null);
     },
   });
 
@@ -87,8 +90,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
     save.mutate({
       id: product.id,
       title: title.trim(),
-      visibility,
-      ...(product.type === 'membership' ? {} : { salesChannel }),
+      ...(visibilityDraft === null ? {} : { visibility: visibilityDraft }),
+      ...(salesChannelDraft === null ? {} : { salesChannel: salesChannelDraft }),
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       ...(product.type === 'physical' ? {
@@ -144,11 +147,11 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         <FormLabel id="product-visibility-label">{t.products.visibilityLabel}</FormLabel>
         <Select
           labelId="product-visibility-label"
-          value={visibility}
+          value={visibilityDraft ?? product.visibility}
           inputProps={{ 'aria-describedby': 'product-visibility-helper' }}
           onChange={(event) => {
             resetFeedback();
-            setVisibility(productVisibilitySchema.parse(event.target.value));
+            setVisibilityDraft(productVisibilitySchema.parse(event.target.value));
           }}
         >
           <MenuItem value="listed">{t.products.listed}</MenuItem>
@@ -161,11 +164,11 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
           <FormLabel id="product-sales-channel-label">{t.products.salesChannelLabel}</FormLabel>
           <Select
             labelId="product-sales-channel-label"
-            value={salesChannel}
+            value={salesChannelDraft ?? product.salesChannel}
             inputProps={{ 'aria-describedby': 'product-sales-channel-helper' }}
             onChange={(event) => {
               resetFeedback();
-              setSalesChannel(productSalesChannelSchema.parse(event.target.value));
+              setSalesChannelDraft(productSalesChannelSchema.parse(event.target.value));
             }}
           >
             <MenuItem value="any">{t.products.salesChannelAny}</MenuItem>

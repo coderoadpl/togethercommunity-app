@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
+import { useEffect, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -238,16 +239,23 @@ const renderProductsPanel = async (
     }),
   );
 
+  let showEditedProduct: (product: Product) => void = () => undefined;
+  const EditedProduct = () => {
+    const [shown, setShown] = useState<Product | null>(null);
+    useEffect(() => {
+      showEditedProduct = setShown;
+    }, []);
+    const product = shown ?? created.at(-1) ?? products[0];
+    return product === undefined ? null : <ProductEditorPage product={product} />;
+  };
+
   const rootRoute = createRootRoute();
   const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products', component: ProductsPanel });
   const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products/new', component: ProductCreatePage });
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/panel/products/$productId',
-    component: () => {
-      const product = created.at(-1) ?? products[0];
-      return product === undefined ? null : <ProductEditorPage product={product} />;
-    },
+    component: EditedProduct,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([listRoute, createRoutePage, detailRoute]),
@@ -261,6 +269,10 @@ const renderProductsPanel = async (
     directUploadCalled: () => directUploadCalled,
     updatedProduct: () => updatedProduct,
     updateInputs,
+    changeEditedProductElsewhere: (product: Product) => {
+      products = products.map((candidate) => candidate.id === product.id ? product : candidate);
+      act(() => showEditedProduct(product));
+    },
   };
 };
 
@@ -725,6 +737,27 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(rendered.updatedProduct()).toMatchObject({ visibility: 'listed', salesChannel: 'sales_links_only' });
+  });
+
+  it('saves a title edit without writing back a sales channel or visibility changed elsewhere after the editor opened', async () => {
+    const user = userEvent.setup();
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const title = await screen.findByLabelText(en.products.titleLabel);
+
+    rendered.changeEditedProductElsewhere({ ...baseProduct, salesChannel: 'sales_links_only', visibility: 'unlisted' });
+    expect(screen.getByRole('combobox', { name: en.products.salesChannelLabel })).toHaveTextContent(en.products.salesChannelSalesLinksOnly);
+    expect(screen.getByRole('combobox', { name: en.products.visibilityLabel })).toHaveTextContent(en.products.unlisted);
+    await user.clear(title);
+    await user.type(title, 'Renamed course');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.objectContaining({ title: 'Renamed course' })]);
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ salesChannel: expect.anything() })]);
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ visibility: expect.anything() })]);
+    expect(rendered.updatedProduct()).toMatchObject({ title: 'Renamed course', salesChannel: 'sales_links_only', visibility: 'unlisted' });
   });
 
   it('offers no sales channel for a membership and leaves it out of the saved details', async () => {

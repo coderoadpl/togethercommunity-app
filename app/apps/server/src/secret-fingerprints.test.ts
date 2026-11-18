@@ -10,7 +10,8 @@ import {
 } from '#core/contract/index.js';
 
 import type { AppVars } from './app-vars.js';
-import { envSchema } from './env.js';
+import { operatorSecretConfigured, selectOperatorSecret } from './composition.js';
+import { DEV_EMAIL_DISPATCH_SECRET, envSchema } from './env.js';
 import {
   FINGERPRINTED_SECRET_NAMES,
   OUT_OF_SCHEMA_SECRET_NAMES,
@@ -60,7 +61,9 @@ const allNames = [...FINGERPRINTED_SECRET_NAMES, ...OUT_OF_SCHEMA_SECRET_NAMES];
 
 const harness = (env: Parameters<typeof secretFingerprintsOf>[0] = envSchema.parse(values)) => {
   const app = new Hono<AppVars>();
-  registerSecretFingerprintsRoute(app, { operatorSecret, secretFingerprints: secretFingerprintsOf(env, processEnv) });
+  registerSecretFingerprintsRoute(app, {
+    operatorSecret, operatorSecretConfigured: true, secretFingerprints: secretFingerprintsOf(env, processEnv),
+  });
   return app;
 };
 
@@ -145,6 +148,38 @@ describe('secret fingerprint route', () => {
       expect(text).not.toContain(value);
     }
     expect(text).not.toMatch(/length|prefix|value/i);
+  });
+
+  it('rejects even the matching secret with the shared operator error when the operator secret was not explicitly configured', async () => {
+    const app = new Hono<AppVars>();
+    registerSecretFingerprintsRoute(app, {
+      operatorSecret, operatorSecretConfigured: false, secretFingerprints: secretFingerprintsOf(envSchema.parse(values), processEnv),
+    });
+    const response = await app.request(API_PATHS.secretFingerprints, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
+  });
+
+  it('refuses the public dispatch default on a preview deployment that set no operator secret', async () => {
+    const env = envSchema.parse({
+      NODE_ENV: 'production',
+      APP_ENV: 'preview',
+      APP_BASE_URL: 'https://preview.example.test',
+      DATABASE_URL: 'postgres://preview:test-only-preview-db-password@db.example.test/together',
+      SMOKE_MEMBER_PASSWORD: 'test-only-smoke-password',
+    });
+    expect(selectOperatorSecret(env)).toBe(DEV_EMAIL_DISPATCH_SECRET);
+    const app = new Hono<AppVars>();
+    registerSecretFingerprintsRoute(app, {
+      operatorSecret: selectOperatorSecret(env),
+      operatorSecretConfigured: operatorSecretConfigured(env),
+      secretFingerprints: secretFingerprintsOf(env, {}),
+    });
+    const response = await app.request(API_PATHS.secretFingerprints, {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: DEV_EMAIL_DISPATCH_SECRET },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
   });
 
   it('logs nothing while answering', async () => {

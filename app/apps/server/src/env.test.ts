@@ -15,6 +15,7 @@ import {
   selectDomainProvisioner,
   selectPlatformReset,
   selectSmokeTenantReseed,
+  operatorSecretConfigured,
   selectOperatorSecret,
   selectTenantCreationMode,
   selectTenantRouting,
@@ -835,6 +836,18 @@ describe('operator secret', () => {
       STAGING_OPERATOR_SECRET: undefined,
       CRON_SECRET: undefined,
     })).toBe('email-dispatch-secret-16');
+  });
+
+  it.each(['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET', 'CRON_SECRET'] as const)(
+    'counts %s alone as an explicitly configured operator secret',
+    (name) => {
+      expect(operatorSecretConfigured(envSchema.parse({ [name]: secrets[name] }))).toBe(true);
+    },
+  );
+
+  it('does not count the dispatch secret or its schema default as an explicitly configured operator secret', () => {
+    expect(operatorSecretConfigured(envSchema.parse({ EMAIL_DISPATCH_SECRET: secrets.EMAIL_DISPATCH_SECRET }))).toBe(false);
+    expect(operatorSecretConfigured(envSchema.parse({}))).toBe(false);
   });
 });
 

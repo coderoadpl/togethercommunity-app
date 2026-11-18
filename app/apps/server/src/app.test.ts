@@ -621,6 +621,7 @@ const deps = (input: {
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
     domainCheckSecret: 'test-domain-check-secret',
     operatorSecret: 'test-operator-secret',
+    operatorSecretConfigured: true,
     secretFingerprints: [
       { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
       { name: 'SMTP_PASSWORD', set: false, fingerprint: null },
@@ -10348,6 +10349,16 @@ describe('operator provisioning public-surface regression', () => {
     const fingerprints = await app.request(API_PATHS.secretFingerprints, { headers });
     expect(fingerprints.status).toBe(readiness.status);
     expect(await fingerprints.text()).toBe(await readiness.text());
+  });
+
+  it('rejects the matching secret at the early guard when the operator secret was not explicitly configured', async () => {
+    const app = buildApp({ ...deps(), operatorSecretConfigured: false });
+    const headers = { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' };
+    const fingerprints = await app.request(API_PATHS.secretFingerprints, { headers });
+    const wrong = await app.request(API_PATHS.secretFingerprints, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' } });
+    expect(fingerprints.status).toBe(401);
+    expect(await fingerprints.text()).toBe(await wrong.text());
+    expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).not.toBe(401);
   });
 
   it('serves the composed fingerprints to the operator without a session', async () => {

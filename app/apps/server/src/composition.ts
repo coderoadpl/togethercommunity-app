@@ -571,6 +571,7 @@ export interface AppDeps {
   autoInvoiceDispatchSecret: string;
   domainCheckSecret: string;
   operatorSecret: string;
+  operatorSecretConfigured: boolean;
   secretFingerprints: readonly SecretFingerprint[];
   smokeTenantReseed?: SmokeTenantReseedDeps;
   sanitizeStagingSecrets: SanitizeStagingSecretsDeps;
@@ -721,21 +722,19 @@ export const selectSmokeTenantReseed = (
   };
 };
 
-export const selectOperatorSecret = (
-  env: Pick<
-    Env,
-    | 'OPERATOR_SECRET'
-    | 'PROD_OPERATOR_SECRET'
-    | 'STAGING_OPERATOR_SECRET'
-    | 'CRON_SECRET'
-    | 'EMAIL_DISPATCH_SECRET'
-  >,
-): string =>
+type ExplicitOperatorSecretEnv = Pick<Env, 'OPERATOR_SECRET' | 'PROD_OPERATOR_SECRET' | 'STAGING_OPERATOR_SECRET' | 'CRON_SECRET'>;
+
+const explicitOperatorSecretOf = (env: ExplicitOperatorSecretEnv): string | undefined =>
   env.OPERATOR_SECRET
   ?? env.PROD_OPERATOR_SECRET
   ?? env.STAGING_OPERATOR_SECRET
-  ?? env.CRON_SECRET
-  ?? env.EMAIL_DISPATCH_SECRET;
+  ?? env.CRON_SECRET;
+
+export const selectOperatorSecret = (env: ExplicitOperatorSecretEnv & Pick<Env, 'EMAIL_DISPATCH_SECRET'>): string =>
+  explicitOperatorSecretOf(env) ?? env.EMAIL_DISPATCH_SECRET;
+
+export const operatorSecretConfigured = (env: ExplicitOperatorSecretEnv): boolean =>
+  explicitOperatorSecretOf(env) !== undefined;
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
@@ -1614,6 +1613,7 @@ export const createDeps = (
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     operatorSecret: selectOperatorSecret(env),
+    operatorSecretConfigured: operatorSecretConfigured(env),
     secretFingerprints: secretFingerprintsOf(env, process.env),
     ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
     sanitizeStagingSecrets,

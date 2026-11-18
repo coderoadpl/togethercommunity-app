@@ -1,4 +1,4 @@
-import type { Hono } from 'hono';
+import type { Hono, MiddlewareHandler } from 'hono';
 
 import { secretFingerprint } from '#adapters/crypto/secret-fingerprint.js';
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, type SecretFingerprint } from '#core/contract/index.js';
@@ -49,14 +49,25 @@ export const secretFingerprintsOf = (
   ...OUT_OF_SCHEMA_SECRET_NAMES.map((name) => fingerprintOf(name, processEnv[name], undefined)),
 ];
 
+type SecretFingerprintsAuth = { operatorSecret: string; operatorSecretConfigured: boolean };
+
+const authorized = (header: string | undefined, deps: SecretFingerprintsAuth): boolean =>
+  deps.operatorSecretConfigured && secretEquals(header, deps.operatorSecret);
+
+const rejection = () => respond(err(unauthorized('Invalid operator secret')));
+
+export const secretFingerprintsGuard = (deps: SecretFingerprintsAuth): MiddlewareHandler<AppVars> =>
+  async (c, next) => {
+    if (!authorized(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps)) return rejection();
+    await next();
+  };
+
 export const registerSecretFingerprintsRoute = (
   app: Hono<AppVars>,
-  deps: { operatorSecret: string; secretFingerprints: readonly SecretFingerprint[] },
+  deps: SecretFingerprintsAuth & { secretFingerprints: readonly SecretFingerprint[] },
 ): void => {
   app.get(API_PATHS.secretFingerprints, (c) => {
-    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.operatorSecret)) {
-      return respond(err(unauthorized('Invalid operator secret')));
-    }
+    if (!authorized(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps)) return rejection();
     return respond(ok({ secrets: [...deps.secretFingerprints] }));
   });
 };

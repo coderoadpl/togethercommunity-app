@@ -492,10 +492,17 @@ fingerprint, so a deployment that never set `DATABASE_URL` shows it as not set
 instead of fingerprinting the localhost default the schema falls back to.
 
 `GET /api/internal/secret-fingerprints` returns
-`{ secrets: [{ name, set, fingerprint }] }`. It authenticates exactly like the
-operator tenant routes above: `x-scheduler-operator-secret` against
-`deps.operatorSecret` through `secretEquals`, an early route guard before the
-impersonation middleware, and the shared `Invalid operator secret` rejection.
+`{ secrets: [{ name, set, fingerprint }] }`. It authenticates like the operator
+tenant routes above: `x-scheduler-operator-secret` against `deps.operatorSecret`
+through `secretEquals`, an early route guard before the impersonation
+middleware, and the shared `Invalid operator secret` rejection. Unlike them, it
+answers only when the deployment configured its operator secret explicitly, by
+setting one of `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET`,
+`STAGING_OPERATOR_SECRET` or `CRON_SECRET`. A deployment that sets none of them,
+whose operator secret falls back to `EMAIL_DISPATCH_SECRET` or to that
+variable's public schema default, answers every fingerprint request with the
+same 401 body without comparing the header. The other operator routes keep the
+fallback.
 Its capability is `scheduler:read`, the operator read capability the auth
 send-log evidence route already uses.
 The fingerprints are computed once at composition, so the route never sees a

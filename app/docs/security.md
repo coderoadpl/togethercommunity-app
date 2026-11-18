@@ -453,6 +453,78 @@ from being forwarded to another origin.
 See [operator tenant provisioning](tenant-provisioning.md) for the procedure,
 readiness evidence limits and recovery behavior.
 
+## Secret fingerprints
+
+A secret manager is write-only, so the owner checks a deployment's secrets by
+fingerprint: the deployment never returns a value, and the owner compares
+fingerprints computed on both sides.
+
+The fingerprinted variables are the secrets the server environment schema reads:
+`BETTER_AUTH_SECRET`, `SECRETS_MASTER_KEY`, `EMAIL_DISPATCH_SECRET`,
+`MARKETING_TICK_SECRET`, `CRON_SECRET`, `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET`,
+`STAGING_OPERATOR_SECRET`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
+`REALTIME_DATABASE_URL`, `DOMAIN_PROVISIONER_TOKEN`, `SMTP_PASSWORD`,
+`GOOGLE_CLIENT_SECRET`, `SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD`.
+A test classifies every schema variable as fingerprinted or not, so a new
+variable fails it until someone decides.
+
+```text
+fingerprint(name, value) = first 16 lowercase hex characters of
+  HMAC-SHA256(key = UTF-8 bytes of value, message = "together-secret-fingerprint-v1:" + name)
+```
+
+The key is the value exactly as the process parsed it, without trimming or
+decoding, so a stray space or line break changes the fingerprint. The name in the
+message keeps one value stored under two names from producing equal
+fingerprints. A variable that is absent or empty reports `set: false` and a null
+fingerprint; a variable left at a built-in development default is fingerprinted
+as that default, which production boot validation refuses anyway.
+
+`GET /api/internal/secret-fingerprints` returns
+`{ secrets: [{ name, set, fingerprint }] }`. It authenticates exactly like the
+operator tenant routes above: `x-scheduler-operator-secret` against
+`deps.operatorSecret` through `secretEquals`, an early route guard before the
+impersonation middleware, and the shared `Invalid operator secret` rejection.
+Its capability is `scheduler:read`, the operator read capability the auth
+send-log evidence route already uses.
+The fingerprints are computed once at composition, so the route never sees a
+value, and nothing about a value, its prefix or its length is returned or logged.
+Like the other operator routes it has no separate rate limiter.
+
+A fingerprint does not reveal the value, but anyone holding it can test
+guesses offline. A long random secret stays out of reach; a low-entropy value
+such as a short password does not. The endpoint therefore answers only an
+authenticated operator, and fingerprints belong in the same places as the
+operator secret, never in tickets or public logs.
+
+The operator CLI prints the server's list, one `NAME=fingerprint` line per
+variable (`not-set` when absent), or the usual envelope with `--json`. It reads
+the secret only from `OPERATOR_SECRET`:
+
+```bash
+pnpm --silent run cli --api-url https://platform.example operator secrets fingerprints
+```
+
+The owner verifies a deployment against 1Password with
+[`scripts/secrets-verify.ts`](../scripts/secrets-verify.ts). Copy
+[`scripts/secrets-verify.env.example`](../scripts/secrets-verify.env.example),
+replace `<vault>`, and run it under `op run` so the values come from 1Password at
+run time and never touch the disk or the terminal:
+
+```bash
+op run --env-file secrets-verify.env -- pnpm --silent run secrets:verify -- --base-url https://platform.example
+```
+
+The tool authenticates with `OPERATOR_SECRET`, falling back to
+`PROD_OPERATOR_SECRET`, accepts only an `https` base URL (or `http` on a local
+host), and prints one line per server variable: `MATCH`, `MISMATCH`,
+`NOT SET ON SERVER` or `NOT IN LOCAL ENV`. A `MISMATCH` also says whether the
+trimmed local value matches, which points at surrounding whitespace, and whether
+the server value is the local value followed by a line break. It exits 0 only
+when at least one variable matched and every variable present locally matched;
+a line for a variable the deployment does not set reports `NOT SET ON SERVER`,
+so drop it from the env file when that is intended.
+
 ## Download copy privacy
 
 The copy registry is tenant-scoped and requires `order:read`. Public and member

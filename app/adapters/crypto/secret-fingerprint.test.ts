@@ -9,7 +9,7 @@ describe('secretFingerprint', () => {
     ['BETTER_AUTH_SECRET', 'test-only-better-auth-secret', '55cfdafba1172c2d'],
     ['CRON_SECRET', 'test-only-better-auth-secret', 'a0f3a7ed0450a663'],
     ['OPERATOR_SECRET', ' test-only-padded-value\n', '9110a3a1bb01767b'],
-    ['SECRETS_MASTER_KEY', 'test-only-zażółć-key', '7068dca716433ec6'],
+    ['SECRETS_MASTER_KEY', 'test-only-€-é-key', 'a0c467825027d910'],
   ])('matches the openssl HMAC-SHA256 vector for %s', (name, value, expected) => {
     expect(secretFingerprint(name, value)).toBe(expected);
   });

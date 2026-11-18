@@ -40,6 +40,11 @@ describe('compareSecretFingerprints', () => {
     ]);
   });
 
+  it('recognises a server value that carries a CRLF line break after the local value', () => {
+    expect(compareSecretFingerprints([set('CRON_SECRET', 'test-only-cron-secret\r\n')], { CRON_SECRET: 'test-only-cron-secret' }))
+      .toEqual([{ name: 'CRON_SECRET', outcome: 'MISMATCH', trimmedMatches: false, serverAddsLineBreak: true }]);
+  });
+
   it('treats an empty local value as absent', () => {
     expect(compareSecretFingerprints([unset('SMTP_PASSWORD')], { SMTP_PASSWORD: '' }))
       .toEqual([{ name: 'SMTP_PASSWORD', outcome: 'NOT IN LOCAL ENV' }]);

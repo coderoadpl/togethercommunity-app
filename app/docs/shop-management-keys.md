@@ -416,7 +416,7 @@ deleted keys, stays.
 ## Rollback
 
 A retreat to the previous release needs no purge and no data step. Migration
-`0158_shop_management_keys` only adds the tables `shop_management_keys`,
+`0159_shop_management_keys` only adds the tables `shop_management_keys`,
 `shop_management_key_rate_limit_buckets` and `shop_management_key_events`; it
 does not change `tenant_api_keys` or any other existing table. The previous
 release reads `tenant_api_keys` exactly as before, and nothing in it reads the

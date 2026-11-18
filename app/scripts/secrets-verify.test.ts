@@ -98,12 +98,25 @@ describe('runSecretsVerify', () => {
     for (const value of [...Object.values(local), 'test-only']) expect(output).not.toContain(value.trim());
   });
 
-  it('exits 0 when every locally present name matches and prefers OPERATOR_SECRET', async () => {
-    const env = { OPERATOR_SECRET: 'test-only-preferred-operator', BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET };
+  it('exits 0 when every locally present name matches and prefers OPERATOR_SECRET over the deprecated names', async () => {
+    const env = {
+      OPERATOR_SECRET: 'test-only-preferred-operator',
+      PROD_OPERATOR_SECRET: 'test-only-prod-operator',
+      STAGING_OPERATOR_SECRET: 'test-only-staging-operator',
+      BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET,
+    };
     const { fetchImpl } = fakeServer([set('BETTER_AUTH_SECRET', local.BETTER_AUTH_SECRET), unset('SMTP_PASSWORD')], env.OPERATOR_SECRET);
     const { code, output } = await verify(['--base-url', 'http://localhost:48730'], env, fetchImpl);
     expect(code).toBe(0);
     expect(output).toContain('secrets:verify: PASS (1 of 2 matched)');
+  });
+
+  it('prefers PROD_OPERATOR_SECRET over STAGING_OPERATOR_SECRET, then falls back to STAGING_OPERATOR_SECRET', async () => {
+    const secrets = [set('BETTER_AUTH_SECRET', local.BETTER_AUTH_SECRET)];
+    const stagingOnly = { STAGING_OPERATOR_SECRET: 'test-only-staging-operator', BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET };
+    const both = { ...stagingOnly, PROD_OPERATOR_SECRET: 'test-only-prod-operator' };
+    expect((await verify(['--base-url', 'http://localhost:48730'], both, fakeServer(secrets, both.PROD_OPERATOR_SECRET).fetchImpl)).code).toBe(0);
+    expect((await verify(['--base-url', 'http://localhost:48730'], stagingOnly, fakeServer(secrets, stagingOnly.STAGING_OPERATOR_SECRET).fetchImpl)).code).toBe(0);
   });
 
   it('reports the operator rejection without echoing the secret', async () => {
@@ -128,7 +141,7 @@ describe('runSecretsVerify', () => {
     const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
     const { code, output } = await verify(['--base-url', 'https://platform.example.test'], { CRON_SECRET: 'test-only-cron' }, fetchImpl);
     expect(code).toBe(2);
-    expect(output).toContain('OPERATOR_SECRET or PROD_OPERATOR_SECRET is required');
+    expect(output).toContain('one of OPERATOR_SECRET, PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET is required');
     expect(calls).toEqual([]);
   });
 });

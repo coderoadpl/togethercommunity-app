@@ -50,8 +50,10 @@ export const formatVerdict = (verdict: SecretVerdict): string => {
     : `${line}  ${trimmed}`;
 };
 
+const OPERATOR_SECRET_NAMES = ['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'] as const;
+
 const operatorSecretOf = (local: LocalEnv): string | undefined =>
-  [local['OPERATOR_SECRET'], local['PROD_OPERATOR_SECRET']].find(present);
+  OPERATOR_SECRET_NAMES.map((name) => local[name]).find(present);
 
 const parseBaseUrl = (argv: readonly string[]): string | null => {
   try {
@@ -84,7 +86,7 @@ export const runSecretsVerify = async (input: {
   }
   const operatorSecret = operatorSecretOf(input.env);
   if (operatorSecret === undefined) {
-    input.write('secrets:verify: OPERATOR_SECRET or PROD_OPERATOR_SECRET is required in the environment');
+    input.write(`secrets:verify: one of ${OPERATOR_SECRET_NAMES.join(', ')} is required in the environment`);
     return 2;
   }
   const api = createApiClient({ baseUrl, ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }) });

@@ -522,15 +522,38 @@ run time and never touch the disk or the terminal:
 op run --env-file secrets-verify.env -- pnpm --silent run secrets:verify -- --base-url https://platform.example
 ```
 
-The tool authenticates with `OPERATOR_SECRET`, falling back to
-`PROD_OPERATOR_SECRET`, accepts only an `https` base URL (or `http` on a local
-host), and prints one line per server variable: `MATCH`, `MISMATCH`,
-`NOT SET ON SERVER` or `NOT IN LOCAL ENV`. A `MISMATCH` also says whether the
-trimmed local value matches, which points at surrounding whitespace, and whether
-the server value is the local value followed by a line break. It exits 0 only
-when at least one variable matched and every variable present locally matched;
-a line for a variable the deployment does not set reports `NOT SET ON SERVER`,
-so drop it from the env file when that is intended.
+The tool must authenticate with the operator secret the deployment selects. It
+sends the first of `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET` and
+`STAGING_OPERATOR_SECRET` present in its environment, the order in which the
+server selects its operator secret; a deployment that sets none of the three
+falls back to `CRON_SECRET` and then `EMAIL_DISPATCH_SECRET`, which the tool
+does not do, so such a deployment needs `OPERATOR_SECRET` before it can be
+verified. A wrong secret ends the run with `FAIL unauthorized` before anything
+is compared.
+
+The env example keeps the 1Password item's field names, and the item has no
+`OPERATOR_SECRET` field. When the deployment sets `OPERATOR_SECRET` to the value
+stored in the item's `PROD_OPERATOR_SECRET` field, add this line to the env
+file; the tool then authenticates with it and compares it with the deployment's
+`OPERATOR_SECRET`:
+
+```text
+OPERATOR_SECRET="op://<vault>/togethercommunity-app prod secrets/PROD_OPERATOR_SECRET"
+```
+
+The tool accepts only an `https` base URL (or `http` on a local host) and
+prints one line per server variable: `MATCH`, `MISMATCH`, `NOT SET ON SERVER`
+or `NOT IN LOCAL ENV`. A `MISMATCH` also says whether the trimmed local value
+matches, which points at surrounding whitespace, and whether the server value is
+the local value followed by a line break. It exits 0 only when at least one
+variable matched and every variable present locally matched. A line for a
+variable the deployment does not set reports `NOT SET ON SERVER` and fails the
+run; when that is intended, remove the line from the env file, but keep the line
+of the operator name the deployment selects. Removing `PROD_OPERATOR_SECRET`
+without an `OPERATOR_SECRET` line leaves the tool sending
+`STAGING_OPERATOR_SECRET`, which a production deployment rejects. The item has
+no AWS fields, so the AWS pair reports `NOT IN LOCAL ENV` until the env file
+gets lines for it.
 
 ## Download copy privacy
 

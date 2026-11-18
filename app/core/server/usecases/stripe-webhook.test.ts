@@ -55,6 +55,7 @@ const product = (tenantId: string, overrides: Partial<Product> = {}): Product =>
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -3064,6 +3065,18 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
   expect(replay.ok).toBe(true);
   expect(h.orders).toHaveLength(1);
   expect(h.grants.size).toBe(2);
+});
+
+it('fulfils a sales-link payment for products sold only through sales links', async () => {
+  const h = bundlePayment();
+  const findById = h.deps.products.findById;
+  h.deps.products.findById = async (tenantId, id) => {
+    const found = await findById(tenantId, id);
+    return found === null ? null : { ...found, salesChannel: 'sales_links_only' };
+  };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ salesLinkId: 'link-1', amountCents: 12400 }]);
+  expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
 });
 
 it('carries a line quantity above one into the purchase confirmation only for that line', async () => {

@@ -108,6 +108,7 @@ const product = (id: string, lessonIds: string[], courseId: string): Product => 
   priceCents: 5000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'lessons', courseId, lessonIds }],
@@ -461,6 +462,22 @@ describe('getPublicNavigation', () => {
     });
   });
 
+  it('never advertises a product sold only through sales links as a locked-space purchase', async () => {
+    const result = await getPublicNavigation(
+      tenant,
+      navigationDeps({
+        spaces: [
+          space({ id: 'link-only', publicReadOnly: false, visibility: 'product', productIds: ['p-link'] }),
+          space({ id: 'mixed', publicReadOnly: false, visibility: 'product', productIds: ['p-link', 'p1'] }),
+        ],
+        products: [{ ...product('p-link', [], 'open'), salesChannel: 'sales_links_only' }, product('p1', [], 'open')],
+      }),
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { lockedSpaces: [{ id: 'mixed', productIds: ['p1'], products: [{ id: 'p1' }] }] } });
+    expect(JSON.stringify(result)).not.toContain('p-link');
+  });
+
   it('uses the published checkout product when a draft product is listed first', async () => {
     const result = await getPublicNavigation(
       tenant,
@@ -570,6 +587,14 @@ describe('getPublicCourseStructure', () => {
       products: [{ ...product('draft', [], open.id), published: false }, product('other', [], 'other'), { ...product('hidden', [], open.id), visibility: 'unlisted' }],
     }));
     expect(result).toMatchObject({ ok: true, value: { offer: { product: null, salesUrl: null, supportUrl: null } } });
+  });
+
+  it('never offers a product sold only through sales links for the course', async () => {
+    const result = await getPublicCourseStructure(tenant, open.id, structureDeps({
+      courses: [open], modules: [], lessons: [],
+      products: [{ ...product('link-only', [], open.id), salesChannel: 'sales_links_only', priceCents: 100 }],
+    }));
+    expect(result).toMatchObject({ ok: true, value: { offer: { product: null } } });
   });
 
   it.each(['https://courses.example.org/contact', null])('exposes only the public contact URL (%s)', async (supportUrl) => {

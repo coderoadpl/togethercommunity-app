@@ -1,6 +1,8 @@
 import {
   EMPTY_LEGAL_URLS,
   defaultProductVat,
+  isCatalogueListed,
+  isStandalonePurchasable,
   productVariants,
   publicShippingRates,
   type DeliveryMethod,
@@ -106,15 +108,19 @@ export const getPublicOffer = async (
   tenant: Tenant,
   deps: PublicOfferDeps,
   productRef?: string,
+  channel: 'standalone' | 'sales_link' = 'standalone',
 ): Promise<Result<PublicOffer, AppError>> => {
   const [publishedProducts, lessons, courses] = await Promise.all([
     deps.products.listPublishedByTenant(tenant.id),
     deps.lessons.listPreviews(tenant.id),
     deps.courses.list(tenant.id),
   ]);
-  const products = publishedProducts.filter((product) => product.published && (productRef === undefined
-    ? product.visibility === 'listed'
-    : product.id === productRef || product.slug === productRef));
+  const offerable = channel === 'sales_link'
+    ? publishedProducts.filter((product) => product.published)
+    : publishedProducts.filter(isStandalonePurchasable);
+  const products = offerable.filter((product) => productRef === undefined
+    ? isCatalogueListed(product)
+    : product.id === productRef || product.slug === productRef);
   const publicCourseIds = new Set(
     courses.filter((course) => course.publiclyVisible && !course.archivedAt).map((course) => course.id),
   );
@@ -132,7 +138,7 @@ export const getPublicOffer = async (
   const variantGroups = new Set(products.flatMap((product) => product.variantGroup == null ? [] : [product.variantGroup]));
   const stockProductIds = new Set([
     ...products.map((product) => product.id),
-    ...publishedProducts.filter((product) => product.published && product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
+    ...offerable.filter((product) => product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
   ]);
   const stock = await deps.stock?.listByProducts(tenant.id, [...stockProductIds]) ?? [];
   const soldOutProductIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
@@ -164,7 +170,7 @@ export const getPublicOffer = async (
     products: await Promise.all(products.map(async (product) => ({
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
-      variants: productVariants(product, publishedProducts, soldOutProductIds),
+      variants: productVariants(product, offerable, soldOutProductIds),
       stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),

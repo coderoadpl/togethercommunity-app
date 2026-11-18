@@ -31,6 +31,7 @@ const product = (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published,
   accessItems: [],
@@ -584,4 +585,57 @@ it('hides archived course previews from the offer and restores them', async () =
   expect(await getPublicOffer(tenant, input)).toMatchObject({ ok: true, value: { previewLessons: [] } });
   courses[0] = course('course-1', true);
   expect(await getPublicOffer(tenant, input)).toMatchObject({ ok: true, value: { previewLessons: [{ id: 'preview' }] } });
+});
+
+describe('a product sold only through sales links', () => {
+  const linkOnly = (id: string, visibility: Product['visibility'] = 'listed'): Product => ({
+    ...product(id, tenant.id, true), visibility, salesChannel: 'sales_links_only',
+  });
+  const consentDefinitions: ConsentDefinitionRepository = {
+    create: async () => undefined,
+    findById: async () => ({
+      id: 'definition-news', tenantId: tenant.id, key: 'news', kind: 'optional_marketing', channel: 'email', doubleOptIn: false,
+      documentRef: { mode: 'url', url: 'https://acme.test/news' }, status: 'active',
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    }),
+    list: async () => [],
+    update: async () => null,
+    appendVersion: async () => undefined,
+    listVersions: async () => [{
+      id: 'version-1', tenantId: tenant.id, definitionId: 'definition-news', version: 1, label: 'News from the workshop',
+      documentVersionRef: { mode: 'url', url: 'https://acme.test/news-v1' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null,
+    }],
+  };
+  const offerDeps = (products: Product[]) => ({
+    products: fakeProducts(products), prices: noPrices, lessons: noLessons, courses: noCourses, tenants: fakeTenants(), definitions: consentDefinitions,
+  });
+
+  it.each(['listed', 'unlisted'] as const)('answers a standalone %s product reference exactly like an unknown product', async (visibility) => {
+    const hidden = { ...linkOnly('private', visibility), checkoutConsentDefinitionIds: ['definition-news'] };
+    for (const ref of [hidden.id, hidden.slug]) {
+      const refused = await getPublicOffer(tenant, offerDeps([hidden, product('listed', tenant.id, true)]), ref);
+      expect(refused).toEqual(await getPublicOffer(tenant, offerDeps([product('listed', tenant.id, true)]), ref));
+      expect(refused.ok && refused.value.products).toEqual([]);
+    }
+  });
+
+  it('never lists it in the catalogue, whatever its visibility', async () => {
+    const listing = await getPublicOffer(tenant, offerDeps([linkOnly('private'), linkOnly('hidden', 'unlisted'), product('listed', tenant.id, true)]));
+    expect(listing.ok && listing.value.products.map((entry) => entry.id)).toEqual(['listed']);
+  });
+
+  it('drops it from the variant choice of a standalone offer', async () => {
+    const variant = (item: Product, label: string): Product => ({ ...item, type: 'physical', variantGroup: 'stand', variantLabel: label });
+    const products = [variant(product('black', tenant.id, true), 'Black'), variant(product('green', tenant.id, true), 'Green'), variant(linkOnly('white'), 'White')];
+    const result = await getPublicOffer(tenant, offerDeps(products), 'black');
+    expect(result.ok && result.value.products[0]?.variants.map((entry) => entry.productId)).toEqual(['black', 'green']);
+    const pair = await getPublicOffer(tenant, offerDeps(products.filter((item) => item.id !== 'green')), 'black');
+    expect(pair.ok && pair.value.products[0]?.variants).toEqual([]);
+  });
+
+  it('still resolves it with its checkout consents for a sales-link read', async () => {
+    const hidden = { ...linkOnly('private'), checkoutConsentDefinitionIds: ['definition-news'] };
+    const result = await getPublicOffer(tenant, offerDeps([hidden]), hidden.id, 'sales_link');
+    expect(result).toMatchObject({ ok: true, value: { products: [{ id: hidden.id, marketingConsents: [{ definitionId: 'definition-news', label: 'News from the workshop' }] }] } });
+  });
 });

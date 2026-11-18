@@ -44,6 +44,7 @@ const poster: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   published: true,
   accessItems: [],
   legacyId: null,

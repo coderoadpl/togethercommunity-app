@@ -480,7 +480,7 @@ describe('shop management key purge', () => {
 describe('shop management key rollback guide', () => {
   const guide = readFileSync('docs/shop-management-keys.md', 'utf8');
   const rollback = /## Rollback\n([\s\S]*?)(?=\n## |\nSee also)/u.exec(guide)?.[1] ?? '';
-  const migration = readFileSync('drizzle/0158_shop_management_keys.sql', 'utf8');
+  const migration = readFileSync('drizzle/0159_shop_management_keys.sql', 'utf8');
 
   it('names every table the migration adds, and the migration changes no existing table', () => {
     const created = [...migration.matchAll(/CREATE TABLE "?(\w+)"?/gu)].map((match) => match[1]);

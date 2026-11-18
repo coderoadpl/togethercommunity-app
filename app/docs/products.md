@@ -6,6 +6,19 @@ The Studio product list and editor offer **Delete draft** for drafts and require
 
 Deletion removes the product, prices, price history, access items, and download asset rows in one transaction. After commit, stored download objects are removed through the shared download-asset cleanup path on a best-effort basis. Result-based cleanup failures are logged without changing the successful deletion response or preventing cleanup of the remaining objects. Infrastructure promise rejections propagate to the server error seam, which returns an internal error; the database deletion has already committed and remaining objects are not processed in that request.
 
+## Sales channel
+
+Every product has a sales channel: `any` (the default) or `sales_links_only`. A
+`sales_links_only` product can be bought only inside an active sales link; every
+standalone purchase answers exactly as for an unknown product, and the product
+never appears in the listed catalogue whatever its visibility. Access of people
+who already own it does not change. A membership cannot be `sales_links_only`.
+Set it in the product editor next to **Visibility**, with `--sales-channel` in
+`product create|update`, or with `salesChannel` in the product API, the import API
+and the shop manifest. See
+[Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links)
+for what is refused and what stays allowed.
+
 ## History retention
 
 A never-published draft without orders, grants, sales-link items or checkout references can be deleted. Its prices, price history and download assets go with it. Automatically recorded base prices and zero-price entries do not prevent deletion. Other tenants' data is unchanged. Products that have ever been published remain protected from draft deletion.

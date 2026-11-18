@@ -323,6 +323,45 @@ describe('shop catalog routes with a shop management key', () => {
     expect(envelope(shopCatalogContracts.listProductPrices.output).parse(await prices.json()).data.prices).toEqual([]);
   });
 
+  it('stores and changes the product sales channel, keeps it when an update omits it and refuses an unknown channel', async () => {
+    const { secret } = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
+    const created = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, {
+      title: 'Bundle insert', type: 'physical', priceCents: 900, salesChannel: 'sales_links_only',
+    });
+    expect(created.status).toBe(200);
+    const { product } = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data;
+    expect(product.salesChannel).toBe('sales_links_only');
+
+    const channelOf = async (): Promise<string | undefined> => envelope(shopCatalogContracts.listProducts.output)
+      .parse(await (await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).json())
+      .data.products.find((entry) => entry.id === product.id)?.salesChannel;
+    expect(await channelOf()).toBe('sales_links_only');
+
+    const renamed = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, title: 'Bundle insert v2' });
+    expect(renamed.status).toBe(200);
+    expect(envelope(shopCatalogContracts.updateProduct.output).parse(await renamed.json()).data.product)
+      .toMatchObject({ title: 'Bundle insert v2', salesChannel: 'sales_links_only' });
+    expect(await channelOf()).toBe('sales_links_only');
+
+    const widened = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, salesChannel: 'any' });
+    expect(widened.status).toBe(200);
+    expect(await channelOf()).toBe('any');
+
+    const narrowed = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, salesChannel: 'sales_links_only' });
+    expect(narrowed.status).toBe(200);
+    expect(await channelOf()).toBe('sales_links_only');
+
+    for (const [path, body] of [
+      [SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Bad channel', type: 'physical', priceCents: 900, salesChannel: 'everywhere' }],
+      [SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, salesChannel: 'everywhere' }],
+    ] as const) {
+      const response = await keyed(secret, 'POST', path, body);
+      expect(response.status, path).toBe(400);
+      expect((await errorOf(response)).code, path).toBe('validation');
+    }
+    expect(await channelOf()).toBe('sales_links_only');
+  });
+
   it('keeps the session product route tolerant of unknown fields', async () => {
     const response = await ownerRequest(API_ROUTES.productsCreate.method, API_ROUTES.productsCreate.path, {
       title: 'Session product', type: 'physical', priceCents: 300, pricecents: 300,

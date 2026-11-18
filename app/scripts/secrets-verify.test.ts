@@ -208,16 +208,33 @@ describe('runSecretsVerify', () => {
   });
 
   const baseUrlRefusal = '--base-url must be an https URL, or http on a local host';
+  const missingValue = '--base-url and --auth-with each need a value';
+  const unknownOption = 'unknown option; only --base-url and --auth-with are accepted';
+  const unexpectedArgument = 'unexpected argument; pass values only to --base-url and --auth-with';
+  const marker = 'test-only-argv-marker';
+
+  it.each([
+    { argv: [marker], message: unexpectedArgument },
+    { argv: [`--${marker}`], message: unknownOption },
+    { argv: ['--base-url', 'https://platform.example.test', marker], message: unexpectedArgument },
+    { argv: ['--base-url', 'https://platform.example.test', `--auth-with=${marker}`], message: '--auth-with must be one of OPERATOR_SECRET, PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET' },
+    { argv: [`--base-url=${marker}`], message: baseUrlRefusal },
+  ])('prints a fixed message for $argv without echoing an argument', async ({ argv, message }) => {
+    const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
+    const { code, output } = await verify(argv, local, fetchImpl);
+    expect(code).toBe(2);
+    expect(calls).toEqual([]);
+    expect(output).toContain(`secrets:verify: ${message}`);
+    expect(output).not.toContain(marker);
+  });
 
   it.each([
     { argv: [], message: baseUrlRefusal },
     { argv: ['--base-url', 'http://platform.example.test'], message: baseUrlRefusal },
     { argv: ['--base-url', 'not a url'], message: baseUrlRefusal },
-    { argv: ['--base-url', 'https://platform.example.test', '--unknown'], message: "Unknown option '--unknown'" },
-    {
-      argv: ['--base-url', 'http://127.0.0.1:9', '--auth-with'],
-      message: "Option '--auth-with <value>' argument missing",
-    },
+    { argv: ['--base-url', 'https://platform.example.test', '--unknown'], message: unknownOption },
+    { argv: ['--base-url', 'http://127.0.0.1:9', '--auth-with'], message: missingValue },
+    { argv: ['--base-url', '--auth-with', 'PROD_OPERATOR_SECRET'], message: missingValue },
   ])('refuses $argv before sending the operator secret', async ({ argv, message }) => {
     const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
     const { code, output } = await verify(argv, local, fetchImpl);

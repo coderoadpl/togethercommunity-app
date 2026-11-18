@@ -58,6 +58,17 @@ export const formatVerdict = (verdict: SecretVerdict): string => {
 
 const OPERATOR_SECRET_NAMES: readonly string[] = ['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'];
 
+const ARGUMENT_ERRORS: Readonly<Record<string, string>> = {
+  ERR_PARSE_ARGS_INVALID_OPTION_VALUE: '--base-url and --auth-with each need a value',
+  ERR_PARSE_ARGS_UNKNOWN_OPTION: 'unknown option; only --base-url and --auth-with are accepted',
+  ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL: 'unexpected argument; pass values only to --base-url and --auth-with',
+};
+
+const argumentErrorMessage = (error: unknown): string => {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+  return (typeof code === 'string' ? ARGUMENT_ERRORS[code] : undefined) ?? 'invalid arguments';
+};
+
 const parseOptions = (
   argv: readonly string[],
 ): { ok: true; baseUrl: string; authWith: string | undefined } | { ok: false; message: string } => {
@@ -69,7 +80,7 @@ const parseOptions = (
       strict: true,
     }));
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    return { ok: false, message: argumentErrorMessage(error) };
   }
   const raw = values['base-url'];
   const baseUrl = raw === undefined ? null : secureApiOrigin(raw);

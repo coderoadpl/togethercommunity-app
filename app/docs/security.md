@@ -538,7 +538,9 @@ example per environment, and each references only its own 1Password item:
   `PROD_OPERATOR_SECRET`, with no staging operator field.
 - [`scripts/secrets-verify.staging.env.example`](../scripts/secrets-verify.staging.env.example)
   reads the item `togethercommunity-app preview secrets`, for staging and
-  preview, and carries no production operator field.
+  preview, and carries no production operator field. Its field names are
+  assumed to mirror the production item; a field named differently in the
+  preview item needs a one-line edit of the owner's local copy.
 
 Copy the example for the target environment, replace `<vault>`, and run it under
 `op run` so the values come from 1Password at run time and never touch the disk
@@ -582,6 +584,14 @@ field, add this line to the production env file and run with
 
 ```text
 OPERATOR_SECRET="op://<vault>/togethercommunity-app prod secrets/PROD_OPERATOR_SECRET"
+```
+
+Staging works the same way. When the staging deployment sets `OPERATOR_SECRET`
+to the value stored in the preview item's `STAGING_OPERATOR_SECRET` field, add
+this line to the staging env file and run with `--auth-with OPERATOR_SECRET`:
+
+```text
+OPERATOR_SECRET="op://<vault>/togethercommunity-app preview secrets/STAGING_OPERATOR_SECRET"
 ```
 
 The tool accepts only an `https` base URL (or `http` on a local host) and

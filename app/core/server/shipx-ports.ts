@@ -111,12 +111,12 @@ export interface ShipxShipmentRepository {
   listEvents(tenantId: string, orderId: string): Promise<ShipxShipmentEvent[]>;
 }
 
-export interface ShipxSettings {
-  environment: ShipxEnvironment;
-  sender: ShipxSender | null;
-}
-
 export interface ShipxSettingsRepository {
-  find(tenantId: string): Promise<ShipxSettings | null>;
-  save(tenantId: string, settings: ShipxSettings): Promise<void>;
+  findSender(tenantId: string): Promise<ShipxSender | null>;
+  saveSender(tenantId: string, sender: ShipxSender | null): Promise<void>;
+  /**
+   * The environment the previous release stored on the workspace. Read only to
+   * clear the legacy credential rows together with the slot of the same name.
+   */
+  legacyEnvironment(tenantId: string): Promise<ShipxEnvironment | null>;
 }

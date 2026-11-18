@@ -4,6 +4,7 @@ import { appError, validation, type AppError, type ErrorCode } from './errors.js
 import type { StripeMode } from './integration.js';
 import { err, ok, type Result } from './result.js';
 import type { OrderShipping } from './shipping.js';
+import type { TenantSecretKey } from './tenant-secret.js';
 
 export const PARCEL_TEMPLATES = ['small', 'medium', 'large'] as const;
 
@@ -25,16 +26,19 @@ export const shipxEnvironmentSchema = z.enum(SHIPX_ENVIRONMENTS);
 
 export type ShipxEnvironment = z.infer<typeof shipxEnvironmentSchema>;
 
-export const DEFAULT_SHIPX_ENVIRONMENT: ShipxEnvironment = 'sandbox';
+export const shipxEnvironmentForMode = (mode: StripeMode): ShipxEnvironment => (mode === 'live' ? 'production' : 'sandbox');
 
-export type ShipxClientKind = 'real' | 'fake';
+export interface ShipxSlotSecretKeys {
+  organizationId: TenantSecretKey;
+  token: TenantSecretKey;
+}
 
-export const shipxClientKind = (environment: ShipxEnvironment, mode: StripeMode): Result<ShipxClientKind, AppError> => {
-  if (environment === 'production') return ok(mode === 'live' ? 'real' : 'fake');
-  return mode === 'test'
-    ? ok('real')
-    : err(shipxStateError('validation', 'ShipX is configured for the sandbox; switch to production before shipping paid orders', { state: 'setup_missing', reason: 'sandbox_environment' }));
+export const SHIPX_SLOT_SECRET_KEYS: Readonly<Record<ShipxEnvironment, ShipxSlotSecretKeys>> = {
+  sandbox: { organizationId: 'shipx.sandbox.organizationId', token: 'shipx.sandbox.token' },
+  production: { organizationId: 'shipx.production.organizationId', token: 'shipx.production.token' },
 };
+
+export const SHIPX_LEGACY_SECRET_KEYS: ShipxSlotSecretKeys = { organizationId: 'shipx.organizationId', token: 'shipx.token' };
 
 const SHIPX_SERVICES = ['inpost_locker_standard', 'inpost_courier_standard'] as const;
 
@@ -89,22 +93,32 @@ export type ShipxSender = z.output<typeof shipxSenderSchema>;
 
 const shipxOrganizationIdSchema = z.string().trim().regex(/^\d{1,20}$/, 'Organization id must be a number');
 
-export const configureShipxInputSchema = z.object({
-  environment: shipxEnvironmentSchema.optional(),
-  sender: shipxSenderSchema.nullable().optional(),
+const shipxSlotInputSchema = z.object({
   organizationId: shipxOrganizationIdSchema.optional(),
   token: z.string().trim().min(1).max(4000).optional(),
   clearCredentials: z.literal(true).optional(),
 }).strict();
 
+export const configureShipxInputSchema = z.object({
+  sender: shipxSenderSchema.nullable().optional(),
+  sandbox: shipxSlotInputSchema.optional(),
+  production: shipxSlotInputSchema.optional(),
+}).strict();
+
 const maskedCredentialSchema = z.object({ maskedPreview: z.string(), updatedAt: z.string() });
 
-export const shipxSettingsViewSchema = z.object({
-  environment: shipxEnvironmentSchema,
-  sender: shipxSenderSchema.nullable(),
+const shipxSlotViewSchema = z.object({
   organizationId: maskedCredentialSchema.nullable(),
   token: maskedCredentialSchema.nullable(),
   configured: z.boolean(),
+});
+
+export type ShipxSlotView = z.infer<typeof shipxSlotViewSchema>;
+
+export const shipxSettingsViewSchema = z.object({
+  sender: shipxSenderSchema.nullable(),
+  sandbox: shipxSlotViewSchema,
+  production: shipxSlotViewSchema,
 });
 
 export type ShipxSettingsView = z.infer<typeof shipxSettingsViewSchema>;
@@ -148,13 +162,14 @@ export type ShipxShipment = z.infer<typeof shipxShipmentSchema>;
 export const shipxAttemptUnconfirmed = (shipment: Pick<ShipxShipment, 'shipxShipmentId' | 'createAttemptedAt'>): boolean =>
   shipment.shipxShipmentId === null && shipment.createAttemptedAt !== null;
 
-export const SHIPX_SETUP_GAPS = ['credentials_missing', 'sender_missing', 'sandbox_environment'] as const;
+export const SHIPX_SETUP_GAPS = ['credentials_missing'] as const;
 
 const SHIPX_UNAVAILABLE_REASONS = ['not_inpost', 'not_to_pack', ...SHIPX_SETUP_GAPS] as const;
 
 export const shipxOrderViewSchema = z.object({
   available: z.boolean(),
   reason: z.enum(SHIPX_UNAVAILABLE_REASONS).nullable(),
+  environment: shipxEnvironmentSchema,
   service: shipxServiceSchema.nullable(),
   parcelTemplate: parcelTemplateSchema,
   shipment: shipxShipmentSchema.nullable(),
@@ -172,7 +187,7 @@ export const shipxErrorStateSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('manual_shipped'), trackingNumber: z.string(), shipxShipmentId: z.string() }),
   z.object({ state: z.literal('environment_mismatch'), environment: shipxEnvironmentSchema, settingsEnvironment: shipxEnvironmentSchema }),
   z.object({ state: z.literal('organization_mismatch') }),
-  z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS) }),
+  z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS), environment: shipxEnvironmentSchema }),
   z.object({ state: z.literal('receiver_invalid'), field: z.enum(SHIPX_RECEIVER_GAPS) }),
 ]);
 
@@ -238,7 +253,7 @@ export interface ShipxShipmentRequest {
   parcelTemplate: ParcelTemplate;
   targetPoint: string | null;
   receiver: ShipxReceiver;
-  sender: ShipxSender;
+  sender: ShipxSender | null;
 }
 
 export interface ShipxLabel {
@@ -337,7 +352,7 @@ export const buildShipxShipmentRequest = (input: {
   orderId: string;
   memberEmail: string;
   shipping: OrderShipping;
-  sender: ShipxSender;
+  sender: ShipxSender | null;
   parcelTemplate: ParcelTemplate;
 }): Result<ShipxShipmentRequest, AppError> => {
   const service = shipxServiceFor(input.shipping);

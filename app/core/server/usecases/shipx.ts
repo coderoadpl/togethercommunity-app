@@ -2,21 +2,23 @@ import {
   buildShipxShipmentRequest,
   configureShipxInputSchema,
   DEFAULT_PARCEL_TEMPLATE,
-  DEFAULT_SHIPX_ENVIRONMENT,
   err,
   largestParcelTemplate,
   notFound,
   ok,
   orderShipmentAllowed,
   productLines,
+  SHIPX_LEGACY_SECRET_KEYS,
+  SHIPX_ENVIRONMENTS,
   SHIPX_OPERATION_DEADLINE_MS,
   SHIPX_OPERATION_LEASE_MS,
   SHIPX_POLL_ATTEMPTS,
   SHIPX_POLL_INTERVAL_MS,
+  SHIPX_SLOT_SECRET_KEYS,
   SHIPX_STATUS_UNCONFIRMED,
   shipxAttemptUnconfirmed,
-  shipxClientKind,
   shipxCreateInputSchema,
+  shipxEnvironmentForMode,
   shipxErrorStateSchema,
   shipxFailedTransactions,
   shipxOfferToBuy,
@@ -41,6 +43,8 @@ import {
   type ShipxService,
   type ShipxSettingsView,
   type ShipxShipment,
+  type ShipxSlotSecretKeys,
+  type ShipxSlotView,
   type TenantSecret,
   type TenantSecretKey,
 } from '#core/domain/index.js';
@@ -60,7 +64,6 @@ import type {
   ShipxClient,
   ShipxClients,
   ShipxCredentials,
-  ShipxSettings,
   ShipxSettingsRepository,
   ShipxShipmentPatch,
   ShipxShipmentRecord,
@@ -70,8 +73,6 @@ import type {
 import { shipOrder, type ShipOrderDeps } from './order-fulfilment.js';
 import { buildTenantSecret } from './tenant-secrets.js';
 
-const SHIPX_SECRET_KEYS = ['shipx.organizationId', 'shipx.token'] as const satisfies readonly TenantSecretKey[];
-
 export interface ShipxSettingsDeps {
   shipxSettings: ShipxSettingsRepository;
   tenantSecrets: TenantSecretRepository;
@@ -80,24 +81,23 @@ export interface ShipxSettingsDeps {
   clock: Clock;
 }
 
-const settingsOf = async (tenantId: string, deps: { shipxSettings: ShipxSettingsRepository }): Promise<ShipxSettings> =>
-  await deps.shipxSettings.find(tenantId) ?? { environment: DEFAULT_SHIPX_ENVIRONMENT, sender: null };
+const slotKeys = (keys: ShipxSlotSecretKeys): readonly TenantSecretKey[] => [keys.organizationId, keys.token];
 
-const settingsView = (settings: ShipxSettings, secrets: readonly TenantSecret[]): ShipxSettingsView => {
+const slotView = (keys: ShipxSlotSecretKeys, secrets: readonly TenantSecret[]): ShipxSlotView => {
   const masked = (key: TenantSecretKey) => {
     const secret = secrets.find((row) => row.key === key);
     return secret === undefined ? null : { maskedPreview: secret.maskedPreview, updatedAt: secret.updatedAt };
   };
-  const organizationId = masked('shipx.organizationId');
-  const token = masked('shipx.token');
-  return {
-    environment: settings.environment,
-    sender: settings.sender,
-    organizationId,
-    token,
-    configured: organizationId !== null && token !== null && settings.sender !== null,
-  };
+  const organizationId = masked(keys.organizationId);
+  const token = masked(keys.token);
+  return { organizationId, token, configured: organizationId !== null && token !== null };
 };
+
+const settingsView = (sender: ShipxSender | null, secrets: readonly TenantSecret[]): ShipxSettingsView => ({
+  sender,
+  sandbox: slotView(SHIPX_SLOT_SECRET_KEYS.sandbox, secrets),
+  production: slotView(SHIPX_SLOT_SECRET_KEYS.production, secrets),
+});
 
 export const getShipxSettings = async (
   ctx: Ctx,
@@ -105,8 +105,17 @@ export const getShipxSettings = async (
 ): Promise<Result<ShipxSettingsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
-  const [settings, secrets] = await Promise.all([settingsOf(tenant.value, deps), deps.tenantSecrets.listByTenant(tenant.value)]);
-  return ok(settingsView(settings, secrets));
+  const [sender, secrets] = await Promise.all([deps.shipxSettings.findSender(tenant.value), deps.tenantSecrets.listByTenant(tenant.value)]);
+  return ok(settingsView(sender, secrets));
+};
+
+const clearSlot = async (tenantId: string, environment: ShipxEnvironment, deps: ShipxSettingsDeps): Promise<void> => {
+  const legacy = await deps.shipxSettings.legacyEnvironment(tenantId);
+  const keys = [
+    ...slotKeys(SHIPX_SLOT_SECRET_KEYS[environment]),
+    ...(legacy === environment ? slotKeys(SHIPX_LEGACY_SECRET_KEYS) : []),
+  ];
+  await Promise.all(keys.map((key) => deps.tenantSecrets.delete(tenantId, key)));
 };
 
 export const configureShipx = async (
@@ -118,24 +127,25 @@ export const configureShipx = async (
   if (!tenant.ok) return tenant;
   const parsed = configureShipxInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid InPost ShipX settings', parsed.error.flatten()));
-  if (parsed.data.clearCredentials === true && (parsed.data.organizationId !== undefined || parsed.data.token !== undefined)) {
-    return err(validation('Clearing the credentials cannot be combined with new credentials'));
+  const slots = SHIPX_ENVIRONMENTS.flatMap((environment) => {
+    const slot = parsed.data[environment];
+    return slot === undefined ? [] : [{ environment, keys: SHIPX_SLOT_SECRET_KEYS[environment], ...slot }];
+  });
+  const mixed = slots.find((slot) => slot.clearCredentials === true && (slot.organizationId !== undefined || slot.token !== undefined));
+  if (mixed !== undefined) {
+    return err(validation(`Clearing the ${mixed.environment} credentials cannot be combined with new ${mixed.environment} credentials`));
   }
-  const current = await settingsOf(tenant.value, deps);
-  const next: ShipxSettings = {
-    environment: parsed.data.environment ?? current.environment,
-    sender: parsed.data.sender === undefined ? current.sender : parsed.data.sender,
-  };
-  await deps.shipxSettings.save(tenant.value, next);
-  if (parsed.data.clearCredentials === true) {
-    await Promise.all(SHIPX_SECRET_KEYS.map((key) => deps.tenantSecrets.delete(tenant.value, key)));
+  if (parsed.data.sender !== undefined) await deps.shipxSettings.saveSender(tenant.value, parsed.data.sender);
+  for (const slot of slots) {
+    if (slot.clearCredentials === true) await clearSlot(tenant.value, slot.environment, deps);
   }
-  const written = [
-    ...(parsed.data.organizationId === undefined ? [] : [buildTenantSecret(tenant.value, 'shipx.organizationId', parsed.data.organizationId, deps)]),
-    ...(parsed.data.token === undefined ? [] : [buildTenantSecret(tenant.value, 'shipx.token', parsed.data.token, deps)]),
-  ];
+  const written = slots.flatMap((slot) => [
+    ...(slot.organizationId === undefined ? [] : [buildTenantSecret(tenant.value, slot.keys.organizationId, slot.organizationId, deps)]),
+    ...(slot.token === undefined ? [] : [buildTenantSecret(tenant.value, slot.keys.token, slot.token, deps)]),
+  ]);
   if (written.length > 0) await deps.tenantSecrets.upsertMany(tenant.value, written);
-  return ok(settingsView(next, await deps.tenantSecrets.listByTenant(tenant.value)));
+  const [sender, secrets] = await Promise.all([deps.shipxSettings.findSender(tenant.value), deps.tenantSecrets.listByTenant(tenant.value)]);
+  return ok(settingsView(sender, secrets));
 };
 
 export interface ShipxOrderDeps {
@@ -155,49 +165,47 @@ export interface CreateInpostShipmentDeps extends ShipxOrderDeps {
   wait(milliseconds: number): Promise<void>;
 }
 
+const orderEnvironment = (order: OrderListItem): ShipxEnvironment => shipxEnvironmentForMode(order.mode === 'test' ? 'test' : 'live');
+
+const credentialsMissing = (environment: ShipxEnvironment): AppError => shipxStateError(
+  'integration_not_configured',
+  `Save the InPost ShipX ${environment} organization id and token in Settings → Shipping`,
+  { state: 'setup_missing', reason: 'credentials_missing', environment },
+);
+
 const resolveCredentials = async (
   tenantId: string,
-  settings: ShipxSettings,
+  environment: ShipxEnvironment,
   deps: Pick<ShipxOrderDeps, 'secrets'>,
 ): Promise<Result<ShipxCredentials, AppError>> => {
+  const keys = SHIPX_SLOT_SECRET_KEYS[environment];
   const [organizationId, token] = await Promise.all([
-    deps.secrets.resolve(tenantId, 'shipx.organizationId'),
-    deps.secrets.resolve(tenantId, 'shipx.token'),
+    deps.secrets.resolve(tenantId, keys.organizationId),
+    deps.secrets.resolve(tenantId, keys.token),
   ]);
-  if (!organizationId.ok || !token.ok) {
-    return err(shipxStateError(
-      'integration_not_configured',
-      'Save the InPost ShipX organization id and token in Settings → Shipping',
-      { state: 'setup_missing', reason: 'credentials_missing' },
-    ));
-  }
-  return ok({ organizationId: organizationId.value, token: token.value, environment: settings.environment });
+  if (!organizationId.ok || !token.ok) return err(credentialsMissing(environment));
+  return ok({ organizationId: organizationId.value, token: token.value, environment });
 };
 
-const credentialsPresent = async (tenantId: string, deps: Pick<ShipxOrderDeps, 'tenantSecrets'>): Promise<boolean> => {
-  const rows = await Promise.all(SHIPX_SECRET_KEYS.map((key) => deps.tenantSecrets.findByKey(tenantId, key)));
+const credentialsPresent = async (tenantId: string, environment: ShipxEnvironment, deps: Pick<ShipxOrderDeps, 'tenantSecrets'>): Promise<boolean> => {
+  const rows = await Promise.all(slotKeys(SHIPX_SLOT_SECRET_KEYS[environment]).map((key) => deps.tenantSecrets.findByKey(tenantId, key)));
   return rows.every((row) => row !== null);
 };
 
-const clientFor = (environment: ShipxEnvironment, order: OrderListItem, clients: ShipxClients): Result<ShipxClient, AppError> => {
-  if (clients.real === null) return ok(clients.fake);
-  const kind = shipxClientKind(environment, order.mode === 'test' ? 'test' : 'live');
-  if (!kind.ok) return kind;
-  return ok(kind.value === 'real' ? clients.real : clients.fake);
-};
+const clientOf = (clients: ShipxClients): ShipxClient => clients.real ?? clients.fake;
 
 const storedCredentials = (shipment: ShipxShipmentRecord, current: ShipxCredentials): Result<ShipxCredentials, AppError> => {
   if (shipment.environment !== current.environment) {
     return err(shipxStateError(
       'conflict',
-      `The InPost shipment was created in the ShipX ${shipment.environment} environment, but the settings now use ${current.environment}; switch back or finish the shipment in Manager Paczek`,
+      `The InPost shipment was created in the ShipX ${shipment.environment} environment, but this order uses the ${current.environment} connection; finish the shipment in Manager Paczek`,
       { state: 'environment_mismatch', environment: shipment.environment, settingsEnvironment: current.environment },
     ));
   }
   if (shipment.organizationId !== current.organizationId) {
     return err(shipxStateError(
       'conflict',
-      'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek',
+      `The InPost shipment belongs to a different ShipX organization than the ${current.environment} connection in the settings; restore it or finish the shipment in Manager Paczek`,
       { state: 'organization_mismatch' },
     ));
   }
@@ -245,27 +253,24 @@ const refreshedShipment = async (
   actorUserId: string,
   order: OrderListItem,
   shipment: ShipxShipmentRecord,
-  settings: ShipxSettings,
   deps: ShipxOrderDeps,
 ): Promise<ShipxShipmentRecord> => {
   if (shipment.shipxShipmentId === null || shipxShipmentBought(shipment)) return shipment;
-  const current = await resolveCredentials(tenantId, settings, deps);
+  const current = await resolveCredentials(tenantId, orderEnvironment(order), deps);
   const credentials = current.ok ? storedCredentials(shipment, current.value) : current;
-  const client = clientFor(shipment.environment, order, deps.shipx);
-  if (!credentials.ok || !client.ok) return shipment;
-  const remote = await client.value.getShipment(credentials.value, shipment.shipxShipmentId);
+  if (!credentials.ok) return shipment;
+  const remote = await clientOf(deps.shipx).getShipment(credentials.value, shipment.shipxShipmentId);
   if (!remote.ok) return shipment;
   const now = deps.clock.nowIso();
   return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), shipment, remotePatch(remote.value, now), actorUserId) ?? shipment;
 };
 
-type ShipxViewDeps = Pick<ShipxOrderDeps, 'orderDetails' | 'products' | 'shipxShipments' | 'shipxSettings' | 'tenantSecrets' | 'shipx'>;
+type ShipxViewDeps = Pick<ShipxOrderDeps, 'orderDetails' | 'products' | 'shipxShipments' | 'tenantSecrets'>;
 
 interface OrderShipmentState {
   order: OrderListItem;
   view: Omit<ShipxOrderView, 'shipment'>;
   stored: ShipxShipmentRecord | null;
-  settings: ShipxSettings;
   credentials: boolean;
 }
 
@@ -275,22 +280,18 @@ const orderShipmentState = async (tenantId: string, input: unknown, deps: ShipxV
   const order = await loadOrder(tenantId, parsed.data.orderId, deps);
   if (!order.ok) return order;
   const service = order.value.shipping == null ? null : shipxServiceFor(order.value.shipping);
-  const [stored, parcelTemplate, settings, credentials] = await Promise.all([
+  const environment = orderEnvironment(order.value);
+  const [stored, parcelTemplate, credentials] = await Promise.all([
     deps.shipxShipments.findByOrder(tenantId, order.value.id),
     orderParcelTemplate(tenantId, order.value, deps),
-    settingsOf(tenantId, deps),
-    credentialsPresent(tenantId, deps),
+    credentialsPresent(tenantId, environment, deps),
   ]);
   const reason = service === null
     ? 'not_inpost'
     : order.value.fulfilmentStatus !== 'to_pack'
       ? 'not_to_pack'
-      : !credentials
-        ? 'credentials_missing'
-        : settings.sender === null
-          ? 'sender_missing'
-          : clientFor(settings.environment, order.value, deps.shipx).ok ? null : 'sandbox_environment';
-  return ok({ order: order.value, view: { available: reason === null, reason, service, parcelTemplate }, stored, settings, credentials });
+      : credentials ? null : 'credentials_missing';
+  return ok({ order: order.value, view: { available: reason === null, reason, environment, service, parcelTemplate }, stored, credentials });
 };
 
 const orderShipmentView = (state: OrderShipmentState, shipment: ShipxShipmentRecord | null): ShipxOrderView =>
@@ -317,8 +318,8 @@ export const refreshInpostShipment = async (
   if (!tenant.ok) return tenant;
   const state = await orderShipmentState(tenant.value, input, deps);
   if (!state.ok) return state;
-  const { order, stored, settings, credentials } = state.value;
-  const shipment = stored === null || !credentials ? stored : await refreshedShipment(tenant.value, ctx.identity.userId, order, stored, settings, deps);
+  const { order, stored, credentials } = state.value;
+  const shipment = stored === null || !credentials ? stored : await refreshedShipment(tenant.value, ctx.identity.userId, order, stored, deps);
   return ok(orderShipmentView(state.value, shipment));
 };
 
@@ -337,7 +338,7 @@ interface ShipmentRun {
   order: OrderListItem;
   shipping: OrderShipping;
   service: ShipxService;
-  sender: ShipxSender;
+  sender: ShipxSender | null;
   shipment: ShipxShipmentRecord;
   credentials: ShipxCredentials;
   parcelTemplate: ParcelTemplate | null;
@@ -475,8 +476,7 @@ const runShipment = async (
 ): Promise<Result<{ order: OrderListItem; shipment: ShipxShipment }, AppError>> => {
   const credentials = storedCredentials(run.shipment, run.credentials);
   if (!credentials.ok) return credentials;
-  const client = clientFor(run.shipment.environment, run.order, deps.shipx);
-  if (!client.ok) return client;
+  const client = clientOf(deps.shipx);
   const scoped = { ...run, credentials: credentials.value };
 
   let shipmentId = run.shipment.shipxShipmentId;
@@ -485,8 +485,8 @@ const runShipment = async (
   if (shipmentId === null) {
     const attemptedAt = run.shipment.createAttemptedAt;
     const obtained = shipxAttemptUnconfirmed(run.shipment) && attemptedAt !== null
-      ? await reconcileRemote(scoped, attemptedAt, client.value, deps)
-      : await createRemote(scoped, client.value, deps);
+      ? await reconcileRemote(scoped, attemptedAt, client, deps)
+      : await createRemote(scoped, client, deps);
     if (!obtained.ok) return obtained;
     createdNow = !shipxAttemptUnconfirmed(run.shipment);
     remote = obtained.value;
@@ -497,7 +497,7 @@ const runShipment = async (
   if (remote !== null || !shipxShipmentBought(run.shipment)) {
     const bought = remote !== null && shipxShipmentBought(remote)
       ? ok(remote)
-      : await pollUntilBought(scoped, client.value, shipmentId, !createdNow, deps);
+      : await pollUntilBought(scoped, client, shipmentId, !createdNow, deps);
     if (!bought.ok) return bought;
     trackingNumber = bought.value.trackingNumber;
   }
@@ -552,14 +552,10 @@ export const createInpostShipment = async (
   const shipping = order.value.shipping;
   const service = shipping == null ? null : shipxServiceFor(shipping);
   if (shipping == null || service === null) return err(validation('The order does not use an InPost delivery option'));
-  const settings = await settingsOf(tenant.value, deps);
-  const credentials = await resolveCredentials(tenant.value, settings, deps);
+  const environment = orderEnvironment(order.value);
+  const credentials = await resolveCredentials(tenant.value, environment, deps);
   if (!credentials.ok) return credentials;
-  if (settings.sender === null) {
-    return err(shipxStateError('integration_not_configured', 'Save the InPost sender details in Settings → Shipping', { state: 'setup_missing', reason: 'sender_missing' }));
-  }
-  const selected = clientFor(settings.environment, order.value, deps.shipx);
-  if (!selected.ok) return selected;
+  const sender = await deps.shipxSettings.findSender(tenant.value);
 
   const startedAt = deps.clock.nowIso();
   const token = deps.ids.nextId();
@@ -567,7 +563,7 @@ export const createInpostShipment = async (
     id: deps.ids.nextId(),
     orderId: order.value.id,
     token,
-    environment: settings.environment,
+    environment,
     organizationId: credentials.value.organizationId,
     now: startedAt,
     leaseExpiredBefore: leaseExpiredBefore(startedAt),
@@ -582,7 +578,7 @@ export const createInpostShipment = async (
     order: order.value,
     shipping,
     service,
-    sender: settings.sender,
+    sender,
     shipment: acquired.shipment,
     credentials: credentials.value,
     parcelTemplate: parsed.data.parcelTemplate ?? null,
@@ -640,14 +636,11 @@ export const inpostShipmentLabel = async (
   if (!order.ok) return order;
   const shipment = await deps.shipxShipments.findByOrder(tenant.value, order.value.id);
   if (shipment?.shipxShipmentId == null) return err(notFound('The order has no InPost shipment'));
-  const settings = await settingsOf(tenant.value, deps);
-  const current = await resolveCredentials(tenant.value, settings, deps);
+  const current = await resolveCredentials(tenant.value, orderEnvironment(order.value), deps);
   if (!current.ok) return current;
   const credentials = storedCredentials(shipment, current.value);
   if (!credentials.ok) return credentials;
-  const client = clientFor(shipment.environment, order.value, deps.shipx);
-  if (!client.ok) return client;
-  const label = await client.value.fetchLabel(credentials.value, shipment.shipxShipmentId);
+  const label = await clientOf(deps.shipx).fetchLabel(credentials.value, shipment.shipxShipmentId);
   if (!label.ok) return label;
   await deps.shipxShipments.markLabelFetched(tenant.value, order.value.id, { actorUserId: ctx.identity.userId, at: deps.clock.nowIso() });
   const name = (shipment.trackingNumber ?? shipment.shipxShipmentId).replace(/[^A-Za-z0-9-]/g, '');

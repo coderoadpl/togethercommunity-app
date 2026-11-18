@@ -26,6 +26,7 @@ import {
   parcelTemplateSchema,
   priceKindSchema,
   priceMajorSchema,
+  productSalesChannelSchema,
   productVisibilitySchema,
   shippingCarrierSchema,
   stripeModeSchema,
@@ -60,6 +61,7 @@ const productFieldsSchema = z.object({
   vatRate: vatRateSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   description: z.string().optional(),
@@ -297,6 +299,7 @@ const sharedProductFields = (options: z.output<typeof productFieldsSchema>, comp
   vatRate: options.vatRate,
   vatExemptionBasis: options.vatExemptionBasis,
   visibility: options.visibility,
+  salesChannel: options.salesChannel,
   deliveryMethod: options.deliveryMethod,
   parcelTemplate: options.parcelTemplate,
   description: options.description,
@@ -397,6 +400,7 @@ export const registerShopKeyCommands = (
     command.option('--api-key-env <name>', 'Environment variable holding the shop management key', DEFAULT_SHOP_KEY_ENV);
   const withProductFields = (command: Command): Command => command
     .option('--visibility <visibility>', 'listed or unlisted')
+    .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
     .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
     .option('--parcel-template <size>', 'InPost parcel size: small, medium or large')
     .option('--vat-rate <rate>', '5, 8, 23 or exempt')

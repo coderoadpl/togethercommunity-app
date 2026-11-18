@@ -222,6 +222,22 @@ describe('shop key CLI', () => {
     expect(h.clientOptions).toEqual([{ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret-from-env', tenant: 'acme' }]);
   });
 
+  it('sends --sales-channel on product create and update and refuses an unknown channel before any request', async () => {
+    await run('shop', 'products', 'create', '--title', 'Bonus booklet', '--price', '9', '--sales-channel', 'sales_links_only');
+    await run('shop', 'products', 'update', 'product-1', '--sales-channel', 'any');
+    expect(calls.map(({ path, body }) => ({ path, body }))).toEqual([
+      { path: '/api/m2m/shop/products', body: expect.objectContaining({ title: 'Bonus booklet', priceCents: 900, salesChannel: 'sales_links_only' }) },
+      { path: '/api/m2m/shop/products/update', body: { id: 'product-1', salesChannel: 'any' } },
+    ]);
+
+    calls.length = 0;
+    logSpy.mockClear();
+    await run('shop', 'products', 'update', 'product-1', '--sales-channel', 'everywhere');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    expect(calls).toEqual([]);
+  });
+
   it.each([
     [['shop', 'products', 'create', '--title', 'Both', '--price', '1', '--price-cents', '100'], 'Provide only one of --price and --price-cents'],
     [['shop', 'products', 'create', '--title', 'None'], 'Provide a price with --price (currency units) or --price-cents (integer cents)'],

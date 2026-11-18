@@ -118,6 +118,28 @@ describe('shop apply', () => {
     expect(writes(state.requests)).toEqual([]);
   });
 
+  it('manages the sales channel only when an entry specifies it and creates an omitted one as any', async () => {
+    const { api, state } = createManifestFake();
+    state.products = [existingProduct({ salesChannel: 'sales_links_only' })];
+    state.prices = [existingPrice()];
+    const entry = (slug: string, salesChannel?: 'any' | 'sales_links_only') =>
+      ({ slug, title: 'Paperback', price: { amountCents: 4900, currency: 'PLN' }, published: false, ...(salesChannel === undefined ? {} : { salesChannel }) });
+    const omitted = { version: 1, shops: [{ workspace: 'acme', products: [entry('paperback'), entry('hardback')] }] };
+    expect(await planManifest(omitted, () => api)).toMatchObject({ ok: true, value: { shops: [{ products: [
+      { slug: 'paperback', product: 'unchanged', fields: [], managedFields: ['title'] },
+      { slug: 'hardback', product: 'create', managedFields: ['title'] },
+    ] }] } });
+    expect((await applyManifest(omitted, () => api)).ok).toBe(true);
+    expect(state.products.map((product) => product.salesChannel)).toEqual(['sales_links_only', 'any']);
+    const specified = { version: 1, shops: [{ workspace: 'acme', products: [entry('paperback', 'any'), entry('hardback', 'sales_links_only')] }] };
+    expect(await planManifest(specified, () => api)).toMatchObject({ ok: true, value: { shops: [{ products: [
+      { slug: 'paperback', product: 'update', fields: ['salesChannel'] },
+      { slug: 'hardback', product: 'update', fields: ['salesChannel'] },
+    ] }] } });
+    expect((await applyManifest(specified, () => api)).ok).toBe(true);
+    expect(state.products.map((product) => product.salesChannel)).toEqual(['any', 'sales_links_only']);
+  });
+
   it('finishes all products in each phase before starting the next phase', async () => {
     const { api, state } = createManifestFake();
     const input = { version: 1, shops: [{ workspace: 'acme', products: ['paperback', 'hardback'].map((slug) => ({ slug, title: slug, price: { amountCents: 4900, currency: 'PLN' }, published: true })) }] };

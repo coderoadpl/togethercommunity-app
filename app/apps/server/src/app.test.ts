@@ -621,6 +621,10 @@ const deps = (input: {
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
     domainCheckSecret: 'test-domain-check-secret',
     operatorSecret: 'test-operator-secret',
+    secretFingerprints: [
+      { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
+      { name: 'SMTP_PASSWORD', set: false, fingerprint: null },
+    ],
     sanitizeStagingSecrets: input.sanitizeStagingSecrets ?? {
       production: false,
       databaseFingerprint: 'staging-fingerprint',
@@ -10325,7 +10329,7 @@ describe('operator provisioning public-surface regression', () => {
     const base = deps();
     const publicApp = new Hono<AppVars>();
     registerPublicRoutes(publicApp, base);
-    for (const route of [API_ROUTES.operatorTenantProvision, API_ROUTES.operatorTenantReadiness]) {
+    for (const route of [API_ROUTES.operatorTenantProvision, API_ROUTES.operatorTenantReadiness, API_ROUTES.secretFingerprints]) {
       expect(publicRouteManifestEntry(route)).toBeUndefined();
       expect(publicApp.routes.some((candidate) => candidate.path === route.path)).toBe(false);
       expect(selfAuthenticatingRouteManifestEntry(route)?.mechanism).toBe('Operator secret');
@@ -10334,6 +10338,34 @@ describe('operator provisioning public-surface regression', () => {
     const app = buildApp(base);
     expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', body: '{}' })).status).toBe(401);
     expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'))).status).toBe(401);
+    expect((await app.request(API_PATHS.secretFingerprints)).status).toBe(401);
+  });
+
+  it('answers a wrong secret on the fingerprint route exactly like the other operator routes', async () => {
+    const app = buildApp(deps());
+    const headers = { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' };
+    const readiness = await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers });
+    const fingerprints = await app.request(API_PATHS.secretFingerprints, { headers });
+    expect(fingerprints.status).toBe(readiness.status);
+    expect(await fingerprints.text()).toBe(await readiness.text());
+  });
+
+  it('serves the composed fingerprints to the operator without a session', async () => {
+    const app = buildApp(deps());
+    const response = await app.request(API_PATHS.secretFingerprints, {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        secrets: [
+          { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
+          { name: 'SMTP_PASSWORD', set: false, fingerprint: null },
+        ],
+      },
+    });
   });
 });
 
@@ -10353,6 +10385,7 @@ it.each([undefined, 'wrong-operator-secret'])('rejects operator authentication b
   };
   expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', headers, body: '{}' })).status).toBe(401);
   expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).toBe(401);
+  expect((await app.request(API_PATHS.secretFingerprints, { headers })).status).toBe(401);
   expect(getAuthenticatedUser).not.toHaveBeenCalled();
   expect(findBySlug).not.toHaveBeenCalled();
 });

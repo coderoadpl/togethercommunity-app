@@ -370,7 +370,7 @@ import {
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
-import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
+import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER, type SecretFingerprint } from '#core/contract/index.js';
 
 import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
@@ -378,6 +378,7 @@ import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
+import { secretFingerprintsOf } from './secret-fingerprints.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -569,6 +570,7 @@ export interface AppDeps {
   autoInvoiceDispatchSecret: string;
   domainCheckSecret: string;
   operatorSecret: string;
+  secretFingerprints: readonly SecretFingerprint[];
   smokeTenantReseed?: SmokeTenantReseedDeps;
   sanitizeStagingSecrets: SanitizeStagingSecretsDeps;
   checkTenantDomains(): Promise<Result<TenantDomainCheckResult, AppError>>;
@@ -1611,6 +1613,7 @@ export const createDeps = (
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     operatorSecret: selectOperatorSecret(env),
+    secretFingerprints: secretFingerprintsOf(env),
     ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
     sanitizeStagingSecrets,
     checkTenantDomains: () => runTenantDomainChecks(tenantDomainDeps),

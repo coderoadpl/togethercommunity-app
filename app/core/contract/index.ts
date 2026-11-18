@@ -21,6 +21,7 @@ export { activitySummaryQuerySchema, memberActivityQuerySchema, activitySummaryS
 export * from './marketing-signup-forms.js';
 
 export * from './operator-tenant.js';
+export * from './secret-fingerprints.js';
 export * from './surveys.js';
 export * from './sales-links.js';
 export * from './order-verification.js';

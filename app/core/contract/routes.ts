@@ -1959,6 +1959,7 @@ export const API_ROUTES = {
   ...META_CAPI_ROUTES,
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
+  secretFingerprints: { method: 'GET', path: '/api/internal/secret-fingerprints' },
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
@@ -2321,6 +2322,7 @@ export const API_PATHS = {
 
   operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
   operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,
+  secretFingerprints: API_ROUTES.secretFingerprints.path,
   activitySummary: API_ROUTES.activitySummary.path,
   memberActivity: API_ROUTES.memberActivity.path,
   listMarketingSignupForms: API_ROUTES.listMarketingSignupForms.path,

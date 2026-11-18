@@ -65,8 +65,6 @@ export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   product: 10,
 };
 
-export const PRODUCT_SALES_CHANNEL_SNAPSHOT_VERSION = 10;
-
 type Upcaster = (payload: unknown) => unknown;
 
 const upcastCourseLessonV3 = (payload: unknown): unknown => {

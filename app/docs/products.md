@@ -17,8 +17,8 @@ Set it in the product editor next to **Visibility**, with `--sales-channel` in
 `product create|update`, or with `salesChannel` in the product API, the import API
 and the shop manifest. See
 [Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links)
-for what is refused and what stays allowed. Restoring an older product version
-saved before the sales channel existed keeps the product's current sales channel.
+for what is refused and what stays allowed. Restoring a product version never
+changes its sales channel.
 
 ## History retention
 

@@ -613,25 +613,22 @@ describe('restoring a content version', () => {
     return harness.products[0];
   };
 
-  it.each(['sales_links_only', 'any'] as const)(
-    'keeps the current %s sales channel when the restored snapshot predates the field',
-    async (current) => {
-      const restored = await restoreProductVersion(current, { schemaVersion: 9, payload: productSnapshotPayload });
-
-      expect(restored).toMatchObject({ title: 'Older title', salesChannel: current });
-    },
-  );
-
   it.each([
-    ['sales_links_only', 'any'],
-    ['any', 'sales_links_only'],
-  ] as const)('restores a %s product to the %s sales channel its snapshot carries', async (current, stored) => {
-    const restored = await restoreProductVersion(current, {
-      schemaVersion: 10,
-      payload: { ...productSnapshotPayload, salesChannel: stored },
-    });
+    ['sales_links_only', 'v9 snapshot without a sales channel', { schemaVersion: 9, payload: productSnapshotPayload }],
+    [
+      'sales_links_only',
+      'v10 snapshot carrying any',
+      { schemaVersion: 10, payload: { ...productSnapshotPayload, salesChannel: 'any' } },
+    ],
+    [
+      'any',
+      'v10 snapshot carrying sales_links_only',
+      { schemaVersion: 10, payload: { ...productSnapshotPayload, salesChannel: 'sales_links_only' } },
+    ],
+  ] as const)('keeps the current %s sales channel when restoring a %s', async (current, _label, snapshot) => {
+    const restored = await restoreProductVersion(current, snapshot);
 
-    expect(restored).toMatchObject({ title: 'Older title', salesChannel: stored });
+    expect(restored).toMatchObject({ title: 'Older title', salesChannel: current });
   });
 
   it('refuses a restore without the write capability', async () => {

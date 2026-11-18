@@ -28,6 +28,7 @@ import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 import {
   DEFAULT_PARCEL_TEMPLATE,
   priceMajorSchema,
+  productSalesChannelSchema,
   productVisibilitySchema,
   productVatRateSchema,
   SUPPORTED_CURRENCIES,
@@ -35,6 +36,7 @@ import {
   type Product,
   type ProductPrice,
   type ProductDownloadAssetMetadata,
+  type ProductSalesChannel,
   type ProductVisibility,
 } from '#core/domain/index.js';
 
@@ -56,7 +58,8 @@ import { ProductStockSection } from './ProductStockSection.js';
 const ProductDetailsSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
-  const [visibility, setVisibility] = useState<ProductVisibility>(product.visibility);
+  const [visibilityDraft, setVisibilityDraft] = useState<ProductVisibility | null>(null);
+  const [salesChannelDraft, setSalesChannelDraft] = useState<ProductSalesChannel | null>(null);
   const [title, setTitle] = useState(product.title);
   const [description, setDescription] = useState(product.description);
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
@@ -74,6 +77,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         queryClient.invalidateQueries(actions.productsInvalidates()),
         queryClient.invalidateQueries(actions.publicOfferInvalidates()),
       ]);
+      setVisibilityDraft(null);
+      setSalesChannelDraft(null);
     },
   });
 
@@ -85,7 +90,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
     save.mutate({
       id: product.id,
       title: title.trim(),
-      visibility,
+      ...(visibilityDraft === null ? {} : { visibility: visibilityDraft }),
+      ...(salesChannelDraft === null ? {} : { salesChannel: salesChannelDraft }),
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       ...(product.type === 'physical' ? {
@@ -141,11 +147,11 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         <FormLabel id="product-visibility-label">{t.products.visibilityLabel}</FormLabel>
         <Select
           labelId="product-visibility-label"
-          value={visibility}
+          value={visibilityDraft ?? product.visibility}
           inputProps={{ 'aria-describedby': 'product-visibility-helper' }}
           onChange={(event) => {
             resetFeedback();
-            setVisibility(productVisibilitySchema.parse(event.target.value));
+            setVisibilityDraft(productVisibilitySchema.parse(event.target.value));
           }}
         >
           <MenuItem value="listed">{t.products.listed}</MenuItem>
@@ -153,6 +159,24 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         </Select>
         <FormHelperText id="product-visibility-helper">{t.products.visibilityHelper}</FormHelperText>
       </FormControl>
+      {product.type === 'membership' ? null : (
+        <FormControl fullWidth>
+          <FormLabel id="product-sales-channel-label">{t.products.salesChannelLabel}</FormLabel>
+          <Select
+            labelId="product-sales-channel-label"
+            value={salesChannelDraft ?? product.salesChannel}
+            inputProps={{ 'aria-describedby': 'product-sales-channel-helper' }}
+            onChange={(event) => {
+              resetFeedback();
+              setSalesChannelDraft(productSalesChannelSchema.parse(event.target.value));
+            }}
+          >
+            <MenuItem value="any">{t.products.salesChannelAny}</MenuItem>
+            <MenuItem value="sales_links_only">{t.products.salesChannelSalesLinksOnly}</MenuItem>
+          </Select>
+          <FormHelperText id="product-sales-channel-helper">{t.products.salesChannelHelper}</FormHelperText>
+        </FormControl>
+      )}
       <TextField select label={t.salesLinks.vatRate} value={vatRate ?? ''} onChange={(event) => { resetFeedback(); setVatRate(event.target.value === '' ? null : productVatRateSchema.parse(event.target.value === 'exempt' ? 'exempt' : Number(event.target.value))); }}>
         <MenuItem value="">{t.salesLinks.vatDefault}</MenuItem>
         {[5, 8, 23].map((rate) => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}

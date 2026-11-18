@@ -1,17 +1,12 @@
 {
-  "hash": "81194e5e113bae439572b88238bcf069464b711cfaab8aea43885f191fbdc098",
-  "shortId": "81194e5e113b",
+  "hash": "c6e4cd2a4648ae70fcbf9e094f4134a0e355b2954ecec3172774ea4199f66eb7",
+  "shortId": "c6e4cd2a4648",
   "schema": {
     "constraints": [
       {
         "definition": "CHECK ((((kind = 'amount'::text) AND (currency ~ '^[A-Z]{3}$'::text)) OR ((kind = 'percent'::text) AND (currency IS NULL))))",
         "name": "coupons_amount_currency_check",
         "table": "coupons"
-      },
-      {
-        "definition": "CHECK ((((kind = 'request'::text) AND (method IS NOT NULL) AND (route IS NOT NULL)) OR ((kind <> 'request'::text) AND (method IS NULL) AND (route IS NULL) AND (resource_id IS NULL))))",
-        "name": "shop_management_key_events_shape_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
@@ -27,11 +22,6 @@
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
-      },
-      {
-        "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb) AND (scopes <@ '[\"shop:catalog:read\", \"shop:catalog:write\", \"shop:orders:read\", \"shop:fulfilment:write\", \"shop:settings:read\", \"shop:settings:write\", \"shop:integrations:read\", \"shop:integrations:write\"]'::jsonb)))",
-        "name": "shop_management_keys_scopes_check",
-        "table": "shop_management_keys"
       },
       {
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
@@ -89,11 +79,6 @@
         "table": "posts"
       },
       {
-        "definition": "CHECK ((char_length(resource_id) <= 200))",
-        "name": "shop_management_key_events_resource_id_length_check",
-        "table": "shop_management_key_events"
-      },
-      {
         "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",
         "name": "meta_capi_consent_evidence_decision_check",
         "table": "meta_capi_consent_evidence"
@@ -134,11 +119,6 @@
         "table": "tenants"
       },
       {
-        "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
-        "name": "shop_management_key_events_kind_check",
-        "table": "shop_management_key_events"
-      },
-      {
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
@@ -152,11 +132,6 @@
         "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
         "name": "orders_meta_capi_consent_check",
         "table": "orders"
-      },
-      {
-        "definition": "CHECK ((method = ANY (ARRAY['POST'::text, 'PUT'::text, 'PATCH'::text, 'DELETE'::text])))",
-        "name": "shop_management_key_events_method_check",
-        "table": "shop_management_key_events"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -194,11 +169,6 @@
         "table": "telemetry_accounting"
       },
       {
-        "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
-        "name": "shop_management_key_rate_limit_buckets_period_check",
-        "table": "shop_management_key_rate_limit_buckets"
-      },
-      {
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
@@ -224,11 +194,6 @@
         "table": "product_stock"
       },
       {
-        "definition": "CHECK ((resource_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'::text))",
-        "name": "shop_management_key_events_resource_id_pattern_check",
-        "table": "shop_management_key_events"
-      },
-      {
         "definition": "CHECK ((revision > 0))",
         "name": "marketing_signup_forms_revision_check",
         "table": "marketing_signup_forms"
@@ -247,6 +212,11 @@
         "definition": "CHECK ((revision > 0))",
         "name": "surveys_revision_check",
         "table": "surveys"
+      },
+      {
+        "definition": "CHECK ((sales_channel = ANY (ARRAY['any'::text, 'sales_links_only'::text])))",
+        "name": "products_sales_channel_check",
+        "table": "products"
       },
       {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
@@ -332,11 +302,6 @@
         "definition": "CHECK (singleton)",
         "name": "order_feed_epoch_singleton_check",
         "table": "order_feed_epoch"
-      },
-      {
-        "definition": "FOREIGN KEY (api_key_id) REFERENCES shop_management_keys(id) ON DELETE CASCADE",
-        "name": "shop_management_key_rate_limit_buckets_api_key_id_fkey",
-        "table": "shop_management_key_rate_limit_buckets"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES tenant_api_keys(id) ON DELETE CASCADE",
@@ -1015,16 +980,6 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
-        "name": "shop_management_key_events_tenant_id_fkey",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
-        "name": "shop_management_keys_tenant_id_fkey",
-        "table": "shop_management_keys"
-      },
-      {
-        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
         "table": "sns_webhook_deliveries"
       },
@@ -1419,11 +1374,6 @@
         "table": "api_key_rate_limit_buckets"
       },
       {
-        "definition": "PRIMARY KEY (api_key_id, period)",
-        "name": "shop_management_key_rate_limit_buckets_api_key_id_period_pk",
-        "table": "shop_management_key_rate_limit_buckets"
-      },
-      {
         "definition": "PRIMARY KEY (email)",
         "name": "dev_magic_links_pkey",
         "table": "dev_magic_links"
@@ -1752,16 +1702,6 @@
         "definition": "PRIMARY KEY (id)",
         "name": "session_pkey",
         "table": "session"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "shop_management_key_events_pkey",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "shop_management_keys_pkey",
-        "table": "shop_management_keys"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2738,21 +2678,6 @@
         "table": "scheduler_runs"
       },
       {
-        "definition": "CREATE INDEX shop_management_key_events_tenant_at_idx ON shop_management_key_events USING btree (tenant_id, at)",
-        "name": "shop_management_key_events_tenant_at_idx",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "CREATE INDEX shop_management_key_events_tenant_key_at_idx ON shop_management_key_events USING btree (tenant_id, api_key_id, at)",
-        "name": "shop_management_key_events_tenant_key_at_idx",
-        "table": "shop_management_key_events"
-      },
-      {
-        "definition": "CREATE INDEX shop_management_keys_tenant_id_idx ON shop_management_keys USING btree (tenant_id)",
-        "name": "shop_management_keys_tenant_id_idx",
-        "table": "shop_management_keys"
-      },
-      {
         "definition": "CREATE INDEX space_event_rsvps_tenant_event_idx ON space_event_rsvps USING btree (tenant_id, event_id)",
         "name": "space_event_rsvps_tenant_event_idx",
         "table": "space_event_rsvps"
@@ -3176,11 +3101,6 @@
         "definition": "CREATE UNIQUE INDEX scheduler_run_tenants_run_tenant_uidx ON scheduler_run_tenants USING btree (run_id, tenant_id)",
         "name": "scheduler_run_tenants_run_tenant_uidx",
         "table": "scheduler_run_tenants"
-      },
-      {
-        "definition": "CREATE UNIQUE INDEX shop_management_keys_key_hash_uidx ON shop_management_keys USING btree (key_hash)",
-        "name": "shop_management_keys_key_hash_uidx",
-        "table": "shop_management_keys"
       },
       {
         "definition": "CREATE UNIQUE INDEX space_event_rsvps_tenant_event_user_uidx ON space_event_rsvps USING btree (tenant_id, event_id, user_id)",
@@ -3627,6 +3547,14 @@
             "name": "checkout_consent_definition_ids",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": "'any'::text",
+            "generated": "",
+            "identity": "",
+            "name": "sales_channel",
+            "notNull": true,
+            "type": "text"
           },
           {
             "default": "'course'::text",
@@ -10021,83 +9949,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "method",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "resource_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "route",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "shop_management_key_events"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "actor_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -10391,43 +10242,6 @@
           }
         ],
         "name": "api_key_rate_limit_buckets"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "count",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "period",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "window_started_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          }
-        ],
-        "name": "shop_management_key_rate_limit_buckets"
       },
       {
         "columns": [
@@ -13714,83 +13528,6 @@
           }
         ],
         "name": "tenant_api_keys"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "issued_by_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "key_hash",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "revoked_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "scopes",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "shop_management_keys"
       },
       {
         "columns": [

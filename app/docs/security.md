@@ -333,6 +333,11 @@ finding without blocking, and an unaccepted advisory is handled by a dependency
 bump or acceptance before the next promotion. Accepting an advisory requires both
 an `auditConfig.ignoreGhsas` entry in `app/pnpm-workspace.yaml` and its written
 justification under Accepted dependency advisories.
+`app/.pnpmfile.cjs` removes the optional `vitest` peer that `better-auth`
+declares (and any `@better-auth/*` package that declares it), so the test
+runner stays out of the production graph the audit sees;
+`config-regression/auth-library-test-peer.test.ts` fails when the lockfile
+carries that peer again.
 The audit allowlist contains these reviewed advisories:
 
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production

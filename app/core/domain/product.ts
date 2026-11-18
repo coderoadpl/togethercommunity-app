@@ -17,6 +17,10 @@ export const productVisibilitySchema = z.enum(['listed', 'unlisted']);
 
 export type ProductVisibility = z.infer<typeof productVisibilitySchema>;
 
+export const productSalesChannelSchema = z.enum(['any', 'sales_links_only']);
+
+export type ProductSalesChannel = z.infer<typeof productSalesChannelSchema>;
+
 export const productTypeSchema = z.enum(PRODUCT_TYPES);
 
 export type ProductType = z.infer<typeof productTypeSchema>;
@@ -115,6 +119,7 @@ export const productSchema = z.object({
   currency: currencySchema,
   published: z.boolean(),
   visibility: productVisibilitySchema.default('listed'),
+  salesChannel: productSalesChannelSchema.default('any'),
   deliveryMethod: deliveryMethodSchema.default('pickup'),
   parcelTemplate: parcelTemplateSchema.optional(),
   compliance: productComplianceSchema.nullable().optional(),
@@ -128,10 +133,22 @@ export const productSchema = z.object({
 
 export type Product = z.infer<typeof productSchema>;
 
+export const SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE = 'Sales links cannot sell memberships, so a membership cannot be limited to sales links';
+
+export const salesChannelAllowed = (type: ProductType, salesChannel: ProductSalesChannel): boolean =>
+  salesChannel === 'any' || type !== 'membership';
+
+export const isCatalogueListed = (product: Pick<Product, 'visibility' | 'salesChannel'>): boolean =>
+  product.visibility === 'listed' && product.salesChannel === 'any';
+
+export const isStandalonePurchasable = (product: Pick<Product, 'published' | 'salesChannel'>): boolean =>
+  product.published && product.salesChannel === 'any';
+
 export const newProductSchema = z.object({
   ...productVatFields,
   type: productTypeSchema.default('course'),
   visibility: productVisibilitySchema.default('listed'),
+  salesChannel: productSalesChannelSchema.default('any'),
   deliveryMethod: deliveryMethodSchema.default('pickup'),
   parcelTemplate: parcelTemplateSchema.default(DEFAULT_PARCEL_TEMPLATE),
   compliance: productComplianceSchema.nullable().optional(),
@@ -151,6 +168,7 @@ export type NewProductInput = z.input<typeof newProductSchema>;
 export const updateProductInputSchema = z.object({
   ...productVatFields,
   visibility: productVisibilitySchema.optional(),
+  salesChannel: productSalesChannelSchema.optional(),
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   compliance: productComplianceSchema.nullable().optional(),

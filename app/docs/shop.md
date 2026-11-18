@@ -637,6 +637,11 @@ tracked variant without an available piece is sold out, an untracked one never
 is. The offer reads the stock of the offered products and of every published
 sibling in their groups in one query.
 
+A sibling sold only through sales links (sales channel `sales_links_only`) is
+never offered as a variant of a standalone product; inside a sales link it is an
+eligible variant like any other. See
+[Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links).
+
 Sales-link offers, including one-line offers, show chips below each eligible
 line name. A chip stays on `/offer/<slug>` and carries repeatable
 `variant=<baseProductId>.<chosenProductId>` query parameters. Eligible siblings
@@ -749,7 +754,10 @@ cart; repeat it once per product and leave out `--product` and `--sales-link`
 (see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
 For an order with a line above one unit, `orders list` shows its product lines
 as `2 × Title; Title`; other orders keep the product title. `--compliance null` removes the safety information and
-`--clear-variant` removes the variant group and label. `order` is an alias of
+`--clear-variant` removes the variant group and label. `product create|update
+--sales-channel sales_links_only` limits a product to sales links (see
+[Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));
+`--sales-channel any` lifts the limit. `order` is an alias of
 `orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
 id and token; `--sender null` removes the sender. Passing the token as a flag
 puts it in the shell history: prefer entering it in Studio.

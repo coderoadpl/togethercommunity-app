@@ -9,6 +9,7 @@ import {
   checkoutSessionInputSchema,
   err,
   FREE_ORDER_DELIVERY_UNAVAILABLE,
+  isStandalonePurchasable,
   normalizeCouponCode,
   notFound,
   ok,
@@ -143,7 +144,7 @@ const selectCheckoutProducts = async (
     return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug, variantSelections: selections.filter((selection) => selection.productId !== selection.variantProductId) });
   }
   const product = await deps.products.findById(tenantId, input.productId);
-  if (!product || !product.published) {
+  if (!product || !isStandalonePurchasable(product)) {
     return err(notFound(`No published product "${input.productId}" in this tenant`));
   }
 

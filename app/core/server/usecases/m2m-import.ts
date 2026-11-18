@@ -13,6 +13,8 @@ import {
   importModuleRecordSchema,
   importProductRecordSchema,
   resolveProductVat,
+  salesChannelAllowed,
+  SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
   importPublicAssetPathSchema,
   importValidateRequestSchema,
   importWriteRequestSchema,
@@ -537,10 +539,15 @@ const prepareProduct = async (
   if (!accessItems.ok) return accessItems;
   const predicted = await predictAction(tenantId, 'product', record.importKey, payloadHash, deps, reachable);
   if (!predicted.ok) return predicted;
-  const slugOwner = (await deps.products.listByTenant(tenantId)).find((product) => product.slug === record.slug);
+  const tenantProducts = await deps.products.listByTenant(tenantId);
+  const slugOwner = tenantProducts.find((product) => product.slug === record.slug);
   if (slugOwner !== undefined && slugOwner.id !== predicted.value.id) {
     return err(slugReserved(`A product with slug "${record.slug}" already exists`));
   }
+  const salesChannel = record.salesChannel
+    ?? tenantProducts.find((product) => product.id === predicted.value.id)?.salesChannel
+    ?? 'any';
+  if (!salesChannelAllowed(record.type, salesChannel)) return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
   return ok({
     kind: 'product',
     importKey: record.importKey,
@@ -559,6 +566,7 @@ const prepareProduct = async (
       priceCents: record.priceCents,
       currency: record.currency,
       visibility: 'listed',
+      salesChannel,
       deliveryMethod: 'pickup',
       compliance: record.compliance ?? null,
       variantGroup: record.variantGroup ?? null,

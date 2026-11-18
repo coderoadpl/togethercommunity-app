@@ -540,12 +540,16 @@ other type is accepted. A matching slug belonging to another product type is an
 error; the tool does not convert product types or rename slugs.
 
 The metadata fields follow the existing physical product routes: `description`,
-`vatRate`, `vatExemptionBasis`, `deliveryMethod`, `parcelTemplate`, `compliance`,
-`variantGroup`, `variantLabel`, and `coverUrl`. Only the metadata fields an
+`vatRate`, `vatExemptionBasis`, `deliveryMethod`, `parcelTemplate`, `salesChannel`,
+`compliance`, `variantGroup`, `variantLabel`, and `coverUrl`. Only the metadata fields an
 entry specifies are managed: an omitted field of an existing product is not
 compared or written and keeps its stored value. When the tool creates a product,
 the product route's defaults fill omitted fields: an empty description, delivery
-method `pickup` and parcel template `medium`. The plan lists the managed
+method `pickup`, parcel template `medium` and sales channel `any`. `salesChannel`
+is `any` or `sales_links_only` (see
+[sales links](sales-links.md#products-sold-only-through-sales-links)); like the
+other metadata fields, plan and drift compare it only when the entry specifies
+it, and an omitted value leaves an existing product's channel unchanged. The plan lists the managed
 metadata field names of every product under `managedFields` and those that
 differ under `fields`. Use `null` to clear nullable metadata. Omitted product VAT
 inherits the workspace treatment on new products; use an explicit `null` to
@@ -618,8 +622,11 @@ order:
 
 1. Changed workspace settings.
 2. With `--integrations` only: Stripe, ShipX, then parcel-locker configuration.
-3. All product creations and metadata updates by slug.
+3. All product creations and metadata updates by slug. Narrowing a product to
+   `sales_links_only` happens here.
 4. Active prices: add a replacement if needed, then deactivate alternatives.
+   Widening a product from `sales_links_only` to `any` follows as a separate
+   product update, so the old price never sells on its own.
 5. Stock enablement or on-hand adjustments.
 6. Cover attachment or clearing.
 7. Publication changes.

@@ -1405,6 +1405,10 @@ export interface Messages {
     visibilityHelper: string;
     listed: string;
     unlisted: string;
+    salesChannelLabel: string;
+    salesChannelAny: string;
+    salesChannelSalesLinksOnly: string;
+    salesChannelHelper: string;
     newProduct: string;
     detailsHeading: string;
     titleLabel: string;

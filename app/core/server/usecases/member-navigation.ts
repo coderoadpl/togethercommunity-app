@@ -1,5 +1,6 @@
 import {
   directMessagesEnabled,
+  isCatalogueListed,
   ok,
   type AppError,
   type MemberNavigation,
@@ -90,7 +91,7 @@ export const getMemberNavigation = async (
     new Set(courses.filter((course) => !course.archivedAt).map((course) => course.id)),
   );
 
-  const listedProducts = products.filter((product) => product.visibility === 'listed');
+  const listedProducts = products.filter(isCatalogueListed);
   const publishedProductIds = new Set(listedProducts.map((product) => product.id));
   const productsById = new Map(
     listedProducts.map((product) => [product.id, { id: product.id, title: product.title }]),

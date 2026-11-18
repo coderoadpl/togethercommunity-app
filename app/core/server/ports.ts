@@ -258,8 +258,10 @@ export interface ProductBatchReader {
   findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
 }
 
+export type ProductMetadataUpdate = Omit<Product, 'salesChannel'> & Partial<Pick<Product, 'salesChannel'>>;
+
 export interface ProductMetadataRepository {
-  update(tenantId: string, product: Product, version: EntityVersionRecord): Promise<Product | null>;
+  update(tenantId: string, product: ProductMetadataUpdate, version: EntityVersionRecord): Promise<Product | null>;
 }
 
 export interface CourseRepository {

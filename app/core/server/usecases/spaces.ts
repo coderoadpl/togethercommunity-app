@@ -4,6 +4,7 @@ import {
   deleteSpaceInputSchema,
   err,
   followSpaceInputSchema,
+  isCatalogueListed,
   listSpaceFeedInputSchema,
   markSpaceSeenInputSchema,
   MAX_PINNED_POSTS_PER_SPACE,
@@ -226,9 +227,14 @@ export const listSpacesForMember = async (
 ): Promise<Result<MemberSpace[], AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'space:read');
   if (!actor.ok) return actor;
+  const isStaff = ctx.identity.staffRole !== null;
   const [visible, products] = await Promise.all([
     listAccessibleSpaces(ctx, deps),
-    deps.products.listByTenant(actor.value.tenantId),
+    isStaff
+      ? deps.products.listByTenant(actor.value.tenantId)
+      : deps.products
+          .listPublishedByTenant(actor.value.tenantId)
+          .then((published) => published.filter(isCatalogueListed)),
   ]);
   if (!visible.ok) return visible;
   const productsById = new Map(products.map((product) => [product.id, { id: product.id, title: product.title }]));
@@ -240,6 +246,7 @@ export const listSpacesForMember = async (
   return ok(
     visible.value.map((space): MemberSpace => ({
       ...space,
+      productIds: isStaff ? space.productIds : space.productIds.filter((productId) => productsById.has(productId)),
       isFollowing: followedIds.has(space.id),
       products: productSummariesForSpace(space, productsById),
     })),

@@ -348,6 +348,21 @@ const deps = (input: {
       findLatestByImportKey: async () => null,
       listByApiKey: async () => ({ events: [], nextCursor: null }),
     },
+    shopManagementKeyEvents: {
+      record: async () => undefined,
+      list: async () => ({ events: [], nextCursor: null }),
+    },
+    shopManagementKeys: {
+      listByTenant: async () => [],
+      create: async () => undefined,
+      findByHash: async () => null,
+      revoke: async () => null,
+      purge: async () => 0,
+    },
+    shopManagementKeyRateLimits: {
+      claim: async () => true,
+      release: async () => undefined,
+    },
     importContent: {
       commit: async () => 'saved',
     },
@@ -938,6 +953,7 @@ const deps = (input: {
     accountSecurity: {
       read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
     },
+    accountIdentities: { findById: async () => null },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
       migrationCounts: async () => input.migrationCounts ?? { expected: 82, applied: 82, current: true },
@@ -959,6 +975,7 @@ const deps = (input: {
     },
     databaseIdentity: '0123456789abcdef',
     tenantCreationMode: 'open',
+    shopManagementKeysSwitch: 'enabled',
     ids: { nextId: () => `id-${String(++nextId)}` },
     consentTokens: { nextToken: () => `confirmation-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },

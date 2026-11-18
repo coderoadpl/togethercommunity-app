@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -70,6 +70,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
+import { registerShopKeyCommands } from './shop-key-commands.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
@@ -282,6 +283,7 @@ const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
   email: z.string().email(),
   product: z.string().min(1),
   priceId: z.string().min(1).optional(),
+  acceptTerms: z.literal(true).optional(),
 });
 const priceAddOptionsSchema = z.object({
   product: z.string().min(1),
@@ -370,6 +372,7 @@ const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   line: z.array(checkoutLineOptionSchema).default([]),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
+  acceptTerms: z.literal(true).optional(),
   clientReference: z.string().optional(),
 });
 const memberExportOptionsSchema = z.object({
@@ -755,6 +758,7 @@ registerReportCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
+registerShopKeyCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -971,6 +975,7 @@ checkout
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
@@ -982,6 +987,7 @@ checkout
       const common = {
         ...(options.email === undefined ? {} : { email: options.email }),
         ...(options.language === undefined ? {} : { language: options.language }),
+        ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
         ...(shipping.value === null ? {} : { shipping: shipping.value }),
         ...(options.clientReference === undefined ? {} : { clientReference: options.clientReference }),
       };
@@ -3429,6 +3435,7 @@ program
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
@@ -3446,6 +3453,7 @@ program
           email: options.email,
           productId: options.product,
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
+          ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
           ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,
@@ -3946,6 +3954,106 @@ apiKey
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       emit(await ctx.api.revokeApiKey({ id }), ctx.json, (data) =>
         `revoked API key ${data.apiKey.name} (${data.apiKey.id})`,
+      );
+    }),
+  );
+
+const shopManagementKey = apiKey
+  .command('shop-management')
+  .description('Shop management keys (verified owner session only)');
+
+const shopManagementKeyCreateOptionsSchema = z.object({
+  scope: z.array(shopManagementScopeSchema).min(1),
+  expiresAt: z.string().datetime(),
+});
+
+shopManagementKey
+  .command('create <name...>')
+  .description('Create a shop management key; the secret is shown once')
+  .option('--scope <scope...>', 'Shop scopes (required): shop:catalog:read, shop:catalog:write, shop:orders:read, shop:fulfilment:write, shop:settings:read, shop:settings:write, shop:integrations:read, shop:integrations:write')
+  .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 30 days ahead (7 days is the suggested lifetime)')
+  .action(
+    withInput(z.tuple([z.array(z.string().min(1)).min(1), shopManagementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
+      emit(
+        await ctx.api.createShopManagementKey({ name: nameWords.join(' '), scopes: options.scope, expiresAt: options.expiresAt }),
+        ctx.json,
+        (data) =>
+          `created shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+      );
+    }),
+  );
+
+shopManagementKey.command('list').description('List shop management keys (no secrets)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listShopManagementKeys(), ctx.json, (data) =>
+      data.apiKeys.length === 0
+        ? 'no shop management keys'
+        : data.apiKeys
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})`)
+            .join('\n'),
+    );
+  }),
+);
+
+shopManagementKey
+  .command('revoke <id>')
+  .description('Revoke a shop management key')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.revokeShopManagementKey({ id }), ctx.json, (data) =>
+        `revoked shop management key ${data.apiKey.name} (${data.apiKey.id})`,
+      );
+    }),
+  );
+
+shopManagementKey
+  .command('purge')
+  .description('Delete every shop management key of the workspace, revoked or not')
+  .option('--yes', 'confirm the permanent deletion')
+  .action(
+    withInput(z.tuple([z.object({ yes: z.boolean().optional() })]), async (ctx, [options]) => {
+      if (options.yes !== true) {
+        emit(err(validation('Purging shop management keys requires --yes')), ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.purgeShopManagementKeys(), ctx.json, (data) =>
+        `purged ${String(data.purged)} shop management keys`,
+      );
+    }),
+  );
+
+const shopManagementKeyEventsOptionsSchema = z.object({
+  key: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+shopManagementKey
+  .command('events')
+  .description('List the shop management key history of the workspace, newest first')
+  .option('--key <id>', 'only events of this key id')
+  .option('--cursor <id>', 'continue after this event id')
+  .option('--limit <n>', 'events per page (1-100, default 50)')
+  .action(
+    withInput(z.tuple([shopManagementKeyEventsOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listShopManagementKeyEvents({
+          ...(options.key === undefined ? {} : { keyId: options.key }),
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) => [
+          ...(data.events.length === 0 ? ['no shop management key events'] : data.events.map((event) => [
+            event.at,
+            event.kind,
+            event.apiKeyId,
+            event.actorUserId,
+            event.method === null ? '-' : `${event.method} ${event.route ?? ''}`,
+            event.resourceId ?? '-',
+          ].join('\t'))),
+          ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
+        ].join('\n'),
       );
     }),
   );

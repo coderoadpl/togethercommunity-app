@@ -186,6 +186,25 @@ so public sales links can render the server checkout handoff and crawler metadat
 The explicit `checkout=together` fallback and `status=success|cancelled` return
 pages serve the existing web app and never restart the automatic handoff.
 
+Shop management keys (owner decision 2026-11-14, approved for PR #410 and #411): a program may add,
+configure and operate a workspace's shop with tokens and without manual steps,
+including delivery, carrier and payment configuration. Workspace-bound,
+expiring, revocable keys with explicit scopes may therefore call the shop
+management routes under `/api/m2m/shop`; a key with `shop:integrations:write`
+may configure the payment account of its workspace, including the live slot,
+its carrier credentials and sender, its invoicing credentials and its object
+storage connection, and nothing else: a key never writes webhook signing
+secrets or webhook endpoint ids directly (the payment configuration creates
+them), the Meta Conversions API token, video-hosting, marketing or telemetry
+credentials, or any secret not on the allow-list in
+`core/domain/shop-management-key.ts`.
+A key with `shop:fulfilment:write` can create carrier shipments (InPost ShipX)
+for its workspace's orders, which the carrier charges for.
+Keys are created and revoked only by a verified owner in their own session,
+never by another key. Risk accepted by the owner: whoever holds such a key can
+change that workspace's shop and, with the integration scope, its payment
+configuration, until the key expires or is revoked.
+
 `pnpm run tenant-neutral-lint` (part of `pnpm run check`) fails on the denied
 patterns across every tracked file. An exception needs a line in
 `.tenant-neutral-allow` with a written justification.

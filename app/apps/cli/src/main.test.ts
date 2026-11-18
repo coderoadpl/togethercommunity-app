@@ -21,6 +21,7 @@ interface Hoisted {
   exportOrders: ReturnType<typeof vi.fn>;
   publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
   createCheckoutSession: ReturnType<typeof vi.fn>;
+  simulatePurchase: ReturnType<typeof vi.fn>;
   createCartCheckoutSession: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   getSalesLink: ReturnType<typeof vi.fn>;
@@ -45,6 +46,11 @@ interface Hoisted {
   activitySummary: ReturnType<typeof vi.fn>;
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
+  createShopManagementKey: ReturnType<typeof vi.fn>;
+  listShopManagementKeys: ReturnType<typeof vi.fn>;
+  revokeShopManagementKey: ReturnType<typeof vi.fn>;
+  purgeShopManagementKeys: ReturnType<typeof vi.fn>;
+  listShopManagementKeyEvents: ReturnType<typeof vi.fn>;
   listSurveys: ReturnType<typeof vi.fn>;
   createSurvey: ReturnType<typeof vi.fn>;
   deleteSurvey: ReturnType<typeof vi.fn>;
@@ -102,6 +108,7 @@ const h = vi.hoisted(
     exportOrders: vi.fn(),
     publicCheckoutSessionStatus: vi.fn(),
     createCheckoutSession: vi.fn(),
+    simulatePurchase: vi.fn(),
     createCartCheckoutSession: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
     getSalesLink: vi.fn(),
@@ -126,6 +133,11 @@ const h = vi.hoisted(
     activitySummary: vi.fn(),
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
+    createShopManagementKey: vi.fn(),
+    listShopManagementKeys: vi.fn(),
+    revokeShopManagementKey: vi.fn(),
+    purgeShopManagementKeys: vi.fn(),
+    listShopManagementKeyEvents: vi.fn(),
     listSurveys: vi.fn(),
     createSurvey: vi.fn(),
     deleteSurvey: vi.fn(),
@@ -231,6 +243,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     exportOrders: h.exportOrders,
     publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
     createCheckoutSession: h.createCheckoutSession,
+    simulatePurchase: h.simulatePurchase,
     createCartCheckoutSession: h.createCartCheckoutSession,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
     getSalesLink: h.getSalesLink,
@@ -255,6 +268,11 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     activitySummary: h.activitySummary,
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
+    createShopManagementKey: h.createShopManagementKey,
+    listShopManagementKeys: h.listShopManagementKeys,
+    revokeShopManagementKey: h.revokeShopManagementKey,
+    purgeShopManagementKeys: h.purgeShopManagementKeys,
+    listShopManagementKeyEvents: h.listShopManagementKeyEvents,
     listSurveys: h.listSurveys,
     createSurvey: h.createSurvey,
     deleteSurvey: h.deleteSurvey,
@@ -342,6 +360,14 @@ beforeEach(() => {
   h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
   h.publicCheckoutSessionStatus.mockReset().mockResolvedValue(ok({ status: 'pending' }));
   h.createCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
+  h.simulatePurchase.mockReset().mockResolvedValue(ok({
+    memberId: 'member-1',
+    productId: 'product-1',
+    alreadyOwned: false,
+    subscriptionId: null,
+    orderId: 'order-1',
+    magicLink: null,
+  }));
   h.createCartCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/cart' }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.getSalesLink.mockReset();
@@ -461,6 +487,58 @@ describe('checkout session-status CLI', () => {
     expect(h.publicCheckoutSessionStatus).toHaveBeenCalledExactlyOnceWith('invalid');
     expect(soleJson()).toEqual(failure);
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('terms acceptance flag', () => {
+  it('starts a checkout session with termsAccepted only when --accept-terms is given', async () => {
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--email', 'buyer@example.test');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
+
+    h.createCheckoutSession.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/session' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('starts a cart checkout session with termsAccepted only when --accept-terms is given', async () => {
+    const paperback = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--email', 'buyer@example.test');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({ lines: [{ productId: paperback, quantity: 2 }], email: 'buyer@example.test' });
+
+    h.createCartCheckoutSession.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      lines: [{ productId: paperback, quantity: 2 }],
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/cart' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('simulates a purchase with termsAccepted only when --accept-terms is given', async () => {
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
+
+    h.simulatePurchase.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(soleJson()).toMatchObject({ ok: true, data: { orderId: 'order-1' } });
+    expect(process.exitCode).toBe(0);
   });
 });
 
@@ -1383,6 +1461,74 @@ describe('activity report CLI parsing', () => {
     h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Reporting' }, secret: 'secret' }));
     await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
     expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
+  });
+  it('creates a shop management key under the shop-management group with scopes and expiry', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Shop' }, secret: 'shop-secret' }));
+    await run(
+      'api-keys', 'shop-management', 'create', 'Shop', '--scope', 'shop:catalog:read', 'shop:orders:read',
+      '--expires-at', '1998-08-08T00:00:00.000Z', '--json',
+    );
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({
+      name: 'Shop', scopes: ['shop:catalog:read', 'shop:orders:read'], expiresAt: '1998-08-08T00:00:00.000Z',
+    });
+    expect(h.createApiKey).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'Shop' }));
+  });
+  it.each([
+    ['without scopes', ['--expires-at', '1998-08-08T00:00:00.000Z']],
+    ['without an expiry', ['--scope', 'shop:catalog:read']],
+    ['with a legacy scope', ['--scope', 'marketing', '--expires-at', '1998-08-08T00:00:00.000Z']],
+  ])('refuses a shop management key %s before calling the API', async (_label, options) => {
+    h.createShopManagementKey.mockReset();
+    await run('--json', 'api-key', 'shop-management', 'create', 'Shop', ...options);
+    expect(h.createShopManagementKey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('lists and revokes shop management keys through the shop-management group', async () => {
+    h.listShopManagementKeys.mockReset().mockResolvedValue(ok({ apiKeys: [{
+      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], issuedByUserId: 'owner-1',
+      createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-08T00:00:00.000Z', revokedAt: null,
+    }] }));
+    await run('api-key', 'shop-management', 'list');
+    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)');
+    h.revokeShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'shop-key', name: 'Shop' } }));
+    await run('--json', 'api-key', 'shop-management', 'revoke', 'shop-key');
+    expect(h.revokeShopManagementKey).toHaveBeenCalledWith({ id: 'shop-key' });
+  });
+  it('refuses api-key shop-management purge without --yes before calling the API', async () => {
+    h.purgeShopManagementKeys.mockReset();
+    await run('--json', 'api-key', 'shop-management', 'purge');
+    expect(h.purgeShopManagementKeys).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Purging shop management keys requires --yes' } });
+    expect(process.exitCode).toBe(2);
+  });
+  it('purges the shop management keys with --yes and reports the count', async () => {
+    h.purgeShopManagementKeys.mockReset().mockResolvedValue(ok({ purged: 3 }));
+    await run('--json', 'api-key', 'shop-management', 'purge', '--yes');
+    expect(h.purgeShopManagementKeys).toHaveBeenCalledOnce();
+    expect(soleJson()).toEqual({ ok: true, data: { purged: 3 } });
+  });
+  it('lists the shop management key history for one key with paging options', async () => {
+    const event = {
+      id: 'event-1', tenantId: 'acme', apiKeyId: 'shop-key', kind: 'request', actorUserId: 'owner-1', method: 'POST',
+      route: '/api/m2m/shop/products/update', resourceId: 'product-1', at: '1998-08-08T00:00:00.000Z',
+    };
+    h.listShopManagementKeyEvents.mockReset().mockResolvedValue(ok({ events: [event], nextCursor: 'event-1' }));
+    await run('api-key', 'shop-management', 'events', '--key', 'shop-key', '--limit', '1', '--cursor', 'event-0');
+    expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({ keyId: 'shop-key', cursor: 'event-0', limit: 1 });
+    expect(logSpy).toHaveBeenCalledWith(
+      '1998-08-08T00:00:00.000Z\trequest\tshop-key\towner-1\tPOST /api/m2m/shop/products/update\tproduct-1\nnext: --cursor event-1',
+    );
+  });
+  it('lists the whole workspace shop management key history without a key filter', async () => {
+    h.listShopManagementKeyEvents.mockReset().mockResolvedValue(ok({ events: [], nextCursor: null }));
+    await run('--json', 'api-key', 'shop-management', 'events');
+    expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { events: [], nextCursor: null } });
+  });
+  it('keeps the legacy api-key create free of shop options', async () => {
+    h.createApiKey.mockReset();
+    await run('api-keys', 'create', 'Shop', '--kind', 'shop_management', '--json');
+    expect(h.createApiKey).not.toHaveBeenCalled();
   });
 });
 

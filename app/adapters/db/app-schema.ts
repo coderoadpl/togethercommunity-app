@@ -47,6 +47,7 @@ import type {
   StorageCorsProbeResult,
   TenantDomainEventKind,
   TenantApiKeyScope,
+  ShopManagementScope,
 } from '#core/domain/index.js';
 
 export const tenants = pgTable(
@@ -1057,6 +1058,74 @@ export const tenantApiKeys = pgTable(
   (table) => [
     index('tenant_api_keys_tenantId_idx').on(table.tenantId),
     uniqueIndex('tenant_api_keys_key_hash_uidx').on(table.keyHash),
+  ],
+);
+
+export const shopManagementKeys = pgTable(
+  'shop_management_keys',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull(),
+    scopes: jsonb('scopes').$type<ShopManagementScope[]>().notNull(),
+    issuedByUserId: text('issued_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    revokedAt: text('revoked_at'),
+  },
+  (table) => [
+    index('shop_management_keys_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('shop_management_keys_key_hash_uidx').on(table.keyHash),
+    check(
+      'shop_management_keys_scopes_check',
+      sql`jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb AND ${table.scopes} <@ '["shop:catalog:read", "shop:catalog:write", "shop:orders:read", "shop:fulfilment:write", "shop:settings:read", "shop:settings:write", "shop:integrations:read", "shop:integrations:write"]'::jsonb`,
+    ),
+  ],
+);
+
+export const shopManagementKeyRateLimitBuckets = pgTable(
+  'shop_management_key_rate_limit_buckets',
+  {
+    apiKeyId: text('api_key_id').notNull().references(() => shopManagementKeys.id, { onDelete: 'cascade' }),
+    period: text('period', { enum: ['minute', 'day'] }).notNull(),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.apiKeyId, table.period] }),
+    check('shop_management_key_rate_limit_buckets_period_check', sql`${table.period} IN ('minute', 'day')`),
+  ],
+);
+
+export const shopManagementKeyEvents = pgTable(
+  'shop_management_key_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    apiKeyId: text('api_key_id').notNull(),
+    kind: text('kind', { enum: ['created', 'revoked', 'purged', 'request'] }).notNull(),
+    actorUserId: text('actor_user_id').notNull(),
+    method: text('method', { enum: ['POST', 'PUT', 'PATCH', 'DELETE'] }),
+    route: text('route'),
+    resourceId: text('resource_id'),
+    at: text('at').notNull(),
+  },
+  (table) => [
+    index('shop_management_key_events_tenant_at_idx').on(table.tenantId, table.at),
+    index('shop_management_key_events_tenant_key_at_idx').on(table.tenantId, table.apiKeyId, table.at),
+    check('shop_management_key_events_kind_check', sql`${table.kind} IN ('created', 'revoked', 'purged', 'request')`),
+    check('shop_management_key_events_method_check', sql`${table.method} IN ('POST', 'PUT', 'PATCH', 'DELETE')`),
+    check('shop_management_key_events_resource_id_length_check', sql`char_length(${table.resourceId}) <= 200`),
+    check('shop_management_key_events_resource_id_pattern_check', sql`${table.resourceId} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'`),
+    check(
+      'shop_management_key_events_shape_check',
+      sql`(${table.kind} = 'request' AND ${table.method} IS NOT NULL AND ${table.route} IS NOT NULL) OR (${table.kind} <> 'request' AND ${table.method} IS NULL AND ${table.route} IS NULL AND ${table.resourceId} IS NULL)`,
+    ),
   ],
 );
 

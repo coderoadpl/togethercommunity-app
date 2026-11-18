@@ -851,6 +851,15 @@ describe('operator secret', () => {
   });
 });
 
+describe('shop management keys switch', () => {
+  it('defaults to enabled and accepts only enabled or disabled', () => {
+    expect(envSchema.parse({}).SHOP_MANAGEMENT_KEYS).toBe('enabled');
+    expect(envSchema.parse({ SHOP_MANAGEMENT_KEYS: 'disabled' }).SHOP_MANAGEMENT_KEYS).toBe('disabled');
+    expect(envSchema.safeParse({ SHOP_MANAGEMENT_KEYS: 'off' }).success).toBe(false);
+    expect(envSchema.safeParse({ SHOP_MANAGEMENT_KEYS: 'false' }).success).toBe(false);
+  });
+});
+
 describe('consent evidence purge policy', () => {
   it('requires an explicit operator opt-in', () => {
     expect(envSchema.parse({}).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(false);

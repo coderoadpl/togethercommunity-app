@@ -64,6 +64,8 @@ import { createMemberErasureRequestRepository } from '#adapters/db/member-erasur
 import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import { createShopManagementKeyEventRepository } from '#adapters/db/shop-management-key-events.js';
+import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import {
   createImpersonationSessionRepository,
   createTenantAuditEventRepository,
@@ -116,6 +118,7 @@ import {
   createAvatarSourceReader,
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountIdentityReader,
   createAccountSecurityReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
@@ -213,6 +216,7 @@ import type {
   LessonEditionRepository,
   LessonEditionTransaction,
   ActivityReportRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
@@ -263,6 +267,9 @@ import type {
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
   ImportAuditEventRepository,
+  ShopManagementKeyEventRepository,
+  ShopManagementKeyRateLimitRepository,
+  ShopManagementKeyRepository,
   ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -368,6 +375,7 @@ import {
   type ResettableEnvironment,
   type SmokeTenantPasswords,
   type Result,
+  type ShopManagementKeysSwitch,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 import { isLocalHostname } from '#core/domain/network.js';
@@ -524,6 +532,9 @@ export interface AppDeps {
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
+  shopManagementKeyEvents: ShopManagementKeyEventRepository;
+  shopManagementKeys: ShopManagementKeyRepository;
+  shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -589,12 +600,14 @@ export interface AppDeps {
   tenantAccess: TenantAccessReader;
   signInTelemetrySecret: string;
   accountSecurity: AccountSecurityReader;
+  accountIdentities: AccountIdentityReader;
   health: HealthPort;
   appVersion: string;
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
   databaseIdentity: string | null;
   tenantCreationMode: TenantCreationMode;
+  shopManagementKeysSwitch: ShopManagementKeysSwitch;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
   clock: Clock;
@@ -1549,6 +1562,9 @@ export const createDeps = (
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
+    shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
+    shopManagementKeys: createShopManagementKeyRepository(db),
+    shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1631,12 +1647,14 @@ export const createDeps = (
     tenantAccess,
     signInTelemetrySecret: env.BETTER_AUTH_SECRET,
     accountSecurity,
+    accountIdentities: createAccountIdentityReader(db),
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
     deploymentIdentity: selectDeploymentIdentity(env),
     databaseIdentity: databaseIdentityFingerprint(env.DATABASE_URL),
     tenantCreationMode,
+    shopManagementKeysSwitch: env.SHOP_MANAGEMENT_KEYS,
     ids,
     clock,
     logger,

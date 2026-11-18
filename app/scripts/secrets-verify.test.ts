@@ -91,7 +91,7 @@ const verify = async (argv: string[], env: Record<string, string>, fetchImpl: ty
 };
 
 describe('runSecretsVerify', () => {
-  it('falls back to PROD_OPERATOR_SECRET, prints one line per name and never a value', async () => {
+  it('authenticates with the only operator secret present, prints one line per name and never a value', async () => {
     const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
     const { code, output } = await verify(['--', '--base-url', 'https://platform.example.test/ignored'], local, fetchImpl);
     expect(code).toBe(1);
@@ -103,25 +103,49 @@ describe('runSecretsVerify', () => {
     for (const value of [...Object.values(local), 'test-only']) expect(output).not.toContain(value.trim());
   });
 
-  it('exits 0 when every locally present name matches and prefers OPERATOR_SECRET over the deprecated names', async () => {
-    const env = {
-      OPERATOR_SECRET: 'test-only-preferred-operator',
-      PROD_OPERATOR_SECRET: 'test-only-prod-operator',
-      STAGING_OPERATOR_SECRET: 'test-only-staging-operator',
-      BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET,
-    };
-    const { fetchImpl } = fakeServer([set('BETTER_AUTH_SECRET', local.BETTER_AUTH_SECRET), unset('SMTP_PASSWORD')], env.OPERATOR_SECRET);
-    const { code, output } = await verify(['--base-url', 'http://localhost:48730'], env, fetchImpl);
-    expect(code).toBe(0);
-    expect(output).toContain('secrets:verify: PASS (1 of 2 matched)');
+  const allOperatorSecrets = {
+    OPERATOR_SECRET: 'test-only-preferred-operator',
+    PROD_OPERATOR_SECRET: 'test-only-prod-operator',
+    STAGING_OPERATOR_SECRET: 'test-only-staging-operator',
+    BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET,
+  };
+  const passingSecrets = [set('BETTER_AUTH_SECRET', local.BETTER_AUTH_SECRET), unset('SMTP_PASSWORD')];
+
+  it.each([
+    { env: allOperatorSecrets, present: 'OPERATOR_SECRET, PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET' },
+    {
+      env: { PROD_OPERATOR_SECRET: allOperatorSecrets.PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET: allOperatorSecrets.STAGING_OPERATOR_SECRET },
+      present: 'PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET',
+    },
+  ])('refuses to choose between $present before any request', async ({ env, present }) => {
+    const { calls, fetchImpl } = fakeServer(passingSecrets, allOperatorSecrets.PROD_OPERATOR_SECRET);
+    const { code, output } = await verify(['--base-url', 'https://staging.example.test'], env, fetchImpl);
+    expect(code).toBe(2);
+    expect(calls).toEqual([]);
+    expect(output).toBe(`secrets:verify: ${present} are all set; choose the one the target host accepts with --auth-with <NAME>`);
+    for (const value of Object.values(env)) expect(output).not.toContain(value);
   });
 
-  it('prefers PROD_OPERATOR_SECRET over STAGING_OPERATOR_SECRET, then falls back to STAGING_OPERATOR_SECRET', async () => {
-    const secrets = [set('BETTER_AUTH_SECRET', local.BETTER_AUTH_SECRET)];
-    const stagingOnly = { STAGING_OPERATOR_SECRET: 'test-only-staging-operator', BETTER_AUTH_SECRET: local.BETTER_AUTH_SECRET };
-    const both = { ...stagingOnly, PROD_OPERATOR_SECRET: 'test-only-prod-operator' };
-    expect((await verify(['--base-url', 'http://localhost:48730'], both, fakeServer(secrets, both.PROD_OPERATOR_SECRET).fetchImpl)).code).toBe(0);
-    expect((await verify(['--base-url', 'http://localhost:48730'], stagingOnly, fakeServer(secrets, stagingOnly.STAGING_OPERATOR_SECRET).fetchImpl)).code).toBe(0);
+  it.each(['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'] as const)(
+    'authenticates with the --auth-with %s choice only and exits 0 when every present name matches',
+    async (name) => {
+      const { calls, fetchImpl } = fakeServer(passingSecrets, allOperatorSecrets[name]);
+      const { code, output } = await verify(['--base-url', 'http://localhost:48730', '--auth-with', name], allOperatorSecrets, fetchImpl);
+      expect(code).toBe(0);
+      expect(calls.map((call) => call.headers.get(SCHEDULER_OPERATOR_SECRET_HEADER))).toEqual([allOperatorSecrets[name]]);
+      expect(output).toContain('secrets:verify: PASS (1 of 2 matched)');
+    },
+  );
+
+  it.each([
+    { authWith: 'STAGING_OPERATOR_SECRET', message: '--auth-with STAGING_OPERATOR_SECRET is not set in the local environment' },
+    { authWith: 'CRON_SECRET', message: '--auth-with must be one of OPERATOR_SECRET, PROD_OPERATOR_SECRET, STAGING_OPERATOR_SECRET' },
+  ])('refuses --auth-with $authWith before any request', async ({ authWith, message }) => {
+    const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
+    const { code, output } = await verify(['--base-url', 'https://platform.example.test', '--auth-with', authWith], local, fetchImpl);
+    expect(code).toBe(2);
+    expect(calls).toEqual([]);
+    expect(output).toBe(`secrets:verify: ${message}`);
   });
 
   it('reports the operator rejection without echoing the secret', async () => {
@@ -136,6 +160,7 @@ describe('runSecretsVerify', () => {
     { argv: ['--base-url', 'http://platform.example.test'] },
     { argv: ['--base-url', 'not a url'] },
     { argv: ['--base-url', 'https://platform.example.test', '--unknown'] },
+    { argv: ['--base-url', 'https://platform.example.test', '--auth-with'] },
   ])('refuses $argv before sending the operator secret', async ({ argv }) => {
     const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
     expect((await verify(argv, local, fetchImpl)).code).toBe(2);

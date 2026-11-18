@@ -513,29 +513,55 @@ pnpm --silent run cli --api-url https://platform.example operator secrets finger
 ```
 
 The owner verifies a deployment against 1Password with
-[`scripts/secrets-verify.ts`](../scripts/secrets-verify.ts). Copy
-[`scripts/secrets-verify.env.example`](../scripts/secrets-verify.env.example),
-replace `<vault>`, and run it under `op run` so the values come from 1Password at
-run time and never touch the disk or the terminal:
+[`scripts/secrets-verify.ts`](../scripts/secrets-verify.ts). There is one env
+example per environment, and each references only its own 1Password item:
+
+- [`scripts/secrets-verify.production.env.example`](../scripts/secrets-verify.production.env.example)
+  reads the item `togethercommunity-app prod secrets` and carries
+  `PROD_OPERATOR_SECRET`, with no staging operator field.
+- [`scripts/secrets-verify.staging.env.example`](../scripts/secrets-verify.staging.env.example)
+  reads the item `togethercommunity-app preview secrets`, for staging and
+  preview, and carries no production operator field.
+
+Copy the example for the target environment, replace `<vault>`, and run it under
+`op run` so the values come from 1Password at run time and never touch the disk
+or the terminal. Production:
 
 ```bash
-op run --env-file secrets-verify.env -- pnpm --silent run secrets:verify -- --base-url https://platform.example
+op run --env-file secrets-verify.production.env -- pnpm --silent run secrets:verify -- --base-url https://platform.example
 ```
 
-The tool must authenticate with the operator secret the deployment selects. It
-sends the first of `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET` and
-`STAGING_OPERATOR_SECRET` present in its environment, the order in which the
-server selects its operator secret; a deployment that sets none of the three
-falls back to `CRON_SECRET` and then `EMAIL_DISPATCH_SECRET`, which the tool
-does not do, so such a deployment needs `OPERATOR_SECRET` before it can be
-verified. A wrong secret ends the run with `FAIL unauthorized` before anything
-is compared.
+Staging or preview:
 
-The env example keeps the 1Password item's field names, and the item has no
-`OPERATOR_SECRET` field. When the deployment sets `OPERATOR_SECRET` to the value
-stored in the item's `PROD_OPERATOR_SECRET` field, add this line to the env
-file; the tool then authenticates with it and compares it with the deployment's
-`OPERATOR_SECRET`:
+```bash
+op run --env-file secrets-verify.staging.env -- pnpm --silent run secrets:verify -- --base-url https://staging.platform.example
+```
+
+**Never use an env file written for one environment against another host.** The
+tool cannot tell production from staging: a production env file pointed at a
+staging or preview host sends the production operator secret to a deployment
+built from branches that agents can change. Never copy a production field into
+the staging file either.
+
+The tool never chooses between operator secrets on its own. When exactly one of
+`OPERATOR_SECRET`, `PROD_OPERATOR_SECRET` and `STAGING_OPERATOR_SECRET` is
+present in its environment, it authenticates with that one. When more than one
+is present, it requires `--auth-with <NAME>`, one of those three names, and
+otherwise exits 2 before any request, naming the flag and the names present but
+never a value. A `--auth-with` name that is not set locally also exits 2 before
+any request. Name the variable whose value the target deployment uses as its
+operator secret: the server takes the first of `OPERATOR_SECRET`,
+`PROD_OPERATOR_SECRET` and `STAGING_OPERATOR_SECRET` it has. A deployment that
+sets none of the three falls back to `CRON_SECRET`, which the tool never sends,
+so such a deployment needs `OPERATOR_SECRET` before it can be verified. A wrong
+secret ends the run with `FAIL unauthorized` before anything is compared.
+
+The env examples keep the 1Password items' field names, and the production item
+has no `OPERATOR_SECRET` field. When the production deployment sets
+`OPERATOR_SECRET` to the value stored in the item's `PROD_OPERATOR_SECRET`
+field, add this line to the production env file and run with
+`--auth-with OPERATOR_SECRET`; the tool then compares it with the deployment's
+`OPERATOR_SECRET` as well:
 
 ```text
 OPERATOR_SECRET="op://<vault>/togethercommunity-app prod secrets/PROD_OPERATOR_SECRET"
@@ -549,11 +575,8 @@ the local value followed by a line break. It exits 0 only when at least one
 variable matched and every variable present locally matched. A line for a
 variable the deployment does not set reports `NOT SET ON SERVER` and fails the
 run; when that is intended, remove the line from the env file, but keep the line
-of the operator name the deployment selects. Removing `PROD_OPERATOR_SECRET`
-without an `OPERATOR_SECRET` line leaves the tool sending
-`STAGING_OPERATOR_SECRET`, which a production deployment rejects. The item has
-no AWS fields, so the AWS pair reports `NOT IN LOCAL ENV` until the env file
-gets lines for it.
+of the operator name the tool authenticates with. The items have no AWS fields,
+so the AWS pair reports `NOT IN LOCAL ENV` until the env file gets lines for it.
 
 ## Download copy privacy
 

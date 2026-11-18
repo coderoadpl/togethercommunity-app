@@ -12,7 +12,7 @@ export type SecretVerdict =
   | { name: string; outcome: 'MATCH' | 'NOT SET ON SERVER' | 'NOT IN LOCAL ENV' }
   | { name: string; outcome: 'MISMATCH'; trimmedMatches: boolean; serverAddsLineBreak: boolean };
 
-const USAGE = 'usage: pnpm --silent run secrets:verify -- --base-url <https://host>';
+const USAGE = 'usage: pnpm --silent run secrets:verify -- --base-url <https://host> [--auth-with <NAME>]';
 
 const present = (value: string | undefined): value is string => value !== undefined && value !== '';
 
@@ -49,23 +49,49 @@ export const formatVerdict = (verdict: SecretVerdict): string => {
     : `${line}  ${trimmed}`;
 };
 
-const OPERATOR_SECRET_NAMES = ['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'] as const;
+const OPERATOR_SECRET_NAMES: readonly string[] = ['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'];
 
-const operatorSecretOf = (local: LocalEnv): string | undefined =>
-  OPERATOR_SECRET_NAMES.map((name) => local[name]).find(present);
-
-const parseBaseUrl = (argv: readonly string[]): string | null => {
+const parseOptions = (argv: readonly string[]): { baseUrl: string; authWith: string | undefined } | null => {
   try {
     const { values } = parseArgs({
       args: argv[0] === '--' ? argv.slice(1) : [...argv],
-      options: { 'base-url': { type: 'string' } },
+      options: { 'base-url': { type: 'string' }, 'auth-with': { type: 'string' } },
       strict: true,
     });
     const raw = values['base-url'];
-    return raw === undefined ? null : secureApiOrigin(raw);
+    const baseUrl = raw === undefined ? null : secureApiOrigin(raw);
+    return baseUrl === null ? null : { baseUrl, authWith: values['auth-with'] };
   } catch {
     return null;
   }
+};
+
+const selectOperatorSecret = (
+  local: LocalEnv,
+  authWith: string | undefined,
+): { ok: true; secret: string } | { ok: false; message: string } => {
+  const presentSecrets = OPERATOR_SECRET_NAMES.flatMap((name) => {
+    const value = local[name];
+    return present(value) ? [{ name, value }] : [];
+  });
+  if (authWith !== undefined) {
+    if (!OPERATOR_SECRET_NAMES.includes(authWith)) {
+      return { ok: false, message: `--auth-with must be one of ${OPERATOR_SECRET_NAMES.join(', ')}` };
+    }
+    const chosen = presentSecrets.find((entry) => entry.name === authWith);
+    return chosen === undefined
+      ? { ok: false, message: `--auth-with ${authWith} is not set in the local environment` }
+      : { ok: true, secret: chosen.value };
+  }
+  const [only, ...others] = presentSecrets;
+  if (only === undefined) {
+    return { ok: false, message: `one of ${OPERATOR_SECRET_NAMES.join(', ')} is required in the environment` };
+  }
+  if (others.length > 0) {
+    const names = presentSecrets.map((entry) => entry.name).join(', ');
+    return { ok: false, message: `${names} are all set; choose the one the target host accepts with --auth-with <NAME>` };
+  }
+  return { ok: true, secret: only.value };
 };
 
 export const runSecretsVerify = async (input: {
@@ -74,19 +100,20 @@ export const runSecretsVerify = async (input: {
   write: (line: string) => void;
   fetchImpl?: typeof fetch;
 }): Promise<number> => {
-  const baseUrl = parseBaseUrl(input.argv);
-  if (baseUrl === null) {
+  const options = parseOptions(input.argv);
+  if (options === null) {
     input.write(USAGE);
     input.write('secrets:verify: --base-url must be an https URL, or http on a local host');
     return 2;
   }
-  const operatorSecret = operatorSecretOf(input.env);
-  if (operatorSecret === undefined) {
-    input.write(`secrets:verify: one of ${OPERATOR_SECRET_NAMES.join(', ')} is required in the environment`);
+  const operatorSecret = selectOperatorSecret(input.env, options.authWith);
+  if (!operatorSecret.ok) {
+    input.write(`secrets:verify: ${operatorSecret.message}`);
     return 2;
   }
+  const { baseUrl } = options;
   const api = createApiClient({ baseUrl, ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }) });
-  const result = await api.getSecretFingerprints(operatorSecret);
+  const result = await api.getSecretFingerprints(operatorSecret.secret);
   if (!result.ok) {
     input.write(`secrets:verify: FAIL ${result.error.code}: ${result.error.message}`);
     return 1;

@@ -51,19 +51,24 @@ export const formatVerdict = (verdict: SecretVerdict): string => {
 
 const OPERATOR_SECRET_NAMES: readonly string[] = ['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'];
 
-const parseOptions = (argv: readonly string[]): { baseUrl: string; authWith: string | undefined } | null => {
+const parseOptions = (
+  argv: readonly string[],
+): { ok: true; baseUrl: string; authWith: string | undefined } | { ok: false; message: string } => {
+  let values: { 'base-url'?: string; 'auth-with'?: string };
   try {
-    const { values } = parseArgs({
+    ({ values } = parseArgs({
       args: argv[0] === '--' ? argv.slice(1) : [...argv],
       options: { 'base-url': { type: 'string' }, 'auth-with': { type: 'string' } },
       strict: true,
-    });
-    const raw = values['base-url'];
-    const baseUrl = raw === undefined ? null : secureApiOrigin(raw);
-    return baseUrl === null ? null : { baseUrl, authWith: values['auth-with'] };
-  } catch {
-    return null;
+    }));
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
+  const raw = values['base-url'];
+  const baseUrl = raw === undefined ? null : secureApiOrigin(raw);
+  return baseUrl === null
+    ? { ok: false, message: '--base-url must be an https URL, or http on a local host' }
+    : { ok: true, baseUrl, authWith: values['auth-with'] };
 };
 
 const selectOperatorSecret = (
@@ -101,9 +106,9 @@ export const runSecretsVerify = async (input: {
   fetchImpl?: typeof fetch;
 }): Promise<number> => {
   const options = parseOptions(input.argv);
-  if (options === null) {
+  if (!options.ok) {
     input.write(USAGE);
-    input.write('secrets:verify: --base-url must be an https URL, or http on a local host');
+    input.write(`secrets:verify: ${options.message}`);
     return 2;
   }
   const operatorSecret = selectOperatorSecret(input.env, options.authWith);

@@ -155,15 +155,22 @@ describe('runSecretsVerify', () => {
     expect(output).toBe('secrets:verify: FAIL unauthorized: Invalid operator secret');
   });
 
+  const baseUrlRefusal = '--base-url must be an https URL, or http on a local host';
+
   it.each([
-    { argv: [] },
-    { argv: ['--base-url', 'http://platform.example.test'] },
-    { argv: ['--base-url', 'not a url'] },
-    { argv: ['--base-url', 'https://platform.example.test', '--unknown'] },
-    { argv: ['--base-url', 'https://platform.example.test', '--auth-with'] },
-  ])('refuses $argv before sending the operator secret', async ({ argv }) => {
+    { argv: [], message: baseUrlRefusal },
+    { argv: ['--base-url', 'http://platform.example.test'], message: baseUrlRefusal },
+    { argv: ['--base-url', 'not a url'], message: baseUrlRefusal },
+    { argv: ['--base-url', 'https://platform.example.test', '--unknown'], message: "Unknown option '--unknown'" },
+    {
+      argv: ['--base-url', 'http://127.0.0.1:9', '--auth-with'],
+      message: "Option '--auth-with <value>' argument missing",
+    },
+  ])('refuses $argv before sending the operator secret', async ({ argv, message }) => {
     const { calls, fetchImpl } = fakeServer(server, local.PROD_OPERATOR_SECRET);
-    expect((await verify(argv, local, fetchImpl)).code).toBe(2);
+    const { code, output } = await verify(argv, local, fetchImpl);
+    expect(code).toBe(2);
+    expect(output).toBe(`usage: pnpm --silent run secrets:verify -- --base-url <https://host> [--auth-with <NAME>]\nsecrets:verify: ${message}`);
     expect(calls).toEqual([]);
   });
 

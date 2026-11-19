@@ -478,6 +478,15 @@ describe('m2m content import', () => {
       datasetVersion: 'together-import/v1', records: [{ ...productRecord(), personalization: { ...engraving, surchargeCents: 500 } }],
     }, h.deps);
     expect(unknown).toMatchObject({ ok: true, value: { results: [{ importKey: 'product-source', action: 'error', error: { code: 'validation' } }] } });
+
+    await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1', records: [{ ...productRecord(), personalization: engraving }],
+    }, h.deps);
+    const converted = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1', records: [{ ...productRecord(), type: 'membership', accessItems: [] }],
+    }, h.deps);
+    expect(converted).toMatchObject({ ok: true, value: { results: [{ importKey: 'product-source', action: 'error', error: { code: 'validation', message: PERSONALIZATION_MEMBERSHIP_MESSAGE } }] } });
+    expect(h.products.get('product-source')).toMatchObject({ type: 'course' });
   });
 
   it('rejects import updates of content reachable from a published product', async () => {

@@ -108,6 +108,7 @@
             "description": "",
             "id": "product-acme-course",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 9900,
             "prices": [
               {

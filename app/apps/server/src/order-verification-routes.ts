@@ -10,7 +10,7 @@ import { respond } from './respond.js';
 
 const issueBodySchema = issueOrderLineInputSchema.partial();
 
-const issueCountOf = async (request: Request): Promise<Result<{ count?: number }, AppError>> => {
+export const issueCountOf = async (request: Request): Promise<Result<{ count?: number }, AppError>> => {
   if ((await request.clone().arrayBuffer()).byteLength === 0) return ok({});
   const body = issueBodySchema.safeParse(await readJson(request));
   if (!body.success) return err(validation('Invalid order line issue request'));

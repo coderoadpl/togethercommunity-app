@@ -2,6 +2,7 @@ import { capabilitiesForPrincipal, tenantSettingsSchema, type Identity, type Pro
 
 import type { Ctx } from '../context.js';
 import type { ProvisionTenantDeps } from '../usecases/provision-tenant.js';
+import { inMemoryChangeSettings } from './tenant-settings-fake.js';
 
 export const operatorIdentity: Identity = {
   userId: 'operator-secret', email: 'operator@together.invalid', name: 'Instance operator',
@@ -47,7 +48,7 @@ export const operatorTenantHarness = () => {
       findById: async (id) => tenants.find((tenant) => tenant.id === id) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
       findSettings: async () => state.settings,
-      updateSettings: async (_tenantId, settings) => settings,
+      changeSettings: inMemoryChangeSettings(() => state.settings),
       hasAny: async () => tenants.length > 0,
       createTenantWithOwnerGrant: async (input, options) => {
         state.creationOptions.push(options);

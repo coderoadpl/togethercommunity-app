@@ -8,6 +8,7 @@ import { COUPON_CODE_MAX_LENGTH } from './coupon.js';
 import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.js';
 import { cartLinesSchema } from './checkout-cart.js';
 import { checkoutReturnUrlSchema } from './checkout-return.js';
+import { checkoutPersonalizationsSchema } from './personalization.js';
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
@@ -31,6 +32,7 @@ export const checkoutSessionInputSchema = z.object({
   clientReference: clientReferenceSchema.optional(),
   returnUrl: checkoutReturnUrlSchema.optional(),
   cancelUrl: checkoutReturnUrlSchema.optional(),
+  personalizations: checkoutPersonalizationsSchema.optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
@@ -41,6 +43,7 @@ export const checkoutCartInputSchema = checkoutSessionInputSchema.omit({
   salesLinkId: true,
   salesLinkSlug: true,
   variantSelections: true,
+  personalizations: true,
 }).extend({ lines: cartLinesSchema }).strict();
 
 export type CheckoutCartInput = z.input<typeof checkoutCartInputSchema>;

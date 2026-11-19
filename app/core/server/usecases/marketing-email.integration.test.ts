@@ -184,7 +184,7 @@ const languagePreferences = (tenantDefault?: Language): {
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
     }),
-    updateSettings: async (_tenantId, next) => next,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
     hasAny: async () => false,
   },

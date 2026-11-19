@@ -3,6 +3,7 @@ import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
+import { erasedPersonalizationLines, erasedPurchasePersonalizations, linesHavePersonalization, purchaseHasPersonalizations } from './personalization-erasure.js';
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
@@ -38,6 +39,7 @@ import {
   shippingRatesSchema,
   notificationSchema,
   orderSchema,
+  ok,
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
@@ -56,6 +58,7 @@ import {
   tenantSecretSchema,
   tenantTeamMemberSchema,
   termsConsentSchema,
+  type AppError,
   type Course,
   type CourseLesson,
   type LessonAttachment,
@@ -79,6 +82,7 @@ import {
   type PostReport,
   type Product,
   type ReactionSummary,
+  type Result,
   type Space,
   type SpaceEvent,
   type SpaceEventRsvp,
@@ -141,6 +145,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -428,6 +433,7 @@ export const createProductRepository = (
           deliveryMethod: product.deliveryMethod,
           parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
           compliance: product.compliance ?? null,
+          personalization: product.personalization ?? null,
           variantGroup: product.variantGroup ?? null,
           variantLabel: product.variantLabel ?? null,
           priceCents: product.priceCents,
@@ -460,6 +466,7 @@ export const createProductRepository = (
         deliveryMethod: product.deliveryMethod,
         parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
         compliance: product.compliance ?? null,
+        ...(product.personalization === undefined ? {} : { personalization: product.personalization }),
         variantGroup: product.variantGroup ?? null,
         variantLabel: product.variantLabel ?? null,
         vatRate: product.vatRate ?? null,
@@ -2879,6 +2886,23 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
         sql`jsonb_typeof(${emailOutbox.payload}#>'{purchase,delivery,address}') = 'object'`,
       ));
+      await tx.update(orders).set({ lines: erasedPersonalizationLines(orders.lines, input.postAuthorDisplay) }).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), linesHavePersonalization(orders.lines),
+      ));
+      await tx.update(checkoutSnapshots).set({ lines: erasedPersonalizationLines(checkoutSnapshots.lines, input.postAuthorDisplay) }).where(and(
+        eq(checkoutSnapshots.tenantId, tenantId),
+        linesHavePersonalization(checkoutSnapshots.lines),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.memberId, input.memberId),
+          eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+        ))),
+      ));
+      await tx.update(emailOutbox).set({ payload: erasedPurchasePersonalizations(emailOutbox.payload, input.postAuthorDisplay) }).where(and(
+        eq(emailOutbox.tenantId, tenantId),
+        sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
+        purchaseHasPersonalizations(emailOutbox.payload),
+      ));
       await tx.update(emailOutbox).set({
         payload: sql`jsonb_set(${emailOutbox.payload}, '{shipment,delivery,address}', (${emailOutbox.payload}#>'{shipment,delivery,address}') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null))`,
       }).where(and(
@@ -4460,6 +4484,57 @@ export const createTenantDomainEventRepository = (db: Db): TenantDomainEventRepo
   },
 });
 
+const tenantSettingsColumns = (changes: Partial<TenantSettings>) => ({
+  name: changes.name,
+  defaultLanguage: changes.defaultLanguage,
+  socialLinks: changes.socialLinks,
+  billingPortalUrl: changes.billingPortalUrl,
+  bunnyStreamLibraryId: changes.bunnyStreamLibraryId,
+  bunnyStreamCdnHostname: changes.bunnyStreamCdnHostname,
+  logoUrl: changes.logoUrl,
+  logoDarkUrl: changes.logoDarkUrl,
+  signInNotice: changes.signInNotice,
+  analyticsTagId: changes.analyticsTagId,
+  analyticsMetaPixelId: changes.analyticsMetaPixelId,
+  analyticsMetaCapiEnabled: changes.analyticsMetaCapiEnabled,
+  analyticsMetaCapiTestEventCode: changes.analyticsMetaCapiTestEventCode,
+  analyticsMetaCapiConsentHeading: changes.analyticsMetaCapiConsentHeading,
+  analyticsMetaCapiConsentBody: changes.analyticsMetaCapiConsentBody,
+  analyticsMetaCapiConsentAcceptLabel: changes.analyticsMetaCapiConsentAcceptLabel,
+  analyticsMetaCapiConsentDeclineLabel: changes.analyticsMetaCapiConsentDeclineLabel,
+  analyticsConsentCookieName: changes.analyticsConsentCookieName,
+  analyticsConsentCookieValue: changes.analyticsConsentCookieValue,
+  analyticsLoadWithoutConsent: changes.analyticsLoadWithoutConsent,
+  checkoutAppearance: changes.checkoutAppearance,
+  shippingRates: changes.shippingRates,
+  inpostGeowidgetToken: changes.inpostGeowidgetToken,
+  checkoutReturnOrigins: changes.checkoutReturnOrigins,
+  accentColor: changes.accentColor,
+  accentLight: changes.accentLight,
+  faviconUrl: changes.faviconUrl,
+  ogTitle: changes.ogTitle,
+  ogDescription: changes.ogDescription,
+  ogImageUrl: changes.ogImageUrl,
+  supportEmail: changes.supportEmail,
+  supportUrl: changes.supportUrl,
+  termsUrl: changes.termsUrl,
+  privacyUrl: changes.privacyUrl,
+  defaultHomeSpaceId: changes.defaultHomeSpaceId,
+  directMessagesEnabled: changes.directMessagesEnabled,
+  videoAutoplayDefault: changes.videoAutoplayDefault,
+  memberVideoAutoplayOverride: changes.memberVideoAutoplayOverride,
+  autoIssueInvoices: changes.autoIssueInvoices,
+  autoIssueInvoiceScope: changes.autoIssueInvoiceScope,
+  ksefSubmissionMode: changes.ksefSubmissionMode,
+  invoiceVatRatePercent: changes.invoiceVatRatePercent,
+  invoiceVatMode: changes.invoiceVatMode ?? undefined,
+  invoiceExemptionBasisKind: changes.invoiceExemptionBasisKind,
+  invoiceExemptionBasis: changes.invoiceExemptionBasis,
+  invoicingProvider: changes.invoicingProvider,
+  invoiceSellerName: changes.invoiceSellerName,
+  invoiceSellerAddress: changes.invoiceSellerAddress,
+});
+
 export const createTenantRepository = (
   db: Db,
   options: { onMultipleTenants?(): void } = {},
@@ -4601,112 +4676,19 @@ export const createTenantRepository = (
         }
       : null;
   },
-  updateSettings: async (tenantId, settings): Promise<TenantSettings> => {
-    await db
+  changeSettings: async (tenantId, change) => db.transaction(async (tx): Promise<Result<TenantSettings, AppError> | null> => {
+    const [locked] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('update');
+    if (!locked) return null;
+    const current = await createTenantRepository(tx).findSettings(tenantId);
+    if (current === null) return null;
+    const changes = await change(current);
+    if (!changes.ok) return changes;
+    await tx
       .update(tenants)
-      .set({
-        name: settings.name,
-        defaultLanguage: settings.defaultLanguage,
-        socialLinks: settings.socialLinks,
-        contentVersion: sql`${tenants.contentVersion} + 1`,
-        billingPortalUrl: settings.billingPortalUrl,
-        bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
-        bunnyStreamCdnHostname: settings.bunnyStreamCdnHostname,
-        logoUrl: settings.logoUrl,
-        logoDarkUrl: settings.logoDarkUrl,
-        signInNotice: settings.signInNotice,
-        analyticsTagId: settings.analyticsTagId,
-        analyticsMetaPixelId: settings.analyticsMetaPixelId,
-        analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
-        analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
-        analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
-        analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
-        analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
-        analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
-        analyticsConsentCookieName: settings.analyticsConsentCookieName,
-        analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
-        analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
-        checkoutAppearance: settings.checkoutAppearance,
-        shippingRates: settings.shippingRates,
-        inpostGeowidgetToken: settings.inpostGeowidgetToken,
-        checkoutReturnOrigins: settings.checkoutReturnOrigins,
-        accentColor: settings.accentColor,
-        accentLight: settings.accentLight,
-        faviconUrl: settings.faviconUrl,
-        ogTitle: settings.ogTitle,
-        ogDescription: settings.ogDescription,
-        ogImageUrl: settings.ogImageUrl,
-        supportEmail: settings.supportEmail,
-        supportUrl: settings.supportUrl,
-        termsUrl: settings.termsUrl,
-        privacyUrl: settings.privacyUrl,
-        defaultHomeSpaceId: settings.defaultHomeSpaceId,
-        directMessagesEnabled: settings.directMessagesEnabled,
-        videoAutoplayDefault: settings.videoAutoplayDefault,
-        memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
-        autoIssueInvoices: settings.autoIssueInvoices,
-        autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
-        ksefSubmissionMode: settings.ksefSubmissionMode,
-        invoiceVatRatePercent: settings.invoiceVatRatePercent,
-        invoiceVatMode: settings.invoiceVatMode ?? undefined,
-        invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
-        invoiceExemptionBasis: settings.invoiceExemptionBasis,
-        invoicingProvider: settings.invoicingProvider,
-        invoiceSellerName: settings.invoiceSellerName,
-        invoiceSellerAddress: settings.invoiceSellerAddress,
-      })
+      .set({ ...tenantSettingsColumns(changes.value), contentVersion: sql`${tenants.contentVersion} + 1` })
       .where(eq(tenants.id, tenantId));
-    return {
-      name: settings.name,
-      defaultLanguage: settings.defaultLanguage,
-      socialLinks: settings.socialLinks,
-      billingPortalUrl: settings.billingPortalUrl,
-      bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
-      bunnyStreamCdnHostname: settings.bunnyStreamCdnHostname,
-      logoUrl: settings.logoUrl,
-      logoDarkUrl: settings.logoDarkUrl,
-      signInNotice: settings.signInNotice,
-      analyticsTagId: settings.analyticsTagId,
-      analyticsMetaPixelId: settings.analyticsMetaPixelId,
-      analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
-      analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
-      analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
-      analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
-      analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
-      analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
-      analyticsConsentCookieName: settings.analyticsConsentCookieName,
-      analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
-      analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
-      checkoutAppearance: settings.checkoutAppearance,
-      shippingRates: settings.shippingRates,
-      inpostGeowidgetToken: settings.inpostGeowidgetToken,
-      checkoutReturnOrigins: settings.checkoutReturnOrigins,
-      accentColor: settings.accentColor,
-      accentLight: settings.accentLight,
-      faviconUrl: settings.faviconUrl,
-      ogTitle: settings.ogTitle,
-      ogDescription: settings.ogDescription,
-      ogImageUrl: settings.ogImageUrl,
-      supportEmail: settings.supportEmail,
-      supportUrl: settings.supportUrl,
-      termsUrl: settings.termsUrl,
-      privacyUrl: settings.privacyUrl,
-      defaultHomeSpaceId: settings.defaultHomeSpaceId,
-      directMessagesEnabled: settings.directMessagesEnabled,
-      videoAutoplayDefault: settings.videoAutoplayDefault,
-      memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
-      autoIssueInvoices: settings.autoIssueInvoices,
-      autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
-      ksefSubmissionMode: settings.ksefSubmissionMode,
-      invoiceVatRatePercent: settings.invoiceVatRatePercent,
-      invoiceVatMode: settings.invoiceVatMode,
-      invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
-      invoiceExemptionBasis: settings.invoiceExemptionBasis,
-      invoicingProvider: settings.invoicingProvider,
-      invoiceSellerName: settings.invoiceSellerName,
-      invoiceSellerAddress: settings.invoiceSellerAddress,
-    };
-  },
+    return ok({ ...current, ...changes.value });
+  }),
   createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
@@ -4820,6 +4802,17 @@ export const createOnboardingStateRepository = (db: Db): OnboardingStateReposito
       .update(tenants)
       .set({ onboardingDismissedAt: dismissedAt })
       .where(eq(tenants.id, tenantId));
+  },
+});
+
+export const createAccountIdentityReader = (db: Db): AccountIdentityReader => ({
+  findById: async (userId) => {
+    const [row] = await db
+      .select({ userId: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    return row ?? null;
   },
 });
 

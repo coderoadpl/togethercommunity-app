@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   IMAGE_ASSET_MAX_BYTES,
   err,
+  capabilitiesForPrincipal,
   integrationUnavailable,
   notFound,
   ok,
+  shopManagementCapabilities,
   type Identity,
 } from '#core/domain/index.js';
 
@@ -286,6 +288,23 @@ describe('image assets', () => {
     }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('lets a shop management key with the settings write scope begin a branding upload', async () => {
+    const { deps, signed } = testDeps();
+    const keyCtx: Ctx = {
+      identity: identity('owner', null),
+      capabilities: shopManagementCapabilities(['shop:settings:write'])
+        .filter((capability) => capabilitiesForPrincipal('owner').includes(capability)),
+      machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' },
+    };
+    expect(await beginBrandingAssetUpload(keyCtx, {
+      kind: 'logo',
+      fileName: 'logo.png',
+      contentType: 'image/png',
+      sizeBytes: 1024,
+    }, deps)).toMatchObject({ ok: true, value: { key: `image-asset-candidates/${TENANT_ID}/logo/${ASSET_ID}.png` } });
+    expect(signed).toEqual([expect.objectContaining({ method: 'PUT' })]);
   });
 
   it.each([

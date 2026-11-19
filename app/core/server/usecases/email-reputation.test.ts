@@ -200,7 +200,7 @@ describe('run reputation alerts', () => {
           bunnyStreamCdnHostname: null,
           supportEmail: 'support@tenant.test',
         }),
-      updateSettings: async (_tenantId, value) => value,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => tenant,
     };
     const tenantAccess: TenantAccessReader = {
@@ -270,7 +270,7 @@ describe('run reputation alerts', () => {
         findSole: async () => null,
         hasAny: async () => false,
         findSettings: async () => null,
-        updateSettings: async (_tenantId, value) => value,
+        changeSettings: async () => null,
         createTenantWithOwnerGrant: async () => {
           throw new Error('not called');
         },
@@ -307,7 +307,7 @@ describe('tenant staff recipients', () => {
         supportEmail,
         ...(defaultLanguage === undefined ? {} : { defaultLanguage }),
       }),
-    updateSettings: async (_tenantId, value) => value,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => {
       throw new Error('not called');
     },

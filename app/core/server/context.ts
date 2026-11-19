@@ -9,4 +9,5 @@ export interface Ctx {
    * then resolves the subject, while this carries the acting staff account.
    */
   impersonation?: ImpersonationPrincipal;
+  machineActor?: { kind: 'shop_management_key'; apiKeyId: string };
 }

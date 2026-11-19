@@ -258,6 +258,7 @@ const tenantShipxSetOptionsSchema = z.object({
 });
 const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
+  `environment: ${view.environment}`,
   `service: ${view.service ?? '(none)'}`,
   `parcel template: ${view.parcelTemplate}`,
   `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,

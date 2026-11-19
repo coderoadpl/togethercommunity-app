@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result, type ShipxOrderView } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -340,6 +340,10 @@ const redirectFixture = {
   createdAt: '1998-08-14T10:00:00.000Z',
 };
 
+const shipxOrderView: ShipxOrderView = {
+  available: true, reason: null, environment: 'sandbox', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null,
+};
+
 const originalArgv = process.argv;
 let logSpy: MockInstance<typeof console.log>;
 let errorSpy: MockInstance<typeof console.error>;
@@ -380,8 +384,8 @@ beforeEach(() => {
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
-  h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
-  h.shipxRefresh.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
+  h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
+  h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
@@ -2279,6 +2283,7 @@ describe('InPost ShipX CLI', () => {
   it('shows the order readiness and configures the integration with a parsed sender', async () => {
     await run('orders', 'shipx', 'show', 'order-number');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('available: true'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('environment: sandbox'));
     const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
     vi.stubEnv('SHIPX_PRODUCTION_TOKEN', 'token-5678');
     await run('--json', 'tenant', 'shipx-set', '--slot', 'production', '--organization-id', '1234', '--token-env', 'SHIPX_PRODUCTION_TOKEN', '--sender', JSON.stringify(sender));

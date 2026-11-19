@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type * as ClientModule from '#core/client/index.js';
 import type { ShopManagementClientOptions } from '#core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
+import type { ShipxOrderView, ShipxShipment } from '#core/domain/index.js';
 
 import type { CliConfig, ResolveCliConfigInput } from './config.js';
 import { DEFAULT_SHOP_KEY_ENV } from './shop-key-commands.js';
@@ -67,10 +68,12 @@ const order = {
   shipment: { carrier: 'other', trackingNumber: 'MANUAL0001', shippedAt: '2026-11-15T10:00:00.000Z', shippedBy: 'owner' },
   createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
 };
-const shipment = {
+const shipment: ShipxShipment = {
   shipxShipmentId: '1', status: 'confirmed', environment: 'production', trackingNumber: 'T1', createAttemptedAt: null, boughtAt: null,
   labelFetchedAt: null, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: '2026-11-15T10:00:00.000Z',
 };
+
+const shipxOrder: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
 
 const shopSettings = {
   name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null,
@@ -86,7 +89,7 @@ const orderData = (pathname: string, method: string): unknown => {
   if (pathname.endsWith('/export') || pathname.endsWith('/packing-list')) return { filename: 'orders.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number\norder-1' };
   if (pathname.endsWith('/discard')) return { discarded: true };
   if (method === 'POST' && pathname.endsWith('/shipx')) return { order, shipment };
-  if (pathname.includes('/shipx')) return { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
+  if (pathname.includes('/shipx')) return shipxOrder;
   if (pathname === '/api/m2m/shop/orders/order-1') return { order, invoice: null };
   return { order };
 };
@@ -327,6 +330,13 @@ describe('shop orders CLI', () => {
     expect(calls[0]).toMatchObject({ method, path, search, body });
     expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
     expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('names the connection of the order in the plain ShipX view', async () => {
+    process.argv = ['node', 'together', 'shop', 'orders', 'shipx', 'show', 'order-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('environment: production'));
   });
 
   it('writes the label and the packing list to the --out paths', async () => {

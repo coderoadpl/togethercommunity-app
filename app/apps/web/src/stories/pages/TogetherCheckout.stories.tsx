@@ -75,6 +75,19 @@ const couponFixture = fixtureFor('together-checkout-coupon', {}, {}, {
   },
 });
 
+const couponCourierFixture = fixtureFor('together-checkout-coupon-courier', stand, { shippingRates }, {
+  route: `${checkout.route}?code=${couponCode}`,
+  calls: {
+    [`validateCouponForCheckout:[{"couponCode":"${couponCode}","priceId":"price-product-studio-course-101","productId":"product-studio-course-101"}]`]: {
+      ok: true,
+      value: {
+        recurringDuration: 'first_invoice',
+        breakdown: { couponId: 'coupon-studio-20', code: couponCode, originalCents: 15900, discountCents: 3180, finalCents: 12720, lowestPriceLast30DaysCents: 15900, currency: 'PLN' },
+      },
+    },
+  },
+});
+
 const bundleLines = [
   {
     productId: 'product-studio-stand-oak', baseProductId: 'product-studio-stand-oak', name: 'Printed desk stand', type: 'physical', deliveryMethod: 'shipping',
@@ -134,6 +147,9 @@ const leaveField = async (canvasElement: HTMLElement, find: (canvas: ReturnType<
 const openSafetyDetails = async (canvasElement: HTMLElement) => {
   const safety = within(await within(canvasElement).findByTestId('product-safety-info'));
   for (const toggle of safety.getAllByRole('button', { name: /Details/u })) await userEvent.click(toggle);
+};
+const openSummaryDetails = async (canvasElement: HTMLElement) => {
+  await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));
 };
 const mobile375 = { parameters: { viewport: { defaultViewport: 'mobile-375' } }, globals: { viewport: { value: 'mobile-375' } } };
 
@@ -202,5 +218,20 @@ export const SalesLinkDetailsOpen: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));
     await openSafetyDetails(canvasElement);
+  },
+};
+export const SalesLinkCourierDetailsOpen: Story = {
+  parameters: { fixture: bundleFixture },
+  play: async ({ canvasElement }) => {
+    await chooseRate(canvasElement, /courier/u);
+    await openSummaryDetails(canvasElement);
+  },
+};
+export const CouponCourier: Story = {
+  parameters: { fixture: couponCourierFixture },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByTestId('checkout-coupon-breakdown', {}, { timeout: 5000 });
+    await chooseRate(canvasElement, /courier/u);
+    await openSummaryDetails(canvasElement);
   },
 };

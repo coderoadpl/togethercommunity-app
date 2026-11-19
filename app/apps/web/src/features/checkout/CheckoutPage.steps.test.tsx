@@ -118,7 +118,7 @@ describe('checkout step one', () => {
     renderCheckout();
 
     const pay = await screen.findByTestId('checkout-pay-cta');
-    expect(pay).toHaveTextContent(exact(en.checkout.freeIdle({ price: pln(0) })));
+    expect(pay).toHaveTextContent(exact(en.checkout.freeOrderIdle));
     expect(screen.queryByRole('list', { name: en.checkout.stepsLabel })).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-next-step')).not.toBeInTheDocument();
     const email = screen.getByLabelText(en.checkout.emailLabel);
@@ -186,7 +186,7 @@ describe('checkout step one', () => {
     expect(within(codeRow).getByLabelText(en.checkout.emailLabel)).toBe(email);
 
     await userEvent.type(email, 'buyer@example.org');
-    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponFinal({ price: pln(3920) })));
+    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponAfterDiscount({ price: pln(3920) })));
     expect(couponBodies.at(-1)).toEqual({ productId: 'course-1', couponCode: 'SAVE', email: 'buyer@example.org' });
     const pay = screen.getByTestId('checkout-pay-cta');
     await waitFor(() => expect(pay).toBeEnabled());
@@ -204,7 +204,7 @@ describe('checkout step one', () => {
     serve({ sessions, coupon: (body) => { couponBodies.push(body); return HttpResponse.json(breakdown(3920)); } });
     renderCheckout();
 
-    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponFinal({ price: pln(3920) })));
+    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponAfterDiscount({ price: pln(3920) })));
     expect(screen.getByText(exact(en.checkout.omnibusLowest({ price: pln(4500) })))).toBeVisible();
     expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
     expect(couponBodies).toEqual([{ productId: 'course-1', couponCode: 'SAVE' }]);
@@ -223,13 +223,13 @@ describe('checkout step one', () => {
     renderCheckout();
 
     const pay = await screen.findByTestId('checkout-pay-cta');
-    await waitFor(() => expect(pay).toHaveTextContent(exact(en.checkout.freeIdle({ price: pln(0) }))));
+    await waitFor(() => expect(pay).toHaveTextContent(exact(en.checkout.freeOrderIdle)));
     const email = screen.getByLabelText(en.checkout.emailLabel);
     expect(email).toBeRequired();
     await userEvent.type(email, 'buyer@example.org');
     expect(screen.getByLabelText(en.checkout.emailLabel)).toBe(email);
     expect(email).toHaveFocus();
-    expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponFinal({ price: pln(0) })));
+    expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponAfterDiscount({ price: pln(0) })));
     await userEvent.click(within(screen.getByTestId('terms-consent')).getByRole('checkbox'));
     await userEvent.click(pay);
     await waitFor(() => expect(sessions).toHaveLength(1));
@@ -263,7 +263,8 @@ describe('checkout step one', () => {
     renderCheckout();
 
     const summary = await screen.findByTestId('checkout-summary');
-    expect(within(summary).getByText(exact(pln(4900)))).toBeVisible();
+    expect(within(summary).getByTestId('checkout-summary-total')).toHaveTextContent(exact(pln(4900)));
+    expect(within(summary).getByTestId('checkout-summary-total')).toBeVisible();
     expect(summary).toHaveTextContent(en.checkout.itemCount({ count: 1 }));
     const toggle = within(summary).getByRole('button', { name: en.checkout.summaryDetails });
     expect(screen.getByText('Start here.')).not.toBeVisible();

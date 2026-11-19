@@ -2840,6 +2840,28 @@ export const CheckoutSummaryTotal = styled('span')(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
 
+export const CheckoutBreakdownList = styled('dl')(({ theme }) => ({
+  display: 'grid',
+  gridTemplateColumns: '1fr auto',
+  rowGap: '0.25rem',
+  margin: 0,
+  fontSize: '0.875rem',
+  '& dt': { margin: 0, color: theme.palette.text.secondary },
+  '& dd': { margin: 0, paddingLeft: '1rem', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: theme.numericFontFamily, fontVariantNumeric: 'tabular-nums' },
+  '& > :last-of-type > *': {
+    paddingTop: '0.375rem',
+    borderTop: `1px solid ${theme.palette.divider}`,
+    fontWeight: 650,
+    color: theme.palette.text.primary,
+  },
+}));
+
+export const CheckoutVariantGroup = styled(Box)(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: {
+    '& .MuiChip-root': { minHeight: '2.75rem', fontSize: '0.875rem' },
+  },
+}));
+
 export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
   gap: '0.2rem',
   minHeight: '2.75rem',

@@ -31,7 +31,7 @@ import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { CheckoutDisclosureRow, CheckoutPayBar, CheckoutSteps, CheckoutSummaryRow } from '../../components/ui/CheckoutStepParts.js';
+import { CheckoutDisclosureRow, CheckoutPayBar, CheckoutPriceBreakdown, CheckoutSteps, CheckoutSummaryRow } from '../../components/ui/CheckoutStepParts.js';
 import { Cover } from '../../components/ui/Cover.js';
 import { OfferLines } from '../../components/ui/OfferLines.js';
 import { PostContent } from '../../components/ui/PostContent.js';
@@ -356,7 +356,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     return (
       <FocusCard
         brand={<BrandMark size="compact" />}
-        eyebrow={t.checkout.checkoutEyebrow}
+        eyebrow={t.checkout.orderEyebrow}
         footer={socialFooter}
         width="wide"
       >
@@ -369,7 +369,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     return (
       <FocusCard
         brand={<BrandMark size="compact" />}
-        eyebrow={t.checkout.checkoutEyebrow}
+        eyebrow={t.checkout.orderEyebrow}
         footer={socialFooter}
         width="wide"
       >
@@ -394,7 +394,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     return (
       <FocusCard
         brand={<BrandMark size="compact" />}
-        eyebrow={t.checkout.checkoutEyebrow}
+        eyebrow={t.checkout.orderEyebrow}
         footer={socialFooter}
       >
         <StatusView
@@ -415,13 +415,22 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (salesLinkSlug !== undefined && (!legal?.termsUrl || !legal.privacyUrl)) {
     return (
-      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.checkoutEyebrow} footer={socialFooter}>
+      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.orderEyebrow} footer={socialFooter}>
         <Alert severity="error">{t.checkout.unavailableTitle}</Alert>
       </FocusCard>
     );
   }
 
   const formattedPayable = formatPrice(payableCents, selectedCurrency, language);
+  const money = (cents: number) => formatPrice(cents, selectedCurrency, language);
+  const priceBreakdown = {
+    lines: [
+      { label: t.checkout.breakdownProducts, amount: money(appliedCoupon?.breakdown.originalCents ?? selectedAmountCents), testId: 'checkout-breakdown-products' },
+      ...(appliedCoupon === undefined ? [] : [{ label: t.checkout.breakdownDiscount, amount: `−${money(appliedCoupon.breakdown.discountCents)}`, testId: 'checkout-breakdown-discount' }]),
+      ...(delivery.status === 'ready' ? [{ label: t.checkout.breakdownDelivery, amount: money(deliveryCents), testId: 'checkout-breakdown-delivery' }] : []),
+    ],
+    total: { label: t.checkout.breakdownTotal, amount: formattedPayable, testId: 'checkout-breakdown-total' },
+  };
 
   if (purchaseComplete) {
     return (
@@ -471,7 +480,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const payNote = payBlockedReason !== null ? null : viaStripe
     ? t.checkout.nextStep({ email: buyerEmail === undefined && !testEnabled, address: shippingRequired, terms: stripeCollectsBuyer })
     : simulatedPrimary ? t.checkout.simulatedPaymentNote : null;
-  const singleProductDetails = product.coverUrl !== null || product.description.trim() !== '' || product.vatRate != null;
+  const singleProductDetails = product.coverUrl !== null || product.description.trim() !== '' || product.vatRate != null ||
+    priceBreakdown.lines.length > 1;
+  const couponOffered = selectedAmountCents > 0 || couponCode.trim() !== '';
+  const removeCoupon = () => {
+    dispatchCheckout({ type: 'couponCodeChanged', couponCode: '' });
+    couponValidation.reset();
+  };
   const variantLines = (bundle?.lines ?? []).flatMap((line) => {
     const chips = renderBundleLineVariants(line);
     return chips === null ? [] : [{ line, chips }];
@@ -491,7 +506,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   return (
     <FocusCard
       brand={<BrandMark size="compact" />}
-      eyebrow={t.checkout.checkoutEyebrow}
+      eyebrow={t.checkout.orderEyebrow}
       footer={socialFooter}
       width="wide"
       onSubmit={submit}
@@ -526,12 +541,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   {product.vatRate == null ? null : (
                     <Typography variant="body2" color="text.secondary">{t.salesLinks.vatRate}: {product.vatRate === 'exempt' ? t.salesLinks.exempt : `${product.vatRate}%`}{product.vatExemptionBasis ? ` · ${product.vatExemptionBasis}` : ''}</Typography>
                   )}
+                  <CheckoutPriceBreakdown {...priceBreakdown} />
                 </Stack>
               ) : (
                 <Stack useFlexGap spacing="1rem">
                   <PostContent html={bundle.descriptionHtml} format="markdown" />
                   <OfferLines lines={bundle.lines} currency={bundle.currency} />
-                  <Typography variant="body2">{t.salesLinks.total}: {formatPrice(bundle.totalCents, bundle.currency, language)}</Typography>
+                  <CheckoutPriceBreakdown {...priceBreakdown} />
                 </Stack>
               )}
             </CheckoutSummaryRow>
@@ -598,6 +614,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             />
           ) : null}
           <PersonalizationField state={personalization} disabled={pending} />
+          {emailPlacement === 'details' ? emailField(t.checkout.emailHint, true) : null}
+          {termsOnPage ? (
+            <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
+          ) : null}
           <CheckoutRowGroup>
             <CheckoutDisclosureRow
               label={t.checkout.invoiceReveal}
@@ -607,41 +627,41 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             >
               <InvoiceInputs invoice={invoice} />
             </CheckoutDisclosureRow>
-            <CheckoutDisclosureRow
-              label={t.checkout.couponReveal}
-              open={couponVisible && !testEnabled}
-              onToggle={() => dispatchCheckout({ type: 'couponVisibilityChanged', visible: !couponVisible })}
-              disabled={testEnabled}
-              testId="checkout-coupon-reveal"
-              after={testEnabled ? <CouponTestModeNote /> : null}
-            >
-              <CouponInputs
-                code={couponCode}
-                onCodeChange={(code) => {
-                  dispatchCheckout({ type: 'couponCodeChanged', couponCode: code });
-                  couponValidation.reset();
-                }}
-                onApply={() => couponValidation.mutate({
-                  productId,
-                  ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
-                  ...(variantSelections.length === 0 ? {} : { variantSelections }),
-                  ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
-                  ...(couponEmail === undefined ? {} : { email: couponEmail }),
-                  couponCode,
-                })}
-                validation={couponValidation}
-                currency={selectedCurrency}
-                language={language}
-                recurring={selectedPrice?.kind === 'recurring'}
+            {couponOffered ? (
+              <CheckoutDisclosureRow
+                label={appliedCoupon === undefined ? t.checkout.couponReveal : t.checkout.couponAppliedRow({ code: appliedCoupon.breakdown.code, price: money(appliedCoupon.breakdown.discountCents) })}
+                open={couponVisible && !testEnabled}
+                onToggle={() => dispatchCheckout({ type: 'couponVisibilityChanged', visible: !couponVisible })}
+                disabled={testEnabled}
+                testId="checkout-coupon-reveal"
+                after={testEnabled ? <CouponTestModeNote /> : null}
               >
-                {emailPlacement === 'coupon' ? emailField(t.checkout.couponEmailHint, false) : null}
-              </CouponInputs>
-            </CheckoutDisclosureRow>
+                <CouponInputs
+                  code={couponCode}
+                  onCodeChange={(code) => {
+                    dispatchCheckout({ type: 'couponCodeChanged', couponCode: code });
+                    couponValidation.reset();
+                  }}
+                  onApply={() => couponValidation.mutate({
+                    productId,
+                    ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
+                    ...(variantSelections.length === 0 ? {} : { variantSelections }),
+                    ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+                    ...(couponEmail === undefined ? {} : { email: couponEmail }),
+                    couponCode,
+                  })}
+                  validation={couponValidation}
+                  currency={selectedCurrency}
+                  language={language}
+                  recurring={selectedPrice?.kind === 'recurring'}
+                  variant="row"
+                  onRemove={removeCoupon}
+                >
+                  {emailPlacement === 'coupon' ? emailField(t.checkout.couponEmailHint, false) : null}
+                </CouponInputs>
+              </CheckoutDisclosureRow>
+            ) : null}
           </CheckoutRowGroup>
-          {emailPlacement === 'details' ? emailField(t.checkout.emailHint, true) : null}
-          {termsOnPage ? (
-            <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
-          ) : null}
           <MarketingConsentFields
             consents={product.marketingConsents}
             selected={marketingConsentDefinitionIds}
@@ -681,7 +701,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 {payableCents === 0
                   ? simulatePurchase.isPending
                     ? t.checkout.freePending
-                    : t.checkout.freeIdle({ price: formattedPayable })
+                    : t.checkout.freeOrderIdle
                   : simulatePurchase.isPending
                     ? t.checkout.submitPending
                     : t.checkout.submitIdle({ price: formattedPayable })}

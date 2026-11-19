@@ -95,8 +95,8 @@ describe('CheckoutPage', () => {
       width: '100%',
     });
     expect(stylesAt(cover, 1440)['max-height']).toBeUndefined();
-    expect(screen.getByText(textPattern(pln(4900)))).toBeInTheDocument();
-    expect(screen.getByText(en.checkout.checkoutEyebrow)).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-summary-total')).toHaveTextContent(textPattern(pln(4900)));
+    expect(screen.getByText(en.checkout.orderEyebrow)).toBeInTheDocument();
     expect(screen.getByText(en.checkout.simulatedPaymentNote)).toBeInTheDocument();
 
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
@@ -215,7 +215,7 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('button', { name: textPattern(en.checkout.freeIdle({ price: pln(0) })) })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: textPattern(en.checkout.freeOrderIdle) })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: textPattern(en.checkout.goToPayment({ price: pln(4900) })) })).not.toBeInTheDocument();
     expect(screen.getByText(en.common.free)).toBeInTheDocument();
   });
@@ -304,10 +304,10 @@ describe('CheckoutPage', () => {
     expect(screen.getByTestId('checkout-coupon-input')).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-apply')).toBeInTheDocument();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
-    expect(await screen.findByText(textPattern(en.checkout.couponFinal({ price: pln(3920) })))).toBeInTheDocument();
+    expect(await screen.findByText(textPattern(en.checkout.couponAfterDiscount({ price: pln(3920) })))).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-breakdown')).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent(
-      textPattern(en.checkout.couponFinal({ price: pln(3920) })),
+      textPattern(en.checkout.couponAfterDiscount({ price: pln(3920) })),
     );
     expect(screen.getByText(textPattern(en.checkout.omnibusLowest({ price: pln(4500) })))).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(3920) })) }));
@@ -658,7 +658,7 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByText(textPattern(pln(4900)))).toBeInTheDocument();
+    expect(await screen.findByTestId('checkout-summary-total')).toHaveTextContent(textPattern(pln(4900)));
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: textPattern(en.checkout.goToPayment({ price: pln(4900) })) })).toBeInTheDocument();
   });

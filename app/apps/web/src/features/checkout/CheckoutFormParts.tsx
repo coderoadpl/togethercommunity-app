@@ -1,10 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Checkbox,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   OutlinedInput,
@@ -201,7 +203,9 @@ export const CouponTestModeNote = () => {
   );
 };
 
-export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency, language, recurring, children }: {
+type CouponRowProps = { variant?: 'standalone' } | { variant: 'row'; onRemove: () => void };
+
+export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency, language, recurring, children, ...rowProps }: {
   code: string;
   onCodeChange: (code: string) => void;
   onApply: () => void;
@@ -210,29 +214,56 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
   language: 'pl' | 'en';
   recurring: boolean;
   children?: ReactNode;
-}) => {
+} & CouponRowProps) => {
   const t = useTranslations();
+  const emptyReasonId = useId();
+  const row = rowProps.variant === 'row' ? rowProps : null;
+  const applied = row === null ? undefined : validation.data?.breakdown;
+  const emptyReason = row !== null && !validation.isPending && code.trim() === '';
   return (
     <Stack useFlexGap spacing="0.5rem">
-      <FormControl fullWidth>
-        <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
-        <OutlinedInput
-          id="checkout-coupon"
-          inputProps={{ 'data-testid': 'checkout-coupon-input' }}
-          value={code}
-          onChange={(event) => onCodeChange(event.target.value)}
-        />
-      </FormControl>
+      {applied === undefined ? (
+        <FormControl fullWidth>
+          <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
+          <OutlinedInput
+            id="checkout-coupon"
+            inputProps={{ 'data-testid': 'checkout-coupon-input' }}
+            value={code}
+            onChange={(event) => onCodeChange(event.target.value)}
+          />
+        </FormControl>
+      ) : null}
       {children}
-      <Button
-        type="button"
-        variant="outlined"
-        data-testid="checkout-coupon-apply"
-        disabled={validation.isPending || code.trim() === ''}
-        onClick={onApply}
-      >
-        {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
-      </Button>
+      {row !== null && applied !== undefined ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: '0.75rem' }}>
+          <Typography data-testid="checkout-coupon-applied">
+            {t.checkout.couponAppliedLine({ code: applied.code, price: formatPrice(applied.discountCents, currency, language) })}
+          </Typography>
+          <Button
+            type="button"
+            variant="text"
+            data-testid="checkout-coupon-remove"
+            aria-label={t.checkout.couponRemoveLabel({ code: applied.code })}
+            onClick={row.onRemove}
+          >
+            {t.checkout.couponRemove}
+          </Button>
+        </Box>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="outlined"
+            data-testid="checkout-coupon-apply"
+            disabled={validation.isPending || code.trim() === ''}
+            aria-describedby={emptyReason ? emptyReasonId : undefined}
+            onClick={onApply}
+          >
+            {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
+          </Button>
+          {emptyReason ? <FormHelperText id={emptyReasonId} sx={{ mx: 0, mt: 0 }}>{t.checkout.couponEmpty}</FormHelperText> : null}
+        </>
+      )}
       {validation.data === undefined ? null : (
         <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
           <Stack useFlexGap spacing="0.25rem">
@@ -243,7 +274,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
               price: formatPrice(validation.data.breakdown.discountCents, currency, language),
             })}</Typography>
             <Typography data-testid="checkout-coupon-final">
-              {t.checkout.couponFinal({
+              {(row === null ? t.checkout.couponFinal : t.checkout.couponAfterDiscount)({
                 price: formatPrice(validation.data.breakdown.finalCents, currency, language),
               })}
             </Typography>

@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 
 import {
+  CheckoutBreakdownList,
   CheckoutInlineToggle,
   CheckoutPayBarSurface,
   CheckoutRowButton,
@@ -60,6 +61,19 @@ export const CheckoutSummaryRow = ({ items, total, detailsLabel, children }: {
     </CheckoutSummarySurface>
   );
 };
+
+export type CheckoutPriceLine = { label: string; amount: string; testId: string };
+
+export const CheckoutPriceBreakdown = ({ lines, total }: { lines: readonly CheckoutPriceLine[]; total: CheckoutPriceLine }) => (
+  <CheckoutBreakdownList data-testid="checkout-price-breakdown">
+    {[...lines, total].map((line) => (
+      <Box key={line.testId} sx={{ display: 'contents' }} data-testid={line.testId}>
+        <dt>{line.label}</dt>
+        <dd>{line.amount}</dd>
+      </Box>
+    ))}
+  </CheckoutBreakdownList>
+);
 
 export const CheckoutDisclosureRow = ({ label, open, onToggle, disabled = false, testId, after, children }: {
   label: string;

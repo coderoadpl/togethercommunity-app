@@ -38,6 +38,8 @@ export interface TransactionalEmailMessages {
     qrAlt: string;
     delivery: string;
     pickupPoint: string;
+    personalization: string;
+    personalizationCondition: string;
   };
   orderShipped: {
     items: string;

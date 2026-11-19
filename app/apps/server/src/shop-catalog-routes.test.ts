@@ -11,6 +11,7 @@ import {
   apiKeysShopManagementCreateOutputSchema,
   apiKeysShopManagementEventsOutputSchema,
   apiKeysShopManagementPurgeOutputSchema,
+  productsListOutputSchema,
   publicOfferOutputSchema,
   SHOP_CATALOG_ROUTES,
   shopCatalogContracts,
@@ -360,6 +361,48 @@ describe('shop catalog routes with a shop management key', () => {
       expect((await errorOf(response)).code, path).toBe('validation');
     }
     expect(await channelOf()).toBe('sales_links_only');
+  });
+
+  it('stores the personalisation through the keyed and session routes, keeps it when an update omits it and clears it with null', async () => {
+    const { secret } = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
+    const setting = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+    const stored = { ...setting, description: '', maxLength: 200 };
+    const created = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Engraved book', type: 'physical', priceCents: 900, personalization: setting });
+    expect(created.status).toBe(200);
+    const { product } = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data;
+    expect(product.personalization).toEqual(stored);
+
+    const keyedSetting = async () => envelope(shopCatalogContracts.listProducts.output)
+      .parse(await (await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).json())
+      .data.products.find((entry) => entry.id === product.id)?.personalization;
+    const sessionSetting = async () => envelope(productsListOutputSchema)
+      .parse(await (await ownerRequest(API_ROUTES.products.method, API_ROUTES.products.path)).json())
+      .data.products.find((entry) => entry.id === product.id)?.personalization;
+    expect(await keyedSetting()).toEqual(stored);
+    expect(await sessionSetting()).toEqual(stored);
+
+    expect((await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, title: 'Engraved book v2' })).status).toBe(200);
+    expect(await keyedSetting()).toEqual(stored);
+    const sessionRename = await ownerRequest(API_ROUTES.productsUpdate.method, API_ROUTES.productsUpdate.path, { id: product.id, title: 'Engraved book v3' });
+    expect(sessionRename.status).toBe(200);
+    expect(await sessionSetting()).toEqual(stored);
+
+    for (const [path, body] of [
+      [SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, personalization: { ...setting, maxLength: 501 } }],
+      [SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, personalization: { ...setting, surchargeCents: 500 } }],
+      [SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Engraved club', type: 'membership', priceCents: 900, personalization: setting }],
+    ] as const) {
+      const response = await keyed(secret, 'POST', path, body);
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect((await errorOf(response)).code).toBe('validation');
+    }
+    expect(await keyedSetting()).toEqual(stored);
+
+    expect((await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, personalization: null })).status).toBe(200);
+    expect(await keyedSetting()).toBeNull();
+    const sessionSet = await ownerRequest(API_ROUTES.productsUpdate.method, API_ROUTES.productsUpdate.path, { id: product.id, personalization: { ...setting, condition: null } });
+    expect(sessionSet.status).toBe(200);
+    expect(await sessionSetting()).toEqual({ ...stored, condition: null });
   });
 
   it('keeps the session product route tolerant of unknown fields', async () => {

@@ -4,7 +4,7 @@ import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
 import { renderPostContent } from '../post-content.js';
 import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants } from './checkout-selection.js';
-import { toPublicCompliance } from './public-offer.js';
+import { toPublicCompliance, toPublicPersonalization } from './public-offer.js';
 
 const validatedProducts = async (tenantId: string, link: Pick<SalesLink, 'productIds' | 'active'>, deps: SalesLinkDeps): Promise<Result<{ products: Product[]; prices: ProductPrice[] }, AppError>> => {
   const found = await deps.products.findByIds(tenantId, link.productIds);
@@ -86,7 +86,7 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
     const vat = resolveProductVat(product, settings);
     if (vat === null || price === undefined || base === undefined) return [];
     const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
-    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), soldOutIds), productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
+    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), soldOutIds), productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), personalization: toPublicPersonalization(product.personalization), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
   });
   if (lines.length !== products.value.products.length) return err(notFound('Sales link was not found'));
   const soldOut = firstSoldOutProductId(selected.value.map((product) => product.id), stock) !== null;

@@ -14,3 +14,13 @@ export interface OrderFulfilmentRepository {
     email: OrderShipmentEmail | null;
   }): Promise<Result<OrderListItem, AppError>>;
 }
+
+export interface OrderPersonalizationRepository {
+  correctPersonalization(tenantId: string, input: {
+    orderId: string;
+    productId: string;
+    text: string;
+    editedAt: string;
+    editedBy: string;
+  }): Promise<Result<OrderListItem, AppError>>;
+}

@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { configureShipxInputSchema, configureStripeInputSchema, err, ok, stripeModeFromKey, validation, type AppError, type Result } from '#core/domain/index.js';
+import { configureShipxInputSchema, configureStripeInputSchema, err, ok, SHIPX_ENVIRONMENTS, stripeModeFromKey, validation, type AppError, type Result } from '#core/domain/index.js';
 import { inpostGeowidgetTokenSchema } from '#core/domain/shipping.js';
 import {
-  integrationReferenceError, paymentKeyValueError, SHOP_OPERATOR_SECRET_ENV, type ShopManifestIntegrations, type ShopManifestSettings,
+  integrationReferenceError, paymentKeyValueError, SHOP_OPERATOR_SECRET_ENV, shipxCredentialReferences, type ShopManifestIntegrations, type ShopManifestSettings,
 } from '#core/domain/shop-manifest.js';
 
 type ManifestEnvironment = Readonly<Record<string, string | undefined>>;
@@ -32,7 +32,7 @@ export const publishedCredentialError = (
   ]));
   if (published.length === 0) return null;
   const credentials = [
-    ...holders.flatMap((holder) => sourced(holder.source, [valueOf(holder.integrations.shipx?.tokenEnv), valueOf(holder.integrations.shipx?.organizationIdEnv)])),
+    ...holders.flatMap((holder) => sourced(holder.source, shipxCredentialReferences(holder.integrations.shipx).map(valueOf))),
     ...sourced(OPERATOR_SECRET_SOURCE, [valueOf(SHOP_OPERATOR_SECRET_ENV)]),
   ];
   const matches = published.flatMap((token) => credentials.filter((credential) => credential.value === token.value)
@@ -61,20 +61,32 @@ const publicTokenRepeatsCarrierCredential = (
   const valueOf = (name: string | undefined) => name === undefined ? undefined : environment[name]?.trim();
   const publicToken = valueOf(integrations.parcelLocker?.tokenEnv);
   if (publicToken === undefined) return false;
-  return [integrations.shipx?.tokenEnv, integrations.shipx?.organizationIdEnv].some((name) => valueOf(name) === publicToken);
+  return shipxCredentialReferences(integrations.shipx).some((name) => valueOf(name) === publicToken);
 };
+
+const resolvedShipx = (shipx: NonNullable<ShopManifestIntegrations['shipx']>, environment: ManifestEnvironment) => ({
+  ...(shipx.sender === undefined ? {} : { sender: shipx.sender }),
+  ...Object.fromEntries(SHIPX_ENVIRONMENTS.flatMap((slot) => {
+    const references = shipx[slot];
+    if (references === undefined) return [];
+    return [[slot, {
+      ...(references.organizationIdEnv === undefined ? {} : { organizationId: environment[references.organizationIdEnv] }),
+      ...(references.tokenEnv === undefined ? {} : { token: environment[references.tokenEnv] }),
+    }]];
+  })),
+});
 
 export const resolveManifestIntegrations = (
   integrations: ShopManifestIntegrations, environment: Readonly<Record<string, string | undefined>>,
 ): Result<ResolvedManifestIntegrations, AppError> => {
   const referenceError = integrationReferenceError(integrations);
   if (referenceError !== null) return err(validation(referenceError));
-  const references = [integrations.stripe?.restrictedKeyEnv, integrations.shipx?.organizationIdEnv,
-    integrations.shipx?.tokenEnv, integrations.parcelLocker?.tokenEnv];
+  const carrierReferences = shipxCredentialReferences(integrations.shipx);
+  const references = [integrations.stripe?.restrictedKeyEnv, ...carrierReferences, integrations.parcelLocker?.tokenEnv];
   for (const name of references) {
     if (name !== undefined && !environment[name]?.trim()) return err(validation(`Missing environment variable ${name}`));
   }
-  const nonPaymentReferences = [integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv, integrations.parcelLocker?.tokenEnv];
+  const nonPaymentReferences = [...carrierReferences, integrations.parcelLocker?.tokenEnv];
   const keyError = paymentKeyValueError(nonPaymentReferences.map((name) => name === undefined ? undefined : environment[name]));
   if (keyError !== null) return err(validation(keyError));
   if (publicTokenRepeatsCarrierCredential(integrations, environment)) return err(validation(PUBLIC_TOKEN_REUSE_MESSAGE));
@@ -82,11 +94,7 @@ export const resolveManifestIntegrations = (
     ...(integrations.stripe == null ? {} : { stripe: {
       mode: integrations.stripe.mode, restrictedKey: environment[integrations.stripe.restrictedKeyEnv],
     } }),
-    ...(integrations.shipx == null ? {} : { shipx: {
-      environment: integrations.shipx.environment, sender: integrations.shipx.sender,
-      ...(integrations.shipx.organizationIdEnv === undefined ? {} : { organizationId: environment[integrations.shipx.organizationIdEnv] }),
-      ...(integrations.shipx.tokenEnv === undefined ? {} : { token: environment[integrations.shipx.tokenEnv] }),
-    } }),
+    ...(integrations.shipx == null ? {} : { shipx: resolvedShipx(integrations.shipx, environment) }),
     ...(integrations.parcelLocker == null ? {} : { parcelLocker: {
       inpostGeowidgetToken: environment[integrations.parcelLocker.tokenEnv],
     } }),

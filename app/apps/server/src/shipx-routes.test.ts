@@ -50,7 +50,7 @@ const originGuard = () => requestOriginGuard({
     findBySlug: async (slug) => (slug === workspace.slug ? workspace : null),
     findSole: async () => workspace,
     findSettings: async () => null,
-    updateSettings: async (_id, settings) => settings,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
     hasAny: async () => true,
   },

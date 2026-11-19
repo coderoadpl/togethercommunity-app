@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { checkoutSessionInputSchema, type CheckoutSessionInput } from '#core/domain/index.js';
 import { startCheckoutSession, validateCheckoutSelection } from '#core/server/index.js';
 import { createLegacyCheckoutHarness, legacyBaseUrl, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
+import { writeSettings } from '#core/server/testing/tenant-settings-fake.js';
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
 import { createTenantRepository } from './repositories.js';
@@ -57,7 +58,7 @@ it('stores the checkout return origins per workspace and starts every workspace 
   const current = await repository.findSettings(legacyTenant.id);
   if (current === null) throw new Error('The workspace has no settings');
   expect(current.checkoutReturnOrigins).toEqual([]);
-  await repository.updateSettings(legacyTenant.id, { ...current, checkoutReturnOrigins: ['https://shop.example.test', 'https://shop.example.test:8443'] });
+  await writeSettings(repository, legacyTenant.id, { checkoutReturnOrigins: ['https://shop.example.test', 'https://shop.example.test:8443'] });
   expect((await repository.findSettings(legacyTenant.id))?.checkoutReturnOrigins).toEqual(['https://shop.example.test', 'https://shop.example.test:8443']);
   expect((await repository.findSettings('tenant-b'))?.checkoutReturnOrigins).toEqual([]);
 });

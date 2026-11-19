@@ -75,7 +75,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
     },
     tenants: {
       findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
-      findSettings: async () => settings, updateSettings: async (_tenantId, value) => value,
+      findSettings: async () => settings, changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
     },
     salesLinks: {

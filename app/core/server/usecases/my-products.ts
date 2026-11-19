@@ -1,6 +1,7 @@
 import {
   err,
   forbidden,
+  isStandalonePurchasable,
   memberFulfilmentView,
   ok,
   orderLineQuantity,
@@ -136,7 +137,7 @@ export const listMyProducts = async (
     const subscription = subscriptionByProduct.get(product.id);
     result.push({
       ...product,
-      purchasable: product.published && pricedProductIds.has(product.id),
+      purchasable: isStandalonePurchasable(product) && pricedProductIds.has(product.id),
       grantStatus: grantStatus(grant, nowMs),
       grantStartsAt: grant.startsAt,
       grantExpiresAt: grant.expiresAt,

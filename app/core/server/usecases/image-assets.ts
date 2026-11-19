@@ -14,6 +14,7 @@ import {
   type ImageAssetKind,
   type ImageAssetUploadInput,
   type Result,
+  type ShopManagementKeySettingsGrant,
   type StorageConfiguration,
 } from '#core/domain/index.js';
 
@@ -31,6 +32,11 @@ import type {
 import { resolveStorageConfiguration, storageAssetExpiresAt } from './storage-assets.js';
 
 const BRANDING_ASSET_KINDS: readonly ImageAssetKind[] = ['logo', 'logo-dark', 'favicon', 'share-image'];
+
+const brandingAssetGrant: ShopManagementKeySettingsGrant = {
+  operation: 'shop-settings:branding-asset-upload',
+  fields: ['logoUrl', 'logoDarkUrl', 'faviconUrl', 'ogImageUrl'],
+};
 
 const IMAGE_ASSET_UPLOAD_TTL_SECONDS = 15 * 60;
 export const IMAGE_ASSET_GET_TTL_SECONDS = 60 * 60;
@@ -246,7 +252,7 @@ export const beginBrandingAssetUpload = async (
   input: ImageAssetUploadInput,
   deps: ImageAssetDeps,
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = authorizeTenant(ctx, 'tenant:settings:write', { shopManagementKeyGrant: brandingAssetGrant });
   if (!tenant.ok) return tenant;
   return beginUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
 };
@@ -256,7 +262,7 @@ export const completeBrandingAssetUpload = async (
   input: { key: string },
   deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
 ): Promise<Result<{ url: string }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = authorizeTenant(ctx, 'tenant:settings:write', { shopManagementKeyGrant: brandingAssetGrant });
   if (!tenant.ok) return tenant;
   return completeUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
 };

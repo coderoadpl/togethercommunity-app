@@ -9,8 +9,10 @@ import { chapterSchema, lessonBlockSchema } from './course.js';
 import { normalizeEmail } from './email.js';
 import { imageAssetKindSchema } from './image-asset.js';
 import { redirectPathSchema } from './tenant-redirect.js';
+import { productPersonalizationSchema } from './personalization.js';
 import {
   currencySchema,
+  productSalesChannelSchema,
   productSlugSchema,
   productTypeSchema,
 } from './product.js';
@@ -220,6 +222,8 @@ export const importProductRecordSchema = z
     }).nullable().optional(),
     variantGroup: variantGroupSchema.nullable().optional(),
     variantLabel: variantLabelSchema.nullable().optional(),
+    salesChannel: productSalesChannelSchema.optional(),
+    personalization: productPersonalizationSchema.nullable().optional(),
   })
   .strict();
 

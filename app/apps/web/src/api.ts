@@ -2,7 +2,7 @@ import type { Language } from '#core/domain/index.js';
 import { metaCapiActions } from '#core/client/index.js';
 import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
-import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates, packingListQuery, shipOrderMutation } from '#core/client/index.js';
+import { correctOrderPersonalizationMutation, orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates, packingListQuery, shipOrderMutation } from '#core/client/index.js';
 import { configureShipxMutation, createShipxShipmentMutation, discardShipxAttemptMutation, downloadShipxLabelMutation, refreshedShipxShipmentQuery, shipxSettingsInvalidates, shipxSettingsQuery, shipxShipmentInvalidates, shipxShipmentQuery } from '#core/client/index.js';
 import { salesLinkActions } from '#core/client/index.js';
 import { surveyActions } from '#core/client/index.js';
@@ -44,6 +44,7 @@ import {
   archiveCourseMutation,
   restoreCourseMutation,
   createCheckoutSessionMutation,
+  createCartCheckoutSessionMutation,
   changePasswordMutation,
   createCouponMutation,
   configureStorageMutation,
@@ -54,6 +55,7 @@ import {
   couponStatsExportQuery,
   couponsInvalidates,
   validateCouponForCheckoutMutation,
+  validateCartCouponForCheckoutMutation,
   createLessonMutation,
   createModuleMutation,
   createPostMutation,
@@ -383,6 +385,8 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   removeStripeTestMode: removeStripeTestModeMutation(apiClient),
   createCheckoutSession: createCheckoutSessionMutation(apiClient),
   validateCouponForCheckout: validateCouponForCheckoutMutation(apiClient),
+  createCartCheckoutSession: createCartCheckoutSessionMutation(apiClient),
+  validateCartCouponForCheckout: validateCartCouponForCheckoutMutation(apiClient),
   recordTermsConsent: recordTermsConsentMutation(apiClient),
   authConfig: authConfigQuery(apiClient),
   resolveSignInMethods: resolveSignInMethodsMutation(apiClient),
@@ -419,6 +423,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   orderVerification: (reference: string) => orderVerificationQuery(apiClient, reference),
   issueOrderLine: issueOrderLineMutation(apiClient),
   shipOrder: shipOrderMutation(apiClient),
+  correctOrderPersonalization: correctOrderPersonalizationMutation(apiClient),
   shipxShipment: (orderId: string) => shipxShipmentQuery(apiClient, orderId),
   shipxRefreshedShipment: (orderId: string) => refreshedShipxShipmentQuery(apiClient, orderId),
   shipxCreate: createShipxShipmentMutation(apiClient),

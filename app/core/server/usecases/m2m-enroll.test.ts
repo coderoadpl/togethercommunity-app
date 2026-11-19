@@ -34,6 +34,7 @@ const product = (id: string, published: boolean): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published,
   accessItems: [],
@@ -270,6 +271,13 @@ describe('m2mEnroll', () => {
       provider: 'simulated',
       providerObjectIds: { m2m: 'enroll' },
     });
+  });
+
+  it('enrols into a product sold only through sales links', async () => {
+    const h = harness({ products: [{ ...product('p1', true), salesChannel: 'sales_links_only' }] });
+    const result = await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1', expiresAt: NEW_EXPIRY }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { renewed: false } });
+    expect(h.grants).toMatchObject([{ productId: 'p1', expiresAt: NEW_EXPIRY }]);
   });
 
   it('renews an active grant by extending its expiry, keeping startsAt', async () => {

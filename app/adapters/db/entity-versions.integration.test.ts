@@ -1,12 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { eq } from 'drizzle-orm';
+
+import { productSchema, type Product } from '#core/domain/index.js';
 import type { EntityVersionRecord } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createImportContentRepository } from './content-import.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { createEntityVersionRepository } from './repositories.js';
-import { tenantApiKeys, tenants } from './schema.js';
+import { products, tenantApiKeys, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl =
@@ -174,5 +177,48 @@ describe('import content repository', () => {
         limit: 10,
       }),
     ).toMatchObject([{ id: 'imported-version-1', ordinal: 1, createdBy: 'Migration' }]);
+  });
+
+  it('writes the sales channel of an imported product on create and on update', async () => {
+    const repository = createImportContentRepository(db);
+    const product = (salesChannel: 'any' | 'sales_links_only', title: string): Product => productSchema.parse({
+      id: 'imported-product', tenantId: TENANT, type: 'course', slug: 'imported-product', title, description: '',
+      coverUrl: null, priceCents: 0, currency: 'PLN', published: false, salesChannel, accessItems: [], legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const event = (id: string, action: 'created' | 'updated') => ({
+      id, tenantId: TENANT, apiKeyId: 'key-1', kind: 'product' as const, importKey: 'imported-product',
+      resourceId: 'imported-product', action, payloadHash: id.repeat(64).slice(0, 64), at: '2026-01-01T00:00:00.000Z',
+    });
+    const storedChannel = async () => (await db.select({ salesChannel: products.salesChannel }).from(products)
+      .where(eq(products.id, 'imported-product')))[0]?.salesChannel;
+
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'created', resource: product('sales_links_only', 'First'), event: event('a', 'created') })).toBe('saved');
+    expect(await storedChannel()).toBe('sales_links_only');
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product('any', 'Second'), event: event('b', 'updated') })).toBe('saved');
+    expect(await storedChannel()).toBe('any');
+  });
+
+  it('writes the personalisation of an imported product, keeps it when an update omits it and clears it with null', async () => {
+    const repository = createImportContentRepository(db);
+    const engraving = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: 'I understand a personalised item is made to my order.' };
+    const product = (title: string, personalization?: typeof engraving | null): Product => productSchema.parse({
+      id: 'personalised-product', tenantId: TENANT, type: 'physical', slug: 'personalised-product', title, description: '',
+      coverUrl: null, priceCents: 0, currency: 'PLN', published: false, accessItems: [], legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z', ...(personalization === undefined ? {} : { personalization }),
+    });
+    const event = (id: string, action: 'created' | 'updated') => ({
+      id, tenantId: TENANT, apiKeyId: 'key-1', kind: 'product' as const, importKey: 'personalised-product',
+      resourceId: 'personalised-product', action, payloadHash: id.repeat(64).slice(0, 64), at: '2026-01-01T00:00:00.000Z',
+    });
+    const stored = async () => (await db.select({ title: products.title, personalization: products.personalization }).from(products)
+      .where(eq(products.id, 'personalised-product')))[0];
+
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'created', resource: product('First', engraving), event: event('c', 'created') })).toBe('saved');
+    expect(await stored()).toEqual({ title: 'First', personalization: engraving });
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product('Second'), event: event('d', 'updated') })).toBe('saved');
+    expect(await stored()).toEqual({ title: 'Second', personalization: engraving });
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product('Third', null), event: event('e', 'updated') })).toBe('saved');
+    expect(await stored()).toEqual({ title: 'Third', personalization: null });
   });
 });

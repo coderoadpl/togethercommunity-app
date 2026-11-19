@@ -71,6 +71,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'validation':
       return t.errors.messageValidation;
     case 'conflict':
+    case 'feed_cursor_reset':
       return t.errors.messageConflict;
     case 'tenant_not_found':
       return t.errors.messageTenantNotFound;
@@ -147,6 +148,7 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'fulfilment_conflict':
     case 'shipx_unavailable':
     case 'shipx_rejected':
+    case 'feed_cursor_reset':
     case 'workspace_quota_exceeded':
     case 'organization_managed':
     case 'internal':

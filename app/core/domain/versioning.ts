@@ -5,7 +5,7 @@ import { lessonEditionSchema } from './lesson-editions.js';
 import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.js';
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
-import { productSchema, productSlugFromTitle } from './product.js';
+import { productContentSchema, productSlugFromTitle } from './product.js';
 import { courseSnapshotV6Schema, type CourseSnapshotV6 } from './snapshots/course/v6.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
@@ -19,7 +19,7 @@ import {
   courseModuleSnapshotV1Schema,
   type CourseModuleSnapshotV1,
 } from './snapshots/course_module/v1.js';
-import { productSnapshotV9Schema, type ProductSnapshotV9 } from './snapshots/product/v9.js';
+import { productSnapshotV10Schema, type ProductSnapshotV10 } from './snapshots/product/v10.js';
 
 /**
  * Content versioning: every mutable content entity is snapshotted under a
@@ -39,7 +39,7 @@ const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV6Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV7Schema,
-  product: productSnapshotV9Schema,
+  product: productSnapshotV10Schema,
 };
 
 /** Typed readers for the current frozen schema; a bump repoints these too. */
@@ -47,7 +47,7 @@ export const currentSnapshotParsers = {
   course: (payload: unknown): CourseSnapshotV6 => courseSnapshotV6Schema.parse(payload),
   course_module: (payload: unknown): CourseModuleSnapshotV1 => courseModuleSnapshotV1Schema.parse(payload),
   course_lesson: (payload: unknown): CourseLessonSnapshotV7 => courseLessonSnapshotV7Schema.parse(payload),
-  product: (payload: unknown): ProductSnapshotV9 => productSnapshotV9Schema.parse(payload),
+  product: (payload: unknown): ProductSnapshotV10 => productSnapshotV10Schema.parse(payload),
 };
 
 /** Live entity schemas the write-through path snapshots and the guard tracks. */
@@ -55,14 +55,14 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSchema,
   course_module: courseModuleSchema,
   course_lesson: courseLessonSchema,
-  product: productSchema,
+  product: productContentSchema,
 };
 
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 6,
   course_module: 1,
   course_lesson: 7,
-  product: 9,
+  product: 10,
 };
 
 type Upcaster = (payload: unknown) => unknown;
@@ -136,6 +136,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
     6: (payload) => ({ ...z.object({}).passthrough().parse(payload), deliveryMethod: 'pickup' }),
     7: (payload) => payload,
     8: (payload) => payload,
+    9: (payload) => ({ ...z.object({}).passthrough().parse(payload), salesChannel: 'any' }),
   },
 };
 
@@ -288,7 +289,7 @@ export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: '9ef30ced',
   course_module: 'db069353',
   course_lesson: '20a239d8',
-  product: 'bf909a9c',
+  product: 'be9e67ee',
 };
 
 // --- read-surface DTOs -----------------------------------------------------

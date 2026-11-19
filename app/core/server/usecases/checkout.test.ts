@@ -1,4 +1,4 @@
-import type { CheckoutSnapshot, CouponCheckoutSession } from '#core/domain/index.js';
+import type { CheckoutPersonalizationRequest, CheckoutSnapshot, CouponCheckoutSession } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -37,6 +37,7 @@ const product: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -553,6 +554,7 @@ const bundleCheckout = () => {
         if (snapshot !== undefined) snapshot.providerSessionId = providerSessionId;
       },
       findById: async () => snapshots[0] ?? null,
+      findByProviderSession: async () => null,
     },
     payment: { ...base.payment, createCheckoutSession: async (input) => {
       calls.push(input); return ok({ sessionId: 'bundle-session', url: 'https://checkout.stripe.test/bundle' });
@@ -1116,4 +1118,199 @@ it.each(['base', 'group', 'no-group', 'unpublished', 'tenant', 'membership', 'ty
   expect(h.reserve).not.toHaveBeenCalled();
   expect(h.snapshots).toHaveLength(0);
   expect(h.calls).toHaveLength(0);
+});
+
+describe('a product sold only through sales links', () => {
+  const standaloneAnswer = async (present: boolean, input: { productId: string; priceId?: string; couponCode?: string }) => {
+    const base = checkoutDeps();
+    const { createCheckoutSession } = await import('./checkout.js');
+    return createCheckoutSession(tenant, 'https://alpha.example.com', input, {
+      ...base,
+      products: { ...base.products, findById: async (_tenantId, id) => present && id === product.id ? { ...product, salesChannel: 'sales_links_only' } : null },
+      prices: { ...base.prices, findById: async () => recurringPrice },
+    });
+  };
+
+  it.each([
+    ['without a price', { productId: product.id }],
+    ['with a price and a coupon', { productId: product.id, priceId: recurringPrice.id, couponCode: 'FREE' }],
+  ])('refuses a standalone checkout %s exactly like an unknown product', async (_case, input) => {
+    const refused = await standaloneAnswer(true, input);
+    expect(refused).toEqual(await standaloneAnswer(false, input));
+    expect(refused).toEqual(err({ code: 'not_found', message: `No published product "${product.id}" in this tenant` }));
+  });
+
+  it('refuses every caller of the standalone selection the same way', async () => {
+    const { validateCheckoutSelection } = await import('./checkout.js');
+    const base = checkoutDeps();
+    const answer = async (present: boolean) => validateCheckoutSelection(tenant.id, { productId: product.id }, {
+      ...base,
+      products: { ...base.products, findById: async () => present ? { ...product, salesChannel: 'sales_links_only' } : null },
+    });
+    expect(await answer(true)).toEqual(await answer(false));
+  });
+
+  it('still sells it as a line of an active sales link', async () => {
+    const h = bundleCheckout();
+    for (const item of h.products) item.salesChannel = 'sales_links_only';
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id }, h.deps))
+      .toMatchObject({ ok: true });
+    expect(h.calls[0]).toMatchObject({ salesLinkId: h.link.id, lines: [{ productId: product.id }, { productId: 'physical-1' }] });
+  });
+
+  it('still sells it as a variant chosen inside a sales link', async () => {
+    const h = variantBundleCheckout();
+    h.first.salesChannel = 'sales_links_only';
+    h.sibling.salesChannel = 'sales_links_only';
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: h.first.id, salesLinkSlug: h.link.slug, variantSelections: h.variantSelections,
+    }, h.deps)).toMatchObject({ ok: true });
+    expect(h.calls[0]).toMatchObject({ productId: h.sibling.id, lines: [{ productId: h.sibling.id }, { productId: 'physical-1' }] });
+  });
+});
+
+describe('checkout personalisation', () => {
+  const condition = 'I understand a personalised item is made to my order.';
+  const setting = { label: 'Add an engraving', description: 'Up to three lines.', inputLabel: 'Engraving text', maxLength: 20, condition };
+  const recorded = (text: string) => ({ ...setting, text, requestedAt: '2026-10-08T12:00:00.000Z', conditionAcceptedAt: '2026-10-08T12:00:00.000Z' });
+  const personalizedBundle = () => {
+    const h = bundleCheckout();
+    const printed = h.products[1];
+    if (printed === undefined) throw new Error('Missing printed product');
+    printed.personalization = setting;
+    return { ...h, printed };
+  };
+  const start = async (h: ReturnType<typeof bundleCheckout>, personalizations: CheckoutPersonalizationRequest[] | undefined) => {
+    const { createCheckoutSession } = await import('./checkout.js');
+    return createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: product.id, salesLinkSlug: h.link.slug,
+      ...(personalizations === undefined ? {} : { personalizations }),
+    }, h.deps);
+  };
+
+  it('writes the typed text with the setting wording and server times into the snapshot line and keeps it out of the payment lines', async () => {
+    const h = personalizedBundle();
+    expect(await start(h, [{ productId: 'physical-1', text: '  For Alex  ', conditionAccepted: true }])).toMatchObject({ ok: true });
+    expect(h.snapshots[0]?.lines[1]).toMatchObject({ productId: 'physical-1', grossCents: 2100, personalization: recorded('For Alex') });
+    expect(h.snapshots[0]?.lines[0]).not.toHaveProperty('personalization');
+    expect(h.calls[0]?.lines).toEqual([
+      expect.not.objectContaining({ personalization: expect.anything() }),
+      expect.not.objectContaining({ personalization: expect.anything() }),
+    ]);
+    expect(JSON.stringify(h.calls)).not.toContain('For Alex');
+    expect(h.calls[0]).toMatchObject({ priceCents: 7000 });
+  });
+
+  it('keeps the snapshot wording when the seller later edits the setting', async () => {
+    const h = personalizedBundle();
+    await start(h, [{ productId: 'physical-1', text: 'For Alex', conditionAccepted: true }]);
+    h.printed.personalization = { ...setting, label: 'Changed label', condition: 'A different condition.' };
+    expect(h.snapshots[0]?.lines[1]?.personalization).toEqual(recorded('For Alex'));
+  });
+
+  it('leaves the request, the snapshot and the payment input unchanged when the buyer asks for nothing', async () => {
+    const plain = bundleCheckout();
+    const personalized = personalizedBundle();
+    expect(await start(personalized, undefined)).toEqual(await start(plain, undefined));
+    expect(personalized.snapshots).toEqual(plain.snapshots);
+    expect(personalized.calls).toEqual(plain.calls);
+    const empty = personalizedBundle();
+    await start(empty, []);
+    expect(empty.snapshots).toEqual(plain.snapshots);
+    expect(empty.calls).toEqual(plain.calls);
+  });
+
+  it.each([
+    ['a product outside the selection', [{ productId: 'other-product', text: 'Hi', conditionAccepted: true }]],
+    ['a duplicate product', [{ productId: 'physical-1', text: 'Hi', conditionAccepted: true }, { productId: 'physical-1', text: 'Again', conditionAccepted: true }]],
+    ['a product without a setting', [{ productId: product.id, text: 'Hi', conditionAccepted: true }]],
+    ['an empty text', [{ productId: 'physical-1', text: '  ', conditionAccepted: true }]],
+    ['a text over the limit', [{ productId: 'physical-1', text: 'x'.repeat(21), conditionAccepted: true }]],
+    ['an unaccepted condition', [{ productId: 'physical-1', text: 'Hi', conditionAccepted: false }]],
+  ])('refuses %s before any snapshot, coupon session, stock hold or payment session', async (_case, requests) => {
+    const h = personalizedBundle();
+    const held = trackPrintedItem(h.deps);
+    const couponSessions = vi.fn(async () => undefined);
+    h.deps.couponCheckoutSessions = { create: couponSessions, findById: async () => null, attachProviderSession: async () => undefined };
+    expect(await start(h, requests)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.snapshots).toHaveLength(0);
+    expect(h.calls).toHaveLength(0);
+    expect(couponSessions).not.toHaveBeenCalled();
+    expect(held.stock.reservations).toEqual([]);
+  });
+
+  it('checks the current setting of the chosen variant, not of the base product', async () => {
+    const h = variantBundleCheckout();
+    h.sibling.personalization = setting;
+    const { createCheckoutSession } = await import('./checkout.js');
+    const request = (productId: string) => createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: h.first.id, salesLinkSlug: h.link.slug, variantSelections: h.variantSelections,
+      personalizations: [{ productId, text: 'For Alex', conditionAccepted: true }],
+    }, h.deps);
+    expect(await request(h.first.id)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.snapshots).toHaveLength(0);
+    expect(await request(h.sibling.id)).toMatchObject({ ok: true });
+    expect(h.snapshots[0]?.lines[0]).toMatchObject({ productId: h.sibling.id, personalization: recorded('For Alex') });
+  });
+
+  it('records a null acceptance time when the setting has no condition, even if the buyer ticked it', async () => {
+    const h = personalizedBundle();
+    h.printed.personalization = { ...setting, condition: null };
+    await start(h, [{ productId: 'physical-1', text: 'For Alex', conditionAccepted: true }]);
+    expect(h.snapshots[0]?.lines[1]?.personalization).toMatchObject({ condition: null, conditionAcceptedAt: null });
+  });
+
+  it('records the personalisation of a single-product checkout in its snapshot', async () => {
+    const h = bundleCheckout();
+    const single = { ...product, id: 'single-book', type: 'physical' as const, personalization: { ...setting, condition: null } };
+    h.deps.products = { ...h.deps.products, findById: async (_tenantId, id) => id === single.id ? single : null };
+    h.deps.prices = { ...h.deps.prices, findById: async () => null };
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: single.id, personalizations: [{ productId: single.id, text: 'For Alex', conditionAccepted: false }],
+    }, h.deps)).toMatchObject({ ok: true });
+    expect(h.snapshots[0]?.lines[0]).toMatchObject({ productId: single.id, personalization: { text: 'For Alex', conditionAcceptedAt: null } });
+    expect(JSON.stringify(h.calls)).not.toContain('For Alex');
+  });
+
+  it('refuses a personalisation on a subscription purchase before any snapshot or payment session', async () => {
+    const h = bundleCheckout();
+    const course = { ...product, id: 'course-sub', personalization: { ...setting, condition: null } };
+    const monthly = { ...recurringPrice, productId: course.id };
+    h.deps.products = { ...h.deps.products, findById: async (_tenantId, id) => id === course.id ? course : null };
+    h.deps.prices = { ...h.deps.prices, findById: async (_tenantId, id) => id === monthly.id ? monthly : null };
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: course.id, priceId: monthly.id, personalizations: [{ productId: course.id, text: 'For Alex', conditionAccepted: false }],
+    }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation', message: 'A subscription purchase cannot carry a personalisation' } });
+    expect(h.snapshots).toHaveLength(0);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it('carries the personalisation on the pending order of a staff test purchase', async () => {
+    const h = personalizedBundle();
+    const pending: Order[] = [];
+    h.deps.orders = { create: async (_tenantId, order) => { pending.push(order); }, completeTestCheckout: async () => null,
+      list: async () => ({ orders: [], total: 0 }), revenueSince: async () => [], countSince: async () => 0, listPaidWithoutGrant: async () => [] };
+    const { startCheckoutSession, validateCheckoutSelection } = await import('./checkout.js');
+    const input = { productId: product.id, salesLinkSlug: h.link.slug, email: 'staff@example.test', personalizations: [{ productId: 'physical-1', text: 'For Alex', conditionAccepted: true }] };
+    const selection = await validateCheckoutSelection(tenant.id, input, h.deps);
+    if (!selection.ok) throw new Error('selection failed');
+    expect(await startCheckoutSession(tenant, 'https://workspace.example.com', input, selection.value, h.deps, undefined, { mode: 'test', memberId: 'staff-member' }))
+      .toMatchObject({ ok: true });
+    expect(pending).toMatchObject([{ mode: 'test', status: 'pending', lines: [{ productId: product.id }, { productId: 'physical-1', personalization: recorded('For Alex') }] }]);
+    expect(h.snapshots[0]?.lines[1]?.personalization).toEqual(recorded('For Alex'));
+  });
+
+  it('refuses the direct sales-link handoff for a link with a personalised product', async () => {
+    const h = await directCheckout();
+    const printed = h.products[1];
+    if (printed === undefined) throw new Error('Missing printed product');
+    printed.personalization = setting;
+    expect(await h.start()).toMatchObject({ ok: false, error: { code: 'validation', message: 'This sales link requires the workspace checkout page' } });
+    expect(h.calls).toHaveLength(0);
+    expect(h.snapshots).toHaveLength(0);
+  });
 });

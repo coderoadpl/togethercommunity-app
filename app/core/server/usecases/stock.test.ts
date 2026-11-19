@@ -44,6 +44,7 @@ const poster: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   published: true,
   accessItems: [],
   legacyId: null,
@@ -81,6 +82,7 @@ const checkoutHarness = (items: Product[] = [poster]) => {
       verifyWebhookEvent: async () => ok({ id: 'evt', type: 'ignored', objectId: null, checkoutSession: null }),
     },
     checkoutSnapshots: {
+      findByProviderSession: async () => null,
       create: async (_tenantId, snapshot) => { snapshots.set(snapshot.id, snapshot); },
       attachProviderSession: async () => undefined,
       findById: async (_tenantId, id) => snapshots.get(id) ?? null,
@@ -168,7 +170,7 @@ describe('checkout stock reservations', () => {
     h.stock.track(tenant.id, poster.id, 1);
     const expire = vi.fn<PaymentProvider['expireCheckoutSession']>(async () => ok({ expired: true }));
     h.deps.payment.expireCheckoutSession = expire;
-    h.deps.checkoutSnapshots = { ...h.deps.checkoutSnapshots ?? { create: async () => undefined, findById: async () => null, attachProviderSession: async () => undefined }, attachProviderSession: async () => { throw new Error('database unavailable'); } };
+    h.deps.checkoutSnapshots = { ...h.deps.checkoutSnapshots ?? { create: async () => undefined, findById: async () => null, attachProviderSession: async () => undefined, findByProviderSession: async () => null }, attachProviderSession: async () => { throw new Error('database unavailable'); } };
     await expect(createCheckoutSession(tenant, 'https://alpha.example.com', { productId: poster.id }, h.deps)).rejects.toThrow('database unavailable');
     expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'cs-1', mode: 'live' });
     expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 1, reserved: 0 });

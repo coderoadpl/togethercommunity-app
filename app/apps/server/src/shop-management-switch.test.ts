@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { shopManagementKeys, tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import {
   API_PATHS,
   API_ROUTES,
@@ -15,7 +15,11 @@ import {
   apiKeysShopManagementListOutputSchema,
   apiKeysShopManagementPurgeOutputSchema,
   apiKeysShopManagementRevokeOutputSchema,
+  SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
+  SHOP_INTEGRATION_ROUTES,
+  SHOP_ORDER_ROUTES,
+  SHOP_SETTINGS_ROUTES,
 } from '#core/contract/index.js';
 
 import { buildApp } from './app.js';
@@ -102,11 +106,33 @@ const listShopKeys = async (app: ReturnType<typeof buildApp>) => {
   return envelope(apiKeysShopManagementListOutputSchema).parse(await listed.json()).data.apiKeys;
 };
 
+const stackedMutations = [
+  ['POST', SHOP_ORDER_ROUTES.shipOrder.path.replace(':orderId', 'order-1'), { carrier: 'other', trackingNumber: 'SPAN01' }],
+  ['POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { supportUrl: null }],
+  ['DELETE', SHOP_ASSETS_ROUTES.deleteSalesLink.path.replace(':id', 'link-1'), undefined],
+  ['POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'ifirma.username', value: 'span-login' }],
+  ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { organizationId: '24680', token: 'span-shipx-token' }],
+] as const;
+
+const spanExporter = new InMemorySpanExporter();
+const tracerProvider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(spanExporter)] });
+
+const recordedSpans = async (run: () => Promise<void>) => {
+  spanExporter.reset();
+  await run();
+  await tracerProvider.forceFlush();
+  return spanExporter.getFinishedSpans().map((span) => span.attributes);
+};
+
+const keyRequestRows = async (apiKeyId: string) => (await database.db.select().from(shopManagementKeyEvents))
+  .filter((event) => event.apiKeyId === apiKeyId && event.kind === 'request');
+
 beforeAll(async () => {
   database = await createTestDatabase(
     'together_shop_management_switch_test',
     process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/postgres',
   );
+  tracerProvider.register();
   enabledApp = buildApp(depsFor('enabled'));
   disabledApp = buildApp(depsFor('disabled'));
 
@@ -127,7 +153,10 @@ beforeAll(async () => {
   ownerToken = z.object({ token: z.string() }).parse(await signin.json()).token;
 }, 120_000);
 
-afterAll(async () => { await database?.close(); });
+afterAll(async () => {
+  await tracerProvider.shutdown();
+  await database?.close();
+});
 
 beforeEach(() => { sessionLookups = 0; keyLookups = 0; });
 
@@ -136,6 +165,14 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
     ['GET', SHOP_CATALOG_ROUTES.listProducts.path, {}],
     ['POST', SHOP_CATALOG_ROUTES.createProduct.path, { 'content-type': 'application/json' }],
     ['DELETE', SHOP_CATALOG_ROUTES.listProducts.path, {}],
+    ['GET', SHOP_ORDER_ROUTES.listOrders.path, {}],
+    ['POST', SHOP_ORDER_ROUTES.shipxLabel.path.replace(':orderId', 'order-1'), { 'content-type': 'application/json' }],
+    ['POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { 'content-type': 'application/json' }],
+    ['POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, { 'content-type': 'application/json' }],
+    ['POST', SHOP_ASSETS_ROUTES.productCoverUpload.path, { 'content-type': 'application/json' }],
+    ['GET', SHOP_ASSETS_ROUTES.listSalesLinks.path, {}],
+    ['POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { 'content-type': 'application/json' }],
+    ['GET', SHOP_INTEGRATION_ROUTES.shipxSettings.path, {}],
     ['GET', '/api/m2m/shop/unknown-path', {}],
     ['POST', '/api/m2m/shop/unknown-path', {}],
     ['GET', '/api/m2m/shop', {}],
@@ -159,25 +196,37 @@ describe('SHOP_MANAGEMENT_KEYS=disabled', () => {
   });
 
   it('records the switch as the refusal reason on the request span without reading the key', async () => {
-    const exporter = new InMemorySpanExporter();
-    const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
-    provider.register();
-    try {
-      const { secret } = await createShopKey();
-      exporter.reset();
+    const { secret } = await createShopKey();
+    const spans = await recordedSpans(async () => {
       const response = await disabledApp.request(`${baseUrl}${SHOP_CATALOG_ROUTES.listProducts.path}`, {
         headers: { host: acmeHost, 'x-api-key': secret },
       });
       expect(response.status).toBe(404);
-      await provider.forceFlush();
-      const spans = exporter.getFinishedSpans();
-      expect(spans).toHaveLength(1);
-      expect(spans[0]?.attributes).toMatchObject({ 'app.api_key.match': 'switch_off', 'http.response.status_code': 404 });
-      expect(spans[0]?.attributes).not.toHaveProperty('app.api_key.id');
-      expect(JSON.stringify(spans[0]?.attributes)).not.toContain(secret);
-    } finally {
-      await provider.shutdown();
+    });
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ 'app.api_key.match': 'switch_off', 'http.response.status_code': 404 });
+    expect(spans[0]).not.toHaveProperty('app.api_key.id');
+    expect(JSON.stringify(spans[0])).not.toContain(secret);
+  });
+
+  it('records the switch on the span of every stacked route family and writes no key history row', async () => {
+    const { apiKey, secret } = await createShopKey();
+    const spans = await recordedSpans(async () => {
+      for (const [method, path, body] of stackedMutations) {
+        const response = await disabledApp.request(`${baseUrl}${path}`, {
+          method,
+          headers: { host: acmeHost, 'x-api-key': secret, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        expect(response.status, path).toBe(404);
+      }
+    });
+    expect(spans).toHaveLength(stackedMutations.length);
+    for (const attributes of spans) {
+      expect(attributes).toMatchObject({ 'app.api_key.match': 'switch_off', 'http.response.status_code': 404 });
+      expect(attributes).not.toHaveProperty('app.api_key.id');
     }
+    expect(await keyRequestRows(apiKey.id)).toEqual([]);
   });
 
   it('refuses to create a shop management key and names the switch state', async () => {
@@ -222,6 +271,28 @@ describe('SHOP_MANAGEMENT_KEYS=enabled', () => {
     });
     expect(response.status).toBe(200);
     expect(sessionLookups).toBe(0);
+  });
+
+  it('puts the key on the span and writes no key history row for a scope refusal on every stacked route family', async () => {
+    const { apiKey, secret } = await createShopKey();
+    const statuses: number[] = [];
+    const spans = await recordedSpans(async () => {
+      for (const [method, path, body] of stackedMutations) {
+        const response = await enabledApp.request(`${baseUrl}${path}`, {
+          method,
+          headers: { host: acmeHost, 'x-api-key': secret, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        statuses.push(response.status);
+      }
+    });
+    expect(statuses).toEqual(stackedMutations.map(() => 403));
+    expect(spans).toHaveLength(stackedMutations.length);
+    for (const attributes of spans) {
+      expect(attributes).toMatchObject({ 'app.api_key.match': 'matched', 'app.api_key.id': apiKey.id, 'http.response.status_code': 403 });
+      expect(JSON.stringify(attributes)).not.toContain(secret);
+    }
+    expect(await keyRequestRows(apiKey.id)).toEqual([]);
   });
 });
 

@@ -161,7 +161,9 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
-`shipping_country` and `fulfilment_status`.
+`shipping_country` and `fulfilment_status`, followed by `client_reference`
+(the storefront's `clientReference`, empty when the checkout had none) and
+`personalization`, the last column (see [Personalisation](#personalisation)).
 
 ## Fulfilment
 
@@ -223,8 +225,9 @@ orders page; with the **All** payment-mode filter it sends `live` and shows
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
 (`name × <units>; name × <units>`, product lines only), an empty `notes` column
-and `quantity`, the total units of the product lines. `quantity` is the last
-column so the earlier column positions stay unchanged. Every
+`quantity`, the total units of the product lines, and `personalization`
+(see [Personalisation](#personalisation)). New columns are added at the end so
+the earlier column positions stay unchanged. Every
 cell is quoted and cells starting with `=`, `+`, `-`, `@`, a tab or a carriage
 return are prefixed with an apostrophe so spreadsheets do not run them as
 formulas; a phone number such as `+48…` therefore appears as `'+48…`.
@@ -294,8 +297,11 @@ the InPost locker sizes A (8 × 38 × 64 cm), B (19 × 38 × 64 cm) and C
 (41 × 38 × 64 cm). Studio shows **InPost parcel size** in the editor and on the
 create page of physical products shipped by parcel; the API and the CLI accept
 it on every product. A shipment uses the largest size among the order's product
-lines. Locker shipments send the size as the ShipX `template`; courier
-shipments send the size's dimensions and a fixed weight of 5 kg
+lines, unless staff choose another size for that shipment (see
+[Creating the shipment](#creating-the-shipment)). One order is one parcel with
+one label; an order that does not fit one large locker parcel goes by courier
+or is shipped by hand. Locker shipments send the size as the ShipX
+`template`; courier shipments send the size's dimensions and a fixed weight of 5 kg
 (`SHIPX_COURIER_PARCEL_WEIGHT_KG` in `core/domain/shipx.ts`). Product
 snapshots carry the parcel size from version 9
 (`core/domain/snapshots/product/v9.ts`); version 8 snapshots read unchanged
@@ -338,9 +344,19 @@ delivery option has the carrier `inpost`, when the staff role has `order:write`
 and the workspace is ready. The service follows the option: a parcel locker
 option sends `inpost_locker_standard` with the locker code as `target_point`,
 an address option sends `inpost_courier_standard` with the delivery address.
-The confirmation names the service, the parcel size and the buyer e-mail. The
-receiver is the delivery name (split into first and last name at the last
-space), the member e-mail and the delivery phone. For courier shipments the
+The confirmation names the service, the parcel size and the buyer e-mail, and
+offers **Parcel size for this shipment**: **Automatic** (the largest product
+size, the default) or one of the three sizes. The chosen size is sent as the
+optional `parcelTemplate` (`small`, `medium` or `large`) in the body of
+`POST /api/orders/<orderId>/shipx`, or with
+`order shipx create <orderId> --parcel-template <size>` in the CLI; another
+value is refused with `validation` before anything is claimed or sent to ShipX.
+Without it the parcel takes the largest product size. The size applies only
+when the request creates the ShipX shipment: a retry that finishes the payment
+of a stored shipment or looks up an unconfirmed attempt keeps the shipment
+ShipX already has, and **Discard the attempt and create again** offers the same
+choice for the new shipment. The receiver is the delivery name (split into
+first and last name at the last space), the member e-mail and the delivery phone. For courier shipments the
 street line is split into street and building number; an address without a
 building number is refused with a validation message so staff can dispatch it
 manually. ShipX e-mail and SMS notifications (`additional_services`) stay off
@@ -623,6 +639,11 @@ tracked variant without an available piece is sold out, an untracked one never
 is. The offer reads the stock of the offered products and of every published
 sibling in their groups in one query.
 
+A sibling sold only through sales links (sales channel `sales_links_only`) is
+never offered as a variant of a standalone product; inside a sales link it is an
+eligible variant like any other. See
+[Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links).
+
 Sales-link offers, including one-line offers, show chips below each eligible
 line name. A chip stays on `/offer/<slug>` and carries repeatable
 `variant=<baseProductId>.<chosenProductId>` query parameters. Eligible siblings
@@ -639,6 +660,154 @@ checkout, even when its saved base product is sold out. Choices survive Stripe
 cancellation and Retry. Chip navigation reloads the form; typed details and
 consent ticks are not preserved. See [Sales links](sales-links.md) for request
 validation and checkout behaviour.
+
+## Personalisation
+
+A product may offer one optional request the buyer can add at checkout, with
+text the buyer types, such as a dedication in a printed book or an engraving.
+The seller decides whether asking for it carries a condition the buyer must
+accept before paying. There is no surcharge, no stock effect and one request
+per order line, not one per unit.
+
+### Setting
+
+`products.personalization` (migration 0160, nullable `jsonb`) holds
+`{ label, description, inputLabel, maxLength, condition }` or `null`
+(`productPersonalizationSchema` in `core/domain/personalization.ts`):
+
+| Field | Rule |
+|---|---|
+| `label` | 1–80 characters, trimmed; the text next to the buyer's checkbox, for example "Add an engraving" |
+| `description` | 0–1000 characters of plain text, default empty |
+| `inputLabel` | 1–80 characters, trimmed; the label of the text field, for example "Engraving text" |
+| `maxLength` | whole number 1–500, default 200; the longest text the buyer may type |
+| `condition` | 1–1000 characters, trimmed, or `null` (default); when set, the buyer must tick it, for example "I understand a personalised item is made to my order." |
+
+Unknown fields are refused. The seller's texts are stored as entered, in one
+language, as plain text: never Markdown or HTML. A membership cannot offer a
+personalisation (`validation` on every editing surface). `POST /api/products`
+and `POST /api/products/update`, the keyed `/api/m2m/shop/products` routes,
+the [import API](import-api.md#product) and the
+[shop manifest](shop-manifest.md) accept `personalization`; an update without
+the field keeps the stored value and `null` removes it. Studio shows the
+section **Personalisation** in the product editor (not for memberships) and
+sends the field only after the seller has edited the section.
+
+The setting is checkout configuration, not product content: like stock it is
+not part of the product snapshot (`core/domain/snapshots/product`), so
+restoring a product version never changes or removes it.
+
+The public offer and the sales-link offer expose it per product (per line) as
+`personalization: { label, description, inputLabel, maxLength, condition } | null`.
+
+### The Together checkout page is required
+
+`requiresWorkspaceCheckout` (`core/domain/shipping.ts`) is true for a product
+with a personalisation, as it is for shipped products, products with safety
+information and products with purchase consents. A sales link with such a
+product keeps `/offer/<slug>?checkout=together` instead of the automatic Stripe
+handoff, and `POST /api/public/sales-links/<slug>/checkout` refuses it with
+`validation` ("This sales link requires the workspace checkout page"). On the
+Together page each line that offers a personalisation shows one checkbox with
+the seller's label and description; ticking it reveals the text field with the
+seller's input label, a character counter and, when a condition is set, a
+second checkbox with the condition text.
+
+### Checkout request
+
+`POST /api/public/checkout/session` takes optional
+`personalizations: [{ productId, text, conditionAccepted }]`, at most 20
+entries, each strict. One entry means the buyer ticked the option for that
+product; for a sales link with variant choices `productId` is the chosen
+product. The single-product, sales-link and simulated checkouts validate it
+with the current product setting before any checkout snapshot, consent capture,
+coupon session, stock reservation or Stripe session is written:
+
+| Request | Result |
+|---|---|
+| no `personalizations`, or an empty array | the checkout of today, unchanged |
+| entry for a product outside the selection | `validation` |
+| two entries for the same product | `validation` |
+| entry for a product without a current setting | `validation` |
+| trimmed text empty or longer than the current `maxLength` | `validation` |
+| condition set and `conditionAccepted` not `true` | `validation` |
+| `personalizations` on a cart request (`lines`) | `validation` |
+| `personalizations` with a recurring (subscription) price | `validation`; the checkout page does not offer the option while a recurring price is selected |
+
+The cart is out of scope: a cart with a personalisable product checks out as
+before, without the option. The text never goes to Stripe (neither line items
+nor metadata), application logs, telemetry attributes or analytics events.
+
+### Proof on the snapshot and the order
+
+The checkout snapshot line (`checkout_snapshots.lines`, `OrderLine`) receives
+`personalization`:
+
+| Field | Value |
+|---|---|
+| `text` | the trimmed buyer text |
+| `label`, `description`, `inputLabel`, `condition`, `maxLength` | the wording of the product setting at that moment |
+| `requestedAt` | server time of the request |
+| `conditionAcceptedAt` | server time when a condition existed and was accepted, otherwise `null` |
+| `originalText`, `editedAt`, `editedBy` | set only after a staff correction |
+
+A later edit of the product setting does not change a captured line. The
+consent capture row of the same request already holds the buyer's IP address
+and user agent; the personalisation adds no consent definition. Every path that
+creates an order from a checkout copies the snapshot line onto the order line:
+the Stripe webhook, free and coupon-claimed orders, staff test-mode purchases
+and the simulated purchase.
+
+### Orders
+
+Order list and detail answers, the keyed shop order routes and the
+[order change feed](shop-integration.md#follow-order-changes) return
+`lines[].personalization`. The orders list in Studio marks such orders with a
+**Personalised** chip (derived from the lines; the list adds no separate
+field), and the order detail shows a **Personalisation** block under the line
+with the seller label, the text, the accepted condition and its time
+(Europe/Warsaw) and, after a correction, the original text, the correction time
+and the staff user id.
+
+The CSV export and the packing list end with a `personalization` column, and
+the JSON export adds a `personalization` field: one `<line name>: <text>` per
+personalised line, joined with `; `, empty otherwise. CSV cells go through the
+same formula guard as every other cell.
+
+### Staff correction
+
+`POST /api/orders/<orderId>/personalization` with `{ productId, text }` needs
+`order:write`, the capability of marking an order as shipped. The text is
+trimmed and must have 1 to the stored `maxLength` characters. In one
+transaction the order row is locked, `originalText` is set on the first
+correction only and never overwritten, and `text`, `editedAt` and `editedBy`
+(the staff user id) are set. A line without a personalisation is `validation`,
+an unknown order `not_found`. The update of the order row produces an order
+change feed entry through the existing trigger. The condition and its
+acceptance cannot be edited.
+
+### Purchase confirmation
+
+The purchase block of the `welcome-sign-in` e-mail shows, after the items, one
+paragraph per personalised line with the heading "Personalisation: <line
+name>", the text and, when a condition existed, "Condition you accepted:
+<condition>"; the Polish labels are the `purchase.personalization` and
+`purchase.personalizationCondition` keys of the Polish e-mail dictionary. All values are
+escaped like the other e-mail values.
+
+### Erasure
+
+[Member erasure](member-erasure.md) replaces `text` and `originalText` with the
+deleted-member label on the member's order lines, on the checkout snapshots
+bound to those orders' checkout sessions, and in the purchase confirmation
+payloads of queued and sent e-mails to the member, like the delivery name. An
+abandoned checkout snapshot is bound to no member and keeps its text.
+
+### Wording
+
+Platform wording around the option gives instructions and data labels only. It
+never states a legal rule, such as a return or withdrawal right: such wording
+belongs in the seller's `condition`.
 
 ## Content security policy for the parcel locker map
 
@@ -662,7 +831,8 @@ hint without the map.
 Following the same decision, the checkout form documents add
 `https://geowidget.inpost.pl` to `script-src` and `style-src`:
 
-- `/checkout/<productRef>` without `status=success`;
+- `/checkout/<productRef>` and the hosted cart page `/checkout/cart/pay`
+  without `status=success`;
 - `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled`.
 
 The server middleware (`apps/server/src/app.ts`) and the static hosting headers
@@ -693,10 +863,14 @@ any `connect-src` change for them needs a separate owner decision.
 pnpm --silent run cli --tenant acme tenant settings-set \
   --shipping-rates '[{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]' \
   --inpost-geowidget-token '<public token>'
+pnpm --silent run cli --tenant acme tenant settings-set \
+  --checkout-return-origins 'https://shop.example.test,https://www.shop.example.test'
 pnpm --silent run cli --tenant acme product create --title 'Printed holder' \
   --type physical --delivery-method shipping --price-cents 4900
 pnpm --silent run cli --tenant acme product update <id> --delivery-method pickup
 pnpm --silent run cli --tenant acme checkout session --product <id> \
+  --shipping-rate locker --pickup-point WAW01M
+pnpm --silent run cli --tenant acme checkout session --line <id>:2 --line <other-id>:1 \
   --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com \
   --product <id> --shipping-rate locker --pickup-point WAW01M
@@ -718,12 +892,36 @@ pnpm --silent run cli --tenant acme order shipx discard <orderId>
 pnpm --silent run cli --tenant acme product update <id> \
   --compliance '{"manufacturerName":"Example Workshop","manufacturerAddress":"Example Street 1, 00-001 Warsaw","manufacturerEmail":"safety@example.com","modelIdentifier":"STAND-1"}' \
   --variant-group printed-stand --variant-label 'Black · ASA'
+pnpm --silent run cli --tenant acme product update <id> --personalization-file engraving.json
+pnpm --silent run cli --tenant acme product update <id> --no-personalization
+pnpm --silent run cli --tenant acme checkout session --sales-link <link-id> --product <id> \
+  --personalization '<id>:For Ann' --accept-condition
+pnpm --silent run cli --tenant acme orders personalization <orderId> <productId> --text 'For Anna'
 ```
 
 `--shipping-rates` replaces the whole list; an empty string for
-`--inpost-geowidget-token` clears the token. `--pickup-point` needs
-`--shipping-rate`. `--compliance null` removes the safety information and
-`--clear-variant` removes the variant group and label. `order` is an alias of
+`--inpost-geowidget-token` clears the token. `--checkout-return-origins` replaces
+the list of shop origins that checkout return and cancel addresses may use
+(see [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses));
+an empty string clears it. `--pickup-point` needs
+`--shipping-rate`. `checkout session --line <product-id>:<quantity>` posts a
+cart; repeat it once per product and leave out `--product` and `--sales-link`
+(see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
+For an order with a line above one unit, `orders list` shows its product lines
+as `2 × Title; Title`; other orders keep the product title. `--compliance null` removes the safety information and
+`--clear-variant` removes the variant group and label. `product create|update
+--sales-channel sales_links_only` limits a product to sales links (see
+[Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));
+`--sales-channel any` lifts the limit. `product create|update
+--personalization-file <path>` sets the [personalisation](#personalisation)
+from a JSON file (`{ "label", "description", "inputLabel", "maxLength",
+"condition" }`, validated before the request) and `--no-personalization`
+removes it; the two flags exclude each other. `checkout session` and
+`simulate-purchase` take a repeatable `--personalization <product-id>:<text>`
+(the text is everything after the first colon) and `--accept-condition`, which
+accepts the condition of every entry; `checkout session --line` refuses
+`--personalization`. `orders personalization <orderId> <productId> --text
+<text>` corrects the text of an order line. `order` is an alias of
 `orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
 id and token; `--sender null` removes the sender. Passing the token as a flag
 puts it in the shell history: prefer entering it in Studio.
@@ -759,13 +957,15 @@ example damaged goods); a later commit then records `oversold` and alerts.
 
 ### Checkout
 
-1. `validateCheckoutSelection` reads the stock of the selected products and
-   returns `sold_out` early when any tracked product has fewer available pieces
-   than requested (one per product today). This read is advisory only.
+1. `validateCheckoutSelection` (`validateCartSelection` for a cart) reads the
+   stock of the selected products and returns `sold_out` early when any tracked
+   product has fewer available pieces than requested (the line quantity of a
+   cart, one per product otherwise). This read is advisory only.
 2. After the checkout snapshot is captured and before the Stripe session is
    created, `StockRepository.reserve` reserves the quantity of every tracked
-   product line of the snapshot (a line without a quantity counts as one piece,
-   and every checkout today has one piece per product) in one transaction,
+   product line of the snapshot (a line without a quantity counts as one piece;
+   only a cart request sets a quantity, at most 10 per physical line while this
+   hold applies) in one transaction,
    updating products in product-id order so concurrent multi-product
    reservations cannot deadlock. Repeated products in one call are merged into
    one reservation of the summed quantity. The conditional update is the only

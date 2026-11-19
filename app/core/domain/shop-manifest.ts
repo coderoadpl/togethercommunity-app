@@ -23,7 +23,7 @@ const shopManifestSettingsSchema = updateTenantSettingsInputSchema.pick({
   invoiceSellerName: true, invoiceSellerAddress: true, invoiceVatMode: true,
   invoiceVatRatePercent: true, invoiceExemptionBasisKind: true, invoiceExemptionBasis: true,
   invoicingProvider: true, autoIssueInvoices: true, autoIssueInvoiceScope: true, ksefSubmissionMode: true,
-  inpostGeowidgetToken: true,
+  inpostGeowidgetToken: true, checkoutReturnOrigins: true,
 }).extend({
   checkoutAppearance: checkoutAppearanceSchema.strict().nullable().optional(),
   socialLinks: z.array(tenantSocialLinkSchema.strict()).max(SOCIAL_LINKS_MAX_COUNT).optional(),
@@ -38,6 +38,8 @@ export const shopManifestProductSchema = newProductSchema.omit({
   description: newProductSchema.shape.description.removeDefault().optional(),
   deliveryMethod: newProductSchema.shape.deliveryMethod.removeDefault().optional(),
   parcelTemplate: newProductSchema.shape.parcelTemplate.removeDefault().optional(),
+  salesChannel: newProductSchema.shape.salesChannel.removeDefault().optional(),
+  personalization: newProductSchema.shape.personalization.removeDefault().optional(),
   coverUrl: newProductSchema.shape.coverUrl.removeDefault().optional(),
   price: z.object({ amountCents: z.number().int().nonnegative(), currency: newProductSchema.shape.currency.removeDefault() }).strict(),
   stock: z.object({ onHand: z.number().int().min(0).max(MAX_STOCK_QUANTITY) }).strict().optional(),

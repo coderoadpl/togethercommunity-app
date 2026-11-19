@@ -1,12 +1,13 @@
-import type {
-  AccessItem,
-  AccessStatus,
-  CompletionStatus,
-  Course,
-  CourseLesson,
-  CourseModule,
-  CourseStructureWithAccess,
-  Product,
+import {
+  isCatalogueListed,
+  type AccessItem,
+  type AccessStatus,
+  type CompletionStatus,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
+  type CourseStructureWithAccess,
+  type Product,
 } from '#core/domain/index.js';
 
 /**
@@ -190,7 +191,7 @@ const cheapestUnlockingProduct = (
   let cheapestPaid: Product | null = null;
   let cheapestFree: Product | null = null;
   for (const product of publishedProducts) {
-    if (product.visibility !== 'listed') continue;
+    if (!isCatalogueListed(product)) continue;
     const lookup = buildAccessLookup(product.accessItems);
     if (!isLessonAccessibleByLookup(lookup, location)) continue;
     if (product.priceCents > 0) {

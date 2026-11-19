@@ -28,6 +28,7 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingForbidden;
     case 'conflict':
     case 'fulfilment_conflict':
+    case 'feed_cursor_reset':
       return t.errors.headingConflict;
     case 'slug_reserved':
       return t.errors.headingSlugReserved;

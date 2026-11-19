@@ -13,5 +13,7 @@ export const checkoutSnapshots = pgTable('checkout_snapshots', {
   shipping: jsonb('shipping').$type<CheckoutShippingSnapshot>(),
   currency: text('currency').notNull(),
   createdAt: text('created_at').notNull(),
+  clientReference: text('client_reference'),
+  returnUrl: text('return_url'),
 });
 

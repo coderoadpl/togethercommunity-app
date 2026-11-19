@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CheckoutAnalyticsConfig } from '#core/domain/index.js';
+import { HOSTED_CART_PATH, type CheckoutAnalyticsConfig } from '#core/domain/index.js';
 
 const config: CheckoutAnalyticsConfig = {
   cookieScope: 'host',
@@ -240,9 +240,17 @@ it('shares the default GA4 parent-domain cookie on a verified custom domain', as
   }));
 });
 
+it('loads on the hosted cart success return', async () => {
+  window.history.replaceState(null, '', `${HOSTED_CART_PATH}?status=success&purchase_kind=one_time&session_id=cs_live_one`);
+  const { loadGoogleTag } = await import('./analytics.js');
+  expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(true);
+  expect(scripts()).toHaveLength(1);
+});
+
 it.each([
   '/checkout/course', '/checkout/course?status=cancelled', '/offer/bundle',
   '/offer/bundle?status=cancelled', '/my/courses?status=success', '/?status=success',
+  HOSTED_CART_PATH, `${HOSTED_CART_PATH}?status=cancelled`, '/checkout/cart/other?status=success',
 ])('does not load outside a successful checkout return (%s)', async (path) => {
   window.history.replaceState(null, '', path);
   const { loadGoogleTag } = await import('./analytics.js');

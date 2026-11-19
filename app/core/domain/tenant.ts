@@ -4,6 +4,7 @@ import { metaCapiSettingsShape } from './meta-capi-settings.js';
 import { analyticsTagIdSchema, analyticsMetaPixelIdSchema, analyticsConsentCookieNameSchema, analyticsConsentCookieValueSchema } from './checkout-analytics.js';
 
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
+import { checkoutReturnOriginsSchema } from './checkout-return.js';
 
 import {
   domainDnsRecordStatusSchema,
@@ -191,6 +192,7 @@ export const tenantSettingsSchema = z.object({
   invoiceSellerAddress: z.string().nullable().optional(),
   shippingRates: shippingRatesSchema.optional(),
   inpostGeowidgetToken: inpostGeowidgetTokenSchema.nullable().optional(),
+  checkoutReturnOrigins: checkoutReturnOriginsSchema.optional(),
 }).extend(tenantSocialSchema.shape);
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
@@ -290,6 +292,7 @@ export const updateTenantSettingsInputSchema = z.object({
   invoiceSellerAddress: z.string().trim().min(1).nullable().optional(),
   shippingRates: shippingRatesSchema.optional(),
   inpostGeowidgetToken: inpostGeowidgetTokenSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
+  checkoutReturnOrigins: checkoutReturnOriginsSchema.optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

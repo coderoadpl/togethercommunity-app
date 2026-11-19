@@ -30,6 +30,18 @@ describe('createApiClient', () => {
     expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Referenced by Sample product' } });
   });
 
+  it('posts a personalisation correction to the order route and surfaces a validation refusal', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/orders/order%2F1/personalization');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ orderId: 'order/1', productId: 'book', text: 'For Alex' }));
+      return jsonResponse({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } }, 400);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    expect(await client.correctOrderPersonalization({ orderId: 'order/1', productId: 'book', text: 'For Alex' }))
+      .toEqual({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } });
+  });
+
   it('selects archived courses without changing the active list request', async () => {
     const paths: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
@@ -731,6 +743,31 @@ it.each(['test', 'live'])('preserves obsolete direct checkout mode %s for server
   await expect(client.directSalesLinkCheckout(input)).resolves.toEqual(refusal);
 });
 
+
+it('reads the order change feed with the cursor, limit and mode in the query', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {
+    urls.push(String(input));
+    return jsonResponse({ ok: true, data: { changes: [], nextCursor: '42.7' } });
+  } });
+  expect(await client.orderChanges({ after: '42.7', limit: 50, mode: 'live' })).toEqual({ ok: true, value: { changes: [], nextCursor: '42.7' } });
+  await client.orderChanges();
+  expect(urls).toEqual([
+    'https://api.example.test/api/orders/changes?after=42.7&limit=50&mode=live',
+    'https://api.example.test/api/orders/changes',
+  ]);
+});
+
+it('returns a feed reset as its own error with the fresh cursor, and refuses a reset without one', async () => {
+  const cursor = '0123456789abcdef0123456789abcdef.12.4';
+  const error = { code: 'feed_cursor_reset', message: 'Order change feed reset: resync from the order list, then start from the cursor in this answer' };
+  const answers = [{ ...error, details: { cursor } }, error, { ...error, details: { cursor: '12.4' } }];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async () => jsonResponse({ ok: false, error: answers.shift() }, 409) });
+  expect(await client.orderChanges({ after: `${'f'.repeat(32)}.1.1` })).toEqual({ ok: false, error: { ...error, details: { cursor } } });
+  for (let index = 0; index < 2; index += 1) {
+    expect(await client.orderChanges({ after: `${'f'.repeat(32)}.1.1` })).toEqual({ ok: false, error: { code: 'internal', message: 'Response from /api/orders/changes does not match the contract' } });
+  }
+});
 
 it('sends source filters for order listing and export and parses tenant source options', async () => {
   const urls: string[] = [];

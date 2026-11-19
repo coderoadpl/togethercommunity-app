@@ -1091,21 +1091,56 @@
       "idx": 155,
       "version": "7",
       "when": 1790964000071,
-      "tag": "0155_shop_management_keys",
+      "tag": "0155_checkout_client_reference",
       "breakpoints": true
     },
     {
       "idx": 156,
       "version": "7",
-      "when": 1790964000072,
-      "tag": "0156_organizations_core",
+      "when": 1790964000081,
+      "tag": "0156_checkout_return_address",
       "breakpoints": true
     },
     {
       "idx": 157,
       "version": "7",
-      "when": 1790964000073,
-      "tag": "0157_organization_settings_secrets_sources",
+      "when": 1790964000091,
+      "tag": "0157_order_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1790964000101,
+      "tag": "0158_product_sales_channel",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1790964000102,
+      "tag": "0159_shop_management_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1790964000103,
+      "tag": "0160_product_personalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1790964000111,
+      "tag": "0161_organizations_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1790964000112,
+      "tag": "0162_organization_settings_secrets_sources",
       "breakpoints": true
     }
   ]

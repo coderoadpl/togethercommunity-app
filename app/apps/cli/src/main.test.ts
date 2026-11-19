@@ -1,11 +1,11 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok, PASSWORD_MIN_LENGTH, type AppError, type Result } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -16,9 +16,14 @@ const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
   listOrders: ReturnType<typeof vi.fn>;
+  orderChanges: ReturnType<typeof vi.fn>;
   exportOrders: ReturnType<typeof vi.fn>;
   publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
+  createCheckoutSession: ReturnType<typeof vi.fn>;
+  simulatePurchase: ReturnType<typeof vi.fn>;
+  createCartCheckoutSession: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
+  getSalesLink: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
   consumerSalesSummary: ReturnType<typeof vi.fn>;
@@ -26,6 +31,7 @@ interface Hoisted {
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
   shipOrder: ReturnType<typeof vi.fn>;
+  correctOrderPersonalization: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
   shipxRefresh: ReturnType<typeof vi.fn>;
@@ -108,9 +114,14 @@ interface Hoisted {
 const h = vi.hoisted(
   (): Hoisted => ({
     listOrders: vi.fn(),
+    orderChanges: vi.fn(),
     exportOrders: vi.fn(),
     publicCheckoutSessionStatus: vi.fn(),
+    createCheckoutSession: vi.fn(),
+    simulatePurchase: vi.fn(),
+    createCartCheckoutSession: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
+    getSalesLink: vi.fn(),
     updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
     consumerSalesSummary: vi.fn(),
@@ -118,6 +129,7 @@ const h = vi.hoisted(
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
     shipOrder: vi.fn(),
+    correctOrderPersonalization: vi.fn(),
     ordersPackingList: vi.fn(),
     shipxShipment: vi.fn(),
     shipxRefresh: vi.fn(),
@@ -248,9 +260,14 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
     listOrders: h.listOrders,
+    orderChanges: h.orderChanges,
     exportOrders: h.exportOrders,
     publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
+    createCheckoutSession: h.createCheckoutSession,
+    simulatePurchase: h.simulatePurchase,
+    createCartCheckoutSession: h.createCartCheckoutSession,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
+    getSalesLink: h.getSalesLink,
     updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
     consumerSalesSummary: h.consumerSalesSummary,
@@ -258,6 +275,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
     shipOrder: h.shipOrder,
+    correctOrderPersonalization: h.correctOrderPersonalization,
     ordersPackingList: h.ordersPackingList,
     shipxShipment: h.shipxShipment,
     shipxRefresh: h.shipxRefresh,
@@ -373,7 +391,18 @@ const soleJson = (): unknown => {
 beforeEach(() => {
   h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
   h.publicCheckoutSessionStatus.mockReset().mockResolvedValue(ok({ status: 'pending' }));
+  h.createCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
+  h.simulatePurchase.mockReset().mockResolvedValue(ok({
+    memberId: 'member-1',
+    productId: 'product-1',
+    alreadyOwned: false,
+    subscriptionId: null,
+    orderId: 'order-1',
+    magicLink: null,
+  }));
+  h.createCartCheckoutSession.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/cart' }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
+  h.getSalesLink.mockReset();
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
   h.updateTenantSettings.mockReset();
@@ -382,6 +411,7 @@ beforeEach(() => {
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
+  h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
   h.shipxRefresh.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
@@ -493,6 +523,103 @@ describe('checkout session-status CLI', () => {
   });
 });
 
+describe('terms acceptance flag', () => {
+  it('starts a checkout session with termsAccepted only when --accept-terms is given', async () => {
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--email', 'buyer@example.test');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
+
+    h.createCheckoutSession.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/session' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('starts a cart checkout session with termsAccepted only when --accept-terms is given', async () => {
+    const paperback = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--email', 'buyer@example.test');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({ lines: [{ productId: paperback, quantity: 2 }], email: 'buyer@example.test' });
+
+    h.createCartCheckoutSession.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      lines: [{ productId: paperback, quantity: 2 }],
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/cart' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('simulates a purchase with termsAccepted only when --accept-terms is given', async () => {
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
+
+    h.simulatePurchase.mockClear();
+    logSpy.mockClear();
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-terms');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      termsAccepted: true,
+    });
+    expect(soleJson()).toMatchObject({ ok: true, data: { orderId: 'order-1' } });
+    expect(process.exitCode).toBe(0);
+  });
+});
+
+describe('cart checkout CLI', () => {
+  const paperback = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+  const poster = '7a2b3c4d-5e6f-4a70-8b8c-9d0e1f2a3b4c';
+
+  it('posts the cart form built from repeated --line options', async () => {
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:2`, '--line', `${poster}:1`, '--shipping-rate', 'courier', '--language', 'en');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      lines: [{ productId: paperback, quantity: 2 }, { productId: poster, quantity: 1 }],
+      language: 'en',
+      shipping: { rateId: 'courier' },
+    });
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/cart' } });
+  });
+
+  it('sends --client-reference with both request forms', async () => {
+    await run('--json', 'checkout', 'session', '--line', `${paperback}:1`, '--client-reference', 'shop-cart-8812');
+    expect(h.createCartCheckoutSession).toHaveBeenCalledExactlyOnceWith({ lines: [{ productId: paperback, quantity: 1 }], clientReference: 'shop-cart-8812' });
+    await run('--json', 'checkout', 'session', '--product', paperback, '--client-reference', 'shop-order-17');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: paperback, clientReference: 'shop-order-17' });
+  });
+
+  it('keeps the single-product request of --product unchanged', async () => {
+    await run('--json', 'checkout', 'session', '--product', paperback, '--email', 'buyer@example.com');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({ productId: paperback, email: 'buyer@example.com' });
+    expect(h.createCartCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: 'a line without a quantity', args: ['--line', paperback] },
+    { label: 'a zero quantity', args: ['--line', `${paperback}:0`] },
+    { label: 'a fractional quantity', args: ['--line', `${paperback}:1.5`] },
+    { label: 'a product id that is not a UUID', args: ['--line', 'paperback:2'] },
+    { label: 'the same product twice', args: ['--line', `${paperback}:1`, '--line', `${paperback}:2`] },
+    { label: '--line together with --product', args: ['--line', `${paperback}:1`, '--product', poster] },
+    { label: 'neither --line nor --product', args: [] },
+  ])('rejects $label before calling the API', async ({ args }) => {
+    await run('--json', 'checkout', 'session', ...args);
+    expect(h.createCartCheckoutSession).not.toHaveBeenCalled();
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+});
+
 describe('sales-link checkout CLI', () => {
   it.each([{ options: [] }, { options: ['--mode', 'live'] }])('starts live checkout with options $options', async ({ options }) => {
     await run('--json', 'sales-link', 'checkout', 'offer-one', ...options);
@@ -520,6 +647,21 @@ it('updates a sales link with a cancel return address from JSON', async () => {
   expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(input);
   expect(soleJson()).toEqual({ ok: true, data: { salesLink: { id: 'link-1' } } });
   expect(process.exitCode).toBe(0);
+});
+
+it.each([['activate', true], ['deactivate', false]] as const)('%s resends every editable field of the stored sales link', async (command, active) => {
+  const editable = {
+    id: 'link-1', slug: 'offer-one', title: 'Offer', heading: 'One offer', description: '<p>Two products</p>',
+    productIds: ['product-1', 'product-2'], listed: true, validFrom: '2026-11-01T10:00:00.000Z', validTo: '2026-12-01T10:00:00.000Z',
+    cancelReturnUrl: 'https://togethercommunity.app/offer',
+  };
+  h.getSalesLink.mockResolvedValue(ok({ salesLink: {
+    ...editable, active: !active, tenantId: 't1', revision: 4, createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-10-02T10:00:00.000Z',
+  } }));
+  await run('--json', 'sales-link', command, 'link-1');
+  const expected = { ...editable, expectedRevision: 4, active };
+  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(expected);
+  expect(Object.keys(salesLinkUpdateSchema.innerType().shape).sort()).toEqual(Object.keys(expected).sort());
 });
 
 describe('one-envelope discipline', () => {
@@ -1287,6 +1429,23 @@ it('passes visibility through product create and update', async () => {
   expect(h.updateProduct).toHaveBeenCalledWith({ id: 'product-1', visibility: 'listed' });
 });
 
+it('passes the sales channel through product create and update and names a limited product in text output', async () => {
+  const limited = { id: 'product-1', title: 'Course', salesChannel: 'sales_links_only' };
+  h.createProduct.mockResolvedValue(ok({ product: limited }));
+  h.updateProduct.mockResolvedValue(ok({ product: { ...limited, salesChannel: 'any' } }));
+  await run('product', 'create', '--title', 'Course', '--price-cents', '0', '--sales-channel', 'sales_links_only');
+  expect(h.createProduct).toHaveBeenCalledWith(expect.objectContaining({ salesChannel: 'sales_links_only' }));
+  expect(logSpy).toHaveBeenCalledWith('created: Course  [sales links only] (product-)');
+  await run('product', 'update', 'product-1', '--sales-channel', 'any');
+  expect(h.updateProduct).toHaveBeenCalledWith({ id: 'product-1', salesChannel: 'any' });
+  expect(logSpy).toHaveBeenCalledWith('updated: Course (product-)');
+});
+
+it('rejects an unknown sales channel before invoking the product client', async () => {
+  await run('--json', 'product', 'update', 'product-1', '--sales-channel', 'links');
+  expect(h.updateProduct).not.toHaveBeenCalled();
+});
+
 it('rejects invalid visibility before invoking the product client', async () => {
   await run('--json', 'product', 'update', 'product-1', '--visibility', 'private');
   expect(h.updateProduct).not.toHaveBeenCalled();
@@ -1797,7 +1956,7 @@ describe('team CLI', () => {
     await run('--json', 'team', 'remove', 'org@example.test');
     expect(h.removeTenantAdmin).toHaveBeenCalledWith({ userId: 'org-user' });
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'organization_managed' } });
-    expect(process.exitCode).toBe(31);
+    expect(process.exitCode).toBe(32);
   });
 
   it('propagates owner-only authorization failures without attempting a removal', async () => {
@@ -1979,6 +2138,51 @@ describe('tenant analytics settings', () => {
 });
 
 
+describe('orders list CLI text', () => {
+  const order = {
+    id: 'order-12345678', createdAt: '2026-11-15T10:00:00.000Z', status: 'paid', amountCents: 9400, currency: 'PLN',
+    kind: 'one_time', productTitle: 'Paperback', memberEmail: 'buyer@example.com',
+  };
+  const line = { productType: 'physical', grossCents: 4000, netCents: 3810, vatRate: 5, vatCents: 190, vatExemptionBasis: null, issuedCount: 0 };
+
+  it('names a product line above one unit "2 × Title" and leaves out the delivery line', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, lines: [
+      { ...line, productId: 'paperback', name: 'Paperback', quantity: 2 },
+      { ...line, productId: 'poster', name: 'Poster', quantity: 1 },
+      { ...line, productId: 'courier', name: 'Courier', productType: 'shipping', quantity: 1, issuedCount: null },
+    ] }], total: 1, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\t2 × Paperback; Poster\tbuyer@example.com\t'));
+  });
+
+  it('shows the client reference only of an order that has one', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, clientReference: 'shop-cart-8812' }, { ...order, id: 'order-87654321' }], total: 2, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tbuyer@example.com\tref shop-cart-8812\t(order-12)\n'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tbuyer@example.com\t(order-87)\n'));
+  });
+
+  it('keeps the product title for orders of one unit per line', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, lines: [{ ...line, productId: 'paperback', name: 'Paperback (old title)', quantity: 1 }] }], total: 1, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tPaperback\tbuyer@example.com\t'));
+  });
+});
+
+describe('orders changes CLI', () => {
+  it('reads the change feed after a cursor and prints each change and the next cursor', async () => {
+    h.orderChanges.mockResolvedValue(ok({ changes: [{ cursor: '9.4', order: {
+      id: 'order-12345678', tenantId: 'workspace', memberId: 'member', productId: 'paperback', priceId: null, kind: 'one_time',
+      status: 'paid', mode: 'live', amountCents: 9400, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null,
+      discountCents: 0, createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.com', memberName: 'Buyer',
+      productTitle: 'Paperback', couponCode: null, fulfilmentStatus: 'shipped',
+    } }], nextCursor: '9.4' }));
+    await run('orders', 'changes', '--after', '8.7', '--limit', '50', '--mode', 'live');
+    expect(h.orderChanges).toHaveBeenCalledExactlyOnceWith({ after: '8.7', limit: 50, mode: 'live' });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('9.4\torder-12345678\tpaid\tshipped\nnext cursor: 9.4');
+  });
+});
+
 describe('order attribution CLI', () => {
   it.each(['meta', 'none'])('passes --source %s and preserves attribution in JSON', async (source) => {
     const attribution = { utmSource: 'meta', utmMedium: 'paid', capturedAt: '2026-10-15T12:00:00.000Z' };
@@ -2028,6 +2232,18 @@ describe('shipping CLI', () => {
     expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ shippingRates: [{ ...rates[0], vatRatePercent: 23 }], inpostGeowidgetToken: 'public-token' });
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('shipping rates: locker Parcel locker 1499 (active)'));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('InPost parcel locker map token: (set)'));
+  });
+
+  it('sets and clears the checkout return origins from a comma-separated list', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test'] } }));
+    await run('tenant', 'settings-set', '--checkout-return-origins', ' https://shop.example.test, https://www.shop.example.test ');
+    expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test'] });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('checkout return origins: https://shop.example.test, https://www.shop.example.test'));
+    h.updateTenantSettings.mockClear();
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { checkoutReturnOrigins: [] } }));
+    await run('tenant', 'settings-set', '--checkout-return-origins', '');
+    expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ checkoutReturnOrigins: [] });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('checkout return origins: (none)'));
   });
 
   it('rejects more than five shipping rates before calling the server', async () => {
@@ -2094,6 +2310,82 @@ describe('fulfilment CLI', () => {
   });
 });
 
+describe('personalisation CLI', () => {
+  const engraving = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+  const settingFile = async (content: unknown): Promise<string> => {
+    const directory = await mkdtemp(join(tmpdir(), 'personalization-'));
+    const path = join(directory, 'personalization.json');
+    await writeFile(path, JSON.stringify(content));
+    return path;
+  };
+
+  it('sends the personalisation file with product create and update, null for --no-personalization and nothing when neither is given', async () => {
+    const path = await settingFile(engraving);
+    await run('--json', 'product', 'create', '--title', 'Printed book', '--type', 'physical', '--price-cents', '4900', '--personalization-file', path);
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      personalization: { ...engraving, description: '', maxLength: 200 },
+    }));
+    await run('--json', 'product', 'update', 'product-1', '--personalization-file', path);
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', personalization: { ...engraving, description: '', maxLength: 200 } });
+    await run('--json', 'product', 'update', 'product-1', '--no-personalization');
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', personalization: null });
+    await run('--json', 'product', 'update', 'product-1', '--title', 'Renamed');
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', title: 'Renamed' });
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('refuses an invalid personalisation file and both personalisation flags before calling the server', async () => {
+    const invalid = await settingFile({ ...engraving, surchargeCents: 500 });
+    await run('--json', 'product', 'create', '--title', 'Printed book', '--price-cents', '4900', '--personalization-file', invalid);
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+    await run('--json', 'product', 'update', 'product-1', '--personalization-file', invalid, '--no-personalization');
+    expect(h.updateProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    await rm(join(invalid, '..'), { recursive: true, force: true });
+  });
+
+  it('corrects the personalisation text of an order line through the order alias', async () => {
+    await run('order', 'personalization', 'order-number', 'product-1', '--text', 'For Ann: with love');
+    expect(h.correctOrderPersonalization).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'product-1', text: 'For Ann: with love' });
+    expect(logSpy).toHaveBeenCalledWith('corrected personalisation: order-number (product-1)');
+    h.correctOrderPersonalization.mockResolvedValue(err(appError('validation', 'This order line has no personalisation')));
+    await run('--json', 'orders', 'personalization', 'order-number', 'product-2', '--text', 'For Bo');
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends the requested personalisations with a checkout session and a simulated purchase', async () => {
+    await run('--json', 'checkout', 'session', '--sales-link', 'link-1', '--product', 'product-1',
+      '--personalization', 'product-1:For Ann: with love', '--personalization', 'product-2:For Bo', '--accept-condition');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      salesLinkId: 'link-1',
+      personalizations: [
+        { productId: 'product-1', text: 'For Ann: with love', conditionAccepted: true },
+        { productId: 'product-2', text: 'For Bo', conditionAccepted: true },
+      ],
+    });
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--personalization', 'product-1:For Ann');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      personalizations: [{ productId: 'product-1', text: 'For Ann', conditionAccepted: false }],
+    });
+  });
+
+  it('refuses a malformed personalisation, a condition acceptance without one and a personalised cart before calling the server', async () => {
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--personalization', 'product-1');
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--accept-condition');
+    await run('--json', 'checkout', 'session', '--line', 'product-1:1', '--personalization', 'product-1:For Ann');
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-condition');
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(h.createCartCheckoutSession).not.toHaveBeenCalled();
+    expect(h.simulatePurchase).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+});
+
 describe('InPost ShipX CLI', () => {
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
@@ -2106,6 +2398,15 @@ describe('InPost ShipX CLI', () => {
     h.shipxCreate.mockResolvedValue(err(appError('shipx_rejected', 'InPost rejected the shipment data')));
     await run('--json', 'orders', 'shipx', 'create', 'order-number');
     expect(process.exitCode).toBe(29);
+  });
+
+  it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {
+    await run('order', 'shipx', 'create', 'order-number', '--parcel-template', 'large');
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large' });
+    h.shipxCreate.mockClear();
+    await run('--json', 'order', 'shipx', 'create', 'order-number', '--parcel-template', 'huge');
+    expect(h.shipxCreate).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
   });
 
   it('discards an unconfirmed attempt and maps a running operation to the fulfilment conflict exit code', async () => {

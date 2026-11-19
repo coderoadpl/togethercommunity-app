@@ -9,7 +9,7 @@ import { createTestDatabase } from './test-database-name.js';
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const at = '2026-11-15T10:00:00.000Z';
 
-describe('0156 organizations core migration', () => {
+describe('0161 organizations core migration', () => {
   it('leaves every existing tenant without an organization', async () => {
     const database = await createTestDatabase('together_organizations_migration', databaseUrl);
     try {
@@ -26,7 +26,7 @@ describe('0156 organizations core migration', () => {
         INSERT INTO tenants (id, slug, name, created_at, invoicing_provider)
         VALUES ('acme', 'acme', 'Acme', ${at}, 'ifirma'), ('studio', 'studio', 'Studio', ${at}, NULL)
       `);
-      const migration = readFileSync('drizzle/0156_organizations_core.sql', 'utf8');
+      const migration = readFileSync('drizzle/0161_organizations_core.sql', 'utf8');
       await database.db.transaction(async (tx) => {
         for (const statement of migration.split('--> statement-breakpoint')) {
           await tx.execute(sql.raw(statement));
@@ -58,7 +58,7 @@ describe('0157 organization settings, secrets and sources migration', () => {
       await database.db.execute(sql`
         INSERT INTO organizations (id, slug, name, created_at, updated_at) VALUES ('org-1', 'holding', 'Holding', ${at}, ${at})
       `);
-      const migration = readFileSync('drizzle/0157_organization_settings_secrets_sources.sql', 'utf8');
+      const migration = readFileSync('drizzle/0162_organization_settings_secrets_sources.sql', 'utf8');
       await database.db.transaction(async (tx) => {
         for (const statement of migration.split('--> statement-breakpoint')) {
           await tx.execute(sql.raw(statement));

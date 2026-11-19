@@ -238,8 +238,9 @@ not depend on which matching entry takes precedence: the catch-all excludes
 entry below lists `status=success` under `missing`. All other header entries
 retain the baseline policy, except the checkout form entries below.
 
-Checkout form documents — `/checkout/<productRef>` without `status=success`,
-`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+Checkout form documents — `/checkout/<productRef>` and the hosted cart page
+`/checkout/cart/pay` without `status=success`, `/offer/<slug>?checkout=together`
+and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
 the server middleware and the static hosting headers. `connect-src` is not part
@@ -335,6 +336,11 @@ finding without blocking, and an unaccepted advisory is handled by a dependency
 bump or acceptance before the next promotion. Accepting an advisory requires both
 an `auditConfig.ignoreGhsas` entry in `app/pnpm-workspace.yaml` and its written
 justification under Accepted dependency advisories.
+`app/.pnpmfile.cjs` removes the optional `vitest` peer that `better-auth`
+declares (and any `@better-auth/*` package that declares it), so the test
+runner stays out of the production graph the audit sees;
+`config-regression/auth-library-test-peer.test.ts` fails when the lockfile
+carries that peer again.
 The audit allowlist contains these reviewed advisories:
 
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
@@ -402,7 +408,7 @@ holds an `organization:*` capability.
   which supplies staff notification recipients, and the team members of the
   team list read direct grants only, so neither includes derived staff; the
   team list shows them in a separate read-only organization section. Removing a user whose only access is derived answers
-  `organization_managed` (HTTP 409, CLI exit 31).
+  `organization_managed` (HTTP 409, CLI exit 32).
 - **Results that outlive the request.** Creating a tenant API key, adding or
   removing a team administrator and the workspace-side unlink require the
   owner role to come from a direct workspace grant; an owner whose role comes
@@ -494,7 +500,9 @@ scopes on every shop key.
   never exceeds its issuer.
 - **Fulfilment scope.** `shop:fulfilment:write` grants `order:write`, which
   includes creating carrier shipments (InPost ShipX), a paid action at the
-  carrier charged to the workspace's carrier account.
+  carrier charged to the workspace's carrier account. A key reaches it through
+  `POST /api/m2m/shop/orders/<orderId>/shipx` (see
+  [InPost ShipX credentials](#inpost-shipx-credentials)).
 - **Uniform refusal.** A missing key answers `401 Missing API key`; an unknown,
   revoked, expired, legacy or other-workspace key and an issuer who no longer
   qualifies all answer the same `401 Invalid API key`. A missing scope answers
@@ -523,7 +531,7 @@ scopes on every shop key.
   switch for one workspace: it deletes every shop key of the workspace, revoked
   or not, with its rate-limit buckets, in one transaction. The legacy keys are
   untouched.
-- **Rollback.** Migration 0155 only adds the three shop tables and leaves
+- **Rollback.** Migration 0159 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
   owner controls, not rollback steps.
@@ -548,8 +556,15 @@ scopes on every shop key.
   `^[A-Za-z0-9][A-Za-z0-9._:-]*$`; the database enforces the length and the
   pattern with its own checks. Every shop request span records `app.api_key.match` and, when the secret matched a key
   row, `app.api_key.id` and `app.api_key.issuer.id`.
-  Changes the reused use-cases record elsewhere (product versions, stock) are
-  attributed to the issuing owner's account.
+  Changes the reused use-cases record elsewhere (product versions, stock
+  events, order fulfilment and shipment events, stored secrets) are
+  attributed to the issuing owner's account; the key history row is what
+  tells a key's change apart from the owner's own. A request row names the
+  resource from the path, else the body's `id` or `productId`, and for the
+  generic secret routes the secret's name only when it is one of the
+  allow-listed names below; it never copies a credential, a credential
+  identifier such as the storage access key id or the ShipX organization id,
+  or a signed storage URL.
 - **Hash secrecy on failure.** A database driver error carries the query's
   bound parameters, and the key hash is one of them. Every shop key query that
   takes a key hash (the lookup and the insert) replaces a database error with
@@ -570,10 +585,39 @@ scopes on every shop key.
   endpoint id directly, the Meta Conversions API token, a video-hosting,
   marketing, mail or telemetry credential or any other secret name, and never
   runs a connection test (`integration:test`), whichever route calls the
-  use-case; owner sessions keep every write they have. On this change only the catalog routes (products,
-  prices and stock) exist; the order, settings and integration routes,
-  including the payment, storage and carrier configure routes, arrive in the
-  stacked change, so a key with that scope can reach no route here yet.
+  use-case; owner sessions keep every write they have. Within its workspace a
+  key with this scope reaches those use-cases only through these routes:
+  `POST /api/m2m/shop/integrations/stripe/configure`, the live Stripe slot
+  included (owner decision 2026-11-14), and
+  `POST /api/m2m/shop/integrations/stripe/probe`, which checks the stored
+  Stripe key; `POST /api/m2m/shop/integrations/storage/configure`, which
+  probes the bucket against the workspace origins before it stores anything;
+  `POST /api/m2m/shop/integrations/shipx/configure` (see
+  [InPost ShipX credentials](#inpost-shipx-credentials)); and
+  `POST /api/m2m/shop/integrations/secrets` and
+  `DELETE /api/m2m/shop/integrations/secrets/:key`, whose accepted names are
+  that same domain allow-list (`SHOP_MANAGEMENT_KEY_SECRET_KEYS`) and whose
+  use-cases name the secret to the guard. Any other secret name answers `400`
+  and changes nothing, so the keyed generic route never reaches the Stripe,
+  storage, ShipX, Meta, video, mail or telemetry secrets.
+  These routes reuse the owner session's use-cases and validation, refuse
+  unknown body fields, and `shop:integrations:read` returns masked previews
+  only. Each accepted call writes its key history row before the use-case
+  runs, so a configure or secret call whose row cannot be written answers
+  `503` and stores nothing. A stolen key with this scope can therefore
+  redirect the workspace's live payments and storage until it expires, is
+  revoked or the off switch is set.
+  `shop:settings:write` grants `tenant:settings:write`, and a key ctx holds
+  that capability only when the use-case names the shop settings update or
+  the branding asset upload with fields from the allow-list
+  `SHOP_MANAGEMENT_KEY_SETTINGS_FIELDS` in `core/domain/shop-management-key.ts`,
+  checked in `core/server/authorize.ts`; a grant naming any other field is
+  refused, and the settings update refuses a change to a field its grant does
+  not name. `POST /api/m2m/shop/settings` names exactly the fields present in
+  its body, and its strict body schema is derived from that same allow-list.
+  Every other use-case that needs `tenant:settings:write` (team,
+  domains, redirects, Meta Conversions API settings, telemetry store) refuses
+  a key ctx; owner and admin sessions are unchanged.
 
 Whoever holds a key can change that workspace's shop within its scopes and,
 with `shop:integrations:write`, its payment configuration, until the key
@@ -660,10 +704,14 @@ Member erasure removes registry rows; see [copy identifiers](storage.md#copy-ide
 
 The ShipX organization id and API token are encrypted tenant secrets
 (`shipx.organizationId`, `shipx.token`), written only through the owner-only
-`POST /api/integrations/shipx/configure` route (or the generic tenant-secret
-route) and returned only as masked previews. A shop management key may write
-them only through the ShipX configure use-case, never through the generic
-tenant-secret write, and no keyed route reaches that use-case on this change. They are not part of tenant
+session route `POST /api/integrations/shipx/configure` (or the owner-only
+generic tenant-secret route) and through the keyed
+`POST /api/m2m/shop/integrations/shipx/configure` with a
+[shop management key](#shop-management-keys) holding
+`shop:integrations:write`. A shop management key may write them only through
+the ShipX configure use-case, never through the generic tenant-secret write;
+the keyed generic secret route refuses both names. They are returned only as
+masked previews. They are not part of tenant
 settings, the public offer or the public payment configuration. The server
 decrypts them only for a ShipX call; the readiness check on the order page asks
 the secret repository whether both secrets exist without decrypting them. Each
@@ -689,6 +737,26 @@ the readiness and the stored shipment without calling ShipX, decrypting the
 credentials or writing anything, so a cross-site GET, which the origin guard
 does not inspect, cannot cause a carrier call or an event.
 
+The same four calls exist for shop management keys under
+`/api/m2m/shop/orders/<orderId>/shipx` (`POST` to create, `/refresh`, `/label`
+and `/discard`) and require `shop:fulfilment:write`, which grants only
+`order:write`. They are classified `api-key` in
+`apps/server/src/request-origin-policy.ts`, refuse any request that carries a
+cookie or an `Authorization` header, run the same use-cases with the same lease
+rules, and act as the key's issuer: each stored change records
+an `order_shipment_events` row with the issuing owner as the staff user, and
+the key history records the key id, the route and the order id of every call
+that passed the key checks, before the use-case runs, so a call the use-case
+then refuses (a lease conflict, a missing configuration, an order of another
+workspace) keeps its history row. A call refused by the key checks writes no
+history row, and when the row cannot be written the call answers `503` with
+`Retry-After` without calling ShipX or changing the order. `POST` to create
+buys the shipment at InPost, charged to the workspace's carrier account, so
+a key with `shop:fulfilment:write` can spend carrier money (owner decision
+2026-11-14).
+`GET /api/m2m/shop/orders/<orderId>/shipx` (`shop:orders:read`) is read-only
+like its session twin.
+
 Labels are proxied: `POST /api/orders/<orderId>/shipx/label` returns the PDF with
 `Content-Disposition: attachment` and `Cache-Control: private, no-store`, so no
 ShipX origin is added to any content security policy and the browser never
@@ -705,7 +773,10 @@ The Meta Conversions API access token is the tenant secret
 with AES-256-GCM under `SECRETS_MASTER_KEY` and written or removed only through
 the owner-only tenant-secret routes (`POST /api/tenant-secrets`,
 `DELETE /api/tenant-secrets/:key`). A shop management key never writes or
-removes it: the token is not on the shop management key allow-list. Reads return only the key, the update time
+removes it: the token is not on the shop management key allow-list, so the
+keyed `POST /api/m2m/shop/integrations/secrets` and
+`DELETE /api/m2m/shop/integrations/secrets/:key` refuse it and no other keyed
+route writes it. Reads return only the key, the update time
 and the literal `configured`, never a token fragment. The server decrypts it
 when the checkout status decides whether to offer the consent prompt, when a
 new consent decision is recorded and when a dispatch builds a request. It is sent only to

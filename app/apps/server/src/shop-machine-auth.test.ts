@@ -9,6 +9,10 @@ import { createDb } from '#adapters/db/client.js';
 import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
+  organizationAuditEvents,
+  organizationMembers,
+  organizations,
+  products,
   shopManagementKeyEvents,
   shopManagementKeyRateLimitBuckets,
   shopManagementKeys,
@@ -17,7 +21,16 @@ import {
   tenants,
   user,
 } from '#adapters/db/schema.js';
-import { API_PATHS, API_ROUTES, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
+import {
+  API_PATHS,
+  API_ROUTES,
+  SHOP_ASSETS_ROUTES,
+  SHOP_CATALOG_ROUTES,
+  SHOP_INTEGRATION_ROUTES,
+  SHOP_ORDER_ROUTES,
+  SHOP_SETTINGS_ROUTES,
+  shopCatalogContracts,
+} from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
   shopManagementScopeSchema,
@@ -191,11 +204,11 @@ describe('shop management route registration', () => {
     expect(() => assertShopMachineRouteCoverage([])).not.toThrow();
   });
 
-  it('registers only the catalog routes under the shop management prefix', () => {
+  it('registers only the catalog, order, settings, asset and integration routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
       .map((route) => `${route.method} ${route.path}`))
-      .toEqual(Object.values(SHOP_CATALOG_ROUTES).map((route) => `${route.method} ${route.path}`));
+      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES)].map((route) => `${route.method} ${route.path}`));
   });
 });
 
@@ -694,5 +707,99 @@ describe('shop management key secrecy in telemetry', () => {
     const recorded = JSON.stringify(attributes);
     expect(recorded).not.toContain(deps.apiKeyCrypto.hash('shop-revoked-secret'));
     expect(recorded).not.toContain('shop-revoked-se');
+  });
+});
+
+describe('shop management keys next to an organization of two workspaces', () => {
+  const ORGANIZATION_ID = 'org-shared';
+  const orgPath = (template: string) => template.replace(':organizationId', ORGANIZATION_ID);
+  const keyed = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
+    realApp.request(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        host: acmeHost,
+        'x-api-key': 'shop-all-secret',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const organizationState = async () => ({
+    organizations: await database.db.select().from(organizations),
+    members: await database.db.select().from(organizationMembers),
+    audit: await database.db.select().from(organizationAuditEvents),
+    links: (await database.db.select({ id: tenants.id, organizationId: tenants.organizationId }).from(tenants))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  });
+  const studioRows = async () => ({
+    products: (await database.db.select().from(products)).filter((product) => product.tenantId === 'studio'),
+    events: (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.tenantId === 'studio'),
+  });
+
+  beforeAll(async () => {
+    await database.db.insert(organizations).values({
+      id: ORGANIZATION_ID, slug: 'shared', name: 'Shared', maxWorkspaces: 3, createdAt: CREATED_AT, updatedAt: CREATED_AT,
+    });
+    await database.db.insert(organizationMembers).values({
+      id: 'org-member-owner', organizationId: ORGANIZATION_ID, userId: issuers.owner, role: 'owner',
+      createdAt: CREATED_AT, createdByUserId: issuers.owner,
+    });
+    await database.db.insert(tenants).values({ id: 'akademia', slug: 'akademia', name: 'Workspace', createdAt: CREATED_AT });
+    await database.db.insert(tenantAdmins).values({ id: 'grant-akademia-owner', tenantId: 'akademia', userId: issuers.owner, role: 'owner' });
+    await database.db.execute(`update tenants set organization_id = '${ORGANIZATION_ID}' where id in ('acme', 'studio')`);
+    await insertKey({ id: 'shop-studio', secret: 'shop-studio-secret', tenantId: 'studio', scopes: [...shopManagementScopeSchema.options] });
+  });
+
+  const sessionRequired = 'Authentication required';
+  const operatorRequired = 'Invalid operator secret';
+
+  it.each([
+    ['GET', API_PATHS.organizations, undefined, sessionRequired],
+    ['GET', orgPath(API_PATHS.organization), undefined, sessionRequired],
+    ['GET', orgPath(API_PATHS.organizationMembers), undefined, sessionRequired],
+    ['GET', orgPath(API_PATHS.organizationAuditEvents), undefined, sessionRequired],
+    ['GET', orgPath(API_PATHS.organizationWorkspaces), undefined, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationWorkspaceLink), { tenantId: 'akademia' }, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationWorkspaceUnlink), { tenantId: 'studio' }, sessionRequired],
+    ['POST', API_PATHS.operatorOrganizationCreate, { slug: 'minted', name: 'Minted', ownerEmail: 'shop-owner@example.test' }, operatorRequired],
+    ['POST', orgPath(API_PATHS.operatorOrganizationLimits), { maxWorkspaces: 10 }, operatorRequired],
+  ] as const)('refuses the key of an organization owner on %s %s and writes nothing', async (method, path, body, message) => {
+    const before = await organizationState();
+    const response = await keyed(path, method, body);
+    expect(response.status).toBe(401);
+    expect(await errorOf(response)).toEqual({ code: 'unauthorized', message });
+    expect(await organizationState()).toEqual(before);
+  });
+
+  it('refuses the key of one workspace on the shop routes of another workspace of the same organization', async () => {
+    const before = await studioRows();
+    for (const headers of [{ host: studioHost }, { host: 'localhost:48730', 'x-tenant': 'studio' }]) {
+      const read = await keyed(SHOP_CATALOG_ROUTES.listProducts.path, 'GET', undefined, headers);
+      expect(read.status).toBe(401);
+      expect(await errorOf(read)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
+      const write = await keyed(SHOP_CATALOG_ROUTES.createProduct.path, 'POST', { title: 'Cross workspace', type: 'physical', priceCents: 100 }, headers);
+      expect(write.status).toBe(401);
+      expect(await errorOf(write)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
+    }
+    expect(await studioRows()).toEqual(before);
+  });
+
+  it('treats a product of another workspace of the same organization as not found to the key', async () => {
+    const created = await keyed(
+      SHOP_CATALOG_ROUTES.createProduct.path, 'POST', { title: 'Studio print', type: 'physical', priceCents: 500 },
+      { host: studioHost, 'x-api-key': 'shop-studio-secret' },
+    );
+    expect(created.status).toBe(200);
+    const { product } = z.object({ ok: z.literal(true), data: shopCatalogContracts.createProduct.output }).parse(await created.json()).data;
+    const before = await studioRows();
+    const update = await keyed(SHOP_CATALOG_ROUTES.updateProduct.path, 'POST', { id: product.id, title: 'Renamed from acme' });
+    expect(update.status).toBe(404);
+    expect(await errorOf(update)).toMatchObject({ code: 'not_found' });
+    const prices = await keyed(SHOP_CATALOG_ROUTES.listProductPrices.path.replace(':productId', product.id), 'GET');
+    expect(prices.status).toBe(404);
+    const listed = z.object({ ok: z.literal(true), data: shopCatalogContracts.listProducts.output })
+      .parse(await (await keyed(SHOP_CATALOG_ROUTES.listProducts.path, 'GET')).json()).data.products;
+    expect(listed.map((entry) => entry.id)).not.toContain(product.id);
+    expect((await studioRows()).products).toEqual(before.products);
   });
 });

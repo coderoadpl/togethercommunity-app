@@ -171,6 +171,37 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/products/stock/enable` | self-authenticating | mutating | api m2m shop products stock enable |
 | `POST /api/m2m/shop/products/stock/adjust` | self-authenticating | mutating | api m2m shop products stock adjust |
 | `POST /api/m2m/shop/products/stock/threshold` | self-authenticating | mutating | api m2m shop products stock threshold |
+| `GET /api/m2m/shop/orders` | self-authenticating | read | api m2m shop orders |
+| `GET /api/m2m/shop/orders/export` | self-authenticating | read | api m2m shop orders export |
+| `GET /api/m2m/shop/orders/packing-list` | self-authenticating | read | api m2m shop orders packing-list |
+| `GET /api/m2m/shop/orders/verify/:reference` | self-authenticating | read | api m2m shop orders verify reference |
+| `GET /api/m2m/shop/orders/:orderId` | self-authenticating | read | api m2m shop orders orderId |
+| `POST /api/m2m/shop/orders/:orderId/ship` | self-authenticating | mutating | api m2m shop orders orderId ship |
+| `POST /api/m2m/shop/orders/:orderId/lines/:productId/issue` | self-authenticating | mutating | api m2m shop orders orderId lines productId issue |
+| `GET /api/m2m/shop/orders/:orderId/shipx` | self-authenticating | read | api m2m shop orders orderId shipx |
+| `POST /api/m2m/shop/orders/:orderId/shipx` | self-authenticating | mutating | api m2m shop orders orderId shipx |
+| `POST /api/m2m/shop/orders/:orderId/shipx/refresh` | self-authenticating | mutating | api m2m shop orders orderId shipx refresh |
+| `POST /api/m2m/shop/orders/:orderId/shipx/discard` | self-authenticating | mutating | api m2m shop orders orderId shipx discard |
+| `POST /api/m2m/shop/orders/:orderId/shipx/label` | self-authenticating | mutating | api m2m shop orders orderId shipx label |
+| `GET /api/m2m/shop/settings` | self-authenticating | read | api m2m shop settings |
+| `POST /api/m2m/shop/settings` | self-authenticating | mutating | api m2m shop settings |
+| `POST /api/m2m/shop/image-assets/branding/upload` | self-authenticating | mutating | api m2m shop image-assets branding upload |
+| `POST /api/m2m/shop/image-assets/branding/complete` | self-authenticating | mutating | api m2m shop image-assets branding complete |
+| `POST /api/m2m/shop/image-assets/product-cover/upload` | self-authenticating | mutating | api m2m shop image-assets product-cover upload |
+| `POST /api/m2m/shop/image-assets/product-cover/complete` | self-authenticating | mutating | api m2m shop image-assets product-cover complete |
+| `GET /api/m2m/shop/sales-links` | self-authenticating | read | api m2m shop sales-links |
+| `GET /api/m2m/shop/sales-links/:id` | self-authenticating | read | api m2m shop sales-links id |
+| `POST /api/m2m/shop/sales-links` | self-authenticating | mutating | api m2m shop sales-links |
+| `POST /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
+| `DELETE /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
+| `GET /api/m2m/shop/integrations/secrets` | self-authenticating | read | api m2m shop integrations secrets |
+| `POST /api/m2m/shop/integrations/secrets` | self-authenticating | mutating | api m2m shop integrations secrets |
+| `DELETE /api/m2m/shop/integrations/secrets/:key` | self-authenticating | mutating | api m2m shop integrations secrets key |
+| `POST /api/m2m/shop/integrations/stripe/configure` | self-authenticating | mutating | api m2m shop integrations stripe configure |
+| `POST /api/m2m/shop/integrations/stripe/probe` | self-authenticating | mutating | api m2m shop integrations stripe probe |
+| `POST /api/m2m/shop/integrations/storage/configure` | self-authenticating | mutating | api m2m shop integrations storage configure |
+| `GET /api/m2m/shop/integrations/shipx` | self-authenticating | read | api m2m shop integrations shipx |
+| `POST /api/m2m/shop/integrations/shipx/configure` | self-authenticating | mutating | api m2m shop integrations shipx configure |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -227,6 +258,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/me/meta-capi/withdraw` | authenticated | mutating | withdraw meta capi consent |
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
+| `POST /api/orders/:orderId/personalization` | authenticated | mutating | correct order personalization |
+| `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |
 | `GET /api/orders/:orderId/shipx` | authenticated | read | shipx shipment |

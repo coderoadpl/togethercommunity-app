@@ -138,6 +138,19 @@ use HTTP for the complete seller/legal/branding settings. Supplying
 URL/contact fields accept `null` or an empty string; do not assume every field
 has the same clearing behavior.
 
+`checkoutReturnOrigins` lists the origins of the shop's own site to which a
+checkout may send the buyer back (section 6, "Return and cancel addresses").
+It holds at most five entries; each is an exact `https://host` or
+`https://host:port` origin with no path, query, fragment, user name, password
+or wildcard (a single trailing `/` is accepted and removed). The host is stored
+in lower case and the default port `443` is dropped; the same origin twice, an
+`http:` entry or any other form is a `validation` error (400). IP literals are
+accepted, as for the sales-link cancel return address. Supplying the field
+replaces the whole list; `[]` removes every origin. The CLI form is
+`tenant settings-set --checkout-return-origins 'https://shop.example.test,https://www.shop.example.test'`,
+and an empty string clears the list. Studio shows it under Settings → Shipping,
+"Return to your shop".
+
 ## 4. Create a draft physical product and its cover
 
 Use a staff bearer session. All JSON examples below are relative to the workspace
@@ -270,7 +283,9 @@ opened cross-origin by the sales-link read CORS registration.
 
 For the smallest custom UI, read the public offer, render its cover and active
 prices, then navigate the browser to the workspace's `/checkout/<product-id>`.
-For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. The hosted
+For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. For a cart
+of several products use `/checkout/cart/pay?lines=<product-id>.<quantity>~<product-id>.<quantity>`
+(see the cart section below). The hosted
 form already collects legal acceptance, applicable consent choices, billing and
 shipping selections. Do not embed it in an iframe.
 
@@ -365,11 +380,145 @@ address field in this session request. Optional `email`, `billing`, `couponCode`
 and `marketingConsentDefinitionIds` must follow `checkoutSessionRequestSchema`.
 Display the returned consent wording and never preselect marketing consent.
 
+Optional `clientReference` is the storefront's own reference for the checkout,
+such as its cart or order number: 1–200 printable ASCII characters (space to
+`~`), with surrounding spaces trimmed; any other value is a `validation` error
+(400). The platform stores it with the checkout and copies it onto the paid
+order, so it appears as `clientReference` in the order list, detail and verify
+answers and the JSON export, in the `client_reference` CSV export column, and
+in the session-status answer of a paid session. It is not sent to Stripe, it
+need not be unique, and it must not carry personal data. A request without it
+behaves as before, and its order has no `clientReference`.
+
+Optional `personalizations` carries the buyer's request for a product that
+offers a personalisation (`personalization` in the offer):
+`[{ productId, text, conditionAccepted }]`, at most one entry per product. The
+text is trimmed and must fit the product's `maxLength`, and a product with a
+`condition` needs `conditionAccepted: true`; otherwise the request is a
+`validation` error (400). Show the seller's `label`, `description`,
+`inputLabel` and `condition` as plain text. A cart request refuses the field.
+The order lines then carry `personalization`. See
+[Personalisation](shop.md#personalisation).
+
 For bundles the same session route takes `productId` equal to the bundle's first
 base product and `salesLinkSlug` (or `salesLinkId`, not both), without `priceId`.
 The server derives the product selection and amounts from the stored sales link.
 It is not a free-form cart. Use the hosted bundle form when variant or consent
 selection is needed rather than guessing a payload.
+
+### Cart: several products and quantities
+
+The same session route accepts a cart: several products, each with a quantity,
+paid in one payment. A body that has a `lines` field is a cart request; any other
+body is the single-product or sales-link request above, parsed exactly as before.
+With the `readData` helper and `workspaceOrigin` of the example above, a custom
+form sends:
+
+```js
+const catalog = await readData(await fetch(`${workspaceOrigin}/api/public/offer`, {
+  credentials: 'omit',
+}));
+const paperback = catalog.products.find((item) => item.slug === 'paperback');
+const bookmark = catalog.products.find((item) => item.slug === 'bookmark');
+if (!paperback || !bookmark) throw new Error('Product is unavailable');
+const cartSession = await readData(await fetch(`${workspaceOrigin}/api/public/checkout/session`, {
+  method: 'POST',
+  credentials: 'omit',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    lines: [
+      { productId: paperback.id, quantity: 2 },
+      { productId: bookmark.id, quantity: 1 },
+    ],
+    termsAccepted: true,
+    language: 'en',
+    shipping: { rateId: 'courier' },
+  }),
+}));
+window.location.assign(cartSession.url);
+```
+
+Each line has `productId`, `quantity` and an optional `priceId` (an active
+one-time price of that product; without it the product needs exactly one).
+`email`, `language`, `termsAccepted`, `marketingConsentDefinitionIds`,
+`couponCode`, `billing`, `shipping`, `attribution` and `clientReference` work
+as in the single-product request. A cart request must not contain `productId`, `priceId`,
+`salesLinkId`, `salesLinkSlug`, `variantSelections` or `personalizations`, and the cart schema is
+strict: an unknown field in the body or in a line, such as a price or an amount,
+is rejected, not ignored. The client sends product IDs and quantities only; the
+server sets every price from the stored prices. Stripe shows one line item per
+product with its unit price and quantity, and the buyer cannot change the
+quantity there.
+
+To check a coupon for a cart, send `{ "lines": [...], "couponCode": "SPRING" }`
+(and the optional `email`) to `POST /api/public/checkout/coupon`. The discount
+applies to the subtotal of the product lines without the delivery fee. A coupon
+limited to some products is valid only when every product of the cart is in its
+scope; otherwise the answer is the usual unavailable-coupon `validation` error.
+
+The cart answers with the same error envelope as the other routes:
+
+| Situation | `error.code` (HTTP) |
+| --- | --- |
+| a body or line that breaks the schema or the limits below, a duplicate product, a forbidden or unknown field | `validation` (400) |
+| a line above the quantity allowed for its product (`"<title>" can be ordered in a quantity of at most <n>`) | `validation` (400) |
+| a membership product, a product without exactly one active one-time price, a recurring `priceId`, products in different currencies, a product without a VAT rate | `validation` (400) |
+| an unknown or unpublished product, a product sold only through sales links, an unknown or inactive `priceId` | `not_found` (404) |
+| a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
+| a shipped product without `shipping` | `shipping_required` (400) |
+
+A storefront without its own form can send the buyer to the hosted cart page
+instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
+`<product-id>.<quantity>` pair per product, separated by `~`, within the same
+limits. The page reads product IDs in lower case, as the platform issues them,
+so an upper-case ID finds its product and two IDs that differ only in case are
+a duplicate. The page lets the buyer change the quantities within the limits or
+remove a line, and collects delivery, billing, consents and a coupon as the
+single-product page does. A malformed or empty `lines` parameter shows an error
+and sends no request. The page picks each line's price by the session route's
+rule, so a product with one one-time and one recurring price is sold at its
+one-time price, while a membership or a product without exactly one active
+one-time price has to be removed before paying. A cart whose products are
+priced in different currencies shows the session route's refusal, no total and
+no coupon field, and cannot be paid until the products in the other currency
+are removed. The cart page has two path segments below `/checkout/`, so
+`/checkout/<product-id>` and `/checkout/<slug>` keep opening the
+single-product page for every product, including one whose slug is `cart`.
+
+The CLI posts the same cart with `checkout session --line '<product-id>:2'
+--line '<product-id>:1'`; repeat `--line` once per product and leave out
+`--product`. Both forms take `--client-reference '<reference>'`.
+
+### Return and cancel addresses
+
+Both request forms, the single-product or sales-link request and the cart, take
+two optional addresses on the shop's own site:
+
+- `cancelUrl`: where Stripe sends the buyer who cancels the payment. Without it
+  the cancel address stays the workspace page described in section 7.
+- `returnUrl`: stored with the checkout for the "Back to shop" button on the
+  workspace confirmation page (section 7). Payment success still returns to the
+  workspace confirmation page; the success address sent to Stripe does not
+  change.
+
+Each address is accepted only when all of these hold; otherwise the answer is a
+`validation` error (400) and nothing is stored or sent to Stripe:
+
+- it is an absolute `https:` URL of at most 2000 characters;
+- it has no user name or password part;
+- its origin (scheme, host and port, as a URL parser normalizes them) is exactly
+  one of the workspace's `checkoutReturnOrigins` (section 3). The same host on
+  another port, a subdomain or an `http:` address is a different origin. A
+  workspace without origins refuses every address.
+
+A fragment (`#...`) is removed before the address is used or stored. The error
+message names the field (`returnUrl` or `cancelUrl`) but never repeats the
+refused address. A request without either field behaves exactly as before.
+
+| Situation | `error.code` (HTTP) |
+| --- | --- |
+| not an absolute `https:` URL (`http:`, `javascript:`, `data:`, a relative path), longer than 2000 characters, or with a user name or password | `validation` (400), `details.fieldErrors.returnUrl` or `details.fieldErrors.cancelUrl` |
+| an origin that is not in the workspace's `checkoutReturnOrigins` | `validation` (400) |
 
 ### Errors, caching and retry behavior
 
@@ -396,12 +545,15 @@ do not assume a browser can discover it from `response.headers`.
 
 ## 7. Preserve the hosted payment return
 
-Standard checkout returns to the workspace `/checkout/<product-id>`; sales-link
-checkout returns to `/offer/<slug>`. Success uses `status=success` and, for paid
+Standard checkout returns to the workspace `/checkout/<product-id>`; a cart
+returns to the hosted cart page `/checkout/cart/pay`; sales-link checkout
+returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
-`checkout=together` for the standard sales-link flow). Preserve the returned URL
-and its other query parameters. Do not add imaginary `successUrl` or `returnUrl`
-fields to the standard session request.
+`checkout=together` for the standard sales-link flow, and with the cart's
+`lines` for a cart, so the buyer can try the same cart again). Preserve the returned URL
+and its other query parameters. A validated `cancelUrl` (section 6, "Return and
+cancel addresses") replaces only the cancel address. There is no `successUrl`
+field: success always returns to the workspace confirmation page.
 
 The hosted success document remains the confirmation page and the place for the
 platform's configured, consent-controlled purchase analytics. The separate
@@ -411,9 +563,69 @@ it does not provide an external success return for shipped books. This guide
 does not change which documents load vendor scripts.
 
 A browser success URL is not proof of payment. The public session-status route
-returns `data.status` (`pending` or `paid`) and may include optional analytics
-fields; use it for buyer display only. Fulfil from the authenticated paid-order
+returns `data.status` (`pending` or `paid`), for a paid session the
+`clientReference` sent with it, and may include optional analytics fields; use
+it for buyer display only. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
+
+### Back to shop
+
+When the checkout carried a `returnUrl`, the session-status answer of that paid
+session also holds `returnUrl` and `checkoutRef` (the checkout snapshot id). The
+address is returned only for its own session and workspace, and only while its
+origin is still one of the workspace's `checkoutReturnOrigins`: an origin
+removed after the checkout hides the address. A pending session never returns
+it.
+
+The workspace confirmation page then shows a "Back to shop" button. There is no
+automatic redirect: the buyer leaves by clicking it, as a full document
+navigation. The button links to the stored `returnUrl` with these query
+parameters appended after the address's own query:
+
+| Parameter | Value |
+| --- | --- |
+| `checkout_ref` | the checkout snapshot id, the same as `checkoutRef` |
+| `status` | `paid` |
+| `client_reference` | the `clientReference` of the checkout, only when one was sent |
+
+Parameters of the stored address with any of these three names are removed
+first, so the platform's values are the only ones in the link. The address's
+other parameters keep their order, but the whole query is written again in form
+encoding: for example `%20` becomes `+`, and characters such as `~`, `'`, `/`
+or `:` in a parameter become percent escapes. A parameter without `=` gains an
+empty value (`a` becomes `a=`).
+
+These parameters are a hint for display only: anyone can type them into the
+address bar. The shop's backend confirms the payment by reading its paid orders
+with a management key (section 8) and matching the order's `clientReference`,
+and fulfils only from that answer. The order answers do not carry
+`checkout_ref`, so send a `clientReference` when the shop needs to match the
+return to its own cart.
+
+### Free checkout
+
+When nothing is to be paid (a free one-time price, or a coupon that removes the
+whole price, in an order without delivery), there is no payment step and no
+return trip. The request must carry `email`. The platform records the order
+before it answers, so the answer to the session request itself says the
+checkout is complete:
+
+- `data.free` is `true` (a checkout that goes to payment answers `false`);
+- `data.url` is the workspace confirmation page (`/checkout/<product-id>`,
+  `/checkout/cart/pay` or `/offer/<slug>`) with `status=success`;
+- with a coupon, `data.coupon` holds the price breakdown, `finalCents` being 0.
+
+`checkoutSessionOutputSchema` declares `free` and `coupon` as optional fields,
+so a typed client reads `session.data.free` after the parse.
+
+The calling shop keeps control of the page, so it should not navigate to
+`data.url`. It shows its own confirmation instead: the order is complete,
+nothing was charged, and the buyer receives the access or download e-mail
+(section 9). The order is already in the paid-order ledger with amount 0 and
+the `clientReference` of the request, so the shop's backend confirms it the same
+way as a paid order (section 8). A `returnUrl` sent with a free checkout is
+stored but never offered: the workspace confirmation page of a free checkout has
+no "Back to shop" button.
 
 ## 8. Poll live orders and record fulfilment
 
@@ -431,14 +643,96 @@ The corresponding staff-session read is
 live/test list; `mode=test` selects test rows; an unknown or empty mode is a
 validation error. Workspace authorization still applies independently of mode.
 
-Poll all relevant pages, overlap successive scans and de-duplicate by order ID.
-The list is newest-first offset pagination, not a cursor or an updated-since
-feed: new orders can shift page boundaries, and older orders can change state.
-Revisit outstanding orders and reconcile periodically rather than remembering
-only the latest creation time. Use `GET /api/orders/<order-id>` for protected
-detail (`data.order` and nullable `data.invoice`). Protect buyer addresses and
-emails as personal data. This integration uses polling; it does not rely on an
-outbound order-push contract.
+The list is newest-first offset pagination: new orders can shift page
+boundaries, and older orders can change state. To follow every new order and
+every later change, read the change feed below instead of rescanning the list.
+Use `GET /api/orders/<order-id>` for protected detail (`data.order` and nullable
+`data.invoice`). Protect buyer addresses and emails as personal data. This
+integration uses polling; it does not rely on an outbound order-push contract.
+
+### Follow order changes
+
+`GET /api/orders/changes?after=<cursor>&limit=100&mode=live` returns the orders
+of the workspace that were created or changed after the cursor, oldest change
+first. It needs the same staff session and `order:read` permission as the order
+list:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "changes": [{ "cursor": "<cursor>", "order": { "id": "<order-id>", "status": "paid", "fulfilmentStatus": "shipped" } }],
+    "nextCursor": "<cursor>"
+  }
+}
+```
+
+Each `order` has the shape of an entry in `data.orders` of the order list, in
+its state at the time of the read, not at the time of the change. An order
+changed several times within one page appears once, at its latest cursor.
+Payment, refunds, collection, shipping and issuing or changing the invoice all
+produce a change. The member name and e-mail address, the product title and the
+sales link title (`memberName`, `memberEmail`, `productTitle`,
+`salesLinkTitle`) are read at fetch time, and editing them produces no entry.
+`limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`
+selects one mode, and an omitted mode returns both. A malformed cursor or limit
+is a validation error (HTTP 400).
+
+A shop backend follows the feed like this:
+
+1. Start without `after` to read from the oldest change. Orders last written
+   before the change log was introduced appear only after their next change,
+   so read those once from the order list.
+2. Process every entry of `changes` (for example, update the order in the shop's
+   database by `order.id`).
+3. Store `nextCursor` only after the processing is saved, then request the next
+   page with `after=<nextCursor>`.
+4. When `changes` is empty, `nextCursor` stays the cursor that was sent (or is
+   `null` before the first change); wait a minute and ask again.
+
+The feed delivers each change at least once: a backend that stops between
+processing and storing the cursor receives the same entries again, so the
+processing must be idempotent by `order.id`. The cursor is opaque: store and
+send it unchanged, and do not compare, sort or build cursors. A change becomes
+visible only after every earlier database transaction has finished, so it can
+appear a little later than the write that caused it, but it never lands behind
+a cursor that was already returned.
+
+After a move or restore of its database the platform rotates the feed epoch,
+and a cursor issued before that is answered with HTTP 409:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "feed_cursor_reset",
+    "message": "Order change feed reset: resync from the order list, then start from the cursor in this answer",
+    "details": { "cursor": "<cursor>" }
+  }
+}
+```
+
+The client resyncs once: read the order list, update the shop's database from
+it, then store `error.details.cursor` and continue the feed from it. Changes
+made while the order list was read appear again in the feed, which the
+idempotent processing absorbs.
+
+CLI: `orders changes --mode live --after '<cursor>'` prints one line per change
+(cursor, order ID, status, fulfilment status, client reference) and the next
+cursor; `--json` prints the envelope above. `orders changes --mode live --after
+'<cursor>' --follow` keeps polling every `--interval` seconds (default 10)
+while nothing changes, prints each change once and stops cleanly on Ctrl+C; with
+`--json` it prints one single-line envelope per page that has changes. A poll
+that fails with a network error, or that the server answers with an error of
+HTTP 5xx or rate limiting (HTTP 429), is repeated from the same cursor after a pause that starts at
+`--interval` and doubles after each further failure up to 60 seconds (or
+`--interval` when that is longer), with one line per failure on stderr; the
+first successful poll resets the pause. Any other answer, including one that is
+not JSON or does not match the contract, stops the command with its message and
+the taxonomy exit code, for example `unauthorized` (3), `forbidden` (4),
+`validation` (2) and `internal` (10). On `feed_cursor_reset` the command prints
+the cursor to continue from after the resync and exits with code 30 instead of
+polling again.
 
 For shipping, select live, paid orders whose `fulfilmentStatus` is `to_pack`.
 Packing-list/export tools are also available, but they are not proof of carrier
@@ -499,19 +793,39 @@ or certify a live provider/KSeF submission.
 
 ## Limits
 
-- **Quantity one.** This checkout contract does not accept a buyer-selected
-  quantity, price override or arbitrary line list.
-- **Fixed bundles, not a free cart.** Use stored sales links for predefined
-  combinations. Do not fabricate a general cart request.
+- **Cart size.** A cart has 1–20 lines, one line per product, and at most 200
+  units in total.
+- **Quantity per line.** A physical product allows a whole quantity of 1–99 per
+  line, but at most 10 while checkout holds stock for an unpaid session (the
+  current behavior). Download, course and other non-physical products allow
+  quantity 1 only; membership products cannot be in a cart. The single-product
+  and sales-link requests buy one unit of each product.
+- **One delivery fee per order.** The fee of the chosen delivery option is
+  charged once, whatever the number of products and units.
+- **Coupon scope.** A coupon limited to some products applies only when every
+  product of the cart is in its scope.
+- **Server-side prices.** The server sets every price; a request cannot override
+  a price or an amount.
+- **Fixed bundles stay sales links.** A sales link keeps its stored products and
+  one unit of each; use a cart request for a buyer-chosen selection.
+- **Products sold only through sales links.** A product with the sales channel
+  `sales_links_only` answers every standalone request exactly as an unknown
+  product: `?productRef=` returns an empty `products` list, and the session,
+  cart and coupon requests without a sales link return `not_found` (404). It is
+  never in the listed catalogue. Sell it through its sales link (`salesLinkSlug`
+  or `salesLinkId`, `/offer/<slug>`); see
+  [Sales links](sales-links.md#products-sold-only-through-sales-links).
 - **One cover.** The product exposes `coverUrl`, not a product gallery.
 - **Delivery in Poland.** Shipping is limited to `PL`, with at most five rates.
   Pickup instructions remain seller/storefront content.
 - **Hosted confirmation.** Payment success returns to the workspace confirmation
-  document, not an arbitrary storefront URL.
+  document, not an arbitrary storefront URL. Only the cancel address may point at
+  the shop, and only on an origin in `checkoutReturnOrigins` (at most five).
 - **Buyer account.** Physical checkout creates or reuses an account/member; it is
   not a guest-only flow.
 - **Polling instead of push.** Plan this integration around protected order
-  reads and reconciliation, not a promised general outbound order webhook.
+  reads and the order change feed, not a promised general outbound order
+  webhook.
 - **Shared seller invoice numbering.** KSeF allocation is workspace/year scoped,
   while the printed number is `FV/<year>/<six-digit-sequence>` without a workspace
   prefix. Several workspaces using one legal seller can therefore allocate the
@@ -524,13 +838,16 @@ or certify a live provider/KSeF submission.
 Request/response shapes and paths are defined in
 [`core/contract/routes.ts`](../core/contract/routes.ts),
 [`sales-links.ts`](../core/contract/sales-links.ts),
-[`order-fulfilment.ts`](../core/contract/order-fulfilment.ts) and
+[`order-fulfilment.ts`](../core/contract/order-fulfilment.ts),
+[`order-changes.ts`](../core/contract/order-changes.ts) and
 [`order-verification.ts`](../core/contract/order-verification.ts).
 The executable client boundary is [`core/client/http.ts`](../core/client/http.ts).
 The corresponding session handlers are in
-[`internal-app.ts`](../apps/server/src/internal-app.ts), public handlers and CORS
-in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI flags in
-[`main.ts`](../apps/cli/src/main.ts). Follow those schemas instead of guessing
+[`internal-app.ts`](../apps/server/src/internal-app.ts) and
+[`order-change-routes.ts`](../apps/server/src/order-change-routes.ts), public
+handlers and CORS in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI
+flags in [`main.ts`](../apps/cli/src/main.ts) and
+[`order-change-commands.ts`](../apps/cli/src/order-change-commands.ts). Follow those schemas instead of guessing
 uniform body IDs or undocumented checkout fields.
 
 ## Several workspaces of one company

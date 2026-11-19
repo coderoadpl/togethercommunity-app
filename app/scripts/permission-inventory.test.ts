@@ -14,8 +14,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(489);
-    expect(inventory.useCases).toHaveLength(378);
+    expect(inventory.routes).toHaveLength(522);
+    expect(inventory.useCases).toHaveLength(385);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -24,11 +24,13 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(13);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(44);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
+      .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(13);
+    expect(shopRoutes).toHaveLength(44);
     for (const row of shopRoutes) {
       expect(row, row.subject).toMatchObject({ before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
       expect([...row.before, ...row.after], row.subject).not.toContain('owner');
@@ -38,6 +40,12 @@ describe('permission inventory', () => {
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
     ]) {
       expect(row).toMatchObject({ capability: 'invoice:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/changes'),
+      inventory.useCases.find((entry) => entry.subject === 'order-changes.ts#listOrderChangeFeed'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'order:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/integrations/stripe/probe'),

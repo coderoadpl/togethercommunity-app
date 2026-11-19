@@ -16,10 +16,10 @@ import {
   type OrderShipping,
 } from '#core/domain/index.js';
 
-import type { OrderFulfilmentRepository } from '../order-fulfilment-ports.js';
+import type { OrderFulfilmentRepository, OrderPersonalizationRepository } from '../order-fulfilment-ports.js';
 import type { OrderRepository } from '../ports.js';
 import { createInMemoryTenantDomainRepository } from '../testing/tenant-domain-fakes.js';
-import { exportPackingList, shipOrder, type ShipOrderDeps } from './order-fulfilment.js';
+import { correctOrderPersonalization, exportPackingList, shipOrder, type ShipOrderDeps } from './order-fulfilment.js';
 
 const identity: Identity = {
   userId: 'staff', email: 'staff@example.org', name: 'Staff', emailVerified: true,
@@ -217,9 +217,9 @@ describe('packing list', () => {
     expect(result).toMatchObject({ ok: true, value: { filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8' } });
     if (!result.ok) return;
     expect(result.value.content.split('\n')).toEqual([
-      'order_number,paid_at,buyer_name,email,phone,delivery,pickup_point_code,pickup_point_address,shipping_name,address_line1,address_line2,postal_code,city,country,items,notes,quantity',
-      '"order-1","2026-11-04 10:01","Jane Buyer","buyer@example.org","\'+48500000000","Parcel locker","WAW01M","Main Street 1, Warsaw","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1","","1"',
-      '"order-2","2026-11-05 00:30","","second@example.org","","Courier","","","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1","","1"',
+      'order_number,paid_at,buyer_name,email,phone,delivery,pickup_point_code,pickup_point_address,shipping_name,address_line1,address_line2,postal_code,city,country,items,notes,quantity,personalization',
+      '"order-1","2026-11-04 10:01","Jane Buyer","buyer@example.org","\'+48500000000","Parcel locker","WAW01M","Main Street 1, Warsaw","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1","","1",""',
+      '"order-2","2026-11-05 00:30","","second@example.org","","Courier","","","Jane Buyer","Garden Street 5","","00-950","Warsaw","PL","Printed stand × 1","","1",""',
     ]);
   });
 
@@ -244,16 +244,37 @@ describe('packing list', () => {
     const result = await exportPackingList(ctx(['order:export']), { format: 'csv' }, h.deps);
     if (!result.ok) throw new Error('packing list failed');
     const [header, row] = result.value.content.split('\n');
-    expect(header?.split(',').slice(-3)).toEqual(['items', 'notes', 'quantity']);
-    expect(row).toMatch(/,"Stand × 2; Cup × 1","","3"$/u);
+    expect(header?.split(',').slice(-4)).toEqual(['items', 'notes', 'quantity', 'personalization']);
+    expect(row).toMatch(/,"Stand × 2; Cup × 1","","3",""$/u);
   });
 
   it('shows 2 in the quantity column for one line of two units', async () => {
     const h = listing([orderWith({ lines: [{ ...line('a', 'Stand', 'physical', 4000), quantity: 2 }] })]);
     const result = await exportPackingList(ctx(['order:export']), { format: 'csv' }, h.deps);
     if (!result.ok) throw new Error('packing list failed');
-    expect(result.value.content.split('\n')[1]).toMatch(/,"Stand × 2","","2"$/u);
+    expect(result.value.content.split('\n')[1]).toMatch(/,"Stand × 2","","2",""$/u);
   });
+
+  it('lists the personalisation of every personalised line after the quantity, through the formula guard', async () => {
+    const personalization = (text: string) => ({
+      text, label: 'Add an engraving', description: '', inputLabel: 'Engraving text', condition: null, maxLength: 200,
+      requestedAt: '2026-11-04T09:00:00.000Z', conditionAcceptedAt: null,
+    });
+    const h = listing([orderWith({
+      lines: [
+        { ...line('a', 'Stand', 'physical', 4000), personalization: personalization('For Alex') },
+        line('b', 'Cup', 'physical', 100),
+        { ...line('c', 'Mug', 'physical', 100), personalization: personalization('Sam "the best"') },
+        line('shipping:locker', 'Parcel locker', 'shipping', 1499),
+      ],
+    }), orderWith({ id: 'order-2', lines: [{ ...line('a', '=Stand', 'physical', 4000), personalization: personalization('x') }] })]);
+    const result = await exportPackingList(ctx(['order:export']), { format: 'csv' }, h.deps);
+    if (!result.ok) throw new Error('packing list failed');
+    const [, first, second] = result.value.content.split('\n');
+    expect(first).toMatch(/,"3","Stand: For Alex; Mug: Sam ""the best"""$/u);
+    expect(second).toMatch(/,"1","'=Stand: x"$/u);
+  });
+
 
   it('pages through every order to pack', async () => {
     const list = vi.fn<OrderRepository['list']>(async (_tenantId, query) => ({
@@ -280,5 +301,43 @@ describe('packing list', () => {
     expect(await exportPackingList(ctx(['order:read', 'order:write']), { format: 'csv' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await exportPackingList(ctx(['order:export']), { format: 'json' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.list).not.toHaveBeenCalled();
+  });
+});
+
+describe('correct order personalisation', () => {
+  const harnessFor = () => {
+    const correctPersonalization = vi.fn<OrderPersonalizationRepository['correctPersonalization']>(async () => ok(baseOrder));
+    return { correctPersonalization, deps: { personalizations: { correctPersonalization }, clock: { nowIso: () => '2026-11-05T10:00:00.000Z' } } };
+  };
+
+  it('passes the trimmed text with the staff identity and the server clock to the locked write', async () => {
+    const h = harnessFor();
+    expect(await correctOrderPersonalization(ctx(['order:write']), { orderId: 'order-1', productId: 'stand', text: '  For Alex  ' }, h.deps))
+      .toEqual(ok({ order: baseOrder }));
+    expect(h.correctPersonalization).toHaveBeenCalledWith('workspace', {
+      orderId: 'order-1', productId: 'stand', text: 'For Alex', editedAt: '2026-11-05T10:00:00.000Z', editedBy: 'staff',
+    });
+  });
+
+  it('refuses an empty, overlong or extended body and staff without order:write before any write', async () => {
+    const h = harnessFor();
+    for (const input of [
+      { orderId: 'order-1', productId: 'stand', text: '   ' },
+      { orderId: 'order-1', productId: 'stand', text: 'x'.repeat(501) },
+      { orderId: 'order-1', productId: 'stand', text: 'ok', condition: 'changed' },
+      { orderId: 'order-1', productId: 'stand', text: 'ok', conditionAcceptedAt: null },
+    ]) {
+      expect(await correctOrderPersonalization(ctx(['order:write']), input, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect(await correctOrderPersonalization(ctx(['order:read', 'order:export']), { orderId: 'order-1', productId: 'stand', text: 'ok' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(h.correctPersonalization).not.toHaveBeenCalled();
+  });
+
+  it('returns the storage refusal for an unknown order', async () => {
+    const h = harnessFor();
+    h.correctPersonalization.mockResolvedValueOnce(err(appError('not_found', 'Order was not found')));
+    expect(await correctOrderPersonalization(ctx(['order:write']), { orderId: 'missing', productId: 'stand', text: 'ok' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });

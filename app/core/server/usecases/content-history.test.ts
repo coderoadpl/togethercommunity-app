@@ -164,6 +164,7 @@ const productRow: Product = {
   priceCents: 12_000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: false,
   accessItems: [],
@@ -255,10 +256,12 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       bumpContentVersion: async () => undefined,
       update: async (tenantId, item, version) => {
         const index = products.findIndex((row) => row.tenantId === tenantId && row.id === item.id);
-        if (index < 0) return null;
+        const current = products[index];
+        if (current === undefined) return null;
         writtenVersions.push(version);
-        products[index] = item;
-        return item;
+        const saved = { ...current, ...item };
+        products[index] = saved;
+        return saved;
       },
     },
     userDisplays: { findDisplayNames: async () => new Map() },
@@ -552,6 +555,7 @@ describe('restoring a content version', () => {
           priceCents: 9_900,
           currency: 'PLN',
           visibility: 'listed',
+          salesChannel: 'any',
           published: false,
           accessItems: [],
           checkoutConsentDefinitionIds: [],
@@ -569,6 +573,74 @@ describe('restoring a content version', () => {
 
     expect(result.ok).toBe(true);
     expect(harness.products[0]).toMatchObject({ title: 'Older title', description: 'Older copy' });
+  });
+
+  const productSnapshotPayload = {
+    id: 'p1',
+    tenantId: 't-acme',
+    type: 'course',
+    slug: 'product-one',
+    title: 'Older title',
+    description: 'Older copy',
+    coverUrl: null,
+    priceCents: 9_900,
+    currency: 'PLN',
+    visibility: 'listed',
+    deliveryMethod: 'pickup',
+    published: false,
+    accessItems: [],
+    checkoutConsentDefinitionIds: [],
+    legacyId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  const restoreProductVersion = async (
+    currentSalesChannel: Product['salesChannel'],
+    snapshot: { schemaVersion: number; payload: Record<string, unknown> },
+  ): Promise<Product | undefined> => {
+    const harness = restoreHarness([
+      record({ tenantId: 't-acme', id: 'v9', entityKind: 'product', entityId: 'p1', ...snapshot }),
+    ]);
+    harness.products[0] = { ...productRow, salesChannel: currentSalesChannel };
+
+    const result = await restoreContentVersion(
+      { identity: identity('t-acme', 'owner') },
+      { versionId: 'v9' },
+      harness.deps,
+    );
+
+    expect(result.ok).toBe(true);
+    return harness.products[0];
+  };
+
+  it.each([
+    ['sales_links_only', 'v9 snapshot without a sales channel', { schemaVersion: 9, payload: productSnapshotPayload }],
+    [
+      'sales_links_only',
+      'v10 snapshot carrying any',
+      { schemaVersion: 10, payload: { ...productSnapshotPayload, salesChannel: 'any' } },
+    ],
+    [
+      'any',
+      'v10 snapshot carrying sales_links_only',
+      { schemaVersion: 10, payload: { ...productSnapshotPayload, salesChannel: 'sales_links_only' } },
+    ],
+  ] as const)('keeps the current %s sales channel when restoring a %s', async (current, _label, snapshot) => {
+    const restored = await restoreProductVersion(current, snapshot);
+
+    expect(restored).toMatchObject({ title: 'Older title', salesChannel: current });
+  });
+
+  it.each([
+    ['keeps a current setting when the snapshot has none', { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null }, productSnapshotPayload],
+    ['does not resurrect a setting carried by an old snapshot', null, { ...productSnapshotPayload, personalization: { label: 'Old engraving', description: '', inputLabel: 'Old text', maxLength: 50, condition: null } }],
+  ] as const)('%s on restore', async (_label, current, payload) => {
+    const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9', entityKind: 'product', entityId: 'p1', schemaVersion: 10, payload })]);
+    harness.products[0] = { ...productRow, personalization: current };
+    const result = await restoreContentVersion({ identity: identity('t-acme', 'owner') }, { versionId: 'v9' }, harness.deps);
+    expect(result.ok).toBe(true);
+    expect(harness.products[0]).toMatchObject({ title: 'Older title', personalization: current });
+    expect(harness.writtenVersions.at(-1)?.payload).not.toHaveProperty('personalization');
   });
 
   it('refuses a restore without the write capability', async () => {

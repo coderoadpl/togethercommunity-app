@@ -136,3 +136,29 @@ it('keeps the no-email guidance throughout a staff test purchase, including time
   expect(screen.getByText(en.checkout.testPurchaseBody)).toBeVisible();
   expect(screen.queryByText(en.checkout.successBody)).toBeNull();
 });
+
+it('offers a full-document way back to the shop with the encoded result once the session is paid', async () => {
+  let paid = false;
+  const shopReturn = { returnUrl: 'https://shop.example.test/thanks?lang=pl', checkoutRef: 'checkout-1', clientReference: 'cart 88&12' };
+  server.use(http.get('/api/public/checkout/session-status', () =>
+    HttpResponse.json({ ok: true, data: paid ? { status: 'paid', ...shopReturn } : { status: 'pending' } })));
+  await renderReturn('&session_id=cs_live_example');
+  expect(screen.queryByRole('link', { name: en.checkout.backToShop })).toBeNull();
+
+  paid = true;
+  await act(() => vi.advanceTimersByTimeAsync(3001));
+  const back = screen.getByRole('link', { name: en.checkout.backToShop });
+  expect(back).toHaveAttribute('href', 'https://shop.example.test/thanks?lang=pl&checkout_ref=checkout-1&status=paid&client_reference=cart+88%2612');
+  expect(back).not.toHaveAttribute('target');
+  expect(back).toHaveClass('MuiButton-contained');
+  expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveAttribute('href', '/login');
+});
+
+it('shows no way back to the shop for a paid session without a return address', async () => {
+  server.use(http.get('/api/public/checkout/session-status', () =>
+    HttpResponse.json({ ok: true, data: { status: 'paid', checkoutRef: 'checkout-1' } })));
+  await renderReturn('&session_id=cs_live_example');
+  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
+  expect(screen.queryByRole('link', { name: en.checkout.backToShop })).toBeNull();
+  expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveClass('MuiButton-contained');
+});

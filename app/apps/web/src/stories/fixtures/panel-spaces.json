@@ -24,6 +24,7 @@
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
           "checkoutAppearance": null,
+          "checkoutReturnOrigins": [],
           "defaultHomeSpaceId": "space-studio-community",
           "defaultLanguage": "en",
           "directMessagesEnabled": true,
@@ -219,6 +220,7 @@
             "description": "",
             "id": "product-studio-course-101",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 19900,
             "prices": [
               {
@@ -249,6 +251,7 @@
             "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 39900,
             "prices": [
               {
@@ -279,6 +282,7 @@
             "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 49900,
             "prices": [
               {
@@ -309,6 +313,7 @@
             "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 9900,
             "prices": [
               {
@@ -339,6 +344,7 @@
             "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 0,
             "prices": [
               {
@@ -369,6 +375,7 @@
             "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 4900,
             "prices": [
               {
@@ -406,6 +413,7 @@
             "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
+            "personalization": null,
             "priceCents": 7900,
             "prices": [
               {

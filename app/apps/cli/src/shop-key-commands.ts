@@ -29,6 +29,7 @@ import {
   productSalesChannelSchema,
   productVisibilitySchema,
   shippingCarrierSchema,
+  shipxEnvironmentSchema,
   stripeModeSchema,
   validation,
   type AppError,
@@ -37,10 +38,11 @@ import {
   type ProductStock,
   type Result,
   type ShipxOrderView,
-  type ShipxSettingsView,
 } from '#core/domain/index.js';
 
 import { emit } from './output.js';
+import { readStdin, secretInput } from './secret-input.js';
+import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { formatProductStock } from './stock-commands.js';
 
 export const DEFAULT_SHOP_KEY_ENV = 'TOGETHER_SHOP_KEY';
@@ -127,12 +129,6 @@ const brandingKindSchema = z.enum(['logo', 'logo-dark', 'favicon', 'share-image'
 const imageExtensionSchema = z.enum(['png', 'jpg', 'jpeg', 'webp', 'svg', 'ico'])
   .transform((extension) => IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION[extension === 'jpeg' ? 'jpg' : extension]);
 
-const readStdin = async (): Promise<string> => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-  return Buffer.concat(chunks).toString('utf8');
-};
-
 const shopSettingsPatchInput = async (source: string) => {
   let raw: string;
   try {
@@ -187,7 +183,7 @@ const storageConfigureSchema = keyOnlySchema.extend({
   secretAccessKeyEnv: envNameSchema,
 });
 const shipxConfigureSchema = keyOnlySchema.extend({
-  environment: z.string().optional(),
+  slot: shipxEnvironmentSchema.optional(),
   senderJsonFile: z.string().min(1).optional(),
   clearSender: z.boolean().optional(),
   organizationId: z.string().optional(),
@@ -195,14 +191,6 @@ const shipxConfigureSchema = keyOnlySchema.extend({
   tokenStdin: z.boolean().optional(),
   clearCredentials: z.boolean().optional(),
 });
-
-const secretInput = async (envName: string | undefined, label: string): Promise<Result<string, AppError>> => {
-  const value = envName === undefined ? (await readStdin()).trim() : process.env[envName]?.trim();
-  if (value) return ok(value);
-  return err(validation(envName === undefined
-    ? `Pipe the ${label} on stdin or name an environment variable holding it`
-    : `Environment variable ${envName} must hold the ${label}`));
-};
 
 const shipxConfigureInput = async (options: z.output<typeof shipxConfigureSchema>) => {
   if (options.senderJsonFile !== undefined && options.clearSender === true) return err(validation('Provide only one of --sender-json-file and --clear-sender'));
@@ -220,25 +208,14 @@ const shipxConfigureInput = async (options: z.output<typeof shipxConfigureSchema
     if (!parsed.ok) return parsed;
     sender = parsed.value;
   }
-  const token = options.tokenEnv !== undefined || options.tokenStdin === true ? await secretInput(options.tokenEnv, 'ShipX token') : ok(undefined);
-  if (!token.ok) return token;
+  const slot = await shipxSlotPatch(options);
+  if (!slot.ok) return slot;
   return contractInput(shopIntegrationContracts.shipxConfigure.input, {
-    ...(options.environment === undefined ? {} : { environment: options.environment }),
     ...(options.senderJsonFile === undefined ? {} : { sender }),
     ...(options.clearSender === true ? { sender: null } : {}),
-    ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
-    ...(token.value === undefined ? {} : { token: token.value }),
-    ...(options.clearCredentials === true ? { clearCredentials: true } : {}),
+    ...slot.value,
   }, 'Invalid InPost ShipX settings');
 };
-
-const shipxSettingsLines = (view: ShipxSettingsView): string => [
-  `environment: ${view.environment}`,
-  `configured: ${String(view.configured)}`,
-  `organization id: ${view.organizationId?.maskedPreview ?? '(not set)'}`,
-  `token: ${view.token?.maskedPreview ?? '(not set)'}`,
-  `sender: ${view.sender === null ? '(not set)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
-].join('\n');
 
 const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
   ...(options.status === undefined ? {} : { status: options.status }),
@@ -670,17 +647,17 @@ export const registerShopKeyCommands = (
       return input.ok ? client.configureStorage(input.value) : input;
     }, (data) => `stored storage configuration: ${data.diagnostic.message}`));
 
-  const shipxSettings = integrations.command('shipx').description('InPost ShipX sender and credentials');
-  keyed(shipxSettings.command('show').description('Show the ShipX environment, sender and masked credentials'))
+  const shipxSettings = integrations.command('shipx').description('InPost ShipX sender and the sandbox and production connections');
+  keyed(shipxSettings.command('show').description('Show the sender and the masked credentials of both ShipX connections'))
     .action(run(z.tuple([keyOnlySchema]), (client) => client.getShipxSettings(), shipxSettingsLines));
-  keyed(shipxSettings.command('configure').description('Change the ShipX environment, sender or credentials; omitted parts keep their value')
-    .option('--environment <environment>', 'production or sandbox')
+  keyed(shipxSettings.command('configure').description('Change the ShipX sender or the credentials of one connection; omitted parts keep their value')
     .option('--sender-json-file <path>', 'JSON file with the sender address, or - for stdin')
-    .option('--clear-sender', 'remove the sender address')
-    .option('--organization-id <id>', 'ShipX organization id')
-    .option('--token-env <name>', 'environment variable holding the ShipX token')
-    .option('--token-stdin', 'read the ShipX token from stdin')
-    .option('--clear-credentials', 'remove the stored organization id and token'))
+    .option('--clear-sender', 'remove the sender address; InPost then uses the organization data')
+    .option('--slot <slot>', 'connection the credential options change: production (paid orders) or sandbox (test-mode orders)')
+    .option('--organization-id <id>', 'ShipX organization id of the --slot connection')
+    .option('--token-env <name>', 'environment variable holding the ShipX token of the --slot connection')
+    .option('--token-stdin', 'read the ShipX token of the --slot connection from stdin')
+    .option('--clear-credentials', 'remove the stored organization id and token of the --slot connection'))
     .action(run(z.tuple([shipxConfigureSchema]), async (client, [options]) => {
       const input = await shipxConfigureInput(options);
       return input.ok ? client.configureShipx(input.value) : input;

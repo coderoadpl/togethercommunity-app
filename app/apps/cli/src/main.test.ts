@@ -381,8 +381,13 @@ beforeEach(() => {
   h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
-  h.shipxSettings.mockReset().mockResolvedValue(ok({ environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false }));
-  h.shipxConfigure.mockReset().mockResolvedValue(ok({ environment: 'production', sender: null, organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: false }));
+  const unconnected = { organizationId: null, token: null, configured: false };
+  h.shipxSettings.mockReset().mockResolvedValue(ok({ sender: null, sandbox: unconnected, production: unconnected }));
+  h.shipxConfigure.mockReset().mockResolvedValue(ok({
+    sender: null,
+    sandbox: unconnected,
+    production: { organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: true },
+  }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -2137,6 +2142,8 @@ describe('fulfilment CLI', () => {
 });
 
 describe('InPost ShipX CLI', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
     expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
@@ -2193,13 +2200,39 @@ describe('InPost ShipX CLI', () => {
     await run('orders', 'shipx', 'show', 'order-number');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('available: true'));
     const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
-    await run('--json', 'tenant', 'shipx-set', '--environment', 'production', '--organization-id', '1234', '--token', 'token-5678', '--sender', JSON.stringify(sender));
+    vi.stubEnv('SHIPX_PRODUCTION_TOKEN', 'token-5678');
+    await run('--json', 'tenant', 'shipx-set', '--slot', 'production', '--organization-id', '1234', '--token-env', 'SHIPX_PRODUCTION_TOKEN', '--sender', JSON.stringify(sender));
     expect(h.shipxConfigure).toHaveBeenCalledExactlyOnceWith({
-      environment: 'production', organizationId: '1234', token: 'token-5678', sender: { ...sender, company: null },
+      production: { organizationId: '1234', token: 'token-5678' }, sender: { ...sender, company: null },
     });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('token-5678');
     await run('--json', 'tenant', 'shipx-set', '--sender', '{"name":"Only a name"}');
     expect(h.shipxConfigure).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(2);
+  });
+
+  it('changes one ShipX connection named by --slot and the sender without a slot', async () => {
+    await run('--json', 'tenant', 'shipx-set', '--slot', 'sandbox', '--clear-credentials');
+    expect(h.shipxConfigure).toHaveBeenLastCalledWith({ sandbox: { clearCredentials: true } });
+    await run('--json', 'tenant', 'shipx-set', '--sender', 'null');
+    expect(h.shipxConfigure).toHaveBeenLastCalledWith({ sender: null });
+    await run('tenant', 'shipx');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('production: not connected, organization id (not set), token (not set)'));
+    expect(h.shipxConfigure).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [['--organization-id', '1234']],
+    [['--clear-credentials']],
+    [['--slot', 'production']],
+    [['--slot', 'staging', '--organization-id', '1234']],
+    [['--environment', 'production', '--organization-id', '1234']],
+    [['--slot', 'production', '--token', 'token-5678']],
+    [['--slot', 'production', '--token-env', 'SHIPX_TOKEN', '--token-stdin']],
+  ])('refuses tenant shipx-set %j without calling the API', async (args) => {
+    await run('--json', 'tenant', 'shipx-set', ...args);
+    expect(h.shipxConfigure).not.toHaveBeenCalled();
+    expect(process.exitCode).not.toBe(0);
   });
 
   it('passes the parcel template to product create and update', async () => {

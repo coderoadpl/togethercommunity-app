@@ -55,7 +55,7 @@ describe('checkout product safety information', () => {
     expect(line).not.toHaveTextContent(en.productSafety.appliesTo({ count: 1 }));
     expect(within(section).getByRole('link', { name: 'safety@example.com' })).toHaveAttribute('href', 'mailto:safety@example.com');
     expect(within(section).getByText('STAND-1')).not.toBeVisible();
-    const details = within(section).getByRole('button', { name: en.productSafety.details });
+    const details = within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
     expect(details).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(details);
     expect(details).toHaveAttribute('aria-expanded', 'true');
@@ -73,7 +73,7 @@ describe('checkout product safety information', () => {
     const section = await screen.findByTestId('product-safety-info');
     expect(within(section).getByTestId('product-safety-manufacturer')).toHaveTextContent('Example Workshop · Example Street 1, Warsaw · safety@example.com');
     expect(within(section).queryByText('STAND-1')).not.toBeVisible();
-    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.details }));
+    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
     expect(await within(section).findByText('STAND-1')).toBeVisible();
   });
 
@@ -118,7 +118,7 @@ describe('sales-link product safety information', () => {
     const section = await screen.findByTestId('product-safety-info');
     expect(within(section).getByRole('heading', { name: en.productSafety.offerHeading })).toBeVisible();
     expect(within(section).getByTestId('product-safety-manufacturer')).not.toHaveTextContent(en.productSafety.appliesTo({ count: 1 }));
-    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.details }));
+    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
     expect(within(section).getByText('STAND-1')).toBeVisible();
     expect(within(section).queryByText('Printed stand')).toBeNull();
   });
@@ -141,7 +141,8 @@ describe('sales-link product safety information', () => {
     expect(single).toHaveTextContent(`Other Works · Example Street 1, Warsaw · hello@other.example · ${en.productSafety.appliesTo({ count: 1 })}`);
     expect(within(shared).getByText('LAMP-1')).not.toBeVisible();
 
-    await userEvent.click(within(shared).getByRole('button', { name: en.productSafety.details }));
+    expect(within(single).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Other Works' }) })).toHaveTextContent(en.productSafety.details);
+    await userEvent.click(within(shared).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
     const stand = within(shared).getByTestId('product-safety-product-black');
     const lamp = within(shared).getByTestId('product-safety-product-lamp');
     expect(within(stand).getByText('Printed stand')).toBeVisible();

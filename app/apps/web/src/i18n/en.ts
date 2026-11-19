@@ -842,6 +842,7 @@ export const en: Messages = {
     batch: 'Batch',
     instructions: 'Instructions and safety information',
     details: 'Details',
+    detailsFor: ({ name }) => format('Details for {name}', { name }),
     appliesTo: ({ count }) => plural(count, `applies to ${count} product`, `applies to ${count} products`),
   },
   personalization: {
@@ -3125,7 +3126,8 @@ export const en: Messages = {
     couponEmailHint: 'This code has a limit per person, so we check it against your email.',
     payBlockedDelivery: 'Choose a delivery option to go to payment.',
     payBlockedLocker: 'Choose a parcel locker or type its code to go to payment.',
-    payBlockedPersonalization: 'Complete the personalisation to go to payment.',
+    payBlockedPersonalizationText: 'Enter the personalisation text, or untick the option, to go to payment.',
+    payBlockedPersonalizationCondition: 'Accept the personalisation condition, or untick the option, to go to payment.',
     payBlockedCoupon: 'Checking the discount code…',
   },
   directory: {

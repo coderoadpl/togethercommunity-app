@@ -38,7 +38,7 @@ export const CheckoutSummaryRow = ({ items, total, detailsLabel, children }: {
     <CheckoutSummarySurface data-testid="checkout-summary" sx={{ px: '0.875rem' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: '0.75rem' }}>
         <Typography component="p" sx={{ py: '0.625rem' }}>
-          {items}{' · '}<CheckoutSummaryTotal data-testid="checkout-summary-total">{total}</CheckoutSummaryTotal>
+          {items}{' · '}<CheckoutSummaryTotal aria-live="polite" aria-atomic="true" data-testid="checkout-summary-total">{total}</CheckoutSummaryTotal>
         </Typography>
         {children == null ? null : (
           <CheckoutInlineToggle
@@ -110,19 +110,28 @@ export const CheckoutPayBar = ({ label, disabled, reason, note, messages, testId
     >
       <Stack useFlexGap spacing="0.5rem">
         {messages}
-        <EmberCtaButton
-          type="submit"
-          variant="contained"
-          fullWidth
-          disabled={disabled}
-          data-testid={testId}
-          aria-describedby={describedBy === '' ? undefined : describedBy}
-        >
-          {label}
-        </EmberCtaButton>
-        {reason == null ? null : (
-          <Typography id={reasonId} role="status" variant="body2" color="text.secondary" data-testid="checkout-pay-reason">{reason}</Typography>
-        )}
+        <Box>
+          <EmberCtaButton
+            type="submit"
+            variant="contained"
+            fullWidth
+            disabled={disabled}
+            data-testid={testId}
+            aria-describedby={describedBy === '' ? undefined : describedBy}
+          >
+            {label}
+          </EmberCtaButton>
+          <Typography
+            id={reasonId}
+            role="status"
+            variant="body2"
+            color="text.secondary"
+            data-testid="checkout-pay-reason"
+            sx={{ mt: reason == null ? 0 : '0.5rem' }}
+          >
+            {reason}
+          </Typography>
+        </Box>
         {note == null ? null : (
           <FinePrint id={noteId} component="p" variant="caption" color="text.secondary" data-testid="checkout-next-step">{note}</FinePrint>
         )}

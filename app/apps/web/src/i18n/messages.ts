@@ -792,6 +792,7 @@ export interface Messages {
     batch: string;
     instructions: string;
     details: string;
+    detailsFor: (params: { name: string }) => string;
     appliesTo: (params: { count: number }) => string;
   };
   personalization: {
@@ -2822,7 +2823,8 @@ export interface Messages {
     couponEmailHint: string;
     payBlockedDelivery: string;
     payBlockedLocker: string;
-    payBlockedPersonalization: string;
+    payBlockedPersonalizationText: string;
+    payBlockedPersonalizationCondition: string;
     payBlockedCoupon: string;
   };
   directory: {

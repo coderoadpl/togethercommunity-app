@@ -126,6 +126,11 @@ const tickEngraving = async (canvasElement: HTMLElement, text: string) => {
   await userEvent.click(await canvas.findByRole('checkbox', { name: /Add an engraving/u }));
   if (text !== '') await userEvent.type(await canvas.findByLabelText('Engraving text'), text);
 };
+const leaveField = async (canvasElement: HTMLElement, find: (canvas: ReturnType<typeof within>) => Promise<HTMLElement>) => {
+  const field = await find(within(canvasElement));
+  field.focus();
+  field.blur();
+};
 const openSafetyDetails = async (canvasElement: HTMLElement) => {
   const safety = within(await within(canvasElement).findByTestId('product-safety-info'));
   for (const toggle of safety.getAllByRole('button', { name: /Details/u })) await userEvent.click(toggle);
@@ -160,7 +165,10 @@ export const SafetyDetailsOpen: Story = { play: async ({ canvasElement }) => ope
 export const Variants: Story = { parameters: { fixture: variantsFixture } };
 export const ValidationError: Story = {
   parameters: { docs: { description: { story: 'A parcel locker code that does not match the 4-12 letters or digits pattern.' } } },
-  play: async ({ canvasElement }) => chooseLocker(canvasElement, 'A-1'),
+  play: async ({ canvasElement }) => {
+    await chooseLocker(canvasElement, 'A-1');
+    await leaveField(canvasElement, (canvas) => canvas.findByTestId('checkout-pickup-point'));
+  },
 };
 export const FreeOrder: Story = { parameters: { fixture: freeFixture } };
 export const SignedInBuyer: Story = { parameters: { fixture: signedInFixture }, play: async ({ canvasElement }) => chooseRate(canvasElement, /courier/u) };
@@ -184,6 +192,7 @@ export const PersonalisationError: Story = {
   play: async ({ canvasElement }) => {
     await chooseRate(canvasElement, /courier/u);
     await tickEngraving(canvasElement, '');
+    await leaveField(canvasElement, (canvas) => canvas.findByLabelText('Engraving text'));
   },
 };
 export const SalesLink: Story = { parameters: { fixture: bundleFixture } };

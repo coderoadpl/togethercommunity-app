@@ -849,6 +849,7 @@ export const pl: Messages = {
     batch: 'Partia',
     instructions: 'Instrukcja i informacje o bezpieczeństwie',
     details: 'Szczegóły',
+    detailsFor: ({ name }) => format('Szczegóły: {name}', { name }),
     appliesTo: ({ count }) => plural(count, `dotyczy ${count} produktu`, `dotyczy ${count} produktów`, `dotyczy ${count} produktów`),
   },
   personalization: {
@@ -3149,7 +3150,8 @@ export const pl: Messages = {
     couponEmailHint: 'Ten kod ma limit na osobę, więc sprawdzamy go dla Twojego adresu e-mail.',
     payBlockedDelivery: 'Wybierz sposób dostawy, aby przejść do płatności.',
     payBlockedLocker: 'Wybierz paczkomat lub wpisz jego kod, aby przejść do płatności.',
-    payBlockedPersonalization: 'Uzupełnij personalizację, aby przejść do płatności.',
+    payBlockedPersonalizationText: 'Wpisz treść personalizacji albo odznacz tę opcję, aby przejść do płatności.',
+    payBlockedPersonalizationCondition: 'Zaakceptuj warunek personalizacji albo odznacz tę opcję, aby przejść do płatności.',
     payBlockedCoupon: 'Sprawdzamy kod rabatowy…',
   },
   directory: {

@@ -20,11 +20,11 @@ export type PersonalizableLine = { productId: string; name: string; personalizat
 
 export type PersonalizationEntry = { ticked: boolean; text: string; conditionAccepted: boolean };
 
-type BlockReason = 'text' | 'condition';
+export type PersonalizationBlockReason = 'text' | 'condition';
 
 const UNTICKED: PersonalizationEntry = { ticked: false, text: '', conditionAccepted: false };
 
-const blockReason = (setting: PublicProductPersonalization, entry: PersonalizationEntry): BlockReason | null => {
+const blockReason = (setting: PublicProductPersonalization, entry: PersonalizationEntry): PersonalizationBlockReason | null => {
   if (!entry.ticked) return null;
   if (entry.text.trim() === '') return 'text';
   return setting.condition !== null && !entry.conditionAccepted ? 'condition' : null;
@@ -46,7 +46,8 @@ export const personalizationState = (
     conditionAccepted: row.setting.condition !== null && row.entry.conditionAccepted,
   }] : []);
   const request: { personalizations?: CheckoutPersonalizationRequest[] } = personalizations.length === 0 ? {} : { personalizations };
-  return { rows, showLineName: lines.length > 1, blocked: rows.some((row) => row.reason !== null), request, update };
+  const reason = rows.find((row) => row.reason !== null)?.reason ?? null;
+  return { rows, showLineName: lines.length > 1, blocked: reason !== null, reason, request, update };
 };
 
 type PersonalizationState = ReturnType<typeof personalizationState>;
@@ -67,6 +68,9 @@ const PersonalizationRow = ({ row, showLineName, disabled, update }: {
 }) => {
   const t = useTranslations();
   const { productId, setting, entry, reason } = row;
+  const [blurred, setBlurred] = useState({ text: false, condition: false });
+  const textError = reason === 'text' && blurred.text;
+  const conditionError = reason === 'condition' && blurred.condition;
   const inputId = `checkout-personalization-${productId}-text`;
   const hintId = `${inputId}-hint`;
   const conditionHintId = `checkout-personalization-${productId}-condition-hint`;
@@ -78,7 +82,10 @@ const PersonalizationRow = ({ row, showLineName, disabled, update }: {
           <Checkbox
             checked={entry.ticked}
             disabled={disabled}
-            onChange={(event) => update(productId, { ticked: event.target.checked })}
+            onChange={(event) => {
+              setBlurred({ text: false, condition: false });
+              update(productId, { ticked: event.target.checked });
+            }}
           />
         )}
         label={(
@@ -93,7 +100,7 @@ const PersonalizationRow = ({ row, showLineName, disabled, update }: {
       />
       {entry.ticked ? (
         <Stack useFlexGap spacing="0.5rem" sx={{ pl: { xs: 0, sm: '2rem' } }}>
-          <FormControl fullWidth error={reason === 'text'}>
+          <FormControl fullWidth error={textError}>
             <FormLabel htmlFor={inputId}>{setting.inputLabel}</FormLabel>
             <OutlinedInput
               id={inputId}
@@ -102,30 +109,32 @@ const PersonalizationRow = ({ row, showLineName, disabled, update }: {
               value={entry.text}
               disabled={disabled}
               onChange={(event) => update(productId, { text: event.target.value })}
+              onBlur={() => setBlurred((current) => ({ ...current, text: true }))}
               inputProps={{ maxLength: setting.maxLength, 'aria-describedby': hintId }}
             />
             <FormHelperText id={hintId} component="div" sx={{ mx: 0 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-                <span>{reason === 'text' ? t.personalization.textRequired : null}</span>
+                <span>{textError ? t.personalization.textRequired : null}</span>
                 <span>{t.personalization.characterCount({ count: entry.text.length, max: setting.maxLength })}</span>
               </Box>
             </FormHelperText>
           </FormControl>
           {setting.condition === null ? null : (
-            <FormControl error={reason === 'condition'}>
+            <FormControl error={conditionError}>
               <FormControlLabel
                 sx={{ alignItems: 'flex-start' }}
                 control={(
                   <Checkbox
                     checked={entry.conditionAccepted}
                     disabled={disabled}
-                    slotProps={{ input: reason === 'condition' ? { 'aria-describedby': conditionHintId } : {} }}
+                    slotProps={{ input: conditionError ? { 'aria-describedby': conditionHintId } : {} }}
                     onChange={(event) => update(productId, { conditionAccepted: event.target.checked })}
+                    onBlur={() => setBlurred((current) => ({ ...current, condition: true }))}
                   />
                 )}
                 label={<PreLineText component="span" sx={{ display: 'block', pt: '0.5rem' }}>{setting.condition}</PreLineText>}
               />
-              {reason === 'condition' ? <FormHelperText id={conditionHintId} sx={{ mx: 0 }}>{t.personalization.conditionRequired}</FormHelperText> : null}
+              {conditionError ? <FormHelperText id={conditionHintId} sx={{ mx: 0 }}>{t.personalization.conditionRequired}</FormHelperText> : null}
             </FormControl>
           )}
         </Stack>

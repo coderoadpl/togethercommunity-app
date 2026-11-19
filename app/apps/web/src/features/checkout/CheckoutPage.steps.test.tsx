@@ -305,7 +305,7 @@ describe('checkout step one', () => {
     expect(following(code, screen.getByRole('radio', { name: new RegExp(`^Courier — ${pln(1999).replace('.', '\\.')}`, 'u') }))).toBe(true);
     await userEvent.type(code, 'waw01m');
     expect(pay).toBeEnabled();
-    expect(screen.queryByTestId('checkout-pay-reason')).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-reason')).toBeEmptyDOMElement();
     expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(6399) })));
     expect(screen.getByTestId('checkout-next-step')).toHaveTextContent(exact(en.checkout.nextStep({ email: true, address: true, terms: true })));
     await userEvent.click(pay);

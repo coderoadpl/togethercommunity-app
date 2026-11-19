@@ -84,6 +84,7 @@ describe('checkout delivery step', () => {
     const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
     await userEvent.type(code, 'waw-1');
     expect(code).toHaveValue('WAW-1');
+    await userEvent.tab();
     expect(screen.getByText(en.shipping.lockerCodeInvalid)).toBeInTheDocument();
     expect(payButton()).toBeDisabled();
     await userEvent.clear(code);

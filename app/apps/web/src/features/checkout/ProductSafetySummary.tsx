@@ -68,8 +68,9 @@ const ManufacturerLine = ({ group, countProducts, titled }: { group: SafetyGroup
           type="button"
           aria-expanded={open}
           aria-controls={panelId}
+          aria-label={t.productSafety.detailsFor({ name: group.manufacturerName })}
           onClick={() => setOpen((current) => !current)}
-          sx={{ minHeight: '1.75rem', verticalAlign: 'baseline' }}
+          sx={{ minHeight: { xs: '2.75rem', sm: '1.75rem' }, verticalAlign: 'baseline' }}
         >
           {t.productSafety.details}
           <ChevronDownIcon />

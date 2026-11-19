@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   FormControl,
   FormControlLabel,
@@ -31,7 +32,8 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
 }) => {
   const t = useTranslations();
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
-  const codeInvalid = state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
+  const [codeBlurred, setCodeBlurred] = useState(false);
+  const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
     <Stack useFlexGap spacing="0.75rem" sx={lockerPlacement === 'under-option' ? { pt: '0.25rem', pb: '0.875rem' } : { mt: '0.5rem' }}>
       {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
@@ -47,6 +49,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
           required
           inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': 'checkout-pickup-point-hint', 'data-testid': 'checkout-pickup-point' }}
           onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
+          onBlur={() => setCodeBlurred(true)}
         />
         <FormHelperText id="checkout-pickup-point-hint">{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
       </FormControl>
@@ -58,8 +61,8 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     </Stack>
   ) : null;
   return (
-    <FormControl component="fieldset" data-testid="checkout-delivery">
-      <FormLabel component="legend" id="checkout-delivery-label">{t.shipping.deliveryHeading}</FormLabel>
+    <FormControl data-testid="checkout-delivery">
+      <FormLabel component="p" id="checkout-delivery-label">{t.shipping.deliveryHeading}</FormLabel>
       {rates.length === 0 ? (
         <Typography role="alert" color="error">{t.shipping.noDeliveryOptions}</Typography>
       ) : (

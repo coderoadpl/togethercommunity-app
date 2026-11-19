@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -86,14 +86,28 @@ describe('checkout personalisation', () => {
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     expect(payButton()).toBeEnabled();
+    const reason = screen.getByTestId('checkout-pay-reason');
+    expect(reason).toBeEmptyDOMElement();
     await userEvent.click(screen.getByRole('checkbox', { name: /Add an engraving/u }));
     expect(payButton()).toBeDisabled();
+    expect(screen.getByTestId('checkout-pay-reason')).toBe(reason);
+    expect(reason).toHaveTextContent(en.checkout.payBlockedPersonalizationText);
+    expect(screen.queryByText(en.personalization.textRequired)).not.toBeInTheDocument();
+    const text = screen.getByLabelText('Engraving text');
+    await userEvent.click(text);
+    act(() => text.blur());
     expect(screen.getByText(en.personalization.textRequired)).toBeVisible();
     await userEvent.type(screen.getByLabelText('Engraving text'), '  For Alex ');
     expect(payButton()).toBeDisabled();
+    expect(reason).toHaveTextContent(en.checkout.payBlockedPersonalizationCondition);
+    expect(screen.queryByText(en.personalization.conditionRequired)).not.toBeInTheDocument();
+    await userEvent.tab();
+    expect(screen.queryByText(en.personalization.conditionRequired)).not.toBeInTheDocument();
+    await userEvent.tab();
     expect(screen.getByText(en.personalization.conditionRequired)).toBeVisible();
     await userEvent.click(screen.getByRole('checkbox', { name: condition }));
     expect(payButton()).toBeEnabled();
+    expect(reason).toBeEmptyDOMElement();
     await userEvent.click(payButton());
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(JSON.parse(String(bodies[0]))).toMatchObject({
@@ -110,7 +124,7 @@ describe('checkout personalisation', () => {
     expect(await screen.findByText(en.personalization.forLine({ name: 'Printed stand' }))).toBeVisible();
     expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('checkbox', { name: /Add an engraving/u }));
-    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedPersonalization);
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedPersonalizationText);
     await userEvent.type(screen.getByLabelText('Engraving text'), 'For Sam');
     expect(screen.queryByRole('checkbox', { name: /terms/iu })).not.toBeInTheDocument();
     await userEvent.click(payButton());

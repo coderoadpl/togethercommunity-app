@@ -458,12 +458,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     personalization.blocked || couponResolving || testModeFreeOrder || paymentUnavailable;
   const payBlockedReason = soldOut || pending ? null
     : delivery.status === 'incomplete' ? delivery.missing === 'rate' ? t.checkout.payBlockedDelivery : t.checkout.payBlockedLocker
-      : personalization.blocked ? t.checkout.payBlockedPersonalization
-        : couponResolving ? t.checkout.payBlockedCoupon
-          : testModeFreeOrder ? t.checkout.testModeCouponBlocked
-            : null;
+      : personalization.reason === 'text' ? t.checkout.payBlockedPersonalizationText
+        : personalization.reason === 'condition' ? t.checkout.payBlockedPersonalizationCondition
+          : couponResolving ? t.checkout.payBlockedCoupon
+            : testModeFreeOrder ? t.checkout.testModeCouponBlocked
+              : null;
   const payLabel = soldOut ? t.checkout.soldOut
-    : payableCents === 0 ? pending ? t.checkout.freePending : t.checkout.freeIdle({ price: formattedPayable })
+    : payableCents === 0 ? pending ? t.checkout.freePending : t.checkout.freeOrderIdle
       : stripeConfigured ? checkoutSession.isPending ? t.checkout.payPending : t.checkout.goToPayment({ price: formattedPayable })
         : simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.payIdle({ price: formattedPayable });
   const simulatedPrimary = payableCents > 0 && !stripeConfigured && paymentConfig.data.simulatedPaymentsEnabled;

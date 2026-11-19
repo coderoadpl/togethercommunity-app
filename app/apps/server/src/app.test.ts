@@ -44,6 +44,7 @@ import {
 } from '#adapters/auth/create-auth.js';
 import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
+import { inMemoryChangeSettings } from '#core/server/testing/tenant-settings-fake.js';
 import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
@@ -211,6 +212,18 @@ const deps = (input: {
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
+  const findSettings: AppDeps['tenants']['findSettings'] = async (tenantId) =>
+    tenants.some((tenant) => tenant.id === tenantId) ? {
+      name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+      socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
+      billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
+      accentColor: null,
+      accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+      ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+      privacyUrl: null,
+      defaultHomeSpaceId: null,
+    } : null;
   const domains = input.domains ?? [];
   const products = input.products ?? [
     product({ id: 'acme-published', tenantId: 't-acme', title: 'Acme Published', published: true }),
@@ -907,19 +920,8 @@ const deps = (input: {
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
       hasAny: async () => tenants.length > 0,
-      findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? {
-          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
-          socialLinks: [],
-          signInNotice: { enabled: false, text: '' },
-          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-          accentColor: null,
-          accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
-          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
-          privacyUrl: null,
-          defaultHomeSpaceId: null,
-        } : null,
-      updateSettings: async (_tenantId, settings) => settings,
+      findSettings,
+      changeSettings: inMemoryChangeSettings(findSettings),
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,

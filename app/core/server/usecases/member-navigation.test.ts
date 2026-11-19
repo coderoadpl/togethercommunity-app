@@ -223,7 +223,7 @@ const tenantsRepo = (directMessagesEnabled: boolean): TenantRepository => ({
       bunnyStreamLibraryId: null,
       directMessagesEnabled,
     }),
-  updateSettings: async (_tenantId, settings) => settings,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => null,
   hasAny: async () => true,
 });

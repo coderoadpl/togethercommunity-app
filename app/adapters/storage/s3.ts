@@ -31,6 +31,8 @@ const S3_HOST_PATTERN =
 const PROBE_EXPIRY_SECONDS = 60;
 const CORS_PROBE_TIMEOUT_MS = 5_000;
 const DNS_LOOKUP_TIMEOUT_MS = 5_000;
+const PROBE_REQUEST_TIMEOUT_MS = 10_000;
+const PROBE_ERROR_BODY_MAX_BYTES = 8 * 1024;
 
 const rfc3986 = (value: string): string =>
   encodeURIComponent(value).replace(
@@ -143,29 +145,86 @@ export const mapStorageProbeFailure = (status: number, body: string): AppError =
   );
 };
 
+const abortable = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => { reject(new Error('The storage probe deadline passed.')); };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void promise.then(resolve, reject).finally(() => { signal.removeEventListener('abort', onAbort); });
+  });
+
+const unreadableProbeResponse = (): AppError =>
+  probeError('storage.unavailable', 'The storage endpoint response could not be read.');
+
+const readProbeBody = async (
+  response: StorageResponse,
+  maxBytes: number,
+  signal: AbortSignal,
+): Promise<Result<string, AppError>> => {
+  if (response.body === null) return ok('');
+  if (response.body.getReader === undefined) {
+    await abortable(discardStorageResponseBody(response), signal).catch(() => undefined);
+    return err(unreadableProbeResponse());
+  }
+  const reader = response.body.getReader();
+  const stop = (error: AppError): Result<string, AppError> => {
+    void reader.cancel().catch(() => undefined);
+    return err(error);
+  };
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = '';
+  try {
+    for (;;) {
+      const chunk = await abortable(reader.read(), signal);
+      if (chunk.done) return ok(text + decoder.decode());
+      if (chunk.value === undefined) return stop(unreadableProbeResponse());
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) {
+        return stop(probeError('storage.unavailable', 'The storage endpoint response exceeds the probe byte ceiling.'));
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } catch {
+    return stop(unreadableProbeResponse());
+  } finally {
+    reader.releaseLock();
+  }
+};
+
 const sendProbeRequest = async (
   fetchStorage: FetchStorage,
   url: string,
   init: { method: 'DELETE' | 'GET' | 'PUT'; body?: string },
   dispatcher: Dispatcher,
-  readBody: boolean,
+  maxBodyBytes: number | null,
 ): Promise<Result<{ body: string }, AppError>> => {
-  let response: StorageResponse;
+  const deadline = new AbortController();
+  const { signal } = deadline;
+  const timer = setTimeout(() => { deadline.abort(); }, PROBE_REQUEST_TIMEOUT_MS);
   try {
-    response = await fetchStorage(url, { ...init, dispatcher, redirect: 'error' });
-  } catch {
-    return err(probeError('storage.unavailable', 'The storage endpoint is unreachable.'));
-  }
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    return err(mapStorageProbeFailure(response.status, body));
-  }
-  try {
-    const body = readBody ? await response.text() : '';
-    if (!readBody) await discardStorageResponseBody(response);
-    return ok({ body });
-  } catch {
-    return err(probeError('storage.unavailable', 'The storage endpoint response could not be read.'));
+    let response: StorageResponse;
+    try {
+      response = await abortable(fetchStorage(url, { ...init, dispatcher, redirect: 'error', signal }), signal);
+    } catch {
+      return err(probeError('storage.unavailable', 'The storage endpoint is unreachable.'));
+    }
+    if (!response.ok) {
+      const body = await readProbeBody(response, PROBE_ERROR_BODY_MAX_BYTES, signal);
+      return err(mapStorageProbeFailure(response.status, body.ok ? body.value : ''));
+    }
+    if (maxBodyBytes === null) {
+      try {
+        await abortable(discardStorageResponseBody(response), signal);
+        return ok({ body: '' });
+      } catch {
+        return err(unreadableProbeResponse());
+      }
+    }
+    const body = await readProbeBody(response, maxBodyBytes, signal);
+    return body.ok ? ok({ body: body.value }) : body;
+  } finally {
+    clearTimeout(timer);
   }
 };
 
@@ -317,12 +376,18 @@ const liveProbe = async (
   const uploaded = await sendProbeRequest(fetchStorage, signed('PUT'), {
     method: 'PUT',
     body: expected,
-  }, dispatcher, false);
+  }, dispatcher, null);
   if (!uploaded.ok) return uploaded;
 
-  const read = await sendProbeRequest(fetchStorage, signed('GET'), { method: 'GET' }, dispatcher, true);
+  const read = await sendProbeRequest(
+    fetchStorage,
+    signed('GET'),
+    { method: 'GET' },
+    dispatcher,
+    new TextEncoder().encode(expected).byteLength,
+  );
   const readBack = read.ok ? read.value.body : null;
-  const removed = await sendProbeRequest(fetchStorage, signed('DELETE'), { method: 'DELETE' }, dispatcher, false);
+  const removed = await sendProbeRequest(fetchStorage, signed('DELETE'), { method: 'DELETE' }, dispatcher, null);
 
   if (!read.ok) return read;
   if (readBack !== expected) {

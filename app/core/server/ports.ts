@@ -2058,7 +2058,11 @@ export interface TenantRepository {
   findBySlug(slug: string): Promise<Tenant | null>;
   findSole(): Promise<Tenant | null>;
   findSettings(tenantId: string): Promise<TenantSettings | null>;
-  updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
+  /** `change` sees the row-locked settings and returns only the fields to write, so a concurrent write is never overwritten with stale values. */
+  changeSettings(
+    tenantId: string,
+    change: (current: TenantSettings) => Promise<Result<Partial<TenantSettings>, AppError>>,
+  ): Promise<Result<TenantSettings, AppError> | null>;
   createTenantWithOwnerGrant(
     input: {
       tenant: { id: string; slug: string; name: string; createdAt: string; defaultLanguage?: Language };

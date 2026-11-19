@@ -71,6 +71,14 @@ const storyByScreen: ReadonlyMap<string, string> = new Map([
   ['lesson-editions-menu-dark-desktop', 'member-lessoneditions--menu-dark-desktop'],
   ['lesson-editions-menu-dark-mobile', 'member-lessoneditions--menu-dark-mobile'],
   ['telemetry-overview', 'integrations-telemetrystore--overview'],
+  ['personalisation-unticked', 'checkout-personalisation--unticked'],
+  ['personalisation-ticked', 'checkout-personalisation--ticked'],
+  ['personalisation-error', 'checkout-personalisation--error-missing-text'],
+  ['personalisation-condition', 'checkout-personalisation--with-condition'],
+  ['personalisation-polish', 'checkout-personalisation--with-condition-polish'],
+  ['personalisation-studio-editor', 'checkout-personalisation--studio-editor'],
+  ['personalisation-studio-order', 'checkout-personalisation--studio-order'],
+  ['personalisation-studio-order-corrected', 'checkout-personalisation--studio-order-corrected'],
   ['markdown-editor-empty', 'forms-markdowneditor--empty'],
   ['markdown-editor-long-content', 'forms-markdowneditor--long-content'],
   ['markdown-editor-code', 'forms-markdowneditor--code'],
@@ -114,6 +122,17 @@ const telemetryScreens: ScreenSpec[] = [{
   name: 'telemetry-overview', auth: 'creator', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true,
   ready: async (page) => { await page.getByTestId('telemetry-overview').waitFor(visible); },
 }];
+
+const personalisationScreens: ScreenSpec[] = [
+  { name: 'personalisation-unticked', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
+  { name: 'personalisation-ticked', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
+  { name: 'personalisation-error', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
+  { name: 'personalisation-condition', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
+  { name: 'personalisation-polish', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
+  { name: 'personalisation-studio-editor', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-editor-preview').waitFor(visible); } },
+  { name: 'personalisation-studio-order', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-order-preview').waitFor(visible); } },
+  { name: 'personalisation-studio-order-corrected', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-order-preview').waitFor(visible); } },
+];
 
 export const componentScreens: readonly ScreenSpec[] = [
   { name: 'meta-capi-consent', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('dialog').waitFor(visible); } },
@@ -186,6 +205,7 @@ export const componentScreens: readonly ScreenSpec[] = [
   { name: 'lesson-editions-menu-dark-desktop', auth: 'member', path: '', viewports: ['desktop'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('menuitem', { name: 'Previous editions' }).waitFor(visible); } },
   { name: 'lesson-editions-menu-dark-mobile', auth: 'member', path: '', viewports: ['mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('menuitem', { name: 'Previous editions' }).waitFor(visible); } },
   ...telemetryScreens,
+  ...personalisationScreens,
   screen('markdown-editor-empty', 'desktop'),
   screen('markdown-editor-long-content', 'mobile'),
   screen('markdown-editor-code', 'desktop'),

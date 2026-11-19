@@ -17,6 +17,7 @@
     "e2e (two-factor)",
     "e2e (image-assets)",
     "e2e (custom-domain)",
+    "e2e (meta-capi)",
     "staging-freeze"
   ],
   "main": [
@@ -37,6 +38,7 @@
     "e2e (two-factor)",
     "e2e (image-assets)",
     "e2e (custom-domain)",
+    "e2e (meta-capi)",
     "promotion-guard"
   ]
 }

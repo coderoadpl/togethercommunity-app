@@ -389,37 +389,47 @@ Opening the order still shows the stored status.
 
 Before the two connections, a workspace had one organization id and token
 (`shipx.organizationId`, `shipx.token`) and a switch
-(`tenants.shipx_environment`) that named their environment. Migration
-`0161_shipx_slots.sql` copies each workspace's stored rows into the connection
-that switch names: the same ciphertext, IV, authentication tag, masked preview
-and update time under the new key name, with a new row id. The copy needs no
-key material because the encryption in `adapters/crypto/secret-crypto.ts` is not
-bound to the key name. A row that already exists under the new name is kept
-(`ON CONFLICT DO NOTHING`), so the migration can run again safely. A workspace
-that had only one of the two rows gets only that one, and its connection stays
-not connected until the other value is saved.
+(`tenants.shipx_environment`) that named their environment. There is no data
+migration: the stored single connection keeps serving the connection that the
+stored switch names until that connection is saved or cleared. Each of the two
+values is read from the connection's own row and, only when that row does not
+exist and the stored switch names the same connection, from the legacy row.
+This applies to resolving the credentials of an order, to the readiness of the
+order view and to the masked previews and the `configured` flag of the settings, so
+Studio shows the stored values under that connection and the other connection as
+not connected. A connection row that exists but cannot be decrypted never falls
+back to the legacy row. A test-mode order of a workspace whose switch names
+production never reads a legacy row, and the reverse.
 
-The legacy rows, their key names and the column stay for one release, because
-migrations run in the build step while the previous release still serves
-traffic for about two minutes, and a code rollback keeps the migrated database.
-The previous release keeps reading the legacy rows, the switch and the sender
-(which it still requires). The current code never reads or writes the switch
-or the legacy rows, with one exception: removing the credentials of the
-connection that the stored switch names also deletes the legacy rows, so a
-removed credential is really gone. A later change removes the legacy rows,
-names and column.
+Saving a value writes only the connection's own row, which then wins over the
+legacy row for that value; the other value keeps coming from the legacy row
+until it is saved too. Removing the credentials of the connection that the
+stored switch names also deletes the legacy rows, so nothing resolves
+afterwards. The previous release keeps reading its own rows, the switch and the
+sender (which it still requires). Removing the legacy rows, their key names and
+the column is a later change.
 
-Rollback: after a rollback the previous release ships with the credentials as
-they were copied, since values saved since then exist only under the new
-names; a connection removed since then (the one the switch named) leaves it
-with none, and a sender removed since then stops it with `sender_missing`.
-Credentials saved through the previous release during the deploy window after
-the migration ran are not copied: save them again under the new connection.
-Check what is stored, by key name and count only, never values:
+Rollback: the previous release cannot list a workspace's secrets while rows
+named `shipx.sandbox.*` or `shipx.production.*` exist, because it parses every
+secret key against a fixed list; such rows exist only after an owner saved a
+connection under this release. Before rolling back, check what is stored, by key
+name and count only, never values:
 
 ```sql
-SELECT "key", count(*) FROM "tenant_secrets" WHERE "key" LIKE 'shipx.%' GROUP BY "key" ORDER BY "key";
+SELECT key, count(*) FROM tenant_secrets WHERE key LIKE 'shipx.%' GROUP BY key;
 ```
+
+and remove the connection rows:
+
+```sql
+DELETE FROM tenant_secrets WHERE key LIKE 'shipx.sandbox.%' OR key LIKE 'shipx.production.%';
+```
+
+The legacy rows then serve the previous release with the values stored before
+this release. Values saved since then and a connection removed since then (the
+one the switch named, whose legacy rows were deleted with it) are not restored,
+and a sender removed since then stops the previous release with
+`sender_missing`.
 
 ### Creating the shipment
 

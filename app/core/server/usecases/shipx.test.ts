@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   appError,
   err,
+  internal,
   memberSchema,
   notFound,
   ok,
@@ -20,13 +21,14 @@ import {
   type OrderListItem,
   type OrderShipping,
   type ParcelTemplate,
+  type ShipxEnvironment,
   type ShipxSender,
   type TenantSecret,
   type TenantSecretKey,
 } from '#core/domain/index.js';
 
 import type { OrderFulfilmentRepository } from '../order-fulfilment-ports.js';
-import type { TenantSecretResolver } from '../ports.js';
+import type { TenantSecretRepository, TenantSecretResolver } from '../ports.js';
 import type { ShipxShipmentRecord } from '../shipx-ports.js';
 import { createTenantSecretRepositoryFake } from '../testing/tenant-secret-fake.js';
 import { createInMemoryTenantDomainRepository } from '../testing/tenant-domain-fakes.js';
@@ -112,6 +114,7 @@ const harness = (options: {
   realAvailable?: boolean;
   secrets?: Partial<Record<TenantSecretKey, string>>;
   sender?: ShipxSender | null;
+  legacyEnvironment?: ShipxEnvironment;
   ship?: OrderFulfilmentRepository['ship'];
 } = {}) => {
   const order = options.order === undefined ? baseOrder : options.order;
@@ -119,7 +122,10 @@ const harness = (options: {
   const fake = createScriptedShipxClient();
   const shipments = createShipxShipmentRepositoryFake();
   const settings = createShipxSettingsRepositoryFake({
-    workspace: { sender: options.sender === undefined ? sender : options.sender },
+    workspace: {
+      sender: options.sender === undefined ? sender : options.sender,
+      ...(options.legacyEnvironment === undefined ? {} : { legacyEnvironment: options.legacyEnvironment }),
+    },
   });
   const ship = vi.fn<OrderFulfilmentRepository['ship']>(options.ship ?? (async (_tenantId, input) => ok({ ...baseOrder, fulfilmentStatus: 'shipped', shipment: input.shipment })));
   const findById = vi.fn(async (tenantId: string, id: string) => (tenantId === order?.tenantId && id === order.id ? order : null));
@@ -129,6 +135,7 @@ const harness = (options: {
     const value = values[key];
     return value === undefined ? err(notFound(`No "${key}" secret`)) : ok(value);
   });
+  const findByKey = vi.fn<TenantSecretRepository['findByKey']>(async (_tenantId, key) => (values[key] === undefined ? null : secretRow(key)));
   let id = 0;
   const ids = { nextId: () => `id-${String(++id)}` };
   let now = NOW;
@@ -138,7 +145,7 @@ const harness = (options: {
     products: { findByIds: async (_tenantId, productIds) => [product('stand', 'small'), product('lamp', 'large')].filter((row) => productIds.includes(row.id)) },
     shipxShipments: shipments.repository,
     shipxSettings: settings.repository,
-    tenantSecrets: { findByKey: async (_tenantId, key) => (values[key] === undefined ? null : secretRow(key)) },
+    tenantSecrets: { findByKey },
     secrets: { resolve },
     shipx: { real: options.realAvailable === false ? null : real.client, fake: fake.client },
     ids,
@@ -169,7 +176,7 @@ const harness = (options: {
   const advance = (milliseconds: number) => {
     now = new Date(Date.parse(now) + milliseconds).toISOString();
   };
-  return { deps, real, fake, shipments, settings, ship, wait, resolve, row, eventTypes, seed, advance };
+  return { deps, real, fake, shipments, settings, ship, wait, resolve, findByKey, row, eventTypes, seed, advance };
 };
 
 const write = ctx(['order:write', 'order:read']);
@@ -815,6 +822,102 @@ describe('ShipX slot selection', () => {
   });
 });
 
+describe('stored single ShipX connection', () => {
+  const legacy = { 'shipx.organizationId': '4321', 'shipx.token': 'legacy-token' } as const;
+  const orderOf = { production: baseOrder, sandbox: testOrder } as const;
+  const isLegacy = (key: TenantSecretKey) => key === 'shipx.organizationId' || key === 'shipx.token';
+  const readKeys = (h: ReturnType<typeof harness>) => [
+    ...h.findByKey.mock.calls.map(([, key]) => key),
+    ...h.resolve.mock.calls.map(([, key]) => key),
+  ];
+
+  it.each(['production', 'sandbox'] as const)('serves the %s slot named by the stored environment and never the other slot', async (stored) => {
+    const other = stored === 'production' ? 'sandbox' : 'production';
+    const named = harness({ order: orderOf[stored], secrets: legacy, legacyEnvironment: stored });
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, named.deps)).toMatchObject({
+      ok: true, value: { available: true, reason: null, environment: stored },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, named.deps)).toMatchObject({ ok: true, value: { shipment: { environment: stored } } });
+    expect(named.real.calls.credentials.length).toBeGreaterThan(0);
+    expect(named.real.calls.credentials.every((used) => used.organizationId === '4321' && used.token === 'legacy-token' && used.environment === stored)).toBe(true);
+    expect(named.row()).toMatchObject({ environment: stored, organizationId: '4321' });
+    expect(new Set(named.resolve.mock.calls.map(([, key]) => key)))
+      .toEqual(new Set([`shipx.${stored}.organizationId`, `shipx.${stored}.token`, 'shipx.organizationId', 'shipx.token']));
+
+    const unnamed = harness({ order: orderOf[other], secrets: legacy, legacyEnvironment: stored });
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, unnamed.deps)).toMatchObject({
+      ok: true, value: { available: false, reason: 'credentials_missing', environment: other },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, unnamed.deps)).toMatchObject({
+      ok: false, error: { code: 'integration_not_configured', details: { state: 'setup_missing', reason: 'credentials_missing', environment: other } },
+    });
+    expect(readKeys(unnamed).length).toBeGreaterThan(0);
+    expect(readKeys(unnamed).every((key) => key.startsWith(`shipx.${other}.`))).toBe(true);
+    expect(unnamed.real.calls).toEqual(noCalls);
+    expect(unnamed.fake.calls).toEqual(noCalls);
+  });
+
+  it('ignores the stored connection without a stored environment', async () => {
+    const h = harness({ secrets: legacy });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false, error: { code: 'integration_not_configured', details: { environment: 'production' } },
+    });
+    expect(readKeys(h).some(isLegacy)).toBe(false);
+    expect(h.real.calls).toEqual(noCalls);
+  });
+
+  it('takes each field from the slot row first and from the stored connection only for a missing row', async () => {
+    const h = harness({ secrets: { ...legacy, 'shipx.production.token': 'new-token' }, legacyEnvironment: 'production' });
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true, value: { available: true } });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.credentials[0]).toEqual({ organizationId: '4321', token: 'new-token', environment: 'production' });
+    expect(readKeys(h)).not.toContain('shipx.token');
+  });
+
+  it('never falls back to the stored connection for a slot row that cannot be decrypted', async () => {
+    const h = harness({ secrets: { ...legacy, 'shipx.production.organizationId': '1234', 'shipx.production.token': 'damaged' }, legacyEnvironment: 'production' });
+    h.resolve.mockImplementation(async (_tenantId, key) => {
+      if (key === 'shipx.production.token') return err(internal('Stored secret failed integrity verification'));
+      return key === 'shipx.production.organizationId' ? ok('1234') : ok('legacy-token');
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false, error: { code: 'integration_not_configured', details: { environment: 'production' } },
+    });
+    expect(h.resolve.mock.calls.map(([, key]) => key).some(isLegacy)).toBe(false);
+    expect(h.real.calls).toEqual(noCalls);
+  });
+
+  it('resolves neither the slot nor the stored connection after the slot was cleared', async () => {
+    const h = harness({ legacyEnvironment: 'production' });
+    const rows = createTenantSecretRepositoryFake([
+      { ...secretRow('shipx.organizationId'), ciphertext: 'enc:4321' },
+      { ...secretRow('shipx.token'), ciphertext: 'enc:legacy-token' },
+    ]);
+    const crypto = {
+      encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: 'iv', authTag: 'tag' }),
+      decrypt: (input: { ciphertext: string }) => ok(input.ciphertext.slice(4)),
+    };
+    h.deps.tenantSecrets = rows.repository;
+    h.deps.secrets = {
+      resolve: async (tenantId, key) => {
+        const row = await rows.repository.findByKey(tenantId, key);
+        return row === null ? err(notFound(`No "${key}" secret`)) : crypto.decrypt(row);
+      },
+    };
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true, value: { available: true } });
+    const settingsDeps = { shipxSettings: h.deps.shipxSettings, tenantSecrets: rows.repository, secretCrypto: crypto, ids: h.deps.ids, clock: h.deps.clock };
+    expect(await configureShipx(ctx(['tenant:secret:write']), { production: { clearCredentials: true } }, settingsDeps)).toMatchObject({
+      ok: true, value: { production: { organizationId: null, token: null, configured: false } },
+    });
+    expect(rows.rows).toEqual([]);
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true, value: { available: false, reason: 'credentials_missing' },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+    expect(h.real.calls).toEqual(noCalls);
+  });
+});
+
 describe('discard an unconfirmed InPost attempt', () => {
   it('removes the unconfirmed attempt so the next click creates the shipment', async () => {
     const h = harness();
@@ -1162,6 +1265,37 @@ describe('ShipX settings', () => {
     });
   });
 
+  it.each(['sandbox', 'production'] as const)('shows the stored single connection only in the %s slot named by the stored environment', async (environment) => {
+    const other = environment === 'sandbox' ? 'production' : 'sandbox';
+    const previewed = (key: TenantSecretKey, maskedPreview: string): TenantSecret => ({ ...legacyRow(key), maskedPreview });
+    const h = settingsHarness({ legacyEnvironment: environment, secrets: [previewed('shipx.organizationId', '••••4321'), previewed('shipx.token', '••••oken')] });
+    expect(await getShipxSettings(ctx(['tenant:secret:read']), h.deps)).toEqual({
+      ok: true,
+      value: {
+        sender: null,
+        [environment]: {
+          organizationId: { maskedPreview: '••••4321', updatedAt: '2026-11-01T00:00:00.000Z' },
+          token: { maskedPreview: '••••oken', updatedAt: '2026-11-01T00:00:00.000Z' },
+          configured: true,
+        },
+        [other]: unset,
+      },
+    });
+    expect(await configureShipx(owner, { [environment]: { token: 'new-token-7777' } }, h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        [environment]: {
+          organizationId: { maskedPreview: '••••4321' },
+          token: { maskedPreview: '••••7777', updatedAt: '2026-11-08T10:00:00.000Z' },
+          configured: true,
+        },
+        [other]: unset,
+      },
+    });
+    const unnamed = settingsHarness({ secrets: [previewed('shipx.organizationId', '••••4321'), previewed('shipx.token', '••••oken')] });
+    expect(await getShipxSettings(ctx(['tenant:secret:read']), unnamed.deps)).toEqual({ ok: true, value: { sender: null, sandbox: unset, production: unset } });
+  });
+
   it('saves one slot without reading, writing or deleting the rows of the other slot', async () => {
     const h = settingsHarness({ secrets: [legacyRow('shipx.organizationId'), legacyRow('shipx.token')] });
     await configureShipx(owner, { production: { organizationId: '1234', token: 'production-token' } }, h.deps);
@@ -1207,9 +1341,9 @@ describe('ShipX settings', () => {
     const legacy = [legacyRow('shipx.organizationId'), legacyRow('shipx.token')];
     const matching = settingsHarness({ legacyEnvironment: environment, secrets: legacy });
     await configureShipx(owner, { [environment]: { organizationId: '1234', token: 'slot-token' }, [other]: { organizationId: '5678', token: 'other-token' } }, matching.deps);
-    await configureShipx(owner, { [environment]: { clearCredentials: true } }, matching.deps);
+    expect(await configureShipx(owner, { [environment]: { clearCredentials: true } }, matching.deps)).toMatchObject({ ok: true, value: { [environment]: unset } });
     expect(matching.stored()).toEqual([`shipx.${other}.organizationId=enc:5678`, `shipx.${other}.token=enc:other-token`]);
-    expect(matching.settings.legacyReads).toEqual(['workspace']);
+    expect(matching.settings.legacyReads).toContain('workspace');
 
     const differing = settingsHarness({ legacyEnvironment: other, secrets: legacy });
     await configureShipx(owner, { [environment]: { organizationId: '1234', token: 'slot-token' } }, differing.deps);

@@ -83,21 +83,53 @@ export interface ShipxSettingsDeps {
 
 const slotKeys = (keys: ShipxSlotSecretKeys): readonly TenantSecretKey[] => [keys.organizationId, keys.token];
 
-const slotView = (keys: ShipxSlotSecretKeys, secrets: readonly TenantSecret[]): ShipxSlotView => {
-  const masked = (key: TenantSecretKey) => {
+type SlotFields<T> = Record<keyof ShipxSlotSecretKeys, T | null>;
+
+const once = <T>(load: () => Promise<T>): (() => Promise<T>) => {
+  let loaded: Promise<T> | null = null;
+  return () => (loaded ??= load());
+};
+
+const legacyEnvironmentOf = (tenantId: string, deps: Pick<ShipxSettingsDeps, 'shipxSettings'>) =>
+  once(() => deps.shipxSettings.legacyEnvironment(tenantId));
+
+const slotFields = async <T>(
+  environment: ShipxEnvironment,
+  read: (key: TenantSecretKey) => Promise<T | null>,
+  legacyEnvironment: () => Promise<ShipxEnvironment | null>,
+): Promise<SlotFields<T>> => {
+  const keys = SHIPX_SLOT_SECRET_KEYS[environment];
+  const [organizationId, token] = await Promise.all([read(keys.organizationId), read(keys.token)]);
+  if ((organizationId !== null && token !== null) || await legacyEnvironment() !== environment) return { organizationId, token };
+  const [legacyOrganizationId, legacyToken] = await Promise.all([
+    organizationId ?? read(SHIPX_LEGACY_SECRET_KEYS.organizationId),
+    token ?? read(SHIPX_LEGACY_SECRET_KEYS.token),
+  ]);
+  return { organizationId: legacyOrganizationId, token: legacyToken };
+};
+
+const slotView = async (
+  environment: ShipxEnvironment,
+  secrets: readonly TenantSecret[],
+  legacyEnvironment: () => Promise<ShipxEnvironment | null>,
+): Promise<ShipxSlotView> => {
+  const masked = async (key: TenantSecretKey) => {
     const secret = secrets.find((row) => row.key === key);
     return secret === undefined ? null : { maskedPreview: secret.maskedPreview, updatedAt: secret.updatedAt };
   };
-  const organizationId = masked(keys.organizationId);
-  const token = masked(keys.token);
+  const { organizationId, token } = await slotFields(environment, masked, legacyEnvironment);
   return { organizationId, token, configured: organizationId !== null && token !== null };
 };
 
-const settingsView = (sender: ShipxSender | null, secrets: readonly TenantSecret[]): ShipxSettingsView => ({
-  sender,
-  sandbox: slotView(SHIPX_SLOT_SECRET_KEYS.sandbox, secrets),
-  production: slotView(SHIPX_SLOT_SECRET_KEYS.production, secrets),
-});
+const settingsView = async (tenantId: string, deps: Pick<ShipxSettingsDeps, 'shipxSettings' | 'tenantSecrets'>): Promise<ShipxSettingsView> => {
+  const [sender, secrets] = await Promise.all([deps.shipxSettings.findSender(tenantId), deps.tenantSecrets.listByTenant(tenantId)]);
+  const legacyEnvironment = legacyEnvironmentOf(tenantId, deps);
+  const [sandbox, production] = await Promise.all([
+    slotView('sandbox', secrets, legacyEnvironment),
+    slotView('production', secrets, legacyEnvironment),
+  ]);
+  return { sender, sandbox, production };
+};
 
 export const getShipxSettings = async (
   ctx: Ctx,
@@ -105,8 +137,7 @@ export const getShipxSettings = async (
 ): Promise<Result<ShipxSettingsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
-  const [sender, secrets] = await Promise.all([deps.shipxSettings.findSender(tenant.value), deps.tenantSecrets.listByTenant(tenant.value)]);
-  return ok(settingsView(sender, secrets));
+  return ok(await settingsView(tenant.value, deps));
 };
 
 const clearSlot = async (tenantId: string, environment: ShipxEnvironment, deps: ShipxSettingsDeps): Promise<void> => {
@@ -144,8 +175,7 @@ export const configureShipx = async (
     ...(slot.token === undefined ? [] : [buildTenantSecret(tenant.value, slot.keys.token, slot.token, deps)]),
   ]);
   if (written.length > 0) await deps.tenantSecrets.upsertMany(tenant.value, written);
-  const [sender, secrets] = await Promise.all([deps.shipxSettings.findSender(tenant.value), deps.tenantSecrets.listByTenant(tenant.value)]);
-  return ok(settingsView(sender, secrets));
+  return ok(await settingsView(tenant.value, deps));
 };
 
 export interface ShipxOrderDeps {
@@ -176,20 +206,24 @@ const credentialsMissing = (environment: ShipxEnvironment): AppError => shipxSta
 const resolveCredentials = async (
   tenantId: string,
   environment: ShipxEnvironment,
-  deps: Pick<ShipxOrderDeps, 'secrets'>,
+  deps: Pick<ShipxOrderDeps, 'secrets' | 'shipxSettings'>,
 ): Promise<Result<ShipxCredentials, AppError>> => {
-  const keys = SHIPX_SLOT_SECRET_KEYS[environment];
-  const [organizationId, token] = await Promise.all([
-    deps.secrets.resolve(tenantId, keys.organizationId),
-    deps.secrets.resolve(tenantId, keys.token),
-  ]);
-  if (!organizationId.ok || !token.ok) return err(credentialsMissing(environment));
+  const resolved = async (key: TenantSecretKey): Promise<Result<string, AppError> | null> => {
+    const value = await deps.secrets.resolve(tenantId, key);
+    return !value.ok && value.error.code === 'not_found' ? null : value;
+  };
+  const { organizationId, token } = await slotFields(environment, resolved, legacyEnvironmentOf(tenantId, deps));
+  if (organizationId?.ok !== true || token?.ok !== true) return err(credentialsMissing(environment));
   return ok({ organizationId: organizationId.value, token: token.value, environment });
 };
 
-const credentialsPresent = async (tenantId: string, environment: ShipxEnvironment, deps: Pick<ShipxOrderDeps, 'tenantSecrets'>): Promise<boolean> => {
-  const rows = await Promise.all(slotKeys(SHIPX_SLOT_SECRET_KEYS[environment]).map((key) => deps.tenantSecrets.findByKey(tenantId, key)));
-  return rows.every((row) => row !== null);
+const credentialsPresent = async (
+  tenantId: string,
+  environment: ShipxEnvironment,
+  deps: Pick<ShipxOrderDeps, 'tenantSecrets' | 'shipxSettings'>,
+): Promise<boolean> => {
+  const rows = await slotFields(environment, (key) => deps.tenantSecrets.findByKey(tenantId, key), legacyEnvironmentOf(tenantId, deps));
+  return rows.organizationId !== null && rows.token !== null;
 };
 
 const clientOf = (clients: ShipxClients): ShipxClient => clients.real ?? clients.fake;
@@ -265,7 +299,7 @@ const refreshedShipment = async (
   return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), shipment, remotePatch(remote.value, now), actorUserId) ?? shipment;
 };
 
-type ShipxViewDeps = Pick<ShipxOrderDeps, 'orderDetails' | 'products' | 'shipxShipments' | 'tenantSecrets'>;
+type ShipxViewDeps = Pick<ShipxOrderDeps, 'orderDetails' | 'products' | 'shipxShipments' | 'tenantSecrets' | 'shipxSettings'>;
 
 interface OrderShipmentState {
   order: OrderListItem;

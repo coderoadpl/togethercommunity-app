@@ -647,12 +647,14 @@ decrypts them only for a ShipX call, and only the connection of the order's
 mode: a test-mode order never resolves the production credentials or the
 production URL, and a live order never the sandbox ones. The readiness check on
 the order page asks the secret repository whether both secrets of that
-connection exist without decrypting them. The legacy single-connection rows
-(`shipx.organizationId`, `shipx.token`) remain for one release and are read only
-by the previous release (see
-[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection));
-removing the credentials of the connection the workspace's stored environment
-names deletes them as well. Each
+connection exist without decrypting them. There is no data migration: the
+legacy single-connection rows (`shipx.organizationId`, `shipx.token`) keep
+serving only the connection that the workspace's stored environment names, for
+each value that connection has no row of; a connection row that cannot be
+decrypted never falls back to them, and an order of the other mode never reads
+them. Removing the credentials of that connection deletes the legacy rows as
+well (see
+[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). Each
 `order_shipments` row keeps a plain copy of the organization id it was created
 with (an identifier that also appears in every ShipX URL), so later calls for
 that shipment can refuse to run against another organization or another

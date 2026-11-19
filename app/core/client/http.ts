@@ -9,6 +9,11 @@ import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
+import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
+import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
+import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
+import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
+import type { ShopSettingsPatch } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
@@ -31,6 +36,13 @@ import {
   apiKeyImportAuditOutputSchema,
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
+  apiKeysShopManagementCreateOutputSchema,
+  apiKeysShopManagementEventsOutputSchema,
+  apiKeysShopManagementListOutputSchema,
+  apiKeysShopManagementPurgeOutputSchema,
+  apiKeysShopManagementRevokeOutputSchema,
+  type ApiKeysShopManagementCreateInput,
+  type ApiKeysShopManagementEventsQuery,
   authConfigOutputSchema,
   authResolveOutputSchema,
   avatarRemoveOutputSchema,
@@ -389,7 +401,8 @@ export interface ApiClientOptions {
   /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;
   fetchImpl?: typeof fetch;
-  refuseRedirects?: boolean;
+  /** Never follow a redirect: the extra headers carry a credential that must not reach another URL. */
+  refuseRedirects?: boolean | { label: string };
   /** Extra headers per request: Authorization bearer token, X-Tenant, ... */
   headers?: () => Record<string, string>;
   /**
@@ -450,7 +463,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
-  const refuseRedirects = options.refuseRedirects === true;
+  const refuseRedirects = options.refuseRedirects !== undefined && options.refuseRedirects !== false;
+  const redirectRefused = typeof options.refuseRedirects === 'object'
+    ? `${options.refuseRedirects.label} request to ${path} refused a redirect`
+    : REDIRECT_REFUSED;
   let response: Response;
   try {
     const headers: Record<string, string> = {
@@ -471,13 +487,13 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     });
   } catch (cause) {
     if (isRedirectFailure(cause) && (raw?.redactErrors === true || refuseRedirects)) {
-      return err(internal(raw?.redactErrors === true ? OPERATOR_REDIRECT_REFUSED : REDIRECT_REFUSED));
+      return err(internal(raw?.redactErrors === true ? OPERATOR_REDIRECT_REFUSED : redirectRefused));
     }
     return err(failedAt('network', internal(raw?.redactErrors === true ? 'Operator request failed' : `Network error calling ${path}: ${String(cause)}`)));
   }
 
   if (refuseRedirects && (response.redirected || (response.status >= 300 && response.status < 400))) {
-    return err(internal(REDIRECT_REFUSED));
+    return err(internal(redirectRefused));
   }
 
   if (response.ok && raw?.responseFilename !== undefined) {
@@ -570,6 +586,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   shipxSettings: (signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxSettings.path, shipxContracts.shipxSettings.output, undefined, signal),
   shipxConfigure: (input: z.input<typeof shipxContracts.shipxConfigure.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxConfigure.path, shipxContracts.shipxConfigure.output, input, signal),
   shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
+  correctOrderPersonalization: (input: z.input<typeof orderFulfilmentContracts.correctOrderPersonalization.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.correctOrderPersonalization.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.correctOrderPersonalization.output, input, signal),
   ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
   orderChanges: async (input: z.input<typeof orderChangeContracts.orderChanges.input> = {}, signal?: AbortSignal): Promise<ReadResult<OrderChangeFeed>> => {
     const query = directoryQuery(input, []);
@@ -2488,6 +2505,58 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listShopManagementKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagement.method,
+      API_ROUTES.apiKeysShopManagement.path,
+      apiKeysShopManagementListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createShopManagementKey: (input: ApiKeysShopManagementCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementCreate.method,
+      API_ROUTES.apiKeysShopManagementCreate.path,
+      apiKeysShopManagementCreateOutputSchema,
+      input,
+      signal,
+    ),
+  revokeShopManagementKey: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementRevoke.method,
+      API_ROUTES.apiKeysShopManagementRevoke.path.replace(':id', encodeURIComponent(input.id)),
+      apiKeysShopManagementRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
+  listShopManagementKeyEvents: (input: ApiKeysShopManagementEventsQuery = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.keyId !== undefined) params.set('keyId', input.keyId);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    const path = API_ROUTES.apiKeysShopManagementEvents.path;
+    return request(
+      options,
+      API_ROUTES.apiKeysShopManagementEvents.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      apiKeysShopManagementEventsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  purgeShopManagementKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysShopManagementPurge.method,
+      API_ROUTES.apiKeysShopManagementPurge.path,
+      apiKeysShopManagementPurgeOutputSchema,
+      undefined,
+      signal,
+    ),
   listTenantSecrets: (signal?: AbortSignal) =>
     request(
       options,
@@ -2876,6 +2945,169 @@ export const createApiClient = (options: ApiClientOptions) => ({
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+export interface ShopManagementClientOptions {
+  baseUrl: string;
+  apiKey: string;
+  tenant?: string;
+  fetchImpl?: typeof fetch;
+  traceparent?: () => string | undefined;
+}
+
+type ShopCatalogInput<K extends keyof typeof shopCatalogContracts> =
+  (typeof shopCatalogContracts)[K] extends { input: infer S extends z.ZodTypeAny } ? z.input<S> : never;
+
+type ShopOrderInput<K extends keyof typeof shopOrderContracts> = z.input<(typeof shopOrderContracts)[K]['input']>;
+
+const withQuery = (path: string, query: Record<string, string | number | undefined>): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+  const suffix = params.toString();
+  return suffix.length > 0 ? `${path}?${suffix}` : path;
+};
+
+export const createShopManagementClient = (shopOptions: ShopManagementClientOptions) => {
+  const options: ApiClientOptions = {
+    baseUrl: shopOptions.baseUrl,
+    ...(shopOptions.fetchImpl === undefined ? {} : { fetchImpl: shopOptions.fetchImpl }),
+    ...(shopOptions.traceparent === undefined ? {} : { traceparent: shopOptions.traceparent }),
+    refuseRedirects: { label: 'Shop management' },
+    headers: () => ({
+      [API_KEY_HEADER]: shopOptions.apiKey,
+      ...(shopOptions.tenant === undefined ? {} : { [TENANT_HEADER]: shopOptions.tenant }),
+    }),
+  };
+  const routes = SHOP_CATALOG_ROUTES;
+  const contracts = shopCatalogContracts;
+  const productPath = (path: string, productId: string): string => path.replace(':productId', encodeURIComponent(productId));
+  return {
+    listProducts: (signal?: AbortSignal) =>
+      request(options, routes.listProducts.method, routes.listProducts.path, contracts.listProducts.output, undefined, signal),
+    createProduct: (input: ShopCatalogInput<'createProduct'>, signal?: AbortSignal) =>
+      request(options, routes.createProduct.method, routes.createProduct.path, contracts.createProduct.output, input, signal),
+    updateProduct: (input: ShopCatalogInput<'updateProduct'>, signal?: AbortSignal) =>
+      request(options, routes.updateProduct.method, routes.updateProduct.path, contracts.updateProduct.output, input, signal),
+    publishProduct: (input: ShopCatalogInput<'publishProduct'>, signal?: AbortSignal) =>
+      request(options, routes.publishProduct.method, routes.publishProduct.path, contracts.publishProduct.output, input, signal),
+    unpublishProduct: (input: ShopCatalogInput<'unpublishProduct'>, signal?: AbortSignal) =>
+      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, contracts.unpublishProduct.output, input, signal),
+    deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal) =>
+      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, contracts.deleteProductDraft.output, input, signal),
+    listProductPrices: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
+    createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal) =>
+      request(options, routes.createProductPrice.method, routes.createProductPrice.path, contracts.createProductPrice.output, input, signal),
+    deactivateProductPrice: (input: ShopCatalogInput<'deactivateProductPrice'>, signal?: AbortSignal) =>
+      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, contracts.deactivateProductPrice.output, input, signal),
+    getProductStock: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.getProductStock.method, productPath(routes.getProductStock.path, productId), contracts.getProductStock.output, undefined, signal),
+    enableProductStock: (input: ShopCatalogInput<'enableProductStock'>, signal?: AbortSignal) =>
+      request(options, routes.enableProductStock.method, routes.enableProductStock.path, contracts.enableProductStock.output, input, signal),
+    adjustProductStock: (input: ShopCatalogInput<'adjustProductStock'>, signal?: AbortSignal) =>
+      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, contracts.adjustProductStock.output, input, signal),
+    setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
+      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
+    ...shopOrderMethods(options),
+    ...shopSettingsMethods(options),
+    ...shopAssetsMethods(options),
+    ...shopIntegrationMethods(options),
+  };
+};
+
+const shopOrderMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_ORDER_ROUTES;
+  const contracts = shopOrderContracts;
+  const orderPath = (path: string, orderId: string): string => path.replace(':orderId', encodeURIComponent(orderId));
+  return {
+    listOrders: (input: ShopOrderInput<'listOrders'> = {}, signal?: AbortSignal) =>
+      request(options, routes.listOrders.method, withQuery(routes.listOrders.path, input), contracts.listOrders.output, undefined, signal),
+    exportOrders: (input: ShopOrderInput<'exportOrders'>, signal?: AbortSignal) =>
+      request(options, routes.exportOrders.method, withQuery(routes.exportOrders.path, input), contracts.exportOrders.output, undefined, signal),
+    ordersPackingList: (input: ShopOrderInput<'ordersPackingList'>, signal?: AbortSignal) =>
+      request(options, routes.ordersPackingList.method, withQuery(routes.ordersPackingList.path, input), contracts.ordersPackingList.output, undefined, signal),
+    verifyOrder: (input: ShopOrderInput<'verifyOrder'>, signal?: AbortSignal) =>
+      request(options, routes.verifyOrder.method, routes.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), contracts.verifyOrder.output, undefined, signal),
+    getOrder: (orderId: string, signal?: AbortSignal) =>
+      request(options, routes.getOrder.method, orderPath(routes.getOrder.path, orderId), contracts.getOrder.output, undefined, signal),
+    shipOrder: (input: ShopOrderInput<'shipOrder'>, signal?: AbortSignal) =>
+      request(options, routes.shipOrder.method, orderPath(routes.shipOrder.path, input.orderId), contracts.shipOrder.output, input, signal),
+    issueOrderLine: (input: ShopOrderInput<'issueOrderLine'>, signal?: AbortSignal) =>
+      request(options, routes.issueOrderLine.method, orderPath(routes.issueOrderLine.path, input.orderId).replace(':productId', encodeURIComponent(input.productId)), contracts.issueOrderLine.output, input, signal),
+    shipxShipment: (input: ShopOrderInput<'shipxShipment'>, signal?: AbortSignal) =>
+      request(options, routes.shipxShipment.method, orderPath(routes.shipxShipment.path, input.orderId), contracts.shipxShipment.output, undefined, signal),
+    shipxCreate: (input: ShopOrderInput<'shipxCreate'>, signal?: AbortSignal) =>
+      request(options, routes.shipxCreate.method, orderPath(routes.shipxCreate.path, input.orderId), contracts.shipxCreate.output, input.parcelTemplate === undefined ? {} : { parcelTemplate: input.parcelTemplate }, signal),
+    shipxRefresh: (input: ShopOrderInput<'shipxRefresh'>, signal?: AbortSignal) =>
+      request(options, routes.shipxRefresh.method, orderPath(routes.shipxRefresh.path, input.orderId), contracts.shipxRefresh.output, {}, signal),
+    shipxDiscard: (input: ShopOrderInput<'shipxDiscard'>, signal?: AbortSignal) =>
+      request(options, routes.shipxDiscard.method, orderPath(routes.shipxDiscard.path, input.orderId), contracts.shipxDiscard.output, {}, signal),
+    shipxLabel: (input: ShopOrderInput<'shipxLabel'>, signal?: AbortSignal) =>
+      request(options, routes.shipxLabel.method, orderPath(routes.shipxLabel.path, input.orderId), contracts.shipxLabel.output, {}, signal, { headers: {}, responseBinary: 'application/pdf' }),
+  };
+};
+
+const shopSettingsMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_SETTINGS_ROUTES;
+  const contracts = shopSettingsContracts;
+  return {
+    getSettings: (signal?: AbortSignal) =>
+      request(options, routes.getSettings.method, routes.getSettings.path, contracts.getSettings.output, undefined, signal),
+    updateSettings: (input: ShopSettingsPatch, signal?: AbortSignal) =>
+      request(options, routes.updateSettings.method, routes.updateSettings.path, contracts.updateSettings.output, input, signal),
+    uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+      uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, input, signal),
+  };
+};
+
+type ShopAssetsInput<K extends keyof typeof shopAssetsContracts> = z.input<(typeof shopAssetsContracts)[K]['input']>;
+
+const shopAssetsMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_ASSETS_ROUTES;
+  const contracts = shopAssetsContracts;
+  const linkPath = (path: string, id: string): string => path.replace(':id', encodeURIComponent(id));
+  return {
+    uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+      uploadImageAsset(options, routes.productCoverUpload, routes.productCoverComplete, input, signal),
+    listSalesLinks: (signal?: AbortSignal) =>
+      request(options, routes.listSalesLinks.method, routes.listSalesLinks.path, contracts.listSalesLinks.output, undefined, signal),
+    getSalesLink: (input: ShopAssetsInput<'getSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.getSalesLink.method, linkPath(routes.getSalesLink.path, input.id), contracts.getSalesLink.output, undefined, signal),
+    createSalesLink: (input: ShopAssetsInput<'createSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.createSalesLink.method, routes.createSalesLink.path, contracts.createSalesLink.output, input, signal),
+    updateSalesLink: (input: ShopAssetsInput<'updateSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), contracts.updateSalesLink.output, input, signal),
+    deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal) =>
+      request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), contracts.deleteSalesLink.output, undefined, signal),
+  };
+};
+
+type ShopIntegrationInput<K extends 'setSecret' | 'deleteSecret' | 'stripeConfigure' | 'stripeProbe' | 'storageConfigure' | 'shipxConfigure'> =
+  z.input<(typeof shopIntegrationContracts)[K]['input']>;
+
+const shopIntegrationMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_INTEGRATION_ROUTES;
+  const contracts = shopIntegrationContracts;
+  return {
+    listIntegrationSecrets: (signal?: AbortSignal) =>
+      request(options, routes.listSecrets.method, routes.listSecrets.path, contracts.listSecrets.output, undefined, signal),
+    setIntegrationSecret: (input: ShopIntegrationInput<'setSecret'>, signal?: AbortSignal) =>
+      request(options, routes.setSecret.method, routes.setSecret.path, contracts.setSecret.output, input, signal),
+    deleteIntegrationSecret: (input: ShopIntegrationInput<'deleteSecret'>, signal?: AbortSignal) =>
+      request(options, routes.deleteSecret.method, routes.deleteSecret.path.replace(':key', encodeURIComponent(input.key)), contracts.deleteSecret.output, undefined, signal),
+    configureStripe: (input: ShopIntegrationInput<'stripeConfigure'>, signal?: AbortSignal) =>
+      request(options, routes.stripeConfigure.method, routes.stripeConfigure.path, contracts.stripeConfigure.output, input, signal),
+    probeStripe: (input: ShopIntegrationInput<'stripeProbe'>, signal?: AbortSignal) =>
+      request(options, routes.stripeProbe.method, routes.stripeProbe.path, contracts.stripeProbe.output, input, signal),
+    configureStorage: (input: ShopIntegrationInput<'storageConfigure'>, signal?: AbortSignal) =>
+      request(options, routes.storageConfigure.method, routes.storageConfigure.path, contracts.storageConfigure.output, input, signal),
+    getShipxSettings: (signal?: AbortSignal) =>
+      request(options, routes.shipxSettings.method, routes.shipxSettings.path, contracts.shipxSettings.output, undefined, signal),
+    configureShipx: (input: ShopIntegrationInput<'shipxConfigure'>, signal?: AbortSignal) =>
+      request(options, routes.shipxConfigure.method, routes.shipxConfigure.path, contracts.shipxConfigure.output, input, signal),
+  };
+};
+
+export type ShopManagementClient = ReturnType<typeof createShopManagementClient>;
 
 /** For TanStack Query: converts a Result into value-or-throw at the query boundary. */
 export const unwrap = <T>(result: Result<T, AppError>): T => {

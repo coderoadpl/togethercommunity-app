@@ -31,7 +31,7 @@ export const configureStripe = async (
   input: ConfigureStripeInput,
   deps: ConfigureStripeDeps,
 ): Promise<Result<ConfigureStripeResult, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { operation: 'stripe:configure' } });
   if (!tenant.ok) return tenant;
   const parsed = configureStripeInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid Stripe configuration', parsed.error.flatten()));

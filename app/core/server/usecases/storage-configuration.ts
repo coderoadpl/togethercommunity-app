@@ -57,7 +57,7 @@ export const configureStorageConnection = async (
   input: StorageConfiguration,
   deps: StorageConfigurationDeps,
 ): Promise<Result<{ diagnostic: ProviderDiagnostic; secret: TenantSecretMasked }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write', { shopManagementKeyGrant: { operation: 'storage:configure' } });
   if (!tenant.ok) return tenant;
   const parsed = parseConfiguration(input);
   if (!parsed.ok) return parsed;

@@ -3,6 +3,7 @@ import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
+import { erasedPersonalizationLines, erasedPurchasePersonalizations, linesHavePersonalization, purchaseHasPersonalizations } from './personalization-erasure.js';
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
@@ -141,6 +142,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -428,6 +430,7 @@ export const createProductRepository = (
           deliveryMethod: product.deliveryMethod,
           parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
           compliance: product.compliance ?? null,
+          personalization: product.personalization ?? null,
           variantGroup: product.variantGroup ?? null,
           variantLabel: product.variantLabel ?? null,
           priceCents: product.priceCents,
@@ -460,6 +463,7 @@ export const createProductRepository = (
         deliveryMethod: product.deliveryMethod,
         parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
         compliance: product.compliance ?? null,
+        ...(product.personalization === undefined ? {} : { personalization: product.personalization }),
         variantGroup: product.variantGroup ?? null,
         variantLabel: product.variantLabel ?? null,
         vatRate: product.vatRate ?? null,
@@ -2879,6 +2883,23 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
         sql`jsonb_typeof(${emailOutbox.payload}#>'{purchase,delivery,address}') = 'object'`,
       ));
+      await tx.update(orders).set({ lines: erasedPersonalizationLines(orders.lines, input.postAuthorDisplay) }).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), linesHavePersonalization(orders.lines),
+      ));
+      await tx.update(checkoutSnapshots).set({ lines: erasedPersonalizationLines(checkoutSnapshots.lines, input.postAuthorDisplay) }).where(and(
+        eq(checkoutSnapshots.tenantId, tenantId),
+        linesHavePersonalization(checkoutSnapshots.lines),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.memberId, input.memberId),
+          eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+        ))),
+      ));
+      await tx.update(emailOutbox).set({ payload: erasedPurchasePersonalizations(emailOutbox.payload, input.postAuthorDisplay) }).where(and(
+        eq(emailOutbox.tenantId, tenantId),
+        sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
+        purchaseHasPersonalizations(emailOutbox.payload),
+      ));
       await tx.update(emailOutbox).set({
         payload: sql`jsonb_set(${emailOutbox.payload}, '{shipment,delivery,address}', (${emailOutbox.payload}#>'{shipment,delivery,address}') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null))`,
       }).where(and(
@@ -4820,6 +4841,17 @@ export const createOnboardingStateRepository = (db: Db): OnboardingStateReposito
       .update(tenants)
       .set({ onboardingDismissedAt: dismissedAt })
       .where(eq(tenants.id, tenantId));
+  },
+});
+
+export const createAccountIdentityReader = (db: Db): AccountIdentityReader => ({
+  findById: async (userId) => {
+    const [row] = await db
+      .select({ userId: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    return row ?? null;
   },
 });
 

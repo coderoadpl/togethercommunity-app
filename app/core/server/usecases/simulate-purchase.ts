@@ -13,6 +13,7 @@ import {
   type BillingData,
   type SalesLinkVariantSelection,
   type CheckoutShippingInput,
+  type CheckoutPersonalizationRequest,
 } from '#core/domain/index.js';
 
 import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
@@ -55,6 +56,7 @@ export interface SimulatePurchaseInputData {
   priceId?: string;
   billing?: BillingData;
   shipping?: CheckoutShippingInput;
+  personalizations?: CheckoutPersonalizationRequest[];
 }
 
 export const simulatePurchase = async (

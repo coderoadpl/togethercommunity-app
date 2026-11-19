@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { productPersonalizationSchema } from './personalization.js';
 import { productComplianceSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 import { productVatFields } from './product-vat.js';
 import { deliveryMethodSchema } from './shipping.js';
@@ -106,7 +107,7 @@ export const productAccessIssuesSchema = z.object({
 
 export type ProductAccessIssues = z.infer<typeof productAccessIssuesSchema>;
 
-export const productSchema = z.object({
+export const productContentSchema = z.object({
   ...productVatFields,
   id: z.string(),
   tenantId: z.string(),
@@ -131,6 +132,10 @@ export const productSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const productSchema = productContentSchema.extend({
+  personalization: productPersonalizationSchema.nullable().optional(),
+});
+
 export type Product = z.infer<typeof productSchema>;
 
 export const SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE = 'Sales links cannot sell memberships, so a membership cannot be limited to sales links';
@@ -152,6 +157,7 @@ export const newProductSchema = z.object({
   deliveryMethod: deliveryMethodSchema.default('pickup'),
   parcelTemplate: parcelTemplateSchema.default(DEFAULT_PARCEL_TEMPLATE),
   compliance: productComplianceSchema.nullable().optional(),
+  personalization: productPersonalizationSchema.nullable().default(null),
   variantGroup: variantGroupSchema.nullable().optional(),
   variantLabel: variantLabelSchema.nullable().optional(),
   slug: productSlugSchema.optional(),
@@ -172,6 +178,7 @@ export const updateProductInputSchema = z.object({
   deliveryMethod: deliveryMethodSchema.optional(),
   parcelTemplate: parcelTemplateSchema.optional(),
   compliance: productComplianceSchema.nullable().optional(),
+  personalization: productPersonalizationSchema.nullable().optional(),
   variantGroup: variantGroupSchema.nullable().optional(),
   variantLabel: variantLabelSchema.nullable().optional(),
   id: z.string().min(1),

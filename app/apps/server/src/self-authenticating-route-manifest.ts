@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS } from '#core/contract/index.js';
+import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -82,6 +82,50 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: '/api/m2m/marketing/consent-definitions', methods: ['GET'], mechanism: 'Tenant API key' },
   { path: '/api/m2m/marketing/templates', methods: ['GET'], mechanism: 'Tenant API key' },
   { path: '/api/internal/marketing/tick', methods: ['GET', 'POST'], mechanism: 'Scheduler operator secret' },
+  { path: SHOP_CATALOG_ROUTES.listProducts.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
+  { path: SHOP_CATALOG_ROUTES.createProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.updateProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.publishProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:publish' },
+  { path: SHOP_CATALOG_ROUTES.unpublishProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:publish' },
+  { path: SHOP_CATALOG_ROUTES.deleteProductDraft.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.listProductPrices.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:price:read' },
+  { path: SHOP_CATALOG_ROUTES.createProductPrice.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:price:write' },
+  { path: SHOP_CATALOG_ROUTES.deactivateProductPrice.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:price:write' },
+  { path: SHOP_CATALOG_ROUTES.getProductStock.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
+  { path: SHOP_CATALOG_ROUTES.enableProductStock.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.adjustProductStock.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.setProductStockThreshold.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ORDER_ROUTES.listOrders.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.exportOrders.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:export' },
+  { path: SHOP_ORDER_ROUTES.ordersPackingList.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:export' },
+  { path: SHOP_ORDER_ROUTES.verifyOrder.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.getOrder.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.shipOrder.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.issueOrderLine.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxShipment.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'order:read' },
+  { path: SHOP_ORDER_ROUTES.shipxCreate.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxRefresh.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxDiscard.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_ORDER_ROUTES.shipxLabel.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'order:write' },
+  { path: SHOP_SETTINGS_ROUTES.getSettings.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:settings:read' },
+  { path: SHOP_SETTINGS_ROUTES.updateSettings.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
+  { path: SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
+  { path: SHOP_SETTINGS_ROUTES.brandingAssetComplete.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
+  { path: SHOP_ASSETS_ROUTES.productCoverUpload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ASSETS_ROUTES.productCoverComplete.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ASSETS_ROUTES.listSalesLinks.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
+  { path: SHOP_ASSETS_ROUTES.getSalesLink.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
+  { path: SHOP_ASSETS_ROUTES.createSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ASSETS_ROUTES.updateSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ASSETS_ROUTES.deleteSalesLink.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_INTEGRATION_ROUTES.listSecrets.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:secret:read' },
+  { path: SHOP_INTEGRATION_ROUTES.setSecret.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.deleteSecret.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.stripeConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.stripeProbe.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.storageConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_INTEGRATION_ROUTES.shipxSettings.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:secret:read' },
+  { path: SHOP_INTEGRATION_ROUTES.shipxConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
 ] as const;
 
 export const selfAuthenticatingRouteManifestEntry = (

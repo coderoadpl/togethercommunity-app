@@ -9,12 +9,12 @@ import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
-import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
+import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
 import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
 import { createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -64,6 +64,8 @@ import { createMemberErasureRequestRepository } from '#adapters/db/member-erasur
 import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import { createShopManagementKeyEventRepository } from '#adapters/db/shop-management-key-events.js';
+import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import {
   createImpersonationSessionRepository,
   createTenantAuditEventRepository,
@@ -116,6 +118,7 @@ import {
   createAvatarSourceReader,
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountIdentityReader,
   createAccountSecurityReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
@@ -213,6 +216,7 @@ import type {
   LessonEditionRepository,
   LessonEditionTransaction,
   ActivityReportRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
@@ -263,6 +267,9 @@ import type {
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
   ImportAuditEventRepository,
+  ShopManagementKeyEventRepository,
+  ShopManagementKeyRateLimitRepository,
+  ShopManagementKeyRepository,
   ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -368,6 +375,7 @@ import {
   type ResettableEnvironment,
   type SmokeTenantPasswords,
   type Result,
+  type ShopManagementKeysSwitch,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
@@ -508,6 +516,7 @@ export interface AppDeps {
   orderDetails?: OrderDetailRepository;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
+  orderPersonalizations?: OrderPersonalizationRepository;
   orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
   paymentRefunds: PaymentRefundRepository;
@@ -522,6 +531,9 @@ export interface AppDeps {
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
+  shopManagementKeyEvents: ShopManagementKeyEventRepository;
+  shopManagementKeys: ShopManagementKeyRepository;
+  shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -585,12 +597,14 @@ export interface AppDeps {
   tenantAccess: TenantAccessReader;
   signInTelemetrySecret: string;
   accountSecurity: AccountSecurityReader;
+  accountIdentities: AccountIdentityReader;
   health: HealthPort;
   appVersion: string;
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
   databaseIdentity: string | null;
   tenantCreationMode: TenantCreationMode;
+  shopManagementKeysSwitch: ShopManagementKeysSwitch;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
   clock: Clock;
@@ -1528,6 +1542,7 @@ export const createDeps = (
     metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
+    orderPersonalizations: createOrderPersonalizationRepository(db),
     orderChangeFeed: { changes: createOrderChangeRepository(db), orders: orderRepository },
     shipxIntegration: {
       shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
@@ -1547,6 +1562,9 @@ export const createDeps = (
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
+    shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
+    shopManagementKeys: createShopManagementKeyRepository(db),
+    shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1627,12 +1645,14 @@ export const createDeps = (
     tenantAccess,
     signInTelemetrySecret: env.BETTER_AUTH_SECRET,
     accountSecurity,
+    accountIdentities: createAccountIdentityReader(db),
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
     deploymentIdentity: selectDeploymentIdentity(env),
     databaseIdentity: databaseIdentityFingerprint(env.DATABASE_URL),
     tenantCreationMode,
+    shopManagementKeysSwitch: env.SHOP_MANAGEMENT_KEYS,
     ids,
     clock,
     logger,

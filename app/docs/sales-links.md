@@ -124,11 +124,24 @@ Q is the line quantity (1 for every line without a stored quantity).
 Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
 page: the buyer picks a workspace delivery option, and a parcel locker when the
 option needs one, before Stripe collects the address and phone number. A link
-with a shipped product, or with any product that carries product safety
-information, never hands off to Stripe automatically; it keeps the Together
-page at `?checkout=together`, like a link with purchase consent checkboxes. The
+with a shipped product, with any product that carries product safety
+information, or with any product that offers a personalisation, never hands off
+to Stripe automatically; it keeps the Together page at `?checkout=together`,
+like a link with purchase consent checkboxes, and
+`POST /api/public/sales-links/<slug>/checkout` refuses it. The
 delivery fee is a separate shipping line after the product lines. See
 [Shop](shop.md) for delivery options, the order data and the CLI.
+
+A product of the link may offer a personalisation: an optional request with
+text the buyer types, such as a dedication in a printed book, with an optional
+condition the buyer must accept. Each offer line carries
+`personalization: { label, description, inputLabel, maxLength, condition } | null`
+and the Together page shows the option under the line. The checkout request's
+`personalizations` entry names the chosen product when the line has variant
+choices. The text and the wording the buyer saw are stored on the checkout
+snapshot line and copied onto the order line. See
+[Personalisation](shop.md#personalisation) for validation, the order data,
+staff correction and erasure.
 
 ## Checkout and accounting
 

@@ -8,9 +8,16 @@ import { type Context, type Next } from 'hono';
 import { matchedRoutes } from 'hono/route';
 
 import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
+import type { ShopKeyAttribution } from '#core/server/index.js';
+
+export type ApiKeyAttribution = (ShopKeyAttribution | { match: 'switch_off' | 'mixed_credentials' }) & { tenantId?: string };
 
 type TelemetryVars = {
-  Variables: { identity?: Identity; impersonation?: ImpersonationPrincipal };
+  Variables: {
+    identity?: Identity;
+    impersonation?: ImpersonationPrincipal;
+    apiKeyAttribution?: ApiKeyAttribution;
+  };
 };
 
 const tracer = trace.getTracer('apps/server');
@@ -51,6 +58,14 @@ const annotateImpersonation = (span: Span, impersonation: ImpersonationPrincipal
   span.setAttribute('app.impersonation.actor.email', impersonation.actorEmail);
 };
 
+const annotateApiKey = (span: Span, attribution: ApiKeyAttribution): void => {
+  span.setAttribute('app.api_key.match', attribution.match);
+  if (attribution.tenantId !== undefined) span.setAttribute('app.tenant.id', attribution.tenantId);
+  if (attribution.match !== 'matched') return;
+  span.setAttribute('app.api_key.id', attribution.apiKeyId);
+  span.setAttribute('app.api_key.issuer.id', attribution.issuerUserId);
+};
+
 const matchedConcreteRoutePath = (c: Context<TelemetryVars>): string | undefined => {
   const routes = matchedRoutes(c);
   for (let index = routes.length - 1; index >= 0; index -= 1) {
@@ -87,6 +102,8 @@ export const telemetryMiddleware = async (c: Context<TelemetryVars>, next: Next)
       if (identity) annotateIdentity(span, identity);
       const impersonation = c.get('impersonation');
       if (impersonation) annotateImpersonation(span, impersonation);
+      const apiKeyAttribution = c.get('apiKeyAttribution');
+      if (apiKeyAttribution) annotateApiKey(span, apiKeyAttribution);
       if (status >= SERVER_ERROR_STATUS) span.setStatus({ code: SpanStatusCode.ERROR });
       span.end();
     }

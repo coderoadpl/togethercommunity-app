@@ -73,6 +73,22 @@ update error, processing stops and the error reports `failedLessonId` and
 `updatedLessonIds` in its details. Earlier updates remain applied; rerunning
 computes a fresh plan and only applies remaining differences.
 
+## Checkout and simulated purchases
+
+`checkout session` starts the same anonymous checkout as the storefront and
+prints the hosted checkout URL; `simulate-purchase` calls the dev purchase
+endpoint for the selected tenant. A workspace with a terms or privacy URL
+refuses either request until the buyer accepts the terms: pass
+`--accept-terms` to send `termsAccepted: true`. Without the flag the request
+carries no terms field.
+
+```bash
+pnpm --silent run cli --tenant studio checkout session --product product-id \
+  --email buyer@example.test --shipping-rate courier --accept-terms
+pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
+  --email buyer@example.test --accept-terms
+```
+
 ## CLI parity inventory
 
 Run `pnpm run cli-parity` to list every method in the `core/client` API client
@@ -91,6 +107,20 @@ pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:r
 `api-key` / `--scope` remain supported aliases. Report keys cannot include write
 scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `api-keys revoke <id>`. Studio integrations also supports report keys.
+
+`api-keys shop-management create <name> --scope <shop:*...> --expires-at <ISO>`
+creates a [shop management key](shop-management-keys.md); it requires `shop:*`
+scopes and an expiry at most 30 days ahead. `api-keys shop-management list` and
+`api-keys shop-management revoke <id>` list and revoke them; `api-keys list`,
+`create` and `revoke` handle only the other keys.
+`api-keys shop-management purge --yes` deletes every shop management key of the
+workspace, revoked or not, and prints the count; it refuses without `--yes`.
+`api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
+lists the workspace's shop management key history (creation, revocation, purge
+and keyed mutating requests handed to a shop route handler), newest first.
+The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations` commands use such a key from the environment
+variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
+the stored session; see the guide for the full command list.
 
 Supply the secret through an environment variable, using the same
 `--api-key-env <name>` mechanism as marketing commands. Reports default to

@@ -214,6 +214,24 @@ describe('products use-cases', () => {
     expect(store[0]).toMatchObject({ title: 'Renamed workshop', salesChannel: 'sales_links_only' });
   });
 
+  it('stores a personalisation setting, keeps it across unrelated edits, clears it with null and refuses it on a membership', async () => {
+    const { repo, entityVersions } = fakeRepo([draft('p1', 't-acme'), { ...draft('club', 't-acme'), type: 'membership' }]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const setting = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+    const stored = { ...setting, description: '', maxLength: 200 };
+    const membershipRefusal = { ok: false, error: { code: 'validation', message: 'A membership cannot offer a personalisation' } };
+    expect(await createProduct(ctx, { title: 'Workshop', priceCents: 4900 }, deps(repo, ['product-2']))).toMatchObject({ ok: true, value: { personalization: null } });
+    expect(await createProduct(ctx, { title: 'Printed book', type: 'physical', priceCents: 4900, personalization: setting }, deps(repo, ['product-3']))).toMatchObject({ ok: true, value: { personalization: stored } });
+    expect(await createProduct(ctx, { title: 'Club', type: 'membership', priceCents: 4900, personalization: setting }, deps(repo, ['product-4']))).toEqual(membershipRefusal);
+    expect(await updateProduct(ctx, { id: 'p1', personalization: setting }, deps(repo, ['version-1']))).toMatchObject({ ok: true, value: { personalization: stored } });
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed workshop' }, deps(repo, ['version-2']))).toMatchObject({ ok: true, value: { personalization: stored, title: 'Renamed workshop' } });
+    for (const version of entityVersions) expect(version.payload).not.toHaveProperty('personalization');
+    expect(await updateProduct(ctx, { id: 'p1', personalization: null }, deps(repo, ['version-3']))).toMatchObject({ ok: true, value: { personalization: null } });
+    expect(await updateProduct(ctx, { id: 'club', personalization: setting }, deps(repo, ['version-4']))).toEqual(membershipRefusal);
+    expect(await updateProduct(ctx, { id: 'club', title: 'Club renamed' }, deps(repo, ['version-5']))).toMatchObject({ ok: true });
+    expect(await updateProduct(ctx, { id: 'p1', personalization: { ...setting, maxLength: 501 } }, deps(repo, ['version-6']))).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('switches a physical product to shipping and refuses shipping for other product types', async () => {
     const { repo } = fakeRepo([{ ...draft('p1', 't-acme'), type: 'physical' }, draft('p2', 't-acme')]);
     const ctx = { identity: identity('t-acme', 'owner') };

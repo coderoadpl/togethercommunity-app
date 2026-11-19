@@ -129,6 +129,9 @@ import type {
   InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
+  ShopManagementKey,
+  ShopManagementKeyEvent,
+  ShopManagementKeyEventPage,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
   ImportAuditEvent,
@@ -869,6 +872,41 @@ export interface TenantApiKeyRepository {
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
+}
+
+export interface ShopManagementKeyRepository {
+  listByTenant(tenantId: string): Promise<ShopManagementKey[]>;
+  create(tenantId: string, key: ShopManagementKey, event: ShopManagementKeyEvent): Promise<void>;
+  findByHash(tenantId: string, keyHash: string): Promise<ShopManagementKey | null>;
+  revoke(
+    tenantId: string,
+    id: string,
+    revokedAt: string,
+    event: ShopManagementKeyEvent,
+  ): Promise<ShopManagementKey | null>;
+  purge(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+}
+
+export interface ShopManagementKeyRateLimitRepository {
+  claim(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    limit: number;
+  }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+  }): Promise<void>;
+}
+
+export interface ShopManagementKeyEventRepository {
+  record(tenantId: string, event: ShopManagementKeyEvent): Promise<void>;
+  list(
+    tenantId: string,
+    query: { apiKeyId?: string; cursor?: string; limit: number },
+  ): Promise<ShopManagementKeyEventPage>;
 }
 
 export interface ImportAuditEventRepository {
@@ -2424,6 +2462,17 @@ export interface TenantAccessReader {
   ): Promise<Array<{ userId: string; email: string; staffRole: StaffRole; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
+}
+
+export interface AccountIdentity {
+  userId: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+export interface AccountIdentityReader {
+  findById(userId: string): Promise<AccountIdentity | null>;
 }
 
 export interface AccountSecurityReader {

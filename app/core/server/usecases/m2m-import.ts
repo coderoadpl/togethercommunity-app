@@ -14,6 +14,8 @@ import {
   importProductRecordSchema,
   resolveProductVat,
   salesChannelAllowed,
+  personalizationAllowed,
+  PERSONALIZATION_MEMBERSHIP_MESSAGE,
   SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
   importPublicAssetPathSchema,
   importValidateRequestSchema,
@@ -548,6 +550,10 @@ const prepareProduct = async (
     ?? tenantProducts.find((product) => product.id === predicted.value.id)?.salesChannel
     ?? 'any';
   if (!salesChannelAllowed(record.type, salesChannel)) return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  const storedPersonalization = tenantProducts.find((product) => product.id === predicted.value.id)?.personalization;
+  if (!personalizationAllowed(record.type, record.personalization === undefined ? storedPersonalization : record.personalization)) {
+    return err(validation(PERSONALIZATION_MEMBERSHIP_MESSAGE));
+  }
   return ok({
     kind: 'product',
     importKey: record.importKey,
@@ -569,6 +575,7 @@ const prepareProduct = async (
       salesChannel,
       deliveryMethod: 'pickup',
       compliance: record.compliance ?? null,
+      ...(record.personalization === undefined ? {} : { personalization: record.personalization }),
       variantGroup: record.variantGroup ?? null,
       variantLabel: record.variantLabel ?? null,
       published: false,

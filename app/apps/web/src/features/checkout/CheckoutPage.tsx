@@ -3,6 +3,7 @@ import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
+import { PersonalizationField, usePersonalizations } from './PersonalizationField.js';
 import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
 import { useCallback, useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
@@ -150,6 +151,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, type: offerProduct.type, compliance: offerProduct.compliance }]
     : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, type: line.type, compliance: line.compliance }]);
   const titledSafety = (bundle?.lines.length ?? 0) > 1;
+  const personalization = usePersonalizations(salesLinkSlug === undefined ? offerProduct === undefined ? [] : [{ productId: offerProduct.id, name: offerProduct.title, personalization: offerProduct.personalization }] : bundle?.lines ?? []);
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
   const shippingRequired = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
@@ -205,7 +207,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (couponResolving || delivery.status === 'incomplete') return;
+    if (couponResolving || delivery.status === 'incomplete' || personalization.blocked) return;
     const priceId = selectedPrice?.id;
     if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
@@ -219,6 +221,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...consent,
         ...invoice.billing,
         ...shipping,
+        ...personalization.request,
         ...(priceId === undefined ? {} : { priceId }),
         ...(appliedCoupon === undefined ? {} : { couponCode }),
       });
@@ -234,6 +237,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       ...consent,
       ...invoice.billing,
       ...shipping,
+      ...personalization.request,
       ...(priceId === undefined ? {} : { priceId }),
       ...(appliedCoupon === undefined ? {} : { couponCode }),
     });
@@ -542,6 +546,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               disabled={simulatePurchase.isPending || checkoutSession.isPending}
             />
           ) : null}
+          <PersonalizationField state={personalization} disabled={simulatePurchase.isPending || checkoutSession.isPending} />
           <EmberCtaButton
             type="submit"
             variant="contained"
@@ -550,6 +555,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             disabled={
               soldOut ||
               delivery.status === 'incomplete' ||
+              personalization.blocked ||
               simulatePurchase.isPending ||
               testSession.isPending || checkoutSession.isPending ||
               couponResolving ||
@@ -585,7 +591,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               <Button
                 type="button"
                 variant="outlined"
-                disabled={soldOut || delivery.status === 'incomplete' || simulatePurchase.isPending || checkoutSession.isPending}
+                disabled={soldOut || delivery.status === 'incomplete' || personalization.blocked || simulatePurchase.isPending || checkoutSession.isPending}
                 onClick={() => simulatePurchase.mutate({
                   email,
                   productId,
@@ -596,6 +602,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   ...consent,
                   ...invoice.billing,
                   ...shipping,
+                  ...personalization.request,
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                   ...(appliedCoupon === undefined ? {} : { couponCode }),
                 })}

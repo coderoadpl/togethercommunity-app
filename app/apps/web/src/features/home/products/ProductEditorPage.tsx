@@ -43,6 +43,7 @@ import {
 import { DeliveryMethodField } from './DeliveryMethodField.js';
 import { ParcelTemplateField } from './ParcelTemplateField.js';
 import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft } from './ProductComplianceFields.js';
+import { ProductPersonalizationFields, personalizationDraftFrom, personalizationFromDraft } from './ProductPersonalizationFields.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -70,6 +71,9 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [compliance, setCompliance] = useState(complianceDraftFrom(product.compliance));
   const [complianceInvalid, setComplianceInvalid] = useState(false);
   const [variant, setVariant] = useState({ group: product.variantGroup ?? '', label: product.variantLabel ?? '' });
+  const [personalization, setPersonalization] = useState(personalizationDraftFrom(product.personalization));
+  const [personalizationTouched, setPersonalizationTouched] = useState(false);
+  const [personalizationInvalid, setPersonalizationInvalid] = useState(false);
   const save = useMutation({
     ...actions.updateProduct,
     onSuccess: async () => {
@@ -86,7 +90,9 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
     event.preventDefault();
     const parsedCompliance = complianceFromDraft(compliance);
     setComplianceInvalid(!parsedCompliance.ok);
-    if (!parsedCompliance.ok) return;
+    const parsedPersonalization = personalizationTouched && product.type !== 'membership' ? personalizationFromDraft(personalization) : null;
+    setPersonalizationInvalid(parsedPersonalization?.ok === false);
+    if (!parsedCompliance.ok || parsedPersonalization?.ok === false) return;
     save.mutate({
       id: product.id,
       title: title.trim(),
@@ -101,6 +107,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         variantGroup: variant.group.trim() === '' ? null : variant.group.trim(),
         variantLabel: variant.label.trim() === '' ? null : variant.label.trim(),
       } : {}),
+      ...(parsedPersonalization?.ok === true ? { personalization: parsedPersonalization.value } : {}),
       description,
       coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
     });
@@ -212,6 +219,13 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
           <ProductComplianceFields value={compliance} invalid={complianceInvalid} onChange={(value) => { resetFeedback(); setComplianceInvalid(false); setCompliance(value); }} />
         </>
       ) : null}
+      {product.type === 'membership' ? null : (
+        <ProductPersonalizationFields
+          value={personalization}
+          invalid={personalizationInvalid}
+          onChange={(value) => { resetFeedback(); setPersonalizationInvalid(false); setPersonalizationTouched(true); setPersonalization(value); }}
+        />
+      )}
       {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}
       {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
     </SectionCard>

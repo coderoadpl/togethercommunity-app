@@ -1766,9 +1766,10 @@ describe('SettingsPanel shipping', () => {
     await waitFor(() => expect(updates).toContainEqual({ checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test:8443'] }));
   });
 
-  it('saves the InPost ShipX credentials write-only with the sender and the environment', async () => {
+  it('saves the production connection write-only without touching the sandbox, and an empty sender as none', async () => {
     const configured: unknown[] = [];
-    let view: ShipxSettingsView = { environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false };
+    const notConnected = { organizationId: null, token: null, configured: false };
+    let view: ShipxSettingsView = { sender: null, sandbox: notConnected, production: notConnected };
     server.use(
       http.get('*/api/integrations/shipx', () => HttpResponse.json({ ok: true, data: view })),
       http.post('*/api/integrations/shipx/configure', async ({ request }) => {
@@ -1776,9 +1777,11 @@ describe('SettingsPanel shipping', () => {
         configured.push(body);
         view = {
           ...view,
-          environment: 'production',
-          organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' },
-          token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' },
+          production: {
+            organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' },
+            token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' },
+            configured: true,
+          },
         };
         return HttpResponse.json({ ok: true, data: view });
       }),
@@ -1786,11 +1789,44 @@ describe('SettingsPanel shipping', () => {
     renderPanel({ ...EMPTY_SETTINGS, shippingRates: [locker] });
     await openSettingsSection(en.shipping.settingsHeading);
     const card = within(await screen.findByTestId('shipx-settings'));
-    expect(await card.findByText(en.shipx.notConfigured)).toBeVisible();
-    await userEvent.click(card.getByRole('combobox', { name: en.shipx.environment }));
-    await userEvent.click(await screen.findByRole('option', { name: en.shipx.environments.production }));
-    await userEvent.type(card.getByLabelText(en.shipx.organizationId), '1234');
-    await userEvent.type(card.getByLabelText(en.shipx.token), 'secret-token-5678');
+    const production = within(card.getByTestId('shipx-slot-production'));
+    const sandbox = within(card.getByTestId('shipx-slot-sandbox'));
+    expect(await production.findByText(en.shipx.slotNotConnected)).toBeVisible();
+    expect(sandbox.getByText(en.shipx.slotNotConnected)).toBeVisible();
+    expect(card.queryByRole('combobox')).toBeNull();
+    expect(card.getByText(en.shipx.senderHint)).toBeVisible();
+    await userEvent.type(production.getByLabelText(en.shipx.organizationId), '1234');
+    await userEvent.type(production.getByLabelText(en.shipx.token), 'secret-token-5678');
+    await userEvent.click(card.getByRole('button', { name: en.shipx.save }));
+    await waitFor(() => expect(configured).toEqual([{ sender: null, production: { organizationId: '1234', token: 'secret-token-5678' } }]));
+    await waitFor(() => expect(production.getByLabelText(en.shipx.token)).toHaveValue(''));
+    expect(production.getByText(en.shipx.credentialSaved({ preview: '••••5678' }))).toBeVisible();
+    expect(production.getByText(en.shipx.slotConnected)).toBeVisible();
+    expect(sandbox.getByText(en.shipx.slotNotConnected)).toBeVisible();
+  });
+
+  it('saves the sandbox connection with the sender and removes the credentials of one slot only', async () => {
+    const configured: unknown[] = [];
+    const stored = { maskedPreview: '••••9999', updatedAt: '2026-11-08T10:00:00.000Z' };
+    const view: ShipxSettingsView = {
+      sender: null,
+      sandbox: { organizationId: null, token: null, configured: false },
+      production: { organizationId: stored, token: stored, configured: true },
+    };
+    server.use(
+      http.get('*/api/integrations/shipx', () => HttpResponse.json({ ok: true, data: view })),
+      http.post('*/api/integrations/shipx/configure', async ({ request }) => {
+        configured.push(await request.json());
+        return HttpResponse.json({ ok: true, data: view });
+      }),
+    );
+    renderPanel({ ...EMPTY_SETTINGS, shippingRates: [locker] });
+    await openSettingsSection(en.shipping.settingsHeading);
+    const card = within(await screen.findByTestId('shipx-settings'));
+    const sandbox = within(card.getByTestId('shipx-slot-sandbox'));
+    expect(await card.findByTestId('shipx-production-clear-credentials')).toBeVisible();
+    expect(sandbox.queryByRole('button', { name: en.shipx.clearCredentials })).toBeNull();
+    await userEvent.type(sandbox.getByLabelText(en.shipx.token), 'sandbox-token-1');
     const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
     await userEvent.type(card.getByLabelText(en.shipx.senderName), sender.name);
     await userEvent.type(card.getByLabelText(en.shipx.senderEmail), sender.email);
@@ -1800,11 +1836,10 @@ describe('SettingsPanel shipping', () => {
     await userEvent.type(card.getByLabelText(en.shipx.senderCity), sender.city);
     await userEvent.type(card.getByLabelText(en.shipx.senderPostCode), sender.postCode);
     await userEvent.click(card.getByRole('button', { name: en.shipx.save }));
-    await waitFor(() => expect(configured).toEqual([{
-      environment: 'production', organizationId: '1234', token: 'secret-token-5678', sender: { ...sender, company: null },
-    }]));
-    await waitFor(() => expect(card.getByLabelText(en.shipx.token)).toHaveValue(''));
-    expect(card.getByText(en.shipx.credentialSaved({ preview: '••••5678' }))).toBeVisible();
+    await waitFor(() => expect(configured).toEqual([{ sender: { ...sender, company: null }, sandbox: { token: 'sandbox-token-1' } }]));
+    await userEvent.click(card.getByTestId('shipx-production-clear-credentials'));
+    await waitFor(() => expect(configured).toHaveLength(2));
+    expect(configured[1]).toEqual({ production: { clearCredentials: true } });
   });
 
   it('refuses an incomplete sender before calling the server', async () => {

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Alert, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { SHIPX_ENVIRONMENTS, shipxEnvironmentSchema, shipxSenderSchema, type ShipxEnvironment, type ShipxSettingsView } from '#core/domain/index.js';
+import { shipxSenderSchema, type ConfigureShipxSlotInput, type ShipxEnvironment, type ShipxSettingsView, type ShipxSlotView } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -11,27 +11,41 @@ import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 const SENDER_FIELDS = ['name', 'company', 'email', 'phone', 'street', 'buildingNumber', 'city', 'postCode'] as const;
 
+const SLOT_ORDER = ['production', 'sandbox'] as const satisfies readonly ShipxEnvironment[];
+
 type SenderField = (typeof SENDER_FIELDS)[number];
 
 type SenderDraft = Record<SenderField, string>;
 
-interface ShipxDraft {
-  environment: ShipxEnvironment;
+interface SlotDraft {
   organizationId: string;
   token: string;
+}
+
+interface ShipxDraft {
+  slots: Record<ShipxEnvironment, SlotDraft>;
   sender: SenderDraft;
 }
 
 const emptySender: SenderDraft = { name: '', company: '', email: '', phone: '', street: '', buildingNumber: '', city: '', postCode: '' };
 
+const emptySlot: SlotDraft = { organizationId: '', token: '' };
+
 const draftFrom = (view: ShipxSettingsView | undefined): ShipxDraft => ({
-  environment: view?.environment ?? 'sandbox',
-  organizationId: '',
-  token: '',
+  slots: { sandbox: emptySlot, production: emptySlot },
   sender: view?.sender == null ? emptySender : { ...view.sender, company: view.sender.company ?? '' },
 });
 
 const senderBlank = (sender: SenderDraft): boolean => SENDER_FIELDS.every((field) => sender[field].trim() === '');
+
+const slotInput = (slot: SlotDraft): ConfigureShipxSlotInput | undefined => {
+  const organizationId = slot.organizationId.trim();
+  const token = slot.token.trim();
+  if (organizationId === '' && token === '') return undefined;
+  return { ...(organizationId === '' ? {} : { organizationId }), ...(token === '' ? {} : { token }) };
+};
+
+const slotStored = (view: ShipxSlotView | undefined): boolean => view?.organizationId != null || view?.token != null;
 
 export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
@@ -63,7 +77,9 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
     setInvalid(false);
     setDraft({ ...value, ...patch });
   };
-  const credentialHelper = (stored: ShipxSettingsView['token']) =>
+  const changeSlot = (slot: ShipxEnvironment, patch: Partial<SlotDraft>) =>
+    change({ slots: { ...value.slots, [slot]: { ...value.slots[slot], ...patch } } });
+  const credentialHelper = (stored: ShipxSlotView['token']) =>
     stored === null ? t.shipx.credentialMissing : t.shipx.credentialSaved({ preview: stored.maskedPreview });
 
   return (
@@ -81,53 +97,60 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
           setInvalid(true);
           return;
         }
+        const sandbox = slotInput(value.slots.sandbox);
+        const production = slotInput(value.slots.production);
         save.mutate({
-          environment: value.environment,
           sender: sender === null ? null : sender.data,
-          ...(value.organizationId.trim() === '' ? {} : { organizationId: value.organizationId.trim() }),
-          ...(value.token.trim() === '' ? {} : { token: value.token.trim() }),
+          ...(sandbox === undefined ? {} : { sandbox }),
+          ...(production === undefined ? {} : { production }),
         });
       }}
     >
-      {settings.data === undefined ? null : (
-        <Typography color={settings.data.configured ? 'success.main' : 'text.secondary'} data-testid="shipx-configured">
-          {settings.data.configured ? t.shipx.configured : t.shipx.notConfigured}
-        </Typography>
-      )}
-      <TextField
-        select
-        label={t.shipx.environment}
-        value={value.environment}
-        disabled={disabled}
-        onChange={(event) => change({ environment: shipxEnvironmentSchema.parse(event.target.value) })}
-        slotProps={{ htmlInput: { 'data-testid': 'shipx-environment' } }}
-      >
-        {SHIPX_ENVIRONMENTS.map((environment) => <MenuItem key={environment} value={environment}>{t.shipx.environments[environment]}</MenuItem>)}
-      </TextField>
-      <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
-        <TextField
-          label={t.shipx.organizationId}
-          value={value.organizationId}
-          disabled={disabled}
-          autoComplete="off"
-          helperText={credentialHelper(settings.data?.organizationId ?? null)}
-          onChange={(event) => change({ organizationId: event.target.value })}
-          slotProps={{ htmlInput: { inputMode: 'numeric', 'data-testid': 'shipx-organization-id' } }}
-          sx={{ flex: 1 }}
-        />
-        <TextField
-          type="password"
-          label={t.shipx.token}
-          value={value.token}
-          disabled={disabled}
-          autoComplete="new-password"
-          helperText={credentialHelper(settings.data?.token ?? null)}
-          onChange={(event) => change({ token: event.target.value })}
-          slotProps={{ htmlInput: { 'data-testid': 'shipx-token' } }}
-          sx={{ flex: 2 }}
-        />
-      </Stack>
-      <Typography variant="subtitle2">{t.shipx.senderHeading}</Typography>
+      {SLOT_ORDER.map((slot) => {
+        const stored = settings.data?.[slot];
+        return (
+          <Stack key={slot} useFlexGap spacing="0.75rem" data-testid={`shipx-slot-${slot}`}>
+            <Typography variant="subtitle2" component="h3">{t.shipx.slotHeadings[slot]}</Typography>
+            {stored === undefined ? null : (
+              <Typography color={stored.configured ? 'success.main' : 'text.secondary'} data-testid={`shipx-${slot}-status`}>
+                {stored.configured ? t.shipx.slotConnected : t.shipx.slotNotConnected}
+              </Typography>
+            )}
+            <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
+              <TextField
+                label={t.shipx.organizationId}
+                value={value.slots[slot].organizationId}
+                disabled={disabled}
+                autoComplete="off"
+                helperText={credentialHelper(stored?.organizationId ?? null)}
+                onChange={(event) => changeSlot(slot, { organizationId: event.target.value })}
+                slotProps={{ htmlInput: { inputMode: 'numeric', 'data-testid': `shipx-${slot}-organization-id` } }}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                type="password"
+                label={t.shipx.token}
+                value={value.slots[slot].token}
+                disabled={disabled}
+                autoComplete="new-password"
+                helperText={credentialHelper(stored?.token ?? null)}
+                onChange={(event) => changeSlot(slot, { token: event.target.value })}
+                slotProps={{ htmlInput: { 'data-testid': `shipx-${slot}-token` } }}
+                sx={{ flex: 2 }}
+              />
+            </Stack>
+            {canEdit && slotStored(stored) ? (
+              <Stack direction="row">
+                <Button color="error" variant="outlined" disabled={disabled} onClick={() => save.mutate({ [slot]: { clearCredentials: true } })} data-testid={`shipx-${slot}-clear-credentials`}>
+                  {t.shipx.clearCredentials}
+                </Button>
+              </Stack>
+            ) : null}
+          </Stack>
+        );
+      })}
+      <Typography variant="subtitle2" component="h3">{t.shipx.senderHeading}</Typography>
+      <Typography variant="body2" color="text.secondary" data-testid="shipx-sender-hint">{t.shipx.senderHint}</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ flexWrap: 'wrap' }}>
         {SENDER_FIELDS.map((field) => (
           <TextField
@@ -143,13 +166,6 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
         ))}
       </Stack>
       {invalid ? <Alert severity="error" role="alert">{t.errors.messageValidation}</Alert> : null}
-      {canEdit && (settings.data?.organizationId != null || settings.data?.token != null) ? (
-        <Stack direction="row">
-          <Button color="error" variant="outlined" disabled={disabled} onClick={() => save.mutate({ clearCredentials: true })} data-testid="shipx-clear-credentials">
-            {t.shipx.clearCredentials}
-          </Button>
-        </Stack>
-      ) : null}
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}

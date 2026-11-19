@@ -100,7 +100,7 @@ const fakeTenants = (branding?: {
           accentLight: null,
           ...branding,
         },
-  updateSettings: async (_tenantId, next) => next,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => {
     throw new Error('not used');
   },
@@ -187,6 +187,7 @@ describe('getPublicOffer', () => {
             stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
             compliance: null,
+            personalization: null,
             variants: [],
           },
           {
@@ -205,6 +206,7 @@ describe('getPublicOffer', () => {
             stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
             compliance: null,
+            personalization: null,
             variants: [],
           },
           {
@@ -223,6 +225,7 @@ describe('getPublicOffer', () => {
             stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
             compliance: null,
+            personalization: null,
             variants: [],
           },
         ],
@@ -230,6 +233,22 @@ describe('getPublicOffer', () => {
         inpostGeowidgetToken: null,
       },
     });
+  });
+
+  it('exposes the personalisation setting of a product as plain seller text', async () => {
+    const personalization = {
+      label: 'Add an engraving', description: 'Up to three <b>short</b> lines.', inputLabel: 'Engraving text', maxLength: 40,
+      condition: 'I understand a personalised item is made to my order.',
+    };
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([{ ...product('book', 't-acme', true, 'physical'), personalization }, product('poster', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    });
+    if (!result.ok) throw new Error('offer failed');
+    expect(result.value.products.map((item) => item.personalization)).toEqual([personalization, null]);
   });
 
   it('exposes the product safety information and the published variants of the group', async () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,6 +31,7 @@ interface Hoisted {
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
   shipOrder: ReturnType<typeof vi.fn>;
+  correctOrderPersonalization: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
   shipxRefresh: ReturnType<typeof vi.fn>;
@@ -117,6 +118,7 @@ const h = vi.hoisted(
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
     shipOrder: vi.fn(),
+    correctOrderPersonalization: vi.fn(),
     ordersPackingList: vi.fn(),
     shipxShipment: vi.fn(),
     shipxRefresh: vi.fn(),
@@ -251,6 +253,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
     shipOrder: h.shipOrder,
+    correctOrderPersonalization: h.correctOrderPersonalization,
     ordersPackingList: h.ordersPackingList,
     shipxShipment: h.shipxShipment,
     shipxRefresh: h.shipxRefresh,
@@ -375,6 +378,7 @@ beforeEach(() => {
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
+  h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
   h.shipxRefresh.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
@@ -2137,6 +2141,82 @@ describe('fulfilment CLI', () => {
   it('rejects invalid product safety information before calling the server', async () => {
     await run('--json', 'product', 'create', '--title', 'Printed stand', '--price-cents', '4900', '--compliance', '{"manufacturerName":"Only a name"}');
     expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('personalisation CLI', () => {
+  const engraving = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+  const settingFile = async (content: unknown): Promise<string> => {
+    const directory = await mkdtemp(join(tmpdir(), 'personalization-'));
+    const path = join(directory, 'personalization.json');
+    await writeFile(path, JSON.stringify(content));
+    return path;
+  };
+
+  it('sends the personalisation file with product create and update, null for --no-personalization and nothing when neither is given', async () => {
+    const path = await settingFile(engraving);
+    await run('--json', 'product', 'create', '--title', 'Printed book', '--type', 'physical', '--price-cents', '4900', '--personalization-file', path);
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      personalization: { ...engraving, description: '', maxLength: 200 },
+    }));
+    await run('--json', 'product', 'update', 'product-1', '--personalization-file', path);
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', personalization: { ...engraving, description: '', maxLength: 200 } });
+    await run('--json', 'product', 'update', 'product-1', '--no-personalization');
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', personalization: null });
+    await run('--json', 'product', 'update', 'product-1', '--title', 'Renamed');
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', title: 'Renamed' });
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('refuses an invalid personalisation file and both personalisation flags before calling the server', async () => {
+    const invalid = await settingFile({ ...engraving, surchargeCents: 500 });
+    await run('--json', 'product', 'create', '--title', 'Printed book', '--price-cents', '4900', '--personalization-file', invalid);
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+    await run('--json', 'product', 'update', 'product-1', '--personalization-file', invalid, '--no-personalization');
+    expect(h.updateProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    await rm(join(invalid, '..'), { recursive: true, force: true });
+  });
+
+  it('corrects the personalisation text of an order line through the order alias', async () => {
+    await run('order', 'personalization', 'order-number', 'product-1', '--text', 'For Ann: with love');
+    expect(h.correctOrderPersonalization).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'product-1', text: 'For Ann: with love' });
+    expect(logSpy).toHaveBeenCalledWith('corrected personalisation: order-number (product-1)');
+    h.correctOrderPersonalization.mockResolvedValue(err(appError('validation', 'This order line has no personalisation')));
+    await run('--json', 'orders', 'personalization', 'order-number', 'product-2', '--text', 'For Bo');
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends the requested personalisations with a checkout session and a simulated purchase', async () => {
+    await run('--json', 'checkout', 'session', '--sales-link', 'link-1', '--product', 'product-1',
+      '--personalization', 'product-1:For Ann: with love', '--personalization', 'product-2:For Bo', '--accept-condition');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      salesLinkId: 'link-1',
+      personalizations: [
+        { productId: 'product-1', text: 'For Ann: with love', conditionAccepted: true },
+        { productId: 'product-2', text: 'For Bo', conditionAccepted: true },
+      ],
+    });
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--personalization', 'product-1:For Ann');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      personalizations: [{ productId: 'product-1', text: 'For Ann', conditionAccepted: false }],
+    });
+  });
+
+  it('refuses a malformed personalisation, a condition acceptance without one and a personalised cart before calling the server', async () => {
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--personalization', 'product-1');
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--accept-condition');
+    await run('--json', 'checkout', 'session', '--line', 'product-1:1', '--personalization', 'product-1:For Ann');
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-condition');
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(h.createCartCheckoutSession).not.toHaveBeenCalled();
+    expect(h.simulatePurchase).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
   });
 });

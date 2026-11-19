@@ -13,6 +13,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
+import { inMemoryChangeSettings } from '../testing/tenant-settings-fake.js';
 import { updateTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
 
 const stored: TenantSettings = {
@@ -78,10 +79,9 @@ const harness = () => {
       findSole: async () => null,
       hasAny: async () => false,
       findSettings: async () => stored,
-      updateSettings: async (_tenantId, next) => {
+      changeSettings: inMemoryChangeSettings(() => stored, (next) => {
         writes.push(next);
-        return next;
-      },
+      }),
       createTenantWithOwnerGrant: async () => {
         throw new Error('not used');
       },

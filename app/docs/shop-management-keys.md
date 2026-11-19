@@ -340,6 +340,10 @@ curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>"}' "$SHOP/products/d
 A physical product publishes once it has an active one-time price; the
 anonymous `GET /api/public/offer` then lists it.
 
+Product create and update accept `personalization` like the session routes
+(see [Personalisation](shop.md#personalisation)): an update without the field
+keeps the stored setting and `null` removes it.
+
 ### CLI
 
 The `shop` command group reads the key from the environment variable named by
@@ -353,6 +357,7 @@ read -r TOGETHER_SHOP_KEY < shop-catalog.key && export TOGETHER_SHOP_KEY
 pnpm --silent run cli --tenant acme shop products list
 pnpm --silent run cli --tenant acme shop products create --title 'Printed handbook' --type physical --price 49
 pnpm --silent run cli --tenant acme shop products update <product-id> --description 'Second edition'
+pnpm --silent run cli --tenant acme shop products update <product-id> --personalization-file engraving.json
 pnpm --silent run cli --tenant acme shop prices add --product <product-id> --kind one_time --price 49
 pnpm --silent run cli --tenant acme shop prices list --product <product-id>
 pnpm --silent run cli --tenant acme shop prices deactivate <price-id>

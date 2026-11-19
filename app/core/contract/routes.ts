@@ -31,6 +31,7 @@ import {
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutCartInputSchema,
+  checkoutPersonalizationsSchema,
   checkoutSessionInputSchema,
   salesLinkVariantSelectionSchema,
   checkoutSessionStatusInputSchema,
@@ -192,6 +193,7 @@ import {
   deliveryMethodSchema,
   memberFulfilmentSchema,
   publicProductComplianceSchema,
+  publicProductPersonalizationSchema,
   publicProductVariantSchema,
   checkoutShippingInputSchema,
   publicShippingRateSchema,
@@ -441,6 +443,7 @@ export const publicOfferOutputSchema = z.object({
       type: productTypeSchema,
       deliveryMethod: deliveryMethodSchema.default('pickup'),
       compliance: publicProductComplianceSchema.nullable().default(null),
+      personalization: publicProductPersonalizationSchema.nullable().default(null),
       variants: z.array(publicProductVariantSchema).default([]),
       slug: productSlugSchema,
       title: z.string(),
@@ -739,6 +742,7 @@ export const simulatePurchaseInputSchema = z.object({
   couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
   shipping: checkoutShippingInputSchema.optional(),
+  personalizations: checkoutPersonalizationsSchema.optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -2338,6 +2342,7 @@ export const API_PATHS = {
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
+  correctOrderPersonalization: API_ROUTES.correctOrderPersonalization.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
   orderChanges: API_ROUTES.orderChanges.path,
   shipxShipment: API_ROUTES.shipxShipment.path,

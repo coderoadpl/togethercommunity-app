@@ -162,7 +162,8 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
 `shipping_country` and `fulfilment_status`, followed by `client_reference`
-(the storefront's `clientReference`, empty when the checkout had none).
+(the storefront's `clientReference`, empty when the checkout had none) and
+`personalization`, the last column (see [Personalisation](#personalisation)).
 
 ## Fulfilment
 
@@ -224,8 +225,9 @@ orders page; with the **All** payment-mode filter it sends `live` and shows
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
 (`name × <units>; name × <units>`, product lines only), an empty `notes` column
-and `quantity`, the total units of the product lines. `quantity` is the last
-column so the earlier column positions stay unchanged. Every
+`quantity`, the total units of the product lines, and `personalization`
+(see [Personalisation](#personalisation)). New columns are added at the end so
+the earlier column positions stay unchanged. Every
 cell is quoted and cells starting with `=`, `+`, `-`, `@`, a tab or a carriage
 return are prefixed with an apostrophe so spreadsheets do not run them as
 formulas; a phone number such as `+48…` therefore appears as `'+48…`.
@@ -388,7 +390,7 @@ Opening the order still shows the stored status.
 Before the two connections, a workspace had one organization id and token
 (`shipx.organizationId`, `shipx.token`) and a switch
 (`tenants.shipx_environment`) that named their environment. Migration
-`0165_shipx_slots.sql` copies each workspace's stored rows into the connection
+`0161_shipx_slots.sql` copies each workspace's stored rows into the connection
 that switch names: the same ciphertext, IV, authentication tag, masked preview
 and update time under the new key name, with a new row id. The copy needs no
 key material because the encryption in `adapters/crypto/secret-crypto.ts` is not
@@ -742,6 +744,154 @@ cancellation and Retry. Chip navigation reloads the form; typed details and
 consent ticks are not preserved. See [Sales links](sales-links.md) for request
 validation and checkout behaviour.
 
+## Personalisation
+
+A product may offer one optional request the buyer can add at checkout, with
+text the buyer types, such as a dedication in a printed book or an engraving.
+The seller decides whether asking for it carries a condition the buyer must
+accept before paying. There is no surcharge, no stock effect and one request
+per order line, not one per unit.
+
+### Setting
+
+`products.personalization` (migration 0160, nullable `jsonb`) holds
+`{ label, description, inputLabel, maxLength, condition }` or `null`
+(`productPersonalizationSchema` in `core/domain/personalization.ts`):
+
+| Field | Rule |
+|---|---|
+| `label` | 1–80 characters, trimmed; the text next to the buyer's checkbox, for example "Add an engraving" |
+| `description` | 0–1000 characters of plain text, default empty |
+| `inputLabel` | 1–80 characters, trimmed; the label of the text field, for example "Engraving text" |
+| `maxLength` | whole number 1–500, default 200; the longest text the buyer may type |
+| `condition` | 1–1000 characters, trimmed, or `null` (default); when set, the buyer must tick it, for example "I understand a personalised item is made to my order." |
+
+Unknown fields are refused. The seller's texts are stored as entered, in one
+language, as plain text: never Markdown or HTML. A membership cannot offer a
+personalisation (`validation` on every editing surface). `POST /api/products`
+and `POST /api/products/update`, the keyed `/api/m2m/shop/products` routes,
+the [import API](import-api.md#product) and the
+[shop manifest](shop-manifest.md) accept `personalization`; an update without
+the field keeps the stored value and `null` removes it. Studio shows the
+section **Personalisation** in the product editor (not for memberships) and
+sends the field only after the seller has edited the section.
+
+The setting is checkout configuration, not product content: like stock it is
+not part of the product snapshot (`core/domain/snapshots/product`), so
+restoring a product version never changes or removes it.
+
+The public offer and the sales-link offer expose it per product (per line) as
+`personalization: { label, description, inputLabel, maxLength, condition } | null`.
+
+### The Together checkout page is required
+
+`requiresWorkspaceCheckout` (`core/domain/shipping.ts`) is true for a product
+with a personalisation, as it is for shipped products, products with safety
+information and products with purchase consents. A sales link with such a
+product keeps `/offer/<slug>?checkout=together` instead of the automatic Stripe
+handoff, and `POST /api/public/sales-links/<slug>/checkout` refuses it with
+`validation` ("This sales link requires the workspace checkout page"). On the
+Together page each line that offers a personalisation shows one checkbox with
+the seller's label and description; ticking it reveals the text field with the
+seller's input label, a character counter and, when a condition is set, a
+second checkbox with the condition text.
+
+### Checkout request
+
+`POST /api/public/checkout/session` takes optional
+`personalizations: [{ productId, text, conditionAccepted }]`, at most 20
+entries, each strict. One entry means the buyer ticked the option for that
+product; for a sales link with variant choices `productId` is the chosen
+product. The single-product, sales-link and simulated checkouts validate it
+with the current product setting before any checkout snapshot, consent capture,
+coupon session, stock reservation or Stripe session is written:
+
+| Request | Result |
+|---|---|
+| no `personalizations`, or an empty array | the checkout of today, unchanged |
+| entry for a product outside the selection | `validation` |
+| two entries for the same product | `validation` |
+| entry for a product without a current setting | `validation` |
+| trimmed text empty or longer than the current `maxLength` | `validation` |
+| condition set and `conditionAccepted` not `true` | `validation` |
+| `personalizations` on a cart request (`lines`) | `validation` |
+| `personalizations` with a recurring (subscription) price | `validation`; the checkout page does not offer the option while a recurring price is selected |
+
+The cart is out of scope: a cart with a personalisable product checks out as
+before, without the option. The text never goes to Stripe (neither line items
+nor metadata), application logs, telemetry attributes or analytics events.
+
+### Proof on the snapshot and the order
+
+The checkout snapshot line (`checkout_snapshots.lines`, `OrderLine`) receives
+`personalization`:
+
+| Field | Value |
+|---|---|
+| `text` | the trimmed buyer text |
+| `label`, `description`, `inputLabel`, `condition`, `maxLength` | the wording of the product setting at that moment |
+| `requestedAt` | server time of the request |
+| `conditionAcceptedAt` | server time when a condition existed and was accepted, otherwise `null` |
+| `originalText`, `editedAt`, `editedBy` | set only after a staff correction |
+
+A later edit of the product setting does not change a captured line. The
+consent capture row of the same request already holds the buyer's IP address
+and user agent; the personalisation adds no consent definition. Every path that
+creates an order from a checkout copies the snapshot line onto the order line:
+the Stripe webhook, free and coupon-claimed orders, staff test-mode purchases
+and the simulated purchase.
+
+### Orders
+
+Order list and detail answers, the keyed shop order routes and the
+[order change feed](shop-integration.md#follow-order-changes) return
+`lines[].personalization`. The orders list in Studio marks such orders with a
+**Personalised** chip (derived from the lines; the list adds no separate
+field), and the order detail shows a **Personalisation** block under the line
+with the seller label, the text, the accepted condition and its time
+(Europe/Warsaw) and, after a correction, the original text, the correction time
+and the staff user id.
+
+The CSV export and the packing list end with a `personalization` column, and
+the JSON export adds a `personalization` field: one `<line name>: <text>` per
+personalised line, joined with `; `, empty otherwise. CSV cells go through the
+same formula guard as every other cell.
+
+### Staff correction
+
+`POST /api/orders/<orderId>/personalization` with `{ productId, text }` needs
+`order:write`, the capability of marking an order as shipped. The text is
+trimmed and must have 1 to the stored `maxLength` characters. In one
+transaction the order row is locked, `originalText` is set on the first
+correction only and never overwritten, and `text`, `editedAt` and `editedBy`
+(the staff user id) are set. A line without a personalisation is `validation`,
+an unknown order `not_found`. The update of the order row produces an order
+change feed entry through the existing trigger. The condition and its
+acceptance cannot be edited.
+
+### Purchase confirmation
+
+The purchase block of the `welcome-sign-in` e-mail shows, after the items, one
+paragraph per personalised line with the heading "Personalisation: <line
+name>", the text and, when a condition existed, "Condition you accepted:
+<condition>"; the Polish labels are the `purchase.personalization` and
+`purchase.personalizationCondition` keys of the Polish e-mail dictionary. All values are
+escaped like the other e-mail values.
+
+### Erasure
+
+[Member erasure](member-erasure.md) replaces `text` and `originalText` with the
+deleted-member label on the member's order lines, on the checkout snapshots
+bound to those orders' checkout sessions, and in the purchase confirmation
+payloads of queued and sent e-mails to the member, like the delivery name. An
+abandoned checkout snapshot is bound to no member and keeps its text.
+
+### Wording
+
+Platform wording around the option gives instructions and data labels only. It
+never states a legal rule, such as a return or withdrawal right: such wording
+belongs in the seller's `condition`.
+
 ## Content security policy for the parcel locker map
 
 Following the owner decision of 2026-11-05, the page injects
@@ -829,6 +979,11 @@ pnpm --silent run cli --tenant acme order shipx discard <orderId>
 pnpm --silent run cli --tenant acme product update <id> \
   --compliance '{"manufacturerName":"Example Workshop","manufacturerAddress":"Example Street 1, 00-001 Warsaw","manufacturerEmail":"safety@example.com","modelIdentifier":"STAND-1"}' \
   --variant-group printed-stand --variant-label 'Black · ASA'
+pnpm --silent run cli --tenant acme product update <id> --personalization-file engraving.json
+pnpm --silent run cli --tenant acme product update <id> --no-personalization
+pnpm --silent run cli --tenant acme checkout session --sales-link <link-id> --product <id> \
+  --personalization '<id>:For Ann' --accept-condition
+pnpm --silent run cli --tenant acme orders personalization <orderId> <productId> --text 'For Anna'
 ```
 
 `--shipping-rates` replaces the whole list; an empty string for
@@ -844,7 +999,16 @@ as `2 × Title; Title`; other orders keep the product title. `--compliance null`
 `--clear-variant` removes the variant group and label. `product create|update
 --sales-channel sales_links_only` limits a product to sales links (see
 [Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));
-`--sales-channel any` lifts the limit. `order` is an alias of
+`--sales-channel any` lifts the limit. `product create|update
+--personalization-file <path>` sets the [personalisation](#personalisation)
+from a JSON file (`{ "label", "description", "inputLabel", "maxLength",
+"condition" }`, validated before the request) and `--no-personalization`
+removes it; the two flags exclude each other. `checkout session` and
+`simulate-purchase` take a repeatable `--personalization <product-id>:<text>`
+(the text is everything after the first colon) and `--accept-condition`, which
+accepts the condition of every entry; `checkout session --line` refuses
+`--personalization`. `orders personalization <orderId> <productId> --text
+<text>` corrects the text of an order line. `order` is an alias of
 `orders`. `tenant shipx-set --slot <sandbox|production>` names the connection
 that `--organization-id`, `--token-env`, `--token-stdin` and
 `--clear-credentials` change, and is required with them; the other connection

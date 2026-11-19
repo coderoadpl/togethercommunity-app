@@ -2,6 +2,8 @@ import {
   buildSnapshot,
   deliveryMethodAllowed,
   resolveProductVat,
+  PERSONALIZATION_MEMBERSHIP_MESSAGE,
+  personalizationAllowed,
   SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
   salesChannelAllowed,
   err,
@@ -100,6 +102,9 @@ export const createProduct = async (
   if (!salesChannelAllowed(parsed.data.type, parsed.data.salesChannel)) {
     return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
   }
+  if (!personalizationAllowed(parsed.data.type, parsed.data.personalization)) {
+    return err(validation(PERSONALIZATION_MEMBERSHIP_MESSAGE));
+  }
   const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
   if (parsed.data.vatRate === 'exempt' && resolveProductVat(parsed.data, settings) === null) {
     return err(validation('VAT exemption requires a legal basis'));
@@ -127,6 +132,7 @@ export const createProduct = async (
     deliveryMethod: parsed.data.deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate,
     compliance: parsed.data.compliance ?? null,
+    personalization: parsed.data.personalization,
     variantGroup: parsed.data.variantGroup ?? null,
     variantLabel: parsed.data.variantLabel ?? null,
     accessItems: parsed.data.accessItems,
@@ -165,6 +171,10 @@ export const updateProduct = async (
   if (!salesChannelAllowed(existing.type, parsed.data.salesChannel ?? existingSalesChannel)) {
     return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
   }
+  const personalization = parsed.data.personalization === undefined ? existing.personalization ?? null : parsed.data.personalization;
+  if (!personalizationAllowed(existing.type, personalization)) {
+    return err(validation(PERSONALIZATION_MEMBERSHIP_MESSAGE));
+  }
 
   const vatInput = {
     vatRate: parsed.data.vatRate === undefined ? existing.vatRate : parsed.data.vatRate,
@@ -186,6 +196,7 @@ export const updateProduct = async (
     deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate ?? existing.parcelTemplate,
     compliance: parsed.data.compliance === undefined ? existing.compliance ?? null : parsed.data.compliance,
+    personalization,
     variantGroup: parsed.data.variantGroup === undefined ? existing.variantGroup ?? null : parsed.data.variantGroup,
     variantLabel: parsed.data.variantLabel === undefined ? existing.variantLabel ?? null : parsed.data.variantLabel,
     title: parsed.data.title ?? existing.title,

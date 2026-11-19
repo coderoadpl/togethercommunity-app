@@ -198,4 +198,27 @@ describe('import content repository', () => {
     expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product('any', 'Second'), event: event('b', 'updated') })).toBe('saved');
     expect(await storedChannel()).toBe('any');
   });
+
+  it('writes the personalisation of an imported product, keeps it when an update omits it and clears it with null', async () => {
+    const repository = createImportContentRepository(db);
+    const engraving = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: 'I understand a personalised item is made to my order.' };
+    const product = (title: string, personalization?: typeof engraving | null): Product => productSchema.parse({
+      id: 'personalised-product', tenantId: TENANT, type: 'physical', slug: 'personalised-product', title, description: '',
+      coverUrl: null, priceCents: 0, currency: 'PLN', published: false, accessItems: [], legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z', ...(personalization === undefined ? {} : { personalization }),
+    });
+    const event = (id: string, action: 'created' | 'updated') => ({
+      id, tenantId: TENANT, apiKeyId: 'key-1', kind: 'product' as const, importKey: 'personalised-product',
+      resourceId: 'personalised-product', action, payloadHash: id.repeat(64).slice(0, 64), at: '2026-01-01T00:00:00.000Z',
+    });
+    const stored = async () => (await db.select({ title: products.title, personalization: products.personalization }).from(products)
+      .where(eq(products.id, 'personalised-product')))[0];
+
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'created', resource: product('First', engraving), event: event('c', 'created') })).toBe('saved');
+    expect(await stored()).toEqual({ title: 'First', personalization: engraving });
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product('Second'), event: event('d', 'updated') })).toBe('saved');
+    expect(await stored()).toEqual({ title: 'Second', personalization: engraving });
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product('Third', null), event: event('e', 'updated') })).toBe('saved');
+    expect(await stored()).toEqual({ title: 'Third', personalization: null });
+  });
 });

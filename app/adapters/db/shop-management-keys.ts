@@ -1,4 +1,4 @@
-import { and, asc, eq, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, or, sql, type SQL } from 'drizzle-orm';
 
 import { shopManagementKeySchema, type ShopManagementKey } from '#core/domain/index.js';
 import type { ShopManagementKeyRateLimitRepository, ShopManagementKeyRepository } from '#core/server/index.js';
@@ -78,6 +78,10 @@ const ownsKey = async (db: Db, tenantId: string, apiKeyId: string): Promise<bool
   return owned !== undefined;
 };
 
+// A late request of an earlier window counts against the stored newer window, so the newest window keeps its limit and a boundary race never rewinds it.
+const storedWindowIsOlder = (windowStartedAt: string): SQL =>
+  sql`${shopManagementKeyRateLimitBuckets.windowStartedAt} < ${windowStartedAt}::timestamptz`;
+
 export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManagementKeyRateLimitRepository => ({
   claim: async (tenantId, input) => {
     if (input.limit < 1 || !await ownsKey(db, tenantId, input.apiKeyId)) return false;
@@ -89,11 +93,11 @@ export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManageme
     }).onConflictDoUpdate({
       target: [shopManagementKeyRateLimitBuckets.apiKeyId, shopManagementKeyRateLimitBuckets.period],
       set: {
-        windowStartedAt: input.windowStartedAt,
-        count: sql`case when ${shopManagementKeyRateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${shopManagementKeyRateLimitBuckets.count} + 1 else 1 end`,
+        windowStartedAt: sql`greatest(${shopManagementKeyRateLimitBuckets.windowStartedAt}, ${input.windowStartedAt}::timestamptz)`,
+        count: sql`case when ${storedWindowIsOlder(input.windowStartedAt)} then 1 else ${shopManagementKeyRateLimitBuckets.count} + 1 end`,
       },
       setWhere: or(
-        ne(shopManagementKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
+        storedWindowIsOlder(input.windowStartedAt),
         sql`${shopManagementKeyRateLimitBuckets.count} + 1 <= ${input.limit}`,
       ) ?? sql`false`,
     }).returning({ count: shopManagementKeyRateLimitBuckets.count });

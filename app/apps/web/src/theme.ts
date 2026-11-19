@@ -3021,6 +3021,7 @@ export const TenantListItemText = styled(ListItemText)({
 });
 
 export const WrapAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
+export const PreLineText = styled(Typography)<AsElement>({ whiteSpace: 'pre-line', overflowWrap: 'anywhere' });
 
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,

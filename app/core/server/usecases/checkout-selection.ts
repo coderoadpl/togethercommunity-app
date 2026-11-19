@@ -1,5 +1,5 @@
-import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutReturnUrl, resolveCheckoutShipping, validation, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
-import type { TenantRepository } from '../ports.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutPersonalizations, resolveCheckoutReturnUrl, resolveCheckoutShipping, validation, type CheckoutPersonalizationRequest, type OrderLinePersonalization, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import type { Clock, TenantRepository } from '../ports.js';
 
 export interface CheckoutSelection {
   product: Product;
@@ -13,6 +13,7 @@ export interface CheckoutSelection {
   shipping?: CheckoutShippingSelection;
   returnUrl?: string;
   cancelUrl?: string;
+  personalizations?: ReadonlyMap<string, OrderLinePersonalization>;
 }
 
 export type CheckoutReturnAddresses = Pick<CheckoutSelection, 'returnUrl' | 'cancelUrl'>;
@@ -48,6 +49,18 @@ export const withCheckoutShipping = async (
   const resolved = resolveCheckoutShipping(products, settings?.shippingRates, shippingInput?.data);
   if (!resolved.ok) return resolved;
   return ok(resolved.value === null ? selection : { ...selection, shipping: resolved.value });
+};
+
+export const withCheckoutPersonalizations = (
+  selection: CheckoutSelection,
+  requests: readonly CheckoutPersonalizationRequest[] | undefined,
+  clock: Clock | undefined,
+): Result<CheckoutSelection, AppError> => {
+  if (requests === undefined || requests.length === 0) return ok(selection);
+  if (selection.price?.kind === 'recurring') return err(validation('A subscription purchase cannot carry a personalisation'));
+  if (clock === undefined) return err(validation('Checkout personalisation is not configured'));
+  const resolved = resolveCheckoutPersonalizations(requests, selection.products ?? [selection.product], clock.nowIso());
+  return resolved.ok ? ok({ ...selection, personalizations: resolved.value }) : resolved;
 };
 
 export const selectionLineQuantity = (selection: Pick<CheckoutSelection, 'cartLines'>, productId: string): number =>

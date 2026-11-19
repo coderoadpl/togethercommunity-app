@@ -5,7 +5,7 @@ import { lessonEditionSchema } from './lesson-editions.js';
 import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.js';
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
-import { productSchema, productSlugFromTitle } from './product.js';
+import { productContentSchema, productSlugFromTitle } from './product.js';
 import { courseSnapshotV6Schema, type CourseSnapshotV6 } from './snapshots/course/v6.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
@@ -55,7 +55,7 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSchema,
   course_module: courseModuleSchema,
   course_lesson: courseLessonSchema,
-  product: productSchema,
+  product: productContentSchema,
 };
 
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {

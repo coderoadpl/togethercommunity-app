@@ -793,6 +793,36 @@ export interface Messages {
     batch: string;
     instructions: string;
   };
+  personalization: {
+    forLine: (params: { name: string }) => string;
+    characterCount: (params: { count: number; max: number }) => string;
+    textRequired: string;
+    conditionRequired: string;
+    heading: string;
+    hint: string;
+    enable: string;
+    label: string;
+    labelHint: string;
+    description: string;
+    descriptionHint: string;
+    inputLabel: string;
+    maxLength: string;
+    maxLengthHint: string;
+    requireCondition: string;
+    condition: string;
+    conditionHint: string;
+    incomplete: string;
+    marker: string;
+    text: string;
+    originalText: string;
+    correctedAt: string;
+    correctedBy: string;
+    acceptedCondition: string;
+    acceptedAt: string;
+    correct: string;
+    saveCorrection: string;
+    savingCorrection: string;
+  };
   productVariants: {
     offerLabelFor: (params: { title: string }) => string;
     inBundle: string;

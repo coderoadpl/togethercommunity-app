@@ -289,7 +289,7 @@ Every offer product carries its public stock and the quantity a buyer can order:
 | `stock.available` | Pieces a buyer can take now (on hand minus pieces held by open checkouts); `null` when not tracked |
 | `stock.soldOut` | A tracked product with no available piece |
 | `stock.low` | A low-stock threshold is set and availability reached it |
-| `maxQuantity` | The largest quantity the cart accepts on one line now: `0` when sold out, otherwise 10 for a physical product and 1 for any other type, capped by `stock.available` |
+| `maxQuantity` | The largest quantity one checkout line accepts now: `0` when sold out, otherwise 10 for a physical product and 1 for any other type, capped by `stock.available`; a membership's 1 is its single-product checkout, never a cart line |
 | `variants[].available` | The same count for each variant, next to its `soldOut` flag |
 
 Use `maxQuantity` as the upper bound of a quantity picker and `stock.available`
@@ -487,8 +487,9 @@ The cart answers with the same error envelope as the other routes:
 | a shipped product without `shipping` | `shipping_required` (400) |
 
 A custom cart form bounds each quantity picker by `maxQuantity` and shows the
-remaining count from `stock.available`; with a product read from the offer as
-above:
+remaining count from `stock.available`. Membership products cannot join a cart
+(`validation`, 400); send the buyer to `/checkout/<product-id>` for them. With a
+product read from the offer as above:
 
 ```js
 const quantityPicker = (product) => {

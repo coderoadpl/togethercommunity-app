@@ -1062,11 +1062,14 @@ The public offer exposes per product `stock: { tracked, soldOut, low, available 
 pieces held by open checkouts, never below zero) for a tracked product and
 `null` for an untracked one; the stored on-hand and reserved counts are never
 public. `low` means a threshold is set and availability reached it. Each product
-also carries `maxQuantity`, the largest quantity the cart checkout accepts on
-one line right now: `0` when sold out, otherwise the cart rule bound (10 for a
-physical product, 1 for every other type) capped by `available`. The offer ETag
+also carries `maxQuantity`, the largest quantity one checkout line accepts right
+now: `0` when sold out, otherwise the rule bound of its checkout path (10 for a
+physical product in the cart, 1 for every other type) capped by `available`. A
+membership is never a cart line: its `maxQuantity` of 1 is the single-product
+checkout at `/checkout/<product-id>`. The offer ETag
 includes a hash of the available count and the low flag of every tracked
-product, so any sale, reservation, release or adjustment that changes a count
+product the standalone offer can show: published products with `salesChannel: 'any'`.
+A sale, reservation, release or adjustment that changes one of those counts
 revalidates cached offers.
 
 A sales link is sold out when any of its products is: the direct handoff page

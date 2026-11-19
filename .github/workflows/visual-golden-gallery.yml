@@ -26,6 +26,7 @@ jobs:
             const root = 'app/tasks/visual-goldens/';
             const baselinePath = /^app\/tasks\/visual-goldens\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\.png$/;
             const maxRows = 400;
+            const maxBodyLength = 60000;
             const { owner, repo } = context.repo;
             const pullNumber = context.payload.pull_request.number;
             const baseTipSha = context.payload.pull_request.base.sha;
@@ -111,22 +112,31 @@ jobs:
                 ? `<td><a href="${blobUrl(sha, path)}"><img width="260" alt="${alt}" ` +
                   `src="${rawUrl(sha, path)}"></a></td>`
                 : `<td><em>${label}</em></td>`;
-              const shown = changes.slice(0, maxRows);
-              const rows = shown.map((change) =>
+              const rowFor = (change) =>
                 `<tr><td><code>${change.name}</code></td><td>${change.status}</td>` +
                 imageCell(change.before, baseSha, 'not present', `${change.name} before`) +
                 imageCell(change.after, headSha, 'not present', `${change.name} after`) +
-                '</tr>'
-              ).join('\n');
-              const omitted = changes.length - shown.length;
-              const omission = omitted > 0
+                '</tr>';
+              const omissionFor = (omitted) => omitted > 0
                 ? `\n\n_${omitted} additional baseline change(s) omitted; review them in the Files tab._`
                 : '';
-              body = marker + '\n## Committed visual golden changes\n\n' +
+              const tableStart = marker + '\n## Committed visual golden changes\n\n' +
                 `Before and after images are pinned to this pull request’s ${baseDescription} ` +
                 'and head commits.\n\n' +
                 '<table><thead><tr><th>Baseline</th><th>Change</th><th>Before (base)</th>' +
-                '<th>After (head)</th></tr></thead><tbody>' + rows + '</tbody></table>' + omission;
+                '<th>After (head)</th></tr></thead><tbody>';
+              const tableEnd = '</tbody></table>';
+              const rows = [];
+              let rowsLength = 0;
+              for (const change of changes.slice(0, maxRows)) {
+                const row = rowFor(change);
+                const nextLength = rowsLength + (rows.length > 0 ? 1 : 0) + row.length;
+                const nextOmission = omissionFor(changes.length - rows.length - 1);
+                if (tableStart.length + nextLength + tableEnd.length + nextOmission.length > maxBodyLength) break;
+                rows.push(row);
+                rowsLength = nextLength;
+              }
+              body = tableStart + rows.join('\n') + tableEnd + omissionFor(changes.length - rows.length);
             }
             if (existing) {
               await github.rest.issues.updateComment({

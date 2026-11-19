@@ -467,7 +467,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       : stripeConfigured ? checkoutSession.isPending ? t.checkout.payPending : t.checkout.goToPayment({ price: formattedPayable })
         : simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.payIdle({ price: formattedPayable });
   const simulatedPrimary = payableCents > 0 && !stripeConfigured && paymentConfig.data.simulatedPaymentsEnabled;
-  const payNote = viaStripe
+  const payNote = payBlockedReason !== null ? null : viaStripe
     ? t.checkout.nextStep({ email: buyerEmail === undefined && !testEnabled, address: shippingRequired, terms: stripeCollectsBuyer })
     : simulatedPrimary ? t.checkout.simulatedPaymentNote : null;
   const singleProductDetails = product.coverUrl !== null || product.description.trim() !== '' || product.vatRate != null;
@@ -593,6 +593,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               })}
               disabled={pending}
               lockerPlacement="under-option"
+              chooseHint={false}
             />
           ) : null}
           <PersonalizationField state={personalization} disabled={pending} />

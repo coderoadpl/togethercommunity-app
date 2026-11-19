@@ -2809,7 +2809,7 @@ export const CheckoutStepItem = styled('li', {
   alignItems: 'center',
   gap: '0.4rem',
   ...(current ? { color: theme.palette.text.primary, fontWeight: 600 } : {}),
-  '& + &::before': { content: '"·"', marginRight: '0.1rem', color: theme.palette.text.disabled },
+  '&:not(:first-of-type)::before': { content: '"·"', marginRight: '0.1rem', color: theme.palette.text.disabled },
 }));
 
 export const CheckoutStepNumber = styled('span', {
@@ -2845,6 +2845,7 @@ export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
   minHeight: '2.75rem',
   padding: '0 0.25rem',
   borderRadius: theme.shape.borderRadius,
+  fontFamily: theme.typography.fontFamily,
   fontSize: '0.875rem',
   fontWeight: 500,
   color: linkInk(theme),
@@ -2865,6 +2866,7 @@ export const CheckoutRowButton = styled(ButtonBase)(({ theme }) => ({
   justifyContent: 'space-between',
   gap: '0.75rem',
   textAlign: 'left',
+  fontFamily: theme.typography.fontFamily,
   fontSize: '0.9375rem',
   fontWeight: 500,
   color: theme.palette.text.primary,

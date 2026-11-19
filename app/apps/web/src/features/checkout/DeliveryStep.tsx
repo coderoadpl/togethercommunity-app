@@ -18,7 +18,7 @@ import { CheckoutPriceOption, FinePrint } from '../../theme.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
 import type { CheckoutEvent, CheckoutState, GeowidgetAccess } from './index.web.js';
 
-export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, lockerPlacement = 'after-options' }: {
+export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, lockerPlacement = 'after-options', chooseHint = true }: {
   rates: PublicShippingRate[];
   state: CheckoutState;
   dispatch: (event: CheckoutEvent) => void;
@@ -27,6 +27,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   geowidget: GeowidgetAccess;
   disabled: boolean;
   lockerPlacement?: 'under-option' | 'after-options';
+  chooseHint?: boolean;
 }) => {
   const t = useTranslations();
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
@@ -89,7 +90,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
         </RadioGroup>
       )}
       {lockerPlacement === 'after-options' ? lockerPicker : null}
-      {selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
+      {chooseHint && selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
     </FormControl>
   );
 };

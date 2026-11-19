@@ -13,13 +13,21 @@ The primary model depends on the PR base. Staging uses `AI_REVIEW_MODEL`, while 
 1. Slot 1 primary (`try1p`, `try1pr`).
 2. Slot 2 primary (`try2p`, `try2pr`).
 3. Slot 3 primary (`try3p`, `try3pr`).
-4. Slot 1 fallback (`try1f`, `try1fr`).
-5. Slot 2 fallback (`try2f`, `try2fr`).
-6. Slot 3 fallback (`try3f`, `try3fr`).
+4. Slot 4 primary (`try4p`, `try4pr`).
+5. Slot 5 primary (`try5p`, `try5pr`).
+6. Slot 6 primary (`try6p`, `try6pr`).
+7. Slot 1 fallback (`try1f`, `try1fr`).
+8. Slot 2 fallback (`try2f`, `try2fr`).
+9. Slot 3 fallback (`try3f`, `try3fr`).
+10. Slot 4 fallback (`try4f`, `try4fr`).
+11. Slot 5 fallback (`try5f`, `try5fr`).
+12. Slot 6 fallback (`try6f`, `try6fr`).
 
 Each attempt first uses the action’s structured output. When that output is empty, it reads the structured-output object only if the terminal event in that attempt’s execution log is a result with no error flag or error subtype. The recovered object goes through the same verdict validation and is passed to the review comment. A recovered PASS still requires a successful action; a genuine FAIL remains blocking even if the action failed. Missing, malformed, or error-only logs cannot create a verdict.
 
 Each model/slot pair receives one immediate retry only when the execution log proves the model was never called. Missing slots are skipped. Every attempt requires all earlier attempts to have produced neither `PASS` nor `FAIL`. Primary-model capacity is per account, so usage-limit and model-unavailable errors advance through all available primary token slots before any fallback-model attempt.
+
+The post and gate steps receive the attempt ids in this execution order as `AI_REVIEW_ATTEMPTS` and read each attempt's outcome from it. A missing or malformed list produces no verdict, so the check stays red.
 
 The workflow uses a read-only GitHub token for preparation and a pull-request-write token only for its deterministic sticky comment. The model receives one OAuth credential at a time, no GitHub token, no shell, no network tools, no write tools, no plugins, and no repository or user configuration. Its reads are confined to the prepared runner-temporary input directory.
 
@@ -51,7 +59,9 @@ Add:
 - `AI_REVIEW_MODEL_MAIN=claude-fable-5-1`
 - `AI_REVIEW_MODEL_FALLBACK=claude-opus-5`
 
-The organization secret `CLAUDE_CODE_OAUTH_TOKEN_1` is already granted to this repository. Slots `_2` and `_3` are optional. To add one later, open **coderoadpl → Settings → Secrets and variables → Actions**, create the organization secret, choose **Selected repositories**, and add `togethercommunity-app` without changing sibling grants. Use Claude Code OAuth credentials only and rotate slots independently.
+The organization secret `CLAUDE_CODE_OAUTH_TOKEN_1` is already granted to this repository. Slots `_2` to `_6` are optional organization secrets granted to this repository; an empty or absent secret means the slot is skipped. To fill one later, open **coderoadpl → Settings → Secrets and variables → Actions**, create the organization secret, choose **Selected repositories**, and add `togethercommunity-app` without changing sibling grants. Use Claude Code OAuth credentials only and rotate slots independently.
+
+`.github/workflows/ai-review.yml` is rendered by `app/scripts/generate-ai-review-workflow.ts` and is never edited by hand; a config-regression test fails `check` when the committed file differs from the generator output. To add a seventh slot, raise `AI_REVIEW_SLOT_COUNT` in that script, run `pnpm exec tsx scripts/generate-ai-review-workflow.ts` from `app/`, commit the script and the regenerated workflow together, and create the matching `CLAUDE_CODE_OAUTH_TOKEN_7` organization secret as above. Each attempt step receives only its own slot's secret, so a new slot adds four attempt steps and one preflight entry.
 
 After recording both a normal green `PASS` and a normal red `FAIL`, configure branch rulesets:
 

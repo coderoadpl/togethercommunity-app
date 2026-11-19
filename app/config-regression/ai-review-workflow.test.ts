@@ -7,6 +7,10 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import {
+  AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds, renderAiReviewWorkflow,
+} from '../scripts/generate-ai-review-workflow.js';
+
 const stepSchema = z.object({
   name: z.string().optional(),
   id: z.string().optional(),
@@ -58,11 +62,18 @@ const stepByName = (name: string) => {
 
 const actionPin = 'anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc';
 const checkoutPin = 'actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955';
-const attemptIds = [
-  'try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr',
-  'try1f', 'try1fr', 'try2f', 'try2fr', 'try3f', 'try3fr',
-];
-const primaryAttempts = new Set(['try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr']);
+const slots = Array.from({ length: AI_REVIEW_SLOT_COUNT }, (_, index) => String(index + 1));
+const attemptIds = [...aiReviewAttemptIds];
+const primaryAttempts = new Set(attemptIds.filter((id) => /pr?$/.test(id)));
+const slotOf = (id: string) => {
+  const slot = /^try([1-9][0-9]*)(p|pr|f|fr)$/.exec(id)?.[1];
+  if (slot === undefined) throw new Error(`Malformed attempt id "${id}"`);
+  return slot;
+};
+const isAttemptStep = (step: { uses?: string | undefined }) => step.uses === actionPin;
+const tokenReferences = (value: unknown) => [
+  ...JSON.stringify(value).matchAll(/secrets\.(CLAUDE_CODE_OAUTH_TOKEN_\w+)/g),
+].map((match) => match[1]);
 
 const passVerdict = {
   verdict: 'PASS', summary: 'Reviewed.', blocking_issues: [], safe_to_merge: true,
@@ -138,6 +149,16 @@ const schemaLiteral = {
 };
 
 describe('AI review workflow', () => {
+  it('is committed exactly as the generator renders it', () => {
+    expect(source).toBe(renderAiReviewWorkflow());
+  });
+
+  it('orders every slot primary pair before every slot fallback pair', () => {
+    expect(attemptIds).toEqual(['p', 'f'].flatMap((model) => slots.flatMap((slot) => [
+      `try${slot}${model}`, `try${slot}${model}r`,
+    ])));
+  });
+
   it('emits one guarded check for staging and main pull requests plus diagnostic dispatch', () => {
     expect(workflow.name).toBe('ai-review');
     expect(workflow.on.pull_request).toEqual({
@@ -189,8 +210,9 @@ describe('AI review workflow', () => {
     expect(job['timeout-minutes']).toBe("${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}");
   });
 
-  it('contains twelve explicit, sequential, timeout-bounded action positions', () => {
-    const attempts = job.steps.filter((candidate) => candidate.uses === actionPin);
+  it('contains four explicit, sequential, timeout-bounded action positions per slot', () => {
+    const attempts = job.steps.filter(isAttemptStep);
+    expect(attempts).toHaveLength(AI_REVIEW_SLOT_COUNT * 4);
     expect(attempts.map((candidate) => candidate.id)).toEqual(attemptIds);
     for (const attempt of attempts) {
       const index = job.steps.indexOf(attempt);
@@ -209,10 +231,10 @@ describe('AI review workflow', () => {
     }
   });
 
-  it('exhausts all six primary-model positions before the first fallback-model attempt', () => {
-    const attempts = job.steps.filter((candidate) => candidate.uses === actionPin);
+  it('exhausts every primary-model position before the first fallback-model attempt', () => {
+    const attempts = job.steps.filter(isAttemptStep);
     const firstFallback = attempts.findIndex((candidate) => candidate.id === 'try1f');
-    expect(firstFallback).toBe(6);
+    expect(firstFallback).toBe(AI_REVIEW_SLOT_COUNT * 2);
     expect(attempts.slice(0, firstFallback).map((candidate) => candidate.id))
       .toEqual([...primaryAttempts]);
     const condition = stepById('try1f').if ?? '';
@@ -312,7 +334,8 @@ describe('AI review workflow', () => {
       expect(condition).toContain("steps.target.outputs.draft == 'false'");
       expect(condition).toContain("steps.target.outputs.invoke == 'true'");
       expect(condition).toContain('!cancelled()');
-      expect(condition).toContain(`steps.preflight.outputs.has_slot_${id[3]} == 'true'`);
+      expect(condition).toContain(`steps.preflight.outputs.has_slot_${slotOf(id)} == 'true'`);
+      expect([...condition.matchAll(/has_slot_(\d+)/g)].map((match) => match[1])).toEqual([slotOf(id)]);
       for (const earlier of attemptIds.slice(0, index)) {
         const classifier = `classify${earlier.slice(3)}`;
         expect(condition).toContain(`steps.${classifier}.outputs.outcome != 'pass'`);
@@ -324,10 +347,14 @@ describe('AI review workflow', () => {
         ]));
       if (!id.endsWith('r')) expect(condition).not.toContain('cold_start');
     }
-    for (const retry of ['1pr', '1fr', '2pr', '2fr', '3pr', '3fr']) {
-      const normal = retry.slice(0, -1);
-      const condition = stepById(`try${retry}`).if ?? '';
-      expect(condition).toContain(`steps.classify${normal}.outputs.cold_start == 'true'`);
+    const retries = attemptIds.filter((id) => id.endsWith('r'));
+    expect(retries).toHaveLength(AI_REVIEW_SLOT_COUNT * 2);
+    for (const retry of retries) {
+      const normal = retry.slice(3, -1);
+      const condition = stepById(retry).if ?? '';
+      expect(attemptIds[attemptIds.indexOf(retry) - 1]).toBe(`try${normal}`);
+      expect(condition.endsWith(` && steps.classify${normal}.outputs.cold_start == 'true' }}`)).toBe(true);
+      expect(condition.match(/cold_start/g)).toHaveLength(1);
       expect(condition).toContain('!cancelled()');
     }
     expect(source).not.toContain('--fallback-model');
@@ -374,8 +401,12 @@ describe('AI review workflow', () => {
   });
 
   it('keeps drafts, no-token runs, stale runs, cancellations, and real no-verdict runs red', () => {
-    expect(stepByName('Report missing review capacity').run)
-      .toContain('no CLAUDE_CODE_OAUTH_TOKEN_1/2/3 is available');
+    const missing = stepByName('Report missing review capacity');
+    expect(missing.run).toContain(`no CLAUDE_CODE_OAUTH_TOKEN_${slots.join('/')} is available`);
+    expect(missing.if).toBe(`\${{ ${[
+      "steps.target.outputs.draft == 'false'", "steps.target.outputs.invoke == 'true'",
+      ...slots.map((slot) => `steps.preflight.outputs.has_slot_${slot} == 'false'`),
+    ].join(' && ')} }}`);
     expect(stepByName('Post the review verdict').if).toContain("steps.current.outputs.current == 'true'");
     expect(stepByName('Gate — fail-closed verdict').if).toContain('always()');
     expect(stepByName('Gate — fail-closed verdict').run).toContain('gate-review.sh');
@@ -398,6 +429,57 @@ describe('AI review workflow', () => {
     expect(headings.map((heading) => main.indexOf(heading)))
       .toEqual([...headings.map((heading) => main.indexOf(heading))].sort((left, right) => left - right));
     expect(main).toContain('LOW requires FAIL');
+  });
+
+  it('detects exactly one preflight slot per OAuth token secret', () => {
+    const preflight = stepById('preflight');
+    expect(preflight.env).toEqual(Object.fromEntries(slots.map((slot) => [
+      `SLOT${slot}`, `\${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_${slot} }}`,
+    ])));
+    expect(preflight.run?.trimEnd().split('\n')).toEqual(slots.map((slot) => (
+      `[ -n "$SLOT${slot}" ] && echo "has_slot_${slot}=true" >> "$GITHUB_OUTPUT" || echo "has_slot_${slot}=false" >> "$GITHUB_OUTPUT"`
+    )));
+  });
+
+  it('gives each attempt only its own slot token and keeps tokens out of every other step', () => {
+    for (const step of job.steps) {
+      const references = tokenReferences(step);
+      if (isAttemptStep(step)) {
+        const slot = slotOf(step.id ?? '');
+        expect(references, step.id).toEqual([`CLAUDE_CODE_OAUTH_TOKEN_${slot}`]);
+        expect(step.with?.claude_code_oauth_token).toBe(`\${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_${slot} }}`);
+        expect(JSON.stringify(step.env ?? {})).not.toContain('secrets.');
+      } else if (step.id === 'preflight') {
+        expect(references).toEqual(slots.map((slot) => `CLAUDE_CODE_OAUTH_TOKEN_${slot}`));
+      } else {
+        expect(references, step.id ?? step.name).toEqual([]);
+        expect(JSON.stringify(step), step.id ?? step.name).not.toContain('secrets.');
+      }
+    }
+    expect(source.match(/secrets\.CLAUDE_CODE_OAUTH_TOKEN_/g)).toHaveLength(AI_REVIEW_SLOT_COUNT * 5);
+  });
+
+  it('hands the post and gate scripts every attempt outcome and the ordered attempt list', () => {
+    const post = stepByName('Post the review verdict');
+    const gate = stepByName('Gate — fail-closed verdict');
+    expect(post.env?.AI_REVIEW_ATTEMPTS).toBe(attemptIds.join(' '));
+    expect(gate.env?.AI_REVIEW_ATTEMPTS).toBe(attemptIds.join(' '));
+    for (const id of attemptIds) {
+      const key = id.slice(3);
+      const name = key.toUpperCase();
+      const model = primaryAttempts.has(id) ? 'primary_model' : 'fallback_model';
+      expect(gate.env?.[`O_${name}`]).toBe(`\${{ steps.classify${key}.outputs.outcome }}`);
+      expect(post.env).toMatchObject({
+        [`O_${name}`]: `\${{ steps.classify${key}.outputs.outcome }}`,
+        [`R_${name}`]: `\${{ steps.classify${key}.outputs.reason }}`,
+        [`RAW_${name}`]: `\${{ steps.classify${key}.outputs.raw }}`,
+        [`LOG_${name}`]: `\${{ steps.classify${key}.outputs.log }}`,
+        [`MODEL_${name}`]: `\${{ steps.prepare.outputs.${model} }}`,
+      });
+    }
+    expect(Object.keys(gate.env ?? {}).filter((name) => name.startsWith('O_'))).toHaveLength(attemptIds.length);
+    expect(Object.keys(post.env ?? {}).filter((name) => /^(O|R|RAW|LOG|MODEL)_/.test(name)))
+      .toHaveLength(attemptIds.length * 5);
   });
 
   it('does not expose deployment, hosting, or unrelated operational credentials', () => {

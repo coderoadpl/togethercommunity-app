@@ -61,7 +61,8 @@ import {
   type Identity,
   type Language,
   type Member,
-  type Result
+  type Result,
+  type TenantSettings
 } from '#core/domain/index.js';
 import {
   getPublicSurvey,
@@ -109,6 +110,7 @@ import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerCrawlerFiles } from './crawler-files.js';
 import { stripeTestCheckoutIdentity } from './stripe-test-checkout-identity.js';
 import { registerDirectSalesLinkRoutes } from './direct-sales-link-routes.js';
+import { directSalesLinkCopy } from './direct-sales-link-page.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
@@ -291,6 +293,12 @@ const checkoutIdentity = async (c: Context<AppVars>, deps: AppDeps) => {
     host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null,
   }, deps);
   return identity.ok ? identity.value : null;
+};
+
+const checkoutStripeTerms = (settings: TenantSettings | null, language: Language | undefined) => {
+  if (!settings?.termsUrl || !settings.privacyUrl) return undefined;
+  const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };
+  return { ...legal, termsAcceptanceMessage: directSalesLinkCopy(language ?? settings.defaultLanguage ?? 'en').termsAcceptanceMessage(legal) };
 };
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
@@ -776,18 +784,25 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const body: unknown = await readJson(c.req.raw);
     const request = await checkoutRequestSelection(tenant.value.tenant.id, body);
     if (!request.ok) return respondPublic(request);
-    const { input, selection } = request.value;
+    const { selection } = request.value;
     const identity = selection.salesLinkId === undefined
       ? await checkoutIdentity(c, deps) : await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
     const testMode = identity?.tenantId === tenant.value.tenant.id &&
       hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
-    const consent = await validateTermsConsent(
-      tenant.value.tenant.id,
-      input.termsAccepted,
-      deps.tenants,
-      { requireLegalUrls: selection.salesLinkId !== undefined },
-    );
-    if (!consent.ok) return respondPublic(consent);
+    const cart = isCheckoutCartRequest(body);
+    const stripeTerms = cart ? undefined : checkoutStripeTerms(await deps.tenants.findSettings(tenant.value.tenant.id), request.value.input.language);
+    const buyer = stripeTerms === undefined || testMode || request.value.input.email !== undefined ? null
+      : selection.salesLinkId === undefined ? identity : await checkoutIdentity(c, deps);
+    const input = buyer === null ? request.value.input : { ...request.value.input, email: buyer.email };
+    if (stripeTerms === undefined) {
+      const consent = await validateTermsConsent(
+        tenant.value.tenant.id,
+        input.termsAccepted,
+        deps.tenants,
+        { requireLegalUrls: selection.salesLinkId !== undefined },
+      );
+      if (!consent.ok) return respondPublic(consent);
+    }
     if (testMode) {
       const rejected = testCheckoutRejection(input, selection);
       if (rejected !== null) return respondPublic(err(rejected));
@@ -825,6 +840,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps,
       captureConsent ? checkoutConsentCaptureId : undefined,
       testMember?.ok === true ? { mode: 'test', memberId: testMember.value.id } : undefined,
+      stripeTerms,
     );
     if (
       session.ok &&

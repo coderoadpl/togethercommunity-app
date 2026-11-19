@@ -791,7 +791,8 @@ acceptance cannot be edited.
 The purchase block of the `welcome-sign-in` e-mail shows, after the items, one
 paragraph per personalised line with the heading "Personalisation: <line
 name>", the text and, when a condition existed, "Condition you accepted:
-<condition>" (Polish: "Personalizacja", "Zaakceptowany warunek"). All values are
+<condition>"; the Polish labels are the `purchase.personalization` and
+`purchase.personalizationCondition` keys of the Polish e-mail dictionary. All values are
 escaped like the other e-mail values.
 
 ### Erasure

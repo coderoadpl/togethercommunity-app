@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
@@ -30,7 +29,17 @@ const UPDATED_AT = '2026-10-01T08:00:00.000Z';
 
 const LEGACY_KEYS: readonly string[] = ['shipx.organizationId', 'shipx.token'];
 
-const journalSchema = z.object({ entries: z.array(z.object({ tag: z.string() }).passthrough()) }).passthrough();
+const journalEntries = (journal: unknown): Array<{ tag: string }> => {
+  if (typeof journal !== 'object' || journal === null || !('entries' in journal) || !Array.isArray(journal.entries)) {
+    throw new Error('The drizzle journal has no entries');
+  }
+  return journal.entries.map((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null || !('tag' in entry) || typeof entry.tag !== 'string') {
+      throw new Error('A drizzle journal entry has no tag');
+    }
+    return { ...entry, tag: entry.tag };
+  });
+};
 
 interface Workspace {
   id: string;
@@ -75,10 +84,11 @@ beforeAll(async () => {
   await admin.query(`CREATE DATABASE ${pg.escapeIdentifier(TEST_DB)}`);
   await admin.end();
 
-  const journal = journalSchema.parse(JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')));
-  const position = journal.entries.findIndex((entry) => entry.tag.endsWith(SLOT_MIGRATION_SUFFIX));
+  const journal: unknown = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8'));
+  const entries = journalEntries(journal);
+  const position = entries.findIndex((entry) => entry.tag.endsWith(SLOT_MIGRATION_SUFFIX));
   if (position === -1) throw new Error('The ShipX slot migration is missing from the journal');
-  const earlier = journal.entries.slice(0, position);
+  const earlier = entries.slice(0, position);
   partialMigrations = mkdtempSync(join(tmpdir(), 'together-shipx-slots-'));
   mkdirSync(join(partialMigrations, 'meta'));
   const files = new Set(readdirSync('drizzle'));
@@ -87,7 +97,7 @@ beforeAll(async () => {
     if (!files.has(file)) throw new Error(`${file} is missing`);
     copyFileSync(join('drizzle', file), join(partialMigrations, file));
   }
-  writeFileSync(join(partialMigrations, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries: earlier }));
+  writeFileSync(join(partialMigrations, 'meta', '_journal.json'), JSON.stringify({ ...(typeof journal === 'object' ? journal : {}), entries: earlier }));
 
   pool = new pg.Pool({ connectionString: testUrl });
   db = drizzle(pool, { schema: dbSchema });

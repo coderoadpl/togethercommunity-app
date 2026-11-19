@@ -107,8 +107,6 @@ export const configureShipxInputSchema = z.object({
 
 export type ConfigureShipxSlotInput = z.input<typeof shipxSlotInputSchema>;
 
-export type ConfigureShipxInput = z.input<typeof configureShipxInputSchema>;
-
 const maskedCredentialSchema = z.object({ maskedPreview: z.string(), updatedAt: z.string() });
 
 const shipxSlotViewSchema = z.object({

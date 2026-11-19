@@ -64,6 +64,7 @@ const importContentApiKey = ['import-content-api-key'] as const;
 const importUsersApiKey = ['import-users-api-key'] as const;
 const importApiKeys = ['import-content-api-key', 'import-users-api-key'] as const;
 const operatorSecret = ['operator-secret'] as const;
+const secretFingerprintReader = ['secret-fingerprint-reader'] as const;
 const webhook = ['webhook'] as const;
 const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
@@ -323,6 +324,7 @@ const beforeForRoute = (
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
     if (selfAuthenticatingEntry.mechanism === 'Shop management key') return shopManagementKey;
+    if (selfAuthenticatingEntry.mechanism === 'Secret fingerprint read secret') return secretFingerprintReader;
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;

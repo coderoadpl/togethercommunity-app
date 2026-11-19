@@ -2739,3 +2739,4 @@ export const TENANT_HEADER = 'x-tenant';
 /** Header carrying a tenant API-key secret for the M2M enroll endpoint. */
 export const API_KEY_HEADER = 'x-api-key';
 export const SCHEDULER_OPERATOR_SECRET_HEADER = 'x-scheduler-operator-secret';
+export const SECRET_FINGERPRINT_READ_SECRET_HEADER = 'x-secret-fingerprint-read-secret';

@@ -387,7 +387,7 @@ import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
-import { secretFingerprintsOf } from './secret-fingerprints.js';
+import { secretFingerprintsOf, selectSecretFingerprintReadSecret } from './secret-fingerprints.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -582,7 +582,7 @@ export interface AppDeps {
   autoInvoiceDispatchSecret: string;
   domainCheckSecret: string;
   operatorSecret: string;
-  operatorSecretConfigured: boolean;
+  secretFingerprintReadSecret: string | undefined;
   secretFingerprints: readonly SecretFingerprint[];
   smokeTenantReseed?: SmokeTenantReseedDeps;
   sanitizeStagingSecrets: SanitizeStagingSecretsDeps;
@@ -735,19 +735,21 @@ export const selectSmokeTenantReseed = (
   };
 };
 
-type ExplicitOperatorSecretEnv = Pick<Env, 'OPERATOR_SECRET' | 'PROD_OPERATOR_SECRET' | 'STAGING_OPERATOR_SECRET' | 'CRON_SECRET'>;
-
-const explicitOperatorSecretOf = (env: ExplicitOperatorSecretEnv): string | undefined =>
+export const selectOperatorSecret = (
+  env: Pick<
+    Env,
+    | 'OPERATOR_SECRET'
+    | 'PROD_OPERATOR_SECRET'
+    | 'STAGING_OPERATOR_SECRET'
+    | 'CRON_SECRET'
+    | 'EMAIL_DISPATCH_SECRET'
+  >,
+): string =>
   env.OPERATOR_SECRET
   ?? env.PROD_OPERATOR_SECRET
   ?? env.STAGING_OPERATOR_SECRET
-  ?? env.CRON_SECRET;
-
-export const selectOperatorSecret = (env: ExplicitOperatorSecretEnv & Pick<Env, 'EMAIL_DISPATCH_SECRET'>): string =>
-  explicitOperatorSecretOf(env) ?? env.EMAIL_DISPATCH_SECRET;
-
-export const operatorSecretConfigured = (env: ExplicitOperatorSecretEnv): boolean =>
-  explicitOperatorSecretOf(env) !== undefined;
+  ?? env.CRON_SECRET
+  ?? env.EMAIL_DISPATCH_SECRET;
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
@@ -1629,7 +1631,7 @@ export const createDeps = (
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     operatorSecret: selectOperatorSecret(env),
-    operatorSecretConfigured: operatorSecretConfigured(env),
+    secretFingerprintReadSecret: selectSecretFingerprintReadSecret(env, process.env, selectOperatorSecret(env)),
     secretFingerprints: secretFingerprintsOf(env, process.env),
     ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
     sanitizeStagingSecrets,

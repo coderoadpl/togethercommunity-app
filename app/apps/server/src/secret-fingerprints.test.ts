@@ -9,16 +9,18 @@ import {
   OUT_OF_SCHEMA_SECRET_NAMES,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   SECRET_FINGERPRINT_NAMES,
+  SECRET_FINGERPRINT_READ_SECRET_HEADER,
   secretFingerprintsOutputSchema,
 } from '#core/contract/index.js';
 
 import type { AppVars } from './app-vars.js';
-import { operatorSecretConfigured, selectOperatorSecret } from './composition.js';
+import { selectOperatorSecret } from './composition.js';
 import { DEV_EMAIL_DISPATCH_SECRET, envSchema } from './env.js';
 import {
   registerSecretFingerprintsRoute,
   secretFingerprintsGuard,
   secretFingerprintsOf,
+  selectSecretFingerprintReadSecret,
 } from './secret-fingerprints.js';
 
 const NOT_FINGERPRINTED_ENV_NAMES = [
@@ -52,9 +54,12 @@ const NOT_FINGERPRINTED_ENV_NAMES = [
 const SECRET_LIKE_NAME = /SECRET|PASSWORD|_TOKEN$|_KEY$|DATABASE_URL|CREDENTIAL/;
 
 const operatorSecret = 'test-only-operator-secret';
+const readSecret = 'test-only-fingerprint-read-secret';
 const values = {
   BETTER_AUTH_SECRET: 'test-only-better-auth-secret',
   CRON_SECRET: 'test-only-cron-secret-value',
+  OPERATOR_SECRET: operatorSecret,
+  SECRET_FINGERPRINT_READ_SECRET: readSecret,
   DATABASE_URL: 'postgres://user:test-only-db-password@db.example.test:5432/together',
   SMTP_PASSWORD: '',
 };
@@ -64,7 +69,7 @@ const allNames = SECRET_FINGERPRINT_NAMES;
 const harness = (env: Parameters<typeof secretFingerprintsOf>[0] = envSchema.parse(values)) => {
   const app = new Hono<AppVars>();
   registerSecretFingerprintsRoute(app, {
-    operatorSecret, operatorSecretConfigured: true, secretFingerprints: secretFingerprintsOf(env, processEnv),
+    secretFingerprintReadSecret: readSecret, secretFingerprints: secretFingerprintsOf(env, processEnv),
   });
   return app;
 };
@@ -128,74 +133,121 @@ describe('secretFingerprintsOf', () => {
   });
 });
 
+describe('selectSecretFingerprintReadSecret', () => {
+  it('keeps the route off while SECRET_FINGERPRINT_READ_SECRET is unset', () => {
+    const env = envSchema.parse({ ...values, SECRET_FINGERPRINT_READ_SECRET: undefined });
+    expect(selectSecretFingerprintReadSecret(env, processEnv, selectOperatorSecret(env))).toBeUndefined();
+  });
+
+  it('returns a read secret that differs from every platform secret', () => {
+    const env = envSchema.parse(values);
+    expect(selectSecretFingerprintReadSecret(env, processEnv, selectOperatorSecret(env))).toBe(readSecret);
+  });
+
+  it.each([
+    ['OPERATOR_SECRET', { OPERATOR_SECRET: readSecret }, {}],
+    ['PROD_OPERATOR_SECRET', { OPERATOR_SECRET: undefined, PROD_OPERATOR_SECRET: readSecret }, {}],
+    ['STAGING_OPERATOR_SECRET', { STAGING_OPERATOR_SECRET: readSecret }, {}],
+    ['CRON_SECRET', { CRON_SECRET: readSecret }, {}],
+    ['EMAIL_DISPATCH_SECRET', { EMAIL_DISPATCH_SECRET: readSecret }, {}],
+    ['BETTER_AUTH_SECRET', { BETTER_AUTH_SECRET: readSecret }, {}],
+    ['AWS_SECRET_ACCESS_KEY', {}, { AWS_SECRET_ACCESS_KEY: readSecret }],
+  ] as const)('keeps the route off when the read secret equals %s', (_name, override, processOverride) => {
+    const env = envSchema.parse({ ...values, ...override });
+    expect(selectSecretFingerprintReadSecret(env, { ...processEnv, ...processOverride }, selectOperatorSecret(env)))
+      .toBeUndefined();
+  });
+
+  it('keeps the route off when the read secret equals the dispatch default the operator secret falls back to', () => {
+    const env = envSchema.parse({ SECRET_FINGERPRINT_READ_SECRET: DEV_EMAIL_DISPATCH_SECRET });
+    expect(selectOperatorSecret(env)).toBe(DEV_EMAIL_DISPATCH_SECRET);
+    expect(selectSecretFingerprintReadSecret(env, {}, selectOperatorSecret(env))).toBeUndefined();
+  });
+});
+
+const sharedRejection = { ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } };
+
 describe('secret fingerprint guard', () => {
-  const guarded = (operatorSecretConfigured: boolean) => {
+  const guarded = (secretFingerprintReadSecret: string | undefined) => {
     const downstream = vi.fn(() => new Response('downstream', { status: 200 }));
     const app = new Hono<AppVars>();
-    app.use('*', secretFingerprintsGuard({ operatorSecret, operatorSecretConfigured }));
+    app.use('*', secretFingerprintsGuard({ secretFingerprintReadSecret }));
     app.get('*', downstream);
     return { app, downstream };
   };
 
-  it('rejects the matching secret with the shared operator error when the operator secret was not explicitly configured', async () => {
-    const { app, downstream } = guarded(false);
-    const response = await app.request('/', { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
-    expect(downstream).not.toHaveBeenCalled();
-  });
-
-  it('passes the matching secret on when the operator secret was explicitly configured', async () => {
-    const { app, downstream } = guarded(true);
-    const response = await app.request('/', { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
+  it('passes the matching read secret on in its own header', async () => {
+    const { app, downstream } = guarded(readSecret);
+    const response = await app.request('/', { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: readSecret } });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('downstream');
     expect(downstream).toHaveBeenCalledOnce();
   });
 
-  it('rejects a wrong secret even when the operator secret was explicitly configured', async () => {
-    const { app, downstream } = guarded(true);
-    const response = await app.request('/', { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' } });
+  it.each([
+    ['no read secret is configured', undefined, { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: readSecret }],
+    ['the read secret arrives in the operator header', readSecret, { [SCHEDULER_OPERATOR_SECRET_HEADER]: readSecret }],
+    ['the operator secret arrives in the operator header', readSecret, { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret }],
+    ['the operator secret arrives in the read header', readSecret, { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: operatorSecret }],
+    ['the read header is wrong', readSecret, { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'wrong-read-secret' }],
+  ] as const)('rejects with the shared 401 when %s', async (_case, configured, headers) => {
+    const { app, downstream } = guarded(configured);
+    const response = await app.request('/', { headers });
     expect(response.status).toBe(401);
+    expect(await response.json()).toEqual(sharedRejection);
     expect(downstream).not.toHaveBeenCalled();
   });
 });
 
 describe('secret fingerprint route', () => {
-  it.each([undefined, 'wrong-operator-secret', ''])('rejects the operator secret %j with the shared operator error', async (candidate) => {
-    const headers = candidate === undefined ? {} : { [SCHEDULER_OPERATOR_SECRET_HEADER]: candidate };
+  it.each([undefined, 'wrong-read-secret', ''])('rejects the read secret %j with the shared 401', async (candidate) => {
+    const headers = candidate === undefined ? {} : { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: candidate };
     const response = await harness().request(API_PATHS.secretFingerprints, { headers });
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
+    expect(await response.json()).toEqual(sharedRejection);
   });
 
   it('returns only names, set flags and fingerprints, with no value material', async () => {
     const response = await harness().request(API_PATHS.secretFingerprints, {
-      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret },
+      headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: readSecret },
     });
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     const text = await response.text();
     const payload = envelopeSchema(secretFingerprintsOutputSchema).parse(JSON.parse(text));
     expect(payload.ok && payload.data.secrets.map((entry) => entry.name)).toEqual(allNames);
+    expect(payload.ok && payload.data.secrets.find((entry) => entry.name === 'SECRET_FINGERPRINT_READ_SECRET')).toEqual({
+      name: 'SECRET_FINGERPRINT_READ_SECRET', set: true, fingerprint: secretFingerprint('SECRET_FINGERPRINT_READ_SECRET', readSecret),
+    });
     const leakable = [...Object.values(values), ...Object.values(processEnv)].map((value) => value.trim()).filter((value) => value !== '');
-    for (const value of [...leakable, operatorSecret, 'test-only', 'db-password']) {
+    for (const value of [...leakable, 'test-only', 'db-password']) {
       expect(text).not.toContain(value);
     }
     expect(text).not.toMatch(/length|prefix|value/i);
   });
 
-  it('rejects even the matching secret with the shared operator error when the operator secret was not explicitly configured', async () => {
+  it('refuses the production operator secret in either header and serves only the read secret', async () => {
+    const productionOperatorSecret = 'test-only-production-operator-secret';
+    const env = envSchema.parse({ ...values, OPERATOR_SECRET: undefined, PROD_OPERATOR_SECRET: productionOperatorSecret });
+    expect(selectOperatorSecret(env)).toBe(productionOperatorSecret);
     const app = new Hono<AppVars>();
+    app.use(API_PATHS.secretFingerprints, secretFingerprintsGuard({
+      secretFingerprintReadSecret: selectSecretFingerprintReadSecret(env, {}, selectOperatorSecret(env)),
+    }));
     registerSecretFingerprintsRoute(app, {
-      operatorSecret, operatorSecretConfigured: false, secretFingerprints: secretFingerprintsOf(envSchema.parse(values), processEnv),
+      secretFingerprintReadSecret: selectSecretFingerprintReadSecret(env, {}, selectOperatorSecret(env)),
+      secretFingerprints: secretFingerprintsOf(env, {}),
     });
-    const response = await app.request(API_PATHS.secretFingerprints, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
+    for (const header of [SCHEDULER_OPERATOR_SECRET_HEADER, SECRET_FINGERPRINT_READ_SECRET_HEADER]) {
+      const response = await app.request(API_PATHS.secretFingerprints, { headers: { [header]: productionOperatorSecret } });
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual(sharedRejection);
+    }
+    const served = await app.request(API_PATHS.secretFingerprints, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: readSecret } });
+    expect(served.status).toBe(200);
   });
 
-  it('refuses the public dispatch default on a preview deployment that set no operator secret', async () => {
+  it('stays off on a preview deployment that set no read secret, also for the public dispatch default', async () => {
     const env = envSchema.parse({
       NODE_ENV: 'production',
       APP_ENV: 'preview',
@@ -206,21 +258,20 @@ describe('secret fingerprint route', () => {
     expect(selectOperatorSecret(env)).toBe(DEV_EMAIL_DISPATCH_SECRET);
     const app = new Hono<AppVars>();
     registerSecretFingerprintsRoute(app, {
-      operatorSecret: selectOperatorSecret(env),
-      operatorSecretConfigured: operatorSecretConfigured(env),
+      secretFingerprintReadSecret: selectSecretFingerprintReadSecret(env, {}, selectOperatorSecret(env)),
       secretFingerprints: secretFingerprintsOf(env, {}),
     });
-    const response = await app.request(API_PATHS.secretFingerprints, {
-      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: DEV_EMAIL_DISPATCH_SECRET },
-    });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
+    for (const header of [SCHEDULER_OPERATOR_SECRET_HEADER, SECRET_FINGERPRINT_READ_SECRET_HEADER]) {
+      const response = await app.request(API_PATHS.secretFingerprints, { headers: { [header]: DEV_EMAIL_DISPATCH_SECRET } });
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual(sharedRejection);
+    }
   });
 
   it('logs nothing while answering', async () => {
     const consoleCalls = (['log', 'info', 'warn', 'error', 'debug'] as const).map((method) => vi.spyOn(console, method));
-    await harness().request(API_PATHS.secretFingerprints, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret } });
-    await harness().request(API_PATHS.secretFingerprints, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' } });
+    await harness().request(API_PATHS.secretFingerprints, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: readSecret } });
+    await harness().request(API_PATHS.secretFingerprints, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'wrong-read-secret' } });
     for (const spy of consoleCalls) {
       expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();

@@ -22,7 +22,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-Closed capability count: 124. Route rows: 504. Exported `Ctx` use-case rows: 366.
+Closed capability count: 125. Route rows: 504. Exported `Ctx` use-case rows: 366.
 
 ## Human-readable diff
 
@@ -113,7 +113,7 @@ no changes
 | `POST /api/internal/reseed-acme` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/sanitize-staging-secrets` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/auth-send-log/latest` | scheduler:read | operator-secret | operator-secret | yes | Scheduler operator secret |
-| `GET /api/internal/secret-fingerprints` | scheduler:read | operator-secret | operator-secret | yes | Operator secret |
+| `GET /api/internal/secret-fingerprints` | secret:fingerprint:read | secret-fingerprint-reader | secret-fingerprint-reader | yes | Secret fingerprint read secret |
 | `GET /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |

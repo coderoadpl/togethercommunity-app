@@ -118,6 +118,7 @@ export const CAPABILITIES = [
   'import:validate',
   'scheduler:read',
   'scheduler:dispatch',
+  'secret:fingerprint:read',
   'checkout:read',
   'checkout:start',
   'offer:read',
@@ -141,6 +142,7 @@ export const PRINCIPALS = [
   'import-content-api-key',
   'import-users-api-key',
   'operator-secret',
+  'secret-fingerprint-reader',
   'webhook',
   'token',
   'public',
@@ -319,6 +321,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:campaign:dispatch',
     'marketing:message:send',
   ],
+  'secret-fingerprint-reader': ['secret:fingerprint:read'],
   webhook: ['webhook:process'],
   token: ['marketing:consent:read', 'marketing:consent:write'],
   public: [

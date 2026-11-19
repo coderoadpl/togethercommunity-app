@@ -133,6 +133,7 @@ export const envSchema = z
     OPERATOR_SECRET: z.string().min(16).optional(),
     PROD_OPERATOR_SECRET: z.string().min(16).optional(),
     STAGING_OPERATOR_SECRET: z.string().min(16).optional(),
+    SECRET_FINGERPRINT_READ_SECRET: z.string().min(16).optional(),
     SMOKE_MEMBER_PASSWORD: optionalNonEmptyString,
     SMOKE_CREATOR_PASSWORD: optionalNonEmptyString,
     SNS_TEST_CERT_PEM_BASE64: optionalNonEmptyString,

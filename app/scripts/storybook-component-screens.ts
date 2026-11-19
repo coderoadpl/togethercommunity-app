@@ -72,7 +72,6 @@ const storyByScreen: ReadonlyMap<string, string> = new Map([
   ['lesson-editions-menu-dark-mobile', 'member-lessoneditions--menu-dark-mobile'],
   ['telemetry-overview', 'integrations-telemetrystore--overview'],
   ['personalisation-unticked', 'checkout-personalisation--unticked'],
-  ['personalisation-ticked', 'checkout-personalisation--ticked'],
   ['personalisation-error', 'checkout-personalisation--error-missing-text'],
   ['personalisation-condition', 'checkout-personalisation--with-condition'],
   ['personalisation-polish', 'checkout-personalisation--with-condition-polish'],
@@ -125,7 +124,6 @@ const telemetryScreens: ScreenSpec[] = [{
 
 const personalisationScreens: ScreenSpec[] = [
   { name: 'personalisation-unticked', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
-  { name: 'personalisation-ticked', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
   { name: 'personalisation-error', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
   { name: 'personalisation-condition', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },
   { name: 'personalisation-polish', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-checkout-preview').waitFor(visible); } },

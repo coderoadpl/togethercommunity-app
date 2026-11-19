@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   capabilitiesForApiKey,
+  PERSONALIZATION_MEMBERSHIP_MESSAGE,
   SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
   type Course,
   type CourseLesson,
@@ -433,6 +434,50 @@ describe('m2m content import', () => {
     }, h.deps);
     expect(converted).toMatchObject({ ok: true, value: { results: [{ importKey: 'product-source', action: 'error', error: { code: 'validation' } }] } });
     expect(h.products.get('product-source')).toMatchObject({ type: 'course', salesChannel: 'sales_links_only' });
+  });
+
+  it('writes an imported personalisation, leaves the stored one untouched when an update omits it and clears it with null', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    const engraving = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: 'I understand a personalised item is made to my order.' };
+    const lastProduct = () => h.mutations.filter((mutation) => mutation.kind === 'product').at(-1)?.resource;
+    expect(lastProduct()).not.toHaveProperty('personalization');
+
+    const set = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1', records: [{ ...productRecord(), personalization: engraving }],
+    }, h.deps);
+    expect(set).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(lastProduct()).toMatchObject({ personalization: engraving });
+
+    const omitted = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1', records: [{ ...productRecord(), title: 'Renamed course' }],
+    }, h.deps);
+    expect(omitted).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(lastProduct()).toMatchObject({ title: 'Renamed course' });
+    expect(lastProduct()).not.toHaveProperty('personalization');
+
+    const cleared = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1', records: [{ ...productRecord(), personalization: null }],
+    }, h.deps);
+    expect(cleared).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(lastProduct()).toMatchObject({ personalization: null });
+  });
+
+  it('refuses a personalised membership and a personalisation record with unknown fields', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    const engraving = { label: 'Add an engraving', inputLabel: 'Engraving text' };
+    const membership = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1',
+      records: [{ ...productRecord(), importKey: 'club', slug: 'club', type: 'membership', accessItems: [], personalization: engraving }],
+    }, h.deps);
+    expect(membership).toMatchObject({ ok: true, value: { results: [{ importKey: 'club', action: 'error', error: { code: 'validation', message: PERSONALIZATION_MEMBERSHIP_MESSAGE } }] } });
+    expect(h.products.has('club')).toBe(false);
+
+    const unknown = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1', records: [{ ...productRecord(), personalization: { ...engraving, surchargeCents: 500 } }],
+    }, h.deps);
+    expect(unknown).toMatchObject({ ok: true, value: { results: [{ importKey: 'product-source', action: 'error', error: { code: 'validation' } }] } });
   });
 
   it('rejects import updates of content reachable from a published product', async () => {

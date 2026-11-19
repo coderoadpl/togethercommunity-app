@@ -541,7 +541,7 @@ error; the tool does not convert product types or rename slugs.
 
 The metadata fields follow the existing physical product routes: `description`,
 `vatRate`, `vatExemptionBasis`, `deliveryMethod`, `parcelTemplate`, `salesChannel`,
-`compliance`, `variantGroup`, `variantLabel`, and `coverUrl`. Only the metadata fields an
+`compliance`, `personalization`, `variantGroup`, `variantLabel`, and `coverUrl`. Only the metadata fields an
 entry specifies are managed: an omitted field of an existing product is not
 compared or written and keeps its stored value. When the tool creates a product,
 the product route's defaults fill omitted fields: an empty description, delivery
@@ -549,7 +549,12 @@ method `pickup`, parcel template `medium` and sales channel `any`. `salesChannel
 is `any` or `sales_links_only` (see
 [sales links](sales-links.md#products-sold-only-through-sales-links)); like the
 other metadata fields, plan and drift compare it only when the entry specifies
-it, and an omitted value leaves an existing product's channel unchanged. The plan lists the managed
+it, and an omitted value leaves an existing product's channel unchanged.
+`personalization` is the buyer option of
+[personalisation](shop.md#personalisation), an object with `label`,
+`inputLabel` and the optional `description`, `maxLength` and `condition`, or
+`null` to remove it; an omitted value leaves the stored setting unchanged and a
+new product starts without one. The plan lists the managed
 metadata field names of every product under `managedFields` and those that
 differ under `fields`. Use `null` to clear nullable metadata. Omitted product VAT
 inherits the workspace treatment on new products; use an explicit `null` to

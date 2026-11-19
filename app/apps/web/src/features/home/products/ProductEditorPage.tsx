@@ -83,6 +83,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       ]);
       setVisibilityDraft(null);
       setSalesChannelDraft(null);
+      setPersonalizationTouched(false);
     },
   });
 

@@ -12,12 +12,14 @@ import { CheckoutPage } from './CheckoutPage.js';
 const condition = 'I understand a personalised item is made to my order.';
 const engraving = { label: 'Add an engraving', description: 'Engraved by hand.', inputLabel: 'Engraving text', maxLength: 40, condition };
 
-const offer = (personalization: typeof engraving | null) => ({
+const monthly = { id: 'price-monthly', kind: 'recurring', interval: 'month', amountCents: 4900, currency: 'PLN' };
+
+const offer = (personalization: typeof engraving | null, prices: unknown[] = []) => ({
   tenant: { slug: 'acme', name: 'Acme School' },
   contentVersion: 1,
   products: [{
     id: 'stand', type: 'physical', deliveryMethod: 'pickup', slug: 'stand', title: 'Printed stand', description: 'A small stand.',
-    coverUrl: null, priceCents: 4900, currency: 'PLN', prices: [], personalization,
+    coverUrl: null, priceCents: 4900, currency: 'PLN', prices, personalization,
   }],
 });
 
@@ -31,9 +33,9 @@ const bundle = {
   tenant: { slug: 'acme', name: 'Acme School', defaultLanguage: 'en', signInNotice: { enabled: false, text: '' }, branding: {}, socialLinks: [], legal: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' }, support: { url: null }, timezone: 'Europe/Warsaw' },
 };
 
-const serve = (personalization: typeof engraving | null, bodies: unknown[]) => {
+const serve = (personalization: typeof engraving | null, bodies: unknown[], prices: unknown[] = []) => {
   server.use(
-    http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(personalization) })),
+    http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(personalization, prices) })),
     http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: bundle })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } })),
     http.post('/api/public/checkout/session', async ({ request }) => {
@@ -116,5 +118,16 @@ describe('checkout personalisation', () => {
       variantSelections: [{ productId: 'stand', variantProductId: 'stand-white' }],
       personalizations: [{ productId: 'stand-white', text: 'For Sam', conditionAccepted: false }],
     });
+  });
+
+  it('does not offer the option while a subscription price is selected', async () => {
+    const bodies: unknown[] = [];
+    serve(engraving, bodies, [monthly]);
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    expect(screen.queryByRole('checkbox', { name: /Add an engraving/u })).not.toBeInTheDocument();
+    await userEvent.click(payButton());
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toContain('personalizations');
   });
 });

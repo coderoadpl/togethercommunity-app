@@ -732,6 +732,7 @@ coupon session, stock reservation or Stripe session is written:
 | trimmed text empty or longer than the current `maxLength` | `validation` |
 | condition set and `conditionAccepted` not `true` | `validation` |
 | `personalizations` on a cart request (`lines`) | `validation` |
+| `personalizations` with a recurring (subscription) price | `validation`; the checkout page does not offer the option while a recurring price is selected |
 
 The cart is out of scope: a cart with a personalisable product checks out as
 before, without the option. The text never goes to Stripe (neither line items

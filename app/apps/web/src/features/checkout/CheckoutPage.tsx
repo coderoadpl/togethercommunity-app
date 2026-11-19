@@ -151,8 +151,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, type: offerProduct.type, compliance: offerProduct.compliance }]
     : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, type: line.type, compliance: line.compliance }]);
   const titledSafety = (bundle?.lines.length ?? 0) > 1;
-  const personalization = usePersonalizations(salesLinkSlug === undefined ? offerProduct === undefined ? [] : [{ productId: offerProduct.id, name: offerProduct.title, personalization: offerProduct.personalization }] : bundle?.lines ?? []);
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
+  const personalization = usePersonalizations(salesLinkSlug === undefined ? offerProduct === undefined || selectedPrice?.kind === 'recurring' ? [] : [{ productId: offerProduct.id, name: offerProduct.title, personalization: offerProduct.personalization }] : bundle?.lines ?? []);
   const shippingRequired = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
     : bundle?.lines.some((line) => line.deliveryMethod === 'shipping') === true;

@@ -57,6 +57,7 @@ export const withCheckoutPersonalizations = (
   clock: Clock | undefined,
 ): Result<CheckoutSelection, AppError> => {
   if (requests === undefined || requests.length === 0) return ok(selection);
+  if (selection.price?.kind === 'recurring') return err(validation('A subscription purchase cannot carry a personalisation'));
   if (clock === undefined) return err(validation('Checkout personalisation is not configured'));
   const resolved = resolveCheckoutPersonalizations(requests, selection.products ?? [selection.product], clock.nowIso());
   return resolved.ok ? ok({ ...selection, personalizations: resolved.value }) : resolved;

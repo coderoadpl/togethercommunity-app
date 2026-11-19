@@ -1275,6 +1275,20 @@ describe('checkout personalisation', () => {
     expect(JSON.stringify(h.calls)).not.toContain('For Alex');
   });
 
+  it('refuses a personalisation on a subscription purchase before any snapshot or payment session', async () => {
+    const h = bundleCheckout();
+    const course = { ...product, id: 'course-sub', personalization: { ...setting, condition: null } };
+    const monthly = { ...recurringPrice, productId: course.id };
+    h.deps.products = { ...h.deps.products, findById: async (_tenantId, id) => id === course.id ? course : null };
+    h.deps.prices = { ...h.deps.prices, findById: async (_tenantId, id) => id === monthly.id ? monthly : null };
+    const { createCheckoutSession } = await import('./checkout.js');
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: course.id, priceId: monthly.id, personalizations: [{ productId: course.id, text: 'For Alex', conditionAccepted: false }],
+    }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation', message: 'A subscription purchase cannot carry a personalisation' } });
+    expect(h.snapshots).toHaveLength(0);
+    expect(h.calls).toHaveLength(0);
+  });
+
   it('carries the personalisation on the pending order of a staff test purchase', async () => {
     const h = personalizedBundle();
     const pending: Order[] = [];

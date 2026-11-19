@@ -908,6 +908,9 @@ describe('ProductsPanel', () => {
     await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
     await waitFor(() => expect(rendered.updateInputs).toHaveLength(2));
     expect(rendered.updateInputs[1]).toMatchObject({ personalization: null });
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await waitFor(() => expect(rendered.updateInputs).toHaveLength(3));
+    expect(rendered.updateInputs[2]).not.toHaveProperty('personalization');
   });
 
   it('offers no personalisation for a membership', async () => {

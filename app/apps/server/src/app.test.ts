@@ -6787,6 +6787,30 @@ describe('public offer route', () => {
     expect(await fewer.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 3 } }] } });
   });
 
+  it.each([
+    { published: false, salesChannel: 'any' },
+    { published: true, salesChannel: 'sales_links_only' },
+  ] as const)('keeps the offer ETag when only hidden stock changes (published: $published, salesChannel: $salesChannel)', async ({ published, salesChannel }) => {
+    const base = deps({ products: [
+      product({ id: 'acme-published', tenantId: acme.id, title: 'Acme Published', published: true }),
+      { ...product({ id: 'acme-hidden', tenantId: acme.id, title: 'Acme Hidden', published }), salesChannel },
+    ] });
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    stock.track(acme.id, 'acme-hidden', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(first.status).toBe(200);
+    expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-hidden', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const unchanged = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get('etag')).toBe(etag);
+  });
+
   it('changes the offer ETag after adding a price to a published product', async () => {
     const base = deps();
     const prices: ProductPrice[] = [];

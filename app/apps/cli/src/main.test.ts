@@ -67,6 +67,7 @@ interface Hoisted {
   deleteProductDraft: ReturnType<typeof vi.fn>;
   listProducts: ReturnType<typeof vi.fn>;
   getProductStock: ReturnType<typeof vi.fn>;
+  publicOffer: ReturnType<typeof vi.fn>;
   enableProductStock: ReturnType<typeof vi.fn>;
   adjustProductStock: ReturnType<typeof vi.fn>;
   setProductStockThreshold: ReturnType<typeof vi.fn>;
@@ -161,6 +162,7 @@ const h = vi.hoisted(
     deleteProductDraft: vi.fn(),
     listProducts: vi.fn(),
     getProductStock: vi.fn(),
+    publicOffer: vi.fn(),
     enableProductStock: vi.fn(),
     adjustProductStock: vi.fn(),
     setProductStockThreshold: vi.fn(),
@@ -286,6 +288,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     deleteProductDraft: h.deleteProductDraft,
     listProducts: h.listProducts,
     getProductStock: h.getProductStock,
+    publicOffer: h.publicOffer,
     enableProductStock: h.enableProductStock,
     adjustProductStock: h.adjustProductStock,
     setProductStockThreshold: h.setProductStockThreshold,
@@ -1860,6 +1863,38 @@ describe('product stock CLI', () => {
     const output = String(logSpy.mock.calls[0]?.[0]);
     expect(output).toContain('- Poster  4900 PLN  [published]  {2 available · 3 on hand · 1 reserved · low}  (poster)');
     expect(output).toContain('- Course  9900 PLN  [published]  (course)');
+  });
+});
+
+describe('public offer CLI', () => {
+  const offerProduct = (id: string, title: string, stock: { tracked: boolean; soldOut: boolean; low: boolean; available: number | null }, maxQuantity: number) => ({
+    id, title, priceCents: 4900, currency: 'PLN', stock, maxQuantity,
+  });
+  const offer = {
+    tenant: { slug: 'acme', name: 'Acme' },
+    products: [
+      offerProduct('poster', 'Poster', { tracked: true, soldOut: false, low: true, available: 3 }, 3),
+      offerProduct('mug', 'Mug', { tracked: true, soldOut: true, low: false, available: 0 }, 0),
+      offerProduct('course', 'Course', { tracked: false, soldOut: false, low: false, available: null }, 1),
+    ],
+  };
+
+  beforeEach(() => {
+    h.publicOffer.mockReset().mockResolvedValue(ok(offer));
+  });
+
+  it('appends how many units of a tracked product are left', async () => {
+    await run('public', 'offer');
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')).toEqual([
+      '- Poster  4900 PLN  (poster)  3 left',
+      '- Mug  4900 PLN  (mug)  sold out',
+      '- Course  4900 PLN  (course)',
+    ]);
+  });
+
+  it('passes the counts through the JSON envelope unchanged', async () => {
+    await run('--json', 'public', 'offer');
+    expect(soleJson()).toEqual({ ok: true, data: offer });
   });
 });
 

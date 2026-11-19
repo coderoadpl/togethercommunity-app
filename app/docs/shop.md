@@ -628,15 +628,15 @@ products of one workspace; `variantLabel` (1–60 characters, for example
 editor of physical products; the API, the CLI and the import API accept them on
 every product.
 
-The public offer returns `variants: [{ productId, slug, label, soldOut }]` for a
+The public offer returns `variants: [{ productId, slug, label, soldOut, available }]` for a
 product whose group has at least two published products, including the product
 itself, in creation order; otherwise the list is empty. A variant without a
 label uses its title. The checkout page renders the variants as chips above the
 price: the current product is selected, the others link to their own checkout
 page (campaign parameters are kept), and a sold-out variant is disabled with
-"Sold out". The sold-out flag is the public stock flag of the sibling: a
-tracked variant without an available piece is sold out, an untracked one never
-is. The offer reads the stock of the offered products and of every published
+"Sold out". The sold-out flag and the `available` count are the public stock
+of the sibling: a tracked variant without an available piece is sold out, an
+untracked one never is and has `available: null`. The offer reads the stock of the offered products and of every published
 sibling in their groups in one query.
 
 A sibling sold only through sales links (sales channel `sales_links_only`) is
@@ -1057,14 +1057,22 @@ The e-mail is queued in the payment transaction.
 
 ### Public offer
 
-The public offer exposes per product `stock: { tracked, soldOut, low }` and never
-the exact count. `low` means a threshold is set and availability reached it. The
-offer ETag includes a hash of these flags, so a product selling out or running
-low revalidates cached offers while count changes alone do not. A sales link is
-sold out when any of its products is: the direct handoff page shows the
-"checkout unavailable" state (HTTP 409) instead of posting to Stripe, while
-crawlers still receive the preview metadata, and the Together checkout page
-disables the pay button with a "Sold out" label.
+The public offer exposes per product `stock: { tracked, soldOut, low, available }`.
+`available` is the number of pieces a buyer can take now (on hand minus the
+pieces held by open checkouts, never below zero) for a tracked product and
+`null` for an untracked one; the stored on-hand and reserved counts are never
+public. `low` means a threshold is set and availability reached it. Each product
+also carries `maxQuantity`, the largest quantity the cart checkout accepts on
+one line right now: `0` when sold out, otherwise the cart rule bound (10 for a
+physical product, 1 for every other type) capped by `available`. The offer ETag
+includes a hash of the sold-out and low flags of every tracked product.
+
+A sales link is sold out when any of its products is: the direct handoff page
+shows the "checkout unavailable" state (HTTP 409) instead of posting to Stripe,
+while crawlers still receive the preview metadata, and the Together checkout
+page disables the pay button with a "Sold out" label. The public sales-link
+offer carries the number of whole sets left and a `maxQuantity` per line; see
+[Public offer](sales-links.md#public-offer).
 
 ### Studio and CLI
 

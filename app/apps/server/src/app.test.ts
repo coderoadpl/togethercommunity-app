@@ -6749,7 +6749,7 @@ describe('public offer route', () => {
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
   });
 
-  it('revalidates the offer when a tracked product sells out and exposes only stock flags', async () => {
+  it('revalidates the offer when a tracked product sells out and exposes the public stock without stored levels', async () => {
     const base = deps();
     const stock = createStockRepositoryFake();
     stock.track(acme.id, 'acme-published', 1);
@@ -6758,14 +6758,14 @@ describe('public offer route', () => {
     const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
     const etag = first.headers.get('etag') ?? '';
     expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
-    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false, available: 1 }, maxQuantity: 1 }] } });
     expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
     await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 1 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
     const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
     expect(soldOut.status).toBe(200);
     expect(soldOut.headers.get('etag')).not.toBe(etag);
     const body = await soldOut.json();
-    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true } }] } });
+    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true, available: 0 }, maxQuantity: 0 }] } });
     expect(JSON.stringify(body)).not.toContain('onHand');
   });
 
@@ -10668,6 +10668,8 @@ it('exposes only public sales-link fields and accepts its slug for checkout', as
   const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
   if (!body.ok) throw new Error(body.error.message);
   expect(body.data.salesLink).toEqual({ slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
+  expect(response.headers.has('etag')).toBe(false);
+  expect(response.headers.get('cache-control')).toBe('no-store');
   const raw = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
   expect((await raw.json()).data.salesLink).toEqual(body.data.salesLink);
   const purchaseResponse = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });

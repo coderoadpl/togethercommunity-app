@@ -454,7 +454,8 @@ export const publicOfferOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
-      stock: publicProductStockSchema.default({ tracked: false, soldOut: false, low: false }),
+      stock: publicProductStockSchema.default({ tracked: false, soldOut: false, low: false, available: null }),
+      maxQuantity: z.number().int().min(0).default(1),
       marketingConsents: z.array(z.object({
         definitionId: z.string().min(1),
         label: z.string().min(1),

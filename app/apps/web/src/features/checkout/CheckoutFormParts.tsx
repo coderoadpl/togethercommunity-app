@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -33,17 +33,22 @@ const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
 
 export const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+const COUPON_EMAIL_REQUIRED_MESSAGE = 'An email is required to validate this coupon';
+
 const couponError = (error: unknown, t: Translations): string => {
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
     case 'Coupon cannot be applied':
       return t.checkout.couponUnavailable;
-    case 'An email is required to validate this coupon':
+    case COUPON_EMAIL_REQUIRED_MESSAGE:
       return t.checkout.couponEmailRequired;
     default:
       return localizeError(error, t);
   }
 };
+
+export const couponNeedsEmail = (error: unknown): boolean =>
+  error instanceof ApiError && error.appError.message === COUPON_EMAIL_REQUIRED_MESSAGE;
 
 export const checkoutRefusal = (message: string, t: Translations): string | null => {
   switch (message) {
@@ -98,25 +103,27 @@ export const InvoiceFields = ({ invoice }: { invoice: ReturnType<typeof useInvoi
       >
         {t.checkout.invoiceReveal}
       </CheckoutDisclosureButton>
-      {invoice.visible ? (
-        <Stack useFlexGap spacing="0.75rem">
-          {invoice.fields.map(([id, label, value, setValue]) => (
-            <FormControl key={id} fullWidth>
-              <FormLabel htmlFor={id}>{label}</FormLabel>
-              <OutlinedInput
-                id={id}
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                required={id !== 'checkout-nip'}
-                inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
-              />
-            </FormControl>
-          ))}
-        </Stack>
-      ) : null}
+      {invoice.visible ? <InvoiceInputs invoice={invoice} /> : null}
     </>
   );
 };
+
+export const InvoiceInputs = ({ invoice }: { invoice: ReturnType<typeof useInvoiceFields> }) => (
+  <Stack useFlexGap spacing="0.75rem">
+    {invoice.fields.map(([id, label, value, setValue]) => (
+      <FormControl key={id} fullWidth>
+        <FormLabel htmlFor={id}>{label}</FormLabel>
+        <OutlinedInput
+          id={id}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          required={id !== 'checkout-nip'}
+          inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
+        />
+      </FormControl>
+    ))}
+  </Stack>
+);
 
 export const StripeTestModeControls = ({ testConfigured, testEnabled, disabled, onChange, error }: {
   testConfigured: boolean;
@@ -142,6 +149,12 @@ export const StripeTestModeControls = ({ testConfigured, testEnabled, disabled, 
   );
 };
 
+type CouponValidation = {
+  isPending: boolean;
+  data: { breakdown: CouponCheckoutBreakdown; recurringDuration: 'first_invoice' | 'forever' } | undefined;
+  error: unknown;
+};
+
 export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, onCodeChange, onApply, validation, currency, language, recurring }: {
   visible: boolean;
   testEnabled: boolean;
@@ -149,11 +162,7 @@ export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, on
   onVisibilityChange: (visible: boolean) => void;
   onCodeChange: (code: string) => void;
   onApply: () => void;
-  validation: {
-    isPending: boolean;
-    data: { breakdown: CouponCheckoutBreakdown; recurringDuration: 'first_invoice' | 'forever' } | undefined;
-    error: unknown;
-  };
+  validation: CouponValidation;
   currency: string;
   language: 'pl' | 'en';
   recurring: boolean;
@@ -175,72 +184,94 @@ export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, on
       >
         {t.checkout.couponReveal}
       </CheckoutDisclosureButton>
-      {testEnabled ? (
-        <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
-          {t.checkout.testModeCouponBlocked}
-        </FinePrint>
-      ) : null}
+      {testEnabled ? <CouponTestModeNote /> : null}
       {visible && !testEnabled ? (
-        <Stack useFlexGap spacing="0.5rem">
-          <FormControl fullWidth>
-            <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
-            <OutlinedInput
-              id="checkout-coupon"
-              inputProps={{ 'data-testid': 'checkout-coupon-input' }}
-              value={code}
-              onChange={(event) => onCodeChange(event.target.value)}
-            />
-          </FormControl>
-          <Button
-            type="button"
-            variant="outlined"
-            data-testid="checkout-coupon-apply"
-            disabled={validation.isPending || code.trim() === ''}
-            onClick={onApply}
-          >
-            {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
-          </Button>
-          {validation.data === undefined ? null : (
-            <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
-              <Stack useFlexGap spacing="0.25rem">
-                <Typography>{t.checkout.couponOriginal({
-                  price: formatPrice(validation.data.breakdown.originalCents, currency, language),
-                })}</Typography>
-                <Typography>{t.checkout.couponDiscount({
-                  price: formatPrice(validation.data.breakdown.discountCents, currency, language),
-                })}</Typography>
-                <Typography data-testid="checkout-coupon-final">
-                  {t.checkout.couponFinal({
-                    price: formatPrice(validation.data.breakdown.finalCents, currency, language),
-                  })}
-                </Typography>
-                {!recurring ? null : (
-                  <Typography>
-                    {validation.data.recurringDuration === 'forever'
-                      ? t.checkout.couponForever
-                      : t.checkout.couponFirstInvoice}
-                  </Typography>
-                )}
-                <FinePrint component="p" variant="caption">
-                  {t.checkout.omnibusLowest({
-                    price: formatPrice(
-                      validation.data.breakdown.lowestPriceLast30DaysCents,
-                      currency,
-                      language,
-                    ),
-                  })}
-                </FinePrint>
-              </Stack>
-            </Paper>
-          )}
-          {validation.error === null ? null : (
-            <Alert severity="error" data-testid="checkout-coupon-error">
-              {couponError(validation.error, t)}
-            </Alert>
-          )}
-        </Stack>
+        <CouponInputs code={code} onCodeChange={onCodeChange} onApply={onApply} validation={validation} currency={currency} language={language} recurring={recurring} />
       ) : null}
     </>
+  );
+};
+
+export const CouponTestModeNote = () => {
+  const t = useTranslations();
+  return (
+    <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
+      {t.checkout.testModeCouponBlocked}
+    </FinePrint>
+  );
+};
+
+export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency, language, recurring, children }: {
+  code: string;
+  onCodeChange: (code: string) => void;
+  onApply: () => void;
+  validation: CouponValidation;
+  currency: string;
+  language: 'pl' | 'en';
+  recurring: boolean;
+  children?: ReactNode;
+}) => {
+  const t = useTranslations();
+  return (
+    <Stack useFlexGap spacing="0.5rem">
+      <FormControl fullWidth>
+        <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
+        <OutlinedInput
+          id="checkout-coupon"
+          inputProps={{ 'data-testid': 'checkout-coupon-input' }}
+          value={code}
+          onChange={(event) => onCodeChange(event.target.value)}
+        />
+      </FormControl>
+      {children}
+      <Button
+        type="button"
+        variant="outlined"
+        data-testid="checkout-coupon-apply"
+        disabled={validation.isPending || code.trim() === ''}
+        onClick={onApply}
+      >
+        {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
+      </Button>
+      {validation.data === undefined ? null : (
+        <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
+          <Stack useFlexGap spacing="0.25rem">
+            <Typography>{t.checkout.couponOriginal({
+              price: formatPrice(validation.data.breakdown.originalCents, currency, language),
+            })}</Typography>
+            <Typography>{t.checkout.couponDiscount({
+              price: formatPrice(validation.data.breakdown.discountCents, currency, language),
+            })}</Typography>
+            <Typography data-testid="checkout-coupon-final">
+              {t.checkout.couponFinal({
+                price: formatPrice(validation.data.breakdown.finalCents, currency, language),
+              })}
+            </Typography>
+            {!recurring ? null : (
+              <Typography>
+                {validation.data.recurringDuration === 'forever'
+                  ? t.checkout.couponForever
+                  : t.checkout.couponFirstInvoice}
+              </Typography>
+            )}
+            <FinePrint component="p" variant="caption">
+              {t.checkout.omnibusLowest({
+                price: formatPrice(
+                  validation.data.breakdown.lowestPriceLast30DaysCents,
+                  currency,
+                  language,
+                ),
+              })}
+            </FinePrint>
+          </Stack>
+        </Paper>
+      )}
+      {validation.error === null ? null : (
+        <Alert severity="error" data-testid="checkout-coupon-error">
+          {couponError(validation.error, t)}
+        </Alert>
+      )}
+    </Stack>
   );
 };
 

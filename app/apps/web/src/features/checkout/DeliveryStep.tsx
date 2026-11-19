@@ -18,7 +18,7 @@ import { CheckoutPriceOption, FinePrint } from '../../theme.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
 import type { CheckoutEvent, CheckoutState, GeowidgetAccess } from './index.web.js';
 
-export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled }: {
+export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, lockerPlacement = 'after-options' }: {
   rates: PublicShippingRate[];
   state: CheckoutState;
   dispatch: (event: CheckoutEvent) => void;
@@ -26,10 +26,36 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   language: 'pl' | 'en';
   geowidget: GeowidgetAccess;
   disabled: boolean;
+  lockerPlacement?: 'under-option' | 'after-options';
 }) => {
   const t = useTranslations();
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
   const codeInvalid = state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
+  const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
+    <Stack useFlexGap spacing="0.75rem" sx={lockerPlacement === 'under-option' ? { pt: '0.25rem', pb: '0.875rem' } : { mt: '0.5rem' }}>
+      {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
+      {geowidget.status === 'withheld_for_staff' ? (
+        <Typography variant="body2" color="text.secondary" data-testid="checkout-locker-map-staff-hint">{t.shipping.lockerMapStaffHint}</Typography>
+      ) : null}
+      <FormControl fullWidth error={codeInvalid}>
+        <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
+        <OutlinedInput
+          id="checkout-pickup-point"
+          value={state.pickupPointCode}
+          disabled={disabled}
+          required
+          inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': 'checkout-pickup-point-hint', 'data-testid': 'checkout-pickup-point' }}
+          onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
+        />
+        <FormHelperText id="checkout-pickup-point-hint">{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
+      </FormControl>
+      {state.pickupPoint === null ? null : (
+        <Typography variant="body2" data-testid="checkout-pickup-point-selected">
+          {[`${t.shipping.lockerSelected}: ${state.pickupPoint.code}`, state.pickupPoint.name, state.pickupPoint.address].filter((value) => value !== null).join(' · ')}
+        </Typography>
+      )}
+    </Stack>
+  ) : null;
   return (
     <FormControl component="fieldset" data-testid="checkout-delivery">
       <FormLabel component="legend" id="checkout-delivery-label">{t.shipping.deliveryHeading}</FormLabel>
@@ -57,35 +83,12 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
                   </Stack>
                 )}
               />
+              {lockerPlacement === 'under-option' && rate.id === selected?.id ? lockerPicker : null}
             </CheckoutPriceOption>
           ))}
         </RadioGroup>
       )}
-      {selected !== null && selected.pickupPoint === 'inpost_locker' ? (
-        <Stack useFlexGap spacing="0.75rem" sx={{ mt: '0.5rem' }}>
-          {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
-          {geowidget.status === 'withheld_for_staff' ? (
-            <Typography variant="body2" color="text.secondary" data-testid="checkout-locker-map-staff-hint">{t.shipping.lockerMapStaffHint}</Typography>
-          ) : null}
-          <FormControl fullWidth error={codeInvalid}>
-            <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
-            <OutlinedInput
-              id="checkout-pickup-point"
-              value={state.pickupPointCode}
-              disabled={disabled}
-              required
-              inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': 'checkout-pickup-point-hint', 'data-testid': 'checkout-pickup-point' }}
-              onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
-            />
-            <FormHelperText id="checkout-pickup-point-hint">{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
-          </FormControl>
-          {state.pickupPoint === null ? null : (
-            <Typography variant="body2" data-testid="checkout-pickup-point-selected">
-              {[`${t.shipping.lockerSelected}: ${state.pickupPoint.code}`, state.pickupPoint.name, state.pickupPoint.address].filter((value) => value !== null).join(' · ')}
-            </Typography>
-          )}
-        </Stack>
-      ) : null}
+      {lockerPlacement === 'after-options' ? lockerPicker : null}
       {selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
     </FormControl>
   );

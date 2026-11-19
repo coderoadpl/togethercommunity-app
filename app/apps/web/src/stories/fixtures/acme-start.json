@@ -108,6 +108,7 @@
             "description": "",
             "id": "product-acme-course",
             "marketingConsents": [],
+            "maxQuantity": 1,
             "personalization": null,
             "priceCents": 9900,
             "prices": [
@@ -121,6 +122,7 @@
             ],
             "slug": "acme-course",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false

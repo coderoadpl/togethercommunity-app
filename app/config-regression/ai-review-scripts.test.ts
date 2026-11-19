@@ -9,7 +9,9 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-import { AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds } from '../scripts/generate-ai-review-workflow.js';
+import {
+  AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT, AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds,
+} from '../scripts/generate-ai-review-workflow.js';
 
 const root = join(import.meta.dirname, '..', '..');
 const scripts = join(root, '.github', 'scripts');
@@ -345,8 +347,10 @@ const simulateLadder = (
   cancelAfter = '',
   primaryModel = 'primary',
   fallbackModel = 'fallback',
+  attemptList = 'true',
 ) => {
   const outputs: StepOutputs = {
+    trusted: { installed: 'true', attempt_list: attemptList },
     prepare: { prepared: 'true' },
     target: { draft: 'false', invoke: 'true' },
     preflight: Object.fromEntries(slotNumbers.map((slot) => [
@@ -468,6 +472,50 @@ describe('AI review attempt ladder', () => {
       results[id] = { outcome };
       expect(simulateLadder(allSlots, results).map((call) => call.id))
         .toEqual(ladderIds.slice(0, ladderIds.indexOf(id) + 1));
+    }
+  });
+
+  it('runs only the slots a pre-attempt-list base gate reads, primaries then fallbacks', () => {
+    const legacySlots = slotNumbers.filter((slot) => slot <= AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT);
+    expect(simulateLadder(allSlots, {}, '', 'primary', 'fallback', 'false').map(({ id }) => id)).toEqual([
+      ...legacySlots.map((slot) => `try${String(slot)}p`),
+      ...legacySlots.map((slot) => `try${String(slot)}f`),
+    ]);
+    const coldResults: Partial<Record<string, StubResult>> = {};
+    for (const id of ladderIds) {
+      coldResults[id] = { outcome: 'infra', coldStart: true, reason: 'cold_start' };
+    }
+    expect(simulateLadder(allSlots, coldResults, '', 'primary', 'fallback', 'false').map(({ id }) => id))
+      .toEqual(ladderIds.filter((id) => Number(/^try(\d+)/.exec(id)?.[1]) <= AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT));
+    expect(simulateLadder(allSlots, coldResults, '', 'primary', 'fallback', 'true').map(({ id }) => id))
+      .toEqual(ladderIds);
+    expect(ladderIds).toHaveLength(24);
+  });
+
+  it('reaches the slot 1 to 3 fallbacks after usage limits when the base gate predates the attempt list', () => {
+    const results: Partial<Record<string, StubResult>> = {
+      try1p: { outcome: 'infra', reason: 'usage_limit' },
+      try2p: { outcome: 'infra', reason: 'usage_limit' },
+      try3p: { outcome: 'infra', reason: 'usage_limit' },
+      try4p: { outcome: 'pass' },
+      try1f: { outcome: 'pass' },
+    };
+    expect(simulateLadder(allSlots, results, '', 'primary', 'fallback', 'false').map(({ id }) => id))
+      .toEqual(['try1p', 'try2p', 'try3p', 'try1f']);
+    expect(simulateLadder(allSlots, results).map(({ id }) => id))
+      .toEqual(['try1p', 'try2p', 'try3p', 'try4p']);
+    expect(simulateLadder(onlySlots(4, 5, 6), {}, '', 'primary', 'fallback', 'false')).toEqual([]);
+  });
+
+  it('parses every attempt condition as plain conjunction terms', () => {
+    const steps = ladderWorkflow.jobs['ai-review'].steps.filter((candidate) => candidate.id?.startsWith('try'));
+    expect(steps.map(({ id }) => id)).toEqual(ladderIds);
+    for (const step of steps) {
+      const body = (step.if ?? '').replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '');
+      expect(body, step.id).not.toContain('||');
+      for (const value of ['true', 'false']) {
+        expect(() => evaluateAttempt(step.if ?? '', { trusted: { attempt_list: value } }, false)).not.toThrow();
+      }
     }
   });
 

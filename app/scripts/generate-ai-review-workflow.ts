@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const AI_REVIEW_SLOT_COUNT = 6;
+export const AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT = 3;
 
 type Model = 'primary' | 'fallback';
 
@@ -121,6 +122,11 @@ const trustedStep = `      - name: Verify trusted gate installation
           else
             echo "::error::bootstrap-not-installed: trusted AI review scripts are absent from the PR base"
             echo "installed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qF AI_REVIEW_ATTEMPTS .github/scripts/gate-review.sh 2>/dev/null && grep -qF AI_REVIEW_ATTEMPTS .github/scripts/post-review.sh 2>/dev/null; then
+            echo "attempt_list=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "attempt_list=false" >> "$GITHUB_OUTPUT"
           fi`;
 
 const prepareStep = `      - name: Prepare inert review inputs
@@ -191,6 +197,9 @@ const attemptCondition = (attempt: Attempt, index: number) => {
     "steps.target.outputs.invoke == 'true'",
     '!cancelled()',
     `steps.preflight.outputs.has_slot_${String(attempt.slot)} == 'true'`,
+    ...(attempt.slot > AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT
+      ? ["steps.trusted.outputs.attempt_list == 'true'"]
+      : []),
     ...earlier.flatMap((prior) => [
       `steps.classify${prior.key}.outputs.outcome != 'pass'`,
       `steps.classify${prior.key}.outputs.outcome != 'fail'`,

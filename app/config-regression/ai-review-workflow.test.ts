@@ -1,4 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -8,7 +10,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 
 import {
-  AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds, renderAiReviewWorkflow,
+  AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT, AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds, renderAiReviewWorkflow,
 } from '../scripts/generate-ai-review-workflow.js';
 
 const stepSchema = z.object({
@@ -127,6 +129,54 @@ const collectAttempt = (
     rmSync(directory, { recursive: true, force: true });
   }
 };
+
+const preAttemptListGate = `#!/usr/bin/env bash
+set -euo pipefail
+for outcome in "\${O_1P:-}" "\${O_1PR:-}" "\${O_1F:-}" "\${O_1FR:-}" \\
+  "\${O_2P:-}" "\${O_2PR:-}" "\${O_2F:-}" "\${O_2FR:-}" \\
+  "\${O_3P:-}" "\${O_3PR:-}" "\${O_3F:-}" "\${O_3FR:-}"; do
+  case "$outcome" in pass) exit 0 ;; fail) exit 1 ;; esac
+done
+exit 1
+`;
+const preAttemptListPost = `#!/usr/bin/env bash
+set -euo pipefail
+producer=""
+for key in 1P 1PR 1F 1FR 2P 2PR 2F 2FR 3P 3PR 3F 3FR; do
+  outcome_name="O_$key"
+  [ -n "\${!outcome_name:-}" ] && producer="$key"
+done
+printf '%s\\n' "$producer"
+`;
+
+type TrustedScripts = Partial<Record<'prepare-review.sh' | 'gate-review.sh' | 'post-review.sh', string>>;
+
+const runTrustedStep = (scripts: TrustedScripts) => {
+  const directory = mkdtempSync(join(tmpdir(), 'ai-review-trusted-'));
+  try {
+    const scriptDirectory = join(directory, '.github', 'scripts');
+    mkdirSync(scriptDirectory, { recursive: true });
+    for (const [name, body] of Object.entries(scripts)) {
+      const destination = join(scriptDirectory, name);
+      writeFileSync(destination, body);
+      chmodSync(destination, 0o755);
+    }
+    const output = join(directory, 'output');
+    writeFileSync(output, '');
+    const result = spawnSync('bash', ['-e', '-c', stepById('trusted').run ?? ''], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_OUTPUT: output },
+      encoding: 'utf8',
+      timeout: 5_000,
+    });
+    return { status: result.status, stdout: result.stdout, outputs: readFileSync(output, 'utf8') };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+};
+
+const committedScript = (name: keyof TrustedScripts) =>
+  readFileSync(join(root, '.github', 'scripts', name), 'utf8');
 
 const schemaLiteral = {
   type: 'object',
@@ -358,6 +408,60 @@ describe('AI review workflow', () => {
       expect(condition).toContain('!cancelled()');
     }
     expect(source).not.toContain('--fallback-model');
+  });
+
+  it('reports the attempt list only when both trusted base scripts read it', () => {
+    const prepare = '#!/usr/bin/env bash\nexit 0\n';
+    const current = runTrustedStep({
+      'prepare-review.sh': prepare,
+      'gate-review.sh': committedScript('gate-review.sh'),
+      'post-review.sh': committedScript('post-review.sh'),
+    });
+    expect(current.status).toBe(0);
+    expect(current.outputs).toBe('installed=true\nattempt_list=true\n');
+
+    const preAttemptList = runTrustedStep({
+      'prepare-review.sh': prepare,
+      'gate-review.sh': preAttemptListGate,
+      'post-review.sh': preAttemptListPost,
+    });
+    expect(preAttemptListGate).not.toContain('AI_REVIEW_ATTEMPTS');
+    expect(preAttemptListPost).not.toContain('AI_REVIEW_ATTEMPTS');
+    expect(preAttemptList.status).toBe(0);
+    expect(preAttemptList.outputs).toBe('installed=true\nattempt_list=false\n');
+
+    for (const mixed of [
+      { 'gate-review.sh': committedScript('gate-review.sh'), 'post-review.sh': preAttemptListPost },
+      { 'gate-review.sh': preAttemptListGate, 'post-review.sh': committedScript('post-review.sh') },
+      { 'gate-review.sh': committedScript('gate-review.sh') },
+    ]) {
+      const result = runTrustedStep({ 'prepare-review.sh': prepare, ...mixed });
+      expect(result.status).toBe(0);
+      expect(result.outputs).toBe('installed=true\nattempt_list=false\n');
+    }
+
+    const absent = runTrustedStep({});
+    expect(absent.status).toBe(0);
+    expect(absent.stdout).toContain('::error::bootstrap-not-installed: trusted AI review scripts are absent from the PR base');
+    expect(absent.outputs).toBe('installed=false\nattempt_list=false\n');
+  });
+
+  it('runs only the slots the trusted base scripts understand until they read the attempt list', () => {
+    const term = "steps.trusted.outputs.attempt_list == 'true'";
+    expect(AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT).toBe(3);
+    for (const id of attemptIds) {
+      const condition = stepById(id).if ?? '';
+      const slot = Number(slotOf(id));
+      if (slot > AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT) {
+        expect(condition.match(/attempt_list/g), id).toHaveLength(1);
+        expect(condition, id).toContain(`steps.preflight.outputs.has_slot_${String(slot)} == 'true' && ${term} && `);
+      } else {
+        expect(condition, id).not.toContain('attempt_list');
+      }
+    }
+    for (const step of job.steps.filter((candidate) => !isAttemptStep(candidate))) {
+      expect(JSON.stringify(step), step.id ?? step.name).not.toContain('outputs.attempt_list');
+    }
   });
 
   it('passes workflow expressions through environments instead of shell interpolation', () => {

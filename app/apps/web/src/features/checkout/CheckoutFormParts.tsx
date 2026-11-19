@@ -25,7 +25,7 @@ import { formatPrice } from '../../lib/format.js';
 import { CheckoutDisclosureButton, FinePrint } from '../../theme.js';
 
 type Translations = ReturnType<typeof useTranslations>;
-type InvoiceField = readonly [string, string, string, (value: string) => void];
+type InvoiceField = { id: string; label: string; value: string; setValue: (value: string) => void; autoComplete?: string };
 
 const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
   <SvgIcon fontSize="small" aria-hidden>
@@ -75,14 +75,14 @@ export const useInvoiceFields = () => {
   const [postalCode, setPostalCode] = useState('');
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('PL');
-  const fields: InvoiceField[] = [
-    ['checkout-nip', t.checkout.nipLabel, nip, setNip],
-    ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
-    ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
-    ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
-    ['checkout-city', t.checkout.cityLabel, city, setCity],
-    ['checkout-country', t.checkout.countryLabel, country, setCountry],
-  ];
+  const fields = {
+    nip: { id: 'checkout-nip', label: t.checkout.nipLabel, value: nip, setValue: setNip },
+    company: { id: 'checkout-company', label: t.checkout.companyNameLabel, value: companyName, setValue: setCompanyName, autoComplete: 'organization' },
+    address: { id: 'checkout-address', label: t.checkout.addressLabel, value: billingAddress, setValue: setBillingAddress, autoComplete: 'street-address' },
+    postalCode: { id: 'checkout-postal-code', label: t.checkout.postalCodeLabel, value: postalCode, setValue: setPostalCode, autoComplete: 'postal-code' },
+    city: { id: 'checkout-city', label: t.checkout.cityLabel, value: city, setValue: setCity, autoComplete: 'address-level2' },
+    country: { id: 'checkout-country', label: t.checkout.countryLabel, value: country, setValue: setCountry, autoComplete: 'country' },
+  } satisfies Record<string, InvoiceField>;
   const billing: { billing?: BillingData } = visible
     ? { billing: { nip: nip === '' ? null : nip, companyName, address: billingAddress, postalCode, city, country } }
     : {};
@@ -110,22 +110,39 @@ export const InvoiceFields = ({ invoice }: { invoice: ReturnType<typeof useInvoi
   );
 };
 
-export const InvoiceInputs = ({ invoice }: { invoice: ReturnType<typeof useInvoiceFields> }) => (
-  <Stack useFlexGap spacing="0.75rem">
-    {invoice.fields.map(([id, label, value, setValue]) => (
-      <FormControl key={id} fullWidth>
-        <FormLabel htmlFor={id}>{label}</FormLabel>
-        <OutlinedInput
-          id={id}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          required={id !== 'checkout-nip'}
-          inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
-        />
-      </FormControl>
-    ))}
-  </Stack>
+const InvoiceInput = ({ field, required = true, inputProps }: {
+  field: InvoiceField;
+  required?: boolean;
+  inputProps?: { inputMode: 'numeric'; pattern: string };
+}) => (
+  <FormControl fullWidth>
+    <FormLabel htmlFor={field.id}>{field.label}</FormLabel>
+    <OutlinedInput
+      id={field.id}
+      value={field.value}
+      onChange={(event) => field.setValue(event.target.value)}
+      required={required}
+      autoComplete={field.autoComplete}
+      inputProps={inputProps}
+    />
+  </FormControl>
 );
+
+export const InvoiceInputs = ({ invoice }: { invoice: ReturnType<typeof useInvoiceFields> }) => {
+  const { fields } = invoice;
+  return (
+    <Stack useFlexGap spacing="0.75rem">
+      <InvoiceInput field={fields.nip} required={false} inputProps={{ inputMode: 'numeric', pattern: '[0-9]{10}' }} />
+      <InvoiceInput field={fields.company} />
+      <InvoiceInput field={fields.address} />
+      <Box data-testid="checkout-invoice-locality" sx={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) minmax(0, 2fr)' } }}>
+        <InvoiceInput field={fields.postalCode} />
+        <InvoiceInput field={fields.city} />
+      </Box>
+      <InvoiceInput field={fields.country} />
+    </Stack>
+  );
+};
 
 export const StripeTestModeControls = ({ testConfigured, testEnabled, disabled, onChange, error }: {
   testConfigured: boolean;

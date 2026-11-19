@@ -43,6 +43,7 @@ import {
   CardTitle,
   CheckoutPriceOption,
   CheckoutRowGroup,
+  CheckoutVariantGroup,
   FinePrint,
 } from '../../theme.js';
 import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
@@ -552,16 +553,25 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               )}
             </CheckoutSummaryRow>
           </Stack>
-          {offerProduct === undefined ? null : <ProductVariantChips productId={offerProduct.id} variants={offerProduct.variants} />}
+          {offerProduct === undefined || offerProduct.variants.length < 2 ? null : (
+            <CheckoutVariantGroup>
+              <Stack useFlexGap spacing="0.4rem">
+                <Typography variant="body2" color="text.secondary">{t.productVariants.offerLabel}</Typography>
+                <ProductVariantChips productId={offerProduct.id} variants={offerProduct.variants} />
+              </Stack>
+            </CheckoutVariantGroup>
+          )}
           {variantLines.length === 0 ? null : (
-            <Stack useFlexGap spacing="0.75rem">
-              {variantLines.map(({ line, chips }) => (
-                <Stack key={line.productId} useFlexGap spacing="0.4rem">
-                  <Typography variant="body2" color="text.secondary">{line.name}</Typography>
-                  {chips}
-                </Stack>
-              ))}
-            </Stack>
+            <CheckoutVariantGroup>
+              <Stack useFlexGap spacing="0.75rem">
+                {variantLines.map(({ line, chips }) => (
+                  <Stack key={line.productId} useFlexGap spacing="0.4rem">
+                    <Typography variant="body2" color="text.secondary">{line.name}</Typography>
+                    {chips}
+                  </Stack>
+                ))}
+              </Stack>
+            </CheckoutVariantGroup>
           )}
           {product.prices.length > 1 ? (
             <FormControl>

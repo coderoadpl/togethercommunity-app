@@ -10,6 +10,8 @@ import { anonymousMe, server } from '../../test/server.js';
 import { sampleSalesLink } from '../../test/sales-link-fixtures.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
+const exactly = (value: string) => new RegExp(`^${value}$`, 'u');
+
 const compliance = {
   manufacturerName: 'Example Workshop',
   manufacturerAddress: 'Example Street 1, Warsaw',
@@ -170,6 +172,7 @@ describe('checkout variant chips', () => {
     serve([product('black', { variants })]);
     renderCheckout('stand-black');
     const chips = await screen.findByRole('navigation', { name: en.productVariants.offerLabel });
+    expect(chips.parentElement?.firstElementChild).toHaveTextContent(exactly(en.productVariants.offerLabel));
     expect(within(chips).getByTestId('product-variant-black')).toHaveAttribute('aria-current', 'page');
     expect(within(chips).getByRole('link', { name: 'White · PLA' })).toHaveAttribute('href', '/checkout/stand-white?utm_source=newsletter');
     const soldOut = within(chips).getByTestId('product-variant-red');

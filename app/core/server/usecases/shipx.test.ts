@@ -1296,6 +1296,16 @@ describe('ShipX settings', () => {
     expect(await getShipxSettings(ctx(['tenant:secret:read']), unnamed.deps)).toEqual({ ok: true, value: { sender: null, sandbox: unset, production: unset } });
   });
 
+  it('changes nothing when encrypting a value fails', async () => {
+    const h = settingsHarness({ legacyEnvironment: 'production', secrets: [legacyRow('shipx.organizationId'), legacyRow('shipx.token')] });
+    await configureShipx(owner, { sandbox: { organizationId: '5678', token: 'sandbox-token' } }, h.deps);
+    const before = h.stored();
+    h.deps.secretCrypto.encrypt = () => { throw new Error('encryption unavailable'); };
+    await expect(configureShipx(owner, { sender, sandbox: { clearCredentials: true }, production: { token: 'production-token' } }, h.deps)).rejects.toThrow('encryption unavailable');
+    expect(h.stored()).toEqual(before);
+    expect(h.settings.rows.get('workspace')?.sender).toBeNull();
+  });
+
   it('saves one slot without reading, writing or deleting the rows of the other slot', async () => {
     const h = settingsHarness({ secrets: [legacyRow('shipx.organizationId'), legacyRow('shipx.token')] });
     await configureShipx(owner, { production: { organizationId: '1234', token: 'production-token' } }, h.deps);

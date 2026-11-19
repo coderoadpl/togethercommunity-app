@@ -166,14 +166,14 @@ export const configureShipx = async (
   if (mixed !== undefined) {
     return err(validation(`Clearing the ${mixed.environment} credentials cannot be combined with new ${mixed.environment} credentials`));
   }
-  if (parsed.data.sender !== undefined) await deps.shipxSettings.saveSender(tenant.value, parsed.data.sender);
-  for (const slot of slots) {
-    if (slot.clearCredentials === true) await clearSlot(tenant.value, slot.environment, deps);
-  }
   const written = slots.flatMap((slot) => [
     ...(slot.organizationId === undefined ? [] : [buildTenantSecret(tenant.value, slot.keys.organizationId, slot.organizationId, deps)]),
     ...(slot.token === undefined ? [] : [buildTenantSecret(tenant.value, slot.keys.token, slot.token, deps)]),
   ]);
+  if (parsed.data.sender !== undefined) await deps.shipxSettings.saveSender(tenant.value, parsed.data.sender);
+  for (const slot of slots) {
+    if (slot.clearCredentials === true) await clearSlot(tenant.value, slot.environment, deps);
+  }
   if (written.length > 0) await deps.tenantSecrets.upsertMany(tenant.value, written);
   return ok(await settingsView(tenant.value, deps));
 };

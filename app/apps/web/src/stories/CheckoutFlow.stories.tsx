@@ -6,8 +6,6 @@ import {
   FormControlLabel,
   FormLabel,
   Link,
-  OutlinedInput,
-  Paper,
   Radio,
   RadioGroup,
   Stack,
@@ -15,7 +13,8 @@ import {
 } from '@mui/material';
 
 import { FocusCard } from '../components/layout/FocusCard.js';
-import { CardTitle, DataValue, FinePrint } from '../theme.js';
+import { CheckoutDisclosureRow, CheckoutPayBar, CheckoutSteps, CheckoutSummaryRow } from '../components/ui/CheckoutStepParts.js';
+import { CardTitle, CheckoutPriceOption, CheckoutRowGroup, DataValue, FinePrint } from '../theme.js';
 
 const meta = {
   title: 'Composites/Checkout flow',
@@ -37,28 +36,34 @@ export const PriceSelection: Story = {
   args: {
     eyebrow: "Checkout · Anna's Studio",
     width: 'wide',
+    onSubmit: (event) => event.preventDefault(),
     children: (
-      <Stack useFlexGap spacing="1rem">
-        <CardTitle variant="h1">Together Course 101</CardTitle>
-        <Typography variant="body1">
-          A complete introduction to programming from scratch — lifetime access to every lesson
-          and resource.
-        </Typography>
+      <Stack useFlexGap spacing="1.25rem">
+        <CheckoutSteps label="Checkout steps" steps={['Your order', 'Details and payment']} current={0} />
+        <Stack useFlexGap spacing="0.75rem">
+          <CardTitle variant="h1">Together Course 101</CardTitle>
+          <CheckoutSummaryRow items="1 item" total="$299.00" detailsLabel="Details and VAT">
+            <Typography variant="body1">
+              A complete introduction to programming from scratch, with lifetime access to every
+              lesson and resource.
+            </Typography>
+          </CheckoutSummaryRow>
+        </Stack>
         <FormControl>
           <FormLabel id="checkout-price">Choose a plan</FormLabel>
           <RadioGroup aria-labelledby="checkout-price" defaultValue="one-time">
-            <Paper variant="outlined" sx={{ px: '0.75rem', my: '0.3rem' }}>
-              <FormControlLabel value="one-time" control={<Radio />} label="One-time — $299.00" />
-            </Paper>
-            <Paper variant="outlined" sx={{ px: '0.75rem', my: '0.3rem' }}>
-              <FormControlLabel value="yearly" control={<Radio />} label="Yearly — $199.00 / year" />
-            </Paper>
+            <CheckoutPriceOption variant="outlined" selected sx={{ px: '0.75rem', my: '0.3rem' }}>
+              <FormControlLabel value="one-time" control={<Radio />} label="One-time · $299.00" />
+            </CheckoutPriceOption>
+            <CheckoutPriceOption variant="outlined" selected={false} sx={{ px: '0.75rem', my: '0.3rem' }}>
+              <FormControlLabel value="yearly" control={<Radio />} label="Yearly · $199.00 / year" />
+            </CheckoutPriceOption>
           </RadioGroup>
         </FormControl>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="checkout-email">Email address</FormLabel>
-          <OutlinedInput id="checkout-email" type="email" autoComplete="email" />
-        </FormControl>
+        <CheckoutRowGroup>
+          <CheckoutDisclosureRow label="I need an invoice" open={false} onToggle={() => undefined}>{null}</CheckoutDisclosureRow>
+          <CheckoutDisclosureRow label="I have a discount code" open={false} onToggle={() => undefined}>{null}</CheckoutDisclosureRow>
+        </CheckoutRowGroup>
         <FormControl component="fieldset">
           <FormLabel component="legend">Marketing consents</FormLabel>
           {marketingConsents.map((consent) => (
@@ -76,9 +81,11 @@ export const PriceSelection: Story = {
             />
           ))}
         </FormControl>
-        <Button type="submit" variant="contained" color="secondary">
-          Buy and pay
-        </Button>
+        <CheckoutPayBar
+          label="Go to payment · $299.00"
+          disabled={false}
+          note="Next step, on the Stripe page: email, terms and payment."
+        />
       </Stack>
     ),
   },

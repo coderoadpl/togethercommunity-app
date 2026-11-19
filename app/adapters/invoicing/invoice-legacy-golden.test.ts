@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ok, tenantSettingsSchema, type Invoice, type InvoiceEvent, type OrderListItem } from '#core/domain/index.js';
 import { requestInvoice, type InvoiceDeps } from '#core/server/index.js';
+import { inMemoryChangeSettings } from '#core/server/testing/tenant-settings-fake.js';
 
 import { createIfirmaInvoicing } from './ifirma.js';
 
@@ -88,7 +89,7 @@ const invoiceHarness = (provider: 'ifirma' | 'ksef', order: OrderListItem) => {
     orderDetails: { findById: async () => order },
     tenants: {
       findById: async () => null, findBySlug: async () => null, findSole: async () => null, hasAny: async () => true,
-      findSettings: async () => settings, updateSettings: async (_tenantId, next) => next,
+      findSettings: async () => settings, changeSettings: inMemoryChangeSettings(() => settings),
       createTenantWithOwnerGrant: async () => { throw new Error('unused'); },
     },
     tenantSecrets: {

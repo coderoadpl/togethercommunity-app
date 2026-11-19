@@ -100,7 +100,7 @@ const fakeTenants = (branding?: {
           accentLight: null,
           ...branding,
         },
-  updateSettings: async (_tenantId, next) => next,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => {
     throw new Error('not used');
   },

@@ -67,7 +67,7 @@ const harness = (options: HarnessOptions = {}): Harness => {
     findSole: async () => null,
     hasAny: async () => false,
     findSettings: async () => settings,
-    updateSettings: async (_tenantId, next) => next,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => {
       throw new Error('not used');
     },

@@ -192,6 +192,18 @@ describe('runSecretsVerify', () => {
     expect(output).not.toContain(local.SECRET_FINGERPRINT_READ_SECRET);
   });
 
+  it('replaces a read secret with surrounding whitespace when the server echoes its header-normalized form', async () => {
+    const reflecting: typeof fetch = async (_url, init) => {
+      const received = new Headers(init?.headers).get(SECRET_FINGERPRINT_READ_SECRET_HEADER) ?? '';
+      return Response.json({ ok: false, error: { code: 'unauthorized', message: `Rejected ${received}`, details: { received } } }, { status: 401 });
+    };
+    const env = { ...local, SECRET_FINGERPRINT_READ_SECRET: ` ${local.SECRET_FINGERPRINT_READ_SECRET}\n` };
+    const { code, output } = await verify(['--base-url', 'https://platform.example.test'], env, reflecting);
+    expect(code).toBe(1);
+    expect(output).toBe(`secrets:verify: FAIL unauthorized: Rejected ${REDACTED_SECRET_FINGERPRINT_READ_SECRET}`);
+    expect(output).not.toContain(local.SECRET_FINGERPRINT_READ_SECRET);
+  });
+
   const baseUrlRefusal = '--base-url must be an https URL, or http on a local host, without a query or fragment';
   const missingValue = '--base-url needs a value';
   const unknownOption = 'unknown option; only --base-url is accepted';

@@ -63,6 +63,50 @@ describe('secret fingerprints client', () => {
     });
   });
 
+  it.each([' hidden-secret', 'hidden-secret\n', '\t hidden-secret\r\n'])(
+    'replaces the header-normalized form of a sent secret %j that the server echoes back', async (secret) => {
+      const api = createApiClient({ baseUrl: '', fetchImpl: async (_url, init) => {
+        const received = new Headers(init?.headers).get(SECRET_FINGERPRINT_READ_SECRET_HEADER) ?? '';
+        return Response.json({
+          ok: false,
+          error: { code: 'unauthorized', message: `Rejected <${received}>`, details: { received, [received]: [`seen <${received}>`] } },
+        }, { status: 401 });
+      } });
+      const result = await api.getSecretFingerprints(secret);
+      expect(JSON.stringify(result)).not.toContain('hidden-secret');
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'unauthorized',
+          message: `Rejected <${REDACTED_SECRET_FINGERPRINT_READ_SECRET}>`,
+          details: {
+            received: REDACTED_SECRET_FINGERPRINT_READ_SECRET,
+            [REDACTED_SECRET_FINGERPRINT_READ_SECRET]: [`seen <${REDACTED_SECRET_FINGERPRINT_READ_SECRET}>`],
+          },
+        },
+      });
+    },
+  );
+
+  it('replaces both the raw and the normalized form of a sent operator secret', async () => {
+    const api = createApiClient({ baseUrl: '', fetchImpl: async () => Response.json(
+      { ok: false, error: { code: 'unauthorized', message: 'raw " hidden-secret\n" normalized "hidden-secret"' } }, { status: 401 },
+    ) });
+    expect(await api.getOperatorTenantReadiness('acme', ' hidden-secret\n')).toEqual({
+      ok: false,
+      error: { code: 'unauthorized', message: `raw "${REDACTED_OPERATOR_SECRET}" normalized "${REDACTED_OPERATOR_SECRET}"` },
+    });
+  });
+
+  it('leaves a server message unchanged when the sent secret is only whitespace', async () => {
+    const api = createApiClient({ baseUrl: '', fetchImpl: async () => Response.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } }, { status: 401 },
+    ) });
+    expect(await api.getSecretFingerprints(' \t ')).toEqual({
+      ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' },
+    });
+  });
+
   it.each([
     ['getOperatorTenantReadiness', (api: ReturnType<typeof createApiClient>) => api.getOperatorTenantReadiness('acme', 'hidden-secret')],
     ['provisionOperatorTenant', (api: ReturnType<typeof createApiClient>) =>

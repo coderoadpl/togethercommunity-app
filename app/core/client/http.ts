@@ -462,9 +462,25 @@ const CREDENTIAL_HEADER_REDACTIONS: ReadonlyArray<readonly [header: string, reda
   [SECRET_FINGERPRINT_READ_SECRET_HEADER, REDACTED_SECRET_FINGERPRINT_READ_SECRET],
 ];
 
-type SentCredential = { value: string; redaction: string };
+type CredentialRedaction = { value: string; redaction: string };
 
-const sentCredentialOf = (headers: Readonly<Record<string, string>>): SentCredential | undefined => {
+const withoutHttpWhitespaceEdges = (value: string): string => value.replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, '');
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A credential reaches the server header-normalized and may come back that way, so its edge-trimmed forms are secret too; one pass keeps a marker from being rewritten by a shorter form.
+export const redactCredentials = (text: string, credentials: readonly CredentialRedaction[]): string => {
+  const redactions = new Map<string, string>();
+  for (const { value, redaction } of credentials) {
+    for (const form of [value, withoutHttpWhitespaceEdges(value), value.trim()]) {
+      if (form !== '' && !redactions.has(form)) redactions.set(form, redaction);
+    }
+  }
+  if (redactions.size === 0) return text;
+  const pattern = new RegExp([...redactions.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|'), 'g');
+  return text.replace(pattern, (form) => redactions.get(form) ?? form);
+};
+
+const sentCredentialOf = (headers: Readonly<Record<string, string>>): CredentialRedaction | undefined => {
   for (const [header, redaction] of CREDENTIAL_HEADER_REDACTIONS) {
     const value = headers[header];
     if (value !== undefined) return { value, redaction };
@@ -472,17 +488,17 @@ const sentCredentialOf = (headers: Readonly<Record<string, string>>): SentCreden
   return undefined;
 };
 
-const withoutSecret = (value: unknown, secret: SentCredential): unknown => {
-  if (typeof value === 'string') return value.replaceAll(secret.value, secret.redaction);
+const withoutSecret = (value: unknown, secret: CredentialRedaction): unknown => {
+  if (typeof value === 'string') return redactCredentials(value, [secret]);
   if (Array.isArray(value)) return value.map((item) => withoutSecret(item, secret));
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [withoutSecret(key, secret), withoutSecret(item, secret)]));
 };
 
-const serverErrorWithout = (error: AppError, secret: SentCredential | undefined): AppError =>
-  secret === undefined || secret.value === ''
+const serverErrorWithout = (error: AppError, secret: CredentialRedaction | undefined): AppError =>
+  secret === undefined
     ? error
-    : appError(error.code, error.message.replaceAll(secret.value, secret.redaction), withoutSecret(error.details, secret));
+    : appError(error.code, redactCredentials(error.message, [secret]), withoutSecret(error.details, secret));
 
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,

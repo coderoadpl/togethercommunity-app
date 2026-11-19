@@ -329,6 +329,18 @@ const providerObjectIdsForCheckout = (
     : { invoice: event.checkoutSession.invoiceId }),
 });
 
+const STRIPE_TERMS_EVIDENCE_MISSING = 'Stripe checkout terms consent evidence is missing';
+
+type CheckoutSessionEvent = NonNullable<PaymentWebhookEvent['checkoutSession']>;
+type PaymentTransactionDeps = Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0];
+
+const stripeTermsEvidence = (
+  checkout: CheckoutSessionEvent,
+): { termsUrl: string; privacyUrl: string } | null =>
+  checkout.termsAccepted === true && checkout.metadata.termsUrl && checkout.metadata.privacyUrl
+    ? { termsUrl: checkout.metadata.termsUrl, privacyUrl: checkout.metadata.privacyUrl }
+    : null;
+
 const billingForCheckout = async (
   tenantId: string,
   event: PaymentWebhookEvent,
@@ -457,6 +469,9 @@ const applyCheckoutCompleted = async (
   if (metadata.directCheckout === true &&
       (event.checkoutSession.termsAccepted !== true || !metadata.termsUrl || !metadata.privacyUrl)) {
     return err(validation('Direct checkout consent evidence is missing'));
+  }
+  if (metadata.stripeTerms === true && !stripeTermsEvidence(event.checkoutSession)) {
+    return err(validation(STRIPE_TERMS_EVIDENCE_MISSING));
   }
   if (snapshot !== null && event.checkoutSession.amountTotalCents != null &&
       event.checkoutSession.amountTotalCents + (event.checkoutSession.discountTotalCents ?? 0) !== snapshot.lines.reduce((sum, line) => sum + line.grossCents, 0)) return err(validation('Checkout total does not match its lines'));
@@ -899,12 +914,64 @@ const logPaymentFailure = (tenant: Tenant, event: PaymentWebhookEvent, deps: Str
   deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message} chain=${serializeErrorChain(error)}`);
 };
 
+const processCapturedCheckoutConsent = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  order: Pick<Order, 'id' | 'productId'>,
+  deps: StripeWebhookDeps,
+  transaction: PaymentTransactionDeps,
+): Promise<Result<{ pendingConsent: string | null; emailsQueued: boolean }, AppError>> => {
+  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok({ pendingConsent: null, emailsQueued: false });
+  const consent = await transaction.consentTransaction.run((repositories) =>
+    recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
+  if (consent.ok) return ok({ pendingConsent: null, emailsQueued: consent.value });
+  if (consent.error.code !== 'validation' && consent.error.code !== 'not_found' && consent.error.code !== 'forbidden') return consent;
+  const checkout = event.checkoutSession;
+  const captureId = checkout?.metadata.checkoutConsentCaptureId;
+  const email = checkout?.email ?? checkout?.metadata.memberEmail;
+  if (!event.objectId || !captureId || !email) return consent;
+  const reason = `${consent.error.code}:${consent.error.message}`;
+  await transaction.checkoutConsentJobs.enqueue(tenant.id, {
+    tenantId: tenant.id, checkoutSessionId: event.objectId, webhookEventId: event.id,
+    captureId, email, orderId: order.id, productId: order.productId,
+    reason, createdAt: deps.clock.nowIso(), completedAt: null,
+  });
+  return ok({ pendingConsent: reason, emailsQueued: false });
+};
+
+/**
+ * The page captured the marketing choices and billing before the buyer accepted
+ * the terms in Stripe, so the accepted terms are folded into a capture of their
+ * own; a consent job retried later then needs nothing from the Stripe event.
+ */
+const withStripeTermsCapture = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent & { checkoutSession: CheckoutSessionEvent },
+  evidence: { termsUrl: string; privacyUrl: string },
+  deps: StripeWebhookDeps,
+  transaction: PaymentTransactionDeps,
+): Promise<PaymentWebhookEvent> => {
+  const checkout = event.checkoutSession;
+  const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
+  const captureId = checkout.metadata.checkoutConsentCaptureId;
+  const captured = captureId == null || captures === undefined ? null : await captures.findById(tenant.id, captureId);
+  if (captures === undefined || captured === null || event.objectId === null) return event;
+  const stripeCaptureId = `stripe:${event.objectId}`;
+  if (await captures.findById(tenant.id, stripeCaptureId) === null) {
+    await captures.create(tenant.id, {
+      id: stripeCaptureId, createdAt: deps.clock.nowIso(),
+      capture: { ...captured, termsAccepted: true, ...evidence },
+    });
+  }
+  return { ...event, checkoutSession: { ...checkout, metadata: { ...checkout.metadata, checkoutConsentCaptureId: stripeCaptureId } } };
+};
+
 const processCheckoutConsent = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   order: Pick<Order, 'id' | 'productId'>,
   deps: StripeWebhookDeps,
-  transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
+  transaction: PaymentTransactionDeps,
 ): Promise<Result<{ pendingConsent: string | null; emailsQueued: boolean }, AppError>> => {
   const direct = event.checkoutSession;
   if (direct?.metadata.directCheckout === true) {
@@ -933,6 +1000,20 @@ const processCheckoutConsent = async (
     });
     return ok({ pendingConsent: null, emailsQueued: false });
   }
+  if (direct?.metadata.stripeTerms === true) {
+    const evidence = stripeTermsEvidence(direct);
+    if (evidence === null) return err(validation(STRIPE_TERMS_EVIDENCE_MISSING));
+    if (event.mode !== 'test') {
+      return processCapturedCheckoutConsent(tenant, await withStripeTermsCapture(tenant, { ...event, checkoutSession: direct }, evidence, deps, transaction), order, deps, transaction);
+    }
+    if (direct.metadata.salesLinkId == null) return ok({ pendingConsent: null, emailsQueued: false });
+    await transaction.consents.record(tenant.id, {
+      id: deps.ids.nextId(), tenantId: tenant.id, userId: null,
+      email: direct.email ?? direct.metadata.memberEmail, source: 'checkout',
+      ...evidence, acceptedAt: deps.clock.nowIso(),
+    });
+    return ok({ pendingConsent: null, emailsQueued: false });
+  }
   if (event.mode === 'test') {
     const checkout = event.checkoutSession;
     if (checkout?.metadata.salesLinkId == null) return ok({ pendingConsent: null, emailsQueued: false });
@@ -949,22 +1030,7 @@ const processCheckoutConsent = async (
     });
     return ok({ pendingConsent: null, emailsQueued: false });
   }
-  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok({ pendingConsent: null, emailsQueued: false });
-  const consent = await transaction.consentTransaction.run((repositories) =>
-    recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
-  if (consent.ok) return ok({ pendingConsent: null, emailsQueued: consent.value });
-  if (consent.error.code !== 'validation' && consent.error.code !== 'not_found' && consent.error.code !== 'forbidden') return consent;
-  const checkout = event.checkoutSession;
-  const captureId = checkout?.metadata.checkoutConsentCaptureId;
-  const email = checkout?.email ?? checkout?.metadata.memberEmail;
-  if (!event.objectId || !captureId || !email) return consent;
-  const reason = `${consent.error.code}:${consent.error.message}`;
-  await transaction.checkoutConsentJobs.enqueue(tenant.id, {
-    tenantId: tenant.id, checkoutSessionId: event.objectId, webhookEventId: event.id,
-    captureId, email, orderId: order.id, productId: order.productId,
-    reason, createdAt: deps.clock.nowIso(), completedAt: null,
-  });
-  return ok({ pendingConsent: reason, emailsQueued: false });
+  return processCapturedCheckoutConsent(tenant, event, order, deps, transaction);
 };
 
 const paymentModeMatches = async (

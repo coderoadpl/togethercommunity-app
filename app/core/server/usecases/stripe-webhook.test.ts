@@ -3295,6 +3295,72 @@ it('rejects direct checkout without accepted consent and rolls back fulfillment'
   expect(h.consents).toHaveLength(0);
 });
 
+const stripeTermsPayment = async () => {
+  const h = await consentHarness();
+  const billing = { companyName: 'Buyer Company', nip: '5260250274', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' };
+  const captures = new Map<string, CheckoutConsentCapture>([['capture-page', {
+    termsAccepted: false, selectedDefinitionIds: ['news'], attachedDefinitionIds: ['news'],
+    collectedAt: '1998-07-14T09:55:00.000Z', confirmationBaseUrl: 'https://acme.example/marketing/confirm', billing,
+  }]]);
+  h.deps.checkoutConsentCaptures = {
+    create: async (_tenantId, input) => { captures.set(input.id, input.capture); },
+    findById: async (_tenantId, id) => captures.get(id) ?? null,
+  };
+  const event = completedEvent({ id: 'evt-stripe-terms', checkoutConsentCaptureId: 'capture-page' });
+  if (event.checkoutSession === null) throw new Error('Missing session');
+  event.checkoutSession.termsAccepted = true;
+  event.checkoutSession.metadata.stripeTerms = true;
+  event.checkoutSession.metadata.termsUrl = 'https://acme.example/terms-at-stripe';
+  event.checkoutSession.metadata.privacyUrl = 'https://acme.example/privacy-at-stripe';
+  return { ...h, billing, captures, event };
+};
+
+it('fulfills a workspace checkout with the Stripe terms evidence and the page capture marketing consents and billing, once', async () => {
+  const h = await stripeTermsPayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ status: 'paid', billing: h.billing }]);
+  expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com',
+    termsUrl: 'https://acme.example/terms-at-stripe', privacyUrl: 'https://acme.example/privacy-at-stripe' }]);
+  expect(await h.marketingConsents.listByEmail(tenantA.id, 'buyer@example.com')).toHaveLength(1);
+  expect(h.captures.get('capture-page')?.termsAccepted).toBe(false);
+  expect(h.captures.get('stripe:cs-1')).toEqual({ ...h.captures.get('capture-page'), termsAccepted: true,
+    termsUrl: 'https://acme.example/terms-at-stripe', privacyUrl: 'https://acme.example/privacy-at-stripe' });
+  expect(h.consentJobs).toEqual([]);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.consents).toHaveLength(1);
+  expect(h.captures.size).toBe(2);
+});
+
+it('retries a pending marketing consent of a workspace checkout without the Stripe event', async () => {
+  const h = await stripeTermsPayment();
+  const marketing = h.deps.marketing;
+  if (marketing === undefined) throw new Error('Missing marketing deps');
+  delete h.deps.marketing;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.consents).toHaveLength(0);
+  expect(h.consentJobs).toMatchObject([{ captureId: 'stripe:cs-1', completedAt: null }]);
+  h.deps.marketing = marketing;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.consentJobs[0]?.completedAt).toBe(now);
+  expect(h.consents).toMatchObject([{ termsUrl: 'https://acme.example/terms-at-stripe', privacyUrl: 'https://acme.example/privacy-at-stripe' }]);
+  expect(await h.marketingConsents.listByEmail(tenantA.id, 'buyer@example.com')).toHaveLength(1);
+});
+
+it.each(['not-accepted', 'terms-url', 'privacy-url'] as const)('refuses a workspace checkout without Stripe terms evidence like a direct one: %s', async (missing) => {
+  const h = await stripeTermsPayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  if (missing === 'not-accepted') h.event.checkoutSession.termsAccepted = false;
+  if (missing === 'terms-url') h.event.checkoutSession.metadata.termsUrl = null;
+  if (missing === 'privacy-url') delete h.event.checkoutSession.metadata.privacyUrl;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.orders).toHaveLength(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.consents).toHaveLength(0);
+  expect(h.marketingConsents.snapshot()).toHaveLength(0);
+  expect(h.captures.size).toBe(1);
+  expect(h.events.size).toBe(0);
+});
+
 const directTestPayment = async () => {
   const h = await directBundlePayment();
   h.event.mode = 'test';

@@ -186,9 +186,14 @@ format, not a tax recommendation.
     "integrations": {
       "stripe": { "restrictedKeyEnv": "SHOP_STRIPE_TEST_KEY", "mode": "test" },
       "shipx": {
-        "environment": "sandbox",
-        "organizationIdEnv": "SHOP_SHIPX_ORGANIZATION_ID",
-        "tokenEnv": "SHOP_SHIPX_TOKEN",
+        "sandbox": {
+          "organizationIdEnv": "SHOP_SHIPX_SANDBOX_ORGANIZATION_ID",
+          "tokenEnv": "SHOP_SHIPX_SANDBOX_TOKEN"
+        },
+        "production": {
+          "organizationIdEnv": "SHOP_SHIPX_ORGANIZATION_ID",
+          "tokenEnv": "SHOP_SHIPX_TOKEN"
+        },
         "sender": {
           "name": "Acme",
           "company": "Acme",
@@ -433,8 +438,10 @@ underscores:
 
 - `stripe.restrictedKeyEnv` must match `SHOP_STRIPE_<NAME>`, for example
   `SHOP_STRIPE_TEST_KEY`.
-- `shipx.tokenEnv` and `shipx.organizationIdEnv` must match `SHOP_SHIPX_<NAME>`,
-  for example `SHOP_SHIPX_TOKEN` and `SHOP_SHIPX_ORGANIZATION_ID`.
+- `shipx.sandbox.tokenEnv`, `shipx.sandbox.organizationIdEnv`,
+  `shipx.production.tokenEnv` and `shipx.production.organizationIdEnv` must
+  match `SHOP_SHIPX_<NAME>`, for example `SHOP_SHIPX_SANDBOX_TOKEN` and
+  `SHOP_SHIPX_ORGANIZATION_ID`.
 - `parcelLocker.tokenEnv` must match `SHOP_GEOWIDGET_PUBLIC_TOKEN` or
   `SHOP_GEOWIDGET_<NAME>_PUBLIC_TOKEN`, for example
   `SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN`.
@@ -444,7 +451,8 @@ underscores:
   deployment, cannot be referenced, and `TOGETHER_SHOP_OPERATOR_SECRET` can never
   be referenced by a manifest.
 - One variable name can be referenced by only one provider field in the
-  effective configuration of a shop, after company and shop settings merge.
+  effective configuration of a shop, after company and shop settings merge, so
+  the sandbox and production connections never share a variable.
 
 The manifest parser enforces these rules, and the tool checks them again on the
 merged configuration of every selected shop before the first request and again
@@ -464,7 +472,8 @@ credential. It collects every token the run would publish: with
 selected shops, and, with or without the flag, every literal
 `settings.inpostGeowidgetToken` in their effective settings. It compares them,
 after surrounding whitespace is trimmed, with the values of the ShipX token and
-ShipX organization ID variables referenced anywhere in the manifest (the
+ShipX organization ID variables of both connections referenced anywhere in the
+manifest (the
 `company` block and every shop entry, also when `--shop` selects only one of
 them) and with `TOGETHER_SHOP_OPERATOR_SECRET` when that variable is set, so a
 ShipX token of one shop cannot become the public token of another, even when
@@ -484,23 +493,29 @@ a stored credential is not detected. A server-side check is a later change.
 | --- | --- | --- |
 | `stripe.restrictedKeyEnv` | Restricted Stripe key; never a webhook secret | `POST /api/integrations/stripe/configure` |
 | `stripe.mode` | Explicit `test` or `live`, matching the restricted key prefix | Same route |
-| `shipx.tokenEnv` | ShipX API token | `POST /api/integrations/shipx/configure` |
-| `shipx.organizationIdEnv` | Numeric ShipX organization ID | Same route |
-| `shipx.environment` | Optional `sandbox` or `production` | Same route |
-| `shipx.sender` | Optional existing sender object, or `null` to clear it | Same route |
+| `shipx.sandbox.tokenEnv` | ShipX API token of the sandbox connection (test-mode orders) | `POST /api/integrations/shipx/configure` |
+| `shipx.sandbox.organizationIdEnv` | Numeric ShipX organization ID of the sandbox connection | Same route |
+| `shipx.production.tokenEnv` | ShipX API token of the production connection (paid orders) | Same route |
+| `shipx.production.organizationIdEnv` | Numeric ShipX organization ID of the production connection | Same route |
+| `shipx.sender` | Optional sender object shared by both connections, or `null` to clear it so InPost uses the organization data | Same route |
 | `parcelLocker.tokenEnv` | Public InPost Geowidget token | `POST /api/tenant/settings` as `inpostGeowidgetToken` |
 
 ShipX fields are optional individually; at least one field must be supplied in
-a ShipX block. Sender fields are `name`, nullable `company`, `email`, Polish
-`phone`, `street`, `buildingNumber`, `city`, and `postCode`. The existing route's
+a ShipX block and in each connection it names. A connection or field left out
+is not sent, so the stored value stays. The single-connection fields of the
+earlier format (`environment`, and `tokenEnv` or `organizationIdEnv` directly
+under `shipx`) are refused. Sender fields are `name`, nullable `company`,
+`email`, Polish `phone`, `street`, `buildingNumber`, `city`, and `postCode`.
+The existing route's
 validation applies. Omitted fields preserve stored settings. This manifest does
 not expose credential deletion or shipment creation. The parcel-locker token is
 public checkout configuration, not a ShipX API token; do not manage it through
 both `settings.inpostGeowidgetToken` and `integrations.parcelLocker` in the same
 effective shop. Existing vendor-script document and load conditions are unchanged.
 
-The example uses `SHOP_STRIPE_TEST_KEY`, `SHOP_SHIPX_ORGANIZATION_ID`,
-`SHOP_SHIPX_TOKEN`, and `SHOP_GEOWIDGET_PUBLIC_TOKEN`. Load their values from
+The example uses `SHOP_STRIPE_TEST_KEY`, `SHOP_SHIPX_SANDBOX_ORGANIZATION_ID`,
+`SHOP_SHIPX_SANDBOX_TOKEN`, `SHOP_SHIPX_ORGANIZATION_ID`, `SHOP_SHIPX_TOKEN`, and
+`SHOP_GEOWIDGET_PUBLIC_TOKEN`. Load their values from
 protected runtime configuration, not arguments, JSON, shell history or printed
 output.
 All selected shops' references, resolved route inputs, and Stripe key/mode
@@ -523,7 +538,7 @@ changed, because the tool cannot compare stored credential values. To rotate
 the key or register the endpoint again, add `--reconfigure-payments`; it is
 accepted only together with `--integrations` and forces the Stripe configure
 call for every selected shop with a Stripe entry. The ShipX configure route
-stores the supplied environment, sender and credentials and registers nothing
+stores the supplied sender and connection credentials and registers nothing
 with the provider, so a repeated call writes the same values again; ShipX and
 the parcel-locker token are therefore configured on every
 `--integrations` apply. Use the flag deliberately for approved provider

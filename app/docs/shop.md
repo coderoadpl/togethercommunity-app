@@ -262,31 +262,62 @@ works as before.
    at `https://sandbox-manager.paczkomaty.pl`; sandbox credentials do not work in
    production and the other way round. Locker shipments need funds on the
    account; the sandbox account is topped up virtually under **Payments**.
-2. In **Studio → Settings → Shipping → InPost ShipX** the owner chooses the
-   environment (`sandbox` by default, or `production`), enters the organization
-   id and the token and fills in the sender block: name, optional company,
-   e-mail, phone (a Polish 9-digit number, `+48` accepted), street, building
-   number, city and post code (`00-000`). The sender country is always `PL`.
-3. The card says **Ready** once the organization id, the token and the sender
-   are saved.
+2. In **Studio → Settings → Shipping → InPost ShipX** the owner fills in two
+   connections, each with its own organization id and token: **Production**
+   serves paid orders, **Sandbox** serves test-mode orders, the way Stripe keeps
+   a live and a test key. Each connection shows **Connected** once its
+   organization id and token are saved, and has its own **Remove credentials**
+   action. A workspace may connect one of them, both or none.
+3. The sender block below the connections is shared by both and optional:
+   name, optional company, e-mail, phone (a Polish 9-digit number, `+48`
+   accepted), street, building number, city and post code (`00-000`). The
+   sender country is always `PL`.
 
-The environment selects the API base URL: `https://api-shipx-pl.easypack24.net/v1`
+Each connection selects its API base URL: `https://api-shipx-pl.easypack24.net/v1`
 for production and `https://sandbox-api-shipx-pl.easypack24.net/v1` for the
 sandbox (both from the authorization page of the ShipX API documentation).
 Only the ShipX HTTP adapter (`adapters/shipx/http.ts`) knows these
 URLs.
 
-The organization id and the token are stored like the Stripe keys: encrypted
-tenant secrets (`shipx.organizationId`, `shipx.token`) that are write-only in
+The organization ids and the tokens are stored like the Stripe keys: encrypted
+tenant secrets (`shipx.production.organizationId`, `shipx.production.token`,
+`shipx.sandbox.organizationId`, `shipx.sandbox.token`) that are write-only in
 Studio and the CLI, which only show a masked preview. They never appear in the
 public payment configuration or in tenant settings, and the server decrypts
-them only for the ShipX call. The environment and the sender block are stored
-on the workspace (`tenants.shipx_environment`, `tenants.shipx_sender`) and are
-read through `GET /api/integrations/shipx`, never through the tenant settings
-that members can read. Reading needs `tenant:secret:read` (owners and admins);
-saving with `POST /api/integrations/shipx/configure` needs `tenant:secret:write`
-(owners). `clearCredentials: true` removes the organization id and the token
-and keeps the sender.
+them only for the ShipX call. The sender block is stored on the workspace
+(`tenants.shipx_sender`). Both are read through `GET /api/integrations/shipx`,
+never through the tenant settings that members can read: the answer carries the
+sender and, per connection, the masked organization id, the masked token and
+`configured` (both stored). Reading needs `tenant:secret:read` (owners and
+admins); saving with `POST /api/integrations/shipx/configure` needs
+`tenant:secret:write` (owners). The body is strict:
+
+```json
+{
+  "sender": { "name": "Anna Sender", "email": "shop@example.com", "phone": "500600700", "street": "Example Street", "buildingNumber": "7", "city": "Warsaw", "postCode": "00-001" },
+  "production": { "organizationId": "1234", "token": "<ShipX token>" },
+  "sandbox": { "clearCredentials": true }
+}
+```
+
+Every part is optional and a part left out changes nothing: `sender: null`
+removes the sender, `production` and `sandbox` each take `organizationId`,
+`token` or `clearCredentials: true` (not together with new credentials).
+Saving or clearing one connection never reads, writes or deletes the other
+connection's secrets. The single-connection fields of the earlier body
+(`environment`, top-level `organizationId`, `token` and `clearCredentials`) are
+refused with `validation`.
+
+The sender is optional because InPost does not require it: the ShipX
+documentation of the `sender` attribute on shipment creation says that when no
+sender data are given, the data of the organization the shipment is created in
+are used
+([ShipX documentation: creating a shipment](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/11731061)).
+Without a saved sender the request leaves `sender` out entirely. A saved sender
+is sent as it is, and since InPost validates a sender object with its e-mail
+and a 9-digit phone
+([ShipX documentation: sender form](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/11731043)),
+Studio, the CLI and the API refuse a sender without them.
 
 ### Parcel size
 
@@ -308,32 +339,85 @@ current size.
 
 ### Which ShipX client answers
 
-The workspace's ShipX environment decides which client serves an order, so the
-whole flow can be tried against the sandbox with test orders before any paid
-order reaches InPost:
+The order's payment mode picks the connection, so the whole flow can be tried
+against the sandbox with test orders while paid orders ship through
+production:
 
-| Deployment | Environment | Test-mode order | Live (paid) order |
-|---|---|---|---|
-| `PAYMENT_PROVIDER=stripe` | `sandbox` | the real client against the ShipX sandbox | refused with `validation`: "ShipX is configured for the sandbox; switch to production before shipping paid orders" |
-| `PAYMENT_PROVIDER=stripe` | `production` | the deterministic fake client | the real client against ShipX production |
-| `PAYMENT_PROVIDER=fake` | either | the fake client | the fake client |
+| Deployment | Order mode | Connection | Client | Connection not saved |
+|---|---|---|---|---|
+| `PAYMENT_PROVIDER=stripe` | test | `sandbox` | the real client against the ShipX sandbox | `credentials_missing` for `sandbox` |
+| `PAYMENT_PROVIDER=stripe` | live | `production` | the real client against ShipX production | `credentials_missing` for `production` |
+| `PAYMENT_PROVIDER=fake` | test | `sandbox` | the deterministic fake client | `credentials_missing` for `sandbox` |
+| `PAYMENT_PROVIDER=fake` | live | `production` | the deterministic fake client | `credentials_missing` for `production` |
 
-The rule is `shipxClientKind` in `core/domain/shipx.ts`; `composition.ts` passes
-no real client in deployments with `PAYMENT_PROVIDER=fake` (local development,
-the smoke gate and the end-to-end scripts), so they never contact InPost. The
-order page hides **Create InPost shipment** for a live order while the
-environment is the sandbox and says why (`reason: 'sandbox_environment'`).
+The rule is `shipxEnvironmentForMode` in `core/domain/shipx.ts` (live →
+`production`, test → `sandbox`), and every ShipX use case (view, create,
+refresh, discard, label) resolves the organization id and the token of that
+connection only. A test-mode order never reaches production credentials or the
+production URL, and a paid order never reaches the sandbox ones. A missing
+connection affects only the orders of its mode: the order view answers
+`available: false` with `reason: 'credentials_missing'` and
+`environment` naming the connection, and create answers
+`integration_not_configured` with `details.state: 'setup_missing'` and the same
+`environment`. The order page then says which connection to save, for a
+test-mode order: connect the sandbox in **Settings → Shipping**.
 
-The fake client (`adapters/shipx/fake.ts`) answers with an id and a 24-digit
-tracking number derived from the order id and a one-page PDF, charges nothing
-and, like every test-mode shipment, sends no e-mail.
+`composition.ts` passes no real client in deployments with
+`PAYMENT_PROVIDER=fake` (local development, the smoke gate and the end-to-end
+scripts), so they never contact InPost; they still need the connection of the
+order's mode to be saved, with any placeholder values. The fake client
+(`adapters/shipx/fake.ts`) answers with an id and a 24-digit tracking number
+derived from the order id and a one-page PDF, charges nothing and, like every
+test-mode shipment, sends no e-mail. A deployment with a real client never uses
+the fake client.
 
 Every `order_shipments` row stores the environment and the organization id it
-was created with. Reads, purchases and label downloads for that shipment use
-the stored environment and organization with the current token. When the
-current settings name another environment or organization, the request answers
-`conflict` and calls nothing: switch the settings back, or finish the shipment
-in Manager Paczek. Opening the order then shows the stored status.
+was created with. Reads, purchases and label downloads for a stored shipment use
+the connection of the order's mode. When the row's environment is not that
+connection (for example a test-mode shipment that the fake client created
+before the two connections existed, while the workspace was set to
+production), the request answers `conflict` with
+`details.state: 'environment_mismatch'` and calls nothing; when the row's
+organization id differs from the connection's current one, it answers
+`conflict` with `details.state: 'organization_mismatch'`. Restore the
+organization id of that connection, or finish the shipment in Manager Paczek.
+Opening the order still shows the stored status.
+
+### Upgrade from the single connection
+
+Before the two connections, a workspace had one organization id and token
+(`shipx.organizationId`, `shipx.token`) and a switch
+(`tenants.shipx_environment`) that named their environment. Migration
+`0165_shipx_slots.sql` copies each workspace's stored rows into the connection
+that switch names: the same ciphertext, IV, authentication tag, masked preview
+and update time under the new key name, with a new row id. The copy needs no
+key material because the encryption in `adapters/crypto/secret-crypto.ts` is not
+bound to the key name. A row that already exists under the new name is kept
+(`ON CONFLICT DO NOTHING`), so the migration can run again safely. A workspace
+that had only one of the two rows gets only that one, and its connection stays
+not connected until the other value is saved.
+
+The legacy rows, their key names and the column stay for one release, because
+migrations run in the build step while the previous release still serves
+traffic for about two minutes, and a code rollback keeps the migrated database.
+The previous release keeps reading the legacy rows, the switch and the sender
+(which it still requires). The current code never reads or writes the switch
+or the legacy rows, with one exception: removing the credentials of the
+connection that the stored switch names also deletes the legacy rows, so a
+removed credential is really gone. A later change removes the legacy rows,
+names and column.
+
+Rollback: after a rollback the previous release ships with the credentials as
+they were copied, since values saved since then exist only under the new
+names; a connection removed since then (the one the switch named) leaves it
+with none, and a sender removed since then stops it with `sender_missing`.
+Credentials saved through the previous release during the deploy window after
+the migration ran are not copied: save them again under the new connection.
+Check what is stored, by key name and count only, never values:
+
+```sql
+SELECT "key", count(*) FROM "tenant_secrets" WHERE "key" LIKE 'shipx.%' GROUP BY "key" ORDER BY "key";
+```
 
 ### Creating the shipment
 
@@ -532,13 +616,12 @@ paid yet.
 
 | Situation | Result |
 |---|---|
-| credentials or sender missing | `integration_not_configured` (HTTP 412, CLI exit 8) |
-| live order while the environment is the sandbox | `validation` (HTTP 400, CLI exit 2) |
+| the connection of the order's mode is not saved | `integration_not_configured` (HTTP 412, CLI exit 8) naming the connection |
 | order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
 | delivery option not InPost, phone not a Polish number, building number missing | `validation` |
 | another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
 | the order was marked as shipped by hand while the shipment was bought | `fulfilment_conflict` with the tracking number |
-| the stored shipment belongs to another environment or organization | `conflict` (HTTP 409, CLI exit 6) |
+| the stored shipment belongs to another connection than the order's mode uses, or to another organization | `conflict` (HTTP 409, CLI exit 6) |
 | an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
 | ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |
 | ShipX does not answer within 5 seconds (body included), answers 5xx, or the shipment is not bought before the 20-second deadline | `shipx_unavailable` (HTTP 503, CLI exit 28) |
@@ -555,7 +638,7 @@ reason under the button; the order stays to pack.
 
 These details are taken from the ShipX documentation and are not yet confirmed
 against the sandbox. The owner checks them on the first run with the sandbox
-account, with a test-mode order and the environment set to `sandbox`:
+connection and a test-mode order:
 
 - the label request with `format: "Pdf"` and numeric `shipment_ids` returns a
   PDF (`application/pdf`);
@@ -729,9 +812,13 @@ pnpm --silent run cli --tenant acme orders packing-list --format csv --out packi
 pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
-pnpm --silent run cli --tenant acme tenant shipx-set --environment sandbox \
-  --organization-id 1234 --token '<ShipX token>' \
+pnpm --silent run cli --tenant acme tenant shipx-set --slot sandbox \
+  --organization-id 1234 --token-env SHIPX_SANDBOX_TOKEN
+pnpm --silent run cli --tenant acme tenant shipx-set --slot production \
+  --organization-id 5678 --token-stdin < shipx-production-token.txt
+pnpm --silent run cli --tenant acme tenant shipx-set \
   --sender '{"name":"Anna Sender","email":"shop@example.com","phone":"500600700","street":"Example Street","buildingNumber":"7","city":"Warsaw","postCode":"00-001"}'
+pnpm --silent run cli --tenant acme tenant shipx-set --slot sandbox --clear-credentials
 pnpm --silent run cli --tenant acme tenant shipx
 pnpm --silent run cli --tenant acme product update <id> --parcel-template large
 pnpm --silent run cli --tenant acme --json order shipx show <orderId>
@@ -758,9 +845,14 @@ as `2 × Title; Title`; other orders keep the product title. `--compliance null`
 --sales-channel sales_links_only` limits a product to sales links (see
 [Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));
 `--sales-channel any` lifts the limit. `order` is an alias of
-`orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
-id and token; `--sender null` removes the sender. Passing the token as a flag
-puts it in the shell history: prefer entering it in Studio.
+`orders`. `tenant shipx-set --slot <sandbox|production>` names the connection
+that `--organization-id`, `--token-env`, `--token-stdin` and
+`--clear-credentials` change, and is required with them; the other connection
+stays as it is. The token is read from the named environment variable or from
+stdin, never from a flag, so it does not reach the shell history.
+`--sender` needs no slot, and `--sender null` removes the sender so InPost uses
+the organization data. `tenant shipx` prints both connections with masked
+credentials and the sender.
 
 ## Stock
 

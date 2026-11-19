@@ -7,8 +7,10 @@ import {
   normalizeShipxPhone,
   sanitizeShipxError,
   shipxAttemptUnconfirmed,
-  shipxClientKind,
+  SHIPX_LEGACY_SECRET_KEYS,
+  SHIPX_SLOT_SECRET_KEYS,
   shipxCreateInputSchema,
+  shipxEnvironmentForMode,
   shipxOfferToBuy,
   shipxPurchaseFailure,
   shipxReference,
@@ -126,6 +128,11 @@ describe('ShipX domain', () => {
     });
   });
 
+  it('builds a request without a sender when the workspace saved none', () => {
+    expect(buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping(), sender: null, parcelTemplate: 'small' }))
+      .toMatchObject({ ok: true, value: { sender: null, receiver: { phone: '500000000' } } });
+  });
+
   it('refuses requests ShipX cannot accept', () => {
     const input = { orderId: 'order-1', memberEmail: 'buyer@example.org', sender, parcelTemplate: 'small' as const };
     expect(buildShipxShipmentRequest({ ...input, shipping: shipping({ phone: null }) })).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -153,14 +160,18 @@ describe('ShipX domain', () => {
     expect(shipxOfferToBuy(remote({ status: 'confirmed', selectedOffer: selected }), 'inpost_locker_standard')).toBeNull();
   });
 
-  it('selects the ShipX client from the environment and the order mode', () => {
-    expect(shipxClientKind('sandbox', 'test')).toEqual({ ok: true, value: 'real' });
-    expect(shipxClientKind('sandbox', 'live')).toEqual({
-      ok: false,
-      error: { code: 'validation', message: 'ShipX is configured for the sandbox; switch to production before shipping paid orders', details: { state: 'setup_missing', reason: 'sandbox_environment' } },
+  it('maps a live order to the production slot and a test-mode order to the sandbox slot', () => {
+    expect(shipxEnvironmentForMode('live')).toBe('production');
+    expect(shipxEnvironmentForMode('test')).toBe('sandbox');
+  });
+
+  it('keeps the secret names of the two slots apart from each other and from the legacy names', () => {
+    const names = [SHIPX_SLOT_SECRET_KEYS.sandbox, SHIPX_SLOT_SECRET_KEYS.production, SHIPX_LEGACY_SECRET_KEYS].flatMap((keys) => [keys.organizationId, keys.token]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(SHIPX_SLOT_SECRET_KEYS).toEqual({
+      sandbox: { organizationId: 'shipx.sandbox.organizationId', token: 'shipx.sandbox.token' },
+      production: { organizationId: 'shipx.production.organizationId', token: 'shipx.production.token' },
     });
-    expect(shipxClientKind('production', 'live')).toEqual({ ok: true, value: 'real' });
-    expect(shipxClientKind('production', 'test')).toEqual({ ok: true, value: 'fake' });
   });
 
   it('recognises an attempt that ShipX never confirmed and keeps the reference within the ShipX limit', () => {
@@ -218,9 +229,19 @@ describe('ShipX domain', () => {
     expect(sender.phone).toBe('+48 500 600 700');
     expect(shipxSenderSchema.safeParse({ ...sender, phone: '123' }).success).toBe(false);
     expect(shipxSenderSchema.safeParse({ ...sender, postCode: '00001' }).success).toBe(false);
-    expect(configureShipxInputSchema.safeParse({ organizationId: '12a' }).success).toBe(false);
-    expect(configureShipxInputSchema.safeParse({ environment: 'staging' }).success).toBe(false);
+    expect(configureShipxInputSchema.safeParse({ production: { organizationId: '12a' } }).success).toBe(false);
     expect(configureShipxInputSchema.safeParse({ unexpected: true }).success).toBe(false);
-    expect(configureShipxInputSchema.parse({ organizationId: ' 1234 ', token: ' abc ' })).toEqual({ organizationId: '1234', token: 'abc' });
+    expect(configureShipxInputSchema.safeParse({ sandbox: { environment: 'production' } }).success).toBe(false);
+    expect(configureShipxInputSchema.parse({ sandbox: { organizationId: ' 1234 ', token: ' abc ' } })).toEqual({ sandbox: { organizationId: '1234', token: 'abc' } });
+    expect(configureShipxInputSchema.parse({ sender: null, production: { clearCredentials: true } })).toEqual({ sender: null, production: { clearCredentials: true } });
+  });
+
+  it.each([
+    ['environment', { environment: 'production' }],
+    ['organizationId', { organizationId: '1234' }],
+    ['token', { token: 'abc' }],
+    ['clearCredentials', { clearCredentials: true }],
+  ])('refuses the previous top-level %s field', (_field, input) => {
+    expect(configureShipxInputSchema.safeParse(input).success).toBe(false);
   });
 });

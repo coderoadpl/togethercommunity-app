@@ -714,14 +714,17 @@ export interface Messages {
     settingsHeading: string;
     settingsIntro: string;
     save: string;
-    environment: string;
     environments: { sandbox: string; production: string };
+    slotHeadings: { sandbox: string; production: string };
+    slotConnected: string;
+    slotNotConnected: string;
     organizationId: string;
     token: string;
     credentialSaved: (params: { preview: string }) => string;
     credentialMissing: string;
     clearCredentials: string;
     senderHeading: string;
+    senderHint: string;
     senderName: string;
     senderCompany: string;
     senderEmail: string;
@@ -730,8 +733,6 @@ export interface Messages {
     senderBuildingNumber: string;
     senderCity: string;
     senderPostCode: string;
-    configured: string;
-    notConfigured: string;
     parcelTemplateLabel: string;
     parcelTemplateHint: string;
     parcelTemplates: { small: string; medium: string; large: string };
@@ -755,7 +756,7 @@ export interface Messages {
     discardClaimConfirmTitle: string;
     discardClaimConfirmBody: string;
     discardConfirm: string;
-    unavailableReasons: { credentials_missing: string; sender_missing: string; sandbox_environment: string };
+    unavailableReasons: { credentials_missing: { sandbox: string; production: string } };
     errorDetail: (params: { detail: string }) => string;
     failures: {
       slow: string;

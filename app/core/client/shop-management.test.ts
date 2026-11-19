@@ -162,7 +162,7 @@ describe('shop management client', () => {
         await client.uploadBrandingAsset({ kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: bytes.byteLength, body: bytes }),
         await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: bytes.byteLength, body: bytes }),
         await client.createSalesLink(salesLinkFields),
-        await client.configureShipx({ environment: 'sandbox' }),
+        await client.configureShipx({ sandbox: { clearCredentials: true } }),
       ];
       expect(results.map((result) => result.ok ? 'ok' : result.error.message)).toEqual([
         'Shop management request to /api/m2m/shop/orders/order-1/shipx/label refused a redirect',
@@ -216,7 +216,7 @@ const order = {
   amountCents: 6398, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0,
   createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
 };
-const shipxView = { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null };
+const shipxView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null };
 const exportFile = { filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number' };
 
 describe('shop management client order calls', () => {
@@ -414,7 +414,7 @@ describe('shop management client asset calls', () => {
 describe('shop management client integration calls', () => {
   it('sends every integration call to its keyed route with only the key and workspace headers', async () => {
     const masked = { maskedPreview: '••••1234', updatedAt: '2026-11-15T10:00:00.000Z' };
-    const shipxView = { environment: 'sandbox', sender: null, organizationId: masked, token: masked, configured: false };
+    const shipxView = { sender: null, sandbox: { organizationId: masked, token: masked, configured: true }, production: { organizationId: null, token: null, configured: false } };
     const seen: { method: string; path: string; headers: Headers; body: unknown }[] = [];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input));
@@ -441,7 +441,7 @@ describe('shop management client integration calls', () => {
       await client.probeStripe({ mode: 'test' }),
       await client.configureStorage(storage),
       await client.getShipxSettings(),
-      await client.configureShipx({ organizationId: '1234', token: 'token-1234' }),
+      await client.configureShipx({ sandbox: { organizationId: '1234', token: 'token-1234' } }),
     ];
     expect(results.filter((result) => !result.ok)).toEqual([]);
     expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
@@ -456,7 +456,7 @@ describe('shop management client integration calls', () => {
     ]);
     expect(seen.map((call) => call.body)).toEqual([
       null, { key: 'ksef.token', value: 'ksef-token-1234' }, null, { mode: 'test', restrictedKey: 'rk_test_1234' }, { mode: 'test' }, storage, null,
-      { organizationId: '1234', token: 'token-1234' },
+      { sandbox: { organizationId: '1234', token: 'token-1234' } },
     ]);
     for (const call of seen) {
       expect(call.headers.get('x-api-key')).toBe('shop-secret');

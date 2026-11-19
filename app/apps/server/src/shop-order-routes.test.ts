@@ -412,9 +412,7 @@ describe('shop order routes with a shop management key', () => {
 
   it('creates, refreshes and labels an InPost shipment through the fake ShipX client and keeps the lease rules', async () => {
     const configured = await ownerRequest(API_ROUTES.shipxConfigure.method, API_ROUTES.shipxConfigure.path, {
-      environment: 'production',
-      organizationId: '1234',
-      token: 'shipx-token-5678',
+      production: { organizationId: '1234', token: 'shipx-token-5678' },
       sender: { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' },
     }, akademiaHost);
     expect(configured.status).toBe(200);
@@ -422,7 +420,7 @@ describe('shop order routes with a shop management key', () => {
     const at = (path: string, orderId = 'akademia-live-locker') => orderPath(path, orderId);
 
     const before = await keyed(secret, 'GET', at(SHOP_ORDER_ROUTES.shipxShipment.path), undefined, akademiaHost);
-    expect(envelope(shopOrderContracts.shipxShipment.output).parse(await before.json()).data).toMatchObject({ available: true, service: 'inpost_locker_standard', shipment: null });
+    expect(envelope(shopOrderContracts.shipxShipment.output).parse(await before.json()).data).toMatchObject({ available: true, environment: 'production', service: 'inpost_locker_standard', shipment: null });
 
     const created = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path), undefined, akademiaHost);
     expect(created.status).toBe(200);
@@ -476,9 +474,7 @@ describe('shop order routes with a shop management key', () => {
 
   it('passes the parcel template from the keyed create body to ShipX, keeps the product template without one and refuses an unknown template', async () => {
     const configured = await ownerRequest(API_ROUTES.shipxConfigure.method, API_ROUTES.shipxConfigure.path, {
-      environment: 'production',
-      organizationId: '1234',
-      token: 'shipx-token-5678',
+      production: { organizationId: '1234', token: 'shipx-token-5678' },
       sender: { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' },
     }, akademiaHost);
     expect(configured.status).toBe(200);

@@ -19,7 +19,7 @@ const shipping = {
 
 const toPack: OrderListItem = { ...sampleBundleOrder, mode: 'live', shipping, fulfilmentStatus: 'to_pack' };
 
-const ready: ShipxOrderView = { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'large', shipment: null };
+const ready: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'large', shipment: null };
 
 const shipment = (change: Partial<ShipxShipment> = {}): ShipxShipment => ({
   shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311', environment: 'production', createAttemptedAt: null,
@@ -55,10 +55,10 @@ describe('OrderShipx', () => {
     expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined);
   });
 
-  it('says that a test order is answered by the simulated InPost', async () => {
-    renderWithProviders(<OrderShipx {...props} order={{ ...toPack, mode: 'test' }} />);
+  it('says that a test order is created in the InPost sandbox', async () => {
+    renderWithProviders(<OrderShipx {...props} order={{ ...toPack, mode: 'test' }} view={{ ...ready, environment: 'sandbox' }} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
-    expect(within(await screen.findByRole('dialog')).getByText(/simulated InPost/)).toBeVisible();
+    expect(within(await screen.findByRole('dialog')).getByText(/InPost sandbox creates/)).toBeVisible();
   });
 
   it('downloads the label of a bought shipment through the API client', async () => {
@@ -138,11 +138,11 @@ describe('OrderShipx', () => {
     expect(screen.getByText('InPost: Some data are invalid.; receiver.phone: invalid')).toBeVisible();
     unmount();
     const { unmount: unmountMissing } = renderWithProviders(<OrderShipx {...props} view={{ ...ready, available: false, reason: 'credentials_missing' }} />);
-    expect(screen.getByText(/Save the InPost ShipX credentials/)).toBeVisible();
+    expect(screen.getByTestId('order-shipx-hint')).toHaveTextContent('Connect the InPost production account in Settings → Shipping');
     expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
     unmountMissing();
-    renderWithProviders(<OrderShipx {...props} view={{ ...ready, available: false, reason: 'sandbox_environment' }} />);
-    expect(screen.getByText(/serves test orders only/)).toBeVisible();
+    renderWithProviders(<OrderShipx {...props} order={{ ...toPack, mode: 'test' }} view={{ ...ready, environment: 'sandbox', available: false, reason: 'credentials_missing' }} />);
+    expect(screen.getByTestId('order-shipx-hint')).toHaveTextContent('This is a test-mode order: connect the InPost sandbox in Settings → Shipping');
     expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
   });
 
@@ -163,9 +163,10 @@ describe('OrderShipx', () => {
       ['lost lock', failed('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' }), pl.shipx.failures.lostLock],
       ['lease held', failed('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }), pl.shipx.failures.leaseHeld],
       ['manual ship', failed('fulfilment_conflict', 'The order was marked as shipped meanwhile; the InPost shipment 520000011395200025754311 exists as well, reconcile it in Manager Paczek', { state: 'manual_shipped', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' }), pl.shipx.failures.manualShipped({ trackingNumber: '520000011395200025754311' })],
-      ['environment mismatch', failed('conflict', 'The InPost shipment was created in the ShipX sandbox environment, but the settings now use production; switch back or finish the shipment in Manager Paczek', { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' }), pl.shipx.failures.environmentMismatch({ environment: pl.shipx.environments.sandbox, settingsEnvironment: pl.shipx.environments.production })],
+      ['environment mismatch', failed('conflict', 'The InPost shipment was created in the ShipX sandbox environment, but this order uses the production connection; finish the shipment in Manager Paczek', { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' }), pl.shipx.failures.environmentMismatch({ environment: pl.shipx.environments.sandbox, settingsEnvironment: pl.shipx.environments.production })],
       ['organization mismatch', failed('conflict', 'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek', { state: 'organization_mismatch' }), pl.shipx.failures.organizationMismatch],
-      ['missing sender', failed('integration_not_configured', 'Save the InPost sender details in Settings → Shipping', { state: 'setup_missing', reason: 'sender_missing' }), pl.shipx.unavailableReasons.sender_missing],
+      ['missing sandbox connection', failed('integration_not_configured', 'Save the InPost ShipX sandbox organization id and token in Settings → Shipping', { state: 'setup_missing', reason: 'credentials_missing', environment: 'sandbox' }), pl.shipx.unavailableReasons.credentials_missing.sandbox],
+      ['missing production connection', failed('integration_not_configured', 'Save the InPost ShipX production organization id and token in Settings → Shipping', { state: 'setup_missing', reason: 'credentials_missing', environment: 'production' }), pl.shipx.unavailableReasons.credentials_missing.production],
       ['unreadable building number', failed('validation', 'The building number cannot be read from the delivery address', { state: 'receiver_invalid', field: 'building_number' }), pl.shipx.failures.receiverInvalid.building_number],
       ['failed payment', failed('shipx_rejected', 'InPost could not charge the shipment; check the funds or the payment method in Manager Paczek', { status: 200, error: 'transaction_failed', description: null, fields: {}, state: 'failed' }), pl.shipx.failures.rejected.transaction_failed],
       ['rejected token', failed('shipx_rejected', 'InPost rejected the stored ShipX token', { status: 401, error: null, description: null, fields: {} }), pl.shipx.failures.tokenRejected],

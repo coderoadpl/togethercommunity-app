@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type * as ClientModule from '#core/client/index.js';
 import type { ShopManagementClientOptions } from '#core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
+import type { ShipxOrderView, ShipxShipment } from '#core/domain/index.js';
 
 import type { CliConfig, ResolveCliConfigInput } from './config.js';
 import { DEFAULT_SHOP_KEY_ENV } from './shop-key-commands.js';
@@ -67,10 +68,12 @@ const order = {
   shipment: { carrier: 'other', trackingNumber: 'MANUAL0001', shippedAt: '2026-11-15T10:00:00.000Z', shippedBy: 'owner' },
   createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
 };
-const shipment = {
+const shipment: ShipxShipment = {
   shipxShipmentId: '1', status: 'confirmed', environment: 'production', trackingNumber: 'T1', createAttemptedAt: null, boughtAt: null,
   labelFetchedAt: null, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: '2026-11-15T10:00:00.000Z',
 };
+
+const shipxOrder: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
 
 const shopSettings = {
   name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null,
@@ -86,14 +89,15 @@ const orderData = (pathname: string, method: string): unknown => {
   if (pathname.endsWith('/export') || pathname.endsWith('/packing-list')) return { filename: 'orders.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number\norder-1' };
   if (pathname.endsWith('/discard')) return { discarded: true };
   if (method === 'POST' && pathname.endsWith('/shipx')) return { order, shipment };
-  if (pathname.includes('/shipx')) return { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
+  if (pathname.includes('/shipx')) return shipxOrder;
   if (pathname === '/api/m2m/shop/orders/order-1') return { order, invoice: null };
   return { order };
 };
 
 const maskedCredential = { maskedPreview: '••••2345', updatedAt: '2026-11-15T10:00:00.000Z' };
 const shipxView = {
-  environment: 'sandbox', configured: true, organizationId: maskedCredential, token: maskedCredential,
+  sandbox: { configured: true, organizationId: maskedCredential, token: maskedCredential },
+  production: { configured: false, organizationId: null, token: null },
   sender: { name: 'Warehouse', company: null, email: 'warehouse@example.test', phone: '600700800', street: 'Garden Street', buildingNumber: '5', city: 'Warsaw', postCode: '00-950' },
 };
 
@@ -326,6 +330,13 @@ describe('shop orders CLI', () => {
     expect(calls[0]).toMatchObject({ method, path, search, body });
     expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
     expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('names the connection of the order in the plain ShipX view', async () => {
+    process.argv = ['node', 'together', 'shop', 'orders', 'shipx', 'show', 'order-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('environment: production'));
   });
 
   it('writes the label and the packing list to the --out paths', async () => {
@@ -592,15 +603,23 @@ describe('shop integrations CLI', () => {
     [['shop', 'integrations', 'secrets', 'set', 'stripe.restrictedKey', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 's3.configuration', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 'shipx.token', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'shipx.production.token', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'shipx.sandbox.organizationId', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 'ksef.contextNip', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 'ifirma.username', '--value-env', 'EMPTY_VALUE']],
     [['shop', 'integrations', 'secrets', 'delete', 'stripe.webhookSecret']],
     [['shop', 'integrations', 'stripe', 'configure', '--mode', 'test', '--restricted-key-env', 'EMPTY_VALUE']],
     [['shop', 'integrations', 'stripe', 'probe', '--mode', 'staging']],
     [['shop', 'integrations', 'storage', 'configure', '--provider', 'minio', '--endpoint', 'ftp://storage.example.test', '--region', 'eu', '--bucket', 'assets', '--access-key-id', 'id', '--secret-access-key-env', 'RAW_VALUE']],
-    [['shop', 'integrations', 'shipx', 'configure', '--organization-id', 'not-a-number']],
-    [['shop', 'integrations', 'shipx', 'configure', '--token-env', 'RAW_VALUE', '--token-stdin']],
-    [['shop', 'integrations', 'shipx', 'configure', '--sender-json-file', '-', '--token-stdin']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--organization-id', 'not-a-number']],
+    [['shop', 'integrations', 'shipx', 'configure', '--organization-id', '12345']],
+    [['shop', 'integrations', 'shipx', 'configure', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'staging', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--environment', 'production', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--organization-id', '12345', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--token-env', 'RAW_VALUE', '--token-stdin']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--sender-json-file', '-', '--token-stdin']],
   ])('rejects %j before any request', async (args) => {
     vi.stubEnv('RAW_VALUE', 'raw-value');
     vi.stubEnv('EMPTY_VALUE', '');
@@ -614,7 +633,9 @@ describe('shop integrations CLI', () => {
     [['shop', 'integrations', 'secrets', 'delete', 'ifirma.username'], 'DELETE', '/api/m2m/shop/integrations/secrets/ifirma.username', null],
     [['shop', 'integrations', 'stripe', 'probe', '--mode', 'test'], 'POST', '/api/m2m/shop/integrations/stripe/probe', { mode: 'test' }],
     [['shop', 'integrations', 'shipx', 'show'], 'GET', '/api/m2m/shop/integrations/shipx', null],
-    [['shop', 'integrations', 'shipx', 'configure', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { clearCredentials: true }],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { production: { clearCredentials: true } }],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sandbox: { clearCredentials: true } }],
+    [['shop', 'integrations', 'shipx', 'configure', '--clear-sender'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sender: null }],
   ])('sends %j to the integration route', async (args, method, path, body) => {
     await run(...args);
     expect(soleJson()).toMatchObject({ ok: true });
@@ -654,12 +675,19 @@ describe('shop integrations CLI', () => {
       const file = join(directory, 'sender.json');
       await writeFile(file, JSON.stringify(shipxView.sender));
       vi.stubEnv('SHIPX_TOKEN', 'shipx-token-from-env');
-      await run('shop', 'integrations', 'shipx', 'configure', '--environment', 'sandbox', '--sender-json-file', file, '--organization-id', '12345', '--token-env', 'SHIPX_TOKEN');
-      expect(soleJson()).toMatchObject({ ok: true, data: { configured: true } });
+      await run('shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--sender-json-file', file, '--organization-id', '12345', '--token-env', 'SHIPX_TOKEN');
+      expect(soleJson()).toMatchObject({ ok: true, data: { sandbox: { configured: true } } });
       expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/integrations/shipx/configure', body: {
-        environment: 'sandbox', sender: shipxView.sender, organizationId: '12345', token: 'shipx-token-from-env',
+        sender: shipxView.sender, sandbox: { organizationId: '12345', token: 'shipx-token-from-env' },
       } });
       expect(printedOutput()).not.toContain('shipx-token-from-env');
+
+      logSpy.mockClear();
+      stdinOf('shipx-token-from-stdin\n');
+      await run('shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--token-stdin');
+      expect(soleJson()).toMatchObject({ ok: true });
+      expect(calls[1]?.body).toEqual({ production: { token: 'shipx-token-from-stdin' } });
+      expect(printedOutput()).not.toContain('shipx-token-from-stdin');
     } finally {
       await rm(directory, { recursive: true });
     }

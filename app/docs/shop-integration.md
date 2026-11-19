@@ -809,9 +809,14 @@ return `validation` (HTTP 400) and issue nothing. Each order line in
 only when the goods actually change hands; neither verification nor the buyer's
 QR image alone records collection.
 
-Configured ShipX operations are a separate option. Creating/paying a real ShipX
-shipment is an external financial action requiring operational approval; a token
-or a test fixture is not that approval. Manual fulfilment needs no such purchase.
+Configured ShipX operations are a separate option. A workspace keeps two ShipX
+connections, `production` for live orders and `sandbox` for test-mode orders;
+the order's mode picks the connection, and an order whose connection is not
+saved answers `integration_not_configured` naming it (see
+[InPost ShipX](shop.md#inpost-shipx)). Creating/paying a real ShipX shipment for
+a live order is an external financial action requiring operational approval; a
+token or a test fixture is not that approval. Manual fulfilment needs no such
+purchase.
 
 ## 9. What the buyer receives
 

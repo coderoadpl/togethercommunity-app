@@ -26,6 +26,7 @@ describe('fake ShipX client', () => {
     expect(first).toEqual(second);
     expect(first).toMatchObject({ ok: true, value: { id: fakeShipxShipmentId('order-1'), status: 'created' } });
     expect(fakeShipxShipmentId('order-2')).not.toBe(fakeShipxShipmentId('order-1'));
+    expect(await client.createShipment(credentials, { ...request, sender: null })).toEqual(first);
   });
 
   it('confirms on the first read with a 24-digit tracking number and returns a PDF label', async () => {

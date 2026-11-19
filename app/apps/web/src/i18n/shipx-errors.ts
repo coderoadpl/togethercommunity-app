@@ -31,7 +31,7 @@ const stateMessage = (state: ShipxErrorState, code: ErrorCode | null, t: Message
     case 'organization_mismatch':
       return failures.organizationMismatch;
     case 'setup_missing':
-      return t.shipx.unavailableReasons[state.reason];
+      return t.shipx.unavailableReasons[state.reason][state.environment];
     case 'receiver_invalid':
       return failures.receiverInvalid[state.field];
   }

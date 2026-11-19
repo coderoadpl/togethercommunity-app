@@ -191,8 +191,8 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const anonHome = mkdtempSync(join(tmpdir(), 'poc-e2e-anon-'));
   const buyerHome = mkdtempSync(join(tmpdir(), 'poc-e2e-buyer-'));
   homes.push(alfaHome, betaHome, anonHome, buyerHome);
-  const cli = (args: string[], home: string): Promise<Run> =>
-    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
+  const cli = (args: string[], home: string, env: NodeJS.ProcessEnv = {}): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { ...env, HOME: home });
 
   const health = expectOk(await cli(['health'], anonHome), 'health', healthOutputSchema);
   assert(health.status === 'ok' && health.database === 'up', 'health should report ok/up');
@@ -763,7 +763,10 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const shipxOrderId = shipxPurchase.orderId;
   assert(shipxOrderId !== null, 'InPost purchase should return its order id');
   const unconfigured = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'show', shipxOrderId], alfaHome), 'InPost readiness before setup', shipxContracts.shipxShipment.output);
-  assert(!unconfigured.available && unconfigured.reason === 'credentials_missing' && unconfigured.service === 'inpost_locker_standard', `InPost should wait for credentials: ${JSON.stringify(unconfigured)}`);
+  assert(
+    !unconfigured.available && unconfigured.reason === 'credentials_missing' && unconfigured.environment === 'production' && unconfigured.service === 'inpost_locker_standard',
+    `InPost should wait for the production credentials of the simulated live order: ${JSON.stringify(unconfigured)}`,
+  );
   expectError(
     await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome),
     'InPost shipment without credentials',
@@ -772,13 +775,16 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   const shipxSettings = expectOk(
     await cli([
-      '--tenant', 'alfa', 'tenant', 'shipx-set', '--environment', 'sandbox', '--organization-id', '1234', '--token', 'smoke-shipx-token',
+      '--tenant', 'alfa', 'tenant', 'shipx-set', '--slot', 'production', '--organization-id', '1234', '--token-env', 'SMOKE_SHIPX_TOKEN',
       '--sender', JSON.stringify({ name: 'Smoke Sender', email: 'sender@together.dev', phone: '500600700', street: 'Example Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' }),
-    ], alfaHome),
+    ], alfaHome, { SMOKE_SHIPX_TOKEN: 'smoke-shipx-token' }),
     'InPost settings',
     shipxContracts.shipxConfigure.output,
   );
-  assert(shipxSettings.configured && !JSON.stringify(shipxSettings).includes('smoke-shipx-token'), `InPost settings should be configured and masked: ${JSON.stringify(shipxSettings)}`);
+  assert(
+    shipxSettings.production.configured && !shipxSettings.sandbox.configured && !JSON.stringify(shipxSettings).includes('smoke-shipx-token'),
+    `InPost production settings should be configured and masked, and the sandbox left alone: ${JSON.stringify(shipxSettings)}`,
+  );
   const shipxCreated = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome), 'InPost shipment', shipxContracts.shipxCreate.output);
   assert(
     shipxCreated.order.fulfilmentStatus === 'shipped' && shipxCreated.order.shipment?.carrier === 'inpost'

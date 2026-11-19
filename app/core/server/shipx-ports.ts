@@ -111,12 +111,14 @@ export interface ShipxShipmentRepository {
   listEvents(tenantId: string, orderId: string): Promise<ShipxShipmentEvent[]>;
 }
 
-export interface ShipxSettings {
-  environment: ShipxEnvironment;
-  sender: ShipxSender | null;
-}
-
 export interface ShipxSettingsRepository {
-  find(tenantId: string): Promise<ShipxSettings | null>;
-  save(tenantId: string, settings: ShipxSettings): Promise<void>;
+  findSender(tenantId: string): Promise<ShipxSender | null>;
+  saveSender(tenantId: string, sender: ShipxSender | null): Promise<void>;
+  /**
+   * The environment the previous release stored on the workspace. Its single
+   * connection (the legacy credential rows) keeps serving the slot of this name
+   * for each field the slot has no row of, and is deleted with that slot, so no
+   * data migration has to write rows the previous release cannot parse.
+   */
+  legacyEnvironment(tenantId: string): Promise<ShipxEnvironment | null>;
 }

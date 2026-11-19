@@ -284,6 +284,11 @@ Settings → Secrets and variables → Actions → repository secrets:
 The creator account never signs in from the workflow, so its password lives on
 the deployment only, as `SMOKE_CREATOR_PASSWORD`.
 
+`SECRET_FINGERPRINT_READ_SECRET`, the credential of the secret fingerprint route,
+is never a repository secret: no workflow reads fingerprints, and the operator
+secrets above give no access to them (see
+[secret fingerprints](security.md#secret-fingerprints)).
+
 The first three already exist for `prod-health.yml`; the smoke reuses them.
 
 ### Repository variables the owner must add

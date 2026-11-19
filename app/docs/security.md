@@ -603,14 +603,15 @@ rate limiter. Public `TENANT_CREATION` policy is unchanged.
 
 The provisioning body rejects unknown fields, including storage and Stripe
 credentials. The owner configures those integrations in the panel or with the
-existing owner CLI commands after creation. Operator CLI commands read the secret
-only from `OPERATOR_SECRET`, never a flag, and redact transport exceptions.
-Before reading it they refuse, with exit 2, an API URL that is not `https`
-(plain `http` only on a local host), whether it comes from `--api-url`,
-`TOGETHER_CLI_API_URL` or the stored origin; `secrets:verify` applies the same
-rule to `--base-url`.
-Requests carrying the operator secret refuse redirects, preventing the header
-from being forwarded to another origin.
+existing owner CLI commands after creation. Operator tenant commands read the
+secret only from `OPERATOR_SECRET`, never a flag, and redact transport
+exceptions. Before reading it they, and the fingerprint command below, refuse,
+with exit 2, an API URL that is not `https` (plain `http` only on a local host),
+or that carries credentials, a query or a fragment, whether it comes from
+`--api-url`, `TOGETHER_CLI_API_URL` or the stored origin; `secrets:verify`
+applies the same rule to `--base-url`. A path prefix of the URL is kept.
+Requests carrying the operator secret or the fingerprint read secret refuse
+redirects, preventing the header from being forwarded to another origin.
 See [operator tenant provisioning](tenant-provisioning.md) for the procedure,
 readiness evidence limits and recovery behavior.
 
@@ -623,7 +624,8 @@ fingerprints computed on both sides.
 The fingerprinted variables are the secrets the server environment schema reads:
 `BETTER_AUTH_SECRET`, `SECRETS_MASTER_KEY`, `EMAIL_DISPATCH_SECRET`,
 `MARKETING_TICK_SECRET`, `CRON_SECRET`, `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET`,
-`STAGING_OPERATOR_SECRET`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
+`STAGING_OPERATOR_SECRET`, `SECRET_FINGERPRINT_READ_SECRET`, `DATABASE_URL`,
+`DATABASE_URL_UNPOOLED`,
 `REALTIME_DATABASE_URL`, `DOMAIN_PROVISIONER_TOKEN`, `SMTP_PASSWORD`,
 `GOOGLE_CLIENT_SECRET`, `SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD`,
 followed by `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, which the AWS SDK
@@ -649,38 +651,62 @@ fingerprint, so a deployment that never set `DATABASE_URL` shows it as not set
 instead of fingerprinting the localhost default the schema falls back to.
 
 `GET /api/internal/secret-fingerprints` returns
-`{ secrets: [{ name, set, fingerprint }] }`. It authenticates like the operator
-tenant routes above: `x-scheduler-operator-secret` against `deps.operatorSecret`
-through `secretEquals`, an early route guard before the impersonation
-middleware, and the shared `Invalid operator secret` rejection. Unlike them, it
-answers only when the deployment configured its operator secret explicitly, by
-setting one of `OPERATOR_SECRET`, `PROD_OPERATOR_SECRET`,
-`STAGING_OPERATOR_SECRET` or `CRON_SECRET`. A deployment that sets none of them,
-whose operator secret falls back to `EMAIL_DISPATCH_SECRET` or to that
-variable's public schema default, answers every fingerprint request with the
-same 401 body without comparing the header. The other operator routes keep the
-fallback.
-Its capability is `scheduler:read`, the operator read capability the auth
-send-log evidence route already uses.
-The fingerprints are computed once at composition, so the route never sees a
-value, and nothing about a value, its prefix or its length is returned or logged.
-Like the other operator routes it has no separate rate limiter.
+`{ secrets: [{ name, set, fingerprint }] }`. The fingerprints are computed once
+at composition, so the route never sees a value, and nothing about a value, its
+prefix or its length is returned or logged. Like the operator routes it has no
+separate rate limiter.
 
-A fingerprint does not reveal the value, but anyone holding it can test
-guesses offline. A long random secret stays out of reach; a low-entropy value
-such as a short password does not. The endpoint therefore answers only an
-authenticated operator, and fingerprints belong in the same places as the
-operator secret, never in tickets or public logs.
+### The read credential
 
-**Whoever holds a deployment's operator secret can read its fingerprint list,
-wherever that secret is stored.** That includes every copy outside 1Password,
-such as a GitHub Actions secret: any workflow that can read it can read the
-list. With a fingerprint, the holder can test guesses for a low-entropy value
-offline, without the server seeing an attempt.
+The route accepts exactly one credential: `SECRET_FINGERPRINT_READ_SECRET`, a
+dedicated read-only secret of at least 16 characters, sent in the
+`x-secret-fingerprint-read-secret` header and compared in constant time through
+`secretEquals`. An early route guard checks it before the impersonation
+middleware, and the handler checks it again. Every rejection returns the same
+401 body as the operator routes (`Invalid operator secret`).
 
-The operator CLI prints the server's list, one `NAME=fingerprint` line per
-variable (`not-set` when absent), or the usual envelope with `--json`. It reads
-the secret only from `OPERATOR_SECRET`:
+- **The route is off until the variable is set.** A deployment without
+  `SECRET_FINGERPRINT_READ_SECRET` answers every request with that 401, whatever
+  the request carries.
+- **No other secret opens it.** The operator secret is refused in
+  `x-scheduler-operator-secret` and in the new header alike, and so are
+  `CRON_SECRET`, `EMAIL_DISPATCH_SECRET` and the operator fallbacks. A
+  deployment whose read secret equals any other fingerprinted secret, or the
+  operator secret the server selected (including the public dispatch default it
+  falls back to), keeps the route off.
+- **It grants nothing else.** The route table classifies the route under its
+  own principal, `secret-fingerprint-reader`, with its own capability,
+  `secret:fingerprint:read`; no other principal holds that capability and the
+  credential is accepted on no other route.
+
+**The credential lives only in the owner's 1Password item and on the
+deployment, never in CI.** It is not a GitHub Actions secret, and a
+config-regression test (`config-regression/prod-smoke-workflow.test.ts`) fails
+when any file under `.github/workflows` mentions `SECRET_FINGERPRINT_READ_SECRET`
+or its header. The operator secret stays in GitHub Actions for the smoke
+workflows and gives no access to fingerprints. Whoever holds the read secret,
+which is the owner and any copy of it, can read the fingerprint list of the
+deployment that sets it. The variable is itself fingerprinted, so the owner can
+check that the deployment holds the value stored in 1Password.
+
+A fingerprint does not reveal the value, but anyone holding it can test guesses
+offline, without the server seeing an attempt. A long random secret stays out of
+reach; a low-entropy value such as a short password does not. Fingerprints
+therefore belong where the read secret is kept, never in tickets or public logs.
+
+To rotate the read secret, generate a new random value of at least 16
+characters, store it in the 1Password item's `SECRET_FINGERPRINT_READ_SECRET`
+field, set the same value on the deployment and redeploy; the old value stops
+working with that deployment. To switch the route off, remove the variable and
+redeploy. Never reuse another secret's value: the route would stay off.
+
+### Reading and verifying fingerprints
+
+The CLI prints the server's list, one `NAME=fingerprint` line per variable
+(`not-set` when absent), or the usual envelope with `--json`. The command sits
+in the `operator` group but reads its credential only from
+`SECRET_FINGERPRINT_READ_SECRET`, never from `OPERATOR_SECRET` or a flag, and
+replaces the sent value in a server error before printing it:
 
 ```bash
 pnpm --silent run cli --api-url https://platform.example operator secrets fingerprints
@@ -691,13 +717,15 @@ The owner verifies a deployment against 1Password with
 example per environment, and each references only its own 1Password item:
 
 - [`scripts/secrets-verify.production.env.example`](../scripts/secrets-verify.production.env.example)
-  reads the item `togethercommunity-app prod secrets` and carries
-  `PROD_OPERATOR_SECRET`, with no staging operator field.
+  reads the item `togethercommunity-app prod secrets`, including its
+  `SECRET_FINGERPRINT_READ_SECRET` field, and carries `PROD_OPERATOR_SECRET`,
+  with no staging operator field.
 - [`scripts/secrets-verify.staging.env.example`](../scripts/secrets-verify.staging.env.example)
   reads the item `togethercommunity-app preview secrets`, for staging and
-  preview, and carries no production operator field. Its field names are
-  assumed to mirror the production item; a field named differently in the
-  preview item needs a one-line edit of the owner's local copy.
+  preview, including its own `SECRET_FINGERPRINT_READ_SECRET` field, and carries
+  no production operator field. Its field names are assumed to mirror the
+  production item; a field named differently in the preview item needs a
+  one-line edit of the owner's local copy.
 
 Copy the example for the target environment, replace `<vault>`, and run it under
 `op run` so the values come from 1Password at run time and never touch the disk
@@ -715,56 +743,30 @@ op run --env-file secrets-verify.staging.env -- pnpm --silent run secrets:verify
 
 **Never use an env file written for one environment against another host.** The
 tool cannot tell production from staging: a production env file pointed at a
-staging or preview host sends the production operator secret to a deployment
-built from branches that agents can change. Never copy a production field into
-the staging file either.
+staging or preview host sends the production read secret to a deployment built
+from branches that agents can change. Never copy a production field into the
+staging file either.
 
-The tool never chooses between operator secrets on its own. When exactly one of
-`OPERATOR_SECRET`, `PROD_OPERATOR_SECRET` and `STAGING_OPERATOR_SECRET` is
-present in its environment, it authenticates with that one. When more than one
-is present, it requires `--auth-with <NAME>`, one of those three names, and
-otherwise exits 2 before any request, naming the flag and the names present but
-never a value. A `--auth-with` name that is not set locally also exits 2 before
-any request. Name the variable whose value the target deployment uses as its
-operator secret: the server takes the first of `OPERATOR_SECRET`,
-`PROD_OPERATOR_SECRET` and `STAGING_OPERATOR_SECRET` it has. A deployment that
-sets none of the three falls back to `CRON_SECRET`, which the tool never sends,
-so such a deployment needs `OPERATOR_SECRET` before it can be verified. A wrong
-secret ends the run with `FAIL unauthorized` before anything is compared.
+The tool authenticates only with `SECRET_FINGERPRINT_READ_SECRET` and exits 2
+before any request when it is absent. The operator secrets in the env file are
+compared like every other entry and are never sent. A wrong read secret, or a
+deployment that has not set one, ends the run with `FAIL unauthorized` before
+anything is compared.
 
-The env examples keep the 1Password items' field names, and the production item
-has no `OPERATOR_SECRET` field. When the production deployment sets
-`OPERATOR_SECRET` to the value stored in the item's `PROD_OPERATOR_SECRET`
-field, add this line to the production env file and run with
-`--auth-with OPERATOR_SECRET`; the tool then compares it with the deployment's
-`OPERATOR_SECRET` as well:
-
-```text
-OPERATOR_SECRET="op://<vault>/togethercommunity-app prod secrets/PROD_OPERATOR_SECRET"
-```
-
-Staging works the same way. When the staging deployment sets `OPERATOR_SECRET`
-to the value stored in the preview item's `STAGING_OPERATOR_SECRET` field, add
-this line to the staging env file and run with `--auth-with OPERATOR_SECRET`:
-
-```text
-OPERATOR_SECRET="op://<vault>/togethercommunity-app preview secrets/STAGING_OPERATOR_SECRET"
-```
-
-The tool accepts only an `https` base URL (or `http` on a local host) and
-prints one line per server variable: `MATCH`, `MISMATCH`, `NOT SET ON SERVER`
-or `NOT IN LOCAL ENV`. A `MISMATCH` also says whether the trimmed local value
-matches, which points at surrounding whitespace, and whether the server value is
-the local value followed by a line break. A fingerprinted name that is set
-locally but missing from the server's list gets its own `NOT LISTED BY SERVER`
-line; the tool and the server read the fingerprinted names from one list in
+The tool accepts only an `https` base URL (or `http` on a local host) without a
+query or fragment, keeps its path prefix, and prints one line per server
+variable: `MATCH`, `MISMATCH`, `NOT SET ON SERVER` or `NOT IN LOCAL ENV`. A
+`MISMATCH` also says whether the trimmed local value matches, which points at
+surrounding whitespace, and whether the server value is the local value followed
+by a line break. A fingerprinted name that is set locally but missing from the
+server's list gets its own `NOT LISTED BY SERVER` line; the tool and the server
+read the fingerprinted names from one list in
 `core/contract/secret-fingerprints.ts`. It exits 0 only when at least one
 variable matched and every fingerprinted name present locally is listed by the
-server and matched; otherwise it exits 1. A line for a
-variable the deployment does not set reports `NOT SET ON SERVER` and fails the
-run; when that is intended, remove the line from the env file, but keep the line
-of the operator name the tool authenticates with. The items have no AWS fields,
-so the AWS pair reports `NOT IN LOCAL ENV` until the env file gets lines for it.
+server and matched; otherwise it exits 1. A line for a variable the deployment
+does not set reports `NOT SET ON SERVER` and fails the run; when that is
+intended, remove the line from the env file. The items have no AWS fields, so
+the AWS pair reports `NOT IN LOCAL ENV` until the env file gets lines for it.
 
 ## Download copy privacy
 

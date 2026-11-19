@@ -127,6 +127,7 @@ import {
   globalSchedulerRunOutputSchema,
   globalSchedulerRunsOutputSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
+  SECRET_FINGERPRINT_READ_SECRET_HEADER,
   tenantSchedulerRunOutputSchema,
   tenantSchedulerRunsOutputSchema,
   eventDeleteOutputSchema,
@@ -454,18 +455,34 @@ const failedAt = (source: Exclude<ApiFailureSource, 'client'>, error: AppError):
 export const apiFailureSource = (error: AppError): ApiFailureSource => failureSources.get(error) ?? 'client';
 
 export const REDACTED_OPERATOR_SECRET = '[redacted operator secret]';
+export const REDACTED_SECRET_FINGERPRINT_READ_SECRET = '[redacted secret fingerprint read secret]';
 
-const withoutSecret = (value: unknown, secret: string): unknown => {
-  if (typeof value === 'string') return value.replaceAll(secret, REDACTED_OPERATOR_SECRET);
+const CREDENTIAL_HEADER_REDACTIONS: ReadonlyArray<readonly [header: string, redaction: string]> = [
+  [SCHEDULER_OPERATOR_SECRET_HEADER, REDACTED_OPERATOR_SECRET],
+  [SECRET_FINGERPRINT_READ_SECRET_HEADER, REDACTED_SECRET_FINGERPRINT_READ_SECRET],
+];
+
+type SentCredential = { value: string; redaction: string };
+
+const sentCredentialOf = (headers: Readonly<Record<string, string>>): SentCredential | undefined => {
+  for (const [header, redaction] of CREDENTIAL_HEADER_REDACTIONS) {
+    const value = headers[header];
+    if (value !== undefined) return { value, redaction };
+  }
+  return undefined;
+};
+
+const withoutSecret = (value: unknown, secret: SentCredential): unknown => {
+  if (typeof value === 'string') return value.replaceAll(secret.value, secret.redaction);
   if (Array.isArray(value)) return value.map((item) => withoutSecret(item, secret));
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [withoutSecret(key, secret), withoutSecret(item, secret)]));
 };
 
-const serverErrorWithout = (error: AppError, secret: string | undefined): AppError =>
-  secret === undefined || secret === ''
+const serverErrorWithout = (error: AppError, secret: SentCredential | undefined): AppError =>
+  secret === undefined || secret.value === ''
     ? error
-    : appError(error.code, error.message.replaceAll(secret, REDACTED_OPERATOR_SECRET), withoutSecret(error.details, secret));
+    : appError(error.code, error.message.replaceAll(secret.value, secret.redaction), withoutSecret(error.details, secret));
 
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
@@ -495,7 +512,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
       headers,
       body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
-      ...(!refuseRedirects && headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined
+      ...(!refuseRedirects && sentCredentialOf(headers) === undefined
         ? {}
         : { redirect: 'error' as const }),
       signal: signal ?? null,
@@ -537,8 +554,8 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     return err(internal(`Response from ${path} does not match the contract envelope`));
   }
   if (!envelope.data.ok) {
-    const sentSecret = raw?.redactErrors === true ? raw.headers[SCHEDULER_OPERATOR_SECRET_HEADER] : undefined;
-    return err(failedAt('server', serverErrorWithout(envelope.data.error, sentSecret)));
+    const sentCredential = raw?.redactErrors === true ? sentCredentialOf(raw.headers) : undefined;
+    return err(failedAt('server', serverErrorWithout(envelope.data.error, sentCredential)));
   }
 
   const data = outputSchema.safeParse(envelope.data.data);
@@ -621,7 +638,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
       operatorTenantReadinessSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
   getSecretFingerprints: (secret: string) =>
     request(options, API_ROUTES.secretFingerprints.method, API_ROUTES.secretFingerprints.path,
-      secretFingerprintsOutputSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+      secretFingerprintsOutputSchema, undefined, undefined, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: secret }, redactErrors: true }),
 
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),

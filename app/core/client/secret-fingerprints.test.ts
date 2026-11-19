@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER } from '#core/contract/index.js';
+import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, SECRET_FINGERPRINT_READ_SECRET_HEADER } from '#core/contract/index.js';
 
-import { createApiClient, REDACTED_OPERATOR_SECRET } from './http.js';
+import { createApiClient, REDACTED_OPERATOR_SECRET, REDACTED_SECRET_FINGERPRINT_READ_SECRET } from './http.js';
 
 const secrets = [
   { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
@@ -10,7 +10,7 @@ const secrets = [
 ];
 
 describe('secret fingerprints client', () => {
-  it('sends the operator secret only in its header, refuses redirects and parses the strict response', async () => {
+  it('sends the read secret only in its own header, refuses redirects and parses the strict response', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
@@ -21,7 +21,9 @@ describe('secret fingerprints client', () => {
     expect(calls[0]?.url).toBe(`http://localhost:48730${API_PATHS.secretFingerprints}`);
     expect(calls[0]?.init?.method).toBe('GET');
     expect(calls[0]?.init?.redirect).toBe('error');
-    expect(new Headers(calls[0]?.init?.headers).get(SCHEDULER_OPERATOR_SECRET_HEADER)).toBe('hidden-secret');
+    const headers = new Headers(calls[0]?.init?.headers);
+    expect(headers.get(SECRET_FINGERPRINT_READ_SECRET_HEADER)).toBe('hidden-secret');
+    expect(headers.has(SCHEDULER_OPERATOR_SECRET_HEADER)).toBe(false);
   });
 
   it.each([
@@ -51,11 +53,11 @@ describe('secret fingerprints client', () => {
       ok: false,
       error: {
         code: 'unauthorized',
-        message: `Invalid operator secret: ${REDACTED_OPERATOR_SECRET}`,
+        message: `Invalid operator secret: ${REDACTED_SECRET_FINGERPRINT_READ_SECRET}`,
         details: {
-          header: REDACTED_OPERATOR_SECRET,
-          seen: [`prefix ${REDACTED_OPERATOR_SECRET} suffix`, 7, null],
-          [REDACTED_OPERATOR_SECRET]: true,
+          header: REDACTED_SECRET_FINGERPRINT_READ_SECRET,
+          seen: [`prefix ${REDACTED_SECRET_FINGERPRINT_READ_SECRET} suffix`, 7, null],
+          [REDACTED_SECRET_FINGERPRINT_READ_SECRET]: true,
         },
       },
     });

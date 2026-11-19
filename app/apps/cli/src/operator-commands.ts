@@ -40,7 +40,7 @@ export const registerOperatorCommands = (
 ): void => {
   const operator = program.command('operator').description('Instance operator commands');
   const tenant = operator.command('tenant').description('Operator workspace provisioning and readiness');
-  const withOperatorSecret = (
+  const withSecretFrom = (envName: 'OPERATOR_SECRET' | 'SECRET_FINGERPRINT_READ_SECRET') => (
     action: (ctx: OperatorCliContext, secret: string, raw: unknown) => Promise<void>,
   ) => async (raw: unknown) => {
     const ctx = context();
@@ -49,9 +49,9 @@ export const registerOperatorCommands = (
       emit(err(validation('Operator commands need an https API URL, or http on a local host')), ctx.value.json, () => '');
       return;
     }
-    const secret = process.env['OPERATOR_SECRET'];
+    const secret = process.env[envName];
     if (!secret) {
-      emit(err(validation('OPERATOR_SECRET is required')), ctx.value.json, () => '');
+      emit(err(validation(`${envName} is required`)), ctx.value.json, () => '');
       return;
     }
     try {
@@ -60,6 +60,7 @@ export const registerOperatorCommands = (
       emit(err(internal('Operator request failed')), ctx.value.json, () => '');
     }
   };
+  const withOperatorSecret = withSecretFrom('OPERATOR_SECRET');
   const provision = withOperatorSecret(async (ctx, secret, raw) => {
     const options = provisionOptionsSchema.safeParse(raw);
     const parsed = options.success ? provisionTenantInputSchema.safeParse({
@@ -81,7 +82,7 @@ export const registerOperatorCommands = (
     }
     emit(await ctx.api.getOperatorTenantReadiness(parsed.data.slug, secret), ctx.json, checklist);
   });
-  const fingerprints = withOperatorSecret(async (ctx, secret) => {
+  const fingerprints = withSecretFrom('SECRET_FINGERPRINT_READ_SECRET')(async (ctx, secret) => {
     emit(await ctx.api.getSecretFingerprints(secret), ctx.json, fingerprintLines);
   });
   tenant.command('provision').description('Create a workspace for an existing verified owner')
@@ -92,7 +93,8 @@ export const registerOperatorCommands = (
     .action(provision);
   tenant.command('readiness').description('Read the workspace readiness checklist')
     .requiredOption('--slug <slug>', 'Workspace slug').action(readiness);
-  operator.command('secrets').description('Operator checks of deployment secrets')
-    .command('fingerprints').description('Print the HMAC fingerprint of every server secret, never a value')
+  operator.command('secrets').description('Checks of deployment secrets')
+    .command('fingerprints')
+    .description('Print the HMAC fingerprint of every server secret, never a value; reads SECRET_FINGERPRINT_READ_SECRET, not OPERATOR_SECRET')
     .action(fingerprints);
 };

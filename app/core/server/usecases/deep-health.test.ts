@@ -136,7 +136,7 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
     findSole: async () => acme,
     hasAny: async () => true,
     findSettings: async () => settings,
-    updateSettings: async (_tenantId, next) => next,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
   },
   courses: {

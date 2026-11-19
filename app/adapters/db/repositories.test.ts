@@ -97,6 +97,7 @@ import {
 import { createInvoiceRepository } from './invoice-repositories.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { recordFulfilledCheckoutConsents } from '#core/server/usecases/fulfilled-checkout-consents.js';
+import { writeSettings } from '#core/server/testing/tenant-settings-fake.js';
 import { createConsentDefinitionRepository, createMarketingConsentRepository, createConsentConfirmationTokenRepository } from './marketing-repositories.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
@@ -1297,11 +1298,11 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
       analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
     };
-    const updated = await repo.updateSettings(ACME, { ...current, ...configured });
+    const updated = await writeSettings(repo, ACME, configured);
     expect(updated).toMatchObject(configured);
     expect(await repo.findSettings(ACME)).toMatchObject(configured);
     expect(await repo.findSettings(GLOBEX)).toMatchObject(disabled);
-    expect(await repo.updateSettings(ACME, { ...updated, ...disabled })).toMatchObject(disabled);
+    expect(await writeSettings(repo, ACME, disabled)).toMatchObject(disabled);
     expect(await repo.findSettings(ACME)).toMatchObject(disabled);
   });
 
@@ -1340,7 +1341,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       { requireEmpty: true },
     )).toBeNull();
     expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
-    const updated = await repo.updateSettings(ACME, {
+    const updated = await writeSettings(repo, ACME, {
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
@@ -1393,7 +1394,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: '#786000' });
     expect(await repo.findSettings(GLOBEX)).toMatchObject({ accentLight: null });
     expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
-    await repo.updateSettings(ACME, { ...updated, accentLight: null });
+    await writeSettings(repo, ACME, { accentLight: null });
     expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: null });
   });
 

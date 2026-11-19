@@ -663,7 +663,7 @@ const directCheckout = async (cancelReturnUrl?: string | null) => {
   });
   h.deps.tenants = {
     findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
-    findSettings: async () => settings, updateSettings: async (_tenantId, value) => value,
+    findSettings: async () => settings, changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');

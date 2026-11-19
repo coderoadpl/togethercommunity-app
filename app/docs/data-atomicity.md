@@ -122,6 +122,11 @@ at all.
 - Surveys: `SurveyRepository.save` writes the current survey and its append-only
   lifecycle event together. `SurveyRepository.submit` validates the locked
   survey and upserts a member's current response in one transaction.
+- Tenant settings: `TenantRepository.changeSettings` locks the tenant row with
+  `FOR UPDATE`, re-reads the settings for the update to validate its patch
+  against, and writes only the patched columns and the VAT fields the
+  coherence rule clears, so an owner session and a shop management key never
+  write back stale values of each other's fields.
 - Download copies: `DownloadCopyRepository.create` locks the member row with
   `FOR UPDATE`, checks that the member is not erased, and inserts the registry
   row in one transaction to serialize issuance with member erasure.

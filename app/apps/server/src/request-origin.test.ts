@@ -40,7 +40,7 @@ const deps = (overrides: Partial<Deps> = {}): Deps => ({
     findBySlug: async (slug) => [acme, studio].find((tenant) => tenant.slug === slug) ?? null,
     findSole: async () => acme,
     findSettings: async () => null,
-    updateSettings: async (_id, settings) => settings,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
     hasAny: async () => true,
   },

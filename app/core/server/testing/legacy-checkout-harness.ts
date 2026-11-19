@@ -23,6 +23,7 @@ import type { StripeWebhookDeps } from '../usecases/stripe-webhook.js';
 import { InMemoryConsentConfirmationTokenRepository, InMemoryMarketingConsentRepository } from './marketing-fakes.js';
 import { createStockRepositoryFake } from './stock-fake.js';
 import { createInMemoryTenantDomainRepository } from './tenant-domain-fakes.js';
+import { inMemoryChangeSettings } from './tenant-settings-fake.js';
 
 export const legacyNow = '2026-11-15T10:00:00.000Z';
 export const legacyBaseUrl = 'https://acme.togethercommunity.app';
@@ -123,7 +124,7 @@ export const createLegacyCheckoutHarness = (options: {
     findSole: async () => legacyTenant,
     hasAny: async () => true,
     findSettings: async () => legacySettings,
-    updateSettings: async (_tenantId, next) => next,
+    changeSettings: inMemoryChangeSettings(() => legacySettings),
     createTenantWithOwnerGrant: async () => legacyTenant,
   };
 

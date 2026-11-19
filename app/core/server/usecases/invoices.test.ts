@@ -193,7 +193,7 @@ const harness = (options: {
         invoiceSellerName: 'Together sp. z o.o.',
         invoiceSellerAddress: 'Prosta 1, 00-001 Warszawa',
       }),
-      updateSettings: async (_tenantId, settings) => settings,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => {
         throw new Error('unused');
       },

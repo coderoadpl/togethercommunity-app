@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { ApiClient } from '#core/client/index.js';
 import { operatorTenantSlugSchema, provisionTenantInputSchema, type OperatorTenantReadiness, type SecretFingerprints } from '#core/contract/index.js';
 import { err, internal, validation, type AppError, type Result } from '#core/domain/index.js';
-import { secureApiOrigin } from '#core/domain/network.js';
+import { secureApiBaseUrl } from '#core/domain/network.js';
 
 import { emit } from './output.js';
 
@@ -45,7 +45,7 @@ export const registerOperatorCommands = (
   ) => async (raw: unknown) => {
     const ctx = context();
     if (!ctx.ok) { emit(ctx, program.opts()['json'] === true, () => ''); return; }
-    if (secureApiOrigin(ctx.value.apiUrl) === null) {
+    if (secureApiBaseUrl(ctx.value.apiUrl) === null) {
       emit(err(validation('Operator commands need an https API URL, or http on a local host')), ctx.value.json, () => '');
       return;
     }

@@ -72,9 +72,10 @@ export const isLocalHostname = (hostname: string): boolean =>
   || /^127(?:\.\d{1,3}){3}$/.test(hostname)
   || hostname === '[::1]';
 
-export const secureApiOrigin = (raw: string): string | null => {
+export const secureApiBaseUrl = (raw: string): string | null => {
   if (!URL.canParse(raw)) return null;
   const url = new URL(raw);
   const secure = url.protocol === 'https:' || (url.protocol === 'http:' && isLocalHostname(url.hostname));
-  return secure ? url.origin : null;
+  const plain = url.username === '' && url.password === '' && url.search === '' && url.hash === '';
+  return secure && plain ? `${url.origin}${url.pathname.replace(/\/+$/, '')}` : null;
 };

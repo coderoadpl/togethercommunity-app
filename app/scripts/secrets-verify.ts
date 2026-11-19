@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { secretFingerprint } from '#adapters/crypto/secret-fingerprint.js';
 import { createApiClient } from '#core/client/index.js';
 import { SECRET_FINGERPRINT_NAMES, type SecretFingerprint } from '#core/contract/index.js';
-import { secureApiOrigin } from '#core/domain/network.js';
+import { secureApiBaseUrl } from '#core/domain/network.js';
 
 type LocalEnv = Readonly<Record<string, string | undefined>>;
 
@@ -12,7 +12,7 @@ export type SecretVerdict =
   | { name: string; outcome: 'MATCH' | 'NOT SET ON SERVER' | 'NOT IN LOCAL ENV' | 'NOT LISTED BY SERVER' }
   | { name: string; outcome: 'MISMATCH'; trimmedMatches: boolean; serverAddsLineBreak: boolean };
 
-const USAGE = 'usage: pnpm --silent run secrets:verify -- --base-url <https://host> [--auth-with <NAME>]';
+const USAGE = 'usage: pnpm --silent run secrets:verify -- --base-url <https://host>';
 
 const present = (value: string | undefined): value is string => value !== undefined && value !== '';
 
@@ -56,12 +56,10 @@ export const formatVerdict = (verdict: SecretVerdict): string => {
     : `${line}  ${trimmed}`;
 };
 
-const OPERATOR_SECRET_NAMES: readonly string[] = ['OPERATOR_SECRET', 'PROD_OPERATOR_SECRET', 'STAGING_OPERATOR_SECRET'];
-
 const ARGUMENT_ERRORS: Readonly<Record<string, string>> = {
-  ERR_PARSE_ARGS_INVALID_OPTION_VALUE: '--base-url and --auth-with each need a value',
-  ERR_PARSE_ARGS_UNKNOWN_OPTION: 'unknown option; only --base-url and --auth-with are accepted',
-  ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL: 'unexpected argument; pass values only to --base-url and --auth-with',
+  ERR_PARSE_ARGS_INVALID_OPTION_VALUE: '--base-url needs a value',
+  ERR_PARSE_ARGS_UNKNOWN_OPTION: 'unknown option; only --base-url is accepted',
+  ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL: 'unexpected argument; pass a value only to --base-url',
 };
 
 const argumentErrorMessage = (error: unknown): string => {
@@ -71,51 +69,25 @@ const argumentErrorMessage = (error: unknown): string => {
 
 const parseOptions = (
   argv: readonly string[],
-): { ok: true; baseUrl: string; authWith: string | undefined } | { ok: false; message: string } => {
-  let values: { 'base-url'?: string; 'auth-with'?: string };
+): { ok: true; baseUrl: string } | { ok: false; message: string } => {
+  let values: { 'base-url'?: string };
   try {
     ({ values } = parseArgs({
       args: argv[0] === '--' ? argv.slice(1) : [...argv],
-      options: { 'base-url': { type: 'string' }, 'auth-with': { type: 'string' } },
+      options: { 'base-url': { type: 'string' } },
       strict: true,
     }));
   } catch (error) {
     return { ok: false, message: argumentErrorMessage(error) };
   }
   const raw = values['base-url'];
-  const baseUrl = raw === undefined ? null : secureApiOrigin(raw);
+  const baseUrl = raw === undefined ? null : secureApiBaseUrl(raw);
   return baseUrl === null
-    ? { ok: false, message: '--base-url must be an https URL, or http on a local host' }
-    : { ok: true, baseUrl, authWith: values['auth-with'] };
+    ? { ok: false, message: '--base-url must be an https URL, or http on a local host, without a query or fragment' }
+    : { ok: true, baseUrl };
 };
 
-const selectOperatorSecret = (
-  local: LocalEnv,
-  authWith: string | undefined,
-): { ok: true; secret: string } | { ok: false; message: string } => {
-  const presentSecrets = OPERATOR_SECRET_NAMES.flatMap((name) => {
-    const value = local[name];
-    return present(value) ? [{ name, value }] : [];
-  });
-  if (authWith !== undefined) {
-    if (!OPERATOR_SECRET_NAMES.includes(authWith)) {
-      return { ok: false, message: `--auth-with must be one of ${OPERATOR_SECRET_NAMES.join(', ')}` };
-    }
-    const chosen = presentSecrets.find((entry) => entry.name === authWith);
-    return chosen === undefined
-      ? { ok: false, message: `--auth-with ${authWith} is not set in the local environment` }
-      : { ok: true, secret: chosen.value };
-  }
-  const [only, ...others] = presentSecrets;
-  if (only === undefined) {
-    return { ok: false, message: `one of ${OPERATOR_SECRET_NAMES.join(', ')} is required in the environment` };
-  }
-  if (others.length > 0) {
-    const names = presentSecrets.map((entry) => entry.name).join(', ');
-    return { ok: false, message: `${names} are all set; choose the one the target host accepts with --auth-with <NAME>` };
-  }
-  return { ok: true, secret: only.value };
-};
+const READ_SECRET_NAME = 'SECRET_FINGERPRINT_READ_SECRET';
 
 export const runSecretsVerify = async (input: {
   argv: readonly string[];
@@ -129,14 +101,14 @@ export const runSecretsVerify = async (input: {
     input.write(`secrets:verify: ${options.message}`);
     return 2;
   }
-  const operatorSecret = selectOperatorSecret(input.env, options.authWith);
-  if (!operatorSecret.ok) {
-    input.write(`secrets:verify: ${operatorSecret.message}`);
+  const readSecret = input.env[READ_SECRET_NAME];
+  if (!present(readSecret)) {
+    input.write(`secrets:verify: ${READ_SECRET_NAME} is required in the environment`);
     return 2;
   }
   const { baseUrl } = options;
   const api = createApiClient({ baseUrl, ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }) });
-  const result = await api.getSecretFingerprints(operatorSecret.secret);
+  const result = await api.getSecretFingerprints(readSecret);
   if (!result.ok) {
     input.write(`secrets:verify: FAIL ${result.error.code}: ${result.error.message}`);
     return 1;

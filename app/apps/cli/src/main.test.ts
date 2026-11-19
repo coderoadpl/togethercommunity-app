@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type * as ClientModule from '#core/client/index.js';
+import { REDACTED_OPERATOR_SECRET, REDACTED_SECRET_FINGERPRINT_READ_SECRET } from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import { SECRET_FINGERPRINT_READ_SECRET_HEADER } from '#core/contract/index.js';
@@ -1701,6 +1702,58 @@ describe('operator secret fingerprint command', () => {
     });
     expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-read-secret');
     expect(process.exitCode).toBe(3);
+  });
+
+  describe('argument errors carrying a credential', () => {
+    const printed = (): string => JSON.stringify([logSpy.mock.calls, errorSpy.mock.calls]);
+    const unsupportedOption = ['operator', 'secrets', 'fingerprints', '--auth-with=hidden-read-secret'];
+    const unexpectedArgument = ['operator', 'secrets', 'hidden-read-secret'];
+    const unsupportedOptionMessage = `unknown option '--auth-with=${REDACTED_SECRET_FINGERPRINT_READ_SECRET}'`;
+    const unexpectedArgumentMessage = `unknown command '${REDACTED_SECRET_FINGERPRINT_READ_SECRET}'`;
+    const excessArgument = ['operator', 'secrets', 'fingerprints', 'hidden-read-secret'];
+    const excessArgumentMessage = "too many arguments for 'fingerprints'. Expected 0 arguments but got 1.";
+
+    it.each([
+      [unsupportedOption, unsupportedOptionMessage],
+      [unexpectedArgument, unexpectedArgumentMessage],
+      [excessArgument, excessArgumentMessage],
+    ])('replaces the read secret in the JSON argument error of %j', async (args, message) => {
+      await run('--json', ...args);
+      expect(soleJson()).toEqual({ ok: false, error: { code: 'validation', message } });
+      expect(printed()).not.toContain('hidden-read-secret');
+      expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(2);
+    });
+
+    it.each([
+      [unsupportedOption, unsupportedOptionMessage],
+      [unexpectedArgument, unexpectedArgumentMessage],
+      [excessArgument, excessArgumentMessage],
+    ])('replaces the read secret in the text argument error of %j', async (args, message) => {
+      await run(...args);
+      expect(errorSpy).toHaveBeenCalledExactlyOnceWith(`error(validation): ${message}`);
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(printed()).not.toContain('hidden-read-secret');
+      expect(process.exitCode).toBe(2);
+    });
+
+    it('replaces the operator secret and the trimmed form of a read secret set with surrounding whitespace', async () => {
+      vi.stubEnv('SECRET_FINGERPRINT_READ_SECRET', ' hidden-read-secret\n');
+      await run('--json', 'operator', 'secrets', 'fingerprints', '--auth-with=hidden-read-secret');
+      expect(soleJson()).toEqual({ ok: false, error: { code: 'validation', message: unsupportedOptionMessage } });
+      await run('--json', 'operator', 'secrets', 'hidden-operator-secret');
+      expect(JSON.parse(String(logSpy.mock.calls[1]?.[0]))).toEqual({
+        ok: false, error: { code: 'validation', message: `unknown command '${REDACTED_OPERATOR_SECRET}'` },
+      });
+      expect(printed()).not.toContain('hidden-read-secret');
+      expect(printed()).not.toContain('hidden-operator-secret');
+    });
+
+    it('keeps an ordinary argument error message unchanged', async () => {
+      await run('--json', 'operator', 'secrets', 'fingerprints', '--auth-with=something-else');
+      expect(soleJson()).toEqual({ ok: false, error: { code: 'validation', message: "unknown option '--auth-with=something-else'" } });
+      expect(process.exitCode).toBe(2);
+    });
   });
 });
 

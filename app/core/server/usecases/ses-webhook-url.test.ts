@@ -21,7 +21,7 @@ const fakeTenants: TenantRepository = {
   findSole: async () => acme,
   hasAny: async () => true,
   findSettings: async () => null,
-  updateSettings: async (_tenantId, settings) => settings,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => acme,
 };
 

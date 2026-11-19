@@ -9,13 +9,18 @@ import { createManifestFake } from './fake-client.js';
 
 const integrations = {
   stripe: { restrictedKeyEnv: 'SHOP_STRIPE_KEY', mode: 'test' as const },
-  shipx: { environment: 'sandbox' as const, tokenEnv: 'SHOP_SHIPX_TOKEN', organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION' },
+  shipx: {
+    sandbox: { tokenEnv: 'SHOP_SHIPX_TOKEN', organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION' },
+    production: { tokenEnv: 'SHOP_SHIPX_LIVE_TOKEN', organizationIdEnv: 'SHOP_SHIPX_LIVE_ORGANIZATION' },
+  },
   parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' },
 };
 const environment = {
   SHOP_STRIPE_KEY: 'rk_test_fake-key', SHOP_SHIPX_TOKEN: 'private-shipx-token',
-  SHOP_SHIPX_ORGANIZATION: '123', SHOP_GEOWIDGET_PUBLIC_TOKEN: 'private-locker-token',
+  SHOP_SHIPX_ORGANIZATION: '123', SHOP_SHIPX_LIVE_TOKEN: 'private-shipx-live-token', SHOP_SHIPX_LIVE_ORGANIZATION: '456',
+  SHOP_GEOWIDGET_PUBLIC_TOKEN: 'private-locker-token',
 };
+const emptySlot = { organizationId: null, token: null, configured: true };
 const manifest = { version: 1, company: { integrations }, shops: [{ workspace: 'acme', products: [] }] };
 const integrationFake = (workspace = 'acme') => {
   const fake = createManifestFake(workspace);
@@ -31,7 +36,7 @@ const integrationFake = (workspace = 'acme') => {
   });
   const shipxConfigure = vi.fn<ApiClient['shipxConfigure']>(async (input) => {
     configureShipxInputSchema.parse(input);
-    return ok(shipxSettingsViewSchema.parse({ environment: 'sandbox', sender: null, organizationId: null, token: null, configured: true }));
+    return ok(shipxSettingsViewSchema.parse({ sender: null, sandbox: emptySlot, production: emptySlot }));
   });
   return { ...fake, endpoints, api: { ...fake.api, configureStripe, shipxConfigure } };
 };
@@ -65,7 +70,10 @@ describe('manifest integrations', () => {
     expect(result).toMatchObject({ ok: true, value: { applied: ['acme', 'studio'].flatMap((workspace) => ['stripe', 'shipx', 'parcelLocker'].map((provider) => ({ workspace, operation: `integration:${provider}` }))) } });
     for (const fake of [acme, studio]) {
       expect(fake.api.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: environment.SHOP_STRIPE_KEY, mode: 'test' });
-      expect(fake.api.shipxConfigure).toHaveBeenCalledExactlyOnceWith({ environment: 'sandbox', organizationId: '123', token: environment.SHOP_SHIPX_TOKEN });
+      expect(fake.api.shipxConfigure).toHaveBeenCalledExactlyOnceWith({
+        sandbox: { organizationId: '123', token: environment.SHOP_SHIPX_TOKEN },
+        production: { organizationId: '456', token: environment.SHOP_SHIPX_LIVE_TOKEN },
+      });
       expect(fake.state.settings.inpostGeowidgetToken).toBe(environment.SHOP_GEOWIDGET_PUBLIC_TOKEN);
       expect(fake.state.requests.filter((request) => request.includes('secrets'))).toEqual(['GET /api/tenant-secrets']);
     }
@@ -73,6 +81,19 @@ describe('manifest integrations', () => {
     expect(acme.endpoints[0]?.secret).not.toBe(studio.endpoints[0]?.secret);
     expectNoSecrets(result);
     expect(JSON.stringify(result)).not.toContain('signing-secret');
+  });
+
+  it('sends only the ShipX parts the manifest names, so a left-out connection or field keeps its stored value', async () => {
+    for (const [shipx, expected] of [
+      [{ production: { tokenEnv: 'SHOP_SHIPX_LIVE_TOKEN' } }, { production: { token: environment.SHOP_SHIPX_LIVE_TOKEN } }],
+      [{ sandbox: { organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION' } }, { sandbox: { organizationId: '123' } }],
+      [{ sender: null }, { sender: null }],
+    ] as const) {
+      const fake = integrationFake();
+      const input = { ...manifest, company: { integrations: { shipx } } };
+      expect((await applyManifest(input, () => fake.api, undefined, { integrations: true, environment })).ok).toBe(true);
+      expect(fake.api.shipxConfigure).toHaveBeenCalledExactlyOnceWith(expected);
+    }
   });
 
   it('does not configure a payment mode again once the workspace reports it as configured', async () => {
@@ -124,6 +145,7 @@ describe('manifest integrations', () => {
   it.each([
     { ...environment, SHOP_STRIPE_KEY: 'rk_live_wrong-mode' },
     { ...environment, SHOP_SHIPX_ORGANIZATION: 'not-an-id' },
+    { ...environment, SHOP_SHIPX_LIVE_ORGANIZATION: 'not-an-id' },
     { ...environment, SHOP_GEOWIDGET_PUBLIC_TOKEN: 'x'.repeat(4001) },
   ])('rejects invalid resolved configuration before mutations', async (environment) => {
     const fake = integrationFake();
@@ -135,8 +157,10 @@ describe('manifest integrations', () => {
   });
 
   it('merges company integration settings, replaces environment references and permits explicit opt-out', async () => {
-    expect(effectiveShopIntegrations(integrations, { stripe: null, shipx: { tokenEnv: 'SHOP_SHIPX_STUDIO_TOKEN' } })).toEqual({
-      stripe: null, shipx: { ...integrations.shipx, tokenEnv: 'SHOP_SHIPX_STUDIO_TOKEN' }, parcelLocker: integrations.parcelLocker,
+    expect(effectiveShopIntegrations(integrations, { stripe: null, shipx: { production: { tokenEnv: 'SHOP_SHIPX_STUDIO_TOKEN' } } })).toEqual({
+      stripe: null,
+      shipx: { ...integrations.shipx, production: { ...integrations.shipx.production, tokenEnv: 'SHOP_SHIPX_STUDIO_TOKEN' } },
+      parcelLocker: integrations.parcelLocker,
     });
     const fake = integrationFake('studio');
     const input = { ...manifest, shops: [{ workspace: 'studio', integrations: { stripe: null, shipx: null, parcelLocker: null }, products: [] }] };
@@ -163,6 +187,12 @@ describe('manifest integrations', () => {
       { stripe: { restrictedKey: environment.SHOP_STRIPE_KEY, mode: 'test' } },
       { stripe: { restrictedKeyEnv: 'rk_test_not-a-variable', mode: 'test' } },
       { shipx: { token: environment.SHOP_SHIPX_TOKEN } },
+      { shipx: { sandbox: { token: environment.SHOP_SHIPX_TOKEN } } },
+      { shipx: { production: { organizationId: environment.SHOP_SHIPX_LIVE_ORGANIZATION } } },
+      { shipx: { environment: 'production', production: integrations.shipx.production } },
+      { shipx: { tokenEnv: 'SHOP_SHIPX_TOKEN', organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION' } },
+      { shipx: { sandbox: {} } },
+      { shipx: {} },
       { parcelLocker: { token: environment.SHOP_GEOWIDGET_PUBLIC_TOKEN } },
       { stripe: { ...integrations.stripe, webhookSecretEnv: 'FORBIDDEN' } },
       { shipx: { sender: { name: 'Acme', secret: 'forbidden' } } },
@@ -185,9 +215,9 @@ describe('manifest integrations', () => {
 
     it.each([
       ['an unprefixed variable', { stripe: { restrictedKeyEnv: 'STRIPE_SECRET_KEY', mode: 'test' } }],
-      ['a lower-case variable', { shipx: { tokenEnv: 'SHOP_shipx' } }],
-      ['the bare prefix', { shipx: { organizationIdEnv: 'SHOP_' } }],
-      ['another platform variable', { shipx: { tokenEnv: 'DATABASE_URL' } }],
+      ['a lower-case variable', { shipx: { sandbox: { tokenEnv: 'SHOP_shipx' } } }],
+      ['the bare prefix', { shipx: { production: { organizationIdEnv: 'SHOP_' } } }],
+      ['another platform variable', { shipx: { production: { tokenEnv: 'DATABASE_URL' } } }],
     ])('requires the SHOP_ prefix for %s', (_case, company) => {
       expect(shopManifestSchema.safeParse({ ...manifest, company: { integrations: company } }).success).toBe(false);
     });
@@ -195,24 +225,30 @@ describe('manifest integrations', () => {
     it('never lets a provider field reference the operator secret variable', () => {
       for (const company of [
         { stripe: { restrictedKeyEnv: SHOP_OPERATOR_SECRET_ENV, mode: 'test' } },
-        { shipx: { tokenEnv: SHOP_OPERATOR_SECRET_ENV } },
+        { shipx: { sandbox: { tokenEnv: SHOP_OPERATOR_SECRET_ENV } } },
+        { shipx: { production: { organizationIdEnv: SHOP_OPERATOR_SECRET_ENV } } },
         { parcelLocker: { tokenEnv: SHOP_OPERATOR_SECRET_ENV } },
       ]) expect(shopManifestSchema.safeParse({ ...manifest, company: { integrations: company } }).success).toBe(false);
-      expect(integrationReferenceError({ shipx: { tokenEnv: SHOP_OPERATOR_SECRET_ENV } })).toBe('Integration variables must not reference the operator secret');
+      expect(integrationReferenceError({ shipx: { production: { tokenEnv: SHOP_OPERATOR_SECRET_ENV } } })).toBe('Integration variables must not reference the operator secret');
     });
 
-    it('refuses one variable referenced by two provider fields', () => {
-      rejected({ shipx: { tokenEnv: 'SHOP_SHIPX_SHARED', organizationIdEnv: 'SHOP_SHIPX_SHARED' } },
-        'Each integration variable may be referenced by one provider field only');
+    it.each([
+      ['within one ShipX connection', { shipx: { sandbox: { tokenEnv: 'SHOP_SHIPX_SHARED', organizationIdEnv: 'SHOP_SHIPX_SHARED' } } }],
+      ['across the sandbox and production connections', { shipx: { sandbox: { tokenEnv: 'SHOP_SHIPX_SHARED' }, production: { tokenEnv: 'SHOP_SHIPX_SHARED' } } }],
+      ['across a token and an organization of different connections', { shipx: { sandbox: { organizationIdEnv: 'SHOP_SHIPX_SHARED' }, production: { tokenEnv: 'SHOP_SHIPX_SHARED' } } }],
+    ])('refuses one variable referenced by two provider fields %s', (_case, company) => {
+      rejected(company, 'Each integration variable may be referenced by one provider field only');
     });
 
     it.each([
       ['a carrier name as the payment key', { stripe: { restrictedKeyEnv: 'SHOP_SHIPX_TOKEN', mode: 'test' } }, 'Stripe variables must be named SHOP_STRIPE_<NAME>'],
       ['a generic name as the payment key', { stripe: { restrictedKeyEnv: 'SHOP_KEY', mode: 'test' } }, 'Stripe variables must be named SHOP_STRIPE_<NAME>'],
       ['a bare namespace as the payment key', { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_', mode: 'test' } }, 'Stripe variables must be named SHOP_STRIPE_<NAME>'],
-      ['a payment name as the carrier token', { shipx: { tokenEnv: 'SHOP_STRIPE_KEY' } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
-      ['a payment name as the carrier organization', { shipx: { organizationIdEnv: 'SHOP_STRIPE_KEY' } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
-      ['a doubled separator in a carrier name', { shipx: { tokenEnv: 'SHOP_SHIPX__TOKEN' } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
+      ['a payment name as the sandbox carrier token', { shipx: { sandbox: { tokenEnv: 'SHOP_STRIPE_KEY' } } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
+      ['a payment name as the production carrier token', { shipx: { production: { tokenEnv: 'SHOP_STRIPE_KEY' } } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
+      ['a payment name as the sandbox carrier organization', { shipx: { sandbox: { organizationIdEnv: 'SHOP_STRIPE_KEY' } } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
+      ['a payment name as the production carrier organization', { shipx: { production: { organizationIdEnv: 'SHOP_STRIPE_KEY' } } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
+      ['a doubled separator in a carrier name', { shipx: { sandbox: { tokenEnv: 'SHOP_SHIPX__TOKEN' } } }, 'ShipX variables must be named SHOP_SHIPX_<NAME>'],
     ])('binds variable names to their provider: refuses %s', (_case, company, message) => {
       rejected(company, message);
     });
@@ -220,7 +256,10 @@ describe('manifest integrations', () => {
     it('accepts names inside each provider namespace', () => {
       expect(shopManifestSchema.safeParse({ ...manifest, company: { integrations: {
         stripe: { restrictedKeyEnv: 'SHOP_STRIPE_LIVE_KEY_2', mode: 'live' },
-        shipx: { tokenEnv: 'SHOP_SHIPX_TOKEN', organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION_ID' },
+        shipx: {
+          sandbox: { tokenEnv: 'SHOP_SHIPX_SANDBOX_TOKEN', organizationIdEnv: 'SHOP_SHIPX_SANDBOX_ORGANIZATION_ID' },
+          production: { tokenEnv: 'SHOP_SHIPX_TOKEN', organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION_ID' },
+        },
         parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_STUDIO_PUBLIC_TOKEN' },
       } } }).success).toBe(true);
     });
@@ -232,20 +271,23 @@ describe('manifest integrations', () => {
       rejected({ parcelLocker: { tokenEnv: 'SHOP_LOCKER_PUBLIC_TOKEN' } }, publicName);
       rejected({ parcelLocker: { tokenEnv: 'SHOP_STRIPE_PUBLIC_TOKEN' } }, publicName);
       rejected({ stripe: { restrictedKeyEnv: 'SHOP_STRIPE_PUBLIC_TOKEN', mode: 'test' } }, 'Secret integration variables must not carry the PUBLIC marker');
-      rejected({ shipx: { tokenEnv: 'SHOP_SHIPX_PUBLIC' } }, 'Secret integration variables must not carry the PUBLIC marker');
+      rejected({ shipx: { sandbox: { tokenEnv: 'SHOP_SHIPX_PUBLIC' } } }, 'Secret integration variables must not carry the PUBLIC marker');
+      rejected({ shipx: { production: { organizationIdEnv: 'SHOP_SHIPX_PUBLIC_ID' } } }, 'Secret integration variables must not carry the PUBLIC marker');
       expect(shopManifestSchema.safeParse({ ...manifest, company: { integrations: { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' } } } }).success).toBe(true);
     });
 
     it('rechecks provider namespaces on a merged configuration before resolving values', () => {
-      expect(integrationReferenceError({ shipx: { tokenEnv: 'SHOP_STRIPE_KEY' } })).toBe('ShipX variables must be named SHOP_SHIPX_<NAME>');
-      const result = resolveManifestIntegrations({ stripe: integrations.stripe, shipx: { tokenEnv: 'SHOP_STRIPE_KEY' } }, environment);
+      expect(integrationReferenceError({ shipx: { production: { tokenEnv: 'SHOP_STRIPE_KEY' } } })).toBe('ShipX variables must be named SHOP_SHIPX_<NAME>');
+      const result = resolveManifestIntegrations({ stripe: integrations.stripe, shipx: { production: { tokenEnv: 'SHOP_STRIPE_KEY' } } }, environment);
       expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
       expect(JSON.stringify(result)).not.toContain(environment.SHOP_STRIPE_KEY);
     });
 
     it.each([
-      ['the carrier token', { shipx: { tokenEnv: 'SHOP_SHIPX_TOKEN' } }, 'SHOP_SHIPX_TOKEN'],
-      ['the carrier organization', { shipx: { organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION' } }, 'SHOP_SHIPX_ORGANIZATION'],
+      ['the sandbox carrier token', { shipx: { sandbox: { tokenEnv: 'SHOP_SHIPX_TOKEN' } } }, 'SHOP_SHIPX_TOKEN'],
+      ['the sandbox carrier organization', { shipx: { sandbox: { organizationIdEnv: 'SHOP_SHIPX_ORGANIZATION' } } }, 'SHOP_SHIPX_ORGANIZATION'],
+      ['the production carrier token', { shipx: { production: { tokenEnv: 'SHOP_SHIPX_LIVE_TOKEN' } } }, 'SHOP_SHIPX_LIVE_TOKEN'],
+      ['the production carrier organization', { shipx: { production: { organizationIdEnv: 'SHOP_SHIPX_LIVE_ORGANIZATION' } } }, 'SHOP_SHIPX_LIVE_ORGANIZATION'],
       ['the parcel-locker token', { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' } }, 'SHOP_GEOWIDGET_PUBLIC_TOKEN'],
     ])('refuses a payment key value in %s without printing it', async (_case, company, name) => {
       for (const key of ['rk_live_private-fixture', 'sk_test_private-fixture']) {
@@ -280,8 +322,8 @@ describe('manifest integrations', () => {
       for (const input of [
         { ...manifest, company: { integrations: { stripe: integrations.stripe, parcelLocker: { tokenEnv: 'SHOP_STRIPE_KEY' } } } },
         { ...manifest, company: { integrations: { parcelLocker: { tokenEnv: SHOP_OPERATOR_SECRET_ENV } } } },
-        { ...manifest, company: { integrations: { shipx: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' } } }, shops: [{ workspace: 'acme', integrations: { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' } }, products: [] }] },
-        { ...manifest, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_LIVE_KEY', mode: 'live' } } }, shops: [{ workspace: 'acme', integrations: { shipx: { tokenEnv: 'SHOP_STRIPE_LIVE_KEY' } }, products: [] }] },
+        { ...manifest, company: { integrations: { shipx: { sandbox: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' } } } }, shops: [{ workspace: 'acme', integrations: { parcelLocker: { tokenEnv: 'SHOP_GEOWIDGET_PUBLIC_TOKEN' } }, products: [] }] },
+        { ...manifest, company: { integrations: { stripe: { restrictedKeyEnv: 'SHOP_STRIPE_LIVE_KEY', mode: 'live' } } }, shops: [{ workspace: 'acme', integrations: { shipx: { production: { tokenEnv: 'SHOP_STRIPE_LIVE_KEY' } } }, products: [] }] },
       ]) {
         const fake = integrationFake();
         fake.api.updateTenantSettings = published;
@@ -295,8 +337,10 @@ describe('manifest integrations', () => {
     });
 
     it.each([
-      ['the carrier token', { SHOP_GEOWIDGET_PUBLIC_TOKEN: ` ${environment.SHOP_SHIPX_TOKEN}\n` }],
-      ['the carrier organization id', { SHOP_GEOWIDGET_PUBLIC_TOKEN: environment.SHOP_SHIPX_ORGANIZATION, SHOP_SHIPX_ORGANIZATION: ` ${environment.SHOP_SHIPX_ORGANIZATION}` }],
+      ['the sandbox carrier token', { SHOP_GEOWIDGET_PUBLIC_TOKEN: ` ${environment.SHOP_SHIPX_TOKEN}\n` }],
+      ['the sandbox carrier organization id', { SHOP_GEOWIDGET_PUBLIC_TOKEN: environment.SHOP_SHIPX_ORGANIZATION, SHOP_SHIPX_ORGANIZATION: ` ${environment.SHOP_SHIPX_ORGANIZATION}` }],
+      ['the production carrier token', { SHOP_GEOWIDGET_PUBLIC_TOKEN: environment.SHOP_SHIPX_LIVE_TOKEN }],
+      ['the production carrier organization id', { SHOP_GEOWIDGET_PUBLIC_TOKEN: environment.SHOP_SHIPX_LIVE_ORGANIZATION }],
     ])('refuses a public parcel-locker token equal to %s without printing it', async (_case, override) => {
       const fake = integrationFake();
       const result = await applyManifest(manifest, () => fake.api, undefined, { integrations: true, environment: { ...environment, ...override } });
@@ -308,7 +352,7 @@ describe('manifest integrations', () => {
     });
 
     describe('public tokens across the selected shops', () => {
-      const carrierAcme = { workspace: 'acme', integrations: { stripe: null, parcelLocker: null, shipx: { environment: 'sandbox', tokenEnv: 'SHOP_SHIPX_ACME_TOKEN' } }, products: [] };
+      const carrierAcme = { workspace: 'acme', integrations: { stripe: null, parcelLocker: null, shipx: { production: { tokenEnv: 'SHOP_SHIPX_ACME_TOKEN' } } }, products: [] };
       const runAcrossShops = async (studio: Record<string, unknown>, secrets: Record<string, string>, flag: boolean, selected?: string) => {
         const acme = integrationFake();
         const other = integrationFake('studio');
@@ -348,7 +392,7 @@ describe('manifest integrations', () => {
         const published = vi.spyOn(fake.api, 'updateTenantSettings');
         const input = {
           version: 1,
-          company: { integrations: { shipx: { environment: 'sandbox', tokenEnv: 'SHOP_SHIPX_COMPANY_TOKEN' } } },
+          company: { integrations: { shipx: { sandbox: { organizationIdEnv: 'SHOP_SHIPX_COMPANY_ORGANIZATION', tokenEnv: 'SHOP_SHIPX_COMPANY_TOKEN' } } } },
           shops: [{ workspace: 'studio', integrations: { shipx: null }, settings: { inpostGeowidgetToken: shared }, products: [] }],
         };
         const result = await applyManifest(input, () => fake.api, 'studio', { environment: { SHOP_SHIPX_COMPANY_TOKEN: shared } });

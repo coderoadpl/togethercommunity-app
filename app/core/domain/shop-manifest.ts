@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
 import { provisionTenantInputSchema } from './operator-tenant.js';
 import { stripeModeSchema } from './integration.js';
-import { configureShipxInputSchema, DEFAULT_PARCEL_TEMPLATE, shipxSenderSchema } from './shipx.js';
+import { DEFAULT_PARCEL_TEMPLATE, SHIPX_ENVIRONMENTS, shipxSenderSchema } from './shipx.js';
 import type { ProductPrice } from './commerce.js';
 import { newProductSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
@@ -64,23 +64,36 @@ const secretEnvironmentNameSchema = (namespace: RegExp, message: string) => z.st
   .regex(namespace, message)
   .refine((name) => !PUBLIC_MARKER.test(name), PUBLIC_MARKER_MESSAGE);
 const publicEnvironmentNameSchema = z.string().regex(PUBLIC_ENVIRONMENT_NAME, PUBLIC_NAME_MESSAGE);
+const carrierEnvironmentNameSchema = secretEnvironmentNameSchema(CARRIER_ENVIRONMENT_NAME, CARRIER_NAME_MESSAGE);
+
+const someFieldSet = (value: Record<string, unknown>): boolean => Object.values(value).some((field) => field !== undefined);
+
+const shipxSlotManifestSchema = z.object({
+  organizationIdEnv: carrierEnvironmentNameSchema.optional(),
+  tokenEnv: carrierEnvironmentNameSchema.optional(),
+}).strict().refine(someFieldSet, 'A ShipX connection must not be empty');
 
 const shopManifestIntegrationsShape = z.object({
   stripe: z.object({
     restrictedKeyEnv: secretEnvironmentNameSchema(PAYMENT_ENVIRONMENT_NAME, PAYMENT_NAME_MESSAGE), mode: stripeModeSchema,
   }).strict().nullable().optional(),
   shipx: z.object({
-    environment: configureShipxInputSchema.shape.environment,
     sender: shipxSenderSchema.strict().nullable().optional(),
-    organizationIdEnv: secretEnvironmentNameSchema(CARRIER_ENVIRONMENT_NAME, CARRIER_NAME_MESSAGE).optional(),
-    tokenEnv: secretEnvironmentNameSchema(CARRIER_ENVIRONMENT_NAME, CARRIER_NAME_MESSAGE).optional(),
-  }).strict().refine((value) => Object.values(value).some((field) => field !== undefined), 'ShipX settings must not be empty').nullable().optional(),
+    sandbox: shipxSlotManifestSchema.optional(),
+    production: shipxSlotManifestSchema.optional(),
+  }).strict().refine(someFieldSet, 'ShipX settings must not be empty').nullable().optional(),
   parcelLocker: z.object({ tokenEnv: publicEnvironmentNameSchema }).strict().nullable().optional(),
 }).strict();
 
+type ManifestShipx = z.output<typeof shopManifestIntegrationsShape>['shipx'];
+
+export const shipxCredentialReferences = (shipx: ManifestShipx): string[] =>
+  SHIPX_ENVIRONMENTS.flatMap((slot) => [shipx?.[slot]?.organizationIdEnv, shipx?.[slot]?.tokenEnv])
+    .filter((name) => name !== undefined);
+
 export const integrationReferenceError = (integrations: z.output<typeof shopManifestIntegrationsShape>): string | null => {
   const payment = integrations.stripe?.restrictedKeyEnv;
-  const carrier = [integrations.shipx?.organizationIdEnv, integrations.shipx?.tokenEnv].filter((name) => name !== undefined);
+  const carrier = shipxCredentialReferences(integrations.shipx);
   const publicToken = integrations.parcelLocker?.tokenEnv;
   const references = [payment, ...carrier, publicToken].filter((name) => name !== undefined);
   if (references.includes(SHOP_OPERATOR_SECRET_ENV)) return 'Integration variables must not reference the operator secret';

@@ -67,6 +67,8 @@ const productFieldsSchema = z.object({
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
   compliance: z.string().optional(),
+  personalizationFile: z.string().min(1).optional(),
+  personalization: z.boolean().default(true),
   variantGroup: z.string().optional(),
   variantLabel: z.string().optional(),
 });
@@ -295,6 +297,23 @@ const singleAmount = (major: number | undefined, cents: number | undefined, noun
     : ok(amount);
 };
 
+const personalizationField = async (options: z.output<typeof productFieldsSchema>): Promise<Result<{ personalization?: unknown }, AppError>> => {
+  if (!options.personalization) {
+    return options.personalizationFile === undefined
+      ? ok({ personalization: null })
+      : err(validation('Provide only one of --personalization-file and --no-personalization'));
+  }
+  if (options.personalizationFile === undefined) return ok({});
+  let raw: string;
+  try {
+    raw = await readFile(options.personalizationFile, 'utf8');
+  } catch (cause) {
+    return err(validation(`Could not read personalisation file "${options.personalizationFile}": ${String(cause)}`));
+  }
+  const parsed = inlineJson(raw, 'personalisation');
+  return parsed.ok ? ok({ personalization: parsed.value }) : parsed;
+};
+
 const sharedProductFields = (options: z.output<typeof productFieldsSchema>, compliance: unknown) => ({
   vatRate: options.vatRate,
   vatExemptionBasis: options.vatExemptionBasis,
@@ -309,15 +328,18 @@ const sharedProductFields = (options: z.output<typeof productFieldsSchema>, comp
   variantLabel: options.variantLabel,
 });
 
-const shopProductCreateInput = (options: z.output<typeof productCreateSchema>) => {
+const shopProductCreateInput = async (options: z.output<typeof productCreateSchema>) => {
   const priceCents = singleAmount(options.price, options.priceCents, 'a price');
   if (!priceCents.ok) return priceCents;
   const compliance = inlineJson(options.compliance, 'product safety information');
   if (!compliance.ok) return compliance;
   const accessItems = inlineJson(options.accessItems, 'access items');
   if (!accessItems.ok) return accessItems;
+  const personalization = await personalizationField(options);
+  if (!personalization.ok) return personalization;
   return contractInput(shopCatalogContracts.createProduct.input, {
     ...sharedProductFields(options, compliance.value),
+    ...personalization.value,
     title: options.title,
     priceCents: priceCents.value,
     type: options.type,
@@ -327,15 +349,18 @@ const shopProductCreateInput = (options: z.output<typeof productCreateSchema>) =
   }, 'Invalid product');
 };
 
-const shopProductUpdateInput = (id: string, options: z.output<typeof productUpdateSchema>) => {
+const shopProductUpdateInput = async (id: string, options: z.output<typeof productUpdateSchema>) => {
   if (options.coverUrl !== undefined && options.clearCover) return err(validation('Provide only one of --cover-url and --clear-cover'));
   if (options.clearVariant && (options.variantGroup !== undefined || options.variantLabel !== undefined)) {
     return err(validation('Provide only one of --clear-variant and --variant-group/--variant-label'));
   }
   const compliance = inlineJson(options.compliance, 'product safety information');
   if (!compliance.ok) return compliance;
+  const personalization = await personalizationField(options);
+  if (!personalization.ok) return personalization;
   return contractInput(shopCatalogContracts.updateProduct.input, {
     ...sharedProductFields(options, compliance.value),
+    ...personalization.value,
     id,
     title: options.title,
     ...(options.clearCover ? { coverUrl: null } : {}),
@@ -408,6 +433,8 @@ export const registerShopKeyCommands = (
     .option('--description <description>')
     .option('--cover-url <url>', 'absolute cover image URL')
     .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+    .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
+    .option('--no-personalization', 'offer no buyer personalisation')
     .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
     .option('--variant-label <label>', 'label of this product in its variant group');
 
@@ -429,7 +456,7 @@ export const registerShopKeyCommands = (
     .option('--currency <currency>', '3-letter uppercase currency code')
     .option('--access-items <json>', 'inline JSON access items')))
     .action(run(z.tuple([productCreateSchema]), async (client, [options]) => {
-      const input = shopProductCreateInput(options);
+      const input = await shopProductCreateInput(options);
       return input.ok ? client.createProduct(input.value) : input;
     }, (data) => `created: ${productLine(data.product)}`));
   keyed(withProductFields(products.command('update <id>').description('Update product fields')
@@ -437,7 +464,7 @@ export const registerShopKeyCommands = (
     .option('--clear-cover', 'remove the current cover image')
     .option('--clear-variant', 'remove the variant group and label')))
     .action(run(z.tuple([idSchema, productUpdateSchema]), async (client, [id, options]) => {
-      const input = shopProductUpdateInput(id, options);
+      const input = await shopProductUpdateInput(id, options);
       return input.ok ? client.updateProduct(input.value) : input;
     }, (data) => `updated: ${productLine(data.product)}`));
   keyed(products.command('publish <id>').description('Publish a product'))

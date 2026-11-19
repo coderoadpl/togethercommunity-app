@@ -12,6 +12,7 @@ import {
   type GrantSource,
   type Member,
   type Order,
+  type OrderLine,
   type Product,
   type Result,
   type Tenant,
@@ -91,6 +92,13 @@ export const fulfillEnrollment = async (
   return ok({ memberId: completed.value.member.id, grantId: completed.value.grant.grantId, renewed: completed.value.grant.renewed, magicLink, emailsQueued });
 };
 
+const purchasePersonalizations = (lines: readonly OrderLine[]) => {
+  const personalizations = lines.flatMap((line) => line.personalization === undefined ? [] : [{
+    name: line.name, text: line.personalization.text, condition: line.personalization.condition,
+  }]);
+  return personalizations.length === 0 ? {} : { personalizations };
+};
+
 export const queueEnrollmentWelcome = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   member: Member,
@@ -143,6 +151,7 @@ export const queueEnrollmentWelcome = async (
         currency: order.currency,
         totalCents: order.amountCents,
         ...(order.shipping == null ? {} : { delivery: orderDeliveryDetails(order.shipping) }),
+        ...purchasePersonalizations(order.lines ?? []),
       } }),
       ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
     },

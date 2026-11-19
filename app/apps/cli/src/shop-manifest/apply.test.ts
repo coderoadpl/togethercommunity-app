@@ -182,6 +182,33 @@ describe('shop apply', () => {
     expect(state.products[0]?.salesChannel).toBe('any');
   });
 
+  it('manages the personalisation only when an entry specifies it, keeps an omitted one and clears it with null', async () => {
+    const { api, state } = createManifestFake();
+    const engraving = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: 'I understand a personalised item is made to my order.' };
+    state.products = [existingProduct({ personalization: engraving })];
+    state.prices = [existingPrice()];
+    const entry = (personalization?: typeof engraving | null) =>
+      ({ slug: 'paperback', title: 'Paperback', price: { amountCents: 4900, currency: 'PLN' }, published: false, ...(personalization === undefined ? {} : { personalization }) });
+    const manifest = (personalization?: typeof engraving | null) => ({ version: 1, shops: [{ workspace: 'acme', products: [entry(personalization)] }] });
+    expect(await planManifest(manifest(), () => api)).toMatchObject({ ok: true, value: { shops: [{ products: [
+      { slug: 'paperback', product: 'unchanged', fields: [], managedFields: ['title'] },
+    ] }] } });
+    expect((await applyManifest(manifest(), () => api)).ok).toBe(true);
+    expect(writes(state.requests)).toEqual([]);
+    expect(state.products[0]?.personalization).toEqual(engraving);
+    expect(await planManifest(manifest(engraving), () => api)).toMatchObject({ ok: true, value: { shops: [{ products: [
+      { slug: 'paperback', product: 'unchanged', fields: [], managedFields: ['personalization', 'title'] },
+    ] }] } });
+    const shorter = { ...engraving, maxLength: 60 };
+    expect(await planManifest(manifest(shorter), () => api)).toMatchObject({ ok: true, value: { shops: [{ products: [
+      { slug: 'paperback', product: 'update', fields: ['personalization'] },
+    ] }] } });
+    expect((await applyManifest(manifest(shorter), () => api)).ok).toBe(true);
+    expect(state.products[0]?.personalization).toEqual(shorter);
+    expect((await applyManifest(manifest(null), () => api)).ok).toBe(true);
+    expect(state.products[0]?.personalization).toBeNull();
+  });
+
   it('finishes all products in each phase before starting the next phase', async () => {
     const { api, state } = createManifestFake();
     const input = { version: 1, shops: [{ workspace: 'acme', products: ['paperback', 'hardback'].map((slug) => ({ slug, title: slug, price: { amountCents: 4900, currency: 'PLN' }, published: true })) }] };

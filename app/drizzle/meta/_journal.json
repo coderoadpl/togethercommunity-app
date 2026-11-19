@@ -1121,6 +1121,13 @@
       "when": 1790964000102,
       "tag": "0159_shop_management_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1790964000103,
+      "tag": "0160_product_personalization",
+      "breakpoints": true
     }
   ]
 }

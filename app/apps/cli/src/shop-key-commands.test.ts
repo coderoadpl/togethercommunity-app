@@ -238,6 +238,28 @@ describe('shop key CLI', () => {
     expect(calls).toEqual([]);
   });
 
+  it('sends the personalisation file on product create and update, null for --no-personalization, and refuses both flags before any request', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-personalization-'));
+    const path = join(directory, 'personalization.json');
+    const engraving = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+    await writeFile(path, JSON.stringify(engraving));
+    await run('shop', 'products', 'create', '--title', 'Printed book', '--price', '49', '--type', 'physical', '--personalization-file', path);
+    await run('shop', 'products', 'update', 'product-1', '--no-personalization');
+    await run('shop', 'products', 'update', 'product-1', '--title', 'Second edition');
+    expect(calls.map(({ path: route, body }) => ({ route, body }))).toEqual([
+      { route: '/api/m2m/shop/products', body: expect.objectContaining({ personalization: { ...engraving, description: '', maxLength: 200 } }) },
+      { route: '/api/m2m/shop/products/update', body: { id: 'product-1', personalization: null } },
+      { route: '/api/m2m/shop/products/update', body: { id: 'product-1', title: 'Second edition' } },
+    ]);
+
+    calls.length = 0;
+    logSpy.mockClear();
+    await run('shop', 'products', 'update', 'product-1', '--personalization-file', path, '--no-personalization');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Provide only one of --personalization-file and --no-personalization' } });
+    expect(calls).toEqual([]);
+    await rm(directory, { recursive: true, force: true });
+  });
+
   it.each([
     [['shop', 'products', 'create', '--title', 'Both', '--price', '1', '--price-cents', '100'], 'Provide only one of --price and --price-cents'],
     [['shop', 'products', 'create', '--title', 'None'], 'Provide a price with --price (currency units) or --price-cents (integer cents)'],

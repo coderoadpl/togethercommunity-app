@@ -9,6 +9,7 @@ import { chapterSchema, lessonBlockSchema } from './course.js';
 import { normalizeEmail } from './email.js';
 import { imageAssetKindSchema } from './image-asset.js';
 import { redirectPathSchema } from './tenant-redirect.js';
+import { productPersonalizationSchema } from './personalization.js';
 import {
   currencySchema,
   productSalesChannelSchema,
@@ -222,6 +223,7 @@ export const importProductRecordSchema = z
     variantGroup: variantGroupSchema.nullable().optional(),
     variantLabel: variantLabelSchema.nullable().optional(),
     salesChannel: productSalesChannelSchema.optional(),
+    personalization: productPersonalizationSchema.nullable().optional(),
   })
   .strict();
 

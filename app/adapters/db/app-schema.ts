@@ -10,6 +10,7 @@ import { user } from './auth-schema.js';
 import type {
   OrderShipment,
   ProductCompliance,
+  ProductPersonalization,
   OrderShipping,
   ShippingRate,
   ShipxSender,
@@ -384,6 +385,7 @@ export const products = pgTable(
     deliveryMethod: text('delivery_method', { enum: ['pickup', 'shipping'] }).notNull().default('pickup'),
     parcelTemplate: text('parcel_template', { enum: ['small', 'medium', 'large'] }).notNull().default('medium'),
     compliance: jsonb('compliance').$type<ProductCompliance>(),
+    personalization: jsonb('personalization').$type<ProductPersonalization>(),
     variantGroup: text('variant_group'),
     variantLabel: text('variant_label'),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),

@@ -184,6 +184,34 @@ describe('getSalesSummary', () => {
 });
 
 describe('exportOrders — CSV', () => {
+  it('exports the personalised lines as the last CSV column and as a JSON field, through the formula guard', async () => {
+    const personalization = (text: string) => ({
+      text, label: 'Add an engraving', description: '', inputLabel: 'Engraving text', condition: null, maxLength: 200,
+      requestedAt: '2026-11-04T09:00:00.000Z', conditionAcceptedAt: null,
+    });
+    const line = (productId: string, name: string, text?: string) => ({
+      productId, name, productType: 'physical' as const, grossCents: 100, netCents: 100, vatRate: 23 as const, vatCents: 0,
+      vatExemptionBasis: null, issuedCount: 0, ...(text === undefined ? {} : { personalization: personalization(text) }),
+    });
+    const h = harness([
+      orderItem('o1', { lines: [line('a', 'Printed book', 'For Alex'), line('b', 'Poster'), line('c', 'Mug', '-Sam')] }),
+      orderItem('o2', { lines: [line('b', 'Poster')] }),
+      orderItem('o3', { lines: [line('a', '@Printed book', 'Hi')] }),
+    ]);
+    const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
+    if (!csv.ok) throw new Error('export failed');
+    const [header, first, second, third] = csv.value.content.split('\n');
+    expect(header?.split(',').at(-1)).toBe('personalization');
+    expect(first).toMatch(/,"Printed book: For Alex; Mug: -Sam"$/u);
+    expect(second).toMatch(/,""$/u);
+    expect(third).toMatch(/,"'@Printed book: Hi"$/u);
+    const json = await exportOrders({ identity: identity('owner') }, { format: 'json' }, h.deps);
+    if (!json.ok) throw new Error('export failed');
+    expect(JSON.parse(json.value.content)).toMatchObject([
+      { personalization: 'Printed book: For Alex; Mug: -Sam' }, { personalization: '' }, { personalization: '@Printed book: Hi' },
+    ]);
+  });
+
   it('quotes fields and neutralizes spreadsheet formulas, blanking a null member name', async () => {
     const rows = [
       orderItem('o1', { memberName: '=SUM(A1:A9)', memberEmail: 'a@together.dev' }),
@@ -196,7 +224,7 @@ describe('exportOrders — CSV', () => {
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
     expect(lines[0]).toBe(
-      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid,shipping_rate,shipping_point,shipping_name,shipping_phone,shipping_address,shipping_postal_code,shipping_city,shipping_country,fulfilment_status,client_reference',
+      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid,shipping_rate,shipping_point,shipping_name,shipping_phone,shipping_address,shipping_postal_code,shipping_city,shipping_country,fulfilment_status,client_reference,personalization',
     );
     expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
     expect(lines[2]).toContain('""');

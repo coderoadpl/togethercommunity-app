@@ -861,6 +861,66 @@ describe('ProductsPanel', () => {
     expect(screen.queryByTestId('product-variants')).not.toBeInTheDocument();
   });
 
+  it('saves a buyer personalisation with a condition and refuses an incomplete one', async () => {
+    const user = userEvent.setup();
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+    const section = await screen.findByTestId('product-personalization');
+    await user.click(within(section).getByRole('button', { name: new RegExp(en.personalization.heading, 'u') }));
+    await user.click(await screen.findByRole('switch', { name: en.personalization.enable }));
+    await user.click(screen.getByLabelText(en.personalization.label));
+    await user.paste('Add an engraving');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.personalization.incomplete);
+    expect(rendered.updateInputs).toEqual([]);
+    await user.click(screen.getByLabelText(en.personalization.inputLabel));
+    await user.paste('Engraving text');
+    await user.click(screen.getByLabelText(en.personalization.description));
+    await user.paste('Engraved by hand.');
+    await user.clear(screen.getByLabelText(en.personalization.maxLength));
+    await user.type(screen.getByLabelText(en.personalization.maxLength), '60');
+    await user.click(screen.getByRole('switch', { name: en.personalization.requireCondition }));
+    await user.click(screen.getByLabelText(en.personalization.condition));
+    await user.paste('I understand a personalised item is made to my order.');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.objectContaining({
+      id: 'draft-1',
+      personalization: {
+        label: 'Add an engraving',
+        description: 'Engraved by hand.',
+        inputLabel: 'Engraving text',
+        maxLength: 60,
+        condition: 'I understand a personalised item is made to my order.',
+      },
+    })]);
+  });
+
+  it('leaves the stored personalisation alone unless it is edited and clears it when switched off', async () => {
+    const user = userEvent.setup();
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const personalised: Product = { ...baseProduct, personalization: { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null } };
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1', [personalised]);
+    await user.click(await screen.findByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ personalization: expect.anything() })]);
+    await user.click(screen.getByRole('switch', { name: en.personalization.enable }));
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await waitFor(() => expect(rendered.updateInputs).toHaveLength(2));
+    expect(rendered.updateInputs[1]).toMatchObject({ personalization: null });
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await waitFor(() => expect(rendered.updateInputs).toHaveLength(3));
+    expect(rendered.updateInputs[2]).not.toHaveProperty('personalization');
+  });
+
+  it('offers no personalisation for a membership', async () => {
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    await renderProductsPanel([], '/panel/products/membership-1', [{ ...baseProduct, id: 'membership-1', type: 'membership', slug: 'creator-club', title: 'Creator Club' }]);
+    expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('product-personalization')).not.toBeInTheDocument();
+  });
+
   it('unpublishes a live product after confirmation', async () => {
     const product = initialProducts[0];
     if (product === undefined) throw new Error('Expected the base product fixture');

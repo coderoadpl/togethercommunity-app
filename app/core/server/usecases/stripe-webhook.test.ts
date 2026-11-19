@@ -3306,6 +3306,28 @@ const stripeTermsPayment = async () => {
     create: async (_tenantId, input) => { captures.set(input.id, input.capture); },
     findById: async (_tenantId, id) => captures.get(id) ?? null,
   };
+  const transaction = h.deps.paymentTransaction;
+  let uncommitted: Map<string, CheckoutConsentCapture> | null = null;
+  h.deps.paymentTransaction = {
+    run: async (operation) => {
+      const outer = uncommitted === null;
+      const open = uncommitted ?? new Map<string, CheckoutConsentCapture>();
+      uncommitted = open;
+      try {
+        const result = await transaction.run((repositories) => operation({
+          ...repositories,
+          checkoutConsentCaptures: {
+            create: async (_tenantId, input) => { open.set(input.id, input.capture); },
+            findById: async (_tenantId, id) => open.get(id) ?? captures.get(id) ?? null,
+          },
+        }));
+        if (outer && result.ok) open.forEach((capture, id) => captures.set(id, capture));
+        return result;
+      } finally {
+        if (outer) uncommitted = null;
+      }
+    },
+  };
   const event = completedEvent({ id: 'evt-stripe-terms', checkoutConsentCaptureId: 'capture-page' });
   if (event.checkoutSession === null) throw new Error('Missing session');
   event.checkoutSession.termsAccepted = true;

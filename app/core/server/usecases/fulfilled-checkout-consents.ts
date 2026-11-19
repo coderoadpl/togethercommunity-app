@@ -23,7 +23,8 @@ export const recordFulfilledCheckoutConsents = async (
   const checkout = event.checkoutSession;
   const captureId = checkout?.metadata.checkoutConsentCaptureId;
   if (checkout === null || captureId === undefined || captureId === null) return ok(false);
-  const capture = await deps.checkoutConsentCaptures?.findById(tenant.id, captureId);
+  const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
+  const capture = await captures?.findById(tenant.id, captureId);
   if (capture === null || capture === undefined) return err(validation('Checkout consent capture is missing'));
   const email = checkout.email ?? checkout.metadata.memberEmail;
   if (capture.termsAccepted && capture.termsUrl !== undefined && capture.privacyUrl !== undefined) {

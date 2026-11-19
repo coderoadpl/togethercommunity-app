@@ -1,6 +1,6 @@
 {
-  "hash": "4da5ac21e02ad44758a6d74a772fb70190d8c0e36b94eda89b4f61295a173b8c",
-  "shortId": "4da5ac21e02a",
+  "hash": "8f4dfa5994333dd814a1d22e597163a9edb75e5b6decfeb5ee2a8e2313fbaf5c",
+  "shortId": "8f4dfa599433",
   "schema": {
     "constraints": [
       {
@@ -3839,6 +3839,14 @@
             "name": "legacy_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "personalization",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,

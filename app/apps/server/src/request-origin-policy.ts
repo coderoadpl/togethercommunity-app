@@ -62,6 +62,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.deleteSalesLink,
     API_ROUTES.issueOrderLine,
     API_ROUTES.shipOrder,
+    API_ROUTES.correctOrderPersonalization,
     API_ROUTES.shipxRefresh,
     API_ROUTES.shipxCreate,
     API_ROUTES.shipxDiscard,

@@ -3607,3 +3607,29 @@ describe('shipped checkout fulfilment', () => {
     expect(lookups.mock.calls.map(([, , productId]) => productId).sort()).toEqual(['product-1', 'product-2']);
   });
 });
+
+it('copies the personalisation of a snapshot line onto the paid order and its purchase confirmation, never into logs', async () => {
+  const h = bundlePayment();
+  const personalization = {
+    text: 'For Alex <3', label: 'Add an engraving', description: '', inputLabel: 'Engraving text',
+    condition: 'I understand a personalised item is made to my order.', maxLength: 200,
+    requestedAt: now, conditionAcceptedAt: now,
+  };
+  const printed = h.lines[2];
+  if (printed === undefined) throw new Error('Missing printed line');
+  h.lines[2] = { ...printed, personalization };
+  const logged: string[] = [];
+  h.deps.logger = { warn: (message) => { logged.push(message); }, error: (message) => { logged.push(message); } };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.lines?.[2]).toEqual({ ...printed, personalization });
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({
+    purchase: { personalizations: [{ name: 'Printed item', text: 'For Alex <3', condition: personalization.condition }] },
+  });
+  expect(logged.join('\n')).not.toContain('For Alex');
+});
+
+it('sends no personalisation block when no line is personalised', async () => {
+  const h = bundlePayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).not.toHaveProperty('purchase.personalizations');
+});

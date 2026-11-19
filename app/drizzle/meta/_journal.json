@@ -1125,8 +1125,15 @@
     {
       "idx": 160,
       "version": "7",
+      "when": 1790964000103,
+      "tag": "0160_product_personalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
       "when": 1790964000111,
-      "tag": "0160_organizations_core",
+      "tag": "0161_organizations_core",
       "breakpoints": true
     }
   ]

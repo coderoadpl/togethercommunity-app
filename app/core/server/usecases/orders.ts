@@ -4,6 +4,7 @@ import {
   exportOrdersQuerySchema,
   listOrdersQuerySchema,
   notFound,
+  orderPersonalizationSummary,
   ok,
   validation,
   type AppError,
@@ -150,6 +151,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'gclid',
       ...SHIPPING_COLUMN_NAMES,
       'client_reference',
+      'personalization',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -172,6 +174,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         ...Object.values(attributionColumns(order)),
         ...Object.values(shippingColumns(order)),
         order.clientReference ?? '',
+        orderPersonalizationSummary(order.lines ?? []),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -227,7 +230,7 @@ export const exportOrders = async (
   return ok(
     parsed.data.format === 'csv'
       ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order) }))) },
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []) }))) },
   );
 };
 

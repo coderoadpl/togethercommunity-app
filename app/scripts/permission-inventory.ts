@@ -256,6 +256,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/verify/:reference') return 'order:read';
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
+  if (path === '/api/orders/:orderId/personalization') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
   if (path === '/api/orders/changes') return 'order:read';
   if (path === '/api/orders/:orderId/shipx') return method === 'GET' ? 'order:read' : 'order:write';

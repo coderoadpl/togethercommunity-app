@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -215,6 +215,8 @@ const productCreateOptionsSchema = z.object({
   coverUrl: z.string().url().optional(),
   accessItems: z.string().optional(),
   compliance: z.string().optional(),
+  personalizationFile: z.string().min(1).optional(),
+  personalization: z.boolean().default(true),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
 });
@@ -230,10 +232,13 @@ const productUpdateOptionsSchema = z.object({
   coverUrl: z.string().url().optional(),
   clearCover: z.boolean().default(false),
   compliance: z.string().optional(),
+  personalizationFile: z.string().min(1).optional(),
+  personalization: z.boolean().default(true),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
   clearVariant: z.boolean().default(false),
 });
+const ordersPersonalizationOptionsSchema = z.object({ text: z.string() });
 const ordersShipOptionsSchema = z.object({
   carrier: shippingCarrierSchema,
   tracking: z.string().min(1),
@@ -275,11 +280,43 @@ const productComplianceOption = async (raw: string | undefined): Promise<Result<
   if (!payload.ok) return payload;
   return parsedInput(productComplianceSchema.nullable(), payload.value, 'Invalid product safety information');
 };
+const productPersonalizationOption = async (
+  options: { personalizationFile?: string | undefined; personalization: boolean },
+): Promise<Result<{ personalization?: z.output<typeof productPersonalizationSchema> | null }, AppError>> => {
+  if (!options.personalization) {
+    return options.personalizationFile === undefined
+      ? ok({ personalization: null })
+      : err(validation('Provide only one of --personalization-file and --no-personalization'));
+  }
+  if (options.personalizationFile === undefined) return ok({});
+  const payload = await readJsonPayload(undefined, options.personalizationFile);
+  if (!payload.ok) return payload;
+  const parsed = parsedInput(productPersonalizationSchema, payload.value, 'Invalid personalisation');
+  return parsed.ok ? ok({ personalization: parsed.value }) : parsed;
+};
+const checkoutPersonalizationOptionSchema = z.string()
+  .regex(/^[^:\s]+:[\s\S]+$/u, 'Pass each --personalization as <productId>:<text>')
+  .transform((value) => {
+    const separator = value.indexOf(':');
+    return { productId: value.slice(0, separator), text: value.slice(separator + 1) };
+  });
+const personalizationSelectionOptionsSchema = z.object({
+  personalization: z.array(checkoutPersonalizationOptionSchema).default([]),
+  acceptCondition: z.literal(true).optional(),
+});
+const personalizationSelection = (
+  options: z.output<typeof personalizationSelectionOptionsSchema>,
+): Result<{ personalizations?: { productId: string; text: string; conditionAccepted: boolean }[] }, AppError> => {
+  if (options.personalization.length === 0) {
+    return options.acceptCondition === undefined ? ok({}) : err(validation('Pass --accept-condition together with --personalization <productId>:<text>'));
+  }
+  return ok({ personalizations: options.personalization.map((entry) => ({ ...entry, conditionAccepted: options.acceptCondition === true })) });
+};
 const shippingSelectionOptionsSchema = z.object({
   shippingRate: z.string().min(1).optional(),
   pickupPoint: z.string().min(1).optional(),
 });
-const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
+const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.merge(personalizationSelectionOptionsSchema).extend({
   salesLink: z.string().min(1).optional(),
   email: z.string().email(),
   product: z.string().min(1),
@@ -367,7 +404,7 @@ const checkoutLineOptionSchema = z.string()
     const [productId = '', quantity = ''] = value.split(':');
     return { productId, quantity: Number.parseInt(quantity, 10) };
   });
-const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
+const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.merge(personalizationSelectionOptionsSchema).extend({
   salesLink: z.string().min(1).optional(),
   product: z.string().min(1).optional(),
   line: z.array(checkoutLineOptionSchema).default([]),
@@ -979,11 +1016,18 @@ checkout
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
+  .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product, not with --line', (value: string, previous: string[]) => [...previous, value], [])
+  .option('--accept-condition', 'accept the personalisation conditions on behalf of the buyer')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
       const shipping = shippingSelection(options);
       if (!shipping.ok) {
         emit(shipping, ctx.json, () => '');
+        return;
+      }
+      const personalizations = personalizationSelection(options);
+      if (!personalizations.ok) {
+        emit(personalizations, ctx.json, () => '');
         return;
       }
       const common = {
@@ -997,6 +1041,8 @@ checkout
         const lines = cartLinesSchema.safeParse(options.line);
         if (options.product !== undefined || options.salesLink !== undefined) {
           emit(err(validation('Pass --line without --product or --sales-link')), ctx.json, () => '');
+        } else if (personalizations.value.personalizations !== undefined) {
+          emit(err(validation('A cart checkout cannot carry a personalisation; pass --personalization with --product or --sales-link')), ctx.json, () => '');
         } else if (!lines.success) {
           emit(err(validation('Invalid cart', lines.error.flatten())), ctx.json, () => '');
         } else {
@@ -1013,6 +1059,7 @@ checkout
           productId: options.product,
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
           ...common,
+          ...personalizations.value,
         }),
         ctx.json,
         (data) => data.url,
@@ -1529,6 +1576,8 @@ product
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+  .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
+  .option('--no-personalization', 'offer no buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
   .option('--variant-label <label>', 'label of this product in its variant group, e.g. "Black · ASA"')
   .action(
@@ -1565,9 +1614,15 @@ product
         emit(compliance, ctx.json, () => '');
         return;
       }
+      const personalization = await productPersonalizationOption(options);
+      if (!personalization.ok) {
+        emit(personalization, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...personalization.value,
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
@@ -1629,7 +1684,7 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information or variant')
+  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information, personalisation or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
@@ -1641,6 +1696,8 @@ product
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it')
+  .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
+  .option('--no-personalization', 'remove the buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
   .option('--variant-label <label>', 'label of this product in its variant group')
   .option('--clear-variant', 'remove the variant group and label')
@@ -1659,9 +1716,15 @@ product
         emit(compliance, ctx.json, () => '');
         return;
       }
+      const personalization = await productPersonalizationOption(options);
+      if (!personalization.ok) {
+        emit(personalization, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.updateProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...personalization.value,
           ...(options.clearVariant ? { variantGroup: null, variantLabel: null } : {}),
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
@@ -1839,6 +1902,19 @@ ordersCommand
         await ctx.api.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
         ctx.json,
         (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`,
+      );
+    }),
+  );
+ordersCommand
+  .command('personalization <orderId> <productId>')
+  .description('Correct the personalisation text of an order line; the first original text is kept')
+  .requiredOption('--text <text>', 'the corrected text')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.string().min(1), ordersPersonalizationOptionsSchema]), async (ctx, [orderId, productId, options]) => {
+      emit(
+        await ctx.api.correctOrderPersonalization({ orderId, productId, text: options.text }),
+        ctx.json,
+        (data) => `corrected personalisation: ${data.order.id} (${productId})`,
       );
     }),
   );
@@ -3438,6 +3514,8 @@ program
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
+  .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product', (value: string, previous: string[]) => [...previous, value], [])
+  .option('--accept-condition', 'accept the personalisation conditions on behalf of the buyer')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
@@ -3449,6 +3527,11 @@ program
         emit(shipping, ctx.json, () => '');
         return;
       }
+      const personalizations = personalizationSelection(options);
+      if (!personalizations.ok) {
+        emit(personalizations, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.simulatePurchase({
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
@@ -3457,6 +3540,7 @@ program
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
           ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
           ...(shipping.value === null ? {} : { shipping: shipping.value }),
+          ...personalizations.value,
         }),
         ctx.json,
         (data) => {

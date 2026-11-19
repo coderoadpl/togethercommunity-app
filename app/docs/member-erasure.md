@@ -69,6 +69,14 @@ follow the same member-erasure selection as live orders.
   payload carries no phone number, and a parcel locker delivery stores no
   postal address there; the shipment e-mail payload
   (`payload.shipment.delivery.address`) receives the same replacement;
+- replaces the personalisation `text` and `originalText` with
+  `deletedMemberDisplay()` on the member's order lines, on the lines of checkout
+  snapshots bound to those orders' checkout sessions, and in the purchase
+  confirmation payload (`payload.purchase.personalizations`) of every
+  tenant-scoped `email_outbox` row addressed to the member's e-mail; the seller
+  wording, the condition and its acceptance time stay (see
+  [Personalisation](shop.md#personalisation)); an abandoned checkout snapshot
+  is bound to no order and keeps its text;
 - scrubs related marketing and transactional e-mail event metadata and rewrites
   matching SNS notification receipts to `together-scrubbed:v1:` without changing
   their status, so pending feedback remains processable; late feedback for erased

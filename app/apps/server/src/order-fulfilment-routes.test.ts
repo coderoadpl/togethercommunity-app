@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { orderExportFileSchema, orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
-import type { OrderRepository } from '#core/server/index.js';
+import { ok, orderExportFileSchema, orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
+import type { OrderPersonalizationRepository, OrderRepository } from '#core/server/index.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
 
 import type { AppVars } from './app-vars.js';
@@ -24,16 +24,17 @@ const order = (id: string, mode: 'live' | 'test'): OrderListItem => orderListIte
   },
 });
 
-const harness = () => {
+const harness = (correctPersonalization: OrderPersonalizationRepository['correctPersonalization'] = async () => ok(order('live-order', 'live')), viewer: Identity = identity) => {
   const stored = [order('live-order', 'live'), order('test-order', 'test')];
   const list = vi.fn<OrderRepository['list']>(async (_tenantId, filters) => {
     const orders = stored.filter((item) => filters.mode === undefined || item.mode === filters.mode);
     return { orders, total: orders.length };
   });
   const app = new Hono<AppVars>();
-  app.use('*', async (c, next) => { c.set('identity', identity); await next(); });
+  app.use('*', async (c, next) => { c.set('identity', viewer); await next(); });
   registerOrderFulfilmentRoutes(app, {
     orders: { list },
+    orderPersonalizations: { correctPersonalization },
     members: { findById: async () => null },
     tenants: { findSettings: async () => null },
     tenantDomains: createInMemoryTenantDomainRepository(),
@@ -78,5 +79,40 @@ describe('packing list HTTP route', () => {
     const response = await h.app.request('/api/orders/packing-list?format=csv&mode=staging');
     expect(response.status).toBe(400);
     expect(h.list).not.toHaveBeenCalled();
+  });
+});
+
+describe('order personalisation correction HTTP route', () => {
+  it('passes the path order id, the body and the staff identity to the correction and returns the order', async () => {
+    const correct = vi.fn<OrderPersonalizationRepository['correctPersonalization']>(async () => ok(order('live-order', 'live')));
+    const h = harness(correct);
+    const response = await h.app.request('/api/orders/live-order/personalization', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productId: 'stand', text: ' For Alex ' }),
+    });
+    expect(response.status).toBe(200);
+    expect(z.object({ ok: z.literal(true), data: z.object({ order: orderListItemSchema }) }).parse(await response.json()).data.order.id).toBe('live-order');
+    expect(correct).toHaveBeenCalledWith('workspace', { orderId: 'live-order', productId: 'stand', text: 'For Alex', editedAt: '2026-11-05T10:00:00.000Z', editedBy: 'staff' });
+  });
+
+  it('refuses an empty text or an attempt to change the accepted condition without writing', async () => {
+    const correct = vi.fn<OrderPersonalizationRepository['correctPersonalization']>(async () => ok(order('live-order', 'live')));
+    const h = harness(correct);
+    for (const body of [{ productId: 'stand', text: '' }, { productId: 'stand', text: 'Hi', condition: 'Other' }]) {
+      const response = await h.app.request('/api/orders/live-order/personalization', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(correct).not.toHaveBeenCalled();
+  });
+
+  it('refuses a member without order:write and writes nothing', async () => {
+    const correct = vi.fn<OrderPersonalizationRepository['correctPersonalization']>(async () => ok(order('live-order', 'live')));
+    const h = harness(correct, { ...identity, staffRole: null, tenantAccess: 'member', memberId: 'member' });
+    const response = await h.app.request('/api/orders/live-order/personalization', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productId: 'stand', text: 'For Alex' }),
+    });
+    expect(response.status).toBe(403);
+    expect(correct).not.toHaveBeenCalled();
   });
 });

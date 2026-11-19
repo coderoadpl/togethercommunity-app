@@ -1017,6 +1017,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
             ...(parsed.data.shipping === undefined ? {} : { shipping: parsed.data.shipping }),
+            ...(parsed.data.personalizations === undefined ? {} : { personalizations: parsed.data.personalizations }),
           },
           deps,
         );

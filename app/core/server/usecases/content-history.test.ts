@@ -631,6 +631,18 @@ describe('restoring a content version', () => {
     expect(restored).toMatchObject({ title: 'Older title', salesChannel: current });
   });
 
+  it.each([
+    ['keeps a current setting when the snapshot has none', { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null }, productSnapshotPayload],
+    ['does not resurrect a setting carried by an old snapshot', null, { ...productSnapshotPayload, personalization: { label: 'Old engraving', description: '', inputLabel: 'Old text', maxLength: 50, condition: null } }],
+  ] as const)('%s on restore', async (_label, current, payload) => {
+    const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9', entityKind: 'product', entityId: 'p1', schemaVersion: 10, payload })]);
+    harness.products[0] = { ...productRow, personalization: current };
+    const result = await restoreContentVersion({ identity: identity('t-acme', 'owner') }, { versionId: 'v9' }, harness.deps);
+    expect(result.ok).toBe(true);
+    expect(harness.products[0]).toMatchObject({ title: 'Older title', personalization: current });
+    expect(harness.writtenVersions.at(-1)?.payload).not.toHaveProperty('personalization');
+  });
+
   it('refuses a restore without the write capability', async () => {
     const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9' })]);
 

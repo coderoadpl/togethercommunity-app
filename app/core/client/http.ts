@@ -464,7 +464,15 @@ const CREDENTIAL_HEADER_REDACTIONS: ReadonlyArray<readonly [header: string, reda
 
 type CredentialRedaction = { value: string; redaction: string };
 
-const withoutHttpWhitespaceEdges = (value: string): string => value.replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, '');
+const HTTP_WHITESPACE = new Set(['\t', '\n', '\r', ' ']);
+
+const withoutHttpWhitespaceEdges = (value: string): string => {
+  let start = 0;
+  let end = value.length;
+  while (start < end && HTTP_WHITESPACE.has(value.charAt(start))) start += 1;
+  while (end > start && HTTP_WHITESPACE.has(value.charAt(end - 1))) end -= 1;
+  return value.slice(start, end);
+};
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A credential reaches the server header-normalized and may come back that way, so its edge-trimmed forms are secret too; one pass keeps a marker from being rewritten by a shorter form.

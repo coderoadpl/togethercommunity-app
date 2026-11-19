@@ -56,10 +56,10 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
   const value = draft ?? draftFrom(settings.data);
   const save = useMutation({
     ...actions.shipxConfigure,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.shipxSettingsInvalidates());
-      setDraft(null);
-    },
+    onSuccess: () => queryClient.invalidateQueries(actions.shipxSettingsInvalidates()),
+  });
+  const clearSlot = (slot: ShipxEnvironment) => save.mutate({ [slot]: { clearCredentials: true } }, {
+    onSuccess: () => setDraft((current) => (current === null ? null : { ...current, slots: { ...current.slots, [slot]: emptySlot } })),
   });
   useToastOutcome(save.isSuccess, t.common.saved, save.error === null ? null : localizePanelError(save.error, t));
   const disabled = !canEdit || !settings.isSuccess || save.isPending;
@@ -103,7 +103,7 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
           sender: sender === null ? null : sender.data,
           ...(sandbox === undefined ? {} : { sandbox }),
           ...(production === undefined ? {} : { production }),
-        });
+        }, { onSuccess: () => setDraft(null) });
       }}
     >
       {SLOT_ORDER.map((slot) => {
@@ -141,7 +141,7 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
             </Stack>
             {canEdit && slotStored(stored) ? (
               <Stack direction="row">
-                <Button color="error" variant="outlined" disabled={disabled} onClick={() => save.mutate({ [slot]: { clearCredentials: true } })} data-testid={`shipx-${slot}-clear-credentials`}>
+                <Button color="error" variant="outlined" disabled={disabled} onClick={() => clearSlot(slot)} data-testid={`shipx-${slot}-clear-credentials`}>
                   {t.shipx.clearCredentials}
                 </Button>
               </Stack>

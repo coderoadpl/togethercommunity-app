@@ -1805,7 +1805,7 @@ describe('SettingsPanel shipping', () => {
     expect(sandbox.getByText(en.shipx.slotNotConnected)).toBeVisible();
   });
 
-  it('saves the sandbox connection with the sender and removes the credentials of one slot only', async () => {
+  it('saves the sandbox connection with the sender and removes the credentials of one slot only, keeping other unsaved input', async () => {
     const configured: unknown[] = [];
     const stored = { maskedPreview: '••••9999', updatedAt: '2026-11-08T10:00:00.000Z' };
     const view: ShipxSettingsView = {
@@ -1837,9 +1837,17 @@ describe('SettingsPanel shipping', () => {
     await userEvent.type(card.getByLabelText(en.shipx.senderPostCode), sender.postCode);
     await userEvent.click(card.getByRole('button', { name: en.shipx.save }));
     await waitFor(() => expect(configured).toEqual([{ sender: { ...sender, company: null }, sandbox: { token: 'sandbox-token-1' } }]));
+    await waitFor(() => expect(sandbox.getByLabelText(en.shipx.token)).toHaveValue(''));
+    const production = within(card.getByTestId('shipx-slot-production'));
+    await userEvent.type(production.getByLabelText(en.shipx.token), 'draft-1');
+    await userEvent.type(sandbox.getByLabelText(en.shipx.organizationId), '5678');
+    await userEvent.type(card.getByLabelText(en.shipx.senderCity), 'Lodz');
     await userEvent.click(card.getByTestId('shipx-production-clear-credentials'));
     await waitFor(() => expect(configured).toHaveLength(2));
     expect(configured[1]).toEqual({ production: { clearCredentials: true } });
+    await waitFor(() => expect(production.getByLabelText(en.shipx.token)).toHaveValue(''));
+    expect(sandbox.getByLabelText(en.shipx.organizationId)).toHaveValue('5678');
+    expect(card.getByLabelText(en.shipx.senderCity)).toHaveValue('Lodz');
   });
 
   it('refuses an incomplete sender before calling the server', async () => {

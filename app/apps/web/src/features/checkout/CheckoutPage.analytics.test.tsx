@@ -7,7 +7,7 @@ import { HOSTED_CART_PATH } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server } from '../../test/server.js';
 import { CartCheckoutPage } from './CartCheckoutPage.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   analytics.loadGoogleTag.mockReturnValue(true);
   analytics.loadMetaPixel.mockReturnValue(false);
+  server.use(anonymousMe());
   server.use(http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: {
     tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [],
   } })));

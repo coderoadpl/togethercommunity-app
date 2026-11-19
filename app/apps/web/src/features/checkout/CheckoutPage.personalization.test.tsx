@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const condition = 'I understand a personalised item is made to my order.';
@@ -35,6 +35,7 @@ const bundle = {
 
 const serve = (personalization: typeof engraving | null, bodies: unknown[], prices: unknown[] = []) => {
   server.use(
+    anonymousMe(),
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(personalization, prices) })),
     http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: bundle })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } })),
@@ -106,11 +107,12 @@ describe('checkout personalisation', () => {
     const bodies: unknown[] = [];
     serve(null, bodies);
     renderCheckout('stand-offer');
-    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
-    expect(screen.getByText(en.personalization.forLine({ name: 'Printed stand' }))).toBeVisible();
+    expect(await screen.findByText(en.personalization.forLine({ name: 'Printed stand' }))).toBeVisible();
+    expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('checkbox', { name: /Add an engraving/u }));
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedPersonalization);
     await userEvent.type(screen.getByLabelText('Engraving text'), 'For Sam');
-    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    expect(screen.queryByRole('checkbox', { name: /terms/iu })).not.toBeInTheDocument();
     await userEvent.click(payButton());
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(JSON.parse(String(bodies[0]))).toMatchObject({

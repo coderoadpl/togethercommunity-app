@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -9,7 +9,7 @@ import { FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
 import { en } from '../../i18n/en.js';
 import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
@@ -40,6 +40,7 @@ const serve = (input: {
   sessionError?: string;
 }) => {
   server.use(
+    anonymousMe(),
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(input.deliveryMethod ?? 'shipping') })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
       stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, inpostGeowidgetToken: input.token ?? null, inpostGeowidgetWithheld: input.withheld ?? false,
@@ -72,7 +73,7 @@ describe('checkout delivery step', () => {
     serve({ onSession: (body) => bodies.push(body) });
     renderCheckout();
 
-    expect(await screen.findByText(en.shipping.deliveryHeading)).toBeInTheDocument();
+    expect(within(await screen.findByTestId('checkout-delivery')).getByText(en.shipping.deliveryHeading)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     const payButton = () => screen.getByTestId('checkout-pay-cta');
     expect(payButton()).toBeDisabled();
@@ -88,7 +89,7 @@ describe('checkout delivery step', () => {
     await userEvent.clear(code);
     await userEvent.type(code, 'waw01m');
     expect(payButton()).toBeEnabled();
-    expect(payButton()).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(6399) })));
+    expect(payButton()).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(6399) })));
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
 
     await userEvent.click(payButton());

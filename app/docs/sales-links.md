@@ -266,6 +266,10 @@ with nothing to pay, which never reaches Stripe. The webhook fulfils a paid
 Together session only with Stripe's terms evidence; the marketing consents and the
 invoice data come from the capture the page stored before the session started.
 See [Payments](payments.md#terms-acceptance-on-the-together-checkout-page).
+The page is one short step: a one-row order summary with the per-line VAT
+details behind **Details and VAT**, the delivery choice, collapsed invoice and
+discount code rows, a compact product safety line and a pay button with the
+total; see [Layout of the Together checkout page](shop.md#layout-of-the-together-checkout-page).
 
 Owners configure **Integrations → Stripe → Checkout appearance**: display name,
 HTTPS logo and icon URLs, background and button hex colours, font and corners.

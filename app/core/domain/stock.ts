@@ -97,8 +97,8 @@ export const publicStockLookup = (levels: readonly StockLevel[]): ((productId: s
 export const publicStockVersion = (levels: readonly StockLevel[]): string =>
   levels
     .map((level) => {
-      const flags = publicProductStock(level);
-      return `${level.productId}:${flags.soldOut ? 'sold-out' : 'available'}:${flags.low ? 'low' : 'normal'}`;
+      const stock = publicProductStock(level);
+      return `${level.productId}:${String(stock.available)}:${stock.low ? 'low' : 'normal'}`;
     })
     .sort()
     .join('|');

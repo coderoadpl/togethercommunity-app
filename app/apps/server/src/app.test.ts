@@ -6769,6 +6769,22 @@ describe('public offer route', () => {
     expect(JSON.stringify(body)).not.toContain('onHand');
   });
 
+  it('revalidates the offer when only the available count of a tracked product changes', async () => {
+    const base = deps();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const fewer = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(fewer.status).toBe(200);
+    expect(fewer.headers.get('etag')).not.toBe(etag);
+    expect(await fewer.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 3 } }] } });
+  });
+
   it('changes the offer ETag after adding a price to a published product', async () => {
     const base = deps();
     const prices: ProductPrice[] = [];

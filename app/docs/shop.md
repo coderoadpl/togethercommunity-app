@@ -1065,7 +1065,9 @@ public. `low` means a threshold is set and availability reached it. Each product
 also carries `maxQuantity`, the largest quantity the cart checkout accepts on
 one line right now: `0` when sold out, otherwise the cart rule bound (10 for a
 physical product, 1 for every other type) capped by `available`. The offer ETag
-includes a hash of the sold-out and low flags of every tracked product.
+includes a hash of the available count and the low flag of every tracked
+product, so any sale, reservation, release or adjustment that changes a count
+revalidates cached offers.
 
 A sales link is sold out when any of its products is: the direct handoff page
 shows the "checkout unavailable" state (HTTP 409) instead of posting to Stripe,

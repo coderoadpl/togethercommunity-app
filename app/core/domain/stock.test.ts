@@ -198,10 +198,12 @@ describe('stock alert markers after availability changes', () => {
 });
 
 describe('public stock version', () => {
-  it('changes only when a public flag changes, independent of order and exact counts', () => {
+  it('changes whenever a public count or flag changes, independent of order', () => {
     const plenty = [level({ productId: 'b', onHand: 9, reserved: 0 }), level({ productId: 'a', onHand: 5, reserved: 1 })];
     expect(publicStockVersion(plenty)).toBe(publicStockVersion(plenty.toReversed()));
-    expect(publicStockVersion([level({ productId: 'a', onHand: 4, reserved: 1 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).toBe(publicStockVersion(plenty));
+    expect(publicStockVersion([level({ productId: 'a', onHand: 6, reserved: 2 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).toBe(publicStockVersion(plenty));
+    expect(publicStockVersion([level({ productId: 'a', onHand: 4, reserved: 1 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).not.toBe(publicStockVersion(plenty));
     expect(publicStockVersion([level({ productId: 'a', onHand: 1, reserved: 1 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).not.toBe(publicStockVersion(plenty));
+    expect(publicStockVersion([level({ productId: 'a', onHand: 5, reserved: 1, lowStockThreshold: 4 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).not.toBe(publicStockVersion(plenty));
   });
 });

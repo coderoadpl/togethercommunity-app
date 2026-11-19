@@ -753,7 +753,7 @@ export const en: Messages = {
     credentialMissing: 'Not saved',
     clearCredentials: 'Remove credentials',
     senderHeading: 'Sender (optional)',
-    senderHint: 'Leave it empty and InPost uses the data of your InPost organization. A filled sender needs the phone, because InPost requires it.',
+    senderHint: "Leave the sender empty and InPost uses your organization's data. A filled sender needs every field except the company.",
     senderName: 'Name',
     senderCompany: 'Company (optional)',
     senderEmail: 'E-mail',

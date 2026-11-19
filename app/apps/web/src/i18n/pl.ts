@@ -760,7 +760,7 @@ export const pl: Messages = {
     credentialMissing: 'Nie zapisano',
     clearCredentials: 'Usuń dane dostępowe',
     senderHeading: 'Nadawca (opcjonalnie)',
-    senderHint: 'Bez nadawcy InPost użyje danych Twojej organizacji InPost. Jeśli podasz nadawcę, wpisz też telefon, bo InPost go wymaga.',
+    senderHint: 'Jeśli zostawisz nadawcę pustego, InPost użyje danych Twojej organizacji. Wypełniony nadawca wymaga wszystkich pól poza firmą.',
     senderName: 'Imię i nazwisko',
     senderCompany: 'Firma (opcjonalnie)',
     senderEmail: 'E-mail',

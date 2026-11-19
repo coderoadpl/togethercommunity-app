@@ -278,8 +278,45 @@ A sales link with product purchase consent checkboxes keeps the Together page at
 `?checkout=together`, because Stripe has no custom checkbox field. Its existing
 billing and coupon flow remains available. Both tenant legal URLs are required
 on this fallback page and its checkout endpoint too. Success and cancellation return to the
-Together page and cannot restart the automatic redirect. The single-product
-checkout page retains its existing behavior.
+Together page and cannot restart the automatic redirect.
+
+### Terms acceptance on the Together checkout page
+
+When the workspace has both a terms URL and a privacy URL, the Together page
+(`/checkout/<productRef>` and `/offer/<slug>?checkout=together`) does not ask for
+the terms or the email before a paid order. Stripe collects both: the session sets
+`consent_collection.terms_of_service: 'required'`, the same
+`custom_text.terms_of_service_acceptance` links as the direct handoff (in the
+checkout language, falling back to the workspace default language), and
+`customer_email` only when Together knows the email: typed on the page, required
+by a coupon with a per-member limit, or the signed-in buyer's account email.
+The session metadata carries `stripeTerms: 'true'` with the shown terms and
+privacy URLs. Tax ID collection and the promotion-code field stay off: the page
+keeps its own invoice data and coupon rows.
+
+The page still stores its consent capture before the session starts, with the
+selected marketing consents, the attached consent definitions, the invoice data
+and the request evidence. The webhook refuses a paid session without
+`consent.terms_of_service === 'accepted'` or without both URLs in its metadata,
+exactly as it refuses such a direct checkout. On acceptance it stores a capture
+`stripe:<session id>` that adds the accepted terms and the Stripe-shown URLs to the
+page capture, records the terms consent against those URLs and the marketing
+consents from the page, and takes the order billing from the page capture. A
+consent job retried later reads that capture, so it needs nothing from the Stripe
+event.
+
+An order with nothing to pay (a zero price, or a coupon that covers a one-time
+order without delivery) never reaches Stripe: it still needs the email and the
+terms acceptance from the page. A coupon without a per-member limit no longer
+needs an email before a paid order. A workspace with only one legal URL, or none,
+keeps the earlier behaviour: the page asks for the terms when one URL is set, and
+a sales link still refuses to start without both. The cart checkout
+(`/checkout/cart/pay`) keeps the terms and the email on its page.
+
+Parcel-locker delivery keeps Stripe's shipping address collection: Stripe does
+not document whether `shipping_options` works without
+`shipping_address_collection`, so the buyer of a locker delivery still enters an
+address and a phone number in Stripe.
 
 ## Shipping in Stripe Checkout
 

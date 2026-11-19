@@ -243,6 +243,17 @@ coupons remain available; a product-scoped coupon must cover every included
 product. Success and cancellation return to the Together page without restarting
 the automatic handoff.
 
+On that Together page Stripe collects the terms acceptance and, unless Together
+already knows it, the buyer email, with the same per-session agreement as the
+direct handoff. The page keeps only what Stripe does not show: the delivery and
+parcel-locker choice, the invoice data, the coupon, the purchase consent
+checkboxes and the product safety information. It asks for the email only for a
+coupon with a per-member limit, and for the email and the terms only for an order
+with nothing to pay, which never reaches Stripe. The webhook fulfils a paid
+Together session only with Stripe's terms evidence; the marketing consents and the
+invoice data come from the capture the page stored before the session started.
+See [Payments](payments.md#terms-acceptance-on-the-together-checkout-page).
+
 Owners configure **Integrations → Stripe → Checkout appearance**: display name,
 HTTPS logo and icon URLs, background and button hex colours, font and corners.
 Empty overrides use the tenant branding in Settings (name, logo, accent colour

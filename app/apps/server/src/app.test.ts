@@ -11725,6 +11725,20 @@ describe('direct public sales-link checkout', () => {
     expect(h.create).not.toHaveBeenCalled();
   });
 
+  it('keeps offers with a personalisation on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[0];
+    if (item === undefined) throw new Error('Missing test product');
+    item.personalization = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null };
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it('omits a rejected return address from the consent fallback redirect', async () => {
     const h = await directSalesLinkApp('https://sales.example/offer');
     const item = h.products[1];
@@ -12319,4 +12333,65 @@ it.each([false, true])('routes a variant offer to Together even when its saved f
   expect(crawler.status).toBe(200);
   expect(crawler.headers.get('location')).toBeNull();
   expect(h.create).not.toHaveBeenCalled();
+});
+
+describe('checkout personalisation through the public routes', () => {
+  const setting = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 20, condition: 'I understand a personalised item is made to my order.' };
+  const personalizedApp = () => {
+    const h = simulatedBundleApp();
+    const print = h.products[0];
+    if (print === undefined) throw new Error('Missing test product');
+    print.personalization = setting;
+    const captures = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    return { ...h, captures };
+  };
+  const checkout = (app: ReturnType<typeof buildApp>, body: Record<string, unknown>) => app.request(API_PATHS.checkoutSession, {
+    method: 'POST', headers: { 'content-type': 'application/json', host: 'acme.localhost' }, body: JSON.stringify(body),
+  });
+
+  it.each([
+    ['a product without a setting', [{ productId: 'digital', text: 'Hi', conditionAccepted: true }]],
+    ['an unaccepted condition', [{ productId: 'print', text: 'Hi', conditionAccepted: false }]],
+    ['an overlong text', [{ productId: 'print', text: 'x'.repeat(21), conditionAccepted: true }]],
+  ])('refuses %s with 400 before capturing consent or a snapshot', async (_case, personalizations) => {
+    const h = personalizedApp();
+    const response = await checkout(h.app, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true, personalizations });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.captures).not.toHaveBeenCalled();
+    expect(h.snapshots.size).toBe(0);
+  });
+
+  it('refuses a cart request that carries personalisations', async () => {
+    const h = personalizedApp();
+    const response = await checkout(h.app, { lines: [{ productId: 'print', quantity: 1 }], email: 'buyer@example.test', termsAccepted: true, personalizations: [{ productId: 'print', text: 'Hi', conditionAccepted: true }] });
+    expect(response.status).toBe(400);
+    expect(h.captures).not.toHaveBeenCalled();
+  });
+
+  it('records the personalisation on the order of a free checkout', async () => {
+    const h = await directSalesLinkApp();
+    for (const item of h.products) item.priceCents = 0;
+    const print = h.products[0];
+    if (print === undefined) throw new Error('Missing test product');
+    print.personalization = { ...setting, condition: null };
+    const response = await checkout(h.app, {
+      productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true,
+      personalizations: [{ productId: 'print', text: 'For Alex', conditionAccepted: false }],
+    });
+    expect(await response.json()).toMatchObject({ ok: true, data: { free: true } });
+    expect(h.orders[0]?.lines?.[0]).toMatchObject({ productId: 'print', personalization: { text: 'For Alex', condition: null, conditionAcceptedAt: null } });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('records the personalisation on the order of a simulated purchase', async () => {
+    const h = personalizedApp();
+    const response = await purchase(h.app, { host: 'acme.localhost' }, {
+      productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
+      personalizations: [{ productId: 'print', text: ' For Alex ', conditionAccepted: true }],
+    });
+    expect(response.status).toBe(200);
+    expect(h.orders[0]?.lines?.[0]).toMatchObject({ productId: 'print', personalization: { ...setting, text: 'For Alex', requestedAt: h.base.clock.nowIso(), conditionAcceptedAt: h.base.clock.nowIso() } });
+    expect(h.orders[0]?.lines?.[1]).not.toHaveProperty('personalization');
+  });
 });

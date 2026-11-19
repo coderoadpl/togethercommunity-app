@@ -119,6 +119,8 @@ Optional product fields `vatRate` (`5`, `8`, `23`, or `"exempt"`) and `vatExempt
 
 Optional `salesChannel` is `any` or `sales_links_only` (see [sales links](sales-links.md#products-sold-only-through-sales-links)). An omitted field creates a product with `any` and leaves the stored channel of an existing imported product unchanged on update; a channel set later in the panel therefore survives a re-import that omits the field. A `membership` cannot be `sales_links_only`: such a record, or an update that turns a `sales_links_only` product into a membership, fails with `validation`.
 
+Optional `personalization` is `{ "label", "description", "inputLabel", "maxLength", "condition" }` or `null` (see [personalisation](shop.md#personalisation)): `label` and `inputLabel` 1–80 characters, `description` up to 1000 characters (default empty), `maxLength` 1–500 (default 200) and `condition` 1–1000 characters or `null` (default). Unknown fields fail with `validation`. An omitted field creates a product without a personalisation and leaves the stored setting of an existing imported product unchanged on update, so a setting made later in the panel survives a re-import that omits the field; `null` removes it. A `membership` cannot offer a personalisation: such a record, or an update that turns a personalised product into a membership, fails with `validation`.
+
 ### Member
 
 ```jsonl

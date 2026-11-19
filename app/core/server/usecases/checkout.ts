@@ -47,8 +47,8 @@ import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
-import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
-import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
+import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutPersonalizations, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
+import { buildCheckoutLines, captureCheckoutSelection, paymentLines } from './checkout-lines.js';
 import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
 export interface CheckoutDeps {
@@ -173,7 +173,7 @@ const selectCheckoutProducts = async (
 
 export const validateCheckoutSelection = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping' | 'returnUrl' | 'cancelUrl'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping' | 'returnUrl' | 'cancelUrl' | 'personalizations'>,
   deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants'>,
   options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
 ): Promise<Result<CheckoutSelection, AppError>> => {
@@ -181,7 +181,9 @@ export const validateCheckoutSelection = async (
   if (!returns.ok) return returns;
   const selection = await selectCheckoutProducts(tenantId, input, deps);
   if (!selection.ok) return selection;
-  const withReturns = { ...selection.value, ...returns.value };
+  const personalized = withCheckoutPersonalizations(selection.value, input.personalizations, deps.clock);
+  if (!personalized.ok) return personalized;
+  const withReturns = { ...personalized.value, ...returns.value };
   return options.shipping === 'ignore' ? ok(withReturns) : withCheckoutShipping(tenantId, withReturns, input.shipping, deps);
 };
 
@@ -326,7 +328,7 @@ export const startCheckoutSession = async (
     productName: product.title,
     ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }),
     ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }),
-    ...(selection.products === undefined ? {} : { lines: productLines(lines) }),
+    ...(selection.products === undefined ? {} : { lines: paymentLines(productLines(lines)) }),
     ...(shipping === undefined ? {} : {
       shipping: {
         allowedCountries: shipping.allowedCountries,

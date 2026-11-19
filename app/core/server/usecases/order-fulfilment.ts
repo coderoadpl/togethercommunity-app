@@ -1,4 +1,5 @@
 import {
+  correctOrderPersonalizationInputSchema,
   emailBrandingFrom,
   err,
   notFound,
@@ -6,6 +7,7 @@ import {
   orderDeliveryDetails,
   orderLineLabel,
   orderLineQuantity,
+  orderPersonalizationSummary,
   orderShipmentAllowed,
   packingListQuerySchema,
   productLines,
@@ -24,7 +26,7 @@ import { neutralizeFormula, quoteCsv } from '#core/domain/csv.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { OrderFulfilmentRepository, OrderShipmentEmail } from '../order-fulfilment-ports.js';
+import type { OrderFulfilmentRepository, OrderPersonalizationRepository, OrderShipmentEmail } from '../order-fulfilment-ports.js';
 import type { Clock, IdGenerator, MemberRepository, OrderDetailRepository, OrderRepository, TenantRepository } from '../ports.js';
 import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 
@@ -109,6 +111,23 @@ export const shipOrder = async (
   return ok({ order: shipped.value });
 };
 
+export const correctOrderPersonalization = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: { personalizations: OrderPersonalizationRepository; clock: Clock },
+): Promise<Result<{ order: OrderListItem }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'order:write');
+  if (!tenant.ok) return tenant;
+  const parsed = correctOrderPersonalizationInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid personalisation correction', parsed.error.flatten()));
+  const corrected = await deps.personalizations.correctPersonalization(tenant.value, {
+    ...parsed.data,
+    editedAt: deps.clock.nowIso(),
+    editedBy: ctx.identity.userId,
+  });
+  return corrected.ok ? ok({ order: corrected.value }) : corrected;
+};
+
 const PACKING_LIST_COLUMNS = [
   'order_number',
   'paid_at',
@@ -127,6 +146,7 @@ const PACKING_LIST_COLUMNS = [
   'items',
   'notes',
   'quantity',
+  'personalization',
 ];
 
 const warsawDateTime = new Intl.DateTimeFormat('sv-SE', {
@@ -162,6 +182,7 @@ const packingListRow = (order: OrderListItem): string[] => {
     items.map((item) => `${item.name} × ${String(item.quantity)}`).join('; '),
     '',
     String(items.reduce((units, item) => units + item.quantity, 0)),
+    orderPersonalizationSummary(productLines(order.lines ?? [])),
   ];
 };
 

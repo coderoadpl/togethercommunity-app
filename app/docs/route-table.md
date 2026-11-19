@@ -256,6 +256,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/me/meta-capi/withdraw` | authenticated | mutating | withdraw meta capi consent |
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
+| `POST /api/orders/:orderId/personalization` | authenticated | mutating | correct order personalization |
 | `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |

@@ -23,3 +23,18 @@ export const CopiesLightDesktop: Story = copiesStory('light', 'desktop');
 export const CopiesLightMobile: Story = copiesStory('light', 'mobile');
 export const CopiesDarkDesktop: Story = copiesStory('dark', 'desktop');
 export const CopiesDarkMobile: Story = copiesStory('dark', 'mobile');
+
+const personalisedStory = (viewport: 'desktop' | 'mobile'): Story => ({
+  parameters: { fixture: { ...fixture, calls: { ...fixture.calls,
+    'getOrder:["order-studio-active-js"]': { ok: true, value: { ...fixture.calls['getOrder:["order-studio-active-js"]'].value, order: {
+      ...fixture.calls['getOrder:["order-studio-active-js"]'].value.order,
+      lines: fixture.calls['getOrder:["order-studio-active-js"]'].value.order.lines.map((line) => ({ ...line, personalization: {
+        text: 'For Alexa, with love', originalText: 'For Alex, with love', label: 'Add an engraving', description: '', inputLabel: 'Engraving text',
+        condition: 'I understand a personalised item is made to my order.', maxLength: 60,
+        requestedAt: '2026-06-01T12:00:00.000Z', conditionAcceptedAt: '2026-06-01T12:00:00.000Z', editedAt: '2026-06-02T09:15:00.000Z', editedBy: 'staff-studio-owner',
+      } })),
+    } } },
+  } } }, globals: { viewport: { value: viewport } },
+});
+export const PersonalisedDesktop: Story = personalisedStory('desktop');
+export const PersonalisedMobile: Story = personalisedStory('mobile');

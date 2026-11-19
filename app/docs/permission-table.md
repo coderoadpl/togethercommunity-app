@@ -22,7 +22,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-Closed capability count: 124. Route rows: 503. Exported `Ctx` use-case rows: 366.
+Closed capability count: 124. Route rows: 504. Exported `Ctx` use-case rows: 367.
 
 ## Human-readable diff
 
@@ -281,6 +281,7 @@ no changes
 | `POST /api/me/meta-capi/withdraw` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/orders/packing-list` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/ship` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/personalization` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/changes` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/integrations/shipx` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -792,6 +793,7 @@ no changes
 | `operator-tenant-readiness.ts#getOperatorTenantReadiness` | tenant:readiness | operator-secret | operator-secret | yes | core/server/usecases/operator-tenant-readiness.ts authorization call |
 | `order-changes.ts#listOrderChangeFeed` | order:read | owner, admin | owner, admin | yes | core/server/usecases/order-changes.ts authorization call |
 | `order-fulfilment.ts#shipOrder` | order:write | owner, admin | owner, admin | yes | core/server/usecases/order-fulfilment.ts authorization call |
+| `order-fulfilment.ts#correctOrderPersonalization` | order:write | owner, admin | owner, admin | yes | core/server/usecases/order-fulfilment.ts authorization call |
 | `order-fulfilment.ts#exportPackingList` | order:export | owner, admin | owner, admin | yes | core/server/usecases/order-fulfilment.ts authorization call |
 | `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
 | `order-verification.ts#verifyOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/order-verification.ts authorization call |
@@ -915,12 +917,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:32` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:215` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1268` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1270` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1292` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1306` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1834` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1834` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1269` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1271` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1293` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1307` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1835` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1835` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -929,7 +931,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:668` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:676` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:5` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
 | api-key | `apps/server/src/shop-machine-auth.ts:87` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |

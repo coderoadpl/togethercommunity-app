@@ -7,7 +7,9 @@ import {
   publicShippingRates,
   type DeliveryMethod,
   type ProductCompliance,
+  type ProductPersonalization,
   type PublicProductCompliance,
+  type PublicProductPersonalization,
   type PublicProductVariant,
   type PublicShippingRate,
   type ProductVatRate,
@@ -76,6 +78,7 @@ interface PublicOfferProduct {
   type: ProductType;
   deliveryMethod: DeliveryMethod;
   compliance: PublicProductCompliance | null;
+  personalization: PublicProductPersonalization | null;
   variants: PublicProductVariant[];
   slug: string;
   title: string;
@@ -182,6 +185,15 @@ export const getPublicOffer = async (
 export const toPublicCompliance = (compliance: ProductCompliance | null | undefined): PublicProductCompliance | null =>
   compliance == null ? null : { ...compliance, safetyWarningsHtml: renderPostContent(compliance.safetyWarnings, 'markdown').html };
 
+export const toPublicPersonalization = (personalization: ProductPersonalization | null | undefined): PublicProductPersonalization | null =>
+  personalization == null ? null : {
+    label: personalization.label,
+    description: personalization.description,
+    inputLabel: personalization.inputLabel,
+    maxLength: personalization.maxLength,
+    condition: personalization.condition,
+  };
+
 const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
   id: price.id,
   kind: price.kind,
@@ -195,6 +207,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   type: product.type,
   deliveryMethod: product.deliveryMethod,
   compliance: toPublicCompliance(product.compliance),
+  personalization: toPublicPersonalization(product.personalization),
   variants: [],
   slug: product.slug,
   title: product.title,

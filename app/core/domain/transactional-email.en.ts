@@ -23,6 +23,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     qrAlt: 'Order QR code',
     delivery: 'Delivery',
     pickupPoint: 'Parcel locker',
+    personalization: 'Personalisation',
+    personalizationCondition: 'Condition you accepted',
   },
   orderShipped: {
     items: 'Shipped items',

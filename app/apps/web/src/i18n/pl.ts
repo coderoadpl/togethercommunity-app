@@ -848,6 +848,8 @@ export const pl: Messages = {
     model: 'Model',
     batch: 'Partia',
     instructions: 'Instrukcja i informacje o bezpieczeństwie',
+    details: 'Szczegóły',
+    appliesTo: ({ count }) => plural(count, `dotyczy ${count} produktu`, `dotyczy ${count} produktów`, `dotyczy ${count} produktów`),
   },
   personalization: {
     forLine: ({ name }) => `Dotyczy: ${name}`,
@@ -3131,6 +3133,24 @@ export const pl: Messages = {
     cartProductMissing: 'Jeden z produktów w koszyku nie jest już dostępny. Usuń go, aby kontynuować.',
     cartCurrencyMismatch: 'Produkty w tym koszyku mają ceny w różnych walutach i nie można za nie zapłacić razem. Usuń produkty w innej walucie, aby kontynuować.',
     cartPay: 'Zapłać',
+    stepsLabel: 'Etapy zamówienia',
+    stepDelivery: 'Dostawa',
+    stepOrder: 'Zamówienie',
+    stepDetailsAndPayment: 'Dane i płatność',
+    itemCount: ({ count }) => plural(count, `${count} pozycja`, `${count} pozycje`, `${count} pozycji`),
+    summaryDetails: 'Szczegóły i VAT',
+    goToPayment: ({ price }) => format('Przejdź do płatności · {price}', { price }),
+    nextStep: ({ email, address, terms }) => {
+      const parts = [...(email ? ['e-mail'] : []), ...(address ? ['adres dostawy'] : []), ...(terms ? ['regulamin'] : []), 'płatność'];
+      const list = parts.length === 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} i ${parts.at(-1) ?? ''}`;
+      return `Następny krok, na stronie Stripe: ${list}.`;
+    },
+    emailHint: 'Na ten adres wyślemy potwierdzenie zamówienia i link do logowania.',
+    couponEmailHint: 'Ten kod ma limit na osobę, więc sprawdzamy go dla Twojego adresu e-mail.',
+    payBlockedDelivery: 'Wybierz sposób dostawy, aby przejść do płatności.',
+    payBlockedLocker: 'Wybierz paczkomat lub wpisz jego kod, aby przejść do płatności.',
+    payBlockedPersonalization: 'Uzupełnij personalizację, aby przejść do płatności.',
+    payBlockedCoupon: 'Sprawdzamy kod rabatowy…',
   },
   directory: {
     activeConsent: 'Zgoda udzielona',

@@ -791,6 +791,8 @@ export interface Messages {
     model: string;
     batch: string;
     instructions: string;
+    details: string;
+    appliesTo: (params: { count: number }) => string;
   };
   personalization: {
     forLine: (params: { name: string }) => string;
@@ -2808,6 +2810,20 @@ export interface Messages {
     cartProductMissing: string;
     cartCurrencyMismatch: string;
     cartPay: string;
+    stepsLabel: string;
+    stepDelivery: string;
+    stepOrder: string;
+    stepDetailsAndPayment: string;
+    itemCount: (params: { count: number }) => string;
+    summaryDetails: string;
+    goToPayment: (params: { price: string }) => string;
+    nextStep: (params: { email: boolean; address: boolean; terms: boolean }) => string;
+    emailHint: string;
+    couponEmailHint: string;
+    payBlockedDelivery: string;
+    payBlockedLocker: string;
+    payBlockedPersonalization: string;
+    payBlockedCoupon: string;
   };
   directory: {
     activeConsent: string;

@@ -2774,14 +2774,6 @@ export const CompactWordmark = styled(Wordmark)(({ theme }) => ({
   fontWeight: 600,
 }));
 
-export const CheckoutPrice = styled(Typography)<AsElement>(({ theme }) => ({
-  color: theme.palette.text.primary,
-  fontSize: '1.375rem',
-  fontWeight: 650,
-  fontVariantNumeric: 'tabular-nums',
-  lineHeight: 1.3,
-}));
-
 export const CheckoutPriceOption = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'selected',
 })<{ selected: boolean }>(({ selected, theme }) => ({
@@ -2795,6 +2787,105 @@ export const CheckoutPriceOption = styled(Paper, {
 
 export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
+}));
+
+export const CheckoutStepList = styled('ol')(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.5rem',
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  fontSize: '0.8125rem',
+  lineHeight: 1.4,
+  color: theme.palette.text.secondary,
+}));
+
+export const CheckoutStepItem = styled('li', {
+  shouldForwardProp: (prop) => prop !== 'current',
+})<{ current: boolean }>(({ current, theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  ...(current ? { color: theme.palette.text.primary, fontWeight: 600 } : {}),
+  '& + &::before': { content: '"·"', marginRight: '0.1rem', color: theme.palette.text.disabled },
+}));
+
+export const CheckoutStepNumber = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'current',
+})<{ current: boolean }>(({ current, theme }) => ({
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: '1.25rem',
+  height: '1.25rem',
+  borderRadius: '50%',
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+  fontVariantNumeric: 'tabular-nums',
+  ...(current
+    ? { backgroundColor: theme.palette.text.primary, color: theme.palette.background.paper }
+    : { border: `1px solid ${theme.palette.divider}` }),
+}));
+
+export const CheckoutSummarySurface = styled(Box)(({ theme }) => ({
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const CheckoutSummaryTotal = styled('span')(({ theme }) => ({
+  fontWeight: 650,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: 'tabular-nums',
+  color: theme.palette.text.primary,
+}));
+
+export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
+  gap: '0.2rem',
+  minHeight: '2.75rem',
+  padding: '0 0.25rem',
+  borderRadius: theme.shape.borderRadius,
+  fontSize: '0.875rem',
+  fontWeight: 500,
+  color: linkInk(theme),
+  '&:hover': { textDecoration: 'underline' },
+  '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: '1px' },
+  '& svg': { transition: 'transform 0.15s ease' },
+  '&[aria-expanded="true"] svg': { transform: 'rotate(180deg)' },
+}));
+
+export const CheckoutRowGroup = styled(Box)(({ theme }) => ({
+  borderTop: `1px solid ${theme.palette.divider}`,
+  '& > *': { borderBottom: `1px solid ${theme.palette.divider}` },
+}));
+
+export const CheckoutRowButton = styled(ButtonBase)(({ theme }) => ({
+  width: '100%',
+  minHeight: '3rem',
+  justifyContent: 'space-between',
+  gap: '0.75rem',
+  textAlign: 'left',
+  fontSize: '0.9375rem',
+  fontWeight: 500,
+  color: theme.palette.text.primary,
+  '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: '2px' },
+  '&.Mui-disabled': { color: theme.palette.text.disabled },
+}));
+
+export const CheckoutPayBarSurface = styled(Box)(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const CheckoutSafetySection = styled('section')(({ theme }) => ({
+  color: theme.palette.text.secondary,
+}));
+
+export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  letterSpacing: '0.02em',
+  color: theme.palette.text.secondary,
 }));
 
 export const PostToolbarButton = styled(Button)({ whiteSpace: 'nowrap' });

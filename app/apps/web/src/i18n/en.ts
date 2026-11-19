@@ -841,6 +841,8 @@ export const en: Messages = {
     model: 'Model',
     batch: 'Batch',
     instructions: 'Instructions and safety information',
+    details: 'Details',
+    appliesTo: ({ count }) => plural(count, `applies to ${count} product`, `applies to ${count} products`),
   },
   personalization: {
     forLine: ({ name }) => `For: ${name}`,
@@ -3107,6 +3109,24 @@ export const en: Messages = {
     cartProductMissing: 'A product of this cart is no longer available. Remove it to continue.',
     cartCurrencyMismatch: 'The products of this cart are priced in different currencies and cannot be paid together. Remove the products in the other currency to continue.',
     cartPay: 'Pay',
+    stepsLabel: 'Checkout steps',
+    stepDelivery: 'Delivery',
+    stepOrder: 'Your order',
+    stepDetailsAndPayment: 'Details and payment',
+    itemCount: ({ count }) => plural(count, `${count} item`, `${count} items`),
+    summaryDetails: 'Details and VAT',
+    goToPayment: ({ price }) => format('Go to payment · {price}', { price }),
+    nextStep: ({ email, address, terms }) => {
+      const parts = [...(email ? ['email'] : []), ...(address ? ['delivery address'] : []), ...(terms ? ['terms'] : []), 'payment'];
+      const list = parts.length === 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1) ?? ''}`;
+      return `Next step, on the Stripe page: ${list}.`;
+    },
+    emailHint: 'We will send the order confirmation and a sign-in link to this address.',
+    couponEmailHint: 'This code has a limit per person, so we check it against your email.',
+    payBlockedDelivery: 'Choose a delivery option to go to payment.',
+    payBlockedLocker: 'Choose a parcel locker or type its code to go to payment.',
+    payBlockedPersonalization: 'Complete the personalisation to go to payment.',
+    payBlockedCoupon: 'Checking the discount code…',
   },
   directory: {
     activeConsent: 'Consent granted',

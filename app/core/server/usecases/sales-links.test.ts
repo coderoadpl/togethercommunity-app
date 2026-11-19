@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ok, productSchema, salesLinkSchema, type Product } from '#core/domain/index.js';
+import { ok, productSchema, salesLinkOfferSchema, salesLinkSchema, type Product } from '#core/domain/index.js';
 import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
 import { createSalesLink, deleteSalesLink, getPublicSalesLink, getSalesLink, listSalesLinks, updateSalesLink } from './sales-links.js';
@@ -92,4 +92,13 @@ it('carries the product safety information of each line with the warnings render
   const result = await getPublicSalesLink('workspace', link.slug, deps);
   if (!result.ok) throw new Error('offer failed');
   expect(result.value.lines.map((line) => line.compliance)).toEqual([{ ...compliance, safetyWarningsHtml: '<p>Keep <strong>dry</strong>.</p>\n' }, null]);
+});
+
+it('carries the personalisation setting of each offer line and parses through the offer schema', async () => {
+  const personalization = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null };
+  findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, personalization } : product));
+  const result = await getPublicSalesLink('workspace', link.slug, deps);
+  if (!result.ok) throw new Error('offer failed');
+  expect(result.value.lines.map((line) => line.personalization)).toEqual([personalization, null]);
+  expect(salesLinkOfferSchema.parse(result.value).lines.map((line) => line.personalization)).toEqual([personalization, null]);
 });

@@ -1,4 +1,4 @@
-import { checkoutShippingSnapshotSchema, err, ok, resolveProductVat, SHIPPING_LINE_TYPE, splitProductGross, validation, type AppError, type CheckoutShippingSnapshot, type OrderAttribution, type OrderLine, type Result } from '#core/domain/index.js';
+import { checkoutShippingSnapshotSchema, err, ok, orderLineSchema, resolveProductVat, SHIPPING_LINE_TYPE, splitProductGross, validation, type AppError, type CheckoutShippingSnapshot, type OrderAttribution, type OrderLine, type Result } from '#core/domain/index.js';
 import { resolveSalesLinkPrices, selectionLineQuantity, type CheckoutSelection } from './checkout-selection.js';
 import type { TenantRepository, IdGenerator, Clock } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
@@ -46,6 +46,7 @@ export const buildCheckoutLines = async (
     const linePrice = productPrices?.find((selectedPrice) => selectedPrice.productId === item.id);
     const snapshotVat = !vatRequired && item.vatRate == null ? null : vat;
     const quantity = selectionLineQuantity(selection, item.id);
+    const personalization = selection.personalizations?.get(item.id);
     return {
       productId: item.id, name: item.title, productType: item.type,
       ...(linePrice === undefined ? {} : { priceId: linePrice.id }),
@@ -55,6 +56,7 @@ export const buildCheckoutLines = async (
       vatExemptionBasis: snapshotVat?.kind === 'exempt' ? snapshotVat.basis : null,
       vatExemptionBasisKind: snapshotVat?.kind === 'exempt' ? snapshotVat.basisKind : null,
       issuedCount: item.type === 'physical' ? 0 : null,
+      ...(personalization === undefined ? {} : { personalization }),
     };
   });
   if (vatRequired && lines.some((line) => line.vatRate === null)) return err(validation(`Configure a VAT rate for every ${selection.cartLines === undefined ? 'sales-link' : 'cart'} product`));
@@ -62,6 +64,11 @@ export const buildCheckoutLines = async (
   if (selection.shipping === undefined) return ok({ lines, totalCents, currency });
   return ok({ lines: [...lines, shippingLine(selection.shipping)], totalCents, currency, shippingCents: selection.shipping.amountCents });
 };
+
+const paymentLineSchema = orderLineSchema.omit({ personalization: true });
+
+export const paymentLines = (lines: readonly OrderLine[]): OrderLine[] =>
+  lines.map((line) => paymentLineSchema.parse(line));
 
 export const captureCheckoutSelection = async (
   tenantId: string,
@@ -76,6 +83,7 @@ export const captureCheckoutSelection = async (
     if (selection.cartLines !== undefined) return err(validation('Cart checkout is not configured'));
     if (clientReference !== undefined) return err(validation('Checkout client references are not configured'));
     if (selection.returnUrl !== undefined) return err(validation('Checkout return addresses are not configured'));
+    if (selection.personalizations !== undefined) return err(validation('Checkout personalisation is not configured'));
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
   const shipping = selection.shipping === undefined ? undefined : checkoutShippingSnapshotSchema.safeParse(selection.shipping);

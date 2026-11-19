@@ -117,6 +117,7 @@ const updateResource = async (
     variantGroup: product.variantGroup ?? null,
     variantLabel: product.variantLabel ?? null,
     salesChannel: product.salesChannel,
+    ...(product.personalization === undefined ? {} : { personalization: product.personalization }),
     accessItems: product.accessItems,
     legacyId: product.legacyId,
     createdAt: product.createdAt,

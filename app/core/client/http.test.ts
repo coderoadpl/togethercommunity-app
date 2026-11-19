@@ -30,6 +30,18 @@ describe('createApiClient', () => {
     expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Referenced by Sample product' } });
   });
 
+  it('posts a personalisation correction to the order route and surfaces a validation refusal', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/orders/order%2F1/personalization');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ orderId: 'order/1', productId: 'book', text: 'For Alex' }));
+      return jsonResponse({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } }, 400);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    expect(await client.correctOrderPersonalization({ orderId: 'order/1', productId: 'book', text: 'For Alex' }))
+      .toEqual({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } });
+  });
+
   it('selects archived courses without changing the active list request', async () => {
     const paths: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {

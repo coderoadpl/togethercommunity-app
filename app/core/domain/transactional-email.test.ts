@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
+import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedPurchasePersonalizationPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -873,5 +873,50 @@ describe('purchase confirmation amounts', () => {
         actionUrl: 'https://shop.example.org/sign-in', purchase: details,
       }).success).toBe(true);
     }
+  });
+});
+
+describe('purchase confirmation personalisation', () => {
+  const base = {
+    orderNumber: 'order-42',
+    verificationUrl: 'https://shop.example.org/panel/orders/verify/token',
+    qrImageUrl: 'https://shop.example.org/api/public/orders/qr/token',
+    lines: [{ name: 'Printed <book>', grossCents: 4900, vatRate: 5 }, { name: 'Card', grossCents: 100, vatRate: 23 }],
+    currency: 'PLN',
+    totalCents: 5000,
+  };
+  const personalizations = [
+    { name: 'Printed <book>', text: 'For "Alex" & Sam', condition: 'I understand a personalised item is made to my order.' },
+    { name: 'Card', text: 'Hi', condition: null },
+  ];
+
+  it.each([
+    ['en', {
+      conditionHtml: '<p><strong>Personalisation: Printed &lt;book&gt;</strong><br>For &quot;Alex&quot; &amp; Sam<br>Condition you accepted: I understand a personalised item is made to my order.</p>',
+      plainHtml: '<p><strong>Personalisation: Card</strong><br>Hi</p>',
+      conditionText: '\n\nPersonalisation: Printed <book>\nFor "Alex" & Sam\nCondition you accepted: I understand a personalised item is made to my order.',
+      plainText: '\n\nPersonalisation: Card\nHi',
+    }],
+    ['pl', expectedPurchasePersonalizationPl],
+  ] as const)('renders each personalised line after the items table, escaped, with and without a condition in %s', (language, expected) => {
+    const labels = (language === 'pl' ? transactionalEmailMessagesPl : transactionalEmailMessagesEn).purchase;
+    const delivery = { method: 'Courier', pickupPoint: null, address: null };
+    const message = welcomeSignIn(language, {
+      tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in',
+      purchase: purchaseEmailDetailsSchema.parse({ ...base, delivery, personalizations }),
+    });
+    expect(message.html).toContain(`</table>${expected.conditionHtml}${expected.plainHtml}<p><strong>${labels.delivery}</strong>`);
+    expect(message.text).toContain(`${expected.conditionText}${expected.plainText}\n\n${labels.delivery}`);
+    expect(message.html).not.toContain('<book>');
+    const without = welcomeSignIn(language, { tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: purchaseEmailDetailsSchema.parse(base) });
+    expect(without.html).not.toContain(labels.personalization);
+    expect(without.text).not.toContain(labels.personalization);
+  });
+
+  it('keeps purchase payloads with personalisations valid for the outbox', () => {
+    expect(emailOutboxPayloadSchema.safeParse({
+      kind: 'welcome-sign-in', language: 'en', tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in',
+      purchase: { ...base, personalizations },
+    }).success).toBe(true);
   });
 });

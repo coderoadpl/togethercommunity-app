@@ -19,6 +19,7 @@ export * from './email-reputation.js';
 export * from './email-send.js';
 export * from './slug.js';
 export * from './product.js';
+export * from './personalization.js';
 export * from './stock.js';
 export * from './grant.js';
 export * from './api-key.js';

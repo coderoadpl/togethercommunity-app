@@ -390,6 +390,16 @@ in the session-status answer of a paid session. It is not sent to Stripe, it
 need not be unique, and it must not carry personal data. A request without it
 behaves as before, and its order has no `clientReference`.
 
+Optional `personalizations` carries the buyer's request for a product that
+offers a personalisation (`personalization` in the offer):
+`[{ productId, text, conditionAccepted }]`, at most one entry per product. The
+text is trimmed and must fit the product's `maxLength`, and a product with a
+`condition` needs `conditionAccepted: true`; otherwise the request is a
+`validation` error (400). Show the seller's `label`, `description`,
+`inputLabel` and `condition` as plain text. A cart request refuses the field.
+The order lines then carry `personalization`. See
+[Personalisation](shop.md#personalisation).
+
 For bundles the same session route takes `productId` equal to the bundle's first
 base product and `salesLinkSlug` (or `salesLinkId`, not both), without `priceId`.
 The server derives the product selection and amounts from the stored sales link.
@@ -433,7 +443,7 @@ one-time price of that product; without it the product needs exactly one).
 `email`, `language`, `termsAccepted`, `marketingConsentDefinitionIds`,
 `couponCode`, `billing`, `shipping`, `attribution` and `clientReference` work
 as in the single-product request. A cart request must not contain `productId`, `priceId`,
-`salesLinkId`, `salesLinkSlug` or `variantSelections`, and the cart schema is
+`salesLinkId`, `salesLinkSlug`, `variantSelections` or `personalizations`, and the cart schema is
 strict: an unknown field in the body or in a line, such as a price or an amount,
 is rejected, not ignored. The client sends product IDs and quantities only; the
 server sets every price from the stored prices. Stripe shows one line item per

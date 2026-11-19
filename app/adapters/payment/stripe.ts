@@ -182,12 +182,14 @@ export const stripeCheckoutSessionParams = (
     if (productList.length <= 500) productMetadata['productIds'] = productList;
     else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
   }
+  const terms = input.directCheckout ?? input.stripeTerms;
   const metadata = {
     ...attribution,
-    ...(input.directCheckout === undefined ? {} : {
-      directCheckout: 'true',
-      ...legalUrlMetadata('termsUrl', input.directCheckout.termsUrl),
-      ...legalUrlMetadata('privacyUrl', input.directCheckout.privacyUrl),
+    ...(input.directCheckout === undefined ? {} : { directCheckout: 'true' }),
+    ...(input.directCheckout !== undefined || input.stripeTerms === undefined ? {} : { stripeTerms: 'true' }),
+    ...(terms === undefined ? {} : {
+      ...legalUrlMetadata('termsUrl', terms.termsUrl),
+      ...legalUrlMetadata('privacyUrl', terms.privacyUrl),
     }),
     ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
     ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
@@ -216,13 +218,15 @@ export const stripeCheckoutSessionParams = (
     } : {
       subscription_data: { billing_mode: { type: 'classic' as const }, metadata: { tenantId: input.tenantId } },
     }),
-    ...(input.directCheckout === undefined ? {} : {
+    ...(terms === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
       custom_text: {
-        terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage },
-        ...(input.promotionCodeId === undefined || input.directCheckout.disclosureMessage === undefined
+        terms_of_service_acceptance: { message: terms.termsAcceptanceMessage },
+        ...(input.promotionCodeId === undefined || input.directCheckout?.disclosureMessage === undefined
           ? {} : { submit: { message: input.directCheckout.disclosureMessage } }),
       },
+    }),
+    ...(input.directCheckout === undefined ? {} : {
       tax_id_collection: { enabled: true },
       ...(input.promotionCodeId === undefined ? { allow_promotion_codes: false } : {}),
     }),
@@ -300,8 +304,8 @@ const toCheckoutSessionEvent = (
     metadata: {
       attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,
-      ...(session.metadata?.directCheckout !== 'true' ? {} : {
-        directCheckout: true,
+      ...(session.metadata == null || (session.metadata.directCheckout !== 'true' && session.metadata.stripeTerms !== 'true') ? {} : {
+        ...(session.metadata.directCheckout === 'true' ? { directCheckout: true } : { stripeTerms: true }),
         termsUrl: legalUrlFromMetadata(session.metadata, 'termsUrl'),
         privacyUrl: legalUrlFromMetadata(session.metadata, 'privacyUrl'),
       }),

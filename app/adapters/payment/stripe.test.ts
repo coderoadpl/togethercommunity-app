@@ -1426,6 +1426,52 @@ it('maps customer details, Polish VAT ID and accepted consent directly from a si
   } } });
 });
 
+it.each([undefined, 'month'] as const)('lets Stripe collect the terms for a workspace checkout (%s) without tax IDs, coupons or a prefilled email', (recurringInterval) => {
+  const message = 'I accept the [Terms](https://example.com/terms) and the [Privacy policy](https://example.com/privacy).';
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
+    currency: 'PLN', language: 'en', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
+    ...(recurringInterval === undefined ? {} : { recurringInterval }),
+    checkoutConsentCaptureId: 'capture-1',
+    stripeTerms: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message },
+  });
+  expect(params.consent_collection).toEqual({ terms_of_service: 'required' });
+  expect(params.custom_text).toEqual({ terms_of_service_acceptance: { message } });
+  expect(params.mode).toBe(recurringInterval === undefined ? 'payment' : 'subscription');
+  expect(params).not.toHaveProperty('customer_email');
+  expect(params).not.toHaveProperty('tax_id_collection');
+  expect(params).not.toHaveProperty('allow_promotion_codes');
+  expect(params.metadata).toEqual({ tenantId: 'tenant-a', productId: 'product-1', priceId: '', memberEmail: '', language: 'en',
+    stripeTerms: 'true', termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', checkoutConsentCaptureId: 'capture-1' });
+});
+
+it('prefills a known buyer email on a workspace checkout that collects the terms in Stripe', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
+    currency: 'PLN', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
+    customerEmail: 'member@example.test',
+    stripeTerms: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' },
+  });
+  expect(params).toMatchObject({ customer_email: 'member@example.test', consent_collection: { terms_of_service: 'required' },
+    metadata: { memberEmail: 'member@example.test', stripeTerms: 'true' } });
+});
+
+it.each([['accepted', true], [null, false]] as const)('maps the Stripe terms evidence of a workspace checkout (%s)', async (consent, termsAccepted) => {
+  const result = await verify(JSON.stringify({
+    id: 'evt_workspace', type: 'checkout.session.completed', data: { object: {
+      id: 'cs_workspace', customer_details: { email: 'buyer@example.test', name: 'Buyer' },
+      consent: { terms_of_service: consent }, metadata: { tenantId: 'tenant-a', productId: 'product-1',
+        stripeTerms: 'true', termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', checkoutConsentCaptureId: 'capture-1' },
+    } },
+  }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    email: 'buyer@example.test', termsAccepted, billing: null,
+    metadata: { stripeTerms: true, termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', checkoutConsentCaptureId: 'capture-1' },
+  } } });
+  if (!result.ok) throw new Error('Expected a parsed event');
+  expect(result.value.checkoutSession?.metadata).not.toHaveProperty('directCheckout');
+});
+
 it.each([
   { line1: null, line2: null, postal_code: '00-001', city: null, state: null, country: 'PL' },
   null,

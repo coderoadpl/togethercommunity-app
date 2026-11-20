@@ -1,12 +1,12 @@
 import { Box, Link, Stack, Typography } from '@mui/material';
-import { Fragment, useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 import type { PublicProductCompliance } from '#core/domain/index.js';
 
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { useTranslations } from '../../i18n/index.js';
-import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyLastPart, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetySeparator, CheckoutSafetyWarnings } from '../../theme.js';
+import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyLastPart, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetyWarnings } from '../../theme.js';
 
 type SafetyEntry = { productId: string; title: string; compliance: PublicProductCompliance };
 
@@ -70,7 +70,7 @@ const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group:
   return (
     <Box data-testid="product-safety-manufacturer">
       <Typography variant="body2" color="text.secondary">
-        {parts.slice(0, -1).map((part) => <Fragment key={part.key}>{part}<CheckoutSafetySeparator>{' · '}</CheckoutSafetySeparator></Fragment>)}
+        {parts.slice(0, -1)}
         <CheckoutSafetyLastPart>
           {parts.at(-1)}
           <CheckoutInlineToggle

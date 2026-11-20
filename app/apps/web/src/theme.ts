@@ -2978,24 +2978,17 @@ export const CheckoutSafetyPart = styled('span', {
   maxWidth: '100%',
   overflowWrap: 'anywhere',
   ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
-  [theme.breakpoints.up('sm')]: { display: 'inline-block' },
 }));
 
-export const CheckoutSafetySeparator = styled('span')(({ theme }) => ({
-  display: 'none',
-  [theme.breakpoints.up('sm')]: { display: 'inline' },
-}));
-
-export const CheckoutSafetyLastPart = styled('span')(({ theme }) => ({
+export const CheckoutSafetyLastPart = styled('span')({
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'baseline',
   columnGap: '0.5rem',
   maxWidth: '100%',
-  [theme.breakpoints.up('sm')]: { display: 'inline-flex', flexWrap: 'nowrap', verticalAlign: 'baseline' },
   '& > span': { minWidth: 0 },
   '& > button': { flexShrink: 0 },
-}));
+});
 
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',

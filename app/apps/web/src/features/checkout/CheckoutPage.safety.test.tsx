@@ -11,6 +11,17 @@ import { sampleSalesLink } from '../../test/sales-link-fixtures.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const exactly = (value: string) => new RegExp(`^${value}$`, 'u');
+const stacked = (...parts: string[]) => parts.join('');
+const mediaDisplays = (element: Element): string[] => {
+  const classes = [...element.classList].filter((name) => name.startsWith('css-'));
+  return Array.from(document.styleSheets)
+    .flatMap((sheet) => Array.from(sheet.cssRules))
+    .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule)
+    .flatMap((rule) => Array.from(rule.cssRules))
+    .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && classes.some((name) => rule.selectorText.includes(name)))
+    .map((rule) => rule.style.display)
+    .filter((display) => display !== '');
+};
 
 const compliance = {
   manufacturerName: 'Example Workshop',
@@ -47,13 +58,13 @@ describe('checkout product safety information', () => {
     window.history.replaceState(null, '', '/checkout/stand-black?utm_source=newsletter&checkout=together');
   });
 
-  it('shows the manufacturer of a physical product in one compact line and the model and warnings behind Details', async () => {
+  it('shows the manufacturer of a physical product in one compact stacked block and the model and warnings behind Details', async () => {
     serve([product('black', { compliance })]);
     renderCheckout('stand-black');
     const section = await screen.findByTestId('product-safety-info');
     expect(within(section).getByRole('heading', { name: en.productSafety.offerHeading })).toBeVisible();
     const line = within(section).getByTestId('product-safety-manufacturer');
-    expect(line).toHaveTextContent('Example Workshop · Example Street 1, Warsaw · safety@example.com');
+    expect(line).toHaveTextContent(stacked('Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com'));
     expect(line).not.toHaveTextContent(en.productSafety.appliesTo({ count: 1 }));
     for (const part of ['Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com']) {
       expect(within(line).getByText(exactly(part)).closest('span')).toHaveTextContent(exactly(part));
@@ -72,16 +83,20 @@ describe('checkout product safety information', () => {
     expect(section.compareDocumentPosition(screen.getByTestId('checkout-pay-cta')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('stacks the manufacturer parts without separators on a phone and keeps the Details toggle with the last part', async () => {
+  it('stacks the manufacturer parts on their own lines without separators at every width and keeps the Details toggle with the last part', async () => {
     serve([product('black', { compliance })]);
     renderCheckout('stand-black');
     const line = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
     for (const part of ['Example Workshop', 'Example Street 1, Warsaw']) {
-      expect(within(line).getByText(exactly(part))).toHaveStyle({ display: 'block' });
+      const element = within(line).getByText(exactly(part));
+      expect(element).toHaveStyle({ display: 'block' });
+      expect(mediaDisplays(element)).toEqual([]);
     }
-    const separators = within(line).getAllByText('·');
-    expect(separators).toHaveLength(2);
-    for (const separator of separators) expect(separator).toHaveStyle({ display: 'none' });
+    expect(line.textContent).not.toContain('·');
+    const lastPart = within(line).getByRole('link', { name: 'safety@example.com' }).closest('span')?.parentElement;
+    if (lastPart == null) throw new Error('expected the last part to sit in its own line box');
+    expect(lastPart).toHaveStyle({ display: 'flex', flexWrap: 'wrap' });
+    expect(mediaDisplays(lastPart)).toEqual([]);
     const toggle = within(line).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
     expect(toggle.previousSibling).toBe(within(line).getByRole('link', { name: 'safety@example.com' }).closest('span'));
   });
@@ -96,11 +111,11 @@ describe('checkout product safety information', () => {
     expect(toggle).toHaveStyle({ outlineOffset: '-2px' });
   });
 
-  it('shows the same compact line for other product types', async () => {
+  it('shows the same compact block for other product types', async () => {
     serve([product('black', { type: 'digital_download', compliance })]);
     renderCheckout('stand-black');
     const section = await screen.findByTestId('product-safety-info');
-    expect(within(section).getByTestId('product-safety-manufacturer')).toHaveTextContent('Example Workshop · Example Street 1, Warsaw · safety@example.com');
+    expect(within(section).getByTestId('product-safety-manufacturer')).toHaveTextContent(stacked('Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com'));
     expect(within(section).queryByText('STAND-1')).not.toBeVisible();
     await userEvent.click(within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
     expect(await within(section).findByText('STAND-1')).toBeVisible();
@@ -166,8 +181,8 @@ describe('sales-link product safety information', () => {
     const [shared, single, ...rest] = within(section).getAllByTestId('product-safety-manufacturer');
     if (shared === undefined || single === undefined) throw new Error('expected two manufacturer lines');
     expect(rest).toEqual([]);
-    expect(shared).toHaveTextContent(`Example Workshop · Example Street 1, Warsaw · safety@example.com · ${en.productSafety.appliesTo({ count: 2 })}`);
-    expect(single).toHaveTextContent(`Other Works · Example Street 1, Warsaw · hello@other.example · ${en.productSafety.appliesTo({ count: 1 })}`);
+    expect(shared).toHaveTextContent(stacked('Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com', en.productSafety.appliesTo({ count: 2 })));
+    expect(single).toHaveTextContent(stacked('Other Works', 'Example Street 1, Warsaw', 'hello@other.example', en.productSafety.appliesTo({ count: 1 })));
     expect(within(shared).getByText('LAMP-1')).not.toBeVisible();
 
     expect(within(single).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Other Works' }) })).toHaveTextContent(en.productSafety.details);

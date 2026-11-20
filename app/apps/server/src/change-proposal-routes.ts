@@ -15,7 +15,7 @@ import {
 import type { AppVars } from './app-vars.js';
 import { ctxOf } from './ctx-of.js';
 import { readJson } from './read-json.js';
-import { respond } from './respond.js';
+import { respond, retryAfterHeaders } from './respond.js';
 
 export const registerChangeProposalRoutes = (
   app: Hono<AppVars>,
@@ -54,6 +54,6 @@ export const registerChangeProposalRoutes = (
     const body = changeProposalApproveInputSchema.safeParse(await readJson(c.req.raw));
     if (!body.success) return respond(err(validation('Invalid change proposal approval', body.error.flatten())));
     const result = await approveChangeProposal(ctxOf(c), { id: c.req.param('id') ?? '' }, deps);
-    return respond(result.ok ? ok({ proposal: result.value }) : result);
+    return result.ok ? respond(ok({ proposal: result.value })) : respond(result, { headers: retryAfterHeaders(result.error) });
   });
 };

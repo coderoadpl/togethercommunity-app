@@ -32,7 +32,7 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import { isSafeMethod, requestOriginPolicy } from './request-origin-policy.js';
-import { respond } from './respond.js';
+import { respond, retryAfterHeaders } from './respond.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
 import { recordException, type ApiKeyAttribution } from './telemetry.js';
 
@@ -117,12 +117,6 @@ const authenticateShopMachineRequest = async (
     result: result.ok ? ok({ ...result.value, tenant: tenant.value }) : result,
     attribution: { ...attribution, tenantId: tenant.value.id },
   };
-};
-
-const retryAfterHeaders = (error: AppError): HeadersInit => {
-  if (error.code !== 'rate_limited' && error.code !== 'unavailable') return {};
-  const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
-  return typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {};
 };
 
 const requestBodySchema = z.record(z.string(), z.unknown());

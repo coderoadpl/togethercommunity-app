@@ -39,6 +39,7 @@ import {
   shopAssetsContracts,
   shopCatalogContracts,
   shopProposalContracts,
+  shopSettingsContracts,
 } from '#core/contract/index.js';
 import { shopManagementKeyHash } from '#core/server/index.js';
 
@@ -584,8 +585,11 @@ describe('the owner approval route', () => {
 
     const receipt = await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.getProposal.path.replace(':id', proposal.id));
     const text = await receipt.text();
-    expect(envelope(changeProposalReceiptOutputSchema).parse(JSON.parse(text)).data.proposal.status).toBe('applied');
+    expect(envelope(changeProposalReceiptOutputSchema).parse(JSON.parse(text)).data.proposal).toMatchObject({ status: 'applied', appliedResourceId: fixture.published });
     expect(text).not.toContain('effect');
+    expect(text).not.toContain(ownerId);
+    const listed = envelope(shopProposalContracts.listProposals.output).parse(await (await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.listProposals.path)).json()).data;
+    expect(listed.proposals.find((entry) => entry.id === proposal.id)).toMatchObject({ appliedResourceId: fixture.published });
   });
 
   it('marks a proposal stale when a live writer changed a field it touches, and applies nothing', async () => {
@@ -617,21 +621,91 @@ describe('the owner approval route', () => {
     expect(envelope(changeProposalReceiptOutputSchema).parse(await receipt.json()).data.proposal).toMatchObject({ status: 'failed', failureCode: view.failureCode });
   });
 
+  it('answers 503 with a retry-after on the keyed route and on approve while a target row stays locked, and changes nothing', async () => {
+    const proposal = await propose(SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Locked out title' });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let locked: () => void = () => undefined;
+    const lockTaken = new Promise<void>((resolve) => { locked = resolve; });
+    const holder = database.db.transaction(async (tx) => {
+      await tx.execute(`select id from products where tenant_id = 'acme' and id = '${fixture.published}' for update`);
+      locked();
+      await held;
+    });
+    await lockTaken;
+    try {
+      const before = await liveState();
+      const proposalsBefore = (await database.db.select().from(changeProposals)).length;
+
+      const submitted = await keyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Another title' });
+      const approval = await approve(proposal.id);
+
+      for (const response of [submitted, approval]) {
+        expect(response.status).toBe(503);
+        expect(response.headers.get('retry-after')).toBe('5');
+        expect(await errorOf(response)).toMatchObject({ code: 'unavailable' });
+      }
+      expect((await database.db.select().from(changeProposals)).length).toBe(proposalsBefore);
+      expect(await liveState()).toBe(before);
+      expect(await eventKinds(proposal.id)).toEqual(['proposed']);
+    } finally {
+      release();
+      await holder;
+    }
+    expect((await approved(proposal.id)).status).toBe('applied');
+  }, 30_000);
+
+  it.each([
+    ['checkoutReturnOrigins', ['https://shop.example.test']],
+    ['defaultHomeSpaceId', 'space-1'],
+  ] as const)('refuses a settings proposal carrying %s, which a key may not write, and stores nothing', async (field, value) => {
+    const proposalsBefore = (await database.db.select().from(changeProposals)).length;
+    const response = await keyed(proposer.secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { name: 'Sneaky name', [field]: value });
+    expect(response.status).toBe(400);
+    expect((await database.db.select().from(changeProposals)).length).toBe(proposalsBefore);
+    expect((await database.db.select().from(tenants)).find((row) => row.id === 'acme')?.name).not.toBe('Sneaky name');
+  });
+
   it('applies the newly proposable sales-link and settings operations exactly as shown', async () => {
+    const shownEffect = async (id: string) => {
+      const shown = await sessionRequest(ownerToken, 'GET', API_PATHS.changeProposal.replace(':id', id));
+      expect(shown.status).toBe(200);
+      return Object.entries(envelope(changeProposalShowOutputSchema).parse(await shown.json()).data.proposal.effect);
+    };
+    const afterValues = (effect: Awaited<ReturnType<typeof shownEffect>>) =>
+      effect.flatMap(([field, change]) => 'after' in change ? [[field, change.after] as const] : []);
+    const liveSalesLink = async () => {
+      const response = await keyed(proposer.secret, 'GET', SHOP_ASSETS_ROUTES.getSalesLink.path.replace(':id', fixture.salesLink));
+      return response.status === 404 ? null : envelope(shopAssetsContracts.getSalesLink.output).parse(await response.json()).data.salesLink;
+    };
+    const liveSettings = async () =>
+      envelope(shopSettingsContracts.getSettings.output).parse(await (await keyed(proposer.secret, 'GET', SHOP_SETTINGS_ROUTES.getSettings.path)).json()).data.settings;
+
     const heading = await propose(SHOP_ASSETS_ROUTES.updateSalesLink.path.replace(':id', fixture.salesLink), {
       ...salesLinkFields(), id: fixture.salesLink, expectedRevision: 1, heading: 'Approved heading',
     });
     const settings = await propose(SHOP_SETTINGS_ROUTES.updateSettings.path, { name: 'Approved shop name' });
+    const headingEffect = afterValues(await shownEffect(heading.id));
+    const settingsEffect = afterValues(await shownEffect(settings.id));
+    expect(headingEffect).toContainEqual(['heading', 'Approved heading']);
+    expect(settingsEffect).toEqual([['name', 'Approved shop name']]);
+
     expect((await approved(heading.id)).status).toBe('applied');
     expect((await approved(settings.id)).status).toBe('applied');
-    expect((await database.db.select().from(salesLinks)).find((row) => row.id === fixture.salesLink)).toMatchObject({ heading: 'Approved heading', revision: 2 });
-    expect((await database.db.select().from(tenants)).find((row) => row.id === 'acme')?.name).toBe('Approved shop name');
+    const link = await liveSalesLink();
+    const shop = await liveSettings();
+    for (const [field, after] of headingEffect) expect(Reflect.get(link ?? {}, field) ?? null, field).toEqual(after);
+    for (const [field, after] of settingsEffect) expect(Reflect.get(shop, field) ?? null, field).toEqual(after);
 
     const removal = await keyed(proposer.secret, 'DELETE', SHOP_ASSETS_ROUTES.deleteSalesLink.path.replace(':id', fixture.salesLink));
     expect(removal.status).toBe(202);
     const removalProposal = envelope(changeProposalProposedOutputSchema).parse(await removal.json()).data.proposal;
     expect(removalProposal.input).toEqual({ id: fixture.salesLink });
+    const removalEffect = afterValues(await shownEffect(removalProposal.id));
+    expect(removalEffect).toContainEqual(['exists', false]);
     expect((await approved(removalProposal.id)).status).toBe('applied');
+    expect(await liveSalesLink()).toBeNull();
+    for (const [field, after] of removalEffect) expect(after, field).toEqual(field === 'exists' ? false : null);
     expect((await database.db.select().from(salesLinks)).find((row) => row.id === fixture.salesLink)?.deletedAt).not.toBeNull();
   });
 });

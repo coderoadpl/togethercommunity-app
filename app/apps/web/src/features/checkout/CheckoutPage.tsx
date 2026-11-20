@@ -45,6 +45,7 @@ import {
   CardTitle,
   CheckoutPriceOption,
   CheckoutRowGroup,
+  CheckoutTitle,
   CheckoutVariantGroup,
   FinePrint,
 } from '../../theme.js';
@@ -526,7 +527,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             />
           ) : null}
           <Stack useFlexGap spacing="0.75rem">
-            <CardTitle variant="h1">{bundle === undefined ? product.title : bundle.salesLink.heading}</CardTitle>
+            <CheckoutTitle variant="h1">{bundle === undefined ? product.title : bundle.salesLink.heading}</CheckoutTitle>
             <CheckoutSummaryRow
               items={t.checkout.itemCount({ count: bundle?.lines.length ?? 1 })}
               total={formatOfferPrice(payableCents, selectedCurrency, language, t.common.free)}
@@ -553,7 +554,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               ) : (
                 <Stack useFlexGap spacing="1rem">
                   <PostContent html={bundle.descriptionHtml} format="markdown" />
-                  <OfferLines lines={bundle.lines} currency={bundle.currency} />
+                  <OfferLines lines={bundle.lines} currency={bundle.currency} cells="grid" />
                   <CheckoutPriceBreakdown {...priceBreakdown} />
                 </Stack>
               )}

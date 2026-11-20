@@ -55,6 +55,9 @@ describe('checkout product safety information', () => {
     const line = within(section).getByTestId('product-safety-manufacturer');
     expect(line).toHaveTextContent('Example Workshop · Example Street 1, Warsaw · safety@example.com');
     expect(line).not.toHaveTextContent(en.productSafety.appliesTo({ count: 1 }));
+    for (const part of ['Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com']) {
+      expect(within(line).getByText(exactly(part)).closest('span')).toHaveTextContent(exactly(part));
+    }
     expect(within(section).getByRole('link', { name: 'safety@example.com' })).toHaveAttribute('href', 'mailto:safety@example.com');
     expect(within(section).getByText('STAND-1')).not.toBeVisible();
     const details = within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });

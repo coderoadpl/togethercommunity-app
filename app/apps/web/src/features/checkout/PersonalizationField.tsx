@@ -106,6 +106,7 @@ const PersonalizationRow = ({ row, showLineName, disabled, update }: {
               id={inputId}
               multiline
               minRows={2}
+              sx={{ p: 0 }}
               value={entry.text}
               disabled={disabled}
               onChange={(event) => update(productId, { text: event.target.value })}

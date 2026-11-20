@@ -8,6 +8,7 @@ import {
   CheckoutRowButton,
   CheckoutStepItem,
   CheckoutStepList,
+  CHECKOUT_PAY_BAR_CLASS,
   CheckoutStepNumber,
   CheckoutSummarySurface,
   CheckoutSummaryText,
@@ -104,7 +105,7 @@ export const CheckoutDisclosureRow = ({ label, open, onToggle, disabled = false,
         {open ? <MinusIcon /> : <PlusIcon />}
       </CheckoutRowButton>
       {after}
-      <Box id={panelId} hidden={!open} sx={{ pb: '1rem' }}>
+      <Box id={panelId} hidden={!open} sx={{ pt: '0.375rem', pb: '1rem' }}>
         {open ? children : null}
       </Box>
     </Box>
@@ -124,6 +125,7 @@ export const CheckoutPayBar = ({ label, disabled, reason, note, messages, testId
   const describedBy = [reason == null ? null : reasonId, note == null ? null : noteId].filter((id) => id !== null).join(' ');
   return (
     <CheckoutPayBarSurface
+      className={CHECKOUT_PAY_BAR_CLASS}
       data-testid="checkout-pay-bar"
       sx={{ position: 'sticky', bottom: 0, zIndex: 2, mx: `calc(-1 * ${FOCUS_CARD_INLINE_PADDING})`, px: FOCUS_CARD_INLINE_PADDING, pt: '0.875rem', pb: '0.875rem' }}
     >

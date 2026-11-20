@@ -2830,6 +2830,10 @@ export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8re
 
 export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });
 
+export const OfferCellValue = styled(Typography)({ whiteSpace: 'nowrap' });
+
+export const CheckoutTitle = styled(CardTitle)({ wordSpacing: '0.12em' });
+
 export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
@@ -2896,6 +2900,7 @@ export const CheckoutBreakdownList = styled('dl')(({ theme }) => ({
   '& > :last-of-type > *': {
     paddingTop: '0.375rem',
     borderTop: `1px solid ${theme.palette.divider}`,
+    fontSize: '1rem',
     fontWeight: 650,
     color: theme.palette.text.primary,
   },
@@ -2922,9 +2927,12 @@ export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
   '&[aria-expanded="true"] svg': { transform: 'rotate(180deg)' },
 }));
 
+export const CHECKOUT_PAY_BAR_CLASS = 'CheckoutPayBar-root';
+
 export const CheckoutRowGroup = styled(Box)(({ theme }) => ({
   borderTop: `1px solid ${theme.palette.divider}`,
   '& > *': { borderBottom: `1px solid ${theme.palette.divider}` },
+  [`&:has(+ .${CHECKOUT_PAY_BAR_CLASS}) > :last-child`]: { borderBottom: 0 },
 }));
 
 export const CheckoutRowButton = styled(ButtonBase)(({ theme }) => ({
@@ -2949,6 +2957,18 @@ export const CheckoutPayBarSurface = styled(Box)(({ theme }) => ({
 export const CheckoutSafetySection = styled('section')(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
+
+export const CheckoutSafetyWarnings = styled(Box)(({ theme }) => ({
+  ...theme.typography.body2,
+  '& p, & ul, & ol': { margin: 0 },
+  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
+}));
+
+export const CheckoutSafetyPart = styled('span')({
+  display: 'inline-block',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+});
 
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',

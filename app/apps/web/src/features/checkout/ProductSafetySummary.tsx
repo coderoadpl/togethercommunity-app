@@ -6,7 +6,7 @@ import type { PublicProductCompliance } from '#core/domain/index.js';
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { useTranslations } from '../../i18n/index.js';
-import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetySection } from '../../theme.js';
+import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetyWarnings } from '../../theme.js';
 
 type SafetyEntry = { productId: string; title: string; compliance: PublicProductCompliance };
 
@@ -45,7 +45,11 @@ const ProductDetails = ({ entry, titled }: { entry: SafetyEntry; titled: boolean
       {titled ? <Typography variant="subtitle2" color="text.primary">{entry.title}</Typography> : null}
       <Detail label={t.productSafety.model}>{compliance.modelIdentifier}</Detail>
       {compliance.batchIdentifier == null ? null : <Detail label={t.productSafety.batch}>{compliance.batchIdentifier}</Detail>}
-      {compliance.safetyWarningsHtml.trim() === '' ? null : <RichTextContent html={compliance.safetyWarningsHtml} data-testid="product-safety-warnings" />}
+      {compliance.safetyWarningsHtml.trim() === '' ? null : (
+        <CheckoutSafetyWarnings>
+          <RichTextContent html={compliance.safetyWarningsHtml} data-testid="product-safety-warnings" />
+        </CheckoutSafetyWarnings>
+      )}
       {compliance.instructionsUrl == null ? null : (
         <Link href={compliance.instructionsUrl} target="_blank" rel="noopener noreferrer" variant="body2">{t.productSafety.instructions}</Link>
       )}
@@ -59,11 +63,12 @@ const ManufacturerLine = ({ group, countProducts, titled }: { group: SafetyGroup
   const panelId = useId();
   return (
     <Box data-testid="product-safety-manufacturer">
-      <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-        {group.manufacturerName}{' · '}{group.manufacturerAddress}{' · '}
-        <Link href={`mailto:${group.manufacturerEmail}`} color="inherit">{group.manufacturerEmail}</Link>
-        {countProducts ? <>{' · '}{t.productSafety.appliesTo({ count: group.entries.length })}</> : null}
-        {' '}
+      <Typography variant="body2" color="text.secondary">
+        <CheckoutSafetyPart>{group.manufacturerName}</CheckoutSafetyPart>{' · '}
+        <CheckoutSafetyPart>{group.manufacturerAddress}</CheckoutSafetyPart>{' · '}
+        <CheckoutSafetyPart><Link href={`mailto:${group.manufacturerEmail}`} color="inherit">{group.manufacturerEmail}</Link></CheckoutSafetyPart>
+        {countProducts ? <>{' · '}<CheckoutSafetyPart>{t.productSafety.appliesTo({ count: group.entries.length })}</CheckoutSafetyPart></> : null}
+        {' · '}
         <CheckoutInlineToggle
           type="button"
           aria-expanded={open}

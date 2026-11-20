@@ -20,7 +20,8 @@ exactly the effect the owner saw, or applies nothing.
 | Withdrawal of pending proposals when their key is revoked or purged | Available |
 | Typed client outcomes and CLI commands | Available |
 | Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
-| Images (product covers, branding), owner panel | Not yet available |
+| Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
+| Images (product covers, branding), owner panel page | Not yet available |
 
 ## What a proposal is
 
@@ -234,7 +235,9 @@ read scope: a propose-mode key learns nothing from a refused or accepted
 proposal that it could not read with its read scope. The owner view is
 separate and complete: it
 adds the effect, the proposing key's name, id, issuer and state (`active`,
-`expired`, `revoked`, `purged`), the decision and the event history.
+`expired`, `revoked`, `purged`), the issuer's state, a live label of the
+target, the decision with the deciding account and the event history (see
+[Owner view](#owner-view)).
 
 The typed client returns a discriminated result for the ten catalogue
 mutations and for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
@@ -262,6 +265,7 @@ as a member, not an admin, never with an API key):
 | Route | Answer |
 |---|---|
 | `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor }`, newest first |
+| `GET /api/change-proposals/summary` | `{ pending, pendingGroups }`: the pending, unexpired proposals of the workspace (grouped items included) and the groups they belong to |
 | `GET /api/change-proposals/:id` | `{ proposal: ownerView + events }` |
 | `POST /api/change-proposals/:id/approve` with `{}` | `{ proposal: ownerView }` with status `applied`, `stale` or `failed`; a settled or expired proposal is `409` |
 | `POST /api/change-proposals/:id/reject` with `{ "note"?: string }` | `{ proposal: ownerView }` with status `rejected`; a settled proposal is `409` |
@@ -278,6 +282,42 @@ CLI: the owner runs `proposals list [--status] [--group] [--cursor] [--limit]`,
 `shop proposals list|show|withdraw` and `shop proposals group create|show|withdraw`
 with the key in the environment variable named by `--api-key-env` (default
 `TOGETHER_SHOP_KEY`), and adds `--group <id>` to any proposing command.
+
+## Owner view
+
+Every owner list item, proposal and group item carries what a card needs, so
+the panel reads one page and makes no further call per item:
+
+| Field | Meaning |
+|---|---|
+| `operation`, `target` | what the proposal changes, with the target kind and id (a `$proposal:` reference inside a group) |
+| `targetLabel` | the target's title read from live state at read time: the product title, the product title of a price, the sales link title, `Shop settings`; for a creation, the created resource once applied; `null` when the target does not exist (yet) |
+| `effect`, `input` | the stored before/after and command |
+| `groupId`, `groupTitle`, `groupPosition` | the group, when the proposal belongs to one |
+| `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail` (the issuing account's e-mail, `null` once the account is gone) and `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) |
+| `createdAt`, `expiresAt`, `status` | the times and the derived status |
+| `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
+
+The group owner view carries the same `issuerEmail` and
+`issuerIsVerifiedOwner` on its `proposedBy`. The label is for display only:
+approval never reads it, and it can differ from the effect's "before" when
+the live state moved, which is exactly what a stale approval reports. None of
+these fields is ever part of a key receipt.
+
+**Owner notification.** When a propose-mode key submits a proposal, every
+owner of the workspace (the direct owners the team list shows) gets an in-app
+notification of kind `change-proposal`: `authorDisplay` holds the key name,
+and for a group `contextId` holds the group id and `snippet` its title. There
+is at most one unread notification per owner and key: the notification's
+source key is `change-proposal:<key id>`, and the unique source key per
+recipient makes the insert atomic, so a second proposal while it is unread adds
+nothing; once the owner read it, the next proposal makes it unread again with
+the new time. A group raises it when its first item is stored, never for later
+items. It is written right after the proposal committed, not in the proposal
+transaction: the bell only points at the panel, so a failure to write it is
+logged and never fails the submission, and the insert never waits on a lock
+inside the proposal transaction. No migration is needed: the kind lives in the
+existing text column and the existing unique index carries the de-duplication.
 
 ## Approval
 
@@ -389,7 +429,8 @@ not decided, its expiry is recorded and the answer is `409` with status
 `expired`; otherwise the decision time is the time read after the lock. Revoking or purging a key withdraws its pending,
 unexpired proposals and deletes its empty groups in the same transaction as
 the key change; a proposal already past its expiry stays `expired`. A key that simply expires leaves its
-proposals decidable; the owner view shows the key state.
+proposals decidable; the owner view shows the key state and whether the
+issuing account is still a verified owner.
 
 ## Limits
 
@@ -668,7 +709,7 @@ withdraw record the `expired` event on every item of an expired group.
 The key's group receipt has the id, title, derived status, creation and
 expiry times and the ordered item receipts, which never contain an effect, a
 before value or the deciding account. The owner view adds the key name, id,
-issuer and state, and every item with its effect and events; the owner
+issuer, issuer state and key state, and every item with its effect and events; the owner
 proposal list carries `groupId`, `groupTitle` and `groupPosition` on every
 item. The derived group status is one of `open`, `expired`, `applied`,
 `rejected`, `withdrawn`, `stale`, `failed`. The group routes refuse the same
@@ -700,8 +741,8 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 - **Images.** The product cover and branding image routes refuse a
   propose-mode key. Images will be uploaded to a private quarantine and
   published only on approval.
-- **Owner panel.** The owner decides through the session routes and the CLI;
-  no panel page exists yet.
+- **Owner panel page.** The owner decides through the session routes and the
+  CLI; the web page that uses the owner view and the summary is not there yet.
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.
 

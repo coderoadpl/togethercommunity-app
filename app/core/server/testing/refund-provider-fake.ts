@@ -55,7 +55,7 @@ export const createRefundProviderFake = (input: {
       const saved = responses.get(call.idempotencyKey);
       if (saved !== undefined) {
         if (saved.paymentIntentId !== call.paymentIntentId || saved.amountCents !== call.amountCents) {
-          return err(refundFailure('refund_failed', 'Keys for idempotent requests can only be used with the same parameters', 'idempotency_error'));
+          return err(refundFailure('idempotency_mismatch', 'Keys for idempotent requests can only be used with the same parameters'));
         }
         return saved.response;
       }

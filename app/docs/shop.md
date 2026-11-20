@@ -1281,7 +1281,12 @@ the charge (`charge_already_refunded` makes the job watch the refund list). The
 same key is never sent with a different amount: a refund call that is retried
 with the same key is preceded by a refund list, and when that list shows the
 job's own refund from the unanswered call, or a status read sends the job back
-to refund the remainder, the next key generation is used.
+to refund the remainder, the next key generation is used. Should Stripe still
+answer an `idempotency_error` (the key was sent before with other parameters,
+for example after a crash between the refund call and saving its result while
+a hand refund changed the remainder), the job is not failed: it stays
+`pending`, moves to the next key generation and tries again at once, after a
+fresh refund list.
 
 Staff get the `order-refund-alert` e-mail (support address, or every staff
 member in their language) on the first failed attempt, on the first missing

@@ -104,6 +104,7 @@ const settleRefundFailure = (job: OrderRefundJob, error: AppError, now: string):
   const kind = refundFailureOf(error)?.kind ?? 'transient';
   if (kind === 'already_refunded') return watchRefunds(error.message, now);
   if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
+  if (kind === 'idempotency_mismatch') return { update: { status: 'pending', nextAttemptAt: now, lastError: error.message }, outcome: 'retrying', alert: null };
   if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(error.message);
   const transientFailureStreak = job.transientFailureStreak + 1;
   const retryAt = orderRefundRetryAt(transientFailureStreak, now, job.createdAt);

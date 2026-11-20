@@ -179,6 +179,25 @@ describe('order refund dispatcher', () => {
     expect(h.created).toHaveLength(1);
   });
 
+  it('moves to the next key generation instead of failing when a hand refund changed the amount to refund under a key Stripe saved an error for', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('transient', 'Request was retried', null, true) }] });
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { retrying: 1 } });
+    expect(h.job()).toMatchObject({ status: 'pending', keyGeneration: 0 });
+    h.refundByHand(handRefund('re_hand', 1000, 'succeeded'));
+
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 2, outcomes: { retrying: 1, refunded: 1 } });
+    expect(h.refundCalls).toStrictEqual([
+      expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1' }),
+      expect.objectContaining({ amountCents: 3099, idempotencyKey: 'oos-refund-order-1' }),
+      expect.objectContaining({ amountCents: 3099, idempotencyKey: 'oos-refund-order-1-1' }),
+    ]);
+    expect(h.job()).toMatchObject({ status: 'succeeded', keyGeneration: 1, providerRefundId: 're_1' });
+    expect(h.created).toStrictEqual([expect.objectContaining({ amountCents: 3099 })]);
+    expect(h.alertKinds()).toStrictEqual(['retrying']);
+  });
+
   it('gets the same refund back with the same key when a request without an answer did create it', async () => {
     const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }], staleRefundList: true });
     await h.queue();

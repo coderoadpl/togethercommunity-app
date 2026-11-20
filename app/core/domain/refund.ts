@@ -35,6 +35,7 @@ const refundFailureKindSchema = z.enum([
   'insufficient_balance',
   'not_found',
   'already_refunded',
+  'idempotency_mismatch',
   'refund_failed',
   'credentials_unavailable',
   'transient',
@@ -46,6 +47,7 @@ const REFUND_FAILURE_ERROR_CODE = {
   insufficient_balance: 'integration_unavailable',
   not_found: 'not_found',
   already_refunded: 'conflict',
+  idempotency_mismatch: 'conflict',
   refund_failed: 'validation',
   credentials_unavailable: 'integration_not_configured',
   transient: 'integration_unavailable',
@@ -66,6 +68,7 @@ export const refundFailureOf = (error: AppError): { kind: RefundFailureKind; pro
 };
 
 const stripeApiFailureSchema = z.object({
+  rawType: z.string().optional(),
   code: z.string().optional(),
   statusCode: z.number().optional(),
   message: z.string().optional(),
@@ -80,6 +83,7 @@ const TRANSIENT_STRIPE_CODES: ReadonlySet<string> = new Set(['idempotency_key_in
 const stripeRefundFailureKind = (failure: z.infer<typeof stripeApiFailureSchema>): RefundFailureKind => {
   if (stripePermissionMissing(failure)) return 'permission_missing';
   if (failure.code === 'charge_already_refunded') return 'already_refunded';
+  if (failure.rawType === 'idempotency_error') return 'idempotency_mismatch';
   if (failure.code === 'balance_insufficient' || failure.code === 'insufficient_funds') return 'insufficient_balance';
   if (failure.code === 'resource_missing' || failure.statusCode === 404) return 'not_found';
   if (failure.code !== undefined && TRANSIENT_STRIPE_CODES.has(failure.code)) return 'transient';

@@ -104,7 +104,7 @@ describe('Stripe createRefund', () => {
     ['insufficient balance', 400, { code: 'balance_insufficient', message: 'Insufficient available balance' }, 'insufficient_balance', 'integration_unavailable'],
     ['payment intent not found', 404, { code: 'resource_missing', message: "No such payment_intent: 'pi_paid'" }, 'not_found', 'not_found'],
     ['disputed payment', 400, { code: 'charge_disputed', message: 'Charge ch_1 has been charged back' }, 'refund_failed', 'validation'],
-    ['idempotency parameter mismatch', 400, { type: 'idempotency_error', message: 'Keys for idempotent requests can only be used with the same parameters' }, 'refund_failed', 'validation'],
+    ['idempotency parameter mismatch', 400, { type: 'idempotency_error', message: 'Keys for idempotent requests can only be used with the same parameters' }, 'idempotency_mismatch', 'conflict'],
     ['concurrent request with the same key', 409, { code: 'idempotency_key_in_use', message: 'In use' }, 'transient', 'integration_unavailable'],
     ['lock timeout', 400, { code: 'lock_timeout', message: 'Locked' }, 'transient', 'integration_unavailable'],
     ['rate limit', 429, { code: 'rate_limit', message: 'Too many requests' }, 'transient', 'integration_unavailable'],
@@ -130,6 +130,7 @@ describe('Stripe createRefund', () => {
     ['a server error', 500, { type: 'api_error', message: 'Something went wrong' }, false],
     ['a short balance', 400, { code: 'balance_insufficient', message: 'Insufficient available balance' }, false],
     ['a missing permission', 403, { message: 'The provided key does not have the required permissions for this endpoint' }, false],
+    ['an idempotency parameter mismatch', 400, { type: 'idempotency_error', message: 'Keys for idempotent requests can only be used with the same parameters' }, false],
   ] as const)('reports whether the outcome of %s is unknown', async (_name, status, error, outcomeUnknown) => {
     const h = providerOverFetch(() => stripeError(status, error));
     const result = await h.createRefund(refundInput);

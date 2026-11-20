@@ -170,7 +170,7 @@ describe('shop management key replay on a clean workspace', () => {
     const catalog = shopClient(catalogKey.secret);
     const warehouse = shopClient(warehouseKey.secret);
 
-    const settings = unwrapped(await provisioning.updateSettings({
+    const settings = appliedChange(await provisioning.updateSettings({
       termsUrl: 'https://brand.example.test/terms',
       privacyUrl: 'https://brand.example.test/privacy',
       supportEmail: 'support@example.test',

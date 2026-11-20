@@ -147,6 +147,7 @@ import {
   type WriteResult,
 } from './http.js';
 import type { LessonAttachmentFileUpload } from './http.js';
+import { salesLinkScopes } from './sales-links.js';
 
 /**
  * Identity helpers that type descriptors against `@tanstack/query-core` option
@@ -1734,7 +1735,22 @@ export const rejectChangeProposalMutation = (api: ApiClient) =>
     call: (input: { id: string } & ChangeProposalRejectInput) => api.rejectChangeProposal(input),
   });
 
+export const approveChangeProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...changeProposalScopes.all(), 'approve'],
+    call: (input: { id: string }) => api.approveChangeProposal(input),
+  });
+
 export const changeProposalsInvalidates = () => ({ queryKey: changeProposalScopes.all() });
+
+export const approveChangeProposalInvalidates = () => [
+  changeProposalsInvalidates(),
+  { queryKey: productsScopes.all() },
+  { queryKey: productPricesScopes.all() },
+  { queryKey: productStockScopes.all() },
+  { queryKey: salesLinkScopes.all() },
+  { queryKey: tenantSettingsScopes.all() },
+];
 
 export const setTenantSecretMutation = (api: ApiClient) =>
   defineMutation({

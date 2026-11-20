@@ -38,6 +38,7 @@ import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
 import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
 import {
+  changeProposalApproveOutputSchema,
   changeProposalRejectOutputSchema,
   changeProposalShowOutputSchema,
   changeProposalsListOutputSchema,
@@ -2694,6 +2695,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input.note === undefined ? {} : { note: input.note },
       signal,
     ),
+  approveChangeProposal: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalApprove.method,
+      API_ROUTES.changeProposalApprove.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalApproveOutputSchema,
+      {},
+      signal,
+    ),
   listTenantSecrets: (signal?: AbortSignal) =>
     request(
       options,
@@ -3166,6 +3176,10 @@ const proposable = {
   enableProductStock: proposableOutputSchema(shopCatalogContracts.enableProductStock.output),
   adjustProductStock: proposableOutputSchema(shopCatalogContracts.adjustProductStock.output),
   setProductStockThreshold: proposableOutputSchema(shopCatalogContracts.setProductStockThreshold.output),
+  updateSettings: proposableOutputSchema(shopSettingsContracts.updateSettings.output),
+  createSalesLink: proposableOutputSchema(shopAssetsContracts.createSalesLink.output),
+  updateSalesLink: proposableOutputSchema(shopAssetsContracts.updateSalesLink.output),
+  deleteSalesLink: proposableOutputSchema(shopAssetsContracts.deleteSalesLink.output),
 };
 
 const shopProposalMethods = (options: ApiClientOptions) => {
@@ -3221,7 +3235,7 @@ const shopSettingsMethods = (options: ApiClientOptions) => {
     getSettings: (signal?: AbortSignal) =>
       request(options, routes.getSettings.method, routes.getSettings.path, contracts.getSettings.output, undefined, signal),
     updateSettings: (input: ShopSettingsPatch, signal?: AbortSignal) =>
-      request(options, routes.updateSettings.method, routes.updateSettings.path, contracts.updateSettings.output, input, signal),
+      request(options, routes.updateSettings.method, routes.updateSettings.path, proposable.updateSettings, input, signal),
     uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
       uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, input, signal),
   };
@@ -3241,11 +3255,11 @@ const shopAssetsMethods = (options: ApiClientOptions) => {
     getSalesLink: (input: ShopAssetsInput<'getSalesLink'>, signal?: AbortSignal) =>
       request(options, routes.getSalesLink.method, linkPath(routes.getSalesLink.path, input.id), contracts.getSalesLink.output, undefined, signal),
     createSalesLink: (input: ShopAssetsInput<'createSalesLink'>, signal?: AbortSignal) =>
-      request(options, routes.createSalesLink.method, routes.createSalesLink.path, contracts.createSalesLink.output, input, signal),
+      request(options, routes.createSalesLink.method, routes.createSalesLink.path, proposable.createSalesLink, input, signal),
     updateSalesLink: (input: ShopAssetsInput<'updateSalesLink'>, signal?: AbortSignal) =>
-      request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), contracts.updateSalesLink.output, input, signal),
+      request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), proposable.updateSalesLink, input, signal),
     deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal) =>
-      request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), contracts.deleteSalesLink.output, undefined, signal),
+      request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), proposable.deleteSalesLink, undefined, signal),
   };
 };
 

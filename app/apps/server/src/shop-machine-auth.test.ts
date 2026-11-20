@@ -24,6 +24,7 @@ import {
   SHOP_CATALOG_ROUTES,
   SHOP_INTEGRATION_ROUTES,
   SHOP_ORDER_ROUTES,
+  SHOP_PROPOSAL_ROUTES,
   SHOP_SETTINGS_ROUTES,
 } from '#core/contract/index.js';
 import {
@@ -50,6 +51,7 @@ const baseUrl = 'http://localhost:48730';
 const acmeHost = 'acme.localhost:48730';
 const studioHost = 'studio.localhost:48730';
 const PROBE_PATH = '/api/m2m/shop/test-probe';
+const PROBE_PROPOSE_MODE = { kind: 'refuse', reason: 'side-effect' } as const;
 const THROWING_PATH = '/api/m2m/shop/test-throwing-probe';
 const CREATED_AT = '2026-11-01T00:00:00.000Z';
 const EXPIRES_AT = '2026-11-20T00:00:00.000Z';
@@ -160,21 +162,18 @@ beforeAll(async () => {
   }
 
   probeApp = new Hono<AppVars>();
-  for (const method of ['GET', 'POST'] as const) {
-    registerShopMachineRoute(probeApp, deps, {
-      method,
-      path: PROBE_PATH,
-      scope: method === 'GET' ? 'shop:catalog:read' : 'shop:catalog:write',
-      handler: (c, request) => c.json({
-        userId: request.ctx.identity.userId,
-        email: request.ctx.identity.email,
-        staffRole: request.ctx.identity.staffRole,
-        tenantId: request.tenant.id,
-        capabilities: request.ctx.capabilities ?? [],
-        machineActor: request.ctx.machineActor,
-      }),
-    });
-  }
+  const probeHandler: Parameters<typeof registerShopMachineRoute>[2]['handler'] = (c, request) => c.json({
+    userId: request.ctx.identity.userId,
+    email: request.ctx.identity.email,
+    staffRole: request.ctx.identity.staffRole,
+    tenantId: request.tenant.id,
+    capabilities: request.ctx.capabilities ?? [],
+    machineActor: request.ctx.machineActor,
+  });
+  registerShopMachineRoute(probeApp, deps, { method: 'GET', path: PROBE_PATH, scope: 'shop:catalog:read', handler: probeHandler });
+  registerShopMachineRoute(probeApp, deps, {
+    method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:write', proposeMode: PROBE_PROPOSE_MODE, handler: probeHandler,
+  });
   registerInternalRoutes(probeApp, deps);
   realApp = buildApp(deps);
 }, 120_000);
@@ -199,11 +198,18 @@ describe('shop management route registration', () => {
     expect(() => assertShopMachineRouteCoverage([])).not.toThrow();
   });
 
-  it('registers only the catalog, order, settings, asset and integration routes under the shop management prefix', () => {
+  it('refuses at startup a shop mutation that declares no proposeMode class', () => {
+    expect(() => assertShopMachineRouteCoverage([SHOP_CATALOG_ROUTES.createProduct]))
+      .toThrow(`Shop management mutations need a proposeMode class: POST ${SHOP_CATALOG_ROUTES.createProduct.path}`);
+    expect(() => assertShopMachineRouteCoverage([{ ...SHOP_CATALOG_ROUTES.createProduct, proposeMode: { kind: 'refuse' } }])).not.toThrow();
+    expect(() => assertShopMachineRouteCoverage([SHOP_CATALOG_ROUTES.listProducts])).not.toThrow();
+  });
+
+  it('registers only the catalog, order, settings, asset, integration and proposal routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
       .map((route) => `${route.method} ${route.path}`))
-      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES)].map((route) => `${route.method} ${route.path}`));
+      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES)].map((route) => `${route.method} ${route.path}`));
   });
 });
 
@@ -411,13 +417,14 @@ describe('shop management key secrecy in telemetry', () => {
       method: 'POST',
       path: THROWING_PATH,
       scope: 'shop:catalog:read',
+      proposeMode: PROBE_PROPOSE_MODE,
       handler: async () => {
         rowsSeenByThrowingHandler.push((await throwingRows()).length);
         throw new Error('handler failed');
       },
     });
     registerShopMachineRoute(app, deps, {
-      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => c.json({ ok: true }),
+      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', proposeMode: PROBE_PROPOSE_MODE, handler: (c) => c.json({ ok: true }),
     });
   });
   beforeAll(async () => {
@@ -567,7 +574,7 @@ describe('shop management key secrecy in telemetry', () => {
     registerShopMachineRoute(historyDown, {
       ...deps,
       shopManagementKeyEvents: { record: async () => { throw new Error('history unavailable'); } },
-    }, { method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler });
+    }, { method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', proposeMode: PROBE_PROPOSE_MODE, handler });
     exporter.reset();
     const response = await historyDown.request(`${baseUrl}${PROBE_PATH}`, {
       method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' }, body: '{}',
@@ -591,7 +598,7 @@ describe('shop management key secrecy in telemetry', () => {
     });
     const committed = new Hono<AppVars>();
     registerShopMachineRoute(committed, { ...deps, shopManagementKeyEvents: { record: recordOnce } }, {
-      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', handler: (c) => { steps.push('handler'); return c.json({ ok: true }); },
+      method: 'POST', path: PROBE_PATH, scope: 'shop:catalog:read', proposeMode: PROBE_PROPOSE_MODE, handler: (c) => { steps.push('handler'); return c.json({ ok: true }); },
     });
     const response = await committed.request(`${baseUrl}${PROBE_PATH}`, {
       method: 'POST', headers: { host: acmeHost, 'x-api-key': 'shop-read-secret' }, body: '{}',

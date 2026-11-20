@@ -18,6 +18,7 @@ import type { ShopMachineRoute } from './shop-machine-auth.js';
 export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   {
     ...SHOP_ASSETS_ROUTES.productCoverUpload,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopAssetsContracts.productCoverUpload.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
@@ -37,6 +38,7 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
   },
   {
     ...SHOP_ASSETS_ROUTES.productCoverComplete,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopAssetsContracts.productCoverComplete.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
@@ -57,6 +59,7 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
   },
   {
     ...SHOP_ASSETS_ROUTES.createSalesLink,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       if (deps.salesLinkManagement === undefined) return respond(err(internal('Sales links are unavailable')));
       const parsed = shopAssetsContracts.createSalesLink.input.safeParse(await readJson(c.req.raw));
@@ -67,6 +70,7 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
   },
   {
     ...SHOP_ASSETS_ROUTES.updateSalesLink,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       if (deps.salesLinkManagement === undefined) return respond(err(internal('Sales links are unavailable')));
       const parsed = shopAssetsContracts.updateSalesLink.input.safeParse(await readJson(c.req.raw));
@@ -76,6 +80,7 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
   },
   {
     ...SHOP_ASSETS_ROUTES.deleteSalesLink,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => deps.salesLinkManagement === undefined
       ? respond(err(internal('Sales links are unavailable')))
       : respond(await deleteSalesLink(ctx, { id: c.req.param('id') ?? '' }, deps.salesLinkManagement)),

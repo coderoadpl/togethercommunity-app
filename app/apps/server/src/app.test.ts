@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '#core/server/testing/change-proposal-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
@@ -233,6 +234,7 @@ const deps = (input: {
   const members: Member[] = input.members ?? [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
+  const changeProposalStore = createChangeProposalStoreFake();
   const appDeps: AppDeps = {
     telemetry: { recordAppError: vi.fn() },
     auth: {
@@ -376,6 +378,9 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    changeProposals: changeProposalStore.repository,
+    changeProposalEvents: changeProposalStore.events,
+    changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     importContent: {
       commit: async () => 'saved',
     },

@@ -109,6 +109,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
   if (path === '/api/download-copies') return 'order:read';
+  if (path === '/api/change-proposals' || path.startsWith('/api/change-proposals/')) return method === 'GET' ? 'proposal:read' : 'proposal:decide';
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer' || path === '/offer/:slug') return 'offer:read';
@@ -338,6 +339,7 @@ const beforeForRoute = (
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
     if (selfAuthenticatingEntry.mechanism === 'Shop management key') {
+      if (path === '/api/m2m/shop/proposals' || path.startsWith('/api/m2m/shop/proposals/')) return proposeShopManagementKey;
       return method === 'GET' ? shopManagementKey : directShopManagementKey;
     }
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
@@ -369,6 +371,7 @@ const beforeForRoute = (
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/api-keys/shop-management' || path.startsWith('/api/api-keys/shop-management/')) return owner;
+  if (path === '/api/change-proposals' || path.startsWith('/api/change-proposals/')) return owner;
   if (path === '/api/posts/:postId/permanent') return staff;
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;

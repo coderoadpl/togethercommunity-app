@@ -340,6 +340,14 @@ changes answers `200`. Migrations this release applied after the move stay in
 place, as with any forward-only rollback, and remain recorded only in the
 public journal.
 
+A previous release that predates migration `0163_change_proposals` refuses
+every propose-mode shop management key with `401 Invalid API key`, because
+such a key is stored under a hash in a separate propose-mode domain that the
+previous release never computes; it never gains live write access. Direct-mode
+keys keep working, and pending change proposals stay in their tables until the
+roll forward, so the retreat needs no purge (see
+[shop management keys](shop-management-keys.md#rollback)).
+
 Every other database is fix-forward only; ship a fix from this release or a
 later one instead of redeploying the previous release:
 

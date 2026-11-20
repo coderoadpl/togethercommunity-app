@@ -181,3 +181,6 @@ export * from './usecases/probe-stripe-permissions.js';
 export * from './product-draft-ports.js';
 export * from './usecases/product-drafts.js';
 export * from './usecases/storage-orphan-report.js';
+export * from './change-proposal-effects.js';
+export * from './usecases/change-proposal-operations.js';
+export * from './usecases/change-proposals.js';

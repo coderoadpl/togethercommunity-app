@@ -522,6 +522,42 @@ scopes on every shop key.
   `shop_management_key_rate_limit_buckets` whose rows go with their key. A request refused by the minute
   bucket does not consume the day bucket, and a day refusal returns its minute
   unit.
+- **Propose mode.** A key created with `mode: "propose"` (immutable) never
+  changes live state. Its write scopes grant only `proposal:submit:catalog` and
+  `proposal:submit:settings` in place of the live write capabilities, and
+  `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
+  it. A write scope requires its read scope (`shop:catalog:write` needs
+  `shop:catalog:read`, `shop:settings:write` needs `shop:settings:read`): the
+  creation schema, a database check on `shop_management_keys` and the
+  submission use-case, which also authorizes the family's read capability
+  (`product:read`, `tenant:settings:read`), each enforce it. Whether a dry run
+  accepts or refuses a proposal depends on live state (a negative stock
+  adjustment, the effect size), so a write-only key could otherwise probe
+  values it cannot read; with the rule, a propose-mode key learns nothing from
+  a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
+  `apps/server/src/shop-machine-auth.ts` and the server refuses to start
+  without one: the ten catalogue write routes store a
+  [change proposal](change-proposals.md) instead of running their handler,
+  every other write route answers `403`, and a test drives a propose-mode key
+  over every registered shop route and asserts that no live row changed. A
+  proposal's effect comes from a dry run of the live use-case in a transaction
+  that is always rolled back, with non-database effects deferred to a commit
+  that never happens. The key's receipt never carries the effect or a live
+  value. Only the verified owner in their own session reads and rejects
+  proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
+  impersonating owner, a direct-mode key, a propose-mode key and a legacy key
+  are refused. Proposals carry no foreign key to their key, so the history
+  survives a purge, and revoking or purging a key withdraws its pending,
+  unexpired proposals in the same transaction. Pending proposals are capped at
+  200 per key and 1,000 per workspace and creation at 500 per key a day,
+  checked read-only before the dry run and again atomically at insert. A dry
+  run never takes a second database connection (the storage credentials of a
+  draft deletion are read through the transaction), locks its target with
+  `FOR NO KEY UPDATE` so it cannot deadlock with a live stock write, and waits
+  at most 5 seconds for the workspace lock before answering `503` with a
+  `retry-after`, so queued proposals cannot hold pool connections without
+  bound. A retention purge of settled proposals is a follow-up. Approval is
+  not available yet.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs
@@ -534,7 +570,12 @@ scopes on every shop key.
 - **Rollback.** Migration 0159 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
-  owner controls, not rollback steps.
+  owner controls, not rollback steps. A release that predates migration 0163
+  reads shop keys but not their mode, and refuses a propose-mode key with
+  `401`: the key's stored hash is taken in a separate propose-mode hash
+  domain, so the plain hash of the presented secret finds no row. Such a key
+  never gains live write access, direct-mode keys keep working, and pending
+  change proposals stay untouched until the roll forward; no purge is needed.
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
   `PATCH` or `DELETE` to a shop route that passed every check write a row to
   the dedicated `shop_management_key_events` table with the key id, never the

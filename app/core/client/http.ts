@@ -37,6 +37,17 @@ import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogCont
 import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
 import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
+import {
+  changeProposalRejectOutputSchema,
+  changeProposalShowOutputSchema,
+  changeProposalsListOutputSchema,
+  proposableOutputSchema,
+  SHOP_PROPOSAL_ROUTES,
+  shopProposalContracts,
+  type ChangeProposalListQueryInput,
+  type ChangeProposalProposedOutput,
+  type ChangeProposalRejectInput,
+} from '#core/contract/index.js';
 import type { ShopSettingsPatch } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
@@ -2656,6 +2667,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listChangeProposals: (input: ChangeProposalListQueryInput = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposals.method,
+      withQuery(API_ROUTES.changeProposals.path, input),
+      changeProposalsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  getChangeProposal: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposal.method,
+      API_ROUTES.changeProposal.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalShowOutputSchema,
+      undefined,
+      signal,
+    ),
+  rejectChangeProposal: (input: { id: string } & ChangeProposalRejectInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalReject.method,
+      API_ROUTES.changeProposalReject.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalRejectOutputSchema,
+      input.note === undefined ? {} : { note: input.note },
+      signal,
+    ),
   listTenantSecrets: (signal?: AbortSignal) =>
     request(
       options,
@@ -3083,33 +3121,64 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     listProducts: (signal?: AbortSignal) =>
       request(options, routes.listProducts.method, routes.listProducts.path, contracts.listProducts.output, undefined, signal),
     createProduct: (input: ShopCatalogInput<'createProduct'>, signal?: AbortSignal) =>
-      request(options, routes.createProduct.method, routes.createProduct.path, contracts.createProduct.output, input, signal),
+      request(options, routes.createProduct.method, routes.createProduct.path, proposable.createProduct, input, signal),
     updateProduct: (input: ShopCatalogInput<'updateProduct'>, signal?: AbortSignal) =>
-      request(options, routes.updateProduct.method, routes.updateProduct.path, contracts.updateProduct.output, input, signal),
+      request(options, routes.updateProduct.method, routes.updateProduct.path, proposable.updateProduct, input, signal),
     publishProduct: (input: ShopCatalogInput<'publishProduct'>, signal?: AbortSignal) =>
-      request(options, routes.publishProduct.method, routes.publishProduct.path, contracts.publishProduct.output, input, signal),
+      request(options, routes.publishProduct.method, routes.publishProduct.path, proposable.publishProduct, input, signal),
     unpublishProduct: (input: ShopCatalogInput<'unpublishProduct'>, signal?: AbortSignal) =>
-      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, contracts.unpublishProduct.output, input, signal),
+      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, proposable.unpublishProduct, input, signal),
     deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal) =>
-      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, contracts.deleteProductDraft.output, input, signal),
+      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, proposable.deleteProductDraft, input, signal),
     listProductPrices: (productId: string, signal?: AbortSignal) =>
       request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
     createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal) =>
-      request(options, routes.createProductPrice.method, routes.createProductPrice.path, contracts.createProductPrice.output, input, signal),
+      request(options, routes.createProductPrice.method, routes.createProductPrice.path, proposable.createProductPrice, input, signal),
     deactivateProductPrice: (input: ShopCatalogInput<'deactivateProductPrice'>, signal?: AbortSignal) =>
-      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, contracts.deactivateProductPrice.output, input, signal),
+      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, proposable.deactivateProductPrice, input, signal),
     getProductStock: (productId: string, signal?: AbortSignal) =>
       request(options, routes.getProductStock.method, productPath(routes.getProductStock.path, productId), contracts.getProductStock.output, undefined, signal),
     enableProductStock: (input: ShopCatalogInput<'enableProductStock'>, signal?: AbortSignal) =>
-      request(options, routes.enableProductStock.method, routes.enableProductStock.path, contracts.enableProductStock.output, input, signal),
+      request(options, routes.enableProductStock.method, routes.enableProductStock.path, proposable.enableProductStock, input, signal),
     adjustProductStock: (input: ShopCatalogInput<'adjustProductStock'>, signal?: AbortSignal) =>
-      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, contracts.adjustProductStock.output, input, signal),
+      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, proposable.adjustProductStock, input, signal),
     setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
-      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
+      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, proposable.setProductStockThreshold, input, signal),
     ...shopOrderMethods(options),
     ...shopSettingsMethods(options),
     ...shopAssetsMethods(options),
     ...shopIntegrationMethods(options),
+    ...shopProposalMethods(options),
+  };
+};
+
+export const isProposedChange = (value: { outcome: string }): value is ChangeProposalProposedOutput =>
+  value.outcome === 'proposed';
+
+const proposable = {
+  createProduct: proposableOutputSchema(shopCatalogContracts.createProduct.output),
+  updateProduct: proposableOutputSchema(shopCatalogContracts.updateProduct.output),
+  publishProduct: proposableOutputSchema(shopCatalogContracts.publishProduct.output),
+  unpublishProduct: proposableOutputSchema(shopCatalogContracts.unpublishProduct.output),
+  deleteProductDraft: proposableOutputSchema(shopCatalogContracts.deleteProductDraft.output),
+  createProductPrice: proposableOutputSchema(shopCatalogContracts.createProductPrice.output),
+  deactivateProductPrice: proposableOutputSchema(shopCatalogContracts.deactivateProductPrice.output),
+  enableProductStock: proposableOutputSchema(shopCatalogContracts.enableProductStock.output),
+  adjustProductStock: proposableOutputSchema(shopCatalogContracts.adjustProductStock.output),
+  setProductStockThreshold: proposableOutputSchema(shopCatalogContracts.setProductStockThreshold.output),
+};
+
+const shopProposalMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_PROPOSAL_ROUTES;
+  const contracts = shopProposalContracts;
+  const proposalPath = (path: string, id: string): string => path.replace(':id', encodeURIComponent(id));
+  return {
+    listProposals: (input: ChangeProposalListQueryInput = {}, signal?: AbortSignal) =>
+      request(options, routes.listProposals.method, withQuery(routes.listProposals.path, input), contracts.listProposals.output, undefined, signal),
+    getProposal: (id: string, signal?: AbortSignal) =>
+      request(options, routes.getProposal.method, proposalPath(routes.getProposal.path, id), contracts.getProposal.output, undefined, signal),
+    withdrawProposal: (id: string, signal?: AbortSignal) =>
+      request(options, routes.withdrawProposal.method, proposalPath(routes.withdrawProposal.path, id), contracts.withdrawProposal.output, {}, signal),
   };
 };
 

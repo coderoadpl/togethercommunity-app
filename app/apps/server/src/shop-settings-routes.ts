@@ -22,6 +22,7 @@ export const shopSettingsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
   },
   {
     ...SHOP_SETTINGS_ROUTES.updateSettings,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopSettingsContracts.updateSettings.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid shop settings payload', parsed.error.flatten())));
@@ -31,6 +32,7 @@ export const shopSettingsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
   },
   {
     ...SHOP_SETTINGS_ROUTES.brandingAssetUpload,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopSettingsContracts.brandingAssetUpload.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
@@ -50,6 +52,7 @@ export const shopSettingsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
   },
   {
     ...SHOP_SETTINGS_ROUTES.brandingAssetComplete,
+    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopSettingsContracts.brandingAssetComplete.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));

@@ -132,6 +132,8 @@ import type {
   TenantRedirectDeleteBody,
   TenantRedirectUpdateBody,
   TenantSettingsUpdateInput,
+  ChangeProposalListQueryInput,
+  ChangeProposalRejectInput,
 } from '#core/contract/index.js';
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
 
@@ -1707,6 +1709,32 @@ export const revokeApiKeyMutation = (api: ApiClient) =>
   });
 
 export const apiKeysInvalidates = () => ({ queryKey: apiKeyScopes.all() });
+
+const changeProposalScopes = {
+  all: () => ['change-proposals'] as const,
+  lists: (input: ChangeProposalListQueryInput) => ['change-proposals', 'list', input] as const,
+  detail: (id: string) => ['change-proposals', 'detail', id] as const,
+};
+
+export const changeProposalsQuery = (api: ApiClient, input: ChangeProposalListQueryInput = {}) =>
+  defineQuery({
+    queryKey: changeProposalScopes.lists(input),
+    call: ({ signal }) => api.listChangeProposals(input, signal),
+  });
+
+export const changeProposalQuery = (api: ApiClient, id: string) =>
+  defineQuery({
+    queryKey: changeProposalScopes.detail(id),
+    call: ({ signal }) => api.getChangeProposal({ id }, signal),
+  });
+
+export const rejectChangeProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...changeProposalScopes.all(), 'reject'],
+    call: (input: { id: string } & ChangeProposalRejectInput) => api.rejectChangeProposal(input),
+  });
+
+export const changeProposalsInvalidates = () => ({ queryKey: changeProposalScopes.all() });
 
 export const setTenantSecretMutation = (api: ApiClient) =>
   defineMutation({

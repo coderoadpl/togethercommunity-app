@@ -50,9 +50,9 @@ const ownerCapabilities = capabilitiesForPrincipal('owner');
 const ownerSession: Ctx = { identity: owner };
 const keyCtx: Ctx = {
   identity: owner,
-  capabilities: shopManagementCapabilities(['shop:settings:read', 'shop:settings:write'])
+  capabilities: shopManagementCapabilities(['shop:settings:read', 'shop:settings:write'], 'direct')
     .filter((capability) => ownerCapabilities.includes(capability)),
-  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' },
+  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' },
 };
 
 const depsFor = (tenantRepository: TenantRepository): TenantSettingsDeps => ({

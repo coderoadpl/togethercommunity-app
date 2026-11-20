@@ -54,6 +54,7 @@ import { createDownloadPersonaliser } from '#adapters/personalisation/index.js';
 import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypto, DownloadPersonaliser, PersonalisationSlots } from '#core/server/index.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
+import type { ChangeProposalBounds } from '#adapters/db/change-proposal-bounds.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
@@ -958,6 +959,7 @@ export const createDeps = (
     db?: Db;
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
+    changeProposalBounds?: ChangeProposalBounds;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
@@ -1614,10 +1616,15 @@ export const createDeps = (
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
-    changeProposals: createChangeProposalRepository(db),
+    changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),
-    changeProposalGroups: createChangeProposalGroupRepository(db),
-    changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
+    changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),
+    changeProposalTransaction: createChangeProposalTransaction(
+      db,
+      logger,
+      (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      options.changeProposalBounds,
+    ),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,

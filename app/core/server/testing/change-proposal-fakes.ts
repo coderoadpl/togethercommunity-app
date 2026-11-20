@@ -369,9 +369,9 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     },
     transition: async (tenantId, id, transition, guard) => {
       const found = pendingRow(tenantId, id, guard);
-      return found === null ? null : transitionRow(found, transition);
+      return { kind: 'written', value: found === null ? null : transitionRow(found, transition) };
     },
-    recordExpiry: async (tenantId, id, event) => recordExpiry(tenantId, id, event),
+    recordExpiry: async (tenantId, id, event) => ({ kind: 'written', value: recordExpiry(tenantId, id, event) }),
   };
   const groupRows: ChangeProposalGroup[] = [];
   const itemsOf = (tenantId: string, groupId: string): ChangeProposal[] =>
@@ -393,12 +393,13 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     findById: async (tenantId, id) => withItems(groupNamed(tenantId, id)),
     findByKey: async (tenantId, keyId, id) => withItems(groupNamed(tenantId, id, keyId)),
     listByIds: async (tenantId, ids) => groupRows.filter((group) => group.tenantId === tenantId && ids.includes(group.id)).map((group) => ({ ...group })),
-    addItem: async (tenantId, proposal, event, now) => {
+    addItem: async (tenantId, proposal, event, clock) => {
       if (!changeProposalEffectWithinLimit(proposal.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
-      if (!keyActive(tenantId, proposal.proposedByKeyId, now)) return { kind: 'key_inactive' };
+      if (!keyActive(tenantId, proposal.proposedByKeyId, clock.nowIso())) return { kind: 'key_inactive' };
       const current = withItems(groupNamed(tenantId, proposal.groupId ?? '', proposal.proposedByKeyId));
       if (current === null) return { kind: 'not_found' };
-      if (!changeProposalGroupOpen(current.group, current.items, now)) return { kind: 'group_closed', current };
+      const now = clock.nowIso();
+      if (!changeProposalGroupOpen(current.group, current.items, now)) return { kind: 'group_closed', current, at: now };
       if (current.items.length >= CHANGE_PROPOSAL_GROUP_LIMITS.itemsPerGroup) return { kind: 'group_full' };
       const first = current.items[0];
       if (current.items.length + 1 !== proposal.groupPosition || (first !== undefined && first.expiresAt !== proposal.expiresAt)) {
@@ -411,6 +412,30 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       return { kind: 'created', proposal: { ...proposal } };
     },
     lock: async (tenantId, id) => withItems(groupNamed(tenantId, id)),
+    decide: async (tenantId, id, guard, decide) => {
+      const locked = withItems(groupNamed(tenantId, id, guard.keyId));
+      if (locked === null) return { kind: 'not_found' };
+      const decision = decide(locked);
+      if (decision.kind === 'refuse') return { kind: 'decided', decision, ...locked };
+      const items = itemsOf(tenantId, id);
+      if (decision.kind === 'record_expiry') {
+        for (const item of items) recordExpiry(tenantId, item.id, decision.event(item.id));
+        return { kind: 'decided', decision, ...locked };
+      }
+      if (items.length !== decision.transitions.length || items.some((item, index) => item.id !== decision.transitions[index]?.id)) {
+        throw new Error('A group decision named other items than the locked ones');
+      }
+      return {
+        kind: 'decided',
+        decision,
+        group: locked.group,
+        items: decision.transitions.map(({ transition }, index) => {
+          const item = items[index];
+          if (item === undefined) throw new Error('A group item vanished');
+          return transitionRow(item, transition);
+        }),
+      };
+    },
     transition: async (tenantId, id, transitions, guard = {}) => {
       const group = groupNamed(tenantId, id, guard.keyId);
       if (group === undefined) return null;
@@ -429,13 +454,13 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       for (const item of itemsOf(tenantId, id)) {
         if (recordExpiry(tenantId, item.id, event(item.id))) recorded = true;
       }
-      return recorded;
+      return { kind: 'written', value: recorded };
     },
     deleteEmpty: async (tenantId, keyId, id) => {
       const group = groupNamed(tenantId, id, keyId);
-      if (group === undefined || itemsOf(tenantId, id).length > 0) return false;
+      if (group === undefined || itemsOf(tenantId, id).length > 0) return { kind: 'written', value: false };
       groupRows.splice(groupRows.indexOf(group), 1);
-      return true;
+      return { kind: 'written', value: true };
     },
   };
   const events: ChangeProposalEventRepository = {
@@ -447,6 +472,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
 
 export interface FakeChangeProposalTransaction extends ChangeProposalTransaction {
   calls: Array<'run' | 'dryRun'>;
+  dryRunGroups: Array<string | null>;
   locks: ChangeProposalTarget[];
   deferredDropped: number;
 }
@@ -459,6 +485,7 @@ export const createChangeProposalTransactionFake = (
   secretResolver: TenantSecretResolver = noSecrets,
 ): FakeChangeProposalTransaction => {
   const calls: Array<'run' | 'dryRun'> = [];
+  const dryRunGroups: Array<string | null> = [];
   const locks: ChangeProposalTarget[] = [];
   const dropped = (count: number) => { fake.deferredDropped += count; };
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
@@ -480,6 +507,7 @@ export const createChangeProposalTransactionFake = (
   });
   const fake: FakeChangeProposalTransaction = {
     calls,
+    dryRunGroups,
     locks,
     deferredDropped: 0,
     run: async (_tenantId, operation) => {
@@ -495,8 +523,9 @@ export const createChangeProposalTransactionFake = (
       for (const effect of effects) await effect();
       return result;
     },
-    dryRun: async (_tenantId, operation) => {
+    dryRun: async (_tenantId, operation, options = {}) => {
       calls.push('dryRun');
+      dryRunGroups.push(options.groupId ?? null);
       const effects: Array<() => Promise<void>> = [];
       const result = await operation(scopeOver(structuredClone(state), effects));
       dropped(effects.length);

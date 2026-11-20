@@ -43,7 +43,7 @@ export const shopProposalRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     resourceIdSchema: changeProposalIdInputSchema.shape.id,
     handler: async (c, { ctx }) => {
       const result = await withdrawOwnChangeProposal(ctx, { id: c.req.param('id') ?? '' }, deps);
-      return respond(result.ok ? ok({ proposal: result.value }) : result);
+      return result.ok ? respond(ok({ proposal: result.value })) : respond(result, { headers: retryAfterHeaders(result.error) });
     },
   },
   {

@@ -215,8 +215,8 @@ export const withdrawOwnChangeProposal = async (
   const now = deps.clock.nowIso();
   if (proposal.status !== 'pending') return err(settledConflict(proposal, now));
   if (changeProposalExpired(proposal, now)) {
-    await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now });
-    return err(settledConflict(proposal, now));
+    const recorded = await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now });
+    return err(recorded.kind === 'busy' ? changeProposalsBusy() : settledConflict(proposal, now));
   }
   const withdrawn = await deps.changeProposals.transition(tenantId, id, {
     status: 'withdrawn',
@@ -228,7 +228,8 @@ export const withdrawOwnChangeProposal = async (
     failureMessage: null,
     event: { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now },
   }, { keyId, unexpiredAt: now });
-  if (withdrawn !== null) return ok(toChangeProposalKeyReceipt(withdrawn, now));
+  if (withdrawn.kind === 'busy') return err(changeProposalsBusy());
+  if (withdrawn.value !== null) return ok(toChangeProposalKeyReceipt(withdrawn.value, now));
   const current = await deps.changeProposals.findByKey(tenantId, keyId, id);
   return err(current === null ? missing : settledConflict(current, now));
 };
@@ -286,8 +287,8 @@ export const rejectChangeProposal = async (
   const owner = ctx.identity.userId;
   if (proposal.status !== 'pending') return err(settledConflict(proposal, now));
   if (changeProposalExpired(proposal, now)) {
-    await deps.changeProposals.recordExpiry(tenant.value, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
-    return err(settledConflict(proposal, now));
+    const recorded = await deps.changeProposals.recordExpiry(tenant.value, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
+    return err(recorded.kind === 'busy' ? changeProposalsBusy() : settledConflict(proposal, now));
   }
   const rejected = await deps.changeProposals.transition(tenant.value, id, {
     status: 'rejected',
@@ -299,7 +300,11 @@ export const rejectChangeProposal = async (
     failureMessage: null,
     event: { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note, at: now },
   }, { unexpiredAt: now });
-  if (rejected !== null) return ok(toChangeProposalOwnerView(rejected, (await keyStates(tenant.value, deps, now))(rejected), null, now));
+  if (rejected.kind === 'busy') return err(changeProposalsBusy());
+  if (rejected.value !== null) {
+    const decided = rejected.value;
+    return ok(toChangeProposalOwnerView(decided, (await keyStates(tenant.value, deps, now))(decided), null, now));
+  }
   const current = await deps.changeProposals.findById(tenant.value, id);
   return err(current === null ? missing : settledConflict(current, now));
 };
@@ -327,8 +332,8 @@ export const approveChangeProposal = async (
   const owner = ctx.identity.userId;
   if (proposal.status !== 'pending') return err(settledConflict(proposal, now));
   if (changeProposalExpired(proposal, now)) {
-    await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
-    return err(settledConflict(proposal, now));
+    const recorded = await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
+    return err(recorded.kind === 'busy' ? changeProposalsBusy() : settledConflict(proposal, now));
   }
   const decided = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<ApprovalDecision, AppError>> => {
     const proposals = scope.repositories.changeProposals;
@@ -340,7 +345,8 @@ export const approveChangeProposal = async (
     if (locked.groupId !== null) return err(groupedChangeProposalDecisionRefused(locked));
     const outcome = await applyLockedProposal(locked, ctx, scope, deps);
     if (outcome.status === 'expired') {
-      await proposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: outcome.at });
+      const recorded = await proposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: outcome.at });
+      if (recorded.kind === 'busy') return err(changeProposalsBusy());
       return ok({ kind: 'expired', proposal: locked, at: outcome.at });
     }
     const transitioned = await proposals.transition(tenantId, id, {
@@ -350,8 +356,9 @@ export const approveChangeProposal = async (
       decisionNote: null,
       event: { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: outcome.status === 'stale' ? outcome.note : null, at: outcome.at },
     }, { unexpiredAt: outcome.at });
-    if (transitioned === null) throw new Error(`Change proposal ${id} left pending while its row was locked`);
-    return ok({ kind: 'decided', proposal: transitioned, at: outcome.at });
+    if (transitioned.kind === 'busy') return err(changeProposalsBusy());
+    if (transitioned.value === null) throw new Error(`Change proposal ${id} left pending while its row was locked`);
+    return ok({ kind: 'decided', proposal: transitioned.value, at: outcome.at });
   });
   if (!decided.ok) return decided;
   if (decided.value.kind === 'expired') return err(settledConflict(decided.value.proposal, decided.value.at));

@@ -61,7 +61,7 @@ export const registerChangeProposalRoutes = (
       id: c.req.param('id') ?? '',
       ...(body.data.note === undefined ? {} : { note: body.data.note }),
     }, deps);
-    return respond(result.ok ? ok({ proposal: result.value }) : result);
+    return result.ok ? respond(ok({ proposal: result.value })) : respond(result, { headers: retryAfterHeaders(result.error) });
   });
 
   app.post(API_PATHS.changeProposalApprove, async (c) => {
@@ -83,7 +83,7 @@ export const registerChangeProposalRoutes = (
       id: c.req.param('id') ?? '',
       ...(body.data.note === undefined ? {} : { note: body.data.note }),
     }, deps);
-    return respond(result.ok ? ok({ group: result.value }) : result);
+    return result.ok ? respond(ok({ group: result.value })) : respond(result, { headers: retryAfterHeaders(result.error) });
   });
 
   app.post(API_PATHS.changeProposalGroupApprove, async (c) => {

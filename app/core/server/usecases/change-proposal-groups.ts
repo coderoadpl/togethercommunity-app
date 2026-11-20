@@ -54,13 +54,13 @@ import type { Ctx } from '../context.js';
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
+  ChangeProposalGroupDecision,
   ChangeProposalGroupItemTransition,
   ChangeProposalGroupRepository,
   ChangeProposalGroupWithItems,
   ChangeProposalRepository,
   ChangeProposalTransaction,
   ChangeProposalTransition,
-  ChangeProposalTransitionGuard,
   Clock,
   IdGenerator,
   ShopManagementKeyRepository,
@@ -83,7 +83,7 @@ export interface ChangeProposalGroupSubmitDeps extends ChangeProposalRunDeps {
 }
 
 export interface ChangeProposalGroupKeyDeps {
-  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findByKey' | 'transition' | 'recordExpiry' | 'deleteEmpty'>;
+  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findByKey' | 'decide' | 'deleteEmpty'>;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -96,7 +96,7 @@ export interface ChangeProposalGroupOwnerReadDeps {
 }
 
 export interface ChangeProposalGroupDecisionDeps extends ChangeProposalGroupOwnerReadDeps {
-  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'transition' | 'recordExpiry'>;
+  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'decide'>;
   ids: IdGenerator;
 }
 
@@ -142,6 +142,22 @@ const everyItem = (
 const expiryEvent = (ids: IdGenerator, at: string, actor: { actorUserId: string | null; apiKeyId: string | null }) =>
   (): ChangeProposalEventDraft => ({ id: ids.nextId(), ...actor, note: null, at });
 
+type GroupActor = { actorUserId: string | null; apiKeyId: string | null };
+
+const decideOpenGroup = (
+  locked: ChangeProposalGroupWithItems,
+  clock: Clock,
+  ids: IdGenerator,
+  actor: GroupActor,
+  transition: (item: ChangeProposal, at: string) => ChangeProposalTransition,
+): ChangeProposalGroupDecision => {
+  const at = clock.nowIso();
+  const status = changeProposalGroupStatus(locked.group, locked.items, at);
+  if (locked.items.length > 0 && status === 'expired') return { kind: 'record_expiry', at, event: expiryEvent(ids, at, actor) };
+  if (locked.items.length === 0 || status !== 'open') return { kind: 'refuse', at };
+  return { kind: 'move', at, transitions: everyItem(locked.items, (item) => transition(item, at)) };
+};
+
 export const createChangeProposalGroup = async (
   ctx: Ctx,
   input: CreateChangeProposalGroupInput,
@@ -170,8 +186,12 @@ const earlierItemNoLongerApplies = (item: ChangeProposal): AppError => appError(
   { changeProposalGroupItem: item.id },
 );
 
-const groupChanged = (): AppError =>
-  appError('conflict', 'Another proposal joined this group meanwhile; nothing was stored, submit again');
+const GROUP_CHANGED_MESSAGE = 'Another proposal joined this group meanwhile; nothing was stored, submit again';
+
+const groupChanged = (): AppError => appError('conflict', GROUP_CHANGED_MESSAGE);
+
+const sameItemIds = (left: readonly ChangeProposal[], right: readonly ChangeProposal[]): boolean =>
+  left.length === right.length && left.every((item, index) => item.id === right[index]?.id);
 
 export const submitGroupedChangeProposal = async (
   ctx: Ctx,
@@ -209,6 +229,11 @@ export const submitGroupedChangeProposal = async (
   const proposalId = deps.ids.nextId();
   const ownerEquivalent: Ctx = { identity: ctx.identity };
   const dryRun = await deps.changeProposalTransaction.dryRun<ChangeProposalEffect>(tenantId, async (scope) => {
+    const inside = await scope.repositories.changeProposalGroups.findByKey(tenantId, keyId, groupId);
+    if (inside === null) return err(keyGroupMissing(groupId));
+    const readAt = deps.clock.nowIso();
+    if (!changeProposalGroupOpen(inside.group, inside.items, readAt)) return err(changeProposalGroupConflict(inside.group, inside.items, readAt));
+    if (!sameItemIds(inside.items, earlier)) return err(changeProposalGroupConflict(inside.group, inside.items, readAt, GROUP_CHANGED_MESSAGE));
     const references = changeProposalGroupReferences();
     for (const [index, item] of earlier.entries()) {
       const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
@@ -219,7 +244,7 @@ export const submitGroupedChangeProposal = async (
     const runnable = operation.prepare(resolved);
     if (!runnable.ok) return runnable;
     return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references });
-  });
+  }, { groupId });
   if (!dryRun.ok) return dryRun;
 
   const now = deps.clock.nowIso();
@@ -246,7 +271,7 @@ export const submitGroupedChangeProposal = async (
     failureMessage: null,
   };
   const event: ChangeProposalEventDraft = { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now };
-  const added = await deps.changeProposalGroups.addItem(tenantId, proposal, event, now);
+  const added = await deps.changeProposalGroups.addItem(tenantId, proposal, event, deps.clock);
   switch (added.kind) {
     case 'created':
       return ok(keyReceipt({ group: current.group, items: [...earlier, added.proposal] }, now));
@@ -259,7 +284,7 @@ export const submitGroupedChangeProposal = async (
     case 'not_found':
       return err(keyGroupMissing(groupId));
     case 'group_closed':
-      return err(changeProposalGroupConflict(added.current.group, added.current.items, now));
+      return err(changeProposalGroupConflict(added.current.group, added.current.items, added.at));
     case 'group_full':
       return err(changeProposalGroupCapExceeded('group_items'));
     case 'group_changed':
@@ -294,29 +319,30 @@ export const withdrawOwnChangeProposalGroup = async (
   const { id } = parsed.data;
   const found = await deps.changeProposalGroups.findByKey(tenantId, keyId, id);
   if (found === null) return err(keyGroupMissing(id));
-  const now = deps.clock.nowIso();
   if (found.items.length === 0) {
-    if (!await deps.changeProposalGroups.deleteEmpty(tenantId, keyId, id)) return err(changeProposalGroupConflict(found.group, found.items, now));
+    const deleted = await deps.changeProposalGroups.deleteEmpty(tenantId, keyId, id);
+    const now = deps.clock.nowIso();
+    if (deleted.kind === 'busy') return err(changeProposalsBusy());
+    if (!deleted.value) return err(changeProposalGroupConflict(found.group, found.items, now));
     return ok({ ...keyReceipt(found, now), status: 'withdrawn' });
   }
-  if (changeProposalGroupStatus(found.group, found.items, now) === 'expired') {
-    await deps.changeProposalGroups.recordExpiry(tenantId, id, expiryEvent(deps.ids, now, { actorUserId: null, apiKeyId: keyId }));
-  }
-  if (!changeProposalGroupOpen(found.group, found.items, now)) return err(changeProposalGroupConflict(found.group, found.items, now));
-  const guard: ChangeProposalTransitionGuard = { keyId, unexpiredAt: now };
-  const withdrawn = await deps.changeProposalGroups.transition(tenantId, id, everyItem(found.items, () => ({
-    status: 'withdrawn',
-    decidedByUserId: null,
-    decidedAt: now,
-    decisionNote: null,
-    appliedResourceId: null,
-    failureCode: null,
-    failureMessage: null,
-    event: { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now },
-  })), guard);
-  if (withdrawn !== null) return ok(keyReceipt({ group: found.group, items: withdrawn }, now));
-  const current = await deps.changeProposalGroups.findByKey(tenantId, keyId, id);
-  return err(current === null ? keyGroupMissing(id) : changeProposalGroupConflict(current.group, current.items, now));
+  const actor: GroupActor = { actorUserId: null, apiKeyId: keyId };
+  const decided = await deps.changeProposalGroups.decide(tenantId, id, { keyId }, (locked) =>
+    decideOpenGroup(locked, deps.clock, deps.ids, actor, (_item, at) => ({
+      status: 'withdrawn',
+      decidedByUserId: null,
+      decidedAt: at,
+      decisionNote: null,
+      appliedResourceId: null,
+      failureCode: null,
+      failureMessage: null,
+      event: { id: deps.ids.nextId(), ...actor, note: null, at },
+    })));
+  if (decided.kind === 'busy') return err(changeProposalsBusy());
+  if (decided.kind === 'not_found') return err(keyGroupMissing(id));
+  const { decision, group, items } = decided;
+  if (decision.kind === 'move') return ok(keyReceipt({ group, items }, decision.at));
+  return err(changeProposalGroupConflict(group, items, decision.at));
 };
 
 export const getChangeProposalGroup = async (
@@ -346,27 +372,25 @@ export const rejectChangeProposalGroup = async (
   const { id, note } = parsed.data;
   const found = await deps.changeProposalGroups.findById(tenantId, id);
   if (found === null) return err(ownerGroupMissing(id));
-  const now = deps.clock.nowIso();
   const owner = ctx.identity.userId;
-  if (changeProposalGroupStatus(found.group, found.items, now) === 'expired') {
-    await deps.changeProposalGroups.recordExpiry(tenantId, id, expiryEvent(deps.ids, now, { actorUserId: owner, apiKeyId: null }));
-  }
-  if (found.items.length === 0 || !changeProposalGroupOpen(found.group, found.items, now)) {
-    return err(changeProposalGroupConflict(found.group, found.items, now));
-  }
-  const rejected = await deps.changeProposalGroups.transition(tenantId, id, everyItem(found.items, () => ({
-    status: 'rejected',
-    decidedByUserId: owner,
-    decidedAt: now,
-    decisionNote: note,
-    appliedResourceId: null,
-    failureCode: null,
-    failureMessage: null,
-    event: { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note, at: now },
-  })), { unexpiredAt: now });
-  if (rejected !== null) return ok(await ownerView({ group: found.group, items: rejected }, deps, now));
-  const current = await deps.changeProposalGroups.findById(tenantId, id);
-  return err(current === null ? ownerGroupMissing(id) : changeProposalGroupConflict(current.group, current.items, now));
+  if (found.items.length === 0) return err(changeProposalGroupConflict(found.group, found.items, deps.clock.nowIso()));
+  const actor: GroupActor = { actorUserId: owner, apiKeyId: null };
+  const decided = await deps.changeProposalGroups.decide(tenantId, id, {}, (locked) =>
+    decideOpenGroup(locked, deps.clock, deps.ids, actor, (_item, at) => ({
+      status: 'rejected',
+      decidedByUserId: owner,
+      decidedAt: at,
+      decisionNote: note,
+      appliedResourceId: null,
+      failureCode: null,
+      failureMessage: null,
+      event: { id: deps.ids.nextId(), ...actor, note, at },
+    })));
+  if (decided.kind === 'busy') return err(changeProposalsBusy());
+  if (decided.kind === 'not_found') return err(ownerGroupMissing(id));
+  const { decision, group, items } = decided;
+  if (decision.kind === 'move') return ok(await ownerView({ group, items }, deps, decision.at));
+  return err(changeProposalGroupConflict(group, items, decision.at));
 };
 
 const shownItemsDiffer = (items: readonly ChangeProposal[], itemIds: readonly string[]): boolean =>
@@ -411,7 +435,8 @@ export const approveChangeProposalGroup = async (
   if (found === null) return err(ownerGroupMissing(id));
   const now = deps.clock.nowIso();
   if (changeProposalGroupStatus(found.group, found.items, now) === 'expired') {
-    await deps.changeProposalGroups.recordExpiry(tenantId, id, expiryEvent(deps.ids, now, { actorUserId: owner, apiKeyId: null }));
+    const recorded = await deps.changeProposalGroups.recordExpiry(tenantId, id, expiryEvent(deps.ids, now, { actorUserId: owner, apiKeyId: null }));
+    if (recorded.kind === 'busy') return err(changeProposalsBusy());
   }
   if (found.items.length === 0 || !changeProposalGroupOpen(found.group, found.items, now)) {
     return err(changeProposalGroupConflict(found.group, found.items, now));
@@ -443,7 +468,8 @@ export const approveChangeProposalGroup = async (
     if (!applied.ok && halt.current === null) return applied;
     const stop = halt.current;
     if (stop !== null && stop.outcome.status === 'expired') {
-      await groups.recordExpiry(tenantId, id, expiryEvent(deps.ids, stop.outcome.at, { actorUserId: owner, apiKeyId: null }));
+      const recorded = await groups.recordExpiry(tenantId, id, expiryEvent(deps.ids, stop.outcome.at, { actorUserId: owner, apiKeyId: null }));
+      if (recorded.kind === 'busy') return err(changeProposalsBusy());
       return ok({ kind: 'expired', at: stop.outcome.at });
     }
     const transitions: ChangeProposalGroupItemTransition[] = [];

@@ -904,7 +904,7 @@ export interface ChangeProposalWithdrawal {
   nextEventId(): string;
 }
 
-/** Revoking or purging a key withdraws that key's pending change proposals in the same transaction. */
+/** Revoking or purging a key withdraws that key's pending change proposals and deletes its empty groups in the same transaction. */
 export interface ShopManagementKeyRepository {
   listByTenant(tenantId: string): Promise<ShopManagementKey[]>;
   create(tenantId: string, key: ShopManagementKey, event: ShopManagementKeyEvent): Promise<void>;
@@ -2897,7 +2897,7 @@ export interface ChangeProposalPage {
   nextCursor: string | null;
 }
 
-type ChangeProposalCreation =
+export type ChangeProposalCreation =
   | { kind: 'created'; proposal: ChangeProposal }
   | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
   | { kind: 'key_inactive' }
@@ -2919,6 +2919,9 @@ export interface ChangeProposalTransitionGuard {
   unexpiredAt?: string;
 }
 
+/** A write whose lock wait or statement time ran out has rolled back completely and answers busy. */
+export type ChangeProposalWrite<T> = { kind: 'written'; value: T } | { kind: 'busy' };
+
 /**
  * Proposals are tenant-scoped; key-side reads also take the proposing key, so a key reaches only its own rows.
  * Every status change and its event commit together, and events get the next per-proposal sequence.
@@ -2936,8 +2939,8 @@ export interface ChangeProposalRepository {
     id: string,
     transition: ChangeProposalTransition,
     guard?: ChangeProposalTransitionGuard,
-  ): Promise<ChangeProposal | null>;
-  recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<boolean>;
+  ): Promise<ChangeProposalWrite<ChangeProposal | null>>;
+  recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
 }
 
 export interface ChangeProposalEventRepository {
@@ -2949,16 +2952,16 @@ export interface ChangeProposalGroupWithItems {
   items: ChangeProposal[];
 }
 
-type ChangeProposalGroupCreation =
+export type ChangeProposalGroupCreation =
   | { kind: 'created'; group: ChangeProposalGroup }
   | { kind: 'cap_exceeded' }
   | { kind: 'key_inactive' }
   | { kind: 'busy' };
 
-type ChangeProposalGroupItemAddition =
+export type ChangeProposalGroupItemAddition =
   | ChangeProposalCreation
   | { kind: 'not_found' }
-  | { kind: 'group_closed'; current: ChangeProposalGroupWithItems }
+  | { kind: 'group_closed'; current: ChangeProposalGroupWithItems; at: string }
   | { kind: 'group_full' }
   | { kind: 'group_changed' };
 
@@ -2966,6 +2969,16 @@ export interface ChangeProposalGroupItemTransition {
   id: string;
   transition: ChangeProposalTransition;
 }
+
+export type ChangeProposalGroupDecision =
+  | { kind: 'move'; at: string; transitions: readonly ChangeProposalGroupItemTransition[] }
+  | { kind: 'record_expiry'; at: string; event: (proposalId: string) => ChangeProposalEventDraft }
+  | { kind: 'refuse'; at: string };
+
+export type ChangeProposalGroupDecisionOutcome =
+  | { kind: 'decided'; decision: ChangeProposalGroupDecision; group: ChangeProposalGroup; items: ChangeProposal[] }
+  | { kind: 'not_found' }
+  | { kind: 'busy' };
 
 /**
  * Groups are tenant-scoped and belong to the key that created them; key-side reads take that key, so another key's
@@ -2977,20 +2990,36 @@ export interface ChangeProposalGroupRepository {
   findById(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
   findByKey(tenantId: string, keyId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
   listByIds(tenantId: string, ids: readonly string[]): Promise<ChangeProposalGroup[]>;
-  /** Stores `proposal` at its `groupPosition`, which must be the next free position of an open group of the same key. */
-  addItem(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, now: string): Promise<ChangeProposalGroupItemAddition>;
+  /**
+   * Stores `proposal` at its `groupPosition`, which must be the next free position of an open group of the same key;
+   * whether the group is still open is judged at the clock's time once the group and its items are locked.
+   */
+  addItem(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, clock: Clock): Promise<ChangeProposalGroupItemAddition>;
   /** Locks the group row, then its item rows in the order key revocation takes them, until the surrounding transaction ends. */
   lock(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
-  /** Moves every item of the group at once; null, changing nothing, unless `transitions` names exactly the group's items in position order and each is pending. */
+  /**
+   * Locks the group and its items, then asks `decide` what to do with exactly the locked items, so the decision and the
+   * time it reads come after every lock wait: move every item, record the expiry on every item, or change nothing.
+   */
+  decide(
+    tenantId: string,
+    id: string,
+    guard: Pick<ChangeProposalTransitionGuard, 'keyId'>,
+    decide: (locked: ChangeProposalGroupWithItems) => ChangeProposalGroupDecision,
+  ): Promise<ChangeProposalGroupDecisionOutcome>;
+  /**
+   * Inside a change proposal transaction only: moves every item of the group at once; null, changing nothing, unless
+   * `transitions` names exactly the group's items in position order and each is pending.
+   */
   transition(
     tenantId: string,
     id: string,
     transitions: readonly ChangeProposalGroupItemTransition[],
     guard?: ChangeProposalTransitionGuard,
   ): Promise<ChangeProposal[] | null>;
-  recordExpiry(tenantId: string, id: string, event: (proposalId: string) => ChangeProposalEventDraft): Promise<boolean>;
+  recordExpiry(tenantId: string, id: string, event: (proposalId: string) => ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
   /** Deletes a group of the key that never received an item; false when it has items or is not the key's. */
-  deleteEmpty(tenantId: string, keyId: string, id: string): Promise<boolean>;
+  deleteEmpty(tenantId: string, keyId: string, id: string): Promise<ChangeProposalWrite<boolean>>;
 }
 
 export type ChangeProposalTargetLockPurpose = 'change' | 'delete';
@@ -3044,5 +3073,10 @@ export interface ChangeProposalTransactionScope {
  */
 export interface ChangeProposalTransaction {
   run<T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
-  dryRun<T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  /** With `groupId`, at most one dry run of that group runs at a time; a second one answers busy. */
+  dryRun<T>(
+    tenantId: string,
+    operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>,
+    options?: { groupId?: string },
+  ): Promise<Result<T, AppError>>;
 }

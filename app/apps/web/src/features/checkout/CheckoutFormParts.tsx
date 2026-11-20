@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Checkbox,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   OutlinedInput,
@@ -21,9 +23,10 @@ import { ApiError } from '#core/client/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutDisclosureButton, FinePrint } from '../../theme.js';
+import { rowAction } from './checkout-keys.js';
 
 type Translations = ReturnType<typeof useTranslations>;
-type InvoiceField = readonly [string, string, string, (value: string) => void];
+type InvoiceField = { id: string; label: string; value: string; setValue: (value: string) => void; autoComplete?: string };
 
 const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
   <SvgIcon fontSize="small" aria-hidden>
@@ -33,17 +36,22 @@ const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
 
 export const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+const COUPON_EMAIL_REQUIRED_MESSAGE = 'An email is required to validate this coupon';
+
 const couponError = (error: unknown, t: Translations): string => {
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
     case 'Coupon cannot be applied':
       return t.checkout.couponUnavailable;
-    case 'An email is required to validate this coupon':
+    case COUPON_EMAIL_REQUIRED_MESSAGE:
       return t.checkout.couponEmailRequired;
     default:
       return localizeError(error, t);
   }
 };
+
+export const couponNeedsEmail = (error: unknown): boolean =>
+  error instanceof ApiError && error.appError.message === COUPON_EMAIL_REQUIRED_MESSAGE;
 
 export const checkoutRefusal = (message: string, t: Translations): string | null => {
   switch (message) {
@@ -68,14 +76,14 @@ export const useInvoiceFields = () => {
   const [postalCode, setPostalCode] = useState('');
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('PL');
-  const fields: InvoiceField[] = [
-    ['checkout-nip', t.checkout.nipLabel, nip, setNip],
-    ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
-    ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
-    ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
-    ['checkout-city', t.checkout.cityLabel, city, setCity],
-    ['checkout-country', t.checkout.countryLabel, country, setCountry],
-  ];
+  const fields = {
+    nip: { id: 'checkout-nip', label: t.checkout.nipLabel, value: nip, setValue: setNip },
+    company: { id: 'checkout-company', label: t.checkout.companyNameLabel, value: companyName, setValue: setCompanyName, autoComplete: 'organization' },
+    address: { id: 'checkout-address', label: t.checkout.addressLabel, value: billingAddress, setValue: setBillingAddress, autoComplete: 'street-address' },
+    postalCode: { id: 'checkout-postal-code', label: t.checkout.postalCodeLabel, value: postalCode, setValue: setPostalCode, autoComplete: 'postal-code' },
+    city: { id: 'checkout-city', label: t.checkout.cityLabel, value: city, setValue: setCity, autoComplete: 'address-level2' },
+    country: { id: 'checkout-country', label: t.checkout.countryLabel, value: country, setValue: setCountry, autoComplete: 'country' },
+  } satisfies Record<string, InvoiceField>;
   const billing: { billing?: BillingData } = visible
     ? { billing: { nip: nip === '' ? null : nip, companyName, address: billingAddress, postalCode, city, country } }
     : {};
@@ -98,23 +106,42 @@ export const InvoiceFields = ({ invoice }: { invoice: ReturnType<typeof useInvoi
       >
         {t.checkout.invoiceReveal}
       </CheckoutDisclosureButton>
-      {invoice.visible ? (
-        <Stack useFlexGap spacing="0.75rem">
-          {invoice.fields.map(([id, label, value, setValue]) => (
-            <FormControl key={id} fullWidth>
-              <FormLabel htmlFor={id}>{label}</FormLabel>
-              <OutlinedInput
-                id={id}
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                required={id !== 'checkout-nip'}
-                inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
-              />
-            </FormControl>
-          ))}
-        </Stack>
-      ) : null}
+      {invoice.visible ? <InvoiceInputs invoice={invoice} /> : null}
     </>
+  );
+};
+
+const InvoiceInput = ({ field, required = true, inputProps }: {
+  field: InvoiceField;
+  required?: boolean;
+  inputProps?: { inputMode: 'numeric'; pattern: string };
+}) => (
+  <FormControl fullWidth>
+    <FormLabel htmlFor={field.id}>{field.label}</FormLabel>
+    <OutlinedInput
+      id={field.id}
+      value={field.value}
+      onChange={(event) => field.setValue(event.target.value)}
+      required={required}
+      autoComplete={field.autoComplete}
+      inputProps={inputProps}
+    />
+  </FormControl>
+);
+
+export const InvoiceInputs = ({ invoice }: { invoice: ReturnType<typeof useInvoiceFields> }) => {
+  const { fields } = invoice;
+  return (
+    <Stack useFlexGap spacing="0.75rem">
+      <InvoiceInput field={fields.nip} required={false} inputProps={{ inputMode: 'numeric', pattern: '[0-9]{10}' }} />
+      <InvoiceInput field={fields.company} />
+      <InvoiceInput field={fields.address} />
+      <Box data-testid="checkout-invoice-locality" sx={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) minmax(0, 2fr)' } }}>
+        <InvoiceInput field={fields.postalCode} />
+        <InvoiceInput field={fields.city} />
+      </Box>
+      <InvoiceInput field={fields.country} />
+    </Stack>
   );
 };
 
@@ -142,6 +169,12 @@ export const StripeTestModeControls = ({ testConfigured, testEnabled, disabled, 
   );
 };
 
+type CouponValidation = {
+  isPending: boolean;
+  data: { breakdown: CouponCheckoutBreakdown; recurringDuration: 'first_invoice' | 'forever' } | undefined;
+  error: unknown;
+};
+
 export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, onCodeChange, onApply, validation, currency, language, recurring }: {
   visible: boolean;
   testEnabled: boolean;
@@ -149,11 +182,7 @@ export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, on
   onVisibilityChange: (visible: boolean) => void;
   onCodeChange: (code: string) => void;
   onApply: () => void;
-  validation: {
-    isPending: boolean;
-    data: { breakdown: CouponCheckoutBreakdown; recurringDuration: 'first_invoice' | 'forever' } | undefined;
-    error: unknown;
-  };
+  validation: CouponValidation;
   currency: string;
   language: 'pl' | 'en';
   recurring: boolean;
@@ -175,72 +204,156 @@ export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, on
       >
         {t.checkout.couponReveal}
       </CheckoutDisclosureButton>
-      {testEnabled ? (
-        <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
-          {t.checkout.testModeCouponBlocked}
-        </FinePrint>
-      ) : null}
+      {testEnabled ? <CouponTestModeNote /> : null}
       {visible && !testEnabled ? (
-        <Stack useFlexGap spacing="0.5rem">
-          <FormControl fullWidth>
-            <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
-            <OutlinedInput
-              id="checkout-coupon"
-              inputProps={{ 'data-testid': 'checkout-coupon-input' }}
-              value={code}
-              onChange={(event) => onCodeChange(event.target.value)}
-            />
-          </FormControl>
+        <CouponInputs code={code} onCodeChange={onCodeChange} onApply={onApply} validation={validation} currency={currency} language={language} recurring={recurring} />
+      ) : null}
+    </>
+  );
+};
+
+export const CouponTestModeNote = () => {
+  const t = useTranslations();
+  return (
+    <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
+      {t.checkout.testModeCouponBlocked}
+    </FinePrint>
+  );
+};
+
+type CouponRowProps = { variant?: 'standalone' } | { variant: 'row'; onRemove: () => void };
+
+export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency, language, recurring, children, ...rowProps }: {
+  code: string;
+  onCodeChange: (code: string) => void;
+  onApply: () => void;
+  validation: CouponValidation;
+  currency: string;
+  language: 'pl' | 'en';
+  recurring: boolean;
+  children?: ReactNode;
+} & CouponRowProps) => {
+  const t = useTranslations();
+  const emptyReasonId = useId();
+  const row = rowProps.variant === 'row' ? rowProps : null;
+  const applied = row === null ? undefined : validation.data?.breakdown;
+  const emptyReason = row !== null && !validation.isPending && code.trim() === '';
+  const focusAfter = useRef<'remove' | 'input' | null>(null);
+  const removeRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isApplied = applied !== undefined;
+  useEffect(() => {
+    const target = isApplied ? (focusAfter.current === 'remove' ? removeRef.current : null) : (focusAfter.current === 'input' ? inputRef.current : null);
+    if (target === null) return;
+    focusAfter.current = null;
+    target.focus();
+  }, [isApplied]);
+  useEffect(() => {
+    if (validation.error !== null) focusAfter.current = null;
+  }, [validation.error]);
+  const canApply = !validation.isPending && code.trim() !== '';
+  const apply = () => {
+    focusAfter.current = row === null ? null : 'remove';
+    onApply();
+  };
+  return (
+    <Stack
+      useFlexGap
+      spacing="0.5rem"
+      {...rowAction('apply')}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' || !(event.target instanceof HTMLInputElement)) return;
+        event.preventDefault();
+        if (canApply && !isApplied) apply();
+      }}
+    >
+      {applied === undefined ? (
+        <FormControl fullWidth>
+          <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
+          <OutlinedInput
+            id="checkout-coupon"
+            inputRef={inputRef}
+            inputProps={{ 'data-testid': 'checkout-coupon-input' }}
+            value={code}
+            onChange={(event) => onCodeChange(event.target.value)}
+          />
+        </FormControl>
+      ) : null}
+      {children}
+      {row !== null && applied !== undefined ? (
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', columnGap: '0.75rem' }}>
+          <Typography role="status" data-testid="checkout-coupon-applied" sx={{ overflowWrap: 'anywhere' }}>
+            {t.checkout.couponAppliedLine({ code: applied.code })}
+          </Typography>
+          <Button
+            ref={removeRef}
+            type="button"
+            variant="text"
+            data-testid="checkout-coupon-remove"
+            aria-label={t.checkout.couponRemoveLabel({ code: applied.code })}
+            onClick={() => {
+              focusAfter.current = 'input';
+              row.onRemove();
+            }}
+            sx={{ px: 0, minWidth: 0, minHeight: '2.75rem' }}
+          >
+            {t.checkout.couponRemove}
+          </Button>
+        </Box>
+      ) : (
+        <>
           <Button
             type="button"
             variant="outlined"
             data-testid="checkout-coupon-apply"
-            disabled={validation.isPending || code.trim() === ''}
-            onClick={onApply}
+            disabled={!canApply}
+            aria-describedby={emptyReason ? emptyReasonId : undefined}
+            onClick={apply}
           >
             {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
           </Button>
-          {validation.data === undefined ? null : (
-            <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
-              <Stack useFlexGap spacing="0.25rem">
-                <Typography>{t.checkout.couponOriginal({
-                  price: formatPrice(validation.data.breakdown.originalCents, currency, language),
-                })}</Typography>
-                <Typography>{t.checkout.couponDiscount({
-                  price: formatPrice(validation.data.breakdown.discountCents, currency, language),
-                })}</Typography>
-                <Typography data-testid="checkout-coupon-final">
-                  {t.checkout.couponFinal({
-                    price: formatPrice(validation.data.breakdown.finalCents, currency, language),
-                  })}
-                </Typography>
-                {!recurring ? null : (
-                  <Typography>
-                    {validation.data.recurringDuration === 'forever'
-                      ? t.checkout.couponForever
-                      : t.checkout.couponFirstInvoice}
-                  </Typography>
-                )}
-                <FinePrint component="p" variant="caption">
-                  {t.checkout.omnibusLowest({
-                    price: formatPrice(
-                      validation.data.breakdown.lowestPriceLast30DaysCents,
-                      currency,
-                      language,
-                    ),
-                  })}
-                </FinePrint>
-              </Stack>
-            </Paper>
-          )}
-          {validation.error === null ? null : (
-            <Alert severity="error" data-testid="checkout-coupon-error">
-              {couponError(validation.error, t)}
-            </Alert>
-          )}
-        </Stack>
-      ) : null}
-    </>
+          {emptyReason ? <FormHelperText id={emptyReasonId} sx={{ mx: 0, mt: 0 }}>{t.checkout.couponEmpty}</FormHelperText> : null}
+        </>
+      )}
+      {validation.data === undefined ? null : (
+        <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
+          <Stack useFlexGap spacing="0.25rem">
+            <Typography>{t.checkout.couponOriginal({
+              price: formatPrice(validation.data.breakdown.originalCents, currency, language),
+            })}</Typography>
+            <Typography>{t.checkout.couponDiscount({
+              price: formatPrice(validation.data.breakdown.discountCents, currency, language),
+            })}</Typography>
+            <Typography data-testid="checkout-coupon-final">
+              {(row === null ? t.checkout.couponFinal : t.checkout.couponAfterDiscount)({
+                price: formatPrice(validation.data.breakdown.finalCents, currency, language),
+              })}
+            </Typography>
+            {!recurring ? null : (
+              <Typography>
+                {validation.data.recurringDuration === 'forever'
+                  ? t.checkout.couponForever
+                  : t.checkout.couponFirstInvoice}
+              </Typography>
+            )}
+            <FinePrint component="p" variant="caption">
+              {t.checkout.omnibusLowest({
+                price: formatPrice(
+                  validation.data.breakdown.lowestPriceLast30DaysCents,
+                  currency,
+                  language,
+                ),
+              })}
+            </FinePrint>
+          </Stack>
+        </Paper>
+      )}
+      {validation.error === null ? null : (
+        <Alert severity="error" data-testid="checkout-coupon-error">
+          {couponError(validation.error, t)}
+        </Alert>
+      )}
+    </Stack>
   );
 };
 

@@ -116,6 +116,8 @@ Besides the lines, the total and the workspace context it carries:
   tracked. It is `0` exactly when `soldOut` is `true`.
 - `lines[].maxQuantity`: the quantity of that product one checkout accepts, `1`,
   or `0` when the product is sold out.
+- `lines[].coverUrl`: the product cover, or `null`; the checkout page shows it
+  as a small picture beside the product's safety information.
 - `lines[].variants[].available`: the available count of each eligible variant,
   `null` for an untracked one, next to its `soldOut` flag.
 
@@ -239,7 +241,11 @@ and preserves the other collected fields. A NIP is optional; the B2B-only scope
 continues to skip orders without one. iFirma supports domestic addresses only.
 Stripe requires terms acceptance; Together records that acceptance with the
 exact terms and privacy URLs stored in session metadata. Set a valid account
-terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
+terms URL once in the Stripe Dashboard (**Settings → Business → Public details →
+Terms of service**, in live and in test mode). Until it is set Stripe refuses the
+handoff, and the buyer lands on the Together page of the link with
+`?checkout=together&terms=page`, which collects the terms itself (see
+[Payments](payments.md#stripe-accounts-without-a-dashboard-terms-url)). Together supplies a per-session agreement
 linking the tenant's terms and privacy URLs. A tenant missing either legal URL
 receives an error page without a checkout session, including on the Together
 fallback; its checkout endpoint also enforces both URLs.
@@ -276,6 +282,21 @@ consents are combined across all products. Its existing billing fields and
 coupons remain available; a product-scoped coupon must cover every included
 product. Success and cancellation return to the Together page without restarting
 the automatic handoff.
+
+On that Together page Stripe collects the terms acceptance and, unless Together
+already knows it, the buyer email, with the same per-session agreement as the
+direct handoff. The page keeps only what Stripe does not show: the delivery and
+parcel-locker choice, the invoice data, the coupon, the purchase consent
+checkboxes and the product safety information. It asks for the email only for a
+coupon with a per-member limit, and for the email and the terms only for an order
+with nothing to pay, which never reaches Stripe. The webhook fulfils a paid
+Together session only with Stripe's terms evidence; the marketing consents and the
+invoice data come from the capture the page stored before the session started.
+See [Payments](payments.md#terms-acceptance-on-the-together-checkout-page).
+The page is one short step: a one-row order summary with the per-line VAT
+details behind **Details and VAT**, the delivery choice, collapsed invoice and
+discount code rows, a compact product safety line and a pay button with the
+total; see [Layout of the Together checkout page](shop.md#layout-of-the-together-checkout-page).
 
 Owners configure **Integrations → Stripe → Checkout appearance**: display name,
 HTTPS logo and icon URLs, background and button hex colours, font and corners.

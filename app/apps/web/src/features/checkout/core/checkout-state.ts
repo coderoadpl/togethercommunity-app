@@ -39,15 +39,15 @@ export const reduceCheckoutState = (
       return { ...state, couponCode: event.couponCode };
     case 'shippingRateSelected':
       return { ...state, shippingRateId: event.rateId };
-    case 'pickupPointCodeChanged': {
-      const pickupPointCode = event.code.toUpperCase();
-      const unchanged = state.pickupPoint !== null && normalizePickupPointCode(pickupPointCode) === state.pickupPoint.code;
-      return { ...state, pickupPointCode, pickupPoint: unchanged ? state.pickupPoint : null };
-    }
+    case 'pickupPointCodeChanged':
+      return { ...state, pickupPointCode: event.code.toUpperCase() };
     case 'pickupPointSelected':
       return { ...state, pickupPointCode: event.point.code, pickupPoint: event.point };
   }
 };
+
+export const pickedPickupPoint = (state: CheckoutState): PickedPickupPoint | null =>
+  state.pickupPoint !== null && normalizePickupPointCode(state.pickupPointCode) === state.pickupPoint.code ? state.pickupPoint : null;
 
 export type DeliverySelection =
   | { status: 'not_required' }
@@ -64,7 +64,7 @@ export const selectDelivery = (
   if (rate.pickupPoint === 'none') return { status: 'ready', shipping: { rateId: rate.id } };
   if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
   const code = normalizePickupPointCode(state.pickupPointCode);
-  const picked = state.pickupPoint?.code === code ? state.pickupPoint : null;
+  const picked = pickedPickupPoint(state);
   return {
     status: 'ready',
     shipping: {

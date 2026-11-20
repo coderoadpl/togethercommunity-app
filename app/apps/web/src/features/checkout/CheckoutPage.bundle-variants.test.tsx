@@ -4,8 +4,9 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } fr
 import { http, HttpResponse } from 'msw';
 import { beforeEach, expect, it } from 'vitest';
 import { en } from '../../i18n/en.js';
+import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const variants = [
@@ -28,7 +29,7 @@ const serve = (data = offer) => server.use(http.get('/api/public/sales-links/:sl
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/offer/stand-offer?utm_source=newsletter&checkout=together');
-  server.use(http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } })));
+  server.use(anonymousMe(), http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } })));
   serve();
 });
 
@@ -42,15 +43,21 @@ it('renders named navigation between the title and prices with current and disab
   expect(current).not.toHaveAttribute('href');
   const white = within(nav).getByRole('link', { name: 'White · PLA' });
   expect(white).toHaveAttribute('href', '/offer/stand-offer?utm_source=newsletter&checkout=together&variant=black.white');
+  const switcher = within(screen.getByTestId('language-switcher'));
+  for (const language of ['pl', 'en']) {
+    await userEvent.tab();
+    expect(switcher.getByRole('button', { name: language })).toHaveFocus();
+  }
+  await userEvent.tab();
+  expect(screen.getByRole('button', { name: en.checkout.summaryDetails })).toHaveFocus();
   await userEvent.tab();
   expect(white).toHaveFocus();
   const red = within(nav).getByTestId('product-variant-red');
   expect(red).toHaveClass('Mui-disabled');
   expect(red).toHaveTextContent('Red · PETG · Sold out');
   expect(red).not.toHaveAttribute('href');
-  const net = screen.getAllByText(en.salesLinks.net)[0];
-  if (net === undefined) throw new Error('Missing price label');
-  expect(nav.compareDocumentPosition(net) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  expect(screen.getByTestId('checkout-summary').compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  expect(nav.compareDocumentPosition(screen.getByTestId('checkout-pay-cta')) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 });
 
 it('marks a sibling already chosen by another line as unavailable before its stock reason', async () => {
@@ -98,15 +105,20 @@ it.each(['simulate', 'checkout', 'coupon', 'auto-coupon'] as const)('passes effe
     }),
   );
   renderOffer();
-  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+  const pay = await screen.findByTestId('checkout-pay-cta');
+  if (mode === 'simulate') {
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+    await userEvent.click(screen.getByRole('checkbox'));
+  } else {
+    expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
+  }
   expect(query).toEqual(['black.white']);
   if (mode === 'coupon') {
     await userEvent.click(screen.getByRole('button', { name: en.checkout.couponReveal }));
     await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
     await userEvent.click(screen.getByRole('button', { name: en.checkout.couponApply }));
   } else if (mode !== 'auto-coupon') {
-    await userEvent.click(screen.getByRole('checkbox'));
-    await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
+    await userEvent.click(pay);
   }
   await waitFor(() => expect(payload).toMatchObject({ productId: 'black', salesLinkSlug: 'stand-offer', variantSelections: [{ productId: 'black', variantProductId: 'white' }] }));
   expect(await screen.findByRole('alert')).toBeVisible();
@@ -121,7 +133,9 @@ it('omits the selection payload when no line was swapped', async () => {
   renderOffer();
   await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
   await userEvent.click(screen.getByRole('checkbox'));
-  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
+  const pay = screen.getByTestId('checkout-pay-cta');
+  expect(pay.textContent?.replace(/\s+/gu, ' ')).toBe(en.checkout.payIdle({ price: formatPrice(2460, 'PLN', 'en') }).replace(/\s+/gu, ' '));
+  await userEvent.click(pay);
   await waitFor(() => expect(payload).toMatchObject({ productId: 'black' }));
   expect(payload).not.toHaveProperty('variantSelections');
 });

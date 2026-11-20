@@ -58,6 +58,9 @@ describe('PersonalizationField', () => {
     renderWithProviders(<Harness offer={lines()} />);
     await user.click(screen.getByRole('checkbox', { name: /Add an engraving/u }));
     const input = screen.getByLabelText('Engraving text');
+    expect(screen.queryByText(en.personalization.textRequired)).not.toBeInTheDocument();
+    await user.click(input);
+    await user.tab();
     expect(screen.getByText(en.personalization.textRequired)).toBeVisible();
     expect(screen.getByText('0 / 12')).toBeVisible();
     expect(blocked()).toBe('true');
@@ -79,6 +82,9 @@ describe('PersonalizationField', () => {
     await user.type(screen.getByLabelText('Engraving text'), 'For Alex');
     const accept = screen.getByRole('checkbox', { name: condition });
     expect(accept).not.toBeChecked();
+    expect(screen.queryByText(en.personalization.conditionRequired)).not.toBeInTheDocument();
+    await user.tab();
+    await user.tab();
     expect(screen.getByText(en.personalization.conditionRequired)).toBeVisible();
     expect(blocked()).toBe('true');
     await user.click(accept);

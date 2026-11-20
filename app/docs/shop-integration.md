@@ -737,7 +737,8 @@ Each `order` has the shape of an entry in `data.orders` of the order list, in
 its state at the time of the read, not at the time of the change. An order
 changed several times within one page appears once, at its latest cursor.
 Payment, refunds, collection, shipping and issuing or changing the invoice all
-produce a change. The member name and e-mail address, the product title and the
+produce a change, and so does every change of `refundJobStatus` on an order
+cancelled out of stock (`cancelReason: "out_of_stock"`). The member name and e-mail address, the product title and the
 sales link title (`memberName`, `memberEmail`, `productTitle`,
 `salesLinkTitle`) are read at fetch time, and editing them produces no entry.
 `limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`

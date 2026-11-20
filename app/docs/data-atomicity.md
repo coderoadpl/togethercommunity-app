@@ -290,7 +290,12 @@ is not logged.
 which logs the invoice's order in the invoice's workspace, so issuing an invoice
 or changing it produces an entry. It logs only an order of that same workspace,
 so an invoice row whose workspace disagrees with its order's is still written
-and appears in no feed. The feed entry (the order list entry) also
+and appears in no feed. `order_refund_jobs` logs its order through
+`record_refund_job_order_change()` when a job is created and whenever its
+`status` changes (migration `0167_order_refund_job_changes`), because the feed
+entry of an order cancelled out of stock carries `refundJobStatus`; a job write
+that leaves the status unchanged, such as a scheduled status read, is not
+logged. The feed entry (the order list entry) also
 carries values from `members` (the buyer's e-mail address and name), `products`
 (the title) and `sales_links` (the title); they are read at fetch time, and a
 write to those tables alone is not logged. `coupons` adds the coupon code,

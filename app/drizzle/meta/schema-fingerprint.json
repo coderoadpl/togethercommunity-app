@@ -1,6 +1,6 @@
 {
-  "hash": "897507f2060929fb0587b0439da262d9dd280483c45d456f71a8d38061143869",
-  "shortId": "897507f20609",
+  "hash": "97d2d06f33d54139be5963f37d653652e39e2054b6ee08bdd375c4d8364607ab",
+  "shortId": "97d2d06f33d5",
   "schema": {
     "constraints": [
       {
@@ -2454,6 +2454,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION record_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.id); RETURN NULL; END; $function$",
         "name": "record_order_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_refund_job_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.order_id); RETURN NULL; END; $function$",
+        "name": "record_refund_job_order_change"
       },
       {
         "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
@@ -16492,6 +16497,16 @@
         "definition": "CREATE TRIGGER marketing_signup_confirmation_projection AFTER INSERT ON marketing_consents FOR EACH ROW WHEN ((new.status = 'confirmed'::text)) EXECUTE FUNCTION project_marketing_signup_confirmation()",
         "name": "marketing_signup_confirmation_projection",
         "table": "marketing_consents"
+      },
+      {
+        "definition": "CREATE TRIGGER order_refund_jobs_record_insert AFTER INSERT ON order_refund_jobs FOR EACH ROW EXECUTE FUNCTION record_refund_job_order_change()",
+        "name": "order_refund_jobs_record_insert",
+        "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CREATE TRIGGER order_refund_jobs_record_status AFTER UPDATE OF status ON order_refund_jobs FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION record_refund_job_order_change()",
+        "name": "order_refund_jobs_record_status",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CREATE TRIGGER orders_capture_single_line BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION capture_single_order_line()",

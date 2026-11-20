@@ -8,6 +8,7 @@ import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenan
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
+import { createOrderChangeRepository } from './order-changes.js';
 import { createOrderRefundJobRepository } from './order-refund-jobs.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
 import {
@@ -395,6 +396,37 @@ describe('refund dispatcher for orders cancelled out of stock', () => {
       providerRefundId: `re_oos-refund-${orderId}`, providerRefundStatus: 'succeeded', submittedAt: '2026-11-15T10:42:00.000Z',
       nextAttemptAt: '2026-11-16T10:42:00.000Z', lockedAt: null,
     });
+  });
+
+  it('puts every refund state change of a cancelled order on the order change feed with the new state', async () => {
+    const h = harness();
+    await track('printed-1', 1);
+    const snapshotId = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('printed-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+    await fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_oos_feed', session: 'cs_live_golden1', snapshotId, paymentIntentId: 'pi_oos_feed' }), h.webhookDeps);
+    const feed = createOrderChangeRepository(database.db);
+    const orderRepository = createOrderRepository(database.db);
+    const changesAfter = async (after: string | undefined) => {
+      const read = await feed.listOrderChanges(legacyTenant.id, { limit: 200, ...(after === undefined ? {} : { after }) });
+      if (read.kind !== 'changes') throw new Error('Unexpected feed reset');
+      return read.changes;
+    };
+
+    const first = await changesAfter(undefined);
+    const orderId = first[0]?.orderId ?? '';
+    expect(new Set(first.map((change) => change.orderId))).toStrictEqual(new Set([orderId]));
+    expect(await orderRepository.listByIds(legacyTenant.id, [orderId])).toStrictEqual([expect.objectContaining({ cancelReason: 'out_of_stock', refundJobStatus: 'pending' })]);
+
+    expect(await refundDispatcher(h).run()).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+
+    const afterRefund = await changesAfter(first.at(-1)?.cursor);
+    expect(afterRefund.map((change) => change.orderId)).toContain(orderId);
+    expect(afterRefund.every((change) => change.orderId === orderId)).toBe(true);
+    expect(await orderRepository.listByIds(legacyTenant.id, [orderId])).toStrictEqual([expect.objectContaining({ refundJobStatus: 'succeeded' })]);
+
+    expect(await changesAfter(afterRefund.at(-1)?.cursor)).toStrictEqual([]);
   });
 
   it('gives each due job to exactly one of two concurrent dispatcher runs', async () => {

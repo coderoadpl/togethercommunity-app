@@ -1,5 +1,8 @@
+import type { Context } from 'hono';
+import type { z } from 'zod';
+
 import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
-import { err, internal, ok, validation } from '#core/domain/index.js';
+import { err, internal, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
   beginProductCoverUpload,
   completeProductCoverUpload,
@@ -10,10 +13,26 @@ import {
   updateSalesLink,
 } from '#core/server/index.js';
 
+import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
 import type { ShopMachineRoute } from './shop-machine-auth.js';
+
+type SalesLinkCreateInput = z.output<typeof shopAssetsContracts.createSalesLink.input>;
+type SalesLinkUpdateInput = z.output<typeof shopAssetsContracts.updateSalesLink.input>;
+
+const salesLinkCreateInput = async (c: Context<AppVars>): Promise<Result<SalesLinkCreateInput, AppError>> => {
+  const parsed = shopAssetsContracts.createSalesLink.input.safeParse(await readJson(c.req.raw));
+  return parsed.success ? ok(parsed.data) : err(validation('Invalid sales link'));
+};
+
+const salesLinkUpdateInput = async (c: Context<AppVars>): Promise<Result<SalesLinkUpdateInput, AppError>> => {
+  const parsed = shopAssetsContracts.updateSalesLink.input.safeParse(await readJson(c.req.raw));
+  return parsed.success && parsed.data.id === c.req.param('id') ? ok(parsed.data) : err(validation('Invalid sales-link update'));
+};
+
+const salesLinkDeleteInput = (c: Context<AppVars>): { id: string } => ({ id: c.req.param('id') ?? '' });
 
 export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   {
@@ -59,30 +78,29 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
   },
   {
     ...SHOP_ASSETS_ROUTES.createSalesLink,
-    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
+    proposeMode: { kind: 'proposal', operation: 'sales-link.create', toInput: salesLinkCreateInput },
     handler: async (c, { ctx }) => {
       if (deps.salesLinkManagement === undefined) return respond(err(internal('Sales links are unavailable')));
-      const parsed = shopAssetsContracts.createSalesLink.input.safeParse(await readJson(c.req.raw));
-      return parsed.success
-        ? respond(await createSalesLink(ctx, parsed.data, deps.salesLinkManagement), { successStatus: 201 })
-        : respond(err(validation('Invalid sales link')));
+      const input = await salesLinkCreateInput(c);
+      return input.ok
+        ? respond(await createSalesLink(ctx, input.value, deps.salesLinkManagement), { successStatus: 201 })
+        : respond(input);
     },
   },
   {
     ...SHOP_ASSETS_ROUTES.updateSalesLink,
-    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
+    proposeMode: { kind: 'proposal', operation: 'sales-link.update', toInput: salesLinkUpdateInput },
     handler: async (c, { ctx }) => {
       if (deps.salesLinkManagement === undefined) return respond(err(internal('Sales links are unavailable')));
-      const parsed = shopAssetsContracts.updateSalesLink.input.safeParse(await readJson(c.req.raw));
-      if (!parsed.success || parsed.data.id !== c.req.param('id')) return respond(err(validation('Invalid sales-link update')));
-      return respond(await updateSalesLink(ctx, parsed.data, deps.salesLinkManagement));
+      const input = await salesLinkUpdateInput(c);
+      return input.ok ? respond(await updateSalesLink(ctx, input.value, deps.salesLinkManagement)) : respond(input);
     },
   },
   {
     ...SHOP_ASSETS_ROUTES.deleteSalesLink,
-    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
+    proposeMode: { kind: 'proposal', operation: 'sales-link.delete', toInput: async (c) => ok(salesLinkDeleteInput(c)) },
     handler: async (c, { ctx }) => deps.salesLinkManagement === undefined
       ? respond(err(internal('Sales links are unavailable')))
-      : respond(await deleteSalesLink(ctx, { id: c.req.param('id') ?? '' }, deps.salesLinkManagement)),
+      : respond(await deleteSalesLink(ctx, salesLinkDeleteInput(c), deps.salesLinkManagement)),
   },
 ];

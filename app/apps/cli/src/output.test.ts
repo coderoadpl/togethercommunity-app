@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { err, ok, type AppError, type Result } from '#core/domain/index.js';
 
-import { emit } from './output.js';
+import { emit, orderStatusLabel } from './output.js';
 
 let stdout: string[];
 let stderr: string[];
@@ -76,5 +76,16 @@ describe('emit — exit code per error kind', () => {
   ] as const)('maps %s to exit %d', (code, exit) => {
     emitResult(err({ code, message: code }), true, () => '');
     expect(process.exitCode).toBe(exit);
+  });
+});
+
+describe('orderStatusLabel', () => {
+  it.each([
+    [{ status: 'paid' }, 'paid'],
+    [{ status: 'refunded', cancelReason: null }, 'refunded'],
+    [{ status: 'paid', cancelReason: 'out_of_stock', refundJobStatus: null }, 'paid (cancelled: out_of_stock)'],
+    [{ status: 'refunded', cancelReason: 'out_of_stock', refundJobStatus: 'succeeded' }, 'refunded (cancelled: out_of_stock, refund succeeded)'],
+  ])('labels %j as %s', (order, label) => {
+    expect(orderStatusLabel(order)).toBe(label);
   });
 });

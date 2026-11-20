@@ -225,7 +225,7 @@ ECR Public allows one unauthenticated pull per second, so the quickstart smoke
 probe, Caddyfile test, and browser suites pull images one at a time with retries
 for throttling and transient network failures.
 
-The Vitest projects currently discover <!--count:test-files-->735<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->741<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -360,7 +360,7 @@ pnpm --silent run cli --tenant studio stripe test-connection
 ```
 
 The restricted key needs write access to Checkout Sessions, Coupons, Promotion
-Codes, Subscriptions, and Webhook Endpoints. Together enables the event set it
+Codes, Subscriptions, Webhook Endpoints, and Charges and Refunds. Together enables the event set it
 handles when creating the endpoint. For localhost without a public callback,
 the Stripe CLI can still forward events, but by default it forwards sandbox
 (test-mode) events; point them at the [test slot](docs/payments.md#test-mode-for-staff)'s

@@ -1836,6 +1836,18 @@ it.each(['live', 'test'] as const)('emits the %s Stripe permission check envelop
   expect(soleJson()).toEqual({ ok: true, data: result });
 });
 
+it('prints a missing refund permission with its detail and exits successfully', async () => {
+  h.probeStripePermissions.mockReset();
+  const detail = 'This key needs more permissions';
+  h.probeStripePermissions.mockResolvedValue(ok({ mode: 'live', allOk: false, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
+    { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
+    { resource: 'Charges and Refunds', permission: 'write', status: 'missing', detail },
+  ] }));
+  await run('stripe', 'probe-permissions', '--mode', 'live');
+  expect(logSpy).toHaveBeenCalledExactlyOnceWith(`Checkout Sessions (write): ok\nCharges and Refunds (write): missing — ${detail}`);
+  expect(process.exitCode).toBe(0);
+});
+
 
 describe('KSeF controlled submission', () => {
   it('submits an invoice by order ID and prints one result envelope', async () => {

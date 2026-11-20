@@ -459,4 +459,67 @@ describe('stock quantities on Postgres', () => {
     expect(await level(productId)).toMatchObject({ onHand: 3, reserved: 2 });
     expect(await eventQuantities(productId)).toEqual([{ type: 'reserved', quantity: 2 }]);
   });
+  it('reports late lines that no longer fit and leaves lines held by the snapshot itself alone, without writing anything', async () => {
+    const held = await productFor('workspace', 1);
+    const released = await productFor('workspace', 1);
+    const unreserved = await productFor('workspace', 2);
+    const untracked = await productFor('workspace', null);
+    const repo = createStockRepository(database.db);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'check-own', items: [{ productId: released, quantity: 1 }], expiresAt: later, now });
+    await repo.release('workspace', { checkoutSnapshotId: 'check-own', reason: 'expired', now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'check-own-held', items: [{ productId: held, quantity: 1 }], expiresAt: later, now });
+    expect((await repo.adjust('workspace', { productId: held, delta: -1, reason: 'damaged', actorUserId: 'staff', now })).ok).toBe(true);
+    expect((await repo.adjust('workspace', { productId: released, delta: -1, reason: 'damaged', actorUserId: 'staff', now })).ok).toBe(true);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'check-other', items: [{ productId: unreserved, quantity: 1 }], expiresAt: later, now });
+    const before = await Promise.all([held, released, unreserved].map(eventTypes));
+
+    expect(await repo.lockForCommit('workspace', { checkoutSnapshotId: 'check-own-held', items: [{ productId: held, quantity: 1 }, { productId: untracked, quantity: 1 }] }))
+      .toEqual({ trackedProductIds: [held], shortProductIds: [] });
+    expect(await repo.lockForCommit('workspace', { checkoutSnapshotId: 'check-own', items: [{ productId: released, quantity: 1 }, { productId: unreserved, quantity: 1 }] }))
+      .toEqual({ trackedProductIds: [released, unreserved].sort(), shortProductIds: [released] });
+    expect(await repo.lockForCommit('workspace', { checkoutSnapshotId: null, items: [{ productId: unreserved, quantity: 2 }] }))
+      .toEqual({ trackedProductIds: [unreserved], shortProductIds: [unreserved] });
+    expect(await repo.lockForCommit('workspace', { checkoutSnapshotId: null, items: [{ productId: unreserved, quantity: 1 }] }))
+      .toEqual({ trackedProductIds: [unreserved], shortProductIds: [] });
+    expect(await repo.lockForCommit('other', { checkoutSnapshotId: null, items: [{ productId: unreserved, quantity: 5 }] }))
+      .toEqual({ trackedProductIds: [], shortProductIds: [] });
+
+    expect(await Promise.all([held, released, unreserved].map(eventTypes))).toEqual(before);
+    expect(await level(released)).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(await level(unreserved)).toMatchObject({ onHand: 2, reserved: 1 });
+  });
+
+  it('holds the stock rows it checked until the surrounding transaction ends', async () => {
+    const productId = await productFor('workspace', 1);
+    const repo = createStockRepository(database.db);
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    try {
+      let release = (): void => undefined;
+      let locked = (): void => undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const lockTaken = new Promise<void>((resolve) => { locked = resolve; });
+      const checking = database.db.transaction(async (tx) => {
+        const checked = await createStockRepository(tx).lockForCommit('workspace', { checkoutSnapshotId: null, items: [{ productId, quantity: 1 }] });
+        locked();
+        await gate;
+        return checked;
+      });
+      await lockTaken;
+      let adjusted = false;
+      const adjusting = repo.adjust('workspace', { productId, delta: -1, reason: 'damaged', actorUserId: 'staff', now }).finally(() => { adjusted = true; });
+      for (;;) {
+        const waiting = await observer.query<{ count: number }>(
+          "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+        );
+        if ((waiting.rows[0]?.count ?? 0) >= 1) break;
+      }
+      expect(adjusted).toBe(false);
+      release();
+      expect(await checking).toEqual({ trackedProductIds: [productId], shortProductIds: [] });
+      expect((await adjusting).ok).toBe(true);
+    } finally {
+      await observer.end();
+    }
+  });
 });

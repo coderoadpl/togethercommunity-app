@@ -136,18 +136,21 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const paymentStatus = useQuery({
     ...actions.publicCheckoutSessionStatus(sessionId ?? '', language),
     enabled: (query) => checkoutStatus === 'success' && hasSessionId &&
-      !statusTimedOut && query.state.data?.status !== 'paid',
-    refetchInterval: (query) => query.state.data?.status === 'paid' ||
+      !statusTimedOut && (query.state.data?.status ?? 'pending') === 'pending',
+    refetchInterval: (query) => (query.state.data?.status ?? 'pending') !== 'pending' ||
       statusTimedOut || Date.now() >= statusDeadline ? false : 3000,
     retry: false,
   });
   const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
+  const soldOutRefund = hasSessionId && paymentStatus.data?.status === 'cancelled';
+  const soldOutBody = paymentStatus.data?.charged === false ? t.checkout.soldOutNothingChargedBody : t.checkout.soldOutRefundBody;
+  const paymentSettled = paymentPaid || soldOutRefund;
 
   useEffect(() => {
-    if (checkoutStatus !== 'success' || paymentPaid) return;
+    if (checkoutStatus !== 'success' || paymentSettled) return;
     const timeout = window.setTimeout(() => setStatusTimedOut(true), Math.max(0, statusDeadline - Date.now()));
     return () => window.clearTimeout(timeout);
-  }, [checkoutStatus, paymentPaid, statusDeadline]);
+  }, [checkoutStatus, paymentSettled, statusDeadline]);
   const testSession = useMutation({
     ...actions.stripeTestSession,
     onSuccess: () => { void paymentConfig.refetch(); },
@@ -356,14 +359,16 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
-    const title = paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
+    const title = soldOutRefund ? t.checkout.soldOutRefundTitle : paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
     const paidStatus = paymentStatus.data?.status === 'paid' ? paymentStatus.data : undefined;
     const shopLink = paidStatus?.returnUrl === undefined || paidStatus.checkoutRef === undefined ? null : checkoutReturnLink(paidStatus.returnUrl, {
       checkoutRef: paidStatus.checkoutRef, status: 'paid', clientReference: paidStatus.clientReference,
     });
-    const eyebrow = paymentPaid
-      ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
-      : t.checkout.successEyebrow;
+    const eyebrow = soldOutRefund
+      ? t.checkout.soldOutRefundEyebrow
+      : paymentPaid
+        ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
+        : t.checkout.successEyebrow;
     return (
       <FocusCard {...frame} eyebrow={eyebrow}>
         <Stack useFlexGap spacing="1rem">
@@ -377,15 +382,17 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">
-            {testPurchase ? t.checkout.testPurchaseBody : paymentPaid
+            {testPurchase ? t.checkout.testPurchaseBody : soldOutRefund ? soldOutBody : paymentPaid
               ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
               : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
           </Typography>
-          {paymentPaid ? null : <LinearProgress aria-label={title} />}
+          {paymentSettled ? null : <LinearProgress aria-label={title} />}
           {shopLink === null ? null : <Button href={shopLink} variant="contained" fullWidth>{t.checkout.backToShop}</Button>}
-          <Button component={Link} to="/login" variant={shopLink !== null ? 'outlined' : paymentPaid ? 'contained' : 'text'} fullWidth>
-            {t.checkout.goToLogin}
-          </Button>
+          {soldOutRefund ? null : (
+            <Button component={Link} to="/login" variant={shopLink !== null ? 'outlined' : paymentPaid ? 'contained' : 'text'} fullWidth>
+              {t.checkout.goToLogin}
+            </Button>
+          )}
         </Stack>
       </FocusCard>
     );

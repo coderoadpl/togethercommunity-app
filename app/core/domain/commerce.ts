@@ -199,6 +199,22 @@ export const checkoutSnapshotSchema = z.object({
 
 export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
+export const orderCancelReasonSchema = z.enum(['out_of_stock']);
+
+export const ORDER_REFUND_JOB_STATUSES = [
+  'pending',
+  'running',
+  'submitted',
+  'succeeded',
+  'failed',
+  'blocked_permission',
+  'skipped_refunded',
+  'resolved_externally',
+  'unconfirmed',
+] as const;
+
+export const orderRefundJobStatusSchema = z.enum(ORDER_REFUND_JOB_STATUSES);
+
 export const orderSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
   clientReference: clientReferenceSchema.nullable().optional(),
@@ -222,6 +238,7 @@ export const orderSchema = z.object({
   shipping: orderShippingSchema.nullable().optional(),
   fulfilmentStatus: fulfilmentStatusSchema.nullable().optional(),
   shipment: orderShipmentSchema.nullable().optional(),
+  cancelReason: orderCancelReasonSchema.nullable().optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),
   paidAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
@@ -248,6 +265,7 @@ export const orderListItemSchema = orderSchema.extend({
   memberName: z.string().nullable(),
   productTitle: z.string(),
   couponCode: z.string().nullable(),
+  refundJobStatus: orderRefundJobStatusSchema.nullable().optional(),
 });
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;

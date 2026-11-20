@@ -59,6 +59,16 @@ describe('orders changes command', () => {
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('9.1\torder-1\tpaid\tshipped\tref shop-cart-8812\n9.4\torder-2\trefunded\nnext cursor: 9.4');
   });
 
+  it('marks an order cancelled out of stock with its refund state', async () => {
+    const h = harness();
+    h.orderChanges.mockResolvedValue(ok(page([
+      { cursor: '9.2', order: order('order-3', { cancelReason: 'out_of_stock', refundJobStatus: 'succeeded' }) },
+      { cursor: '9.5', order: order('order-4', { cancelReason: 'out_of_stock' }) },
+    ], '9.5')));
+    await h.run();
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('9.2\torder-3\tpaid (cancelled: out_of_stock, refund succeeded)\n9.5\torder-4\tpaid (cancelled: out_of_stock)\nnext cursor: 9.5');
+  });
+
   it('prints the feed envelope with --json', async () => {
     const h = harness(true);
     const feed = page([{ cursor: '9.1', order: order('order-1') }], '9.1');

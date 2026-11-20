@@ -5,6 +5,7 @@ import {
   mergeStockQuantities,
   notFound,
   ok,
+  shortLateCommitProductIds,
   stockAdjustmentEventType,
   stockAlertMarkers,
   validation,
@@ -162,6 +163,14 @@ export const createStockRepositoryFake = () => {
         ? reservations.filter((reservation) => reservation.tenantId === tenantId && reservation.checkoutSnapshotId === input.checkoutSnapshotId)
         : reservations.filter((reservation) => reservation.tenantId === tenantId && input.reservationIds.includes(reservation.id));
       return selected.reduce((count, reservation) => count + releaseOne(reservation, input.reason, input.now), 0);
+    },
+    lockForCommit: async (tenantId, input) => {
+      const own = input.checkoutSnapshotId === null ? [] : reservations.filter((reservation) => reservation.tenantId === tenantId && reservation.checkoutSnapshotId === input.checkoutSnapshotId);
+      const tracked = [...new Set([...own.map((reservation) => reservation.productId), ...input.items.map((item) => item.productId)])].flatMap((productId) => {
+        const stored = level(tenantId, productId);
+        return stored === null ? [] : [stored];
+      });
+      return { trackedProductIds: tracked.map((stored) => stored.productId).sort(), shortProductIds: shortLateCommitProductIds(input.items, own, tracked) };
     },
     commit: async (tenantId, input) => {
       const effects: StockCommitEffect[] = [];

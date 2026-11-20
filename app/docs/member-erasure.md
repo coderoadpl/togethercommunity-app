@@ -124,6 +124,12 @@ their original values.
 Pseudonymization changes the member projection and reporter display, but it
 does not minimize these event and report fields.
 
+Staff notifications queued in `email_outbox` keep the member's e-mail address
+in their payload after erasure. The scrub above matches rows addressed to the
+member, and these rows are addressed to staff: the support message
+(`payload.memberEmail`) and the staff e-mail about an order cancelled out of
+stock (`payload.buyerEmail`).
+
 The staff member-detail surface preserves learning, grant, and e-mail history.
 It hides granting and renewal controls for a tombstoned member, while keeping
 Revoke as a reducing corrective action. This is deliberately a UI-only guard:

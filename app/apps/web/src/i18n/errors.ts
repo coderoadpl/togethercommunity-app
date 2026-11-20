@@ -171,3 +171,8 @@ export const localizePanelError = (error: unknown, t: Messages): string => {
   const code = errorCodeOf(error);
   return code === null ? t.errors.messageUnknown : localizeErrorCodeForPanel(code, t);
 };
+
+export const localizeInvoiceError = (error: unknown, t: Messages): string =>
+  stringDetailOf(error, 'invoiceRefusal') === 'order_cancelled_out_of_stock'
+    ? t.sales.invoiceOrderCancelledOutOfStock
+    : localizePanelError(error, t);

@@ -344,6 +344,7 @@ export const approveChangeProposal = async (
     }
     if (locked.groupId !== null) return err(groupedChangeProposalDecisionRefused(locked));
     const outcome = await applyLockedProposal(locked, ctx, scope, deps);
+    if (outcome.status === 'aborted') return err(outcome.error);
     if (outcome.status === 'expired') {
       const recorded = await proposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: outcome.at });
       if (recorded.kind === 'busy') return err(changeProposalsBusy());

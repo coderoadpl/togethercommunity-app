@@ -5,6 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
+  appError,
+  err,
   ok,
   type ChangeProposalOperation,
   type Identity,
@@ -22,6 +24,7 @@ import {
   submitChangeProposal,
   withdrawOwnChangeProposal,
   type ChangeProposalTransaction,
+  type ChangeProposalTransactionScope,
   type Ctx,
   type StorageProvider,
 } from '#core/server/index.js';
@@ -287,6 +290,41 @@ describe('approving a change proposal over the database', () => {
     expect(await eventsOf(id)).toEqual(['1:proposed']);
     expect(await productRow('draft')).toBeDefined();
     expect(storageDeletes).toEqual([]);
+  });
+
+  it.each([
+    appError('unavailable', 'The database is busy'),
+    appError('internal', 'Lost the connection'),
+  ])('rolls a written live change back and keeps the proposal pending when the live use-case answers $code', async (error) => {
+    const id = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
+    const real = deps();
+    const savingThenFailing = (scope: ChangeProposalTransactionScope): ChangeProposalTransactionScope => ({
+      ...scope,
+      repositories: {
+        ...scope.repositories,
+        salesLinks: {
+          ...scope.repositories.salesLinks,
+          save: async (tenantId, link, expectedRevision) => {
+            const saved = await scope.repositories.salesLinks.save(tenantId, link, expectedRevision);
+            return saved.ok ? err(error) : saved;
+          },
+        },
+      },
+      savepoint: (operation) => scope.savepoint((nested) => operation(savingThenFailing(nested))),
+    });
+    const failing: ChangeProposalTransaction = {
+      ...real.changeProposalTransaction,
+      run: (tenantId, operation) => real.changeProposalTransaction.run(tenantId, (scope) => operation(savingThenFailing(scope))),
+    };
+
+    expect(await approveChangeProposal(ownerSession, { id }, { ...real, changeProposalTransaction: failing })).toEqual({ ok: false, error });
+
+    expect(await statusOf(id)).toBe('pending');
+    expect(await eventsOf(id)).toEqual(['1:proposed']);
+    expect(await createSalesLinkRepository(database.db).findById(TENANT, 'link-spring')).toMatchObject({ heading: 'Spring sale', revision: 1 });
+    const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, id));
+    expect(row).toMatchObject({ decidedAt: null, decidedByUserId: null, failureCode: null, failureMessage: null });
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'applied' } });
   });
 
   it('deletes stored files after an applied draft deletion and never after a stale or failed one', async () => {

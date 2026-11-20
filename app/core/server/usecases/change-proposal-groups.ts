@@ -237,6 +237,7 @@ export const submitGroupedChangeProposal = async (
     const references = changeProposalGroupReferences();
     for (const [index, item] of earlier.entries()) {
       const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
+      if (outcome.status === 'aborted') return err(outcome.error);
       if (outcome.status !== 'applied') return err(earlierItemNoLongerApplies(item));
     }
     const resolved = resolveChangeProposalReferences(operationName, prepared.value.input, references.idOf);
@@ -467,6 +468,7 @@ export const approveChangeProposalGroup = async (
     });
     if (!applied.ok && halt.current === null) return applied;
     const stop = halt.current;
+    if (stop !== null && stop.outcome.status === 'aborted') return err(stop.outcome.error);
     if (stop !== null && stop.outcome.status === 'expired') {
       const recorded = await groups.recordExpiry(tenantId, id, expiryEvent(deps.ids, stop.outcome.at, { actorUserId: owner, apiKeyId: null }));
       if (recorded.kind === 'busy') return err(changeProposalsBusy());

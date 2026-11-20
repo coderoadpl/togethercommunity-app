@@ -5,9 +5,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
+  appError,
   CHANGE_PROPOSAL_GROUP_LIMITS,
   changeProposalExpiresAt,
   changeProposalReference,
+  err,
   ok,
   type AppError,
   type ChangeProposalOperation,
@@ -26,6 +28,8 @@ import {
   submitChangeProposal,
   submitGroupedChangeProposal,
   withdrawOwnChangeProposalGroup,
+  type ChangeProposalTransaction,
+  type ChangeProposalTransactionScope,
   type Ctx,
   type StorageProvider,
 } from '#core/server/index.js';
@@ -363,6 +367,39 @@ describe('a change proposal group over the database', () => {
     expect(rows.map((item) => item.status)).toEqual(['stale', 'stale', 'failed', 'stale']);
     expect(rows.find((item) => item.id === offending)).toMatchObject({ failureCode: 'validation', appliedResourceId: null });
     expect(rows.every((item) => item.appliedResourceId === null)).toBe(true);
+  });
+
+  it('rolls back every written item and keeps the group open when the last item answers a transient error', async () => {
+    const { groupId } = await launchChain();
+    const live = await liveTables();
+    const proposals = await proposalTables();
+    const real = deps();
+    const transient = appError('unavailable', 'The database is busy');
+    const savingThenFailing = (scope: ChangeProposalTransactionScope): ChangeProposalTransactionScope => ({
+      ...scope,
+      repositories: {
+        ...scope.repositories,
+        salesLinks: {
+          ...scope.repositories.salesLinks,
+          save: async (tenantId, link, expectedRevision) => {
+            const saved = await scope.repositories.salesLinks.save(tenantId, link, expectedRevision);
+            return saved.ok ? err(transient) : saved;
+          },
+        },
+      },
+      savepoint: (operation) => scope.savepoint((nested) => operation(savingThenFailing(nested))),
+    });
+    const failing: ChangeProposalTransaction = {
+      ...real.changeProposalTransaction,
+      run: (tenantId, operation) => real.changeProposalTransaction.run(tenantId, (scope) => operation(savingThenFailing(scope))),
+    };
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: await itemIdsOf(groupId) }, { ...real, changeProposalTransaction: failing }))
+      .toEqual({ ok: false, error: transient });
+
+    expect(await liveTables()).toEqual(live);
+    expect(await proposalTables()).toEqual(proposals);
+    expect(unwrap(await approve(groupId)).status).toBe('applied');
   });
 
   it('runs a draft deletion of the group after the commit only', async () => {

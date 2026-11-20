@@ -304,8 +304,26 @@ transaction:
    database (such as an object storage delete of a removed draft) runs after
    the commit;
 7. if the effect differs, roll back the savepoint: the proposal is `stale`;
-8. if the live use-case refuses the command, roll back the savepoint: the
-   proposal is `failed`, with the error code and message stored.
+8. if the live use-case refuses the command itself, roll back the savepoint:
+   the proposal is `failed`, with the error code and message stored;
+9. if the live use-case answers any other error, roll back the whole
+   transaction: the proposal stays `pending` and the approval is answered with
+   that error.
+
+A refusal of the command itself is an error whose code describes the request
+against the current state: `not_found`, `validation`, `conflict`,
+`slug_reserved`, `invoice_exemption_basis_missing`, `shipping_required`,
+`sold_out`, `fulfilment_conflict`, `shipx_rejected`, `workspace_quota_exceeded`,
+`organization_managed`, `feed_cursor_reset`, `not_consented`, `suppressed`,
+`unsubscribed` and `pending_confirmation`. Every other code describes the
+caller, the configuration or the infrastructure (`internal`, `unavailable`,
+`rate_limited`, `integration_unavailable`, `integration_auth`,
+`integration_not_configured`, `shipx_unavailable`, `ses_not_configured`,
+`broadcasts_disabled`, `transactional_platform_cap_reached`, `unauthorized`,
+`invalid_credentials`, `forbidden`, `banned`, `impersonation_read_only`,
+`tenant_not_found`) and can pass, so it never settles a proposal. The
+classification is `describesTheRequest` in `core/domain/errors.ts`; a new error
+code cannot be added without classifying it.
 
 The decision time recorded on the proposal and its event is the time read
 after the target lock, not the time the request arrived.
@@ -314,7 +332,8 @@ The status change and its event (`applied`, `stale` or `apply_failed`) commit
 in the same transaction as the live change, so the owner sees exactly one of
 three outcomes and nothing in between. An infrastructure failure (a lost
 connection, a database error) rolls everything back and leaves the proposal
-`pending`; the owner can retry. So does any lock wait that runs out (see
+`pending`; the owner can retry. So does an error of the live use-case that is
+not a refusal of the command (step 9), and any lock wait that runs out (see
 [Lock waits](#lock-waits)), answered `503 unavailable`. A repeated or concurrent approve, or an
 approve after a reject or a withdrawal, finds no pending row and answers
 `409 conflict` with the current status in `error.details.changeProposalStatus`.
@@ -530,7 +549,9 @@ A `409` at submit with `changeProposalGroupItem` in `error.details` means an
 **earlier** item no longer applies to the live state: someone changed a field
 it changes since it was proposed, so the group can no longer be applied as
 recorded and nothing is stored. The key withdraws the group and proposes it
-again from the current state. A `409` with `changeProposalGroupStatus` means
+again from the current state. An earlier item whose replay meets an error that
+is not a refusal of that item answers that error instead, and the key may
+retry. A `409` with `changeProposalGroupStatus` means
 the group is no longer open (decided, withdrawn or expired), and one with
 `changeProposalCap` names a limit. The dry run leaves no row, event, outbox
 message or content version behind, and object storage deletes wait for a
@@ -592,6 +613,7 @@ the effect comparison.
 | every item matches | `applied` | all `applied`, each with its `appliedResourceId` | changed exactly as the effects showed; post-commit effects run afterwards |
 | one item is stale | `stale` | that item `stale`, every other item `stale` with a note naming it | unchanged |
 | one item is refused by the live use-case | `failed` | that item `failed` with its failure code and message, every other item `stale` with a note naming it | unchanged |
+| the live use-case answers an error that is not a refusal of the item (see [Approval](#approval)) | `open` | all still `pending` | unchanged; answered with that error |
 | a lock wait or a statement runs out of time, a deadlock | `open` | all still `pending` | unchanged; `503` with `retry-after` |
 | an infrastructure failure (a lost connection, a database error) | `open` | all still `pending` | unchanged; `500 internal`, the owner can retry |
 

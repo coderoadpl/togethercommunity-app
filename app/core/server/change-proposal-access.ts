@@ -73,9 +73,10 @@ export type ApprovalOutcome =
   | { status: 'applied'; appliedResourceId: string | null; at: string }
   | { status: 'stale'; note: string | null; at: string }
   | { status: 'failed'; error: AppError; at: string }
-  | { status: 'expired'; at: string };
+  | { status: 'expired'; at: string }
+  | { status: 'aborted'; error: AppError };
 
-export type DecidedOutcome = Exclude<ApprovalOutcome, { status: 'expired' }>;
+export type DecidedOutcome = Exclude<ApprovalOutcome, { status: 'expired' | 'aborted' }>;
 
 export const outcomeFields = (outcome: DecidedOutcome): {
   status: ChangeProposalTerminalStatus;

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  appError,
   CHANGE_PROPOSAL_GROUP_LIMITS,
   CHANGE_PROPOSAL_LIMITS,
   changeProposalExpiresAt,
@@ -28,6 +29,7 @@ import {
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
   emptyCatalogState,
+  failingSalesLinkSaves,
   type FakeChangeProposalStore,
   type FakeChangeProposalTransaction,
 } from '../testing/change-proposal-fakes.js';
@@ -435,6 +437,55 @@ describe('group approval is all or nothing', () => {
 
     expect(h.state).toEqual(live);
     expect(h.items(groupId).map((item) => item.status)).toEqual(['pending', 'pending', 'pending', 'pending', 'pending']);
+  });
+
+  it.each([
+    appError('unavailable', 'The database is busy'),
+    appError('internal', 'Lost the connection'),
+    appError('forbidden', 'Not allowed for this session'),
+  ])('rolls the whole group back and keeps every item pending when its sales link item returns $code', async (error) => {
+    const h = harness();
+    const { groupId, linked } = await launchChain(h);
+    const live = structuredClone(h.state);
+    const eventsBefore = h.store.eventRows.length;
+
+    const approved = await approveChangeProposalGroup(
+      ownerSession,
+      { id: groupId, itemIds: h.items(groupId).map((item) => item.id) },
+      { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, error) },
+    );
+
+    expect(approved).toEqual({ ok: false, error });
+    expect(h.state).toEqual(live);
+    expect(h.items(groupId).map((item) => [item.status, item.failureCode])).toEqual(Array.from({ length: 5 }, () => ['pending', null]));
+    expect(h.store.eventRows).toHaveLength(eventsBefore);
+    expect(h.events(linked)).toEqual(['1:proposed']);
+    expect(unwrap(await h.approve(groupId)).status).toBe('applied');
+  });
+
+  it('records a refusal of the sales link item as the group failure', async () => {
+    const h = harness();
+    const { groupId, linked } = await launchChain(h);
+
+    const approved = unwrap(await approveChangeProposalGroup(
+      ownerSession,
+      { id: groupId, itemIds: h.items(groupId).map((item) => item.id) },
+      { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, appError('conflict', 'The slug is taken')) },
+    ));
+
+    expect(approved.status).toBe('failed');
+    expect(approved.items.find((item) => item.id === linked)).toMatchObject({ status: 'failed', failureCode: 'conflict', failureMessage: 'The slug is taken' });
+  });
+
+  it('answers the transient error of an earlier item at submit instead of the earlier-item conflict', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+    const proposalsBefore = h.store.proposals.length;
+    const failingDeps = { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, appError('unavailable', 'The database is busy')) };
+
+    expect(await submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, failingDeps))
+      .toEqual({ ok: false, error: appError('unavailable', 'The database is busy') });
+    expect(h.store.proposals).toHaveLength(proposalsBefore);
   });
 
   it('answers busy and keeps the group pending when the transaction is busy', async () => {

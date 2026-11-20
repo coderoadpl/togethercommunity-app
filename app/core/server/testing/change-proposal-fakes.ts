@@ -9,6 +9,7 @@ import {
   notFound,
   ok,
   validation,
+  type AppError,
   type ChangeProposal,
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
@@ -469,6 +470,18 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
   };
   return { repository, events, groups, proposals, eventRows, groupRows, keys, seed: (proposal) => { proposals.push({ ...proposal }); } };
 };
+
+const withSalesLinkSaveError = (scope: ChangeProposalTransactionScope, error: AppError): ChangeProposalTransactionScope => ({
+  ...scope,
+  repositories: { ...scope.repositories, salesLinks: { ...scope.repositories.salesLinks, save: async () => err(error) } },
+  savepoint: (operation) => scope.savepoint((nested) => operation(withSalesLinkSaveError(nested, error))),
+});
+
+export const failingSalesLinkSaves = (transaction: ChangeProposalTransaction, error: AppError): ChangeProposalTransaction => ({
+  ...transaction,
+  run: (tenantId, operation) => transaction.run(tenantId, (scope) => operation(withSalesLinkSaveError(scope, error))),
+  dryRun: (tenantId, operation, options) => transaction.dryRun(tenantId, (scope) => operation(withSalesLinkSaveError(scope, error)), options),
+});
 
 export interface FakeChangeProposalTransaction extends ChangeProposalTransaction {
   calls: Array<'run' | 'dryRun'>;

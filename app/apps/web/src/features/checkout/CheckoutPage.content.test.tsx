@@ -108,7 +108,9 @@ describe('checkout content', () => {
     serve({ couponValid: true });
     renderCheckout();
 
-    expect(await screen.findByTestId('checkout-coupon-applied')).toHaveTextContent(exact(en.checkout.couponAppliedLine({ code: 'SAVE', price: pln(980) })));
+    const applied = await screen.findByTestId('checkout-coupon-applied');
+    expect(applied).toHaveTextContent(exact(en.checkout.couponAppliedLine({ code: 'SAVE', price: pln(980) })));
+    expect(applied).toHaveAttribute('role', 'status');
     expect(screen.queryByLabelText(en.checkout.couponLabel)).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-coupon-apply')).not.toBeInTheDocument();
     const row = screen.getByRole('button', { name: en.checkout.couponAppliedRow({ code: 'SAVE', price: pln(980) }) });
@@ -121,6 +123,30 @@ describe('checkout content', () => {
     expect(screen.getByRole('button', { name: en.checkout.couponReveal })).toBeInTheDocument();
     expect(screen.queryByTestId('checkout-coupon-breakdown')).not.toBeInTheDocument();
     expect(screen.getByTestId('checkout-summary-total')).toHaveTextContent(exact(pln(4900)));
+  });
+
+  it('moves focus to Remove after a code is applied by hand and back to the code field after Remove', async () => {
+    serve({ couponValid: true });
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('button', { name: en.checkout.couponReveal }));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+
+    const remove = await screen.findByRole('button', { name: en.checkout.couponRemoveLabel({ code: 'SAVE' }) });
+    await waitFor(() => expect(remove).toHaveFocus());
+    await userEvent.click(remove);
+    expect(screen.getByLabelText(en.checkout.couponLabel)).toHaveFocus();
+  });
+
+  it('leaves focus alone when the code arrives with the link', async () => {
+    window.history.replaceState(null, '', '/checkout/stand?code=SAVE');
+    serve({ couponValid: true });
+    renderCheckout();
+
+    const remove = await screen.findByRole('button', { name: en.checkout.couponRemoveLabel({ code: 'SAVE' }) });
+    await screen.findByTestId('checkout-coupon-breakdown');
+    expect(remove).not.toHaveFocus();
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('gives the empty-field Apply code button a reason next to it', async () => {

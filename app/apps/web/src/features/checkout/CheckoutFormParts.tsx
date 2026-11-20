@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -237,6 +237,19 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
   const row = rowProps.variant === 'row' ? rowProps : null;
   const applied = row === null ? undefined : validation.data?.breakdown;
   const emptyReason = row !== null && !validation.isPending && code.trim() === '';
+  const focusAfter = useRef<'remove' | 'input' | null>(null);
+  const removeRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isApplied = applied !== undefined;
+  useEffect(() => {
+    const target = isApplied ? (focusAfter.current === 'remove' ? removeRef.current : null) : (focusAfter.current === 'input' ? inputRef.current : null);
+    if (target === null) return;
+    focusAfter.current = null;
+    target.focus();
+  }, [isApplied]);
+  useEffect(() => {
+    if (validation.error !== null) focusAfter.current = null;
+  }, [validation.error]);
   return (
     <Stack useFlexGap spacing="0.5rem">
       {applied === undefined ? (
@@ -244,6 +257,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
           <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
           <OutlinedInput
             id="checkout-coupon"
+            inputRef={inputRef}
             inputProps={{ 'data-testid': 'checkout-coupon-input' }}
             value={code}
             onChange={(event) => onCodeChange(event.target.value)}
@@ -253,15 +267,19 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
       {children}
       {row !== null && applied !== undefined ? (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: '0.75rem' }}>
-          <Typography data-testid="checkout-coupon-applied">
+          <Typography role="status" data-testid="checkout-coupon-applied">
             {t.checkout.couponAppliedLine({ code: applied.code, price: formatPrice(applied.discountCents, currency, language) })}
           </Typography>
           <Button
+            ref={removeRef}
             type="button"
             variant="text"
             data-testid="checkout-coupon-remove"
             aria-label={t.checkout.couponRemoveLabel({ code: applied.code })}
-            onClick={row.onRemove}
+            onClick={() => {
+              focusAfter.current = 'input';
+              row.onRemove();
+            }}
           >
             {t.checkout.couponRemove}
           </Button>
@@ -274,7 +292,10 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
             data-testid="checkout-coupon-apply"
             disabled={validation.isPending || code.trim() === ''}
             aria-describedby={emptyReason ? emptyReasonId : undefined}
-            onClick={onApply}
+            onClick={() => {
+              focusAfter.current = row === null ? null : 'remove';
+              onApply();
+            }}
           >
             {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
           </Button>

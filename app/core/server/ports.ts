@@ -2975,7 +2975,7 @@ export type ChangeProposalGroupDecision =
   | { kind: 'record_expiry'; at: string; event: (proposalId: string) => ChangeProposalEventDraft }
   | { kind: 'refuse'; at: string };
 
-export type ChangeProposalGroupDecisionOutcome =
+type ChangeProposalGroupDecisionOutcome =
   | { kind: 'decided'; decision: ChangeProposalGroupDecision; group: ChangeProposalGroup; items: ChangeProposal[] }
   | { kind: 'not_found' }
   | { kind: 'busy' };

@@ -164,7 +164,34 @@ describe('the owner panel summary', () => {
     expect((await summary(adminToken)).status).toBe(403);
     const keyedSummary = await keyed(proposer.secret, 'GET', API_PATHS.changeProposalSummary);
     expect(keyedSummary.status).toBe(401);
-    expect(await keyedSummary.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+    expect(await keyedSummary.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Authentication required' } });
+  });
+});
+
+describe('an anonymous caller on the owner session routes', () => {
+  it('is refused with 401 on every owner route, a real proposal and group included', async () => {
+    const proposer = await createShopKey('propose');
+    const proposal = await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Anonymous target' });
+    const groupResponse = await keyed(proposer.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: 'Anonymous group' });
+    const groupId = z.object({ data: z.object({ group: z.object({ id: z.string() }) }) }).parse(await groupResponse.json()).data.group.id;
+    const routes = [
+      ['GET', API_PATHS.changeProposals, undefined],
+      ['GET', API_PATHS.changeProposalSummary, undefined],
+      ['GET', API_PATHS.changeProposalGroup.replace(':id', groupId), undefined],
+      ['POST', API_PATHS.changeProposalApprove.replace(':id', proposal.id), {}],
+      ['POST', API_PATHS.changeProposalReject.replace(':id', proposal.id), {}],
+    ] as const;
+
+    for (const [method, path, body] of routes) {
+      const response = await app.request(`${baseUrl}${path}`, {
+        method,
+        headers: { host: acmeHost, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      expect(response.status, `${method} ${path}`).toBe(401);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Authentication required' } });
+    }
+    expect((await ownerCards()).find((card) => card.id === proposal.id)?.status).toBe('pending');
   });
 });
 

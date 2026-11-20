@@ -112,7 +112,9 @@ scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 creates a [shop management key](shop-management-keys.md); it requires `shop:*`
 scopes and an expiry at most 30 days ahead. `--mode propose` creates a key whose
 writes become [change proposals](change-proposals.md) instead of live changes;
-`direct` is the default. `api-keys shop-management list` and
+each write scope of such a key needs its read scope (`shop:catalog:write` with
+`shop:catalog:read`, `shop:settings:write` with `shop:settings:read`); `direct`
+is the default. `api-keys shop-management list` (the mode is its last column) and
 `api-keys shop-management revoke <id>` list and revoke them; `api-keys list`,
 `create` and `revoke` handle only the other keys.
 `api-keys shop-management purge --yes` deletes every shop management key of the

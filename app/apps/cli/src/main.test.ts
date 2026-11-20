@@ -1498,7 +1498,7 @@ describe('activity report CLI parsing', () => {
       createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-08T00:00:00.000Z', revokedAt: null,
     }] }));
     await run('api-key', 'shop-management', 'list');
-    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\tdirect\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)');
+    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)\tdirect');
     h.revokeShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'shop-key', name: 'Shop' } }));
     await run('--json', 'api-key', 'shop-management', 'revoke', 'shop-key');
     expect(h.revokeShopManagementKey).toHaveBeenCalledWith({ id: 'shop-key' });
@@ -1536,9 +1536,9 @@ describe('activity report CLI parsing', () => {
   });
   it('creates a propose-mode shop management key with --mode propose and refuses an unknown mode', async () => {
     h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Agent', mode: 'propose' }, secret: 'shop-secret' }));
-    await run('api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'propose');
+    await run('api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:read', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'propose');
     expect(h.createShopManagementKey).toHaveBeenCalledWith({
-      name: 'Agent', scopes: ['shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z', mode: 'propose',
+      name: 'Agent', scopes: ['shop:catalog:read', 'shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z', mode: 'propose',
     });
     expect(logSpy).toHaveBeenCalledWith('created propose-mode shop management key Agent (key)\nsecret (shown once): shop-secret');
     h.createShopManagementKey.mockReset();
@@ -1546,6 +1546,12 @@ describe('activity report CLI parsing', () => {
     await run('--json', 'api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'draft');
     expect(h.createShopManagementKey).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('keeps the direct-mode create confirmation line unchanged', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Backend', mode: 'direct' }, secret: 'shop-secret' }));
+    await run('api-key', 'shop-management', 'create', 'Backend', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z');
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({ name: 'Backend', scopes: ['shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z' });
+    expect(logSpy).toHaveBeenCalledWith('created shop management key Backend (key)\nsecret (shown once): shop-secret');
   });
   it('keeps the legacy api-key create free of shop options', async () => {
     h.createApiKey.mockReset();

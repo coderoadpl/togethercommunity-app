@@ -4069,7 +4069,7 @@ shopManagementKey
         }),
         ctx.json,
         (data) =>
-          `created ${data.apiKey.mode}-mode shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+          `created ${data.apiKey.mode === 'propose' ? 'propose-mode ' : ''}shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
       );
     }),
   );
@@ -4080,7 +4080,7 @@ shopManagementKey.command('list').description('List shop management keys (no sec
       data.apiKeys.length === 0
         ? 'no shop management keys'
         : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\t${k.mode}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})`)
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})\t${k.mode}`)
             .join('\n'),
     );
   }),

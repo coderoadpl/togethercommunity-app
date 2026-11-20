@@ -7,9 +7,9 @@ import type { GrantSource } from './grant.js';
 
 export const ENTITLEMENT_CHECK_VERSION = 1;
 
-export const ENTITLEMENT_CHECK_MAX_SUBJECTS = 25;
+const ENTITLEMENT_CHECK_MAX_SUBJECTS = 25;
 
-export const entitlementSubjectSchema = z.union([
+const entitlementSubjectSchema = z.union([
   z.object({ email: z.string().trim().max(254).email().transform(normalizeEmail) }).strict(),
   z.object({ memberId: z.string().trim().min(1).max(200) }).strict(),
 ]);
@@ -23,7 +23,7 @@ export const entitlementCheckInputSchema = z.object({
 
 export type EntitlementCheckInput = z.input<typeof entitlementCheckInputSchema>;
 
-export const entitlementSourceSchema = z.enum(['purchase', 'subscription', 'grant', 'import']);
+const entitlementSourceSchema = z.enum(['purchase', 'subscription', 'grant', 'import']);
 
 export type EntitlementSource = z.output<typeof entitlementSourceSchema>;
 
@@ -33,9 +33,7 @@ const entitlementSubscriptionSchema = memberSubscriptionSummarySchema.pick({
   cancelAtPeriodEnd: true,
 });
 
-export type EntitlementSubscription = z.output<typeof entitlementSubscriptionSchema>;
-
-export const productEntitlementSchema = z.object({
+const productEntitlementSchema = z.object({
   productId: z.string(),
   access: z.boolean(),
   source: entitlementSourceSchema.nullable(),
@@ -45,7 +43,7 @@ export const productEntitlementSchema = z.object({
 
 export type ProductEntitlement = z.output<typeof productEntitlementSchema>;
 
-export const entitlementCheckResultSchema = z.object({
+const entitlementCheckResultSchema = z.object({
   subject: entitlementSubjectSchema,
   products: z.array(productEntitlementSchema),
   member: z.object({ id: z.string() }).nullable(),

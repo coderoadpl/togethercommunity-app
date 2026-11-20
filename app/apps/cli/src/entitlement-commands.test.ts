@@ -2,13 +2,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EntitlementClientOptions } from '#core/client/index.js';
 import { ok, type EntitlementCheckInput, type EntitlementCheckOutput } from '#core/domain/index.js';
 
-import { DEFAULT_ENTITLEMENT_KEY_ENV, formatEntitlementCheck, parseSubjectLines, registerEntitlementCommands } from './entitlement-commands.js';
+import { DEFAULT_ENTITLEMENT_KEY_ENV, formatEntitlementCheck, parseSubjectLines, runEntitlementCheck } from './entitlement-commands.js';
 
 const output: EntitlementCheckOutput = {
   version: 1,
@@ -26,22 +25,21 @@ const output: EntitlementCheckOutput = {
   ],
 };
 
-const run = async (args: string[]) => {
+const run = async (options: Record<string, unknown>) => {
   const calls: { options: EntitlementClientOptions; input: EntitlementCheckInput }[] = [];
-  const program = new Command().option('--json').exitOverride();
-  registerEntitlementCommands(
-    program,
-    () => ok({ apiUrl: 'https://platform.example.test', tenant: 'acme', json: true }),
-    (options) => ({ check: async (input) => { calls.push({ options, input }); return ok(output); } }),
-  );
   const printed: string[] = [];
   const log = vi.spyOn(console, 'log').mockImplementation((line: unknown) => { printed.push(String(line)); });
-  const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => { printed.push(String(chunk)); return true; });
+  const error = vi.spyOn(console, 'error').mockImplementation((line: unknown) => { printed.push(String(line)); });
   try {
-    await program.parseAsync(['node', 'together', ...args]);
+    await runEntitlementCheck(
+      { apiKeyEnv: DEFAULT_ENTITLEMENT_KEY_ENV, ...options },
+      () => ok({ apiUrl: 'https://platform.example.test', tenant: 'acme', json: true }),
+      true,
+      (clientOptions) => ({ check: async (input) => { calls.push({ options: clientOptions, input }); return ok(output); } }),
+    );
   } finally {
     log.mockRestore();
-    write.mockRestore();
+    error.mockRestore();
   }
   return { calls, printed: printed.join('') };
 };
@@ -60,11 +58,11 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-describe('together entitlement check', () => {
+describe('runEntitlementCheck', () => {
   it('sends the subjects of a file, the flags and the products with the key from the environment', async () => {
     const file = join(directory, 'subjects.txt');
     await writeFile(file, '# people to check\nada@example.test\n\nmember:m-none\n');
-    const { calls, printed } = await run(['entitlement', 'check', '--subjects-file', file, '--email', 'bob@example.test', '--product', 'prod-pro']);
+    const { calls, printed } = await run({ subjectsFile: file, email: ['bob@example.test'], product: ['prod-pro'] });
     expect(calls).toEqual([{
       options: { baseUrl: 'https://platform.example.test', apiKey: 'entitlement-secret', tenant: 'acme' },
       input: { subjects: [{ email: 'ada@example.test' }, { memberId: 'm-none' }, { email: 'bob@example.test' }], productIds: ['prod-pro'] },
@@ -74,15 +72,15 @@ describe('together entitlement check', () => {
 
   it('reads the key from a named environment variable and refuses to run without one', async () => {
     process.env['OTHER_KEY'] = 'other-secret';
-    expect((await run(['entitlement', 'check', '--email', 'ada@example.test', '--api-key-env', 'OTHER_KEY'])).calls[0]?.options.apiKey).toBe('other-secret');
+    expect((await run({ email: ['ada@example.test'], apiKeyEnv: 'OTHER_KEY' })).calls[0]?.options.apiKey).toBe('other-secret');
     delete process.env[DEFAULT_ENTITLEMENT_KEY_ENV];
-    const refused = await run(['entitlement', 'check', '--email', 'ada@example.test']);
+    const refused = await run({ email: ['ada@example.test'] });
     expect(refused.calls).toEqual([]);
     expect(refused.printed).toContain(DEFAULT_ENTITLEMENT_KEY_ENV);
   });
 
   it('refuses to call the server without a subject', async () => {
-    const { calls, printed } = await run(['entitlement', 'check']);
+    const { calls, printed } = await run({});
     expect(calls).toEqual([]);
     expect(printed).toContain('Name at least one subject');
   });

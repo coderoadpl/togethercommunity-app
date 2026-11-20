@@ -43,7 +43,7 @@ export const SHOP_MACHINE_PATH_PREFIX = '/api/m2m/shop/';
 const SHOP_MACHINE_MECHANISM = 'Shop management key';
 const HISTORY_RETRY_AFTER_SECONDS = 5;
 
-export const ENTITLEMENT_MACHINE_PATH_PREFIX = '/api/m2m/entitlements/';
+const ENTITLEMENT_MACHINE_PATH_PREFIX = '/api/m2m/entitlements/';
 
 const isUnderPrefix = (path: string, prefix: string): boolean =>
   path === prefix.slice(0, -1) || path.startsWith(prefix);

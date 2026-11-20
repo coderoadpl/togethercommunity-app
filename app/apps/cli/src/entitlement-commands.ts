@@ -52,14 +52,48 @@ export const formatEntitlementCheck = (output: EntitlementCheckOutput): string =
     return [`${subjectLabel(result.subject)}${result.member === null ? '' : ` (${result.member.id})`}`, ...products].join('\n');
   }).join('\n');
 
+export const runEntitlementCheck = async (
+  rawOptions: unknown,
+  context: () => Result<EntitlementCliContext, AppError>,
+  fallbackJson: boolean,
+  createClient: EntitlementClientFactory = createEntitlementClient,
+): Promise<void> => {
+  const ctx = context();
+  if (!ctx.ok) { emit(ctx, fallbackJson, () => ''); return; }
+  const options = checkOptionsSchema.safeParse(rawOptions);
+  if (!options.success) { emit(err(validation('Invalid entitlement check options', options.error.flatten())), ctx.value.json, () => ''); return; }
+  const apiKey = process.env[options.data.apiKeyEnv]?.trim();
+  if (!apiKey) {
+    emit(err(validation(`Environment variable ${options.data.apiKeyEnv} must hold the entitlement key`)), ctx.value.json, () => '');
+    return;
+  }
+  const subjects = [
+    ...await readSubjectsFile(options.data.subjectsFile),
+    ...(options.data.email ?? []).map((email) => ({ email })),
+    ...(options.data.memberId ?? []).map((memberId) => ({ memberId })),
+  ];
+  if (subjects.length === 0) {
+    emit(err(validation('Name at least one subject with --subjects-file, --email or --member-id')), ctx.value.json, () => '');
+    return;
+  }
+  const client = createClient({
+    baseUrl: ctx.value.apiUrl,
+    apiKey,
+    ...(ctx.value.tenant === null ? {} : { tenant: ctx.value.tenant }),
+  });
+  emit(
+    await client.check({ subjects, ...(options.data.product === undefined ? {} : { productIds: options.data.product }) }),
+    ctx.value.json,
+    formatEntitlementCheck,
+  );
+};
+
 export const registerEntitlementCommands = (
   program: Command,
   context: () => Result<EntitlementCliContext, AppError>,
-  createClient: EntitlementClientFactory = createEntitlementClient,
 ): void => {
-  const entitlement = program.command('entitlement')
-    .description(`Check who has access in a workspace with an entitlement key read from an environment variable (default ${DEFAULT_ENTITLEMENT_KEY_ENV})`);
-  entitlement
+  program.command('entitlement')
+    .description(`Check who has access in a workspace with an entitlement key read from an environment variable (default ${DEFAULT_ENTITLEMENT_KEY_ENV})`)
     .command('check')
     .description('Check whether people have access to the workspace\'s products; e-mail addresses match only verified accounts')
     .option('--subjects-file <path>', 'File with one e-mail address or member:<id> per line; - reads stdin (keeps addresses out of shell history and the process list)')
@@ -67,34 +101,5 @@ export const registerEntitlementCommands = (
     .option('--member-id <id...>', 'Member ids to check (needs a key with entitlements:members:read)')
     .option('--product <id...>', 'Products to answer for; without it every product the key covers')
     .option('--api-key-env <name>', 'Environment variable holding the entitlement key', DEFAULT_ENTITLEMENT_KEY_ENV)
-    .action(async (rawOptions: unknown) => {
-      const ctx = context();
-      if (!ctx.ok) { emit(ctx, program.opts()['json'] === true, () => ''); return; }
-      const options = checkOptionsSchema.safeParse(rawOptions);
-      if (!options.success) { emit(err(validation('Invalid entitlement check options', options.error.flatten())), ctx.value.json, () => ''); return; }
-      const apiKey = process.env[options.data.apiKeyEnv]?.trim();
-      if (!apiKey) {
-        emit(err(validation(`Environment variable ${options.data.apiKeyEnv} must hold the entitlement key`)), ctx.value.json, () => '');
-        return;
-      }
-      const subjects = [
-        ...await readSubjectsFile(options.data.subjectsFile),
-        ...(options.data.email ?? []).map((email) => ({ email })),
-        ...(options.data.memberId ?? []).map((memberId) => ({ memberId })),
-      ];
-      if (subjects.length === 0) {
-        emit(err(validation('Name at least one subject with --subjects-file, --email or --member-id')), ctx.value.json, () => '');
-        return;
-      }
-      const client = createClient({
-        baseUrl: ctx.value.apiUrl,
-        apiKey,
-        ...(ctx.value.tenant === null ? {} : { tenant: ctx.value.tenant }),
-      });
-      emit(
-        await client.check({ subjects, ...(options.data.product === undefined ? {} : { productIds: options.data.product }) }),
-        ctx.value.json,
-        formatEntitlementCheck,
-      );
-    });
+    .action((rawOptions: unknown) => runEntitlementCheck(rawOptions, context, program.opts()['json'] === true));
 };

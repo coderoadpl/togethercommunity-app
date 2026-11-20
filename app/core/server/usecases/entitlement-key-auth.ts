@@ -23,7 +23,7 @@ import type {
   TenantAccessReader,
 } from '../ports.js';
 
-export const ENTITLEMENT_KEY_RATE_LIMITS = [
+const ENTITLEMENT_KEY_RATE_LIMITS = [
   { period: 'minute', durationMs: 60_000, limit: 300 },
   { period: 'day', durationMs: 86_400_000, limit: 20_000 },
 ] as const;

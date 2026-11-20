@@ -148,9 +148,6 @@ export const shortLateCommitProductIds = (
     .sort();
 };
 
-export const firstSoldOutProductId = (productIds: readonly string[], levels: readonly StockLevel[]): string | null =>
-  firstShortStockProductId(productIds.map((productId) => ({ productId, quantity: 1 })), levels);
-
 export const purchasableSets = (items: readonly StockQuantity[], levels: readonly StockLevel[]): number | null => {
   const counts = mergeStockQuantities(items).flatMap((item) => {
     const level = levels.find((candidate) => candidate.productId === item.productId);

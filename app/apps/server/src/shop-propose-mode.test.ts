@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -13,6 +15,7 @@ import {
   productStock,
   salesLinks,
   shopManagementKeyEvents,
+  shopManagementKeys,
   stockEvents,
   tenantAdmins,
   tenantApiKeys,
@@ -37,6 +40,7 @@ import {
   shopCatalogContracts,
   shopProposalContracts,
 } from '#core/contract/index.js';
+import { shopManagementKeyHash } from '#core/server/index.js';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
@@ -64,6 +68,7 @@ let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
 let deps: ReturnType<typeof createDeps>;
 let ownerToken: string;
+let ownerId: string;
 let adminToken: string;
 let ownerId: string;
 
@@ -387,6 +392,47 @@ describe('a direct-mode key on every registered shop route', () => {
     const response = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: fixture.published, lowStockThreshold: 1 });
     expect(response.status).toBe(200);
     expect(envelope(shopCatalogContracts.setProductStockThreshold.output).parse(await response.json()).data.stock).toMatchObject({ lowStockThreshold: 1 });
+  });
+});
+
+describe('a propose-mode key on a release that predates propose mode', () => {
+  const previousReleaseHash = (secret: string): string => createHash('sha256').update(secret).digest('hex');
+  const previousReleaseLookup = async (secret: string) =>
+    (await database.db.select().from(shopManagementKeys))
+      .filter((row) => row.tenantId === 'acme' && row.keyHash === previousReleaseHash(secret))
+      .map((row) => row.id);
+
+  const plantKey = async (id: string, secret: string, mode: 'direct' | 'propose', keyHash: string) => {
+    await database.db.insert(shopManagementKeys).values({
+      id, tenantId: 'acme', name: id, keyHash, scopes: ['shop:catalog:read', 'shop:catalog:write'], mode,
+      issuedByUserId: ownerId, createdAt: now, expiresAt, revokedAt: null,
+    });
+    return secret;
+  };
+
+  it('is never found by the previous release\'s plain-hash lookup, while a direct-mode key is', async () => {
+    expect(await previousReleaseLookup(proposer.secret)).toEqual([]);
+    expect(await previousReleaseLookup(direct.secret)).toEqual([direct.apiKey.id]);
+  });
+
+  it.each([
+    ['a propose-mode row stored under the plain hash', 'planted-propose-plain', 'propose', previousReleaseHash],
+    ['a direct-mode row stored under the propose-mode hash', 'planted-direct-propose', 'direct',
+      (secret: string) => shopManagementKeyHash(deps.apiKeyCrypto, secret, 'propose')],
+  ] as const)('refuses %s with 401 and changes nothing', async (_label, id, mode, hashOf) => {
+    const secret = await plantKey(id, `${id}-secret`, mode, hashOf(`${id}-secret`));
+    const before = await liveState();
+    const proposalsBefore = (await database.db.select().from(changeProposals)).length;
+    for (const [method, path, body] of [
+      ['GET', SHOP_CATALOG_ROUTES.listProducts.path, undefined],
+      ['POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Planted title' }],
+    ] as const) {
+      const response = await keyed(secret, method, path, body);
+      expect(response.status, `${method} ${path}`).toBe(401);
+      expect(await errorOf(response)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
+    }
+    expect(await liveState()).toBe(before);
+    expect((await database.db.select().from(changeProposals)).length).toBe(proposalsBefore);
   });
 });
 

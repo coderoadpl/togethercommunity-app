@@ -117,6 +117,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   AuthPort: 'Authentication-provider boundary whose records are platform identities.',
   BackgroundTicker: 'In-process ticker callback; the work it runs is scoped by its own use-case.',
   BackgroundTickers: 'In-process ticker lifecycle handle with no persistence access.',
+  ChangeProposalWithdrawal: 'Decision time, actor and event-id source handed to a key revocation or purge that is already scoped to one tenant; no persistence access.',
   ChangeProposalPostCommitEffects: 'In-memory collector of the effects one change proposal transaction runs after COMMIT, with no persistence access.',
   ChangeProposalOperationDefinition: 'Registry entry of one proposable operation; its snapshot reads and live run go through the tenant-scoped repositories of the transaction it is handed.',
   ChangeProposalOperationEntry: 'Registry entry that parses a proposal input; no persistence access of its own.',

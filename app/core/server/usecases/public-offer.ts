@@ -1,5 +1,6 @@
 import {
   EMPTY_LEGAL_URLS,
+  cartLineMaxQuantity,
   defaultProductVat,
   isCatalogueListed,
   isStandalonePurchasable,
@@ -16,6 +17,8 @@ import {
   EMPTY_TENANT_BRANDING,
   ok,
   publicProductStock,
+  publicStockLookup,
+  purchasableLineQuantity,
   type PublicProductStock,
   type AppError,
   type LegalUrls,
@@ -88,6 +91,7 @@ interface PublicOfferProduct {
   currency: string;
   prices: PublicOfferPrice[];
   stock: PublicProductStock;
+  maxQuantity: number;
   marketingConsents: Array<{
     definitionId: string;
     label: string;
@@ -144,7 +148,7 @@ export const getPublicOffer = async (
     ...offerable.filter((product) => product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
   ]);
   const stock = await deps.stock?.listByProducts(tenant.id, [...stockProductIds]) ?? [];
-  const soldOutProductIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
+  const stockOf = publicStockLookup(stock);
   return ok({
     tenant: {
       slug: tenant.slug,
@@ -173,8 +177,9 @@ export const getPublicOffer = async (
     products: await Promise.all(products.map(async (product) => ({
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
-      variants: productVariants(product, offerable, soldOutProductIds),
-      stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
+      variants: productVariants(product, offerable, stockOf),
+      stock: stockOf(product.id),
+      maxQuantity: purchasableLineQuantity(cartLineMaxQuantity(product.type), stockOf(product.id)),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
     shippingRates: publicShippingRates(settings?.shippingRates),
@@ -217,6 +222,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   currency: product.currency,
   prices,
   stock: publicProductStock(null),
+  maxQuantity: cartLineMaxQuantity(product.type),
   marketingConsents: [],
 });
 

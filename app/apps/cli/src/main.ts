@@ -960,6 +960,11 @@ originCommand
     }),
   );
 
+const publicStockLabel = (stock: { soldOut: boolean; available: number | null }): string => {
+  if (stock.soldOut) return '  sold out';
+  return stock.available === null ? '' : `  ${String(stock.available)} left`;
+};
+
 const publicCommand = program.command('public').description('Public read-only API');
 
 publicCommand.command('offer').description('Show the public offer').action(
@@ -968,7 +973,7 @@ publicCommand.command('offer').description('Show the public offer').action(
       data.products.length === 0
         ? `${data.tenant.name} (${data.tenant.slug}) has no published products`
         : data.products
-            .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})`)
+            .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})${publicStockLabel(product.stock)}`)
             .join('\n'),
     );
   }),

@@ -127,6 +127,20 @@ describe('shop manifest documentation', () => {
     });
   });
 
+  it('bounds the cart quantity picker example by the public offer fields', async () => {
+    const document = await readFile(new URL('../../../../docs/shop-integration.md', import.meta.url), 'utf8');
+    const section = document.slice(document.indexOf('A custom cart form bounds each quantity picker'));
+    const picker = /```js\n([\s\S]*?)\n```/u.exec(section)?.[1];
+    if (picker === undefined) throw new Error('Expected a plain JavaScript quantity picker example');
+    expect(picker).not.toMatch(/\bimport\b|#core\//u);
+    for (const field of ['.maxQuantity', '.stock.available', '.stock.soldOut']) expect(picker).toContain(field);
+    const offerProduct = publicOfferOutputSchema.shape.products.element;
+    expect(offerProduct.parse({
+      id: 'p1', type: 'physical', slug: 'paperback', title: 'Paperback', description: '', coverUrl: null, priceCents: 4900, currency: 'PLN', prices: [],
+      stock: { tracked: true, soldOut: false, low: false, available: 3 }, maxQuantity: 3,
+    })).toMatchObject({ maxQuantity: 3, stock: { available: 3 } });
+  });
+
   it.each(['shop-manifest.md', 'shop-integration.md'])('runs every --json example in %s without the script banner', async (name) => {
     const document = await readFile(new URL(`../../../../docs/${name}`, import.meta.url), 'utf8');
     const jsonExamples = document.split('\n').filter((line) => line.includes('--json') && line.includes('run cli'));

@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
@@ -434,6 +435,7 @@ const deps = (input: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
     },
+    ...createOrganizationFakes().repositories,
     impersonationTokens: {
       issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
       verify: (token) => token.startsWith('token:')
@@ -600,7 +602,9 @@ const deps = (input: {
         },
       }),
     },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation(appDeps) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
+      operation({ ...appDeps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
+        members: { ...appDeps.members, findByIdForShare: (tenantId, memberId) => appDeps.members.findById(tenantId, memberId) } }) },
     paymentTransaction: {
       run: async (operation) =>
         operation({
@@ -9669,7 +9673,7 @@ describe('impersonation HTTP surface', () => {
     expect(mutations.length).toBeGreaterThan(100);
     for (const route of mutations) {
       const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
-      const requestHeaders = route.path === API_PATHS.operatorTenantProvision
+      const requestHeaders = [API_PATHS.operatorTenantProvision, API_PATHS.operatorOrganizationCreate, API_PATHS.operatorOrganizationLimits].some((operatorPath) => operatorPath === route.path)
         ? { ...impersonated, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }
         : impersonated;
       const response = await app.request(path, { method: route.method, headers: requestHeaders });
@@ -10321,12 +10325,12 @@ describe('Stripe subscription adoption authorization', () => {
       });
       const retrieve = vi.fn(async () => ok({
         id: payload.subscriptionId, status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
-        cancelAtPeriodEnd: false, customerEmail: 'buyer@example.com',
+        cancelAtPeriodEnd: false, customerId: 'cus_existing', customerEmail: 'buyer@example.com', metadataTenantId: null,
         price: { id: 'price_existing', amountCents: 3500, currency: 'EUR' as const, interval: 'month' as const, intervalCount: 1 },
       }));
       const list = vi.fn(async () => ok({ subscriptions: [
-        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing' },
-        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other' },
+        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing', customerId: 'cus_existing', metadataTenantId: null },
+        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other', customerId: 'cus_other', metadataTenantId: acme.id },
       ], nextCursor: null }));
       base.payment.retrieveStripeSubscription = retrieve;
       base.payment.listStripeSubscriptions = list;

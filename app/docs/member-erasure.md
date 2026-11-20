@@ -81,6 +81,11 @@ follow the same member-erasure selection as live orders.
   matching SNS notification receipts to `together-scrubbed:v1:` without changing
   their status, so pending feedback remains processable; late feedback for erased
   recipients is scrubbed before persistence as well;
+- deletes the current tenant's `provider_customer_owners` rows written for the
+  member (`member_id`) or holding the member's Stripe customer identifier from
+  `external_customer_ids`, so that Stripe customer is unowned again and a later
+  subscription adoption follows the normal ownership rules; rows of other
+  tenants stay;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state
@@ -90,8 +95,11 @@ follow the same member-erasure selection as live orders.
 The erasure response reports `deletedTeamInvitations`, the number of pending
 invitations deleted in the current tenant only. Invitations in other tenants
 remain unchanged and are never included in that count. Other memberships,
-staff grants, or pending administrator invitations retain the auth user; the
-transaction deletes the auth user only when none of these links remain.
+staff grants, pending administrator invitations, or organization memberships
+(`organization_members`, owner or admin) retain the auth user; the transaction
+deletes the auth user only when none of these links remain. An organization
+owner or admin who was also a buyer in a workspace therefore keeps the account
+and the organization membership.
 Erasing a member therefore cannot silently revoke another tenant's pending
 administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign

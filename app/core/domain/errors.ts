@@ -30,6 +30,7 @@ export const ERROR_CODES = [
   'shipx_unavailable',
   'shipx_rejected',
   'feed_cursor_reset',
+  'workspace_quota_exceeded',
   'internal',
 ] as const;
 

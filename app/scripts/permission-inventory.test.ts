@@ -14,8 +14,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(504);
-    expect(inventory.useCases).toHaveLength(367);
+    expect(inventory.routes).toHaveLength(513);
+    expect(inventory.useCases).toHaveLength(376);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -400,4 +400,25 @@ describe('use-case shape probe', () => {
       },
     ]);
   });
+
+  it('classifies organization use-cases by the capability given to authorizeOrganization', () => {
+    const source = `
+      export const getOrganizationThing = async (octx: OrganizationCtx, input: { organizationId: string }) =>
+        authorizeOrganization(octx, input.organizationId, 'organization:read');
+    `;
+    expect(collectUseCasesInSource('probe.ts', source)).toEqual([
+      { name: 'getOrganizationThing', file: 'probe.ts', capability: 'organization:read', organizationContext: true },
+    ]);
+  });
+
+  it('keeps organization rows on organization principals only', () => {
+    const inventory = collectPermissionInventory();
+    const rows = [...inventory.routes, ...inventory.useCases].filter((row) => row.capability?.startsWith('organization:') === true);
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    for (const row of rows) {
+      expect(row.after.every((principal) => principal.startsWith('organization-')), row.subject).toBe(true);
+      expect(row.after, row.subject).toEqual(row.before);
+    }
+  });
 });
+

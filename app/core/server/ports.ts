@@ -77,6 +77,11 @@ import type {
   StorageConfiguration,
   StorageCorsCacheEntry,
   StorageCorsProbeResult,
+  Organization,
+  OrganizationAuditEvent,
+  OrganizationMember,
+  OrganizationMemberAccount,
+  OrganizationWorkspace,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -143,6 +148,7 @@ import type {
   ListStripeSubscriptionsInput,
   MemberActivity,
   MemberActivityQuery,
+  StripeSubscriptionListEntry,
   StripeSubscriptionSnapshot,
   StripeMode,
   StripePermissionCheck,
@@ -1165,7 +1171,7 @@ export interface PaymentProvider {
     checkoutBranding?: CheckoutBranding;
   }): Promise<Result<StripePermissionCheck[], AppError>>;
   retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
-  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
+  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: StripeSubscriptionListEntry[]; nextCursor: string | null }, AppError>>;
   configureWebhook?(input: {
     tenantId: string;
     restrictedKey: string;
@@ -2598,6 +2604,74 @@ export interface TenantAuditEventRepository {
   record(tenantId: string, event: TenantAuditEventInput): Promise<void>;
 }
 
+interface OrganizationCreationInput {
+  organization: Organization;
+  owner: Omit<OrganizationMember, 'organizationId'>;
+  audit: ReadonlyArray<Omit<OrganizationAuditEvent, 'organizationId'>>;
+}
+
+type OrganizationCreationResult =
+  | { status: 'created'; organization: Organization }
+  | { status: 'existing'; organization: Organization }
+  | { status: 'conflict' }
+  | { status: 'owner_unverified' };
+
+export interface OrganizationRepository {
+  /**
+   * One transaction: the organization, its owner membership and the audit rows.
+   * A slug that already exists returns it when the owner is one of its owners.
+   */
+  createWithOwner(input: OrganizationCreationInput): Promise<OrganizationCreationResult>;
+  findById(organizationId: string): Promise<Organization | null>;
+  setMaxWorkspaces(
+    organizationId: string,
+    input: { maxWorkspaces: number; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId'> },
+  ): Promise<Organization | null>;
+}
+
+export interface OrganizationMemberRepository {
+  find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
+  listAccounts(organizationId: string): Promise<OrganizationMemberAccount[]>;
+  listForUser(userId: string): Promise<OrganizationMember[]>;
+}
+
+/** Append-only organization audit trail; entries are never updated or deleted. */
+export interface OrganizationAuditRepository {
+  list(organizationId: string, query: { limit: number }): Promise<OrganizationAuditEvent[]>;
+}
+
+interface OrganizationWorkspaceChange {
+  organizationId: string;
+  actorUserId: string;
+  organizationAudit: Omit<OrganizationAuditEvent, 'organizationId'>;
+  tenantAudit: Omit<TenantAuditEventInput, 'tenantId'>;
+}
+
+type OrganizationWorkspaceRefusal =
+  | { status: 'workspace_owner_required' }
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' };
+
+type OrganizationWorkspaceLinkResult =
+  | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_quota_exceeded' }
+  | OrganizationWorkspaceRefusal;
+
+type OrganizationWorkspaceUnlinkResult =
+  | { status: 'unlinked' | 'not_linked'; workspace: OrganizationWorkspace }
+  | { status: 'config_sources_present' }
+  | OrganizationWorkspaceRefusal;
+
+/**
+ * Link and unlink re-check, inside one transaction with the change and both audit rows,
+ * that the actor holds a direct owner grant in the workspace and is an owner of the organization.
+ */
+export interface OrganizationWorkspaceRepository {
+  link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;
+  unlink(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceUnlinkResult>;
+  list(organizationId: string): Promise<OrganizationWorkspace[]>;
+}
+
 export interface ImpersonationTokenCodec {
   issue(sessionId: string): { token: string; tokenHash: string };
   verify(token: string): { sessionId: string; tokenHash: string } | null;
@@ -2628,17 +2702,33 @@ export interface ActivityReportRepository {
   memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }
 
+export interface ProviderCustomerOwnerRepository {
+  claimStripeCustomer(
+    tenantId: string, claim: { customerId: string; memberId: string; claimedAt: string },
+  ): Promise<'this-workspace' | 'another-workspace'>;
+}
+
+interface SubscriptionAdoptionMemberLock {
+  findByIdForShare(tenantId: string, memberId: string): Promise<Member | null>;
+}
+
 export interface SubscriptionAdoptionRepositories {
-  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  members: Pick<MemberRepository, 'findByEmail'> & SubscriptionAdoptionMemberLock;
+  customerOwners: ProviderCustomerOwnerRepository;
   products: Pick<ProductRepository, 'findById'>;
   prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
   subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;
   grants: Pick<ProductGrantRepository, 'findGrant' | 'createGrant' | 'setGrantWindow'>;
   memberEvents: Pick<MemberEventRepository, 'append'>;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
 }
 
 export interface SubscriptionAdoptionTransaction {
-  run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  run<T>(
+    tenantId: string,
+    stripe: { subscriptionId: string; customerId: string },
+    operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>,
+  ): Promise<Result<T, AppError>>;
 }
 
 export interface LessonEditionRepository {

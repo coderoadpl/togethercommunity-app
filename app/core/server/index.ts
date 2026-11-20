@@ -145,6 +145,8 @@ export * from './usecases/marketing-signup-forms.js';
 export * from './usecases/provision-tenant.js';
 export * from './usecases/organizations.js';
 export * from './usecases/organization-workspaces.js';
+export * from './usecases/organization-members.js';
+export * from './usecases/organization-secrets.js';
 export * from './usecases/operator-organizations.js';
 export * from './organization-context.js';
 export * from './usecases/operator-tenant-readiness.js';

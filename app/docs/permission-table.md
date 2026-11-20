@@ -20,10 +20,13 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller's own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning.
+The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller's own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning. `tenant:organization:unlink` is listed for `owner`, and the use-case and the repository additionally require that owner role to come from a direct workspace grant: an owner derived from the organization is refused. The same direct-grant requirement applies to `api-keys.ts#createTenantApiKey`, `tenant-team.ts#addTenantAdmin` and `tenant-team.ts#removeTenantAdmin`, whose results outlive the request; shop management keys stay open to a derived owner because the key issuer's grant is re-read on every request.
+
+The workspace `owner` and `admin` principals in the rows below include organization-derived roles. In a workspace linked to an active organization, an organization `owner` holds the workspace `owner` principal and an organization `admin` the workspace `admin` principal; `findStaffGrant` returns the higher of the direct and the derived role with its source (`direct` or `organization`, a tie keeps `direct`), read on every request. A suspended organization derives no workspace role, and `authorizeOrganization` refuses every `organization:*` capability outside the read allow-list in `core/domain/authorization.ts` while the organization is suspended. Staff notification recipients and the team list's members come from direct grants only.
+
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-Closed capability count: 137. Route rows: 513. Exported `Ctx` use-case rows: 376.
+Closed capability count: 138. Route rows: 522. Exported `Ctx` use-case rows: 385.
 
 ## Human-readable diff
 
@@ -295,11 +298,20 @@ no changes
 | `POST /api/orders/:orderId/shipx/label` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/organizations` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/update` | organization:settings:write | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `GET /api/organizations/:organizationId/secrets` | organization:secret:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/secrets` | organization:secret:write | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `DELETE /api/organizations/:organizationId/secrets/:key` | organization:secret:write | organization-owner | organization-owner | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId/members` | organization:member:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/members` | organization:member:write | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/members/role` | organization:member:write | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `POST /api/organizations/:organizationId/members/remove` | organization:member:write | organization-owner | organization-owner | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId/audit-events` | organization:audit:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `GET /api/organizations/:organizationId/workspaces` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `POST /api/organizations/:organizationId/workspaces/link` | organization:workspace:link | organization-owner | organization-owner | yes | identity middleware + use-case guard |
 | `POST /api/organizations/:organizationId/workspaces/unlink` | organization:workspace:link | organization-owner | organization-owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/organization/unlink` | tenant:organization:unlink | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/organizations/:organizationId/workspaces/:tenantId/sources` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -814,11 +826,20 @@ no changes
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
+| `organization-members.ts#addOrganizationMember` | organization:member:write | organization-owner | organization-owner | yes | core/server/usecases/organization-members.ts organization authorization call |
+| `organization-members.ts#setOrganizationMemberRole` | organization:member:write | organization-owner | organization-owner | yes | core/server/usecases/organization-members.ts organization authorization call |
+| `organization-members.ts#removeOrganizationMember` | organization:member:write | organization-owner | organization-owner | yes | core/server/usecases/organization-members.ts organization authorization call |
+| `organization-secrets.ts#listOrganizationSecrets` | organization:secret:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organization-secrets.ts organization authorization call |
+| `organization-secrets.ts#setOrganizationSecret` | organization:secret:write | organization-owner | organization-owner | yes | core/server/usecases/organization-secrets.ts organization authorization call |
+| `organization-secrets.ts#deleteOrganizationSecret` | organization:secret:write | organization-owner | organization-owner | yes | core/server/usecases/organization-secrets.ts organization authorization call |
 | `organization-workspaces.ts#listOrganizationWorkspaces` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organization-workspaces.ts#linkOrganizationWorkspace` | organization:workspace:link | organization-owner | organization-owner | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organization-workspaces.ts#unlinkOrganizationWorkspace` | organization:workspace:link | organization-owner | organization-owner | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
+| `organization-workspaces.ts#unlinkWorkspaceFromOrganization` | tenant:organization:unlink | owner | owner | yes | core/server/usecases/organization-workspaces.ts authorization call |
+| `organization-workspaces.ts#getWorkspaceConfigSources` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organization-workspaces.ts organization authorization call |
 | `organizations.ts#listOrganizations` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/organizations.ts authorization call |
 | `organizations.ts#getOrganization` | organization:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |
+| `organizations.ts#updateOrganization` | organization:settings:write | organization-owner | organization-owner | yes | core/server/usecases/organizations.ts organization authorization call |
 | `organizations.ts#listOrganizationMembers` | organization:member:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |
 | `organizations.ts#listOrganizationAuditEvents` | organization:audit:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |
 | `platform-data-reset.ts#resetPlatformData` | platform:data:reset | platform-owner | platform-owner | yes | core/server/usecases/platform-data-reset.ts authorization call |
@@ -960,8 +981,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/community-access.ts:84` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
 | staff-role | `core/server/usecases/community-access.ts:101` | `if (ctx.identity.staffRole) return ok(undefined);` |
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| staff-role | `core/server/usecases/community-access.ts:251` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:267` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:179` | `if (tenantId !== null && identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:193` | `if (ctx.identity.staffRole !== null) return false;` |
 | staff-role | `core/server/usecases/community.ts:395` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |

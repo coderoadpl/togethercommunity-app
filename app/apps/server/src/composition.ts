@@ -6,14 +6,19 @@ import { createTenantTeamRepository } from '#adapters/db/repositories.js';
 import {
   createOrganizationAuditRepository,
   createOrganizationMemberRepository,
+  createEffectiveTenantConfigReader,
   createOrganizationRepository,
+  createOrganizationSecretRepository,
   createOrganizationWorkspaceRepository,
+  createTenantConfigSourceRepository,
 } from '#adapters/db/organizations.js';
 import type {
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
+  OrganizationSecretRepository,
   OrganizationWorkspaceRepository,
+  TenantConfigSourceRepository,
 } from '#core/server/index.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -190,6 +195,7 @@ import { databaseHostFingerprint, databaseIdentityFingerprint } from '#adapters/
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
+import { createEffectiveTenantSecretResolver } from '#adapters/crypto/effective-tenant-secret-resolver.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '#adapters/payment/fake.js';
@@ -543,6 +549,8 @@ export interface AppDeps {
   organizationMembers: OrganizationMemberRepository;
   organizationAudit: OrganizationAuditRepository;
   organizationWorkspaces: OrganizationWorkspaceRepository;
+  organizationSecrets: OrganizationSecretRepository;
+  tenantConfigSources: TenantConfigSourceRepository;
   team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
@@ -970,7 +978,9 @@ export const createDeps = (
     egress: createTelemetryEgressProbe({ declaredIp: env.PLATFORM_EGRESS_IP, endpoint: env.PLATFORM_EGRESS_ECHO_URL }),
     hidesStatistics: env.TELEMETRY_FREE_PLAN_HIDES_STATS,
   };
-  const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  const secretResolver = createEffectiveTenantSecretResolver(
+    createTenantSecretResolver(tenantSecrets, secretCrypto), createEffectiveTenantConfigReader(db), secretCrypto,
+  );
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
   const stock = createStockRepository(db);
@@ -1068,7 +1078,11 @@ export const createDeps = (
     const connectionTenants = createTenantRepository(connection, tenantRepositoryOptions);
     return {
       tenants: connectionTenants,
-      secrets: createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      secrets: createEffectiveTenantSecretResolver(
+        createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+        createEffectiveTenantConfigReader(connection),
+        secretCrypto,
+      ),
       resolveOrigin: createTenantOriginResolver({
         tenants: connectionTenants, tenantDomains: createTenantDomainRepository(connection), appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
       }),
@@ -1578,6 +1592,8 @@ export const createDeps = (
     organizationMembers: createOrganizationMemberRepository(db),
     organizationAudit: createOrganizationAuditRepository(db),
     organizationWorkspaces: createOrganizationWorkspaceRepository(db),
+    organizationSecrets: createOrganizationSecretRepository(db),
+    tenantConfigSources: createTenantConfigSourceRepository(db),
     team,
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,

@@ -1,6 +1,6 @@
 {
-  "hash": "8f4dfa5994333dd814a1d22e597163a9edb75e5b6decfeb5ee2a8e2313fbaf5c",
-  "shortId": "8f4dfa599433",
+  "hash": "91861b08b5c616a410cd451f80acd43957399eef87c0ba46294ee48d59918b43",
+  "shortId": "91861b08b5c6",
   "schema": {
     "constraints": [
       {
@@ -94,6 +94,11 @@
         "table": "shop_management_key_events"
       },
       {
+        "definition": "CHECK ((config_group = ANY (ARRAY['payments_live'::text, 'payments_test'::text, 'invoicing'::text, 'email_transport'::text, 'telemetry'::text, 'shipping_carrier'::text])))",
+        "name": "tenant_config_sources_config_group_check",
+        "table": "tenant_config_sources"
+      },
+      {
         "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",
         "name": "meta_capi_consent_evidence_decision_check",
         "table": "meta_capi_consent_evidence"
@@ -134,9 +139,19 @@
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((invoicing_provider = ANY (ARRAY['ifirma'::text, 'ksef'::text])))",
+        "name": "organizations_invoicing_provider_check",
+        "table": "organizations"
+      },
+      {
         "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
         "name": "shop_management_key_events_kind_check",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CHECK ((ksef_submission_mode = ANY (ARRAY['automatic'::text, 'manual'::text])))",
+        "name": "organizations_ksef_submission_mode_check",
+        "table": "organizations"
       },
       {
         "definition": "CHECK ((length(comment) <= 2000))",
@@ -270,8 +285,18 @@
       },
       {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
+        "name": "organizations_shipx_environment_check",
+        "table": "organizations"
+      },
+      {
+        "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "tenants_shipx_environment_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((source = 'organization'::text))",
+        "name": "tenant_config_sources_source_check",
+        "table": "tenant_config_sources"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
@@ -552,6 +577,11 @@
         "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
         "name": "organization_members_organization_id_fkey",
         "table": "organization_members"
+      },
+      {
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+        "name": "organization_secrets_organization_id_fkey",
+        "table": "organization_secrets"
       },
       {
         "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT",
@@ -1155,6 +1185,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_config_sources_tenant_id_fkey",
+        "table": "tenant_config_sources"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_document_versions_tenant_id_tenants_id_fk",
         "table": "tenant_document_versions"
       },
@@ -1750,6 +1785,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "organization_secrets_pkey",
+        "table": "organization_secrets"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "organizations_pkey",
         "table": "organizations"
       },
@@ -2012,6 +2052,11 @@
         "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
         "name": "checkout_consent_jobs_pkey",
         "table": "checkout_consent_jobs"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, config_group)",
+        "name": "tenant_config_sources_pkey",
+        "table": "tenant_config_sources"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -3206,6 +3251,11 @@
         "definition": "CREATE UNIQUE INDEX organization_members_org_user_uidx ON organization_members USING btree (organization_id, user_id)",
         "name": "organization_members_org_user_uidx",
         "table": "organization_members"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX organization_secrets_org_key_uidx ON organization_secrets USING btree (organization_id, key)",
+        "name": "organization_secrets_org_key_uidx",
+        "table": "organization_secrets"
       },
       {
         "definition": "CREATE UNIQUE INDEX organizations_slug_uidx ON organizations USING btree (slug)",
@@ -5416,6 +5466,115 @@
             "type": "text"
           },
           {
+            "default": "'automatic'::text",
+            "generated": "",
+            "identity": "",
+            "name": "ksef_submission_mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'sandbox'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "max_workspaces",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoicing_provider",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legal_address",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legal_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sender",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "organizations"
+      },
+      {
+        "columns": [
+          {
+            "default": "'active'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'first_invoice'::text",
             "generated": "",
             "identity": "",
@@ -5553,67 +5712,6 @@
           }
         ],
         "name": "coupons"
-      },
-      {
-        "columns": [
-          {
-            "default": "'active'::text",
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "max_workspaces",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "slug",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "updated_at",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "organizations"
       },
       {
         "columns": [
@@ -11716,6 +11814,75 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "organization_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "organization_secrets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "auth_tag",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ciphertext",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "iv",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "masked_preview",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "tenant_id",
             "notNull": true,
             "type": "text"
@@ -12505,6 +12672,51 @@
           }
         ],
         "name": "survey_responses"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "config_group",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_by_user_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_config_sources"
       },
       {
         "columns": [

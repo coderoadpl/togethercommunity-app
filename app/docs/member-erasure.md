@@ -99,7 +99,8 @@ staff grants, pending administrator invitations, or organization memberships
 (`organization_members`, owner or admin) retain the auth user; the transaction
 deletes the auth user only when none of these links remain. An organization
 owner or admin who was also a buyer in a workspace therefore keeps the account
-and the organization membership.
+and the organization membership, and keeps the workspace roles derived from the
+organization.
 Erasing a member therefore cannot silently revoke another tenant's pending
 administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign

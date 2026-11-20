@@ -11,6 +11,7 @@ import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
   organizationAuditEvents,
   organizationMembers,
+  organizationSecrets,
   organizations,
   products,
   shopManagementKeyEvents,
@@ -18,6 +19,8 @@ import {
   shopManagementKeys,
   tenantAdmins,
   tenantApiKeys,
+  tenantConfigSources,
+  tenantSecrets,
   tenants,
   user,
 } from '#adapters/db/schema.js';
@@ -30,6 +33,7 @@ import {
   SHOP_ORDER_ROUTES,
   SHOP_SETTINGS_ROUTES,
   shopCatalogContracts,
+  shopIntegrationContracts,
 } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
@@ -724,10 +728,17 @@ describe('shop management keys next to an organization of two workspaces', () =>
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+  const ORGANIZATION_SECRET_VALUES = {
+    'ifirma.invoiceApiKey': 'organization-ifirma-key-qzxw',
+    'shipx.token': 'organization-shipx-token-vkjy',
+  } as const;
   const organizationState = async () => ({
     organizations: await database.db.select().from(organizations),
     members: await database.db.select().from(organizationMembers),
     audit: await database.db.select().from(organizationAuditEvents),
+    secrets: (await database.db.select().from(organizationSecrets)).sort((left, right) => left.key.localeCompare(right.key)),
+    sources: (await database.db.select().from(tenantConfigSources))
+      .sort((left, right) => `${left.tenantId}/${left.configGroup}`.localeCompare(`${right.tenantId}/${right.configGroup}`)),
     links: (await database.db.select({ id: tenants.id, organizationId: tenants.organizationId }).from(tenants))
       .sort((left, right) => left.id.localeCompare(right.id)),
   });
@@ -748,6 +759,23 @@ describe('shop management keys next to an organization of two workspaces', () =>
     await database.db.insert(tenantAdmins).values({ id: 'grant-akademia-owner', tenantId: 'akademia', userId: issuers.owner, role: 'owner' });
     await database.db.execute(`update tenants set organization_id = '${ORGANIZATION_ID}' where id in ('acme', 'studio')`);
     await insertKey({ id: 'shop-studio', secret: 'shop-studio-secret', tenantId: 'studio', scopes: [...shopManagementScopeSchema.options] });
+    await database.db.insert(user).values({
+      id: 'user-org-derived', name: 'Organization Owner', email: 'organization-owner@example.test', emailVerified: true,
+    });
+    await database.db.insert(organizationMembers).values({
+      id: 'org-member-derived', organizationId: ORGANIZATION_ID, userId: 'user-org-derived', role: 'owner',
+      createdAt: CREATED_AT, createdByUserId: issuers.owner,
+    });
+    await insertKey({ id: 'shop-derived', secret: 'shop-derived-secret', scopes: [...shopManagementScopeSchema.options], issuedByUserId: 'user-org-derived' });
+    for (const [key, value] of Object.entries(ORGANIZATION_SECRET_VALUES)) {
+      await database.db.insert(organizationSecrets).values({
+        id: `org-secret-${key}`, organizationId: ORGANIZATION_ID, key, ...deps.secretCrypto.encrypt(value),
+        maskedPreview: `••••${value.slice(-4)}`, updatedAt: CREATED_AT,
+      });
+    }
+    await database.db.insert(tenantConfigSources).values((['invoicing', 'shipping_carrier'] as const).map((configGroup) => ({
+      tenantId: 'acme', configGroup, source: 'organization' as const, updatedAt: CREATED_AT, updatedByUserId: issuers.owner,
+    })));
   });
 
   const sessionRequired = 'Authentication required';
@@ -761,6 +789,15 @@ describe('shop management keys next to an organization of two workspaces', () =>
     ['GET', orgPath(API_PATHS.organizationWorkspaces), undefined, sessionRequired],
     ['POST', orgPath(API_PATHS.organizationWorkspaceLink), { tenantId: 'akademia' }, sessionRequired],
     ['POST', orgPath(API_PATHS.organizationWorkspaceUnlink), { tenantId: 'studio' }, sessionRequired],
+    ['GET', orgPath(API_PATHS.organizationSecrets), undefined, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationSecrets), { key: 'ifirma.invoiceApiKey', value: 'minted-by-a-key-1234' }, sessionRequired],
+    ['DELETE', orgPath(API_PATHS.organizationSecretDelete).replace(':key', 'shipx.token'), undefined, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationUpdate), { legalName: 'Renamed by a key' }, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationMemberAdd), { email: 'shop-owner@example.test', role: 'admin' }, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationMemberRole), { email: 'organization-owner@example.test', role: 'admin' }, sessionRequired],
+    ['POST', orgPath(API_PATHS.organizationMemberRemove), { email: 'organization-owner@example.test' }, sessionRequired],
+    ['GET', orgPath(API_PATHS.organizationWorkspaceSources).replace(':tenantId', 'acme'), undefined, sessionRequired],
+    ['POST', API_PATHS.tenantOrganizationUnlink, {}, sessionRequired],
     ['POST', API_PATHS.operatorOrganizationCreate, { slug: 'minted', name: 'Minted', ownerEmail: 'shop-owner@example.test' }, operatorRequired],
     ['POST', orgPath(API_PATHS.operatorOrganizationLimits), { maxWorkspaces: 10 }, operatorRequired],
   ] as const)('refuses the key of an organization owner on %s %s and writes nothing', async (method, path, body, message) => {
@@ -801,5 +838,54 @@ describe('shop management keys next to an organization of two workspaces', () =>
       .parse(await (await keyed(SHOP_CATALOG_ROUTES.listProducts.path, 'GET')).json()).data.products;
     expect(listed.map((entry) => entry.id)).not.toContain(product.id);
     expect((await studioRows()).products).toEqual(before.products);
+  });
+
+  it('keeps the key of an organization-derived owner bound to its workspace although the issuer derives owner in the other one', async () => {
+    const derived = { 'x-api-key': 'shop-derived-secret' };
+    const own = await keyed(SHOP_CATALOG_ROUTES.listProducts.path, 'GET', undefined, derived);
+    expect(own.status).toBe(200);
+    const before = await studioRows();
+    for (const headers of [{ ...derived, host: studioHost }, { ...derived, host: 'localhost:48730', 'x-tenant': 'studio' }]) {
+      const read = await keyed(SHOP_CATALOG_ROUTES.listProducts.path, 'GET', undefined, headers);
+      expect(read.status).toBe(401);
+      expect(await errorOf(read)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
+      const write = await keyed(SHOP_CATALOG_ROUTES.createProduct.path, 'POST', { title: 'Derived cross workspace', type: 'physical', priceCents: 100 }, headers);
+      expect(write.status).toBe(401);
+      expect(await errorOf(write)).toEqual({ code: 'unauthorized', message: 'Invalid API key' });
+    }
+    expect(await studioRows()).toEqual(before);
+  });
+
+  it('hands no organization secret to the integration routes of a key whose workspace inherits that group', async () => {
+    const before = await organizationState();
+    const leaked = (body: string) => Object.values(ORGANIZATION_SECRET_VALUES)
+      .flatMap((value) => [value, value.slice(-4)])
+      .concat(before.secrets.flatMap((secret) => [secret.ciphertext, secret.maskedPreview]))
+      .filter((needle) => body.includes(needle));
+    const bodyOf = async (response: Response, status: number) => {
+      expect(response.status).toBe(status);
+      const body = await response.text();
+      expect(leaked(body)).toEqual([]);
+      return body;
+    };
+    const workspaceKeys = async () => (await database.db.select().from(tenantSecrets))
+      .filter((secret) => secret.tenantId === 'acme').map((secret) => secret.key).sort();
+
+    const listed = shopIntegrationContracts.listSecrets.output.parse(z.object({ ok: z.literal(true), data: z.unknown() })
+      .parse(JSON.parse(await bodyOf(await keyed(SHOP_INTEGRATION_ROUTES.listSecrets.path, 'GET'), 200))).data);
+    expect(listed.secrets.map((secret) => secret.key).sort()).toEqual(await workspaceKeys());
+    expect(listed.secrets.map((secret) => secret.key)).not.toContain('ifirma.invoiceApiKey');
+
+    const shipx = shopIntegrationContracts.shipxSettings.output.parse(z.object({ ok: z.literal(true), data: z.unknown() })
+      .parse(JSON.parse(await bodyOf(await keyed(SHOP_INTEGRATION_ROUTES.shipxSettings.path, 'GET'), 200))).data);
+    expect(shipx.sandbox.token).toBeNull();
+    expect(shipx.production.token).toBeNull();
+
+    await bodyOf(await keyed(SHOP_INTEGRATION_ROUTES.setSecret.path, 'POST', { key: 'ifirma.invoiceApiKey', value: 'workspace-ifirma-key-mnrt' }), 200);
+    expect(await workspaceKeys()).toContain('ifirma.invoiceApiKey');
+    await bodyOf(await keyed(SHOP_INTEGRATION_ROUTES.deleteSecret.path.replace(':key', 'ifirma.invoiceApiKey'), 'DELETE'), 200);
+    expect(await workspaceKeys()).not.toContain('ifirma.invoiceApiKey');
+
+    expect(await organizationState()).toEqual(before);
   });
 });

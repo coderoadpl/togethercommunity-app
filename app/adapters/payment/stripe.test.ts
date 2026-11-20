@@ -1,7 +1,7 @@
 import { configureStripe, probeStripePermissions } from '#core/server/index.js';
 import { createTenantSecretRepositoryFake } from '#core/server/testing/tenant-secret-fake.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
-import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
+import { err, isStripeTermsUrlMissing, stripeTermsUrlMissing, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
@@ -1650,6 +1650,48 @@ it.each([
   expect(body.get('allow_promotion_codes')).toBe(checkout === 'direct' ? 'false' : null);
   expect(body.get('discounts[0][promotion_code]')).toBe(checkout === 'direct-coupon' ? 'promo-1' : null);
   expect(body.has('billing_address_collection')).toBe(false);
+});
+
+const STRIPE_TERMS_URL_REFUSAL = 'You cannot collect consent to your terms of service unless a URL is set in the Stripe Dashboard. Update your public business details in the Dashboard https://dashboard.stripe.com/settings/public with a Terms of service URL to collect terms of service consent.';
+
+const refusingCheckoutProvider = (error: { type: string; message: string; param?: string }) => createStripePaymentProvider({
+  resolver: { resolve: async () => ok('rk_live_unused') },
+  clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () => stripeJson({ error }, 400)) }),
+});
+
+const termsCheckout = {
+  tenantId: 'tenant-a', productId: 'product-1', productName: 'Course', priceCents: 4900, currency: 'PLN',
+  successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
+};
+const legal = { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' };
+
+it.each([
+  ['workspace', { stripeTerms: legal }],
+  ['direct', { directCheckout: legal }],
+])('maps the Stripe refusal of a %s terms checkout without a Dashboard terms URL to a typed error', async (_case, terms) => {
+  const result = await refusingCheckoutProvider({ type: 'invalid_request_error', message: STRIPE_TERMS_URL_REFUSAL })
+    .createCheckoutSession({ ...termsCheckout, ...terms });
+  expect(result).toEqual(err(stripeTermsUrlMissing()));
+  if (result.ok) throw new Error('Expected a refusal');
+  expect(isStripeTermsUrlMissing(result.error)).toBe(true);
+});
+
+it('maps a terms refusal that names the consent parameter', async () => {
+  const result = await refusingCheckoutProvider({ type: 'invalid_request_error', param: 'consent_collection[terms_of_service]', message: 'A terms of service URL is required.' })
+    .createCheckoutSession({ ...termsCheckout, stripeTerms: legal });
+  expect(result).toEqual(err(stripeTermsUrlMissing()));
+});
+
+it.each([
+  ['another invalid request', { type: 'invalid_request_error', param: 'custom_text[terms_of_service_acceptance][message]', message: 'custom_text[terms_of_service_acceptance] can only be set when consent_collection[terms_of_service] is required.' }, { stripeTerms: legal }],
+  ['an invalid currency', { type: 'invalid_request_error', param: 'line_items[0][price_data][currency]', message: 'Invalid currency: xyz' }, { stripeTerms: legal }],
+  ['an API error with the same wording', { type: 'api_error', message: STRIPE_TERMS_URL_REFUSAL }, { stripeTerms: legal }],
+  ['the same wording on a checkout that asked for no terms', { type: 'invalid_request_error', message: STRIPE_TERMS_URL_REFUSAL }, {}],
+])('keeps %s as a plain Stripe diagnostic', async (_case, error, terms) => {
+  const result = await refusingCheckoutProvider(error).createCheckoutSession({ ...termsCheckout, ...terms });
+  expect(result).toEqual(err(validation(`Stripe rejected the checkout request: ${error.message}`)));
+  if (result.ok) throw new Error('Expected a refusal');
+  expect(isStripeTermsUrlMissing(result.error)).toBe(false);
 });
 
 it('pins the Stripe SDK to the Clover API release or later for native checkout branding', () => {

@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
-import { attributionFields, attributionFromSearchParams, COUPON_CODE_MAX_LENGTH, err, forbidden, internal, normalizeCouponCode, requiresWorkspaceCheckout, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
+import { attributionFields, attributionFromSearchParams, attributionToSearchParams, CHECKOUT_TERMS_ON_PAGE, CHECKOUT_TERMS_PARAM, COUPON_CODE_MAX_LENGTH, err, forbidden, internal, isStripeTermsUrlMissing, normalizeCouponCode, ok, requiresWorkspaceCheckout, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation, type Attribution } from '#core/domain/index.js';
 import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveDirectSalesLinkCoupon, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -11,6 +11,19 @@ import { claimCouponPreview } from './public-rate-limit.js';
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
 import { SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
+
+const togetherCheckoutUrl = (
+  baseUrl: string,
+  slug: string,
+  input: { attribution?: Attribution | undefined; couponCode?: string | undefined; returnUrl?: string | undefined },
+): string => {
+  const query = attributionToSearchParams(input.attribution);
+  if (input.couponCode !== undefined && input.couponCode !== '') query.set('code', input.couponCode);
+  if (input.returnUrl !== undefined) query.set('return', input.returnUrl);
+  query.set('checkout', 'together');
+  query.set(CHECKOUT_TERMS_PARAM, CHECKOUT_TERMS_ON_PAGE);
+  return `${baseUrl}/offer/${encodeURIComponent(slug)}?${query}`;
+};
 
 export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   app.get('/offer/:slug', async (c, next) => {
@@ -103,8 +116,10 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       attribution: attributionFromSearchParams(formFields),
     });
     if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
-    const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
-      slug: c.req.param('slug') ?? '',
+    const baseUrl = await authLinkBaseUrl(resolved.value, deps);
+    const slug = c.req.param('slug') ?? '';
+    const created = await createDirectSalesLinkCheckout(resolved.value.tenant, baseUrl, {
+      slug,
       ...(parsed.data.couponCode === undefined ? {} : { couponCode: parsed.data.couponCode }),
       ...(parsed.data.attribution === undefined ? {} : { attribution: parsed.data.attribution }),
       ...(parsed.data.returnUrl === undefined ? {} : { returnUrl: parsed.data.returnUrl }),
@@ -113,6 +128,9 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
         formatDirectSalesLinkMoney(language, breakdown.lowestPriceLast30DaysCents, breakdown.currency),
       ),
     }, deps);
+    const termsRefused = !created.ok && isStripeTermsUrlMissing(created.error);
+    if (termsRefused) deps.logger.warn(`[direct-checkout] Stripe refused to collect the terms without a Dashboard terms URL; sending the buyer to the workspace checkout page tenant=${resolved.value.tenant.id}`);
+    const result = termsRefused ? ok({ url: togetherCheckoutUrl(baseUrl, slug, parsed.data) }) : created;
     if (!result.ok) return respond(result);
     const output = salesLinkContracts.directSalesLinkCheckout.output.safeParse(result.value);
     if (!output.success) return respond(err(internal('Checkout response does not match the contract')));

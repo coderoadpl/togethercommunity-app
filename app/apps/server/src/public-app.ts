@@ -1,6 +1,6 @@
 import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/domain/index.js';
 import { createHash } from 'node:crypto';
-import { publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
+import { isStripeTermsUrlMissing, publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
 import { registerPublicMetaCapiRoutes } from './meta-capi-routes.js';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
@@ -793,7 +793,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const testMode = identity?.tenantId === tenant.value.tenant.id &&
       hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const cart = isCheckoutCartRequest(body);
-    const stripeTerms = cart ? undefined : checkoutStripeTerms(await deps.tenants.findSettings(tenant.value.tenant.id), request.value.input.language);
+    const termsOnPage = 'termsOnPage' in request.value.input && request.value.input.termsOnPage === true;
+    const stripeTerms = cart || termsOnPage ? undefined : checkoutStripeTerms(await deps.tenants.findSettings(tenant.value.tenant.id), request.value.input.language);
     const buyer = stripeTerms === undefined || testMode || request.value.input.email !== undefined ? null
       : selection.salesLinkId === undefined ? identity : await checkoutIdentity(c, deps);
     const input = buyer === null ? request.value.input : { ...request.value.input, email: buyer.email };
@@ -898,6 +899,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         await releaseHold();
         return respondPublic(fulfilled);
       }
+    }
+    if (!session.ok && stripeTerms !== undefined && isStripeTermsUrlMissing(session.error)) {
+      deps.logger.warn(`[checkout] Stripe refused to collect the terms without a Dashboard terms URL; the page collects them instead tenant=${tenant.value.tenant.id} mode=${testMode ? 'test' : 'live'}`);
     }
     c.res = respondPublic(session);
     if (session.ok && testMode) deleteCookie(c, 'together_stripe_test', { path: '/' });

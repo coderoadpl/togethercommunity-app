@@ -14,6 +14,8 @@ import {
   refundCoverage,
   SHIPPING_ALLOWED_COUNTRIES,
   stripeCancelErrorSchema,
+  stripeRequestErrorSchema,
+  stripeTermsUrlMissing,
   stripeCheckoutShippingSchema,
   stripeAdoptionObjectSchema,
   stripeSubscriptionListEntrySchema,
@@ -56,6 +58,14 @@ export const stripeCancelAlreadySettled = (cause: unknown): boolean => {
     parsed.data.statusCode === 404 ||
     /already canceled|canceled subscription/i.test(parsed.data.message ?? '')
   );
+};
+
+const stripeRefusedTermsWithoutUrl = (cause: unknown): boolean => {
+  const parsed = stripeRequestErrorSchema.safeParse(cause);
+  if (!parsed.success || parsed.data.rawType !== 'invalid_request_error') return false;
+  const { message, param } = parsed.data;
+  return /terms of service/i.test(message) &&
+    (param === 'consent_collection[terms_of_service]' || /dashboard|public (business )?details|settings\/public/i.test(message));
 };
 
 const localeFor = (language: string | undefined): Stripe.Checkout.SessionCreateParams.Locale | undefined =>
@@ -662,6 +672,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         }
         return ok({ url: session.url, sessionId: session.id });
       } catch (cause) {
+        if ((input.stripeTerms !== undefined || input.directCheckout !== undefined) && stripeRefusedTermsWithoutUrl(cause)) {
+          return err(stripeTermsUrlMissing());
+        }
         return err(asDiagnostic('Stripe rejected the checkout request', cause));
       }
     },

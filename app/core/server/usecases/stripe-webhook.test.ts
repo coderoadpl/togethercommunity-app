@@ -3385,6 +3385,27 @@ it.each(['not-accepted', 'terms-url', 'privacy-url'] as const)('refuses a worksp
   expect(h.events.size).toBe(0);
 });
 
+const pageTermsFallbackPayment = async () => {
+  const h = await stripeTermsPayment();
+  const capture = h.captures.get('capture-page');
+  if (h.event.checkoutSession === null || capture === undefined) throw new Error('Missing session');
+  h.captures.set('capture-page', { ...capture, termsAccepted: true });
+  h.event.checkoutSession.termsAccepted = false;
+  delete h.event.checkoutSession.metadata.stripeTerms;
+  delete h.event.checkoutSession.metadata.termsUrl;
+  delete h.event.checkoutSession.metadata.privacyUrl;
+  return h;
+};
+
+it('fulfills the page-terms fallback of a workspace checkout from the terms accepted on the page', async () => {
+  const h = await pageTermsFallbackPayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ status: 'paid', billing: h.billing }]);
+  expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com' }]);
+  expect(await h.marketingConsents.listByEmail(tenantA.id, 'buyer@example.com')).toHaveLength(1);
+  expect(h.captures.has('stripe:cs-1')).toBe(false);
+});
+
 const stripeTermsTestPayment = async (salesLink = true) => {
   const h = await stripeTermsPayment();
   h.event.mode = 'test';

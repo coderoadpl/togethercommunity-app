@@ -162,17 +162,12 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
 `shipping_country` and `fulfilment_status`, followed by `client_reference`
-<<<<<<< HEAD
-(the storefront's `clientReference`, empty when the checkout had none). The CSV
-export ends with a `cancel_reason` column: `out_of_stock` for an order cancelled
-because its goods sold out before the payment arrived, empty otherwise; it is
-the last column so the earlier column positions stay unchanged, and `status`
-keeps the payment status. The JSON export carries the same value as
-`cancelReason`.
-=======
-(the storefront's `clientReference`, empty when the checkout had none) and
-`personalization` (see [Personalisation](#personalisation)).
->>>>>>> origin/staging
+(the storefront's `clientReference`, empty when the checkout had none),
+`personalization` (see [Personalisation](#personalisation)) and `cancel_reason`:
+`out_of_stock` for an order cancelled because its goods sold out before the
+payment arrived, empty otherwise. `cancel_reason` is the last column so the
+earlier column positions stay unchanged, and `status` keeps the payment status.
+The JSON export carries the same value as `cancelReason`.
 
 ## Fulfilment
 
@@ -871,7 +866,7 @@ with the seller label, the text, the accepted condition and its time
 (Europe/Warsaw) and, after a correction, the original text, the correction time
 and the staff user id.
 
-The CSV export and the packing list end with a `personalization` column, and
+The packing list ends with a `personalization` column, the CSV export carries it just before `cancel_reason`, and
 the JSON export adds a `personalization` field: one `<line name>: <text>` per
 personalised line, joined with `; `, empty otherwise. CSV cells go through the
 same formula guard as every other cell.

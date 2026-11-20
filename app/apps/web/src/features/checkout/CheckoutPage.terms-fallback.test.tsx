@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { stripeTermsUrlMissing } from '#core/domain/index.js';
@@ -10,7 +10,7 @@ import { stripeTermsUrlMissing } from '#core/domain/index.js';
 import { en } from '../../i18n/en.js';
 import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
-import { anonymousMe, server } from '../../test/server.js';
+import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
@@ -49,6 +49,8 @@ const serve = (sessions: unknown[], answers: (() => Response)[]) => {
 
 const refuseStripeTerms = () => HttpResponse.json({ ok: false, error: stripeTermsUrlMissing() }, { status: 412 });
 
+const fallbackLine = () => screen.getByTestId('checkout-terms-fallback-line');
+
 const renderCheckout = () => {
   const root = createRootRoute({ component: () => <CheckoutPage productRef="course-1" /> });
   const router = createRouter({ routeTree: root, history: createMemoryHistory({ initialEntries: [`${window.location.pathname}${window.location.search}`] }) });
@@ -59,6 +61,9 @@ describe('checkout terms when Stripe cannot collect them', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/checkout/course-1?code=SAVE');
     server.use(anonymousMe());
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('switches to the page terms after a Stripe refusal, keeps every choice and asks the server for the page-terms path', async () => {
@@ -77,7 +82,7 @@ describe('checkout terms when Stripe cannot collect them', () => {
     expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
-    expect(await screen.findByText(en.checkout.termsOnPageFallback)).toBeVisible();
+    await screen.findByTestId('terms-consent');
     expect(sessions[0]).not.toHaveProperty('termsOnPage');
     expect(sessions[0]).not.toHaveProperty('termsAccepted');
     const terms = screen.getByTestId('terms-consent');
@@ -89,6 +94,7 @@ describe('checkout terms when Stripe cannot collect them', () => {
 
     await userEvent.type(email, 'buyer@example.org');
     await userEvent.click(within(terms).getByRole('checkbox'));
+    expect(fallbackLine()).toBeVisible();
     await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(sessions).toHaveLength(2));
@@ -101,6 +107,47 @@ describe('checkout terms when Stripe cannot collect them', () => {
       couponCode: 'SAVE', shipping: { rateId: 'courier' },
       billing: { companyName: 'Buyer Ltd', address: 'Main Street 2', postalCode: '00-001', city: 'Warsaw' },
     });
+  });
+
+  it('leads an anonymous buyer to the e-mail field with one announced line above it and keeps the pay bar to errors', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1');
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const sessions: unknown[] = [];
+    serve(sessions, [refuseStripeTerms]);
+    renderCheckout();
+
+    await userEvent.click(await courier());
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    const email = await screen.findByLabelText(en.checkout.emailLabel);
+    await waitFor(() => expect(email).toHaveFocus());
+    expect(scrolled.mock.contexts.at(-1)).toBe(email);
+    expect(scrolled).toHaveBeenLastCalledWith({ block: 'center' });
+    const line = fallbackLine();
+    expect(line).toHaveTextContent(exact(en.checkout.termsOnPageFallbackEmail));
+    expect(line).toHaveAttribute('role', 'alert');
+    expect(line.nextElementSibling).toContainElement(email);
+    expect(line.closest('.MuiAlert-root')).toBeNull();
+    expect(screen.getByTestId('checkout-pay-bar')).not.toContainElement(line);
+    expect(within(screen.getByTestId('checkout-pay-bar')).queryByRole('alert')).toBeNull();
+    expect(screen.getByTestId('checkout-pay-bar')).not.toHaveTextContent(en.checkout.termsOnPageFallbackEmail);
+  });
+
+  it('leads a signed-in buyer to the terms checkbox with the terms-only line', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1');
+    server.use(memberMe());
+    const sessions: unknown[] = [];
+    serve(sessions, [refuseStripeTerms]);
+    renderCheckout();
+
+    await userEvent.click(await courier());
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    const checkbox = within(await screen.findByTestId('terms-consent')).getByRole('checkbox');
+    await waitFor(() => expect(checkbox).toHaveFocus());
+    expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
+    const line = fallbackLine();
+    expect(line).toHaveTextContent(exact(en.checkout.termsOnPageFallbackTerms));
+    expect(line.nextElementSibling).toContainElement(checkbox);
+    expect(within(screen.getByTestId('checkout-pay-bar')).queryByRole('alert')).toBeNull();
   });
 
   it('keeps a code applied by hand through the refusal and validates it again with the typed e-mail', async () => {
@@ -139,6 +186,9 @@ describe('checkout terms when Stripe cannot collect them', () => {
     serve(sessions, []);
     renderCheckout();
 
+    await screen.findByTestId('terms-consent');
+    expect(screen.queryByTestId('checkout-terms-fallback-line')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(document.body);
     await userEvent.click(await courier());
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(within(screen.getByTestId('terms-consent')).getByRole('checkbox'));
@@ -157,7 +207,7 @@ describe('checkout terms when Stripe cannot collect them', () => {
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(sessions).toHaveLength(1));
     expect(await screen.findByText(en.errors.messageIntegrationNotConfigured)).toBeVisible();
-    expect(screen.queryByText(en.checkout.termsOnPageFallback)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-terms-fallback-line')).not.toBeInTheDocument();
     expect(screen.queryByTestId('terms-consent')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(en.checkout.emailLabel)).not.toBeInTheDocument();
   });

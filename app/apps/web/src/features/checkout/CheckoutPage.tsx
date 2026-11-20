@@ -5,7 +5,7 @@ import { DeliveryStep } from './DeliveryStep.js';
 import { PersonalizationField, usePersonalizations } from './PersonalizationField.js';
 import { ProductVariantChips } from './ProductSafetyInfo.js';
 import { ProductSafetySummary } from './ProductSafetySummary.js';
-import { useCallback, useEffect, useId, useMemo, useReducer, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -95,6 +95,25 @@ const CheckoutEmailField = ({ value, onChange, hint, required }: {
       />
       <FormHelperText id={hintId} sx={{ mx: 0 }}>{hint}</FormHelperText>
     </FormControl>
+  );
+};
+
+const TermsFallbackLead = ({ line, children }: { line: string | null; children: ReactNode }) => {
+  const leadRef = useRef<HTMLDivElement>(null);
+  const leading = line !== null;
+  useEffect(() => {
+    if (!leading) return;
+    const control = leadRef.current?.querySelector('input');
+    if (control == null) return;
+    control.scrollIntoView({ block: 'center' });
+    control.focus({ preventScroll: true });
+  }, [leading]);
+  if (line === null) return children;
+  return (
+    <Stack ref={leadRef} useFlexGap spacing="0.5rem">
+      <Typography role="alert" variant="body2" data-testid="checkout-terms-fallback-line">{line}</Typography>
+      {children}
+    </Stack>
   );
 };
 
@@ -211,11 +230,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const [termsOnPageFallback, setTermsOnPageFallback] = useState(() =>
     new URLSearchParams(window.location.search).get(CHECKOUT_TERMS_PARAM) === CHECKOUT_TERMS_ON_PAGE);
+  const [termsFallbackLed, setTermsFallbackLed] = useState(false);
   const checkoutSession = useMutation({
     ...actions.createCheckoutSession,
     onSuccess: (data) => window.location.assign(data.url),
     onError: (error) => {
-      if (stripeTermsRefused(error)) setTermsOnPageFallback(true);
+      if (!stripeTermsRefused(error) || termsOnPageFallback) return;
+      setTermsOnPageFallback(true);
+      setTermsFallbackLed(true);
     },
   });
   const [couponEmailRequested, setCouponEmailRequested] = useState(false);
@@ -649,9 +671,15 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             />
           ) : null}
           <PersonalizationField state={personalization} disabled={pending} />
-          {emailPlacement === 'details' ? emailField(t.checkout.emailHint, true) : null}
+          {emailPlacement === 'details' ? (
+            <TermsFallbackLead line={termsFallbackLed ? t.checkout.termsOnPageFallbackEmail : null}>
+              {emailField(t.checkout.emailHint, true)}
+            </TermsFallbackLead>
+          ) : null}
           {termsOnPage ? (
-            <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
+            <TermsFallbackLead line={termsFallbackLed && emailPlacement !== 'details' ? t.checkout.termsOnPageFallbackTerms : null}>
+              <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
+            </TermsFallbackLead>
           ) : null}
           <CheckoutRowGroup>
             <CheckoutDisclosureRow
@@ -725,7 +753,6 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             messages={(
               <>
                 {paymentUnavailable ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
-                {checkoutSession.isError && stripeTermsRefused(checkoutSession.error) ? <Alert severity="info">{t.checkout.termsOnPageFallback}</Alert> : null}
                 {checkoutSession.isError && !stripeTermsRefused(checkoutSession.error) ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
                 {simulatePurchase.isError ? <Alert severity="error">{localizeError(simulatePurchase.error, t)}</Alert> : null}
               </>

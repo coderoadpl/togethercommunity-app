@@ -2801,7 +2801,8 @@ export interface Messages {
     cancelledBody: string;
     retry: string;
     paymentUnavailable: string;
-    termsOnPageFallback: string;
+    termsOnPageFallbackEmail: string;
+    termsOnPageFallbackTerms: string;
     soldOut: string;
     cartTitle: string;
     cartInvalidTitle: string;

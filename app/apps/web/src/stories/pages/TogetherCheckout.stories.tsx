@@ -69,6 +69,12 @@ const termsFallbackFixture = {
   ...fixtureFor('together-checkout-terms-fallback', stand, { shippingRates }, { calls: { [termsRefusalCall]: { ok: false, error: stripeTermsUrlMissing() } } }),
   expectedErrors: { [termsRefusalCall]: 'integration_not_configured' },
 };
+const signedInEmail = account.calls['me:[]'].value.email;
+const signedInTermsRefusalCall = `createCheckoutSession:[{"email":"${signedInEmail}","language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"rateId":"courier"}}]`;
+const signedInTermsFallbackFixture = {
+  ...fixtureFor('together-checkout-terms-fallback-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'], [signedInTermsRefusalCall]: { ok: false, error: stripeTermsUrlMissing() } } }),
+  expectedErrors: { [signedInTermsRefusalCall]: 'integration_not_configured' },
+};
 
 const couponCode = 'STUDIO20';
 const couponFixture = fixtureFor('together-checkout-coupon', {}, {}, {
@@ -349,6 +355,19 @@ export const StripeTermsFallback: Story = {
   play: async ({ canvasElement }) => {
     await chooseRate(canvasElement, /courier/u);
     await userEvent.click(await within(canvasElement).findByTestId('checkout-pay-cta'));
-    await within(canvasElement).findByTestId('terms-consent');
+    await within(canvasElement).findByTestId('checkout-terms-fallback-line');
+    await expect(await within(canvasElement).findByLabelText('Email')).toHaveFocus();
+  },
+};
+export const StripeTermsFallbackSignedIn: Story = {
+  parameters: {
+    fixture: signedInTermsFallbackFixture,
+    docs: { description: { story: 'The same refusal for a signed-in buyer: the page already knows the email, so it asks only for the terms and moves focus to the checkbox.' } },
+  },
+  play: async ({ canvasElement }) => {
+    await chooseRate(canvasElement, /courier/u);
+    await userEvent.click(await within(canvasElement).findByTestId('checkout-pay-cta'));
+    await within(canvasElement).findByTestId('checkout-terms-fallback-line');
+    await expect(within(await within(canvasElement).findByTestId('terms-consent')).getByRole('checkbox')).toHaveFocus();
   },
 };

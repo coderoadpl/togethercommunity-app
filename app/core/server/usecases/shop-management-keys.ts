@@ -19,6 +19,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
+import { ownerSessionTenant } from '../owner-session.js';
 import type {
   ApiKeyCrypto,
   ChangeProposalWithdrawalEvent,
@@ -45,15 +46,8 @@ export interface ShopManagementKeyEventReadDeps {
   shopManagementKeyEvents: Pick<ShopManagementKeyEventRepository, 'list'>;
 }
 
-const ownerSessionTenant = (ctx: Ctx, tenant: Result<string, AppError>): Result<string, AppError> => {
-  if (!tenant.ok) return tenant;
-  const realOwnerSession = ctx.identity.staffRole === 'owner'
-    && ctx.identity.emailVerified
-    && ctx.impersonation === undefined
-    && ctx.capabilities === undefined
-    && ctx.machineActor === undefined;
-  return realOwnerSession ? tenant : err(forbidden('Shop management keys require a verified owner session'));
-};
+const keyOwnerSession = (ctx: Ctx, tenant: Result<string, AppError>): Result<string, AppError> =>
+  ownerSessionTenant(ctx, tenant, 'Shop management keys require a verified owner session');
 
 const lifecycleEvent = (
   ctx: Ctx,
@@ -86,7 +80,7 @@ export const createShopManagementKey = async (
   input: CreateShopManagementKeyInput,
   deps: ShopManagementKeyDeps,
 ): Promise<Result<CreatedShopManagementKey, AppError>> => {
-  const tenant = ownerSessionTenant(ctx, authorizeTenant(ctx, 'api-key:write'));
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   if (deps.shopManagementKeysSwitch === 'disabled') {
     return err(forbidden('Shop management keys are disabled on this deployment (SHOP_MANAGEMENT_KEYS=disabled)'));
@@ -122,7 +116,7 @@ export const listShopManagementKeys = async (
   ctx: Ctx,
   deps: Pick<ShopManagementKeyDeps, 'shopManagementKeys'>,
 ): Promise<Result<ShopManagementKeyPublic[], AppError>> => {
-  const tenant = ownerSessionTenant(ctx, authorizeTenant(ctx, 'api-key:write'));
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   return ok((await deps.shopManagementKeys.listByTenant(tenant.value)).map(toShopManagementKeyPublic));
 };
@@ -132,7 +126,7 @@ export const revokeShopManagementKey = async (
   input: { id: string },
   deps: Pick<ShopManagementKeyDeps, 'shopManagementKeys' | 'ids' | 'clock'>,
 ): Promise<Result<ShopManagementKeyPublic, AppError>> => {
-  const tenant = ownerSessionTenant(ctx, authorizeTenant(ctx, 'api-key:write'));
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   const revoked = await deps.shopManagementKeys.revoke(
     tenant.value,
@@ -149,7 +143,7 @@ export const purgeShopManagementKeys = async (
   ctx: Ctx,
   deps: Pick<ShopManagementKeyDeps, 'shopManagementKeys' | 'ids' | 'clock'>,
 ): Promise<Result<{ purged: number }, AppError>> => {
-  const tenant = ownerSessionTenant(ctx, authorizeTenant(ctx, 'api-key:write'));
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   const purged = await deps.shopManagementKeys.purge(
     tenant.value,
@@ -164,7 +158,7 @@ export const listShopManagementKeyEvents = async (
   input: { apiKeyId?: string; cursor?: string; limit: number },
   deps: ShopManagementKeyEventReadDeps,
 ): Promise<Result<ShopManagementKeyEventPage, AppError>> => {
-  const tenant = ownerSessionTenant(ctx, authorizeTenant(ctx, 'api-key:write'));
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   return ok(await deps.shopManagementKeyEvents.list(tenant.value, {
     limit: input.limit,

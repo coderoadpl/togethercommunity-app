@@ -307,6 +307,51 @@ export const changeProposalKeyReceiptSchema = z.object({
 
 export type ChangeProposalKeyReceipt = z.output<typeof changeProposalKeyReceiptSchema>;
 
+export const changeProposalOwnerPageSchema = z.object({
+  proposals: z.array(changeProposalOwnerViewSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+export type ChangeProposalOwnerPage = z.output<typeof changeProposalOwnerPageSchema>;
+
+export const changeProposalKeyReceiptPageSchema = z.object({
+  proposals: z.array(changeProposalKeyReceiptSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+export type ChangeProposalKeyReceiptPage = z.output<typeof changeProposalKeyReceiptPageSchema>;
+
+const CHANGE_PROPOSAL_PAGE_SIZE = { default: 50, max: 100 } as const;
+
+export const changeProposalListInputSchema = z.object({
+  status: changeProposalDisplayStatusSchema.optional(),
+  cursor: identifierSchema.optional(),
+  limit: z.number().int().min(1).max(CHANGE_PROPOSAL_PAGE_SIZE.max).default(CHANGE_PROPOSAL_PAGE_SIZE.default),
+}).strict();
+
+export type ChangeProposalListInput = z.input<typeof changeProposalListInputSchema>;
+
+export const changeProposalIdInputSchema = z.object({ id: identifierSchema }).strict();
+
+export type ChangeProposalIdInput = z.input<typeof changeProposalIdInputSchema>;
+
+export const changeProposalProductIdInputSchema = z.object({ productId: identifierSchema }).strict();
+
+export const rejectChangeProposalInputSchema = z.object({
+  id: identifierSchema,
+  note: z.string().trim().max(CHANGE_PROPOSAL_LIMITS.decisionNoteMaxLength).nullable().optional()
+    .transform((note) => note === undefined || note === null || note.length === 0 ? null : note),
+}).strict();
+
+export type RejectChangeProposalInput = z.input<typeof rejectChangeProposalInputSchema>;
+
+export const submitChangeProposalInputSchema = z.object({
+  operation: changeProposalOperationSchema,
+  input: z.unknown(),
+}).strict();
+
+export type SubmitChangeProposalInput = z.input<typeof submitChangeProposalInputSchema>;
+
 export const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEventView => ({
   sequence: event.sequence,
   kind: event.kind,

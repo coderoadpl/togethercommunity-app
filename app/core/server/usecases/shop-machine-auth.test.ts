@@ -300,11 +300,11 @@ describe('propose-mode shop management keys', () => {
   const grantedTo = (ctx: Ctx) => CAPABILITIES.filter((capability) => authorize(ctx, capability) === null);
 
   it.each([
-    ['catalogue writes only', ['shop:catalog:write'], 'shop:catalog:write', ['proposal:submit:catalog']],
-    ['settings writes only', ['shop:settings:write'], 'shop:settings:write', ['proposal:submit:settings']],
+    ['catalogue writes only', ['shop:catalog:write'], 'shop:catalog:write', ['proposal:own:manage', 'proposal:submit:catalog']],
+    ['settings writes only', ['shop:settings:write'], 'shop:settings:write', ['proposal:own:manage', 'proposal:submit:settings']],
     ['catalogue reads and writes', ['shop:catalog:read', 'shop:catalog:write'], 'shop:catalog:write',
-      ['product:price:read', 'product:read', 'proposal:submit:catalog']],
-    ['reads only', ['shop:orders:read'], 'shop:orders:read', ['order:export', 'order:read']],
+      ['product:price:read', 'product:read', 'proposal:own:manage', 'proposal:submit:catalog']],
+    ['reads only', ['shop:orders:read'], 'shop:orders:read', ['order:export', 'order:read', 'proposal:own:manage']],
   ] as const)('builds a propose-mode context for a key with %s', async (_label, scopes, scope, expected) => {
     const h = harness({ keys: [shopKey({ mode: 'propose', scopes: [...scopes] })] });
     const result = await authenticate(h, scope);
@@ -328,15 +328,16 @@ describe('propose-mode shop management keys', () => {
     }
   });
 
-  it('keeps a defined empty capability list, so an owner issuer never lends the key its own capabilities', async () => {
+  it('keeps a defined capability list, so an owner issuer never lends the key its own capabilities', async () => {
     const h = harness({ keys: [shopKey({ mode: 'propose', scopes: ['shop:catalog:write'] })] });
     const result = await authenticate(h, 'shop:catalog:write');
     if (!result.ok) throw new Error(result.error.message);
     const capabilities = shopManagementKeyCapabilities({ mode: 'propose', scopes: ['shop:fulfilment:write', 'shop:integrations:write'] });
-    expect(capabilities).toEqual([]);
+    expect(capabilities).toEqual(['proposal:own:manage']);
     const ctx: Ctx = { ...result.value.ctx, capabilities };
     expect(ctx.identity.staffRole).toBe('owner');
-    expect(grantedTo(ctx)).toEqual([]);
+    expect(grantedTo(ctx)).toEqual(['proposal:own:manage']);
+    expect(grantedTo({ ...ctx, capabilities: [] })).toEqual([]);
   });
 
   it('never lets a propose-mode key read or decide proposals', async () => {

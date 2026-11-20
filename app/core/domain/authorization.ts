@@ -126,6 +126,7 @@ export const CAPABILITIES = [
   'proposal:submit:catalog',
   'proposal:submit:settings',
   'proposal:asset:upload',
+  'proposal:own:manage',
   'proposal:read',
   'proposal:decide',
 ] as const;
@@ -286,6 +287,7 @@ const ownerDelegatedProposalCapabilities = [
   'proposal:submit:catalog',
   'proposal:submit:settings',
   'proposal:asset:upload',
+  'proposal:own:manage',
 ] as const satisfies readonly Capability[];
 
 export const ROLE_CAPABILITIES: CapabilityMatrix = {

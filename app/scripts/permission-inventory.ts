@@ -472,7 +472,8 @@ const capabilityFromBody = (
   };
   visit(body);
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
-  if (capabilities.length !== 1 && !directoryConjunction) {
+  const proposalFamilyChoice = subject === 'change-proposals.ts#submitChangeProposal' && capabilities.join(',') === 'proposal:submit:catalog,proposal:submit:settings';
+  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
     );
@@ -582,11 +583,14 @@ const marketingTenantContextUseCases = new Set([
   'withdrawMarketingConsent',
 ]);
 
+const ownerSideChangeProposalUseCases = new Set(['getChangeProposal', 'listChangeProposals', 'rejectChangeProposal']);
+
 const beforeForUseCase = (
   file: string,
   name: string,
   capability: Capability,
-): readonly Principal[] => {
+): readonly InventoryPrincipal[] => {
+  if (file === 'change-proposals.ts') return ownerSideChangeProposalUseCases.has(name) ? owner : proposeShopManagementKey;
   if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'activity-reports.ts') return reportApiKey;
   if (file === 'marketing-email.ts') {
@@ -656,7 +660,7 @@ const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
-    const reachable = directory || before === reportApiKey || before === operatorSecret ? before : before === allHumans
+    const reachable = directory || before === reportApiKey || before === operatorSecret || before === proposeShopManagementKey ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner
@@ -783,6 +787,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',
     `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\` instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`.`,
+    '',
+    '`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` or `proposal:submit:settings`, the family of the proposed operation; the table lists the first. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

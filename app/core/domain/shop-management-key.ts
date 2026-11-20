@@ -113,11 +113,20 @@ const capabilitiesByShopManagementKeyMode: Record<ShopManagementKeyMode, Record<
   propose: proposeModeCapabilitiesByShopManagementScope,
 };
 
+// Every propose-mode key may list, read and withdraw its own proposals, whatever its scopes.
+const capabilitiesOfEveryKeyByMode: Record<ShopManagementKeyMode, readonly Capability[]> = {
+  direct: [],
+  propose: ['proposal:own:manage'],
+};
+
 export const shopManagementCapabilities = (
   scopes: readonly ShopManagementScope[],
   mode: ShopManagementKeyMode,
 ): readonly Capability[] =>
-  [...new Set(scopes.flatMap((scope) => capabilitiesByShopManagementKeyMode[mode][scope]))];
+  [...new Set([
+    ...scopes.flatMap((scope) => capabilitiesByShopManagementKeyMode[mode][scope]),
+    ...capabilitiesOfEveryKeyByMode[mode],
+  ])];
 
 export const SHOP_MANAGEMENT_KEY_SECRET_KEYS = [
   'ifirma.invoiceApiKey',

@@ -128,14 +128,16 @@ describe('propose-mode shop management capabilities', () => {
   const directWriteCapabilities = shopManagementCapabilities(writeScopes, 'direct');
 
   it('keeps the read capabilities of every read scope', () => {
-    for (const scope of readScopes) expect(shop(scope)).toEqual(shopManagementCapabilities([scope], 'direct'));
+    for (const scope of readScopes) {
+      expect(shop(scope)).toEqual([...shopManagementCapabilities([scope], 'direct'), 'proposal:own:manage']);
+    }
   });
 
   it('turns the catalog and settings write scopes into proposal submission only', () => {
-    expect(shop('shop:catalog:write')).toEqual(['proposal:submit:catalog']);
-    expect(shop('shop:settings:write')).toEqual(['proposal:submit:settings']);
-    expect(shop('shop:fulfilment:write')).toEqual([]);
-    expect(shop('shop:integrations:write')).toEqual([]);
+    expect(shop('shop:catalog:write')).toEqual(['proposal:submit:catalog', 'proposal:own:manage']);
+    expect(shop('shop:settings:write')).toEqual(['proposal:submit:settings', 'proposal:own:manage']);
+    expect(shop('shop:fulfilment:write')).toEqual(['proposal:own:manage']);
+    expect(shop('shop:integrations:write')).toEqual(['proposal:own:manage']);
   });
 
   it('holds no live write capability for any combination of scopes', () => {
@@ -144,8 +146,8 @@ describe('propose-mode shop management capabilities', () => {
     expect(all.filter((capability) => directWriteCapabilities.includes(capability))).toEqual([]);
   });
 
-  it('returns a defined empty list for a key whose scopes map to nothing', () => {
-    expect(shopManagementCapabilities(['shop:fulfilment:write', 'shop:integrations:write'], 'propose')).toEqual([]);
+  it('grants only the management of its own proposals to a key whose scopes map to nothing', () => {
+    expect(shopManagementCapabilities(['shop:fulfilment:write', 'shop:integrations:write'], 'propose')).toEqual(['proposal:own:manage']);
   });
 
   it('maps only to capabilities the owner holds, so the owner intersection keeps them', () => {

@@ -310,7 +310,7 @@ describe('sales-link product safety information', () => {
     const lamp = within(section).getByTestId('product-safety-product-lamp');
     const slot = within(lamp).getByTestId('product-safety-picture-slot');
     expect(slot).toHaveAttribute('aria-hidden', 'true');
-    expect(slot).toHaveStyle({ width: '2.5rem', height: '2.5rem', flexShrink: '0' });
+    expect(slot).toHaveStyle({ width: '2.5rem', flexShrink: '0' });
     expect(slot.parentElement).toBe(lamp);
     expect(within(lamp).queryByRole('img')).toBeNull();
     expect(within(within(section).getByTestId('product-safety-product-black')).queryByTestId('product-safety-picture-slot')).toBeNull();

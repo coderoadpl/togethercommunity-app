@@ -2982,16 +2982,17 @@ export const CheckoutSafetyProduct = styled('div')({
   minWidth: 0,
 });
 
-const checkoutSafetyThumbnailBox = { flexShrink: 0, width: '2.5rem', height: '2.5rem' } as const;
+const checkoutSafetyThumbnailColumn = { flexShrink: 0, width: '2.5rem' } as const;
 
 export const CheckoutSafetyThumbnail = styled('img')(({ theme }) => ({
-  ...checkoutSafetyThumbnailBox,
+  ...checkoutSafetyThumbnailColumn,
+  height: '2.5rem',
   objectFit: 'cover',
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.action.hover,
 }));
 
-export const CheckoutSafetyThumbnailSlot = styled('span')(checkoutSafetyThumbnailBox);
+export const CheckoutSafetyThumbnailSlot = styled('span')(checkoutSafetyThumbnailColumn);
 
 export const CheckoutSafetyPart = styled('span', {
   shouldForwardProp: (prop) => prop !== 'emphasised',

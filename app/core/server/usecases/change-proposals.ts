@@ -25,6 +25,7 @@ import {
   type ChangeProposalOwnerDetail,
   type ChangeProposalOwnerPage,
   type ChangeProposalOwnerView,
+  type ChangeProposalSummary,
   type RejectChangeProposalInput,
   type Result,
   type SubmitChangeProposalInput,
@@ -33,21 +34,20 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import {
   bothAuthorized,
-  groupTitles,
   invalid,
   keyNamed,
-  keyStates,
   outcomeFields,
   ownerSession,
   proposingKey,
   settledConflict,
 } from '../change-proposal-access.js';
+import { notifyOwnersOfProposal, type ChangeProposalNotifyDeps } from '../change-proposal-notifications.js';
+import { changeProposalOwnerFacts, type ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type { Ctx } from '../context.js';
 import type {
   ChangeProposalDecision,
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
-  ChangeProposalGroupRepository,
   ChangeProposalListQuery,
   ChangeProposalRepository,
   ChangeProposalTransaction,
@@ -59,7 +59,7 @@ import type {
 import { applyLockedProposal, previewChangeProposal } from './change-proposal-apply.js';
 import { CHANGE_PROPOSAL_OPERATIONS, type ChangeProposalRunDeps } from './change-proposal-operations.js';
 
-export interface ChangeProposalSubmitDeps extends ChangeProposalRunDeps {
+export interface ChangeProposalSubmitDeps extends ChangeProposalRunDeps, ChangeProposalNotifyDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   changeProposals: Pick<ChangeProposalRepository, 'create' | 'countCapReached'>;
   shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
@@ -71,25 +71,21 @@ export interface ChangeProposalKeyDeps {
   clock: Clock;
 }
 
-export interface ChangeProposalOwnerReadDeps {
+export interface ChangeProposalOwnerReadDeps extends ChangeProposalOwnerViewDeps {
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'list'>;
   changeProposalEvents: ChangeProposalEventRepository;
-  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'listByIds'>;
-  shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
   clock: Clock;
 }
 
-export interface ChangeProposalDecisionDeps {
+export interface ChangeProposalDecisionDeps extends ChangeProposalOwnerViewDeps {
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'decide'>;
-  shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
   ids: IdGenerator;
   clock: Clock;
 }
 
-export interface ChangeProposalApprovalDeps extends ChangeProposalRunDeps {
+export interface ChangeProposalApprovalDeps extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'recordExpiry'>;
-  shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
 }
 
 const changeProposalListQuery = (input: ChangeProposalListInput, now: string): Result<ChangeProposalListQuery, AppError> => {
@@ -119,6 +115,9 @@ const decideSingleProposal = (
   if (changeProposalExpired(locked, at)) return { kind: 'record_expiry', at, event: { id: deps.ids.nextId(), ...actor, note: null, at } };
   return { kind: 'move', at, transition: transition(at) };
 };
+
+const ownerViewOf = async (tenantId: string, proposal: ChangeProposal, deps: ChangeProposalOwnerViewDeps, now: string): Promise<ChangeProposalOwnerView> =>
+  toChangeProposalOwnerView(proposal, (await changeProposalOwnerFacts(tenantId, [proposal], deps, now))(proposal), now);
 
 const refusedDecision = (proposal: ChangeProposal, at: string): AppError =>
   proposal.groupId === null ? settledConflict(proposal, at) : groupedChangeProposalDecisionRefused(proposal);
@@ -180,6 +179,7 @@ export const submitChangeProposal = async (
   if (created.kind === 'cap_exceeded') return err(changeProposalCapExceeded(created.cap));
   if (created.kind === 'key_inactive') return err(forbidden('This shop management key can no longer propose changes'));
   if (created.kind === 'busy') return err(changeProposalsBusy());
+  await notifyOwnersOfProposal(deps, { tenantId, keyId, keyName: proposingKeyRow.name, group: null });
   return ok(toChangeProposalKeyReceipt(created.proposal, now));
 };
 
@@ -251,7 +251,7 @@ export const withdrawOwnChangeProposal = async (
 export const listChangeProposals = async (
   ctx: Ctx,
   input: ChangeProposalListInput,
-  deps: Pick<ChangeProposalOwnerReadDeps, 'changeProposals' | 'changeProposalGroups' | 'shopManagementKeys' | 'clock'>,
+  deps: Omit<ChangeProposalOwnerReadDeps, 'changeProposalEvents'>,
 ): Promise<Result<ChangeProposalOwnerPage, AppError>> => {
   const tenant = ownerSession(ctx, authorizeTenant(ctx, 'proposal:read'));
   if (!tenant.ok) return tenant;
@@ -259,10 +259,24 @@ export const listChangeProposals = async (
   const query = changeProposalListQuery(input, now);
   if (!query.ok) return query;
   const page = await deps.changeProposals.list(tenant.value, query.value);
-  const stateOf = await keyStates(tenant.value, deps, now);
-  const titleOf = await groupTitles(tenant.value, page.proposals, deps);
-  const proposals: ChangeProposalOwnerView[] = page.proposals.map((proposal) => toChangeProposalOwnerView(proposal, stateOf(proposal), titleOf(proposal), now));
+  const factsOf = await changeProposalOwnerFacts(tenant.value, page.proposals, deps, now);
+  const proposals: ChangeProposalOwnerView[] = page.proposals.map((proposal) => toChangeProposalOwnerView(proposal, factsOf(proposal), now));
   return ok({ proposals, nextCursor: page.nextCursor });
+};
+
+export interface ChangeProposalSummaryDeps {
+  changeProposals: Pick<ChangeProposalRepository, 'countPending'>;
+  clock: Clock;
+}
+
+export const getChangeProposalSummary = async (
+  ctx: Ctx,
+  deps: ChangeProposalSummaryDeps,
+): Promise<Result<ChangeProposalSummary, AppError>> => {
+  const tenant = ownerSession(ctx, authorizeTenant(ctx, 'proposal:read'));
+  if (!tenant.ok) return tenant;
+  const counted = await deps.changeProposals.countPending(tenant.value, deps.clock.nowIso());
+  return ok({ pending: counted.proposals, pendingGroups: counted.groups });
 };
 
 export const getChangeProposal = async (
@@ -277,10 +291,9 @@ export const getChangeProposal = async (
   const proposal = await deps.changeProposals.findById(tenant.value, parsed.data.id);
   if (proposal === null) return err(notFound(`No change proposal "${parsed.data.id}" in this workspace`));
   const now = deps.clock.nowIso();
-  const stateOf = await keyStates(tenant.value, deps, now);
-  const titleOf = await groupTitles(tenant.value, [proposal], deps);
+  const factsOf = await changeProposalOwnerFacts(tenant.value, [proposal], deps, now);
   const events = await deps.changeProposalEvents.listByProposal(tenant.value, proposal.id);
-  return ok(toChangeProposalOwnerDetail(proposal, stateOf(proposal), titleOf(proposal), events, now));
+  return ok(toChangeProposalOwnerDetail(proposal, factsOf(proposal), events, now));
 };
 
 export const rejectChangeProposal = async (
@@ -314,7 +327,7 @@ export const rejectChangeProposal = async (
   if (decided.kind === 'not_found') return err(missing);
   const { decision, proposal: current } = decided;
   if (decision.kind !== 'move') return err(refusedDecision(current, decision.at));
-  return ok(toChangeProposalOwnerView(current, (await keyStates(tenant.value, deps, decision.at))(current), null, decision.at));
+  return ok(await ownerViewOf(tenant.value, current, deps, decision.at));
 };
 
 type ApprovalDecision =
@@ -372,5 +385,5 @@ export const approveChangeProposal = async (
   if (!decided.ok) return decided;
   if (decided.value.kind === 'expired') return err(settledConflict(decided.value.proposal, decided.value.at));
   const { proposal: decidedProposal, at } = decided.value;
-  return ok(toChangeProposalOwnerView(decidedProposal, (await keyStates(tenantId, deps, at))(decidedProposal), null, at));
+  return ok(await ownerViewOf(tenantId, decidedProposal, deps, at));
 };

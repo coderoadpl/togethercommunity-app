@@ -1715,6 +1715,7 @@ export const apiKeysInvalidates = () => ({ queryKey: apiKeyScopes.all() });
 const changeProposalScopes = {
   all: () => ['change-proposals'] as const,
   lists: (input: ChangeProposalListQueryInput) => ['change-proposals', 'list', input] as const,
+  summary: () => ['change-proposals', 'summary'] as const,
   detail: (id: string) => ['change-proposals', 'detail', id] as const,
   group: (id: string) => ['change-proposals', 'group', id] as const,
 };
@@ -1723,6 +1724,12 @@ export const changeProposalsQuery = (api: ApiClient, input: ChangeProposalListQu
   defineQuery({
     queryKey: changeProposalScopes.lists(input),
     call: ({ signal }) => api.listChangeProposals(input, signal),
+  });
+
+export const changeProposalSummaryQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: changeProposalScopes.summary(),
+    call: ({ signal }) => api.getChangeProposalSummary(signal),
   });
 
 export const changeProposalQuery = (api: ApiClient, id: string) =>

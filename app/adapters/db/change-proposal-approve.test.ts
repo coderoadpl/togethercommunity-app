@@ -17,6 +17,7 @@ import {
 import {
   approveChangeProposal,
   getChangeProposal,
+  getChangeProposalSummary,
   getOwnChangeProposal,
   listChangeProposals,
   listOwnChangeProposals,
@@ -32,11 +33,17 @@ import {
 
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
-import { createChangeProposalEventRepository, createChangeProposalRepository } from './change-proposals.js';
+import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import { createTenantSecretRepository } from './repositories.js';
+import {
+  createAccountIdentityReader,
+  createTenantAccessReader,
+  createTenantSecretRepository,
+  createUnreadNotificationRaiser,
+} from './repositories.js';
 import {
   changeProposalEvents,
+  changeProposalGroups,
   changeProposals,
   entityVersions,
   productDownloadAssets,
@@ -48,7 +55,9 @@ import {
   shopManagementKeyEvents,
   shopManagementKeys,
   stockEvents,
+  tenantAdmins,
   tenants,
+  user,
 } from './schema.js';
 import { createSalesLinkRepository } from './sales-links.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
@@ -105,7 +114,13 @@ const deps = (db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) => {
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
       createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
     changeProposals: createChangeProposalRepository(db, lockWait),
+    changeProposalGroups: createChangeProposalGroupRepository(db, lockWait),
     shopManagementKeys: createShopManagementKeyRepository(db),
+    changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+    accountIdentities: createAccountIdentityReader(db),
+    tenantAccess: createTenantAccessReader(db),
+    unreadNotifications: createUnreadNotificationRaiser(db),
+    realtimeBus: { publish: () => undefined },
     storage,
     logger,
     ids: { nextId: () => `approve-${String(++sequence)}` },
@@ -177,7 +192,7 @@ afterAll(async () => { await database?.close(); });
 
 beforeEach(async () => {
   storageDeletes.length = 0;
-  for (const table of [changeProposalEvents, changeProposals, shopManagementKeyEvents, shopManagementKeys, stockEvents, productStock,
+  for (const table of [changeProposalEvents, changeProposals, changeProposalGroups, shopManagementKeyEvents, shopManagementKeys, stockEvents, productStock,
     productDownloadAssets, productPrices, salesLinkEvents, salesLinks, entityVersions, products]) {
     await database.db.delete(table);
   }
@@ -834,5 +849,84 @@ describe('a proposal whose stored effect is empty', () => {
 
     expect(await createSalesLinkRepository(database.db).findById(TENANT, 'link-spring')).toMatchObject({ heading: 'Owner heading', revision: 1 });
     expect((await database.db.select().from(salesLinkEvents)).length).toBe(events);
+  });
+});
+
+describe('the owner view and summary over the database', () => {
+  beforeAll(async () => {
+    await database.db.insert(user).values([
+      { id: ISSUER, email: 'issuer@example.test', name: 'Issuer', emailVerified: true },
+      { id: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true },
+    ]);
+    await database.db.insert(tenantAdmins).values([
+      { id: 'grant-issuer', tenantId: TENANT, userId: ISSUER, role: 'owner' },
+      { id: 'grant-owner', tenantId: TENANT, userId: OWNER, role: 'owner' },
+    ]);
+  });
+
+  const ownerList = async () => {
+    const listed = await listChangeProposals(ownerSession, {}, deps());
+    if (!listed.ok) throw new Error(listed.error.message);
+    return Object.fromEntries(listed.value.proposals.map((card) => [card.id, card]));
+  };
+
+  it('labels each card from live state, names the deciding account and shows whether the issuer still owns the workspace', async () => {
+    const product = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    const price = await submit('price.deactivate', { id: 'price-live' });
+    const link = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
+    const settings = await submit('settings.update', { name: 'Acme shop' });
+    const created = await submit('product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 });
+    expect(await rejectChangeProposal(ownerSession, { id: settings, note: 'Not now' }, deps())).toMatchObject({ ok: true });
+    expect(await approve(created)).toMatchObject({ ok: true, value: { status: 'applied', targetLabel: 'Teapot' } });
+    await database.db.update(products).set({ title: 'Mug, renamed live' }).where(eq(products.id, 'mug'));
+
+    const cards = await ownerList();
+
+    expect([product, price, link, settings, created].map((id) => cards[id]?.targetLabel)).toEqual(['Mug, renamed live', 'Title of live', 'Spring', 'Shop settings', 'Teapot']);
+    expect(cards[product]?.proposedBy).toEqual({
+      keyId: KEY_ID, keyName: 'Catalogue agent', keyState: 'active', issuerUserId: ISSUER, issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: true,
+    });
+    expect(cards[settings]).toMatchObject({ status: 'rejected', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decisionNote: 'Not now', decidedAt: NOW });
+    expect(cards[product]).toMatchObject({ decidedByEmail: null, failureCode: null, failureMessage: null });
+
+    await database.db.update(tenantAdmins).set({ role: 'admin' }).where(eq(tenantAdmins.id, 'grant-issuer'));
+    try {
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: false });
+      await database.db.update(tenantAdmins).set({ role: 'owner' }).where(eq(tenantAdmins.id, 'grant-issuer'));
+      await database.db.update(user).set({ emailVerified: false }).where(eq(user.id, ISSUER));
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerIsVerifiedOwner: false });
+    } finally {
+      await database.db.update(tenantAdmins).set({ role: 'owner' }).where(eq(tenantAdmins.id, 'grant-issuer'));
+      await database.db.update(user).set({ emailVerified: true }).where(eq(user.id, ISSUER));
+    }
+
+    await createSalesLinkRepository(database.db).delete(TENANT, 'link-spring', NOW);
+    expect((await ownerList())[link]?.targetLabel).toBeNull();
+  });
+
+  it('approves exactly what was shown, whatever the live label says', async () => {
+    const id = await submit('product.update', { id: 'mug', description: 'Fresh' });
+    await database.db.update(products).set({ title: 'Renamed for the label only' }).where(eq(products.id, 'mug'));
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'applied', targetLabel: 'Renamed for the label only' } });
+    expect(await productRow('mug')).toMatchObject({ title: 'Renamed for the label only', description: 'Fresh' });
+  });
+
+  it('counts the pending, unexpired proposals and their groups for the summary', async () => {
+    const first = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    await submit('stock.adjust', { productId: 'live', delta: 1, reason: 'Count' });
+    const rejected = await submit('product.update', { id: 'live', title: 'Rejected' });
+    expect(await rejectChangeProposal(ownerSession, { id: rejected }, deps())).toMatchObject({ ok: true });
+    await database.db.insert(changeProposalGroups).values({ id: 'group-summary', tenantId: TENANT, title: 'Summary group', proposedByKeyId: KEY_ID, createdAt: NOW });
+    await database.db.update(changeProposals).set({ groupId: 'group-summary', groupPosition: 1 }).where(eq(changeProposals.id, first));
+    const [template] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, rejected));
+    if (template === undefined) throw new Error('The rejected proposal is missing');
+    await database.db.insert(changeProposals).values({
+      ...template,
+      id: 'expired-proposal', status: 'pending', createdAt: '2026-01-01T00:00:00.000Z', expiresAt: '2026-01-31T00:00:00.000Z',
+      decidedAt: null, decidedByUserId: null, decisionNote: null,
+    });
+
+    expect(await getChangeProposalSummary(ownerSession, deps())).toEqual({ ok: true, value: { pending: 2, pendingGroups: 1 } });
+    expect(await getChangeProposalSummary(keyCtx, deps())).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

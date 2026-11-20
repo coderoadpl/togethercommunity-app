@@ -2,7 +2,7 @@ import { ensureTransactionalSesConfiguration } from '#core/server/usecases/trans
 import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
 import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
-import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import { createTenantTeamRepository, createUnreadNotificationRaiser } from '#adapters/db/repositories.js';
 import {
   createOrganizationAuditRepository,
   createOrganizationMemberRepository,
@@ -55,14 +55,20 @@ import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypt
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import type { ChangeProposalBoundOptions } from '#adapters/db/change-proposal-bounds.js';
-import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
+import {
+  createChangeProposalEventRepository,
+  createChangeProposalRepository,
+  createChangeProposalTargetLabelReader,
+} from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import type {
   ChangeProposalEventRepository,
   ChangeProposalGroupRepository,
   ChangeProposalRepository,
+  ChangeProposalTargetLabelReader,
   ChangeProposalTransaction,
+  UnreadNotificationRaiser,
 } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
@@ -571,6 +577,8 @@ export interface AppDeps {
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
   changeProposalGroups: ChangeProposalGroupRepository;
+  changeProposalTargetLabels: ChangeProposalTargetLabelReader;
+  unreadNotifications: UnreadNotificationRaiser;
   changeProposalTransaction: ChangeProposalTransaction;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
@@ -1619,6 +1627,8 @@ export const createDeps = (
     changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),
     changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),
+    changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+    unreadNotifications: createUnreadNotificationRaiser(db),
     changeProposalTransaction: createChangeProposalTransaction(
       db,
       logger,

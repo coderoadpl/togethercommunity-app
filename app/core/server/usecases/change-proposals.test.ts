@@ -28,10 +28,14 @@ import type { Ctx } from '../context.js';
 import type { ChangeProposalRepository, ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
+  changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
   emptyCatalogState,
   type FakeCatalogState,
   type FakeChangeProposalStore,
+  type FakeProposalAccount,
+  type FakeUnreadNotifications,
   type FakeChangeProposalTransaction,
 } from '../testing/change-proposal-fakes.js';
 import { shopManagementKeyCapabilities } from './shop-machine-auth.js';
@@ -58,6 +62,7 @@ const OWNER = 'user-owner';
 const NOW = '2026-03-01T10:00:00.000Z';
 const KEY_ID = 'key-propose';
 const OTHER_KEY_ID = 'key-propose-other';
+const OWNER_ACCOUNTS: FakeProposalAccount[] = [{ userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] }];
 
 const identity = (overrides: Partial<Identity> = {}): Identity => ({
   userId: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true, tenantAccess: 'staff',
@@ -187,9 +192,10 @@ interface Harness {
   ownerDeps: ChangeProposalOwnerReadDeps;
   decisionDeps: ChangeProposalDecisionDeps;
   clock: { now: string };
+  notifications: FakeUnreadNotifications;
 }
 
-const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
+const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposalAccount[] = OWNER_ACCOUNTS): Harness => {
   const state = emptyCatalogState();
   state.products.push(
     product(),
@@ -215,7 +221,10 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   const ids = { nextId: () => `generated-${String(++sequence)}` };
   const clockPort = { nowIso: () => clock.now };
   const shopManagementKeys = { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) };
+  const ownerViews = changeProposalOwnerViewFakes(state, accounts);
+  const notifications = createUnreadNotificationsFake();
   return {
+    notifications,
     state,
     store,
     transaction,
@@ -225,14 +234,17 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
       changeProposalTransaction: transaction,
       changeProposals: store.repository,
       shopManagementKeys,
+      tenantAccess: ownerViews.tenantAccess,
+      unreadNotifications: notifications.unreadNotifications,
+      realtimeBus: notifications.realtimeBus,
       storage,
       logger: { error: vi.fn<(message: string) => void>() },
       ids,
       clock: clockPort,
     },
     keyDeps: { changeProposals: store.repository, ids, clock: clockPort },
-    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, clock: clockPort },
-    decisionDeps: { changeProposals: store.repository, shopManagementKeys, ids, clock: clockPort },
+    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, clock: clockPort },
+    decisionDeps: { changeProposals: store.repository, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, ids, clock: clockPort },
   };
 };
 
@@ -698,6 +710,57 @@ describe('owner-side proposal review', () => {
     expect(await getChangeProposal(ownerSession, { id: 'missing' }, h.ownerDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
+  it('gives every listed card the live target label, the issuer state and the deciding account without changing the stored proposal', async () => {
+    const h = harness(ownerKeys(), [
+      { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+      { userId: 'user-former', email: 'former@example.test', ownerOf: [] },
+      { userId: 'user-unverified', email: 'unverified@example.test', emailVerified: false, ownerOf: [TENANT] },
+    ]);
+    h.store.seed(storedProposal({ id: 'p-product', createdAt: '2026-02-28T09:00:00.000Z' }));
+    h.store.seed(storedProposal({ id: 'p-price', createdAt: '2026-02-28T09:01:00.000Z', operation: 'price.deactivate', input: { id: 'price-live' }, target: { kind: 'price', id: 'price-live' }, effect: {} }));
+    h.store.seed(storedProposal({ id: 'p-link', createdAt: '2026-02-28T09:02:00.000Z', operation: 'sales-link.delete', input: { id: 'link-spring' }, target: { kind: 'sales-link', id: 'link-spring' }, effect: {} }));
+    h.store.seed(storedProposal({ id: 'p-settings', createdAt: '2026-02-28T09:03:00.000Z', operation: 'settings.update', input: { name: 'Acme shop' }, target: { kind: 'settings', id: null }, effect: {}, proposedByIssuerUserId: 'user-former' }));
+    h.store.seed(storedProposal({ id: 'p-create', createdAt: '2026-02-28T09:04:00.000Z', operation: 'product.create', input: { title: 'Teapot' }, target: { kind: 'product', id: null }, effect: {}, proposedByIssuerUserId: 'user-unverified' }));
+    h.store.seed(storedProposal({
+      id: 'p-applied-create', createdAt: '2026-02-28T09:05:00.000Z', operation: 'product.create', input: { title: 'Draft guide' }, target: { kind: 'product', id: null },
+      effect: {}, status: 'applied', appliedResourceId: 'product-draft', decidedByUserId: OWNER, decidedAt: NOW,
+    }));
+    h.store.seed(storedProposal({ id: 'p-gone', createdAt: '2026-02-28T09:06:00.000Z', target: { kind: 'product', id: 'product-deleted' }, input: { id: 'product-deleted', title: 'Gone' }, proposedByIssuerUserId: 'user-deleted' }));
+    h.store.seed(storedProposal({ id: 'p-neighbour-target', createdAt: '2026-02-28T09:07:00.000Z', target: { kind: 'product', id: 'product-neighbour' }, input: { id: 'product-neighbour', title: 'Other' } }));
+    const liveProduct = h.state.products.find(({ id }) => id === 'product-mug');
+    if (liveProduct === undefined) throw new Error('product missing');
+    liveProduct.title = 'Mug, renamed live';
+    const stored = structuredClone(h.store.proposals);
+
+    const listed = await listChangeProposals(ownerSession, {}, h.ownerDeps);
+
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(changeProposalOwnerPageSchema.parse(listed.value)).toEqual(listed.value);
+    const cards = Object.fromEntries(listed.value.proposals.map((card) => [card.id, card]));
+    expect(Object.fromEntries(Object.entries(cards).map(([id, card]) => [id, card.targetLabel]))).toEqual({
+      'p-product': 'Mug, renamed live', 'p-price': 'Live mug', 'p-link': 'Spring', 'p-settings': 'Shop settings',
+      'p-create': null, 'p-applied-create': 'Draft guide', 'p-gone': null, 'p-neighbour-target': null,
+    });
+    expect(cards['p-product']?.proposedBy).toEqual({
+      keyId: KEY_ID, keyName: 'Catalogue agent', keyState: 'active', issuerUserId: OWNER, issuerEmail: 'owner@example.test', issuerIsVerifiedOwner: true,
+    });
+    expect(cards['p-settings']?.proposedBy).toMatchObject({ issuerUserId: 'user-former', issuerEmail: 'former@example.test', issuerIsVerifiedOwner: false });
+    expect(cards['p-create']?.proposedBy).toMatchObject({ issuerEmail: 'unverified@example.test', issuerIsVerifiedOwner: false });
+    expect(cards['p-gone']?.proposedBy).toMatchObject({ issuerEmail: null, issuerIsVerifiedOwner: false });
+    expect(cards['p-applied-create']).toMatchObject({ status: 'applied', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decidedAt: NOW });
+    expect(cards['p-product']).toMatchObject({ decidedByEmail: null, createdAt: '2026-02-28T09:00:00.000Z', groupId: null, groupTitle: null, groupPosition: null });
+    expect(h.store.proposals).toEqual(stored);
+  });
+
+  it('keeps the live label and the issuer state off the key receipts', async () => {
+    const h = harness(ownerKeys());
+    h.store.seed(storedProposal({ id: 'p-own' }));
+    const receipt = await getOwnChangeProposal(keyCtx(), { id: 'p-own' }, h.keyDeps);
+    if (!receipt.ok) throw new Error(receipt.error.message);
+    const text = JSON.stringify(receipt.value);
+    for (const hidden of ['targetLabel', 'issuer', 'owner@example.test', 'decidedBy']) expect(text).not.toContain(hidden);
+  });
+
   it('never reads another workspace\'s proposal', async () => {
     const h = harness(ownerKeys());
     seedForOwner(h);
@@ -811,5 +874,56 @@ describe('owner-side proposal review', () => {
     }
     expect(h.store.proposals.find(({ id }) => id === 'p-active')?.status).toBe('pending');
     expect(h.store.eventRows).toEqual([]);
+  });
+});
+
+describe('the owner notification of a submitted proposal', () => {
+  const twoOwners: FakeProposalAccount[] = [
+    { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+    { userId: 'user-second-owner', email: 'second@example.test', ownerOf: [TENANT] },
+    { userId: 'user-neighbour-owner', email: 'neighbour@example.test', ownerOf: [NEIGHBOUR] },
+  ];
+  const submit = (h: Harness, title: string) =>
+    submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title } }, h.submitDeps);
+
+  it('tells every owner of the workspace once per key until they read it, and again after they did', async () => {
+    const h = harness([shopKey()], twoOwners);
+    expect((await submit(h, 'First')).ok).toBe(true);
+    expect((await submit(h, 'Second')).ok).toBe(true);
+
+    expect(h.notifications.rows.map(({ recipientUserId, kind, sourceKey, readAt, tenantId }) => ({ recipientUserId, kind, sourceKey, readAt, tenantId }))).toEqual([
+      { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
+      { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
+    ]);
+    expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
+    expect(h.notifications.published).toHaveLength(2);
+
+    const first = h.notifications.rows[0];
+    if (first === undefined) throw new Error('notification missing');
+    first.readAt = NOW;
+    h.clock.now = '2026-03-01T11:00:00.000Z';
+    expect((await submit(h, 'Third')).ok).toBe(true);
+
+    expect(h.notifications.rows).toHaveLength(2);
+    expect(h.notifications.rows[0]).toMatchObject({ readAt: null, createdAt: '2026-03-01T11:00:00.000Z' });
+    expect(h.notifications.published.map((event) => event.recipientUserId)).toEqual([OWNER, 'user-second-owner', OWNER]);
+  });
+
+  it('tells nobody about a refused submission', async () => {
+    const h = harness([shopKey()], twoOwners);
+    expect((await submitChangeProposal(keyCtx(), { operation: 'stock.adjust', input: { productId: 'product-live', delta: -500, reason: 'Count' } }, h.submitDeps)).ok).toBe(false);
+    expect(h.notifications.rows).toEqual([]);
+  });
+
+  it('stores the proposal and logs when the notification cannot be written', async () => {
+    const h = harness([shopKey()], twoOwners);
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const failing = { ...h.submitDeps, logger, unreadNotifications: { raiseUnread: () => Promise.reject(new Error('lock timeout')) } };
+
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Logged' } }, failing);
+
+    expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.store.proposals).toHaveLength(1);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification failed tenant=tenant-acme'));
   });
 });

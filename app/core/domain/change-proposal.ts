@@ -286,6 +286,16 @@ const changeProposalEventViewSchema = z.object({
 
 export type ChangeProposalEventView = z.output<typeof changeProposalEventViewSchema>;
 
+export const CHANGE_PROPOSAL_SETTINGS_LABEL = 'Shop settings';
+
+export const changeProposalIssuerSchema = z.object({
+  issuerUserId: z.string(),
+  issuerEmail: z.string().nullable(),
+  issuerIsVerifiedOwner: z.boolean(),
+}).strict();
+
+export type ChangeProposalIssuer = z.output<typeof changeProposalIssuerSchema>;
+
 export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),
   groupId: z.string().nullable(),
@@ -293,18 +303,19 @@ export const changeProposalOwnerViewSchema = z.object({
   groupPosition: z.number().int().nullable(),
   operation: changeProposalStoredOperationSchema,
   target: changeProposalTargetSchema,
+  targetLabel: z.string().nullable(),
   input: changeProposalInputSchema,
   effect: changeProposalEffectSchema,
   status: changeProposalDisplayStatusSchema,
   proposedBy: z.object({
     keyId: z.string(),
     keyName: z.string(),
-    issuerUserId: z.string(),
     keyState: changeProposalKeyStateSchema,
-  }).strict(),
+  }).merge(changeProposalIssuerSchema).strict(),
   createdAt: z.string(),
   expiresAt: z.string(),
   decidedByUserId: z.string().nullable(),
+  decidedByEmail: z.string().nullable(),
   decidedAt: z.string().nullable(),
   decisionNote: z.string().nullable(),
   appliedResourceId: z.string().nullable(),
@@ -342,6 +353,13 @@ export const changeProposalOwnerPageSchema = z.object({
 }).strict();
 
 export type ChangeProposalOwnerPage = z.output<typeof changeProposalOwnerPageSchema>;
+
+export const changeProposalSummarySchema = z.object({
+  pending: z.number().int().min(0),
+  pendingGroups: z.number().int().min(0),
+}).strict();
+
+export type ChangeProposalSummary = z.output<typeof changeProposalSummarySchema>;
 
 export const changeProposalKeyReceiptPageSchema = z.object({
   proposals: z.array(changeProposalKeyReceiptSchema),
@@ -391,30 +409,41 @@ const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEv
   at: event.at,
 });
 
+/** Read at view time: the live label is for display only and never takes part in a decision. */
+export interface ChangeProposalOwnerFacts {
+  keyState: ChangeProposalKeyState;
+  groupTitle: string | null;
+  issuer: Omit<ChangeProposalIssuer, 'issuerUserId'>;
+  decidedByEmail: string | null;
+  targetLabel: string | null;
+}
+
 export const toChangeProposalOwnerView = (
   proposal: ChangeProposal,
-  keyState: ChangeProposalKeyState,
-  groupTitle: string | null,
+  facts: ChangeProposalOwnerFacts,
   now: string,
 ): ChangeProposalOwnerView => ({
   id: proposal.id,
   groupId: proposal.groupId,
-  groupTitle: proposal.groupId === null ? null : groupTitle,
+  groupTitle: proposal.groupId === null ? null : facts.groupTitle,
   groupPosition: proposal.groupPosition,
   operation: proposal.operation,
   target: proposal.target,
+  targetLabel: facts.targetLabel,
   input: proposal.input,
   effect: proposal.effect,
   status: changeProposalDisplayStatus(proposal, now),
   proposedBy: {
     keyId: proposal.proposedByKeyId,
     keyName: proposal.proposedByKeyName,
+    keyState: facts.keyState,
     issuerUserId: proposal.proposedByIssuerUserId,
-    keyState,
+    ...facts.issuer,
   },
   createdAt: proposal.createdAt,
   expiresAt: proposal.expiresAt,
   decidedByUserId: proposal.decidedByUserId,
+  decidedByEmail: proposal.decidedByUserId === null ? null : facts.decidedByEmail,
   decidedAt: proposal.decidedAt,
   decisionNote: proposal.decisionNote,
   appliedResourceId: proposal.appliedResourceId,
@@ -424,12 +453,11 @@ export const toChangeProposalOwnerView = (
 
 export const toChangeProposalOwnerDetail = (
   proposal: ChangeProposal,
-  keyState: ChangeProposalKeyState,
-  groupTitle: string | null,
+  facts: ChangeProposalOwnerFacts,
   events: readonly ChangeProposalEvent[],
   now: string,
 ): ChangeProposalOwnerDetail => ({
-  ...toChangeProposalOwnerView(proposal, keyState, groupTitle, now),
+  ...toChangeProposalOwnerView(proposal, facts, now),
   events: events.map(toChangeProposalEventView),
 });
 

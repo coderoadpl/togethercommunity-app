@@ -125,6 +125,7 @@ import type {
   MemberCourseProgressRepository,
   MemberSubscriptionRepository,
   NotificationRepository,
+  UnreadNotificationRaiser,
   OrderRepository,
   OrderDetailRepository,
   MemberOrderListReader,
@@ -2631,6 +2632,29 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
       )
       .returning({ id: notifications.id });
     return rows.length;
+  },
+});
+
+export const createUnreadNotificationRaiser = (db: Db): UnreadNotificationRaiser => ({
+  raiseUnread: async (tenantId, notification) => {
+    if (notification.sourceKey === null) throw new Error('An unread notification is raised only under a source key');
+    const rows = await db
+      .insert(notifications)
+      .values({ ...notification, tenantId })
+      .onConflictDoUpdate({
+        target: [notifications.tenantId, notifications.recipientUserId, notifications.sourceKey],
+        targetWhere: sql`${notifications.sourceKey} is not null`,
+        set: {
+          kind: notification.kind,
+          payload: notification.payload,
+          readAt: null,
+          createdAt: notification.createdAt,
+        },
+        setWhere: sql`${notifications.readAt} is not null`,
+      })
+      .returning();
+    const row = rows[0];
+    return row === undefined ? null : parseNotification(row);
   },
 });
 

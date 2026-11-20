@@ -614,6 +614,14 @@ export interface DmReportRepository {
   ): Promise<DmReport | null>;
 }
 
+export interface UnreadNotificationRaiser {
+  /**
+   * Inserts the notification, or makes the read one with the same recipient and source key unread again with the new
+   * kind, payload and time; null, changing nothing, while that one is still unread. The unique source key makes it atomic.
+   */
+  raiseUnread(tenantId: string, notification: Notification): Promise<Notification | null>;
+}
+
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
@@ -2961,6 +2969,8 @@ export interface ChangeProposalRepository {
     decide: (locked: ChangeProposal) => ChangeProposalDecision,
   ): Promise<ChangeProposalDecisionOutcome>;
   recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
+  /** Pending, unexpired proposals at `now`, and the distinct groups they belong to. */
+  countPending(tenantId: string, now: string): Promise<{ proposals: number; groups: number }>;
 }
 
 export interface ChangeProposalEventRepository {
@@ -3040,6 +3050,20 @@ export interface ChangeProposalGroupRepository {
   recordExpiry(tenantId: string, id: string, event: (proposalId: string) => ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
   /** Deletes a group of the key that never received an item; false when it has items or is not the key's. */
   deleteEmpty(tenantId: string, keyId: string, id: string): Promise<ChangeProposalWrite<boolean>>;
+}
+
+export interface ChangeProposalTargetLabelRequest {
+  kind: 'product' | 'price' | 'sales-link';
+  id: string;
+}
+
+export interface ChangeProposalTargetLabel extends ChangeProposalTargetLabelRequest {
+  label: string;
+}
+
+export interface ChangeProposalTargetLabelReader {
+  /** The live title of each existing target (a price answers its product's title); a missing or deleted target has no entry. */
+  labels(tenantId: string, targets: readonly ChangeProposalTargetLabelRequest[]): Promise<ChangeProposalTargetLabel[]>;
 }
 
 export type ChangeProposalTargetLockPurpose = 'change' | 'delete';

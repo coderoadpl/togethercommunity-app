@@ -11,6 +11,7 @@ import {
   changeProposalOwnerDetailSchema,
   changeProposalOwnerPageSchema,
   changeProposalOwnerViewSchema,
+  changeProposalSummarySchema,
   createChangeProposalGroupInputSchema,
 } from '#core/domain/index.js';
 
@@ -73,6 +74,8 @@ export const shopProposalContracts = {
 export const changeProposalsListOutputSchema = changeProposalOwnerPageSchema;
 
 export const changeProposalShowOutputSchema = z.object({ proposal: changeProposalOwnerDetailSchema });
+
+export const changeProposalSummaryOutputSchema = changeProposalSummarySchema;
 
 export const changeProposalRejectInputSchema = z.object({
   note: z.string().max(CHANGE_PROPOSAL_LIMITS.decisionNoteMaxLength).nullable().optional(),

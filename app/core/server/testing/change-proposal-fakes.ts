@@ -6,6 +6,7 @@ import {
   changeProposalEffectWithinLimit,
   changeProposalGroupOpen,
   err,
+  membershipSchema,
   notFound,
   ok,
   validation,
@@ -16,6 +17,7 @@ import {
   type ChangeProposalEventKind,
   type ChangeProposalGroup,
   type ChangeProposalTarget,
+  type Notification,
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
@@ -25,6 +27,7 @@ import {
   type TenantSettings,
 } from '#core/domain/index.js';
 
+import type { ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
@@ -37,8 +40,11 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
   ChangeProposalTransitionGuard,
+  RealtimeEvent,
   SalesLinkRepository,
+  TenantAccessReader,
   TenantSecretResolver,
+  UnreadNotificationRaiser,
 } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
 
@@ -386,6 +392,10 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       return { kind: 'decided', decision, proposal: transitionRow(found, decision.transition) };
     },
     recordExpiry: async (tenantId, id, event) => ({ kind: 'written', value: recordExpiry(tenantId, id, event) }),
+    countPending: async (tenantId, now) => {
+      const pending = proposals.filter((proposal) => proposal.tenantId === tenantId && pendingAt(proposal, now));
+      return { proposals: pending.length, groups: new Set(pending.flatMap((proposal) => proposal.groupId === null ? [] : [proposal.groupId])).size };
+    },
   };
   const groupRows: ChangeProposalGroup[] = [];
   const itemsOf = (tenantId: string, groupId: string): ChangeProposal[] =>
@@ -482,6 +492,82 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       eventRows.filter((event) => event.tenantId === tenantId && event.proposalId === proposalId).sort((left, right) => left.sequence - right.sequence),
   };
   return { repository, events, groups, proposals, eventRows, groupRows, keys, seed: (proposal) => { proposals.push({ ...proposal }); } };
+};
+
+export interface FakeProposalAccount {
+  userId: string;
+  email: string;
+  emailVerified?: boolean;
+  ownerOf?: string[];
+}
+
+export const changeProposalOwnerViewFakes = (
+  state: FakeCatalogState,
+  accounts: readonly FakeProposalAccount[] = [],
+): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels' | 'accountIdentities'> & {
+  tenantAccess: Pick<TenantAccessReader, 'findStaffGrant' | 'listStaffForTenant'>;
+} => ({
+  changeProposalTargetLabels: {
+    labels: async (tenantId, targets) => targets.flatMap((target) => {
+      const titleOf = (productId: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === productId)?.title;
+      const label = target.kind === 'product'
+        ? titleOf(target.id)
+        : target.kind === 'price'
+          ? titleOf(state.prices.find((candidate) => candidate.tenantId === tenantId && candidate.id === target.id)?.productId ?? '')
+          : state.salesLinks.find((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted)?.title;
+      return label === undefined ? [] : [{ ...target, label }];
+    }),
+  },
+  accountIdentities: {
+    findById: async (userId) => {
+      const account = accounts.find((candidate) => candidate.userId === userId);
+      return account === undefined ? null : { userId, email: account.email, name: account.email, emailVerified: account.emailVerified ?? true };
+    },
+  },
+  tenantAccess: {
+    listStaffForTenant: async (tenantId) => accounts
+      .filter((account) => (account.ownerOf ?? []).includes(tenantId))
+      .map((account) => ({ userId: account.userId, email: account.email, staffRole: 'owner' as const, language: null })),
+    findStaffGrant: async (userId, lookup) => {
+      const tenantId = 'tenantId' in lookup ? lookup.tenantId : lookup.tenantSlug;
+      const owner = accounts.some((candidate) => candidate.userId === userId && (candidate.ownerOf ?? []).includes(tenantId));
+      return owner
+        ? membershipSchema.parse({ tenant: { id: tenantId, slug: tenantId, name: 'Workspace', status: 'active', plan: 'hosted', contentVersion: 1 }, staffRole: 'owner' })
+        : null;
+    },
+  },
+});
+
+export interface FakeUnreadNotifications {
+  unreadNotifications: UnreadNotificationRaiser;
+  realtimeBus: { publish(event: RealtimeEvent): void };
+  rows: Notification[];
+  published: RealtimeEvent[];
+}
+
+export const createUnreadNotificationsFake = (): FakeUnreadNotifications => {
+  const rows: Notification[] = [];
+  const published: RealtimeEvent[] = [];
+  return {
+    rows,
+    published,
+    realtimeBus: { publish: (event) => { published.push(event); } },
+    unreadNotifications: {
+      raiseUnread: async (tenantId, notification) => {
+        const existing = rows.find((row) => row.tenantId === tenantId && row.recipientUserId === notification.recipientUserId
+          && row.sourceKey === notification.sourceKey);
+        if (existing === undefined) {
+          rows.push({ ...notification, tenantId });
+          return { ...notification, tenantId };
+        }
+        if (existing.readAt !== null) {
+          Object.assign(existing, { kind: notification.kind, payload: notification.payload, readAt: null, createdAt: notification.createdAt });
+          return { ...existing };
+        }
+        return null;
+      },
+    },
+  };
 };
 
 const withSalesLinkSaveError = (scope: ChangeProposalTransactionScope, error: AppError): ChangeProposalTransactionScope => ({

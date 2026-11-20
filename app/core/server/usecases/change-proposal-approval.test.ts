@@ -22,7 +22,9 @@ import type { Ctx } from '../context.js';
 import type { ChangeProposalTransaction, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
+  changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
   emptyCatalogState,
   failingSalesLinkSaves,
   type FakeCatalogState,
@@ -35,6 +37,7 @@ import {
   submitChangeProposal,
   withdrawOwnChangeProposal,
   type ChangeProposalApprovalDeps,
+  type ChangeProposalSubmitDeps,
 } from './change-proposals.js';
 import { publishProduct } from './products.js';
 import { shopManagementKeyCapabilities } from './shop-machine-auth.js';
@@ -139,11 +142,13 @@ const recordingStorage = (deletes: string[]): StorageProvider => {
   };
 };
 
+type HarnessDeps = ChangeProposalApprovalDeps & Omit<ChangeProposalSubmitDeps, 'changeProposals'>;
+
 interface Harness {
   state: FakeCatalogState;
   store: FakeChangeProposalStore;
   transaction: FakeChangeProposalTransaction;
-  deps: ChangeProposalApprovalDeps;
+  deps: HarnessDeps;
   deletes: string[];
   clock: { now: string };
   submit(operation: ChangeProposalOperation, input: unknown): Promise<string>;
@@ -169,12 +174,19 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   const store = createChangeProposalStoreFake(keys);
   const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const deletes: string[] = [];
+  const notificationFakes = createUnreadNotificationsFake();
   let sequence = 0;
   const clock = { now: NOW };
-  const deps: ChangeProposalApprovalDeps = {
+  const deps: HarnessDeps = {
     changeProposalTransaction: transaction,
     changeProposals: store.repository,
+    changeProposalGroups: store.groups,
     shopManagementKeys: { listByTenant: async (tenantId) => keys.filter((key) => key.tenantId === tenantId) },
+    ...notificationFakes,
+    ...changeProposalOwnerViewFakes(state, [
+      { userId: ISSUER, email: 'issuer@example.test', ownerOf: [TENANT] },
+      { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+    ]),
     storage: recordingStorage(deletes),
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },

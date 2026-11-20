@@ -9,7 +9,13 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
-import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '#core/server/testing/change-proposal-fakes.js';
+import {
+  changeProposalOwnerViewFakes,
+  createChangeProposalStoreFake,
+  createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
+  emptyCatalogState,
+} from '#core/server/testing/change-proposal-fakes.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
@@ -383,6 +389,8 @@ const deps = (input: {
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
+    changeProposalTargetLabels: changeProposalOwnerViewFakes(emptyCatalogState()).changeProposalTargetLabels,
+    unreadNotifications: createUnreadNotificationsFake().unreadNotifications,
     importContent: {
       commit: async () => 'saved',
     },

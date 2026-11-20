@@ -27,7 +27,9 @@ import type { Ctx } from '../context.js';
 import type { ChangeProposalGroupRepository, ChangeProposalTransaction, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
+  changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
   emptyCatalogState,
   failingSalesLinkSaves,
   type FakeChangeProposalStore,
@@ -152,6 +154,7 @@ const harness = (keys: ShopManagementKey[] = [
   const store: FakeChangeProposalStore = createChangeProposalStoreFake(keys);
   const transaction: FakeChangeProposalTransaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const deletes: string[] = [];
+  const notificationFakes = createUnreadNotificationsFake();
   let sequence = 0;
   const clock = { now: NOW };
   const deps = {
@@ -160,6 +163,11 @@ const harness = (keys: ShopManagementKey[] = [
     changeProposalGroups: store.groups,
     changeProposalEvents: store.events,
     shopManagementKeys: { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) },
+    ...notificationFakes,
+    ...changeProposalOwnerViewFakes(state, [
+      { userId: ISSUER, email: 'issuer@example.test', ownerOf: [TENANT] },
+      { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+    ]),
     storage: recordingStorage(deletes),
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },
@@ -181,7 +189,7 @@ const harness = (keys: ShopManagementKey[] = [
     approveChangeProposalGroup(ctx, { id: groupId, itemIds }, deps);
   const events = (id: string): string[] => store.eventRows.filter((event) => event.proposalId === id)
     .map(({ sequence: position, kind }) => `${String(position)}:${kind}`);
-  return { state, store, transaction, deps, deletes, clock, group, join, add, lastItemId, items, approve, events };
+  return { state, store, transaction, deps, deletes, clock, group, join, add, lastItemId, items, approve, events, notifications: notificationFakes };
 };
 
 type Harness = ReturnType<typeof harness>;
@@ -986,5 +994,38 @@ describe('sales links created earlier in the same group', () => {
     const approved = unwrap(await h.approve(groupId));
     expect(approved.status).toBe('applied');
     expect(h.state.prices.find((candidate) => candidate.id === approved.items[0]?.appliedResourceId)).toMatchObject({ amountCents: 2500, active: false });
+  });
+});
+
+describe('the owner notification of a group', () => {
+  it('raises one notification for the group when its first item joins, none for later items or while it is unread', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+
+    expect(h.notifications.rows.map(({ recipientUserId, kind, sourceKey, payload }) => ({ recipientUserId, kind, sourceKey, contextId: payload.contextId, snippet: payload.snippet }))).toEqual([
+      { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, contextId: groupId, snippet: 'Spring launch' },
+      { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, contextId: groupId, snippet: 'Spring launch' },
+    ]);
+    expect(h.notifications.published).toHaveLength(2);
+
+    for (const row of h.notifications.rows) row.readAt = NOW;
+    await h.add(groupId, 'stock.adjust', { productId: 'product-live', delta: 1, reason: 'Count' });
+    expect(h.notifications.rows.every((row) => row.readAt === NOW)).toBe(true);
+
+    expect((await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Big mug' } }, h.deps)).ok).toBe(true);
+    expect(h.notifications.rows.map((row) => [row.readAt, row.payload.contextId])).toEqual([[null, null], [null, null]]);
+    expect(h.notifications.published).toHaveLength(4);
+  });
+
+  it('keeps one notification per key, so a second key adds its own', async () => {
+    const h = harness();
+    await h.add(await h.group(), 'product.update', { id: 'product-mug', title: 'Big mug' });
+    expect((await submitChangeProposal(keyCtx(OTHER_KEY_ID), { operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, h.deps)).ok).toBe(true);
+    expect(h.notifications.rows.map((row) => [row.recipientUserId, row.sourceKey, row.payload.authorDisplay])).toEqual([
+      [ISSUER, `change-proposal:${KEY_ID}`, 'Catalogue agent'],
+      [OWNER, `change-proposal:${KEY_ID}`, 'Catalogue agent'],
+      [ISSUER, `change-proposal:${OTHER_KEY_ID}`, 'Second agent'],
+      [OWNER, `change-proposal:${OTHER_KEY_ID}`, 'Second agent'],
+    ]);
   });
 });

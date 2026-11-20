@@ -14,13 +14,14 @@ import {
   submitChangeProposal,
   type ChangeProposalSubmitDeps,
   type Ctx,
+  type RealtimeEvent,
   type StorageProvider,
 } from '#core/server/index.js';
 
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import { createTenantSecretRepository } from './repositories.js';
+import { createTenantAccessReader, createTenantSecretRepository, createUnreadNotificationRaiser } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposals,
@@ -32,8 +33,11 @@ import {
   productStock,
   salesLinkEvents,
   salesLinks,
+  notifications,
   stockEvents,
+  tenantAdmins,
   tenants,
+  user,
 } from './schema.js';
 import { createSalesLinkRepository } from './sales-links.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
@@ -45,6 +49,7 @@ const OWNER = 'user-owner';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let sequence = 0;
+const published: RealtimeEvent[] = [];
 
 const owner: Identity = {
   userId: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true, tenantAccess: 'staff',
@@ -83,6 +88,9 @@ const deps = (db: Db = database.db, logger = { error: vi.fn<(message: string) =>
     createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
   changeProposals: createChangeProposalRepository(db),
   shopManagementKeys: createShopManagementKeyRepository(db),
+  unreadNotifications: createUnreadNotificationRaiser(db),
+  tenantAccess: createTenantAccessReader(db),
+  realtimeBus: { publish: (event) => { published.push(event); } },
   storage,
   logger,
   ids: { nextId: () => `submit-${String(++sequence)}` },
@@ -209,5 +217,77 @@ describe('submitChangeProposal over the database', () => {
     const result = await submitChangeProposal(keyCtx, { operation: 'stock.adjust', input: { productId: 'live', delta: -50, reason: 'Count' } }, deps());
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect((await database.db.select().from(changeProposals)).length).toBe(proposalsBefore);
+  });
+});
+
+describe('the owner notification of a submitted proposal over the database', () => {
+  const OTHER_OWNER = 'user-owner-two';
+  const ownerNotifications = async () =>
+    (await database.db.select().from(notifications).where(eq(notifications.tenantId, TENANT)).orderBy(asc(notifications.recipientUserId)));
+  const propose = async (title: string) => {
+    const result = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title } }, deps());
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+
+  beforeAll(async () => {
+    await database.db.insert(user).values([
+      { id: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true },
+      { id: OTHER_OWNER, email: 'second-owner@example.test', name: 'Second owner', emailVerified: true },
+      { id: 'user-admin', email: 'admin@example.test', name: 'Admin', emailVerified: true },
+    ]);
+    await database.db.insert(tenantAdmins).values([
+      { id: 'grant-owner', tenantId: TENANT, userId: OWNER, role: 'owner' },
+      { id: 'grant-owner-two', tenantId: TENANT, userId: OTHER_OWNER, role: 'owner' },
+      { id: 'grant-admin', tenantId: TENANT, userId: 'user-admin', role: 'admin' },
+    ]);
+  });
+
+  it('raises one unread notification per owner and key, re-raises it once read, and publishes only what it wrote', async () => {
+    await database.db.delete(notifications);
+    published.length = 0;
+    await propose('First rename');
+    await propose('Second rename');
+
+    const unread = await ownerNotifications();
+    expect(unread.map((row) => [row.recipientUserId, row.kind, row.sourceKey, row.readAt])).toEqual([
+      [OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
+      [OTHER_OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
+    ]);
+    expect(unread[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '' });
+    expect(published.map((event) => event.kind === 'notification' ? event.notificationKind : null)).toEqual(['change-proposal', 'change-proposal']);
+
+    await database.db.update(notifications).set({ readAt: NOW }).where(eq(notifications.recipientUserId, OWNER));
+    await propose('Third rename');
+
+    const after = await ownerNotifications();
+    expect(after).toHaveLength(2);
+    expect(after.every((row) => row.readAt === null)).toBe(true);
+    expect(after.find((row) => row.recipientUserId === OWNER)?.id).toBe(unread.find((row) => row.recipientUserId === OWNER)?.id);
+    expect(published).toHaveLength(3);
+  });
+
+  it('keeps one notification per owner and key under concurrent submissions', async () => {
+    await database.db.delete(notifications);
+    await Promise.all(['Parallel one', 'Parallel two', 'Parallel three'].map((title) => propose(title)));
+    expect((await ownerNotifications()).map((row) => row.recipientUserId)).toEqual([OWNER, OTHER_OWNER]);
+  });
+
+  it('never fails the submission when the notification cannot be written, and logs it', async () => {
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const failing = { ...deps(database.db, logger), unreadNotifications: { raiseUnread: () => Promise.reject(new Error('notifications table locked')) } };
+    const result = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Logged rename' } }, failing);
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });
+    if (!result.ok) return;
+    expect(await database.db.select().from(changeProposals).where(eq(changeProposals.id, result.value.id))).toHaveLength(1);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification failed'));
+  });
+
+  it('raises nothing for a refused submission', async () => {
+    await database.db.delete(notifications);
+    const result = await submitChangeProposal(keyCtx, { operation: 'stock.adjust', input: { productId: 'live', delta: -500, reason: 'Count' } }, deps());
+    expect(result.ok).toBe(false);
+    expect(await ownerNotifications()).toEqual([]);
   });
 });

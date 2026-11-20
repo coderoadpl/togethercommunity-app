@@ -13,6 +13,7 @@ import {
   changeProposalQuery,
   changeProposalsInvalidates,
   changeProposalsQuery,
+  changeProposalSummaryQuery,
   productPricesQuery,
   productsQuery,
   productStockQuery,
@@ -29,9 +30,10 @@ const receipt = {
 };
 const ownerView = {
   id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  targetLabel: 'Handbook',
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' } }, status: 'pending',
-  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
-  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedAt: null,
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', keyState: 'active', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true },
+  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedByEmail: null, decidedAt: null,
   decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
 };
 const product = {
@@ -208,7 +210,7 @@ describe('shop management client with a proposal group', () => {
 
 const ownerGroup = {
   id: 'group-1', title: 'Spring launch', status: 'open',
-  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true, keyState: 'active' },
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z',
   items: [{ ...ownerView, groupId: 'group-1', groupTitle: 'Spring launch', groupPosition: 1, events: [] }],
 };
@@ -305,5 +307,33 @@ describe('owner change proposal client', () => {
       productPricesQuery(api, 'product-1').queryKey,
       productStockQuery(api, 'product-1').queryKey,
     ]) expect(covered(queryKey), JSON.stringify(queryKey)).toBe(true);
+  });
+});
+
+describe('owner change proposal summary client', () => {
+  it('reads the pending counts in one request and refuses an answer with other fields', async () => {
+    const requests: string[] = [];
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url, init) => {
+      requests.push(`${init?.method ?? 'GET'} ${new URL(String(url)).pathname}`);
+      return Response.json({ ok: true, data: { pending: 3, pendingGroups: 1 } });
+    } });
+    expect(await api.getChangeProposalSummary()).toEqual({ ok: true, value: { pending: 3, pendingGroups: 1 } });
+    expect(requests).toEqual(['GET /api/change-proposals/summary']);
+
+    const leaky = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 3, pendingGroups: 1, proposals: [] } }) });
+    expect(await leaky.getChangeProposalSummary()).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+
+  it('keeps the summary under the prefix every decision invalidates', async () => {
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 0, pendingGroups: 0 } }) });
+    const summary = changeProposalSummaryQuery(api);
+    const covers = (filters: ReadonlyArray<{ queryKey: readonly unknown[] }>) =>
+      filters.some((filter) => filter.queryKey.every((part, index) => summary.queryKey[index] === part));
+    expect(covers([changeProposalsInvalidates()])).toBe(true);
+    expect(covers(approveChangeProposalInvalidates())).toBe(true);
+    for (const mutation of [approveChangeProposalMutation(api), rejectChangeProposalMutation(api), approveChangeProposalGroupMutation(api), rejectChangeProposalGroupMutation(api)]) {
+      expect(mutation.mutationKey.slice(0, changeProposalsInvalidates().queryKey.length)).toEqual([...changeProposalsInvalidates().queryKey]);
+    }
+    expect(summary.queryKey).not.toEqual(changeProposalsQuery(api).queryKey);
   });
 });

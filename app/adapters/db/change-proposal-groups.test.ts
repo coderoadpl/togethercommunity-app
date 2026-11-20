@@ -37,9 +37,14 @@ import {
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
-import { createChangeProposalEventRepository, createChangeProposalRepository } from './change-proposals.js';
+import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import { createTenantSecretRepository } from './repositories.js';
+import {
+  createAccountIdentityReader,
+  createTenantAccessReader,
+  createTenantSecretRepository,
+  createUnreadNotificationRaiser,
+} from './repositories.js';
 import {
   changeProposalEvents,
   changeProposalGroups,
@@ -123,6 +128,11 @@ const deps = (db: Db = database.db, bounds: ChangeProposalBoundOptions = {}) => 
     changeProposalGroups: createChangeProposalGroupRepository(db, bounds),
     changeProposalEvents: createChangeProposalEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
+    changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+    accountIdentities: createAccountIdentityReader(db),
+    tenantAccess: createTenantAccessReader(db),
+    unreadNotifications: createUnreadNotificationRaiser(db),
+    realtimeBus: { publish: () => undefined },
     storage,
     logger,
     ids: { nextId: () => `group-${String(++sequence)}` },

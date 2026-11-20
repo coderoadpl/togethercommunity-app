@@ -2579,9 +2579,10 @@ describe('InPost ShipX CLI', () => {
 
 const ownerProposal = {
   id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  targetLabel: 'Handbook',
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' }, onHand: { delta: 5 } }, status: 'pending',
-  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
-  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedAt: null,
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', keyState: 'active', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true },
+  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedByEmail: null, decidedAt: null,
   decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
 };
 
@@ -2666,7 +2667,7 @@ const groupItem = (position: number, fields: Record<string, unknown> = {}) => ({
 
 const ownerGroup = (status: string, items: ReturnType<typeof groupItem>[]) => ({
   id: 'group-1', title: 'Spring launch', status,
-  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true, keyState: 'active' },
   createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', items,
 });
 

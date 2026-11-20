@@ -25,10 +25,14 @@ exactly the effect the owner saw, or applies nothing.
 
 A proposal stores two things:
 
-- **The command**: a closed `operation` name and its `input`, parsed by the
-  same strict schema as the live route, with every default filled in. The
-  stored input is what an approval will run, never a re-read of the original
-  request.
+- **The command**: an `operation` name from the list below and its `input`,
+  parsed by the same strict validator as the live route (an unknown key at any
+  depth is refused), with every default filled in. The stored input is what an
+  approval will run, never a re-read of the original request. The list of
+  operations lives in the domain (`core/domain/change-proposal.ts`); the
+  database checks only the shape of the name (a lowercase family, a dot, a
+  lowercase action, hyphens allowed, at most 64 characters), so a later
+  operation needs no migration.
 - **The effect**: what the command would change. It is computed by a dry run:
   the live use-case runs inside one database transaction, on the target row
   locked against concurrent writes (`FOR NO KEY UPDATE`, so a live stock
@@ -71,6 +75,16 @@ proposal is stored.
 | `sales-link.update` | `POST /api/m2m/shop/sales-links/:id` | sales link |
 | `sales-link.delete` | `DELETE /api/m2m/shop/sales-links/:id` | sales link |
 | `settings.update` | `POST /api/m2m/shop/settings` | the shop settings |
+
+A draft deletion has its own effect: it lists everything the deletion
+destroys, not only the product fields. Besides the product fields it holds
+every price of the product (active or not, with its id), every download file
+(id, file name, size, status and version) and the stock (tracked or not, on
+hand, reserved, low-stock threshold). Approval takes these rows with the
+product row exclusively (`FOR UPDATE`), so no download, price or stock change
+can slip in between the comparison and the deletion; a download uploaded or a
+stock change made after the proposal makes its approval `stale`, and nothing is
+deleted, in the database or in object storage.
 
 A sales-link update carries the `expectedRevision` the key read, exactly as on
 the live route, and its path id must equal the body id. A sales-link deletion
@@ -129,6 +143,36 @@ write access there. Direct-mode keys keep working. Pending proposals stay in
 their tables untouched and are visible again after rolling forward. No purge is
 needed for safety; see the [key rollback](shop-management-keys.md#rollback).
 
+Migration `0164_change_proposal_operations` replaces the list check on
+`change_proposals.operation` with the shape check. Every row the earlier list
+allowed has the new shape, so it validates without failing. Its locks on
+`change_proposals`: dropping the old check and adding the new one `NOT VALID`
+take `ACCESS EXCLUSIVE` and run in constant time; `VALIDATE CONSTRAINT` scans
+the table once. The migrator runs every migration in one transaction, so the
+`ACCESS EXCLUSIVE` lock is held until that transaction commits, scan included;
+the table holds only proposals, so the scan is short.
+
+Rolling back past this release to one that carries migration 0163 and only the
+ten catalogue operations: migrations are not rolled back, and such a release
+parses every row it reads with its closed list of ten operations. It throws on
+a row with any other operation (`sales-link.*`, `settings.update`), so every
+proposal read that meets such a row answers `500`: the owner list, read and
+reject, and the key list, read and withdrawal (that release has no approve).
+Nothing live changes and nothing is applied; key revocation and purge still
+work, and new catalogue proposals are still stored. Before such a rollback,
+count the rows the earlier release cannot read:
+
+```sql
+select count(*) from change_proposals
+where operation not in ('product.create', 'product.update', 'product.publish',
+  'product.unpublish', 'product.delete-draft', 'price.create', 'price.deactivate',
+  'stock.enable', 'stock.adjust', 'stock.set-threshold');
+```
+
+When it is `0`, the rollback is safe; otherwise roll forward again to read
+them. This release itself reads a row of an operation it does not know and
+treats it as described under [Unknown operation](#approval).
+
 ## Route classes
 
 Every shop route that writes declares one class for a propose-mode key in
@@ -170,14 +214,19 @@ key receipt:
       "expiresAt": "2026-12-20T10:00:00.000Z",
       "input": { "id": "…", "title": "Second edition" },
       "decisionNote": null,
+      "appliedResourceId": null,
       "failureCode": null
     }
   }
 }
 ```
 
-A receipt never contains the effect, a before value, a live label or the
-deciding account. Whether a proposal is accepted or refused still depends on
+After an approval, `appliedResourceId` names the created or changed resource
+(the new product of a `product.create`, the new price of a `price.create`, the
+new sales link of a `sales-link.create`; `null` for a settings change), so the
+key can name it in a follow-up proposal. The key already reads that family, so
+the id tells it nothing its read scope does not. A receipt never contains the
+effect, a before value, a live label or the deciding account. Whether a proposal is accepted or refused still depends on
 live state (a stock adjustment below zero is refused, a large before value
 can hit the effect limit), which is why a write scope always comes with its
 read scope: a propose-mode key learns nothing from a refused or accepted
@@ -231,32 +280,44 @@ named by `--api-key-env` (default `TOGETHER_SHOP_KEY`).
 The owner approves one proposal at a time. The approval runs in one database
 transaction:
 
-1. lock the proposal row while it is `pending` and unexpired;
-2. lock the target row and read it again;
-3. if a field the stored effect changes no longer holds the value the owner saw
+1. lock the proposal row while it is `pending` and unexpired, then read the
+   clock again: a proposal that expired while the approval waited for the lock
+   is not applied; its expiry is recorded and the answer is `409` with status
+   `expired`;
+2. validate the stored command again, strictly: an operation this release does
+   not know, or an input with a key the current validator does not know at any
+   depth (a field retired since the proposal, a settings field outside the
+   key's allow-list), makes the proposal `stale` without running anything;
+3. lock the target row (for a draft deletion: the product, its prices,
+   downloads and stock, exclusively), read the clock again with the same
+   expiry rule, and read the target again;
+4. if a field the stored effect changes no longer holds the value the owner saw
    as "before", stop: the proposal is `stale`;
-4. otherwise run the stored command, re-parsed by the live schema, through the
-   live use-case as the approving owner, inside a savepoint;
-5. read the target again and compute the effect; if it equals the stored
+5. otherwise run the stored command through the live use-case as the approving
+   owner, inside a savepoint;
+6. read the target again and compute the effect; if it equals the stored
    effect, commit: the proposal is `applied`, and any effect outside the
    database (such as an object storage delete of a removed draft) runs after
    the commit;
-6. if the effect differs, roll back the savepoint: the proposal is `stale`;
-7. if the live use-case refuses the command, roll back the savepoint: the
+7. if the effect differs, roll back the savepoint: the proposal is `stale`;
+8. if the live use-case refuses the command, roll back the savepoint: the
    proposal is `failed`, with the error code and message stored.
+
+The decision time recorded on the proposal and its event is the time read
+after the target lock, not the time the request arrived.
 
 The status change and its event (`applied`, `stale` or `apply_failed`) commit
 in the same transaction as the live change, so the owner sees exactly one of
 three outcomes and nothing in between. An infrastructure failure (a lost
 connection, a database error) rolls everything back and leaves the proposal
-`pending`; the owner can retry. So does a wait of more than 5 seconds for the
-workspace lock that dry runs also take, answered `503 unavailable`. A repeated or concurrent approve, or an
+`pending`; the owner can retry. So does any lock wait that runs out (see
+[Lock waits](#lock-waits)), answered `503 unavailable`. A repeated or concurrent approve, or an
 approve after a reject or a withdrawal, finds no pending row and answers
 `409 conflict` with the current status in `error.details.changeProposalStatus`.
 
 | Outcome | Live state | What the proposer should do |
 |---|---|---|
-| `applied` | changed exactly as the effect showed | nothing; `appliedResourceId` names the created or changed resource |
+| `applied` | changed exactly as the effect showed | nothing; `appliedResourceId` on the receipt names the created or changed resource, to use in a follow-up proposal |
 | `stale` | unchanged | read the current state and propose the change again; the old proposal stays settled |
 | `failed` | unchanged | read `failureCode` on the receipt, fix the cause (for example a stock level that would go below zero), then propose again |
 
@@ -271,6 +332,13 @@ does not go stale because the balance moved (sales reserve and release stock
 all the time): `{ "onHand": { "delta": 5 } }` adds five pieces to whatever is
 on hand at approval. It goes stale only when stock tracking itself changed,
 and fails when the delta would take the balance below zero.
+
+**Unknown operation.** A proposal row whose operation this release does not
+know (written by a later release, read after rolling back) is still listed and
+shown to the owner and to its key, with its operation name, input and effect.
+It cannot be approved: approval marks it `stale` with the note "This release
+does not know the operation …" on its `stale` event, and changes nothing. The
+owner may also reject it, and its key may withdraw it.
 
 Only the owner decides (`proposal:decide` is owner-only): the approval runs
 the command with the approving owner's session, never with the proposing
@@ -314,15 +382,23 @@ limit the key gets `409 conflict` with the limit named in
 The effect limit is larger than the largest change a valid product input can
 describe (every length-limited text field at its maximum before and after,
 the unlimited URL fields at a whole request body), so it only stops an effect
-over a list that has no length limit, such as the active prices of a deleted
-draft.
-
-Dry runs and inserts of one workspace queue on a workspace lock. A request
-that waits more than 5 seconds for it gets `503 unavailable` with a
-`retry-after` header, and nothing is stored.
+over a list that has no length limit, such as the prices and download files of
+a deleted draft.
 
 A decision note is at most 500 characters. The key's own rate limits (60
 requests a minute, 10,000 a day) apply as on every shop route.
+
+## Lock waits
+
+Dry runs and inserts of one workspace queue on a workspace lock. Every lock
+wait after it, for the whole proposal transaction of a dry run or an approval,
+is bounded too: the transaction keeps a 5-second `lock_timeout` for the
+proposal row, the target rows, the rows the live use-case locks and the
+workspace lock of the sales links. A wait that runs out aborts the whole
+transaction; once it has rolled back, the request is answered `503
+unavailable` with `retry-after: 5`, on the keyed write routes and on the owner
+approve route alike. Nothing is stored or applied, and a proposal being
+approved stays `pending`.
 
 ## Not yet available
 

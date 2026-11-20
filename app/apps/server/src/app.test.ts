@@ -9515,6 +9515,31 @@ describe('impersonation HTTP surface', () => {
     });
   });
 
+  it('refuses the owner change proposal routes while the owner views as a member', async () => {
+    const store = createChangeProposalStoreFake();
+    const list = vi.spyOn(store.repository, 'list');
+    const findById = vi.spyOn(store.repository, 'findById');
+    const transition = vi.spyOn(store.repository, 'transition');
+    const { app } = impersonatingApp({ changeProposals: store.repository, changeProposalEvents: store.events });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    for (const [method, path] of [
+      ['GET', API_PATHS.changeProposals],
+      ['GET', API_PATHS.changeProposal.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalReject.replace(':id', 'proposal-1')],
+    ] as const) {
+      const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify({}) } : {}) });
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json(), `${method} ${path}`).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(findById).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+  });
+
   it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {
     const base = deps();
     const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async (tenantId) => {

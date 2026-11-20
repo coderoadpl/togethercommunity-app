@@ -148,7 +148,7 @@ of that change: each document keeps its base value, `'self' https:` on
 `'self' https://*.sentry.io` on `/offer/*` server responses. On a
 server-rendered `/offer/*` form document the map may therefore fail to reach
 InPost's API; the buyer then enters the locker code in the typed input, which
-the delivery step always shows. Success, sign-in, member and Studio documents never
+the delivery step always offers. Success, sign-in, member and Studio documents never
 list that origin, and leaving a form document after the map script was injected
 uses a full document navigation. See
 [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).

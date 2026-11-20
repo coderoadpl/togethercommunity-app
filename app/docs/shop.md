@@ -58,14 +58,49 @@ the link.
 The checkout page renders a **Delivery** section with the active options and
 their prices directly under the order summary, the variant chips and the price
 choice, before the personalisation, the invoice and discount code rows and the
-pay button. For a parcel locker option it shows, inside the chosen option, a
-**Parcel locker code** input (upper-cased, 4–12 letters or digits) and the
-InPost map under the rule in
-[Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).
-Choosing a locker on the map fills the code and shows the locker name and
-address. The pay button stays disabled until an option, and a valid code when
-the option needs one, is chosen, and a line under the button says which of the
-two is missing.
+pay button. For a parcel locker option it shows, under the chosen option, a
+**Choose a parcel locker** button that opens the
+[parcel locker picker](#parcel-locker-picker) with the InPost map (under the
+rule in
+[Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map)),
+and a small **I know the code** toggle that reveals the **Parcel locker code**
+input (upper-cased, 4–12 letters or digits). Once a locker is confirmed the
+option shows its code, name and address and a **Change** button that reopens
+the picker. Without a map (no Geowidget token, a staff session or test mode, or
+a map that failed to load) the option shows the code input directly, with one
+short reason when there is one. The pay button stays disabled until an option,
+and a valid code when the option needs one, is chosen, and a line under the
+button says which of the two is missing.
+
+### Parcel locker picker
+
+The map never sits inside the checkout page. `LockerPicker` in
+`apps/web/src/features/checkout/` is shared by the product checkout, the sales
+link checkout and the hosted cart page through `DeliveryStep`:
+
+- On a phone or a short screen (narrower than the `md` breakpoint or lower than
+  600 px) it is a full-screen view of `100dvh` that respects the safe-area
+  insets; on a desktop it is a large dialog. The page behind it does not scroll
+  and is hidden from assistive technology.
+- A fixed header holds the title and a close button, the map fills all the
+  remaining space without a scrolling container around it, and a fixed footer
+  holds one status line and one primary button. Before a point is picked the
+  line says **Pick a point on the map** and the button is disabled; after the
+  buyer picks a point in the map the line shows its code, name and address and
+  **Confirm this parcel locker** is enabled. Only that button commits the
+  locker and closes the picker.
+- The close button, Escape (also from inside the map, which reports it with the
+  `inpost.geowidget.escape` event) and the phone's back gesture close the picker
+  and keep the previous choice. Opening the picker adds one browser history
+  entry for the same address, so the back gesture closes the picker instead of
+  leaving the checkout; closing it in any other way removes that entry again.
+- Focus moves to the picker title when it opens, stays inside it, and returns to
+  **Choose a parcel locker** or **Change** when it closes. The status line is a
+  polite live region. Enter inside the picker never submits the checkout.
+- The map element is created only while the picker is open and removed when it
+  closes. When the map script fails to load (for example a content security
+  policy kept from an in-app navigation), the picker says so and offers
+  **Type the code**, and the option then shows the code input with the reason.
 
 ### Layout of the Together checkout page
 
@@ -116,8 +151,8 @@ the cart checkout can adopt them; the cart page keeps its current layout.
 The locker name and address stored on the order are as entered by the buyer;
 only the code is validated, and staff pack by the code. When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
-keeps that page's content security policy, the map does not load, and the code
-input remains the way to choose a locker.
+keeps that page's content security policy, the map does not load, the picker
+says so, and the code input remains the way to choose a locker.
 
 The checkout request carries
 `shipping: { rateId, pickupPoint?: { provider: 'inpost', code, name?, address? } }`.
@@ -991,8 +1026,9 @@ Following the owner decision of 2026-11-05, the page injects
 `https://geowidget.inpost.pl/inpost-geowidget.js` (with `defer`) and
 `https://geowidget.inpost.pl/inpost-geowidget.css` on demand, only when all of
 these hold: the workspace has a Geowidget token, the buyer has chosen a parcel
-locker option, the checkout runs in live mode (the Stripe test-mode switch is
-off), and the viewer holds no staff session (owner or admin) for the workspace.
+locker option and opened the parcel locker picker, the checkout runs in live
+mode (the Stripe test-mode switch is off), and the viewer holds no staff session
+(owner or admin) for the workspace.
 The page learns the last two from `GET /api/public/payment-config`: `canTest`
 is true for a signed-in owner or admin of the workspace, and `testEnabled` for
 the session-bound test-mode switch. Owners and admins, who use `/checkout/*`
@@ -1017,7 +1053,7 @@ document keeps its base value, `'self' https:` on `/checkout/*` documents and in
 the static hosting headers, and `'self' https://*.sentry.io` on `/offer/*`
 server responses. On a server-rendered `/offer/*` form document the map may
 therefore fail to reach InPost's API; the buyer then enters the locker code in
-the typed input, which the delivery step always shows. `img-src` already allows
+the typed input, which the delivery step always offers. `img-src` already allows
 `https:`. Success documents keep the
 analytics policy described in [Security](security.md) and never allow the map
 origin. No other document allows it; `vercel.json` keeps its policy entries
@@ -1027,8 +1063,11 @@ document.
 The injected script cannot be unloaded, so once the map has been shown, leaving
 the form document by an in-app link, programmatic navigation or browser history
 step becomes a full document navigation (the same guard as the analytics success
-document). The guard stays in place after the buyer switches to another
-delivery option, so the map code never runs in sign-in or signed-in views.
+document). The guard stays in place after the buyer closes the picker or
+switches to another delivery option, so the map code never runs in sign-in or
+signed-in views. The history entry the open picker adds keeps the same address,
+so the back gesture that closes the picker is not a navigation away from the
+form document.
 
 Follow-up: a browser check on staging lists the exact origins the map calls;
 any `connect-src` change for them needs a separate owner decision.

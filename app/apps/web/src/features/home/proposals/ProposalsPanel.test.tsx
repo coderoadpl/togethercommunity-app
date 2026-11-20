@@ -114,6 +114,7 @@ describe('ProposalsPanel', () => {
     const settings = screen.getByTestId(`proposal-card-${settingsProposal.id}`);
     expect(within(settings).getByText(t.warningKeyExpired)).toBeInTheDocument();
     expect(within(settings).getByText(t.yes)).toBeInTheDocument();
+    expect(within(settings).getAllByText(t.operation['settings.update'])).toHaveLength(1);
   });
 
   it('words a stock adjustment as a delta with its reason and the live balance', async () => {

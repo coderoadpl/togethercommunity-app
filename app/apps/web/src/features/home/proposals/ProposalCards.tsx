@@ -65,16 +65,20 @@ export const outcomeExplanation = (t: Translations, status: string, reason: stri
 const isSettledStatus = (status: string): status is SettledStatus =>
   status === 'stale' || status === 'failed' || status === 'expired';
 
+const titleNamesTarget = (proposal: Pick<ChangeProposalOwnerView, 'operation'>): boolean =>
+  proposal.operation === 'settings.update';
+
 export const TargetLine = ({
   proposal,
   references,
   inline = false,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'target' | 'targetLabel' | 'input'>;
+  proposal: Pick<ChangeProposalOwnerView, 'operation' | 'target' | 'targetLabel' | 'input'>;
   references?: GroupReferences;
   inline?: boolean;
 }) => {
   const t = useTranslations().changeProposals;
+  if (titleNamesTarget(proposal)) return null;
   const target = proposalTarget(proposal, references);
   const kind = t.targetKind[proposal.target.kind];
   const text = proposal.target.kind === 'settings'
@@ -340,7 +344,7 @@ export const SingleProposalCard = ({
   return (
     <SectionCard
       title={title}
-      description={<TargetLine proposal={proposal} inline />}
+      description={titleNamesTarget(proposal) ? undefined : <TargetLine proposal={proposal} inline />}
       data-testid={`proposal-card-${proposal.id}`}
       actions={(
         <DecisionActions

@@ -38,8 +38,8 @@ export interface CreatedEntitlementKey {
 
 const OWNER_SESSION_REFUSAL = 'Entitlement keys require a verified owner in their own session';
 
-const keyOwnerSession = (ctx: Ctx): Result<string, AppError> =>
-  requireDirectGrant(ctx, ownerSessionTenant(ctx, authorizeTenant(ctx, 'api-key:write'), OWNER_SESSION_REFUSAL), OWNER_SESSION_REFUSAL);
+const keyOwnerSession = (ctx: Ctx, tenant: Result<string, AppError>): Result<string, AppError> =>
+  requireDirectGrant(ctx, ownerSessionTenant(ctx, tenant, OWNER_SESSION_REFUSAL), OWNER_SESSION_REFUSAL);
 
 const lifecycleEvent = (
   ctx: Ctx,
@@ -76,7 +76,7 @@ export const createEntitlementKey = async (
   input: CreateEntitlementKeyInput,
   deps: EntitlementKeyDeps,
 ): Promise<Result<CreatedEntitlementKey, AppError>> => {
-  const tenant = keyOwnerSession(ctx);
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   if (deps.shopManagementKeysSwitch === 'disabled') {
     return err(forbidden('Entitlement keys are disabled on this deployment (SHOP_MANAGEMENT_KEYS=disabled)'));
@@ -116,7 +116,7 @@ export const listEntitlementKeys = async (
   ctx: Ctx,
   deps: Pick<EntitlementKeyDeps, 'entitlementKeys'>,
 ): Promise<Result<EntitlementKeyPublic[], AppError>> => {
-  const tenant = keyOwnerSession(ctx);
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   return ok((await deps.entitlementKeys.listByTenant(tenant.value)).map(toEntitlementKeyPublic));
 };
@@ -126,7 +126,7 @@ export const revokeEntitlementKey = async (
   input: { id: string },
   deps: Pick<EntitlementKeyDeps, 'entitlementKeys' | 'ids' | 'clock'>,
 ): Promise<Result<EntitlementKeyPublic, AppError>> => {
-  const tenant = keyOwnerSession(ctx);
+  const tenant = keyOwnerSession(ctx, authorizeTenant(ctx, 'api-key:write'));
   if (!tenant.ok) return tenant;
   const revoked = await deps.entitlementKeys.revoke(
     tenant.value,

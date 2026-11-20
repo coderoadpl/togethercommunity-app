@@ -113,6 +113,8 @@ const requestedProducts = (
 
 const isEntitlementKey = (ctx: Ctx): boolean => ctx.machineActor?.kind === 'entitlement_key';
 
+const keyReadsMembers = (ctx: Ctx): boolean => authorizeTenant(ctx, 'entitlement:member:read').ok;
+
 export const checkEntitlements = async (
   ctx: Ctx,
   input: unknown,
@@ -126,7 +128,7 @@ export const checkEntitlements = async (
   if (!parsed.success) return err(validation('Invalid entitlement check', parsed.error.flatten()));
   const products = requestedProducts(parsed.data.productIds, scope);
   if (!products.ok) return products;
-  const readsMembers = authorizeTenant(ctx, 'entitlement:member:read').ok;
+  const readsMembers = keyReadsMembers(ctx);
   if (!readsMembers && parsed.data.subjects.some((subject) => 'memberId' in subject)) {
     return err(forbidden('A member id lookup needs a key with entitlements:members:read'));
   }

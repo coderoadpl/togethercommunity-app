@@ -44,6 +44,7 @@ import {
   type ShipxOrderView,
 } from '#core/domain/index.js';
 
+import { changeProposalAppliedLine } from './change-proposal-output.js';
 import { emit } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
@@ -377,6 +378,7 @@ const receiptLines = (proposal: ChangeProposalKeyReceipt): string => [
   `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
   `created: ${proposal.createdAt}`,
   `expires: ${proposal.expiresAt}`,
+  ...(proposal.status === 'applied' ? [changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId)] : []),
   ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
   ...(proposal.failureCode === null ? [] : [`failure: ${proposal.failureCode}`]),
 ].join('\n');

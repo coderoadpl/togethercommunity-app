@@ -697,7 +697,7 @@ describe('shop integrations CLI', () => {
 const receipt = {
   id: 'proposal-1', status: 'pending', operation: 'stock.adjust', target: { kind: 'product', id: 'product-1' }, groupId: null,
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', input: { productId: 'product-1', delta: 5, reason: 'delivery' },
-  decisionNote: null, failureCode: null,
+  decisionNote: null, appliedResourceId: null, failureCode: null,
 };
 
 const proposalFetch: typeof fetch = async (input, init) => {
@@ -785,6 +785,24 @@ describe('shop key CLI with a propose-mode key', () => {
       expect(call.headers.has('authorization')).toBe(false);
     }
     expect(JSON.parse(String(logSpy.mock.calls[2]?.[0]))).toMatchObject({ ok: true, data: { proposal: { status: 'withdrawn' } } });
+  });
+
+  it('shows the resource an applied proposal created, so the key can name it in a follow-up proposal', async () => {
+    const applied = {
+      ...receipt, status: 'applied', operation: 'price.create', input: { productId: 'product-1', kind: 'one_time', amountCents: 4900 },
+      appliedResourceId: 'price-9',
+    };
+    h.fetchImpl = async () => Response.json({ ok: true, data: { proposal: applied } });
+    process.argv = ['node', 'together', 'shop', 'proposals', 'show', 'proposal-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith([
+      'proposal proposal-1: price.create [applied]',
+      'target: product product-1',
+      'created: 2026-11-15T10:00:00.000Z',
+      'expires: 2026-12-15T10:00:00.000Z',
+      'applied: price price-9',
+    ].join('\n'));
   });
 
   it('refuses an unknown proposal status before any request', async () => {

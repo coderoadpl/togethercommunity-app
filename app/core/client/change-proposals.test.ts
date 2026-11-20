@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/query-core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { shopSettingsSchema } from '#core/domain/index.js';
 
 import { createApiClient, createShopManagementClient, isProposedChange } from './http.js';
 import {
@@ -21,7 +22,7 @@ import { salesLinkActions } from './sales-links.js';
 const receipt = {
   id: 'proposal-1', status: 'pending', operation: 'product.update', target: { kind: 'product', id: 'product-1' }, groupId: null,
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', input: { id: 'product-1', title: 'Renamed' },
-  decisionNote: null, failureCode: null,
+  decisionNote: null, appliedResourceId: null, failureCode: null,
 };
 const ownerView = {
   id: 'proposal-1', groupId: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
@@ -84,9 +85,16 @@ describe('shop management client with a propose-mode key', () => {
   });
 
   it('marks a live sales-link deletion and settings update as applied', async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async (input) => Response.json({ ok: true, data: urlOf(input).pathname === SHOP_SETTINGS_ROUTES.updateSettings.path ? { settings: { bogus: true } } : { deleted: true } }));
+    const settings = shopSettingsSchema.parse({ name: 'Acme shop', supportEmail: 'help@acme.example.test' });
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => Response.json({ ok: true, data: urlOf(input).pathname === SHOP_SETTINGS_ROUTES.updateSettings.path ? { settings } : { deleted: true } }));
     const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
     expect(await client.deleteSalesLink({ id: 'link-1' })).toEqual({ ok: true, value: { outcome: 'applied', deleted: true } });
+    expect(await client.updateSettings({ name: 'Acme shop' })).toEqual({ ok: true, value: { outcome: 'applied', settings } });
+  });
+
+  it('refuses a live settings answer that is not the shop settings', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ok: true, data: { settings: { bogus: true } } }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
     expect(await client.updateSettings({ name: 'Acme shop' })).toMatchObject({ ok: false, error: { code: 'internal' } });
   });
 

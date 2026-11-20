@@ -81,6 +81,7 @@ import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
+import { changeProposalAppliedLine } from './change-proposal-output.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -4252,7 +4253,7 @@ changeProposals
 const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
   switch (proposal.status) {
     case 'applied':
-      return `applied${proposal.appliedResourceId === null ? '' : `: ${proposal.target.kind} ${proposal.appliedResourceId}`}`;
+      return changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId);
     case 'stale':
       return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
     case 'failed':

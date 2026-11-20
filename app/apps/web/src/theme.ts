@@ -2826,6 +2826,47 @@ export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
   fontWeight: 600,
 }));
 
+export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  alignSelf: 'stretch',
+  gap: '0.75rem',
+  padding: '0.5rem 0.5rem 0.5rem 0.875rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
+
+export const CheckoutLockerPickerBar = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== 'edge',
+})<{ edge: 'top' | 'bottom' }>(({ edge, theme }) => ({
+  flex: 'none',
+  backgroundColor: theme.palette.background.paper,
+  [edge === 'top' ? 'borderBottom' : 'borderTop']: `1px solid ${theme.palette.divider}`,
+}));
+
+export const CheckoutLockerPickerHeading = styled(Typography)<AsElement>({ outline: 'none' });
+
+export const CheckoutLockerMapArea = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  flex: '1 1 auto',
+  minHeight: 0,
+  overflow: 'hidden',
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const CheckoutLockerMapCover = styled(Stack)(({ theme }) => ({
+  position: 'absolute',
+  inset: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  padding: '1rem',
+  color: theme.palette.text.secondary,
+}));
+
 export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8rem)';
 
 export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });

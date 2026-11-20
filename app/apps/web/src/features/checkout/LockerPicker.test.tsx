@@ -109,7 +109,7 @@ describe('parcel locker picker', () => {
 
     await userEvent.click(chooseButton());
     const dialog = await picker();
-    expect(within(dialog).getByTestId('checkout-inpost-geowidget')).toContainElement(widget() as HTMLElement);
+    expect(within(dialog).getByTestId('checkout-inpost-geowidget').firstElementChild).toBe(widget());
     expect(widget()).toHaveAttribute('token', 'public-map-token');
     expect(widget()).toHaveAttribute('language', 'en');
     expect(widget()).toHaveAttribute('config', 'parcelCollect');

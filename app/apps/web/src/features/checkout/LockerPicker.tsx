@@ -1,8 +1,8 @@
 import { useId, useRef } from 'react';
-import { Box, Button, CircularProgress, Dialog, IconButton, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Button, CircularProgress, Dialog, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
-import { AccountGlyph } from '../../theme.js';
+import { AccountGlyph, CheckoutLockerMapArea, CheckoutLockerMapCover, CheckoutLockerName, CheckoutLockerPickerBar, CheckoutLockerPickerHeading } from '../../theme.js';
 import type { PickedPickupPoint } from './core/events.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
 
@@ -59,55 +59,51 @@ export const LockerPicker = ({ open, token, language, candidate, mapFailed, onPo
         },
       }}
     >
-      <Stack
+      <CheckoutLockerPickerBar
+        edge="top"
         direction="row"
         useFlexGap
         spacing="0.5rem"
         sx={{
           alignItems: 'center',
           justifyContent: 'space-between',
-          flex: 'none',
           pt: fullScreen ? 'max(0.5rem, env(safe-area-inset-top))' : '0.75rem',
           pb: '0.5rem',
           pl: 'max(1rem, env(safe-area-inset-left))',
           pr: 'max(0.5rem, env(safe-area-inset-right))',
-          borderBottom: 1,
-          borderColor: 'divider',
         }}
       >
-        <Typography component="h2" variant="h6" id={titleId} ref={heading} tabIndex={-1} sx={{ outline: 'none' }}>{t.shipping.lockerChoose}</Typography>
+        <CheckoutLockerPickerHeading component="h2" variant="h6" id={titleId} ref={heading} tabIndex={-1}>{t.shipping.lockerChoose}</CheckoutLockerPickerHeading>
         <IconButton aria-label={t.common.close} onClick={onCancel} data-testid="checkout-locker-dialog-close" sx={{ width: '2.75rem', height: '2.75rem' }}>
           <CloseGlyph />
         </IconButton>
-      </Stack>
-      <Box sx={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflow: 'hidden', bgcolor: 'action.hover' }} data-testid="checkout-locker-map-area">
+      </CheckoutLockerPickerBar>
+      <CheckoutLockerMapArea data-testid="checkout-locker-map-area">
         {mapFailed ? (
-          <Stack sx={{ position: 'absolute', inset: 0, p: '1rem', alignItems: 'center', justifyContent: 'center' }}>
+          <CheckoutLockerMapCover>
             <Button variant="outlined" onClick={onCancel} data-testid="checkout-locker-type-code">{t.shipping.lockerTypeCode}</Button>
-          </Stack>
+          </CheckoutLockerMapCover>
         ) : (
           <>
-            <Stack useFlexGap spacing="0.75rem" sx={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', color: 'text.secondary' }} aria-hidden="true">
+            <CheckoutLockerMapCover aria-hidden="true">
               <CircularProgress size="2rem" color="inherit" />
               <Typography variant="body2">{t.shipping.lockerMapLoading}</Typography>
-            </Stack>
+            </CheckoutLockerMapCover>
             <InpostGeowidget token={token} language={language} onPoint={onPoint} onEscape={onCancel} onFailed={onMapFailed} />
           </>
         )}
-      </Box>
-      <Stack
+      </CheckoutLockerMapArea>
+      <CheckoutLockerPickerBar
+        edge="bottom"
         direction={{ xs: 'column', sm: 'row' }}
         useFlexGap
         spacing="0.75rem"
         sx={{
           alignItems: { xs: 'stretch', sm: 'center' },
-          flex: 'none',
           pt: '0.75rem',
           pb: fullScreen ? 'max(0.75rem, env(safe-area-inset-bottom))' : '0.75rem',
           pl: 'max(1rem, env(safe-area-inset-left))',
           pr: 'max(1rem, env(safe-area-inset-right))',
-          borderTop: 1,
-          borderColor: 'divider',
         }}
       >
         <Box id={statusId} role="status" aria-live="polite" data-testid="checkout-locker-dialog-status" sx={{ flex: '1 1 auto', minWidth: 0 }}>
@@ -117,7 +113,7 @@ export const LockerPicker = ({ open, token, language, candidate, mapFailed, onPo
             <Typography variant="body2" color="text.secondary">{t.shipping.lockerPickerPrompt}</Typography>
           ) : (
             <>
-              <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{pointSummary(candidate)}</Typography>
+              <CheckoutLockerName variant="body2">{pointSummary(candidate)}</CheckoutLockerName>
               {candidate.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{candidate.address}</Typography>}
             </>
           )}
@@ -133,7 +129,7 @@ export const LockerPicker = ({ open, token, language, candidate, mapFailed, onPo
         >
           {t.shipping.lockerConfirm}
         </Button>
-      </Stack>
+      </CheckoutLockerPickerBar>
     </Dialog>
   );
 };

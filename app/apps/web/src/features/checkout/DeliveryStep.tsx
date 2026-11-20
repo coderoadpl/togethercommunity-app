@@ -17,7 +17,7 @@ import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/inde
 
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
+import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
 import { LockerPicker, pointSummary } from './LockerPicker.js';
 import { useHistoryEntry } from './use-history-entry.js';
@@ -96,10 +96,10 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       {t.shipping.lockerChoose}
     </Button>
   ) : (
-    <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch', border: 1, borderColor: 'divider', borderRadius: 1, p: '0.5rem 0.5rem 0.5rem 0.875rem' }}>
+    <CheckoutLockerChosen>
       <Box id={`${lockerId}-picked`} data-testid="checkout-pickup-point-selected" sx={{ minWidth: 0 }}>
         <FinePrint variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t.shipping.lockerSelected}</FinePrint>
-        <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{pointSummary(picked)}</Typography>
+        <CheckoutLockerName variant="body2">{pointSummary(picked)}</CheckoutLockerName>
         {picked.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{picked.address}</Typography>}
       </Box>
       <Button
@@ -114,7 +114,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       >
         {t.shipping.lockerChange}
       </Button>
-    </Stack>
+    </CheckoutLockerChosen>
   );
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
     <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>

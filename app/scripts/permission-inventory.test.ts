@@ -7,6 +7,7 @@ import {
   collectUseCasesInSource,
   renderPermissionTable,
   SHOP_MANAGEMENT_KEY_PRINCIPAL,
+  SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL,
 } from './permission-inventory.js';
 
 const root = join(import.meta.dirname, '..');
@@ -32,7 +33,10 @@ describe('permission inventory', () => {
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
     expect(shopRoutes).toHaveLength(44);
     for (const row of shopRoutes) {
-      expect(row, row.subject).toMatchObject({ before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+      const principals = row.subject.startsWith('GET ')
+        ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
+        : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
+      expect(row, row.subject).toMatchObject({ before: principals, after: principals });
       expect([...row.before, ...row.after], row.subject).not.toContain('owner');
     }
     for (const row of [
@@ -243,6 +247,22 @@ describe('permission inventory', () => {
       expect(routes.find((row) => row.subject === `GET /api/reports/${path}`)).toMatchObject({
         capability: 'report:read', before: ['report-api-key'], after: ['report-api-key'], evidence: 'Tenant API key',
       });
+    }
+  });
+
+  it('never lists a propose-mode shop management key with a live write', () => {
+    const inventory = collectPermissionInventory();
+    const proposeRows = inventory.routes.filter((row) =>
+      [...row.before, ...row.after].includes(SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL));
+    expect(proposeRows.length).toBeGreaterThan(0);
+    for (const row of proposeRows) {
+      expect(row.subject, row.subject).toMatch(/^GET \/api\/m2m\/shop\//u);
+      expect(['product:write', 'product:price:write', 'product:publish', 'order:write', 'tenant:settings:write', 'tenant:secret:write'], row.subject)
+        .not.toContain(row.capability);
+    }
+    for (const subject of ['POST /api/m2m/shop/products/update', 'POST /api/m2m/shop/settings']) {
+      expect(inventory.routes.find((row) => row.subject === subject)?.after, subject)
+        .toEqual([SHOP_MANAGEMENT_KEY_PRINCIPAL]);
     }
   });
 

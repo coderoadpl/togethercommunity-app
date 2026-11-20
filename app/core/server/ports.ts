@@ -2718,9 +2718,7 @@ export interface ChangeProposalTransition {
 }
 
 export interface ChangeProposalTransitionGuard {
-  /** Only the proposing key's own row moves. */
   keyId?: string;
-  /** Only a row that has not expired at this instant moves. */
   unexpiredAt?: string;
 }
 

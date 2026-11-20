@@ -74,6 +74,7 @@ const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
 const platformOwner = ['platform-owner'] as const;
 const shopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] as const;
+const directShopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
@@ -335,7 +336,9 @@ const beforeForRoute = (
       if (path.startsWith('/api/m2m/import/')) return importContentApiKey;
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
-    if (selfAuthenticatingEntry.mechanism === 'Shop management key') return shopManagementKey;
+    if (selfAuthenticatingEntry.mechanism === 'Shop management key') {
+      return method === 'GET' ? shopManagementKey : directShopManagementKey;
+    }
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;
@@ -778,7 +781,7 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',
-    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. It reaches the same \`/api/m2m/shop\` routes, but its read scopes grant only their read capabilities and its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\` instead of the live write capabilities; \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. Its AFTER column therefore never lists a live write such as \`product:write\` or \`tenant:settings:write\`.`,
+    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\` instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`.`,
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

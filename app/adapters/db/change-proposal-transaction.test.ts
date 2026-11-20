@@ -2,10 +2,24 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { err, ok, validation, type Identity } from '#core/domain/index.js';
-import { createProduct, createProductPrice, type Ctx } from '#core/server/index.js';
+import {
+  adjustProductStock,
+  createProduct,
+  createProductPrice,
+  deactivateProductPrice,
+  deleteProductDraft,
+  enableProductStock,
+  publishProduct,
+  setProductStockThreshold,
+  storageWithDeletesAfterCommit,
+  unpublishProduct,
+  updateProduct,
+  type Ctx,
+  type StorageProvider,
+} from '#core/server/index.js';
 
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
-import { productPrices, products, tenants } from './schema.js';
+import { productPrices, products, productStock, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const TENANT = 't-proposal-transaction';
@@ -23,6 +37,14 @@ const owner: Identity = {
 const ownerCtx: Ctx = { identity: owner };
 
 const logger = () => ({ error: vi.fn<(message: string) => void>() });
+
+const unusableStorage = (): StorageProvider => {
+  const refuse = () => { throw new Error('Storage must not be reached in this test'); };
+  return {
+    delete: refuse, objectUrl: refuse, list: refuse, getObject: refuse, putObject: refuse, probe: refuse,
+    probeCors: refuse, presignPut: refuse, presignGet: refuse, head: refuse, healthcheck: refuse, test: refuse,
+  };
+};
 
 const insertProduct = async (id: string, values: { published?: boolean; everPublished?: boolean } = {}) => {
   await database.db.insert(products).values({
@@ -161,6 +183,45 @@ describe('change proposal transaction dry run', () => {
 
     expect(result).toEqual({ ok: true, value: { kind: 'deleted', assets: [] } });
     expect(await productIds()).toEqual(['draft', 'published']);
+  });
+
+  it('runs all ten catalogue use-cases over transaction-bound repositories and leaves nothing behind', async () => {
+    await insertProduct('draft');
+    const storage = unusableStorage();
+    const transaction = createChangeProposalTransaction(database.db, logger());
+    const versionBefore = await contentVersion();
+
+    const result = await transaction.dryRun(TENANT, async ({ repositories, afterCommit }) => {
+      const scoped = { ...repositories, ...deps };
+      const steps: Array<{ ok: boolean }> = [];
+      const product = await createProduct(ownerCtx, { title: 'Mug', slug: 'mug', type: 'physical', priceCents: 0 }, scoped);
+      if (!product.ok) return product;
+      const productId = product.value.id;
+      const price = await createProductPrice(ownerCtx, { productId, kind: 'one_time', amountCents: 900, currency: 'EUR' }, scoped);
+      if (!price.ok) return price;
+      steps.push(
+        await updateProduct(ownerCtx, { id: productId, title: 'Big mug' }, scoped),
+        await publishProduct(ownerCtx, { id: productId }, scoped),
+        await unpublishProduct(ownerCtx, { id: productId }, scoped),
+        await enableProductStock(ownerCtx, { productId, onHand: 3 }, scoped),
+        await adjustProductStock(ownerCtx, { productId, delta: 2, reason: 'Delivery' }, scoped),
+        await setProductStockThreshold(ownerCtx, { productId, lowStockThreshold: 1 }, scoped),
+        await deactivateProductPrice(ownerCtx, { id: price.value.id }, scoped),
+        await deleteProductDraft(ownerCtx, { productId: 'draft' }, {
+          productDrafts: repositories.productDrafts,
+          storage: storageWithDeletesAfterCommit(storage, afterCommit, logger()),
+          secretResolver: { resolve: async () => err(validation('No secrets in this test')) },
+          logger: logger(),
+        }),
+      );
+      return ok(steps.map((step) => step.ok));
+    });
+
+    expect(result).toEqual({ ok: true, value: Array.from({ length: 8 }, () => true) });
+    expect(await productIds()).toEqual(['draft', 'published']);
+    expect(await priceCount()).toBe(0);
+    expect(await database.db.select().from(productStock).where(eq(productStock.tenantId, TENANT))).toEqual([]);
+    expect(await contentVersion()).toBe(versionBefore);
   });
 
   it('returns a live domain error unchanged', async () => {

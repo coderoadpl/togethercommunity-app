@@ -260,6 +260,7 @@ export const CouponApplied: Story = {
   parameters: { fixture: couponFixture },
   play: async ({ canvasElement }) => { await within(canvasElement).findByTestId('checkout-coupon-breakdown', {}, { timeout: 5000 }); },
 };
+export const CouponAppliedDark: Story = { ...CouponApplied, parameters: { ...CouponApplied.parameters, colorScheme: 'dark' } };
 export const SafetyDetailsOpen: Story = { play: async ({ canvasElement }) => openSafetyDetails(canvasElement) };
 export const Variants: Story = { parameters: { fixture: variantsFixture } };
 export const ValidationError: Story = {
@@ -331,6 +332,14 @@ export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mo
 export const TwoManufacturersDetailsOpen: Story = {
   parameters: { fixture: twoManufacturersFixture },
   play: async ({ canvasElement }) => openSafetyDetails(canvasElement),
+};
+export const TwoManufacturersOnePanelOpen: Story = {
+  parameters: { fixture: twoManufacturersFixture },
+  play: async ({ canvasElement }) => {
+    const [first] = within(await within(canvasElement).findByTestId('product-safety-info')).getAllByRole('button', { name: /Details/u });
+    if (first === undefined) throw new Error('expected a Details toggle per manufacturer');
+    await userEvent.click(first);
+  },
 };
 export const StripeTermsFallback: Story = {
   parameters: {

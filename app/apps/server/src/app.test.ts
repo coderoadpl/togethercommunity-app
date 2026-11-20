@@ -396,6 +396,7 @@ const deps = (input: {
       findAccountByEmail: async () => null,
       findMemberByUser: async () => null,
       findMemberById: async () => null,
+      hasSignedIn: async () => false,
       listActiveGrants: async () => [],
       listSubscriptions: async () => [],
     },

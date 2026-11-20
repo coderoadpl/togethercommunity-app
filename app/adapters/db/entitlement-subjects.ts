@@ -1,11 +1,11 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { normalizeEmail } from '#core/domain/index.js';
 import type { EntitlementSubjectReader } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createMemberRepository, createMemberSubscriptionRepository, createProductGrantRepository, createTenantAccessReader } from './repositories.js';
-import { user } from './schema.js';
+import { memberEvents, user } from './schema.js';
 
 const databaseErrorCode = (error: unknown): string | undefined => {
   const cause: unknown = error instanceof Error ? error.cause : error;
@@ -41,6 +41,14 @@ export const createEntitlementSubjectReader = (db: Db): EntitlementSubjectReader
     }),
     findMemberByUser: (tenantId, userId) => sanitized(() => tenantAccess.findMember(tenantId, userId)),
     findMemberById: (tenantId, memberId) => sanitized(() => members.findById(tenantId, memberId)),
+    hasSignedIn: (tenantId, memberId) => sanitized(async () => {
+      const [row] = await db
+        .select({ id: memberEvents.id })
+        .from(memberEvents)
+        .where(and(eq(memberEvents.tenantId, tenantId), eq(memberEvents.memberId, memberId), eq(memberEvents.type, 'sign-in')))
+        .limit(1);
+      return row !== undefined;
+    }),
     listActiveGrants: (tenantId, memberId, now) => sanitized(() => grants.listActiveForMember(tenantId, memberId, now)),
     listSubscriptions: (tenantId, memberId) => sanitized(() => subscriptions.listForMember(tenantId, memberId)),
   };

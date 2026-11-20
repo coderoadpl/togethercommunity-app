@@ -47,13 +47,20 @@ const isErased = (member: Member): boolean => member.userId === memberTombstone(
 const usableMember = (member: Member | null): Member | null =>
   member !== null && member.deletedAt === null && !isErased(member) ? member : null;
 
-const findSubjectMember = async (tenantId: string, subject: EntitlementSubject, deps: EntitlementCheckDeps): Promise<Member | null> => {
+const findCandidate = async (tenantId: string, subject: EntitlementSubject, deps: EntitlementCheckDeps): Promise<Member | null> => {
   const reader = deps.entitlementSubjects;
   if ('memberId' in subject) return usableMember(await reader.findMemberById(tenantId, subject.memberId));
   const account = await reader.findAccountByEmail(subject.email);
   const verifiedUserId = account !== null && account.emailVerified ? account.userId : NO_USER_ID;
   const member = usableMember(await reader.findMemberByUser(tenantId, verifiedUserId));
   return member !== null && member.userId === verifiedUserId ? member : null;
+};
+
+// An import sets the account's verified flag without the person, so only a sign-in to this workspace proves the address is theirs.
+const findSubjectMember = async (tenantId: string, subject: EntitlementSubject, deps: EntitlementCheckDeps): Promise<Member | null> => {
+  const candidate = await findCandidate(tenantId, subject, deps);
+  const signedIn = await deps.entitlementSubjects.hasSignedIn(tenantId, candidate?.id ?? NO_MEMBER_ID);
+  return signedIn ? candidate : null;
 };
 
 const lookupSubject = async (

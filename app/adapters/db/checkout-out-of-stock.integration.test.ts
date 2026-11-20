@@ -206,6 +206,7 @@ describe('payment for goods that sold out after the hold ended', () => {
 
     const [buyer] = await database.db.select({ id: members.id, userId: members.userId }).from(members).where(eq(members.tenantId, legacyTenant.id));
     if (buyer === undefined) throw new Error('The sold-out payment left no member');
+    await database.db.insert(memberEvents).values({ id: 'sign-in:buyer', tenantId: legacyTenant.id, memberId: buyer.id, type: 'sign-in', payload: {}, occurredAt: '2026-11-15T10:42:30.000Z' });
     const subjects = { ...createEntitlementSubjectReader(database.db), findAccountByEmail: async () => ({ userId: buyer.userId, emailVerified: true }) };
     const check = (productIds?: string[]) => checkEntitlements(
       { identity: keyIssuer, capabilities: ['entitlement:check'], machineActor: { kind: 'entitlement_key', apiKeyId: 'ek-oos' } },

@@ -97,6 +97,7 @@ interface World {
   members: Member[];
   grants: ProductGrant[];
   subscriptions: MemberSubscription[];
+  signedIn?: string[];
 }
 
 const isActive = (row: ProductGrant, now: string): boolean =>
@@ -113,6 +114,8 @@ const harness = (world: Partial<World> = {}) => {
       state.members.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null),
     findMemberById: vi.fn(async (tenantId: string, memberId: string) =>
       state.members.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null),
+    hasSignedIn: vi.fn(async (tenantId: string, memberId: string) =>
+      (state.signedIn ?? state.members.map((row) => row.id)).includes(memberId) && state.members.some((row) => row.tenantId === tenantId && row.id === memberId)),
     listActiveGrants: vi.fn(async (tenantId: string, memberId: string, now: string) =>
       state.grants.filter((row) => row.tenantId === tenantId && row.memberId === memberId && isActive(row, now))),
     listSubscriptions: vi.fn(async (tenantId: string, memberId: string) =>
@@ -211,9 +214,23 @@ describe('checkEntitlements', () => {
     const unknown = harness();
     await checkOne(known, { email: ADA.email });
     await checkOne(unknown, { email: 'nobody@example.test' });
-    for (const method of ['findAccountByEmail', 'findMemberByUser', 'listActiveGrants', 'listSubscriptions'] as const) {
+    for (const method of ['findAccountByEmail', 'findMemberByUser', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const) {
       expect(vi.mocked(unknown.reader[method]).mock.calls.length).toBe(vi.mocked(known.reader[method]).mock.calls.length);
     }
+  });
+
+  it('matches a verified address only once the person has signed in to this workspace', async () => {
+    const imported = { email: 'imported@example.test', userId: 'user-imported', emailVerified: true };
+    const h = harness({
+      accounts: [ADA, imported],
+      members: [member('m-ada', ADA.userId), member('m-imported', imported.userId)],
+      grants: [grant('m-ada', 'prod-pro'), grant('m-imported', 'prod-pro')],
+      signedIn: ['m-ada'],
+    });
+    expect((await checkOne(h, { email: ADA.email })).products[0]?.access).toBe(true);
+    expect((await checkOne(h, { email: imported.email })).products).toEqual([NO_ACCESS]);
+    const byId = await checkOne(h, { memberId: 'm-imported' }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
+    expect([byId.member, byId.products]).toEqual([null, [NO_ACCESS]]);
   });
 
   it('never matches an erased member, whose user id is a tombstone, by member id', async () => {

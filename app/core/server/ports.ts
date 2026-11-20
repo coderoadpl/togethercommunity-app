@@ -938,6 +938,7 @@ export interface EntitlementSubjectReader {
   findAccountByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
   findMemberByUser(tenantId: string, userId: string): Promise<Member | null>;
   findMemberById(tenantId: string, memberId: string): Promise<Member | null>;
+  hasSignedIn(tenantId: string, memberId: string): Promise<boolean>;
   listActiveGrants(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
   listSubscriptions(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
 }

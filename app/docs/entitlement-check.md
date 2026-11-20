@@ -141,8 +141,9 @@ Answer rules:
 - `member`: `{ "id": … }` for a matched person with `entitlements:members:read`,
   otherwise `null`. Store it to keep the link when the person changes e-mail
   address, and check by `memberId` afterwards.
-- An unknown person, an unverified address and a known person without access
-  give the same answer unless the key holds `entitlements:members:read`.
+- An unknown person, an unverified address, a person who never signed in to
+  this workspace and a known person without access give the same answer
+  unless the key holds `entitlements:members:read`.
 - Never in the answer: names, addresses, orders, amounts.
 
 Which subscription statuses give access: none by themselves. Access is the
@@ -196,8 +197,38 @@ The answer is read from the database at request time; nothing is cached. After
 a payment, access appears when the payment provider's webhook arrives, normally
 within seconds; when a delivery fails the provider retries for up to several
 days, and the owner's reconciliation report lists paid orders without a grant.
-A buyer whose account was created by the payment reads as no access until their
-first sign-in verifies the address.
+
+### When does a new buyer start to match
+
+A person matches only when their account has a verified e-mail address and
+they have signed in to this workspace at least once. Neither happens on the
+checkout itself:
+
+1. The payment webhook creates the buyer's account unverified
+   (`app/adapters/auth/create-auth.ts:1094-1110`) and queues the purchase
+   e-mail. That e-mail carries a one-time sign-in link
+   (`app/core/server/usecases/fulfill-enrollment.ts:127-142`), valid for one hour
+   (`MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS`, `app/adapters/auth/create-auth.ts:97`).
+2. The success page only polls the payment status
+   (`app/apps/web/src/features/checkout/CheckoutPage.tsx:369-384`, served by
+   `app/core/server/usecases/checkout-session-status.ts`). It creates no session
+   and writes no `sign-in` event.
+3. When the buyer opens that link (or asks for a new one on the sign-in page),
+   the account is verified, a session is created and a `sign-in` event is
+   written for this workspace (`app/adapters/auth/create-auth.ts:984`, recorded
+   by `app/apps/server/src/composition.ts:1477-1492`). From then on the check
+   answers `access: true`.
+
+So every new buyer reads as no access until they open the purchase e-mail.
+Recommended handling in the other application:
+- After a purchase, show "Confirm your purchase with the link in the e-mail we
+  sent you", then re-check when the person comes back or presses "I have
+  confirmed".
+- Re-check on a short back-off, for example after 30 s, 2 min and 10 min,
+  within the rate limit.
+- Never grant access on your side because of the payment alone.
+
+The change feed or webhook below, once built, would replace the re-checks.
 
 To learn about changes later without polling everyone (designed, not built): a
 cursor-paginated feed `GET /api/m2m/entitlements/changes?cursor=…`, readable with
@@ -223,7 +254,8 @@ stable link.
 - Workspaces for new applications are created only by the operator; an owner
   cannot create one by themselves once public creation is closed.
 - No Studio screen issues entitlement keys yet; the owner uses the CLI.
-- A buyer created by a payment is unverified until their first sign-in, so the
-  check answers no access for them until then.
+- A buyer created by a payment matches only after their first sign-in to the
+  workspace, normally through the link in the purchase e-mail (see "When does a
+  new buyer start to match").
 - Organizations (one owner, several workspaces) cannot yet share one key across
   their workspaces; a key is bound to one workspace.

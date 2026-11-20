@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { createEntitlementKeyRepository } from '#adapters/db/entitlement-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { members, productGrants, products, shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
+import { memberEvents, members, productGrants, products, shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
 import { API_PATHS, entitlementContracts, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
 import type { EntitlementKeyScope } from '#core/domain/index.js';
 import { entitlementKeyHash } from '#core/server/index.js';
@@ -78,6 +78,9 @@ beforeAll(async () => {
     { id: 'g-ada', tenantId: 'acme', memberId: 'm-ada', productId: 'prod-pro', source: 'stripe', mode: 'live', startsAt: CREATED_AT, createdAt: CREATED_AT },
     { id: 'g-eve', tenantId: 'acme', memberId: 'm-eve', productId: 'prod-pro', source: 'stripe', mode: 'live', startsAt: CREATED_AT, createdAt: CREATED_AT },
   ]);
+  await database.db.insert(memberEvents).values(['m-ada', 'm-eve', 'm-ada-studio'].map((memberId) => ({
+    id: `sign-in:${memberId}`, tenantId: memberId === 'm-ada-studio' ? 'studio' : 'acme', memberId, type: 'sign-in', payload: {}, occurredAt: CREATED_AT,
+  })));
   await insertKey('ek-check', 'check-secret');
   await insertKey('ek-members', 'members-secret', { scopes: ['entitlements:check', 'entitlements:members:read'] });
   await insertKey('ek-studio', 'studio-secret', { tenantId: 'studio' });

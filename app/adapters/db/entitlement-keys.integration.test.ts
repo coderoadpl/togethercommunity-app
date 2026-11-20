@@ -143,6 +143,15 @@ describe('entitlement subject reader', () => {
     expect(await createEntitlementSubjectReader(database.db).findAccountByEmail('nobody@example.test')).toBeNull();
   });
 
+  it('tells whether a member signed in to this workspace', async () => {
+    await database.db.insert(dbSchema.members).values({ id: 'm-ada', tenantId: TENANT, userId: 'user-ada', email: 'ada@example.test', createdAt: NOW });
+    const reader = createEntitlementSubjectReader(database.db);
+    expect(await reader.hasSignedIn(TENANT, 'm-ada')).toBe(false);
+    await database.db.insert(dbSchema.memberEvents).values({ id: 'sign-in:s1', tenantId: TENANT, memberId: 'm-ada', type: 'sign-in', payload: {}, occurredAt: NOW });
+    expect(await reader.hasSignedIn(TENANT, 'm-ada')).toBe(true);
+    expect(await reader.hasSignedIn(NEIGHBOUR, 'm-ada')).toBe(false);
+  });
+
   it('keeps the e-mail being checked out of a database error and keeps only the SQLSTATE', async () => {
     const emptyUrl = new URL(database.url);
     emptyUrl.pathname = '/postgres';

@@ -771,9 +771,13 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   match. A member id is accepted only from a key holding
   `entitlements:members:read`, the scope that hands member ids out; imported
   member ids can be chosen by the importer, so they are not treated as secret.
-  "Verified" is the account flag, which an import by any workspace owner also
-  sets for an address without an account; a buyer created by a payment stays
-  unverified until their first sign-in and reads as no access until then.
+  Either way the member must also have at least one `sign-in` event in
+  `member_events` of the answering workspace. The account's verified flag
+  alone is not proof: an import by any workspace owner sets it for an address
+  without an account. A sign-in to this workspace (magic link, password,
+  passkey or Google) is made by the person. A buyer created by a payment
+  therefore matches only after their first sign-in, normally through the
+  link in the purchase e-mail.
 - **Indistinguishability.** Without `entitlements:members:read` an unknown
   person, an unverified address, a deleted or erased member and a known person
   without access give the same entry (`access: false`, `source`,

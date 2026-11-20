@@ -232,11 +232,17 @@ whose mapped value is already an active Stripe promotion code in the account,
 gets a Stripe-generated code. The Stripe coupon name shows at most the first 40
 characters of the code. Local codes are stored and validated unchanged. See
 [Sales links](sales-links.md) for the preview and limiter details.
-Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
-account-level setting even when Together overrides the acceptance message with
-links to the tenant's terms and privacy policy. Together records accepted consent
+Set a valid terms URL once in the Stripe account Dashboard (**Settings → Business
+→ Public details → Terms of service**, in live mode and again in test mode);
+Stripe requires this account-level setting even when Together overrides the
+acceptance message with links to the tenant's terms and privacy policy. Without
+it Stripe refuses to create the session. Together records accepted consent
 against the exact URLs saved in session metadata. Missing tenant legal URLs show
-an error page and prevent session creation.
+an error page and prevent session creation. When Stripe refuses the handoff
+because the Dashboard terms URL is missing, the buyer is sent to the Together page
+of the same link (`?checkout=together&terms=page`, keeping the code, the
+campaign fields and the return address), which asks for the terms itself; see
+[Stripe accounts without a Dashboard terms URL](#stripe-accounts-without-a-dashboard-terms-url).
 
 Webhook fulfillment uses the session customer details for email, name, billing
 address when supplied, and tax IDs. Polish `eu_vat` IDs starting with `PL` are
@@ -312,6 +318,39 @@ needs an email before a paid order. A workspace with only one legal URL, or none
 keeps the earlier behaviour: the page asks for the terms when one URL is set, and
 a sales link still refuses to start without both. The cart checkout
 (`/checkout/cart/pay`) keeps the terms and the email on its page.
+
+### Stripe accounts without a Dashboard terms URL
+
+Stripe collects the terms only when the workspace's Stripe account has a terms
+of service URL in **Settings → Business → Public details** of its Dashboard
+(<https://dashboard.stripe.com/settings/public>), set separately in live mode and
+in test mode. Stripe's reference for `consent_collection.terms_of_service` says
+"There must be a valid terms of service URL set in your Dashboard settings", and
+without it the session request fails with an `invalid_request_error` whose
+message reads "You cannot collect consent to your terms of service unless a URL
+is set in the Stripe Dashboard". The workspace owner sets that URL once, usually
+to the same terms URL as in the workspace settings.
+
+Until then no paid checkout is lost. The Stripe adapter recognises exactly this
+refusal (an `invalid_request_error` on a session that asked for the terms, whose
+message names the terms of service and the Dashboard or the public details, or
+whose parameter is `consent_collection[terms_of_service]`) and returns
+`integration_not_configured` with `details.paymentRefusal:
+'stripe_terms_url_missing'`; every other Stripe error stays the usual diagnostic.
+The stock reserved for the attempt is released like after any failed session
+start, and the server logs a warning naming the workspace. The Together page
+then switches to its own terms mode for this buyer: it shows the terms checkbox
+and, when the email is unknown, the email field, keeps the chosen delivery,
+locker, invoice data, discount code and personalisation, and shows one line
+asking the buyer to accept the terms there. The next request carries
+`termsOnPage: true`, which makes the server take the page-terms path for that
+attempt: no `consent_collection`, no `stripeTerms` metadata, and a refusal
+without `termsAccepted: true`, as for a workspace with one legal URL. The webhook
+fulfils such a session from the page capture. A direct sales-link handoff refused
+for the same reason redirects to the Together page with `terms=page`, so that page
+starts in its terms mode. Together does not remember the refusal between buyers:
+each new buyer first tries the Stripe terms, so setting the Dashboard URL takes
+effect at once.
 
 Parcel-locker delivery keeps Stripe's shipping address collection: Stripe does
 not document whether `shipping_options` works without

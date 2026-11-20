@@ -102,7 +102,11 @@ the terms for an order with nothing to pay, which never reaches Stripe. A
 signed-in buyer is never asked for the email: the account email is sent with the
 request. A workspace without both legal URLs, and the development simulated
 payment, keep the email field and, when a URL is set, the terms checkbox on the
-page. Expandable parts are buttons with `aria-expanded` and `aria-controls`;
+page. When the workspace's Stripe account has no terms URL in its Dashboard public
+details, Stripe refuses to collect the terms; the page then shows the email field
+and the terms checkbox itself, keeps everything the buyer chose and asks once to
+accept the terms there (see
+[Payments](payments.md#stripe-accounts-without-a-dashboard-terms-url)). Expandable parts are buttons with `aria-expanded` and `aria-controls`;
 their panels open below the button, so nothing above them moves.
 
 The shared parts (`CheckoutSteps`, `CheckoutSummaryRow`, `CheckoutDisclosureRow`

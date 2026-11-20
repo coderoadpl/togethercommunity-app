@@ -108,6 +108,13 @@ pnpm --silent run cli --tenant <slug> stripe configure rk_live_…
 pnpm --silent run cli --tenant <slug> stripe test-connection
 ```
 
+**OWNER ACTION:** In the workspace's Stripe Dashboard open **Settings → Business
+→ Public details** and set **Terms of service** to the workspace terms URL, in
+live mode and again in test mode. Stripe needs it to collect the terms on the
+checkout; without it the Together page still sells, but asks for the terms on
+the page instead (see
+[Payments](payments.md#stripe-accounts-without-a-dashboard-terms-url)).
+
 A deployment that already stores an `rk_test_…` key in the live slot keeps
 serving Studio but cannot start a checkout. Move that key to the test-mode card
 and save a live key here before accepting payments.

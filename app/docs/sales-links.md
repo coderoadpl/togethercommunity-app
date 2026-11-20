@@ -239,7 +239,11 @@ and preserves the other collected fields. A NIP is optional; the B2B-only scope
 continues to skip orders without one. iFirma supports domestic addresses only.
 Stripe requires terms acceptance; Together records that acceptance with the
 exact terms and privacy URLs stored in session metadata. Set a valid account
-terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
+terms URL once in the Stripe Dashboard (**Settings → Business → Public details →
+Terms of service**, in live and in test mode). Until it is set Stripe refuses the
+handoff, and the buyer lands on the Together page of the link with
+`?checkout=together&terms=page`, which collects the terms itself (see
+[Payments](payments.md#stripe-accounts-without-a-dashboard-terms-url)). Together supplies a per-session agreement
 linking the tenant's terms and privacy URLs. A tenant missing either legal URL
 receives an error page without a checkout session, including on the Together
 fallback; its checkout endpoint also enforces both URLs.

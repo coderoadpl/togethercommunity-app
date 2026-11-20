@@ -176,7 +176,16 @@ own proposals under `/api/m2m/shop/proposals` (CLI `shop proposals
 list|show|withdraw`); a direct-mode key is refused there with `403`. The key
 list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
 in its last column) shows each key's mode. Revoking or purging a propose-mode
-key withdraws its pending, unexpired proposals in the same transaction.
+key withdraws its pending, unexpired proposals, those in its open
+[groups](change-proposals.md#groups) included, in the same transaction.
+
+A propose-mode key can also put proposals that depend on each other in a
+group the owner approves as one unit: it creates the group
+(`POST /api/m2m/shop/proposals/groups`, CLI `shop proposals group create`)
+and sends each proposal with the header `x-proposal-group: <group id>` (CLI
+`--group <id>` on every proposing command). Only the key that created a group
+can add to it, read it or withdraw it; for any other key the group answers
+`404`. A direct-mode key's writes ignore the header and stay live.
 
 A receipt carries the submitted input, the target id and the status, never the
 effect or any live value. Whether a proposal is accepted or refused depends on
@@ -440,7 +449,11 @@ The ten catalogue writes, `createSalesLink`, `updateSalesLink`,
 with the resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
 the [receipt](change-proposals.md#receipts) for a propose-mode key;
 `isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
-and `withdrawProposal` reach the key's own proposals.
+and `withdrawProposal` reach the key's own proposals. Each of these fourteen
+writes takes an optional third argument `{ groupId }` that sends the
+`x-proposal-group` header, and its proposed outcome then also carries the
+`group` receipt; `createProposalGroup`, `getProposalGroup` and
+`withdrawProposalGroup` reach the key's own groups.
 
 ## Product covers and sales links
 

@@ -30,7 +30,7 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.
 
-Closed capability count: 144. Route rows: 529. Exported `Ctx` use-case rows: 400.
+Closed capability count: 144. Route rows: 535. Exported `Ctx` use-case rows: 400.
 
 ## Human-readable diff
 
@@ -238,6 +238,9 @@ no changes
 | `GET /api/m2m/shop/proposals` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `GET /api/m2m/shop/proposals/:id` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/proposals/:id/withdraw` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/proposals/groups` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/proposals/groups/:id` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/proposals/groups/:id/withdraw` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -299,6 +302,9 @@ no changes
 | `GET /api/change-proposals/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/change-proposals/groups/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/change-proposals/groups/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/change-proposals/groups/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/orders/changes` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/integrations/shipx` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -998,8 +1004,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:671` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
-| api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:111` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
+| api-key | `apps/server/src/shop-machine-auth.ts:114` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

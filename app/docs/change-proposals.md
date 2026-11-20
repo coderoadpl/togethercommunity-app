@@ -19,8 +19,8 @@ exactly the effect the owner saw, or applies nothing.
 | Owner-session list, read, approve and reject (`/api/change-proposals`) | Available |
 | Withdrawal of pending proposals when their key is revoked or purged | Available |
 | Typed client outcomes and CLI commands | Available |
-| Groups: storage, item references, group dry run, all-or-nothing approval (this document, [Groups](#groups)) | Available in the core; no route yet |
-| Images (product covers, branding), group routes, owner panel | Not yet available |
+| Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
+| Images (product covers, branding), owner panel | Not yet available |
 
 ## What a proposal is
 
@@ -252,7 +252,7 @@ Key side, any scope of a propose-mode key:
 
 | Route | Answer |
 |---|---|
-| `GET /api/m2m/shop/proposals?status=&cursor=&limit=` | `{ proposals: receipt[], nextCursor }`, newest first, this key's proposals only |
+| `GET /api/m2m/shop/proposals?status=&groupId=&cursor=&limit=` | `{ proposals: receipt[], nextCursor }`, newest first, this key's proposals only |
 | `GET /api/m2m/shop/proposals/:id` | `{ proposal: receipt }`; another key's proposal is `404` |
 | `POST /api/m2m/shop/proposals/:id/withdraw` | `{ proposal: receipt }` with status `withdrawn`; a settled proposal is `409` |
 
@@ -261,20 +261,23 @@ as a member, not an admin, never with an API key):
 
 | Route | Answer |
 |---|---|
-| `GET /api/change-proposals?status=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor }`, newest first |
+| `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor }`, newest first |
 | `GET /api/change-proposals/:id` | `{ proposal: ownerView + events }` |
 | `POST /api/change-proposals/:id/approve` with `{}` | `{ proposal: ownerView }` with status `applied`, `stale` or `failed`; a settled or expired proposal is `409` |
 | `POST /api/change-proposals/:id/reject` with `{ "note"?: string }` | `{ proposal: ownerView }` with status `rejected`; a settled proposal is `409` |
 
-`status` is one of the statuses below, `limit` is 1–100 (default 50) and
-`cursor` is the id of the last proposal of the previous page. A proposal of
-another workspace is `404`.
+`status` is one of the statuses below, `groupId` keeps only the items of one
+[group](#groups), `limit` is 1–100 (default 50) and `cursor` is the id of the
+last proposal of the previous page. A proposal of another workspace is `404`.
+The group routes are listed under [Groups](#groups).
 
-CLI: the owner runs `proposals list [--status] [--cursor] [--limit]`,
-`proposals show <id>`, `proposals approve <id>` and
-`proposals reject <id> [--note <text>]`; the key runs
-`shop proposals list|show|withdraw` with the key in the environment variable
-named by `--api-key-env` (default `TOGETHER_SHOP_KEY`).
+CLI: the owner runs `proposals list [--status] [--group] [--cursor] [--limit]`,
+`proposals show <id>`, `proposals approve <id>`,
+`proposals reject <id> [--note <text>]` and
+`proposals group show|approve|reject <id>`; the key runs
+`shop proposals list|show|withdraw` and `shop proposals group create|show|withdraw`
+with the key in the environment variable named by `--api-key-env` (default
+`TOGETHER_SHOP_KEY`), and adds `--group <id>` to any proposing command.
 
 ## Approval
 
@@ -406,19 +409,39 @@ transaction is answered the same way, busy, like a lock wait that ran out.
 
 A group is several proposals of one key that belong together and depend on
 each other, for example a new product, its price, its stock, publishing it
-and a sales link for it. The owner approves or rejects a group as one unit:
-it is applied completely or not at all.
+and a sales link for it. Proposed one at a time, the later ones could not even
+be validated: a price needs a product id that exists only after the owner
+approves the product. In a group the owner approves or rejects them as one
+unit, and the unit is applied completely or not at all; every item still
+shows the owner a real before/after.
 
-**Creating and joining.** A propose-mode key creates a group with a title (1
-to 500 characters). Every later proposal it adds to the group gets the next
-position, assigned atomically; items keep that order. Only the key that
-created a group may add to it, read it or withdraw it: for another key or
-another workspace the group answers exactly like an unknown id. A group is
+### Creating and joining
+
+A propose-mode key creates a group with a title (1 to 500 characters):
+
+```http
+POST /api/m2m/shop/proposals/groups
+x-api-key: <propose-mode key>
+content-type: application/json
+
+{ "title": "Launch the field guide" }
+```
+
+The answer is `201` with `{ group: groupReceipt }`. Every later proposal the
+key sends with the header `x-proposal-group: <group id>` joins the group and
+gets the next position, assigned atomically; items keep that order. The
+proposal answer is the usual `202` receipt plus the `group` receipt. Only the
+key that created a group may add to it, read it or withdraw it: for another
+key or another workspace the group answers `404` exactly like an unknown id.
+A malformed header (anything but letters, digits, `.`, `_` and `-`) is `400`.
+A direct-mode key's writes ignore the header and apply live. A group is
 *open* while every item is `pending` and unexpired, and an item can join only
-an open group.
+an open group (`409` otherwise).
 
-**References.** An item may name a resource that an earlier item of the same
-group creates, written as `$proposal:<proposal id>`, for example
+### References
+
+An item may name a resource that an earlier item of the same group creates,
+written as `$proposal:<proposal id>`, for example
 `{ "productId": "$proposal:3f6c…" }` after a `product.create` item. A
 reference stands only where the operation takes the id of that kind of
 resource:
@@ -440,21 +463,60 @@ groups. Anything else answers `400` when the item is submitted: an unknown or
 later item, an item of another kind, a malformed reference, and any string
 starting with `$proposal` outside a position of the table (in a title, a
 description, a nested field). A proposal outside a group keeps every value as
-given; there a reference is just an id that does not exist.
+given; there a reference is just an id that does not exist. For a reference
+in a path (`/api/m2m/shop/sales-links/:id`), percent-encode it
+(`%24proposal%3A…`).
 
-**Group dry run.** Adding an item runs one transaction that always rolls
-back: the earlier items of the group are applied in order, exactly as an
-approval would apply them (strict re-validation, references resolved to the
-ids created in this same transaction, the stale pre-check, the effect
-comparison), then the new item runs and only its effect is kept. A price for
-a proposed product, or publishing a product whose price is proposed earlier
-in the group, is therefore validated and previewed against the state the
-group will have produced. A refusal of the new item is returned to the key
-unchanged and nothing is stored. When an earlier item no longer applies
-because the live state moved, the answer is `409` (`changeProposalGroupItem`
-names that item) and nothing is stored. The dry run leaves no row, event,
-outbox message or content version behind, and object storage deletes wait
-for a commit that never comes.
+**Worked example.** The five-step launch, with the receipt id of each step
+used by the next ones (`P` is the id of the first receipt):
+
+| # | Request (with `x-proposal-group: G`) | Body |
+|---|---|---|
+| 1 | `POST /api/m2m/shop/products` | `{ "title": "Field guide", "slug": "field-guide", "type": "physical", "priceCents": 3900, "currency": "PLN" }` → receipt `P` |
+| 2 | `POST /api/m2m/shop/products/prices` | `{ "productId": "$proposal:P", "kind": "one_time", "amountCents": 3900, "currency": "PLN" }` |
+| 3 | `POST /api/m2m/shop/products/stock/enable` | `{ "productId": "$proposal:P", "onHand": 10, "lowStockThreshold": 2 }` |
+| 4 | `POST /api/m2m/shop/products/publish` | `{ "id": "$proposal:P" }` |
+| 5 | `POST /api/m2m/shop/sales-links` | `{ "slug": "field-guide-offer", "title": "Field guide", "heading": "The field guide", "productIds": ["$proposal:P"] }` |
+
+Step 4 alone would be refused (a physical product needs an active one-time
+price), and so it is when sent before step 2; in the group it is validated
+against the price of step 2. With the CLI:
+
+```bash
+pnpm --silent run cli --tenant acme shop proposals group create --title 'Launch the field guide'
+pnpm --silent run cli --tenant acme shop products create --title 'Field guide' --slug field-guide --type physical --price 39 --currency PLN --group G
+pnpm --silent run cli --tenant acme shop prices add --product '$proposal:P' --kind one_time --price 39 --currency PLN --group G
+pnpm --silent run cli --tenant acme shop stock enable '$proposal:P' --on-hand 10 --threshold 2 --group G
+pnpm --silent run cli --tenant acme shop products publish '$proposal:P' --group G
+pnpm --silent run cli --tenant acme shop sales-links create --json-file field-guide-offer.json --group G
+```
+
+Single quotes keep the shell from expanding `$proposal`. The owner approves the
+group once; the approval creates the product, its price, its stock, publishes
+it and creates the sales link in one transaction, and each item's
+`appliedResourceId` then names the real id.
+
+### Group dry run
+
+Adding an item runs one transaction that always rolls back: the earlier items
+of the group are applied in order, exactly as an approval would apply them
+(strict re-validation, references resolved to the ids created in this same
+transaction, the stale pre-check, the effect comparison), then the new item
+runs and only its effect is kept. A price for a proposed product, or
+publishing a product whose price is proposed earlier in the group, is
+therefore validated and previewed against the state the group will have
+produced. A refusal of the new item is returned to the key unchanged and
+nothing is stored.
+
+A `409` at submit with `changeProposalGroupItem` in `error.details` means an
+**earlier** item no longer applies to the live state: someone changed a field
+it changes since it was proposed, so the group can no longer be applied as
+recorded and nothing is stored. The key withdraws the group and proposes it
+again from the current state. A `409` with `changeProposalGroupStatus` means
+the group is no longer open (decided, withdrawn or expired), and one with
+`changeProposalCap` names a limit. The dry run leaves no row, event, outbox
+message or content version behind, and object storage deletes wait for a
+commit that never comes.
 
 **Stable effects.** The ids an item creates differ between a dry run and the
 approval. Wherever such an id appears in an effect, it is stored as the
@@ -462,52 +524,85 @@ creating item's reference, both when the effect is stored and when it is
 recomputed at approval, so the two compare equal; because the reference
 names the item, a reference moved to another item no longer matches.
 
-**Approval.** The owner sends the ordered list of item ids they were shown;
-when it differs from the group's current items the answer is `409`
+### Approval as one unit
+
+The owner reads the group, then sends the ordered list of item ids they were
+shown:
+
+```http
+POST /api/change-proposals/groups/<group id>/approve
+content-type: application/json
+
+{ "itemIds": ["<item 1>", "<item 2>", "<item 3>", "<item 4>", "<item 5>"] }
+```
+
+When the list differs from the group's current items (an item was added after
+the owner looked, or the order is different) the answer is `409`
 (`changeProposalGroupItemIds` lists the current ones) and nothing is applied.
 Otherwise one transaction locks the group row and its items, then applies
 each item in order as the approving owner, with every step of a single
 approval: strict re-validation, references resolved from the ids created
 earlier in the transaction, target lock, stale pre-check, the live use-case,
-the effect comparison. When every item matches, all items become `applied`
-with their `appliedResourceId` and commit together; post-commit effects run
-afterwards. When an item is stale or fails, all live work of the group is
-rolled back: that item is recorded `stale` or `failed` (with its failure
-code and message), every other item is recorded `stale` with the event note
-"Not applied: item *n* (*id*) of this group could not be applied, so nothing
-in the group was changed", and nothing live changes. A lock wait that runs
-out, a deadlock or an infrastructure failure rolls everything back and leaves
-the group pending. A repeated approval answers `409` with
-`changeProposalGroupStatus` and every item's status in
-`changeProposalStatuses`.
+the effect comparison.
+
+| Outcome | Group status | Items | Live state |
+|---|---|---|---|
+| every item matches | `applied` | all `applied`, each with its `appliedResourceId` | changed exactly as the effects showed; post-commit effects run afterwards |
+| one item is stale | `stale` | that item `stale`, every other item `stale` with a note naming it | unchanged |
+| one item is refused by the live use-case | `failed` | that item `failed` with its failure code and message, every other item `stale` with a note naming it | unchanged |
+| a lock wait runs out, a deadlock, an infrastructure failure | `open` | all still `pending` | unchanged; `503` with `retry-after` |
+
+The note on the other items reads "Not applied: item *n* (*id*) of this group
+could not be applied, so nothing in the group was changed". A repeated
+approval answers `409` with `changeProposalGroupStatus` and every item's status
+in `changeProposalStatuses`.
 
 Target rows are locked in item order, one item after the other. Two groups
 that touch the same rows in opposite orders can wait on each other; the
 bounded lock wait and the database's deadlock detection end such a wait, and
 the approval answers busy with nothing applied, so the owner retries.
 
-**Other decisions.** The owner can reject a whole group (every pending item,
-with one note) and its key can withdraw a whole group; a group without items
-is deleted when its key withdraws it. An item of a group cannot be approved,
-rejected or withdrawn on its own: the single-proposal routes answer `409`
-with `changeProposalGroupId`. Revoking or purging a key withdraws its open
-groups with its other pending proposals.
+### Other decisions
+
+The owner rejects a whole group (every pending item, with one note) with
+`POST /api/change-proposals/groups/:id/reject` `{ "note"?: string }`; the key
+withdraws a whole group with `POST /api/m2m/shop/proposals/groups/:id/withdraw`,
+and a group without items is deleted when its key withdraws it. An item of a
+group cannot be approved, rejected or withdrawn on its own: the
+single-proposal routes answer `409` with `changeProposalGroupId`. Revoking or
+purging a key withdraws its open groups with its other pending proposals.
 
 **Expiry.** Every item of a group expires with the group's first item (an
 item added later takes that expiry), so a group is never half expired; an
 empty group expires 30 days after it was created. Approve, reject and
 withdraw record the `expired` event on every item of an expired group.
 
-**Reading.** The owner proposal list carries `groupId`, `groupTitle` and
-`groupPosition` on every item and filters by group; the owner group view has
-the title, the key name, id, issuer and state, the creation and expiry times,
-the derived group status (`open`, `expired`, `applied`, `rejected`,
-`withdrawn`, `stale`, `failed`) and the ordered items with their effects and
-events. The key reads its group as a receipt with its ordered item receipts,
-which never contain an effect or a before value.
+### What each side sees
 
-**Limits.** At most 50 items per group and 20 open groups per key; over a
-limit the answer is `409` with `changeProposalCap` set to `group_items` or
+| Route | Who | Answer |
+|---|---|---|
+| `POST /api/m2m/shop/proposals/groups` | the propose-mode key | `201` `{ group: groupReceipt }` |
+| `GET /api/m2m/shop/proposals/groups/:id` | the key that created it | `{ group: groupReceipt }` |
+| `POST /api/m2m/shop/proposals/groups/:id/withdraw` | the key that created it | `{ group: groupReceipt }` with status `withdrawn` |
+| `GET /api/change-proposals/groups/:id` | the verified owner in their own session | `{ group: groupOwnerView }` |
+| `POST /api/change-proposals/groups/:id/approve` | the verified owner | `{ group: groupOwnerView }` with status `applied`, `stale` or `failed` |
+| `POST /api/change-proposals/groups/:id/reject` | the verified owner | `{ group: groupOwnerView }` with status `rejected` |
+
+The key's group receipt has the id, title, derived status, creation and
+expiry times and the ordered item receipts, which never contain an effect, a
+before value or the deciding account. The owner view adds the key name, id,
+issuer and state, and every item with its effect and events; the owner
+proposal list carries `groupId`, `groupTitle` and `groupPosition` on every
+item. The derived group status is one of `open`, `expired`, `applied`,
+`rejected`, `withdrawn`, `stale`, `failed`. The group routes refuse the same
+callers as the single routes: a direct-mode key gets `403` on the key routes,
+and an admin, an impersonating owner, an unverified owner and every key are
+refused on the owner routes.
+
+### Limits
+
+At most 50 items per group and 20 open groups per key; over a limit the
+answer is `409` with `changeProposalCap` set to `group_items` or
 `key_open_groups`. Every item counts against the proposal limits above. The
 cost of the group dry runs grows with the group, which the item cap and the
 key's rate limit bound.
@@ -517,8 +612,6 @@ key's rate limit bound.
 - **Images.** The product cover and branding image routes refuse a
   propose-mode key. Images will be uploaded to a private quarantine and
   published only on approval.
-- **Group routes.** The group rules below are implemented in the core and
-  the database; the key and owner routes that reach them come next.
 - **Owner panel.** The owner decides through the session routes and the CLI;
   no panel page exists yet.
 - **Retention.** Terminal proposals and their events are kept; a retention

@@ -205,6 +205,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/m2m/shop/proposals` | self-authenticating | read | api m2m shop proposals |
 | `GET /api/m2m/shop/proposals/:id` | self-authenticating | read | api m2m shop proposals id |
 | `POST /api/m2m/shop/proposals/:id/withdraw` | self-authenticating | mutating | api m2m shop proposals id withdraw |
+| `POST /api/m2m/shop/proposals/groups` | self-authenticating | mutating | api m2m shop proposals groups |
+| `GET /api/m2m/shop/proposals/groups/:id` | self-authenticating | read | api m2m shop proposals groups id |
+| `POST /api/m2m/shop/proposals/groups/:id/withdraw` | self-authenticating | mutating | api m2m shop proposals groups id withdraw |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -266,6 +269,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/change-proposals/:id` | authenticated | read | change proposal |
 | `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
 | `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
+| `GET /api/change-proposals/groups/:id` | authenticated | read | change proposal group |
+| `POST /api/change-proposals/groups/:id/reject` | authenticated | mutating | change proposal group reject |
+| `POST /api/change-proposals/groups/:id/approve` | authenticated | mutating | change proposal group approve |
 | `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |

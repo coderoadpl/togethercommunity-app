@@ -103,6 +103,14 @@ const couponCourierFixture = fixtureFor('together-checkout-coupon-courier', stan
   },
 });
 
+const couponEmailCall = `validateCouponForCheckout:[{"couponCode":"${couponCode}","priceId":"price-product-studio-course-101","productId":"product-studio-course-101"}]`;
+const couponEmailFixture = {
+  ...fixtureFor('together-checkout-coupon-email', {}, {}, {
+    calls: { [couponEmailCall]: { ok: false, error: { code: 'validation', message: 'An email is required to validate this coupon' } } },
+  }),
+  expectedErrors: { [couponEmailCall]: 'validation' },
+};
+
 const bundleLines = [
   {
     productId: 'product-studio-stand-oak', baseProductId: 'product-studio-stand-oak', name: 'Printed desk stand', type: 'physical', deliveryMethod: 'shipping',
@@ -231,6 +239,7 @@ const meta = {
 } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
+const withMobile = (story: Story): Story => ({ ...mobile375, ...story, parameters: { ...mobile375.parameters, ...story.parameters } });
 export const Delivery: Story = {};
 export const DeliveryPolish: Story = { parameters: { locale: 'pl' } };
 export const DeliveryMobile: Story = mobile375;
@@ -267,6 +276,21 @@ export const CouponApplied: Story = {
   play: async ({ canvasElement }) => { await within(canvasElement).findByTestId('checkout-coupon-breakdown', {}, { timeout: 5000 }); },
 };
 export const CouponAppliedDark: Story = { ...CouponApplied, parameters: { ...CouponApplied.parameters, colorScheme: 'dark' } };
+const askForCouponEmail = async (canvasElement: HTMLElement) => {
+  const canvas = within(canvasElement);
+  await userEvent.click(await canvas.findByTestId('checkout-coupon-reveal'));
+  await userEvent.type(await canvas.findByLabelText('Discount code'), couponCode);
+  await userEvent.click(canvas.getByRole('button', { name: 'Apply code' }));
+  await expect(await canvas.findByLabelText('Email', {}, { timeout: 5000 })).toBeVisible();
+};
+export const CouponEmailRequired: Story = {
+  parameters: {
+    fixture: couponEmailFixture,
+    docs: { description: { story: 'The code has a per-person limit, so the discount row asks for the email in place and the buyer applies the code again.' } },
+  },
+  play: async ({ canvasElement }) => askForCouponEmail(canvasElement),
+};
+export const CouponEmailRequiredMobile: Story = withMobile(CouponEmailRequired);
 export const SafetyDetailsOpen: Story = { play: async ({ canvasElement }) => openSafetyDetails(canvasElement) };
 export const Variants: Story = { parameters: { fixture: variantsFixture } };
 export const ValidationError: Story = {

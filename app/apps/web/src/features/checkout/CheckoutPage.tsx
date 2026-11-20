@@ -24,7 +24,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams, checkoutReturnLink, formatSalesLinkVariantParam, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, CHECKOUT_TERMS_ON_PAGE, CHECKOUT_TERMS_PARAM, checkoutReturnLink, formatSalesLinkVariantParam, isStripeTermsUrlMissing, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -58,6 +58,9 @@ type OfferPrice = {
   amountCents: number;
   currency: string;
 };
+
+const stripeTermsRefused = (error: unknown): boolean =>
+  error instanceof ApiError && isStripeTermsUrlMissing(error.appError);
 
 const priceLabel = (
   price: OfferPrice,
@@ -205,9 +208,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     },
   });
 
+  const [termsOnPageFallback, setTermsOnPageFallback] = useState(() =>
+    new URLSearchParams(window.location.search).get(CHECKOUT_TERMS_PARAM) === CHECKOUT_TERMS_ON_PAGE);
   const checkoutSession = useMutation({
     ...actions.createCheckoutSession,
     onSuccess: (data) => window.location.assign(data.url),
+    onError: (error) => {
+      if (stripeTermsRefused(error)) setTermsOnPageFallback(true);
+    },
   });
   const [couponEmailRequested, setCouponEmailRequested] = useState(false);
   const couponValidation = useMutation({
@@ -224,7 +232,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
   const simulationOffered = selectedAmountCents > 0 && stripeConfigured && paymentConfig.data?.simulatedPaymentsEnabled === true;
-  const pageCollectsBuyer = !stripeConfigured || !legal?.termsUrl || !legal.privacyUrl || simulationOffered;
+  const pageCollectsBuyer = termsOnPageFallback || !stripeConfigured || !legal?.termsUrl || !legal.privacyUrl || simulationOffered;
   const viaStripe = stripeConfigured && payableCents > 0;
   const stripeCollectsBuyer = viaStripe && !pageCollectsBuyer;
   const emailPlacement = signedInEmail !== null ? null
@@ -267,6 +275,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     language,
     ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
     ...consent,
+    ...(termsOnPageFallback && termsOnPage ? { termsOnPage: true as const } : {}),
     ...invoice.billing,
     ...shipping,
     ...personalization.request,
@@ -701,7 +710,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             messages={(
               <>
                 {paymentUnavailable ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
-                {checkoutSession.isError ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
+                {checkoutSession.isError && stripeTermsRefused(checkoutSession.error) ? <Alert severity="info">{t.checkout.termsOnPageFallback}</Alert> : null}
+                {checkoutSession.isError && !stripeTermsRefused(checkoutSession.error) ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
                 {simulatePurchase.isError ? <Alert severity="error">{localizeError(simulatePurchase.error, t)}</Alert> : null}
               </>
             )}

@@ -3128,6 +3128,7 @@ export const pl: Messages = {
     cancelledBody: 'Nie pobraliśmy opłaty. Możesz bezpiecznie spróbować ponownie.',
     retry: 'Spróbuj ponownie',
     paymentUnavailable: 'Płatności Stripe nie są jeszcze skonfigurowane.',
+    termsOnPageFallback: 'Zaakceptuj tutaj regulamin, a potem przejdź do płatności.',
     soldOut: 'Wyprzedane',
     cartTitle: 'Twój koszyk',
     cartInvalidTitle: 'Ten link do koszyka jest nieprawidłowy',

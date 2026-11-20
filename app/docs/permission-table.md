@@ -24,7 +24,9 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings` instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`.
 
-Closed capability count: 129. Route rows: 504. Exported `Ctx` use-case rows: 367.
+`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` or `proposal:submit:settings`, the family of the proposed operation; the table lists the first. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made.
+
+Closed capability count: 130. Route rows: 504. Exported `Ctx` use-case rows: 374.
 
 ## Human-readable diff
 
@@ -554,6 +556,13 @@ no changes
 | `api-keys.ts#listImportAuditForApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `bunny-videos.ts#listBunnyVideos` | course:read | owner, admin | owner, admin | yes | core/server/usecases/bunny-videos.ts authorization call |
 | `bunny-videos.ts#testBunnyConnection` | integration:test | owner | owner | yes | core/server/usecases/bunny-videos.ts authorization call |
+| `change-proposals.ts#submitChangeProposal` | proposal:submit:catalog | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#listOwnChangeProposals` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#getOwnChangeProposal` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#withdrawOwnChangeProposal` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#listChangeProposals` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#getChangeProposal` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#rejectChangeProposal` | proposal:decide | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `community-access.ts#lessonContextAccess` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
 | `community-access.ts#accessibleLessonIds` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
 | `community-access.ts#spaceContextAccess` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |

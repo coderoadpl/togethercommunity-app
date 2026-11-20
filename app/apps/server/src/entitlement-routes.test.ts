@@ -141,6 +141,20 @@ describe('POST /api/m2m/entitlements/check', () => {
     expect(response.status).toBe(401);
   });
 
+  it('never answers from another workspace where the same person has access', async () => {
+    await database.db.insert(products).values({ id: 'prod-studio', tenantId: 'studio', slug: 'studio-pro', title: 'Studio Pro', description: '', priceCents: 1000, currency: 'PLN', published: true, createdAt: CREATED_AT });
+    await database.db.insert(productGrants).values({ id: 'g-ada-studio', tenantId: 'studio', memberId: 'm-ada-studio', productId: 'prod-studio', source: 'manual', mode: 'live', startsAt: CREATED_AT, createdAt: CREATED_AT });
+    const fromAcme = await answer(await check('members-secret', { subjects: [{ email: 'ada@example.test' }, { memberId: 'm-ada-studio' }] }));
+    expect(fromAcme.results.map((result) => [result.member, result.products.map((entry) => entry.productId)])).toEqual([
+      [{ id: 'm-ada' }, ['prod-pro']],
+      [null, []],
+    ]);
+    const named = await answer(await check('check-secret', { subjects: [{ email: 'ada@example.test' }], productIds: ['prod-studio'] }));
+    expect(named.results[0]?.products).toEqual([{ productId: 'prod-studio', access: false, source: null, subscription: null, checkedAt: now }]);
+    const fromStudio = await answer(await check('studio-secret', { subjects: [{ email: 'ada@example.test' }] }, { host: studioHost }));
+    expect(fromStudio.results[0]?.products.map((entry) => entry.productId)).toEqual(['prod-studio']);
+  });
+
   it('refuses a member id lookup without entitlements:members:read and answers it with the scope', async () => {
     const refused = await check('check-secret', { subjects: [{ memberId: 'm-ada' }] });
     expect(refused.status).toBe(403);

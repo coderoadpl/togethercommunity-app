@@ -70,9 +70,12 @@ pnpm --silent run cli --tenant acme api-key entitlement create Companion app \
 - `api-key entitlement list` shows keys without secrets. The key history is in
   `api-key shop-management events --key <id>`.
 
-The owner's emergency stop for every machine key of the workspace is
-`api-key shop-management purge --yes`; the operator's stop for the whole
-deployment is `SHOP_MANAGEMENT_KEYS=disabled`.
+`api-key shop-management purge --yes` is the owner's emergency stop for the
+workspace's shop management keys and entitlement keys: it deletes all of them,
+revoked or not. It does not touch the legacy tenant API keys (`api-key list`),
+which the owner revokes one by one with `api-key revoke <id>`. The operator's
+stop for the whole deployment is `SHOP_MANAGEMENT_KEYS=disabled`, which covers
+the shop management and entitlement routes only.
 
 ## 3. Check access (other application)
 

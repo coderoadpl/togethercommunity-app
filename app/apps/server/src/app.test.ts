@@ -382,6 +382,23 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    entitlementKeys: {
+      listByTenant: async () => [],
+      create: async () => undefined,
+      findByHash: async () => null,
+      revoke: async () => null,
+    },
+    entitlementKeyRateLimits: {
+      claim: async () => true,
+      release: async () => undefined,
+    },
+    entitlementSubjects: {
+      findAccountByEmail: async () => null,
+      findMemberByUser: async () => null,
+      findMemberById: async () => null,
+      listActiveGrants: async () => [],
+      listSubscriptions: async () => [],
+    },
     changeProposals: changeProposalStore.repository,
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,

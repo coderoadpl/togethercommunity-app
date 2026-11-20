@@ -231,7 +231,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
       clock: clockPort,
     },
     keyDeps: { changeProposals: store.repository, ids, clock: clockPort },
-    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, shopManagementKeys, clock: clockPort },
+    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, clock: clockPort },
     decisionDeps: { changeProposals: store.repository, shopManagementKeys, ids, clock: clockPort },
   };
 };

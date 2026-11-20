@@ -25,7 +25,7 @@ const receipt = {
   decisionNote: null, appliedResourceId: null, failureCode: null,
 };
 const ownerView = {
-  id: 'proposal-1', groupId: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' } }, status: 'pending',
   proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedAt: null,

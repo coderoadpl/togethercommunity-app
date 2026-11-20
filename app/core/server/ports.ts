@@ -150,6 +150,7 @@ import type {
   ChangeProposalCountCap,
   ChangeProposalDisplayStatus,
   ChangeProposalEvent,
+  ChangeProposalGroup,
   ChangeProposalTarget,
   ChangeProposalTerminalStatus,
   SalesLink,
@@ -2886,6 +2887,7 @@ export interface ChangeProposalEventDraft {
 export interface ChangeProposalListQuery {
   status?: ChangeProposalDisplayStatus;
   cursor?: string;
+  groupId?: string;
   limit: number;
   now: string;
 }
@@ -2901,7 +2903,7 @@ type ChangeProposalCreation =
   | { kind: 'key_inactive' }
   | { kind: 'busy' };
 
-interface ChangeProposalTransition {
+export interface ChangeProposalTransition {
   status: ChangeProposalTerminalStatus;
   decidedByUserId: string | null;
   decidedAt: string;
@@ -2942,6 +2944,55 @@ export interface ChangeProposalEventRepository {
   listByProposal(tenantId: string, proposalId: string): Promise<ChangeProposalEvent[]>;
 }
 
+export interface ChangeProposalGroupWithItems {
+  group: ChangeProposalGroup;
+  items: ChangeProposal[];
+}
+
+type ChangeProposalGroupCreation =
+  | { kind: 'created'; group: ChangeProposalGroup }
+  | { kind: 'cap_exceeded' }
+  | { kind: 'key_inactive' }
+  | { kind: 'busy' };
+
+type ChangeProposalGroupItemAddition =
+  | ChangeProposalCreation
+  | { kind: 'not_found' }
+  | { kind: 'group_closed'; current: ChangeProposalGroupWithItems }
+  | { kind: 'group_full' }
+  | { kind: 'group_changed' };
+
+export interface ChangeProposalGroupItemTransition {
+  id: string;
+  transition: ChangeProposalTransition;
+}
+
+/**
+ * Groups are tenant-scoped and belong to the key that created them; key-side reads take that key, so another key's
+ * group reads as missing. Items keep their position order, and a group-wide transition changes every item of the
+ * group or none of them, with each item's event in position order.
+ */
+export interface ChangeProposalGroupRepository {
+  create(tenantId: string, group: ChangeProposalGroup, now: string): Promise<ChangeProposalGroupCreation>;
+  findById(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
+  findByKey(tenantId: string, keyId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
+  listByIds(tenantId: string, ids: readonly string[]): Promise<ChangeProposalGroup[]>;
+  /** Stores `proposal` at its `groupPosition`, which must be the next free position of an open group of the same key. */
+  addItem(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, now: string): Promise<ChangeProposalGroupItemAddition>;
+  /** Locks the group row, then its item rows in the order key revocation takes them, until the surrounding transaction ends. */
+  lock(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
+  /** Moves every item of the group at once; null, changing nothing, unless `transitions` names exactly the group's items in position order and each is pending. */
+  transition(
+    tenantId: string,
+    id: string,
+    transitions: readonly ChangeProposalGroupItemTransition[],
+    guard?: ChangeProposalTransitionGuard,
+  ): Promise<ChangeProposal[] | null>;
+  recordExpiry(tenantId: string, id: string, event: (proposalId: string) => ChangeProposalEventDraft): Promise<boolean>;
+  /** Deletes a group of the key that never received an item; false when it has items or is not the key's. */
+  deleteEmpty(tenantId: string, keyId: string, id: string): Promise<boolean>;
+}
+
 export type ChangeProposalTargetLockPurpose = 'change' | 'delete';
 
 export interface ChangeProposalTargetLocks {
@@ -2971,6 +3022,7 @@ export interface ChangeProposalRepositories {
   salesLinks: SalesLinkRepository;
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
+  changeProposalGroups: ChangeProposalGroupRepository;
   targets: ChangeProposalTargetLocks;
 }
 

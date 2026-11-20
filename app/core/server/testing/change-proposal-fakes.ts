@@ -1,8 +1,10 @@
 import {
   appError,
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
+  CHANGE_PROPOSAL_GROUP_LIMITS,
   CHANGE_PROPOSAL_LIMITS,
   changeProposalEffectWithinLimit,
+  changeProposalGroupOpen,
   err,
   notFound,
   ok,
@@ -11,6 +13,7 @@ import {
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
   type ChangeProposalEventKind,
+  type ChangeProposalGroup,
   type ChangeProposalTarget,
   type Product,
   type ProductDownloadAsset,
@@ -24,6 +27,8 @@ import {
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
+  ChangeProposalGroupRepository,
+  ChangeProposalGroupWithItems,
   ChangeProposalListQuery,
   ChangeProposalPage,
   ChangeProposalRepositories,
@@ -154,8 +159,7 @@ const salesLinkRepositoryOver = (state: FakeCatalogState): SalesLinkRepository =
 
 const catalogRepositoriesOver = (
   state: FakeCatalogState,
-  proposals: ChangeProposalRepository,
-  events: ChangeProposalEventRepository,
+  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups'>,
   locks: ChangeProposalTarget[],
 ): ChangeProposalRepositories => {
   const product = (tenantId: string, id: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null;
@@ -246,8 +250,9 @@ const catalogRepositoriesOver = (
       },
     },
     salesLinks: salesLinkRepositoryOver(state),
-    changeProposals: proposals,
-    changeProposalEvents: events,
+    changeProposals: store.repository,
+    changeProposalEvents: store.events,
+    changeProposalGroups: store.groups,
     targets: {
       lock: async (tenantId, target) => {
         locks.push(target);
@@ -263,8 +268,10 @@ const catalogRepositoriesOver = (
 export interface FakeChangeProposalStore {
   repository: ChangeProposalRepository;
   events: ChangeProposalEventRepository;
+  groups: ChangeProposalGroupRepository;
   proposals: ChangeProposal[];
   eventRows: ChangeProposalEvent[];
+  groupRows: ChangeProposalGroup[];
   keys: ShopManagementKey[];
   seed(proposal: ChangeProposal): void;
 }
@@ -277,6 +284,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
   const eventRows: ChangeProposalEvent[] = [];
   const pendingAt = (proposal: ChangeProposal, now: string) => proposal.status === 'pending' && proposal.expiresAt > now;
   const matchesStatus = (proposal: ChangeProposal, query: ChangeProposalListQuery): boolean => {
+    if (query.groupId !== undefined && proposal.groupId !== query.groupId) return false;
     if (query.status === undefined) return true;
     if (query.status === 'pending') return pendingAt(proposal, query.now);
     if (query.status === 'expired') return proposal.status === 'pending' && proposal.expiresAt <= query.now;
@@ -309,11 +317,34 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     if (byKey.filter((candidate) => candidate.createdAt > windowStart).length >= CHANGE_PROPOSAL_LIMITS.createdPerKeyPerWindow) return 'key_daily';
     return null;
   };
+  const keyActive = (tenantId: string, keyId: string, now: string): boolean => {
+    const key = keys.find((candidate) => candidate.tenantId === tenantId && candidate.id === keyId);
+    return key !== undefined && key.mode === 'propose' && key.revokedAt === null && key.expiresAt > now;
+  };
+  const transitionRow = (found: ChangeProposal, transition: Parameters<ChangeProposalRepository['transition']>[2]): ChangeProposal => {
+    Object.assign(found, {
+      status: transition.status,
+      decidedByUserId: transition.decidedByUserId,
+      decidedAt: transition.decidedAt,
+      decisionNote: transition.decisionNote,
+      appliedResourceId: transition.appliedResourceId,
+      failureCode: transition.failureCode,
+      failureMessage: transition.failureMessage,
+    });
+    appendEvent(found.tenantId, found.id, CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS[transition.status], transition.event);
+    return { ...found };
+  };
+  const recordExpiry = (tenantId: string, id: string, event: ChangeProposalEventDraft): boolean => {
+    const found = proposals.find((proposal) => proposal.tenantId === tenantId && proposal.id === id && proposal.status === 'pending' && proposal.expiresAt <= event.at);
+    if (found === undefined) return false;
+    if (eventRows.some((row) => row.tenantId === tenantId && row.proposalId === id && row.kind === 'expired')) return false;
+    appendEvent(tenantId, id, 'expired', event);
+    return true;
+  };
   const repository: ChangeProposalRepository = {
     create: async (tenantId, proposal, event, now) => {
       if (!changeProposalEffectWithinLimit(proposal.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
-      const key = keys.find((candidate) => candidate.tenantId === tenantId && candidate.id === proposal.proposedByKeyId);
-      if (key === undefined || key.mode !== 'propose' || key.revokedAt !== null || key.expiresAt <= now) return { kind: 'key_inactive' };
+      if (!keyActive(tenantId, proposal.proposedByKeyId, now)) return { kind: 'key_inactive' };
       const cap = countCapReached(tenantId, proposal.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
       proposals.push({ ...proposal });
@@ -338,24 +369,72 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     },
     transition: async (tenantId, id, transition, guard) => {
       const found = pendingRow(tenantId, id, guard);
-      if (found === null) return null;
-      Object.assign(found, {
-        status: transition.status,
-        decidedByUserId: transition.decidedByUserId,
-        decidedAt: transition.decidedAt,
-        decisionNote: transition.decisionNote,
-        appliedResourceId: transition.appliedResourceId,
-        failureCode: transition.failureCode,
-        failureMessage: transition.failureMessage,
+      return found === null ? null : transitionRow(found, transition);
+    },
+    recordExpiry: async (tenantId, id, event) => recordExpiry(tenantId, id, event),
+  };
+  const groupRows: ChangeProposalGroup[] = [];
+  const itemsOf = (tenantId: string, groupId: string): ChangeProposal[] =>
+    proposals.filter((proposal) => proposal.tenantId === tenantId && proposal.groupId === groupId)
+      .sort((left, right) => (left.groupPosition ?? 0) - (right.groupPosition ?? 0));
+  const withItems = (group: ChangeProposalGroup | undefined): ChangeProposalGroupWithItems | null =>
+    group === undefined ? null : { group: { ...group }, items: itemsOf(group.tenantId, group.id).map((item) => ({ ...item })) };
+  const groupNamed = (tenantId: string, id: string, keyId?: string): ChangeProposalGroup | undefined =>
+    groupRows.find((group) => group.tenantId === tenantId && group.id === id && (keyId === undefined || group.proposedByKeyId === keyId));
+  const groups: ChangeProposalGroupRepository = {
+    create: async (tenantId, group, now) => {
+      if (!keyActive(tenantId, group.proposedByKeyId, now)) return { kind: 'key_inactive' };
+      const open = groupRows.filter((candidate) => candidate.tenantId === tenantId && candidate.proposedByKeyId === group.proposedByKeyId
+        && changeProposalGroupOpen(candidate, itemsOf(tenantId, candidate.id), now));
+      if (open.length >= CHANGE_PROPOSAL_GROUP_LIMITS.openGroupsPerKey) return { kind: 'cap_exceeded' };
+      groupRows.push({ ...group });
+      return { kind: 'created', group: { ...group } };
+    },
+    findById: async (tenantId, id) => withItems(groupNamed(tenantId, id)),
+    findByKey: async (tenantId, keyId, id) => withItems(groupNamed(tenantId, id, keyId)),
+    listByIds: async (tenantId, ids) => groupRows.filter((group) => group.tenantId === tenantId && ids.includes(group.id)).map((group) => ({ ...group })),
+    addItem: async (tenantId, proposal, event, now) => {
+      if (!changeProposalEffectWithinLimit(proposal.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
+      if (!keyActive(tenantId, proposal.proposedByKeyId, now)) return { kind: 'key_inactive' };
+      const current = withItems(groupNamed(tenantId, proposal.groupId ?? '', proposal.proposedByKeyId));
+      if (current === null) return { kind: 'not_found' };
+      if (!changeProposalGroupOpen(current.group, current.items, now)) return { kind: 'group_closed', current };
+      if (current.items.length >= CHANGE_PROPOSAL_GROUP_LIMITS.itemsPerGroup) return { kind: 'group_full' };
+      const first = current.items[0];
+      if (current.items.length + 1 !== proposal.groupPosition || (first !== undefined && first.expiresAt !== proposal.expiresAt)) {
+        return { kind: 'group_changed' };
+      }
+      const cap = countCapReached(tenantId, proposal.proposedByKeyId, now);
+      if (cap !== null) return { kind: 'cap_exceeded', cap };
+      proposals.push({ ...proposal });
+      appendEvent(tenantId, proposal.id, 'proposed', event);
+      return { kind: 'created', proposal: { ...proposal } };
+    },
+    lock: async (tenantId, id) => withItems(groupNamed(tenantId, id)),
+    transition: async (tenantId, id, transitions, guard = {}) => {
+      const group = groupNamed(tenantId, id, guard.keyId);
+      if (group === undefined) return null;
+      const items = itemsOf(tenantId, id);
+      const sameItems = items.length > 0 && items.length === transitions.length && items.every((item, index) => item.id === transitions[index]?.id);
+      const movable = items.every((item) => item.status === 'pending' && (guard.unexpiredAt === undefined || item.expiresAt > guard.unexpiredAt));
+      if (!sameItems || !movable) return null;
+      return transitions.map(({ transition }, index) => {
+        const item = items[index];
+        if (item === undefined) throw new Error('A group item vanished');
+        return transitionRow(item, transition);
       });
-      appendEvent(tenantId, id, CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS[transition.status], transition.event);
-      return { ...found };
     },
     recordExpiry: async (tenantId, id, event) => {
-      const found = proposals.find((proposal) => proposal.tenantId === tenantId && proposal.id === id && proposal.status === 'pending' && proposal.expiresAt <= event.at);
-      if (found === undefined) return false;
-      if (eventRows.some((row) => row.tenantId === tenantId && row.proposalId === id && row.kind === 'expired')) return false;
-      appendEvent(tenantId, id, 'expired', event);
+      let recorded = false;
+      for (const item of itemsOf(tenantId, id)) {
+        if (recordExpiry(tenantId, item.id, event(item.id))) recorded = true;
+      }
+      return recorded;
+    },
+    deleteEmpty: async (tenantId, keyId, id) => {
+      const group = groupNamed(tenantId, id, keyId);
+      if (group === undefined || itemsOf(tenantId, id).length > 0) return false;
+      groupRows.splice(groupRows.indexOf(group), 1);
       return true;
     },
   };
@@ -363,7 +442,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     listByProposal: async (tenantId, proposalId) =>
       eventRows.filter((event) => event.tenantId === tenantId && event.proposalId === proposalId).sort((left, right) => left.sequence - right.sequence),
   };
-  return { repository, events, proposals, eventRows, keys, seed: (proposal) => { proposals.push({ ...proposal }); } };
+  return { repository, events, groups, proposals, eventRows, groupRows, keys, seed: (proposal) => { proposals.push({ ...proposal }); } };
 };
 
 export interface FakeChangeProposalTransaction extends ChangeProposalTransaction {
@@ -376,14 +455,14 @@ const noSecrets: TenantSecretResolver = { resolve: async (_tenantId, key) => err
 
 export const createChangeProposalTransactionFake = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'repository' | 'events'>,
+  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups'>,
   secretResolver: TenantSecretResolver = noSecrets,
 ): FakeChangeProposalTransaction => {
   const calls: Array<'run' | 'dryRun'> = [];
   const locks: ChangeProposalTarget[] = [];
   const dropped = (count: number) => { fake.deferredDropped += count; };
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
-    repositories: catalogRepositoriesOver(target, store.repository, store.events, locks),
+    repositories: catalogRepositoriesOver(target, store, locks),
     secretResolver,
     afterCommit: { defer: (effect) => { effects.push(effect); } },
     savepoint: async (operation) => {

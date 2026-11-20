@@ -381,6 +381,7 @@ const deps = (input: {
     },
     changeProposals: changeProposalStore.repository,
     changeProposalEvents: changeProposalStore.events,
+    changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     importContent: {
       commit: async () => 'saved',

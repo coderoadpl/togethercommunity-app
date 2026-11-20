@@ -2569,7 +2569,7 @@ describe('InPost ShipX CLI', () => {
 });
 
 const ownerProposal = {
-  id: 'proposal-1', groupId: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' }, onHand: { delta: 5 } }, status: 'pending',
   proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
   createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedAt: null,

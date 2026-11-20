@@ -46,7 +46,7 @@ export interface ChangeProposalRunDeps {
   logger: { error(message: string): void };
 }
 
-interface PreparedChangeProposalOperation {
+export interface PreparedChangeProposalOperation {
   input: ChangeProposalInput;
   target: ChangeProposalTarget;
   lockPurpose: ChangeProposalTargetLockPurpose;

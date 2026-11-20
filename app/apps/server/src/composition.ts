@@ -55,8 +55,14 @@ import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypt
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
+import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
-import type { ChangeProposalEventRepository, ChangeProposalRepository, ChangeProposalTransaction } from '#core/server/index.js';
+import type {
+  ChangeProposalEventRepository,
+  ChangeProposalGroupRepository,
+  ChangeProposalRepository,
+  ChangeProposalTransaction,
+} from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
@@ -563,6 +569,7 @@ export interface AppDeps {
   shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
+  changeProposalGroups: ChangeProposalGroupRepository;
   changeProposalTransaction: ChangeProposalTransaction;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
@@ -1609,6 +1616,7 @@ export const createDeps = (
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     changeProposals: createChangeProposalRepository(db),
     changeProposalEvents: createChangeProposalEventRepository(db),
+    changeProposalGroups: createChangeProposalGroupRepository(db),
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
     importContent: createImportContentRepository(db),
     importUsersReader,

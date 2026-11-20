@@ -9,6 +9,7 @@ import type {
 } from '#core/server/index.js';
 
 import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
+import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
 import {
   createChangeProposalEventRepository,
   createChangeProposalRepository,
@@ -57,6 +58,7 @@ const repositoriesOver = (tx: Db): ChangeProposalRepositories => {
     salesLinks: createSalesLinkRepository(tx),
     changeProposals: createChangeProposalRepository(tx),
     changeProposalEvents: createChangeProposalEventRepository(tx),
+    changeProposalGroups: createChangeProposalGroupRepository(tx),
     targets: createChangeProposalTargetLocks(tx),
   };
 };

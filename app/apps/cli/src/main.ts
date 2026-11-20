@@ -14,6 +14,7 @@ import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client
 import { createApiClient, type ApiClient } from '#core/client/index.js';
 import {
   API_KEY_HEADER,
+  EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
   type TenantRedirectCreateBody,
   type TenantRedirectUpdateBody,
@@ -4245,6 +4246,33 @@ changeProposals
         ctx.json,
         (data) => `rejected:\n${changeProposalDetail(data.proposal).join('\n')}`,
       );
+    }),
+  );
+
+const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
+  switch (proposal.status) {
+    case 'applied':
+      return `applied${proposal.appliedResourceId === null ? '' : `: ${proposal.target.kind} ${proposal.appliedResourceId}`}`;
+    case 'stale':
+      return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
+    case 'failed':
+      return `failed: ${proposal.failureCode ?? 'error'}: ${proposal.failureMessage ?? ''}; nothing was applied`;
+    case 'pending':
+    case 'rejected':
+    case 'withdrawn':
+    case 'expired':
+      return proposal.status;
+  }
+};
+
+changeProposals
+  .command('approve <id>')
+  .description('Approve a pending change proposal: apply it only if the live state still gives exactly the effect shown, otherwise mark it stale or failed')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      const result = await ctx.api.approveChangeProposal({ id });
+      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal), ...changeProposalDetail(data.proposal)].join('\n'));
+      if (result.ok && result.value.proposal.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
     }),
   );
 

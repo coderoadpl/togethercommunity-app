@@ -23,12 +23,12 @@ export type DisplayValue =
   | { kind: 'list'; items: DisplayValue[] }
   | { kind: 'record'; entries: DisplayEntry[] };
 
-export interface DisplayEntry {
+interface DisplayEntry {
   field: string;
   value: DisplayValue;
 }
 
-export type PriceInterval = 'day' | 'week' | 'month' | 'year';
+type PriceInterval = 'day' | 'week' | 'month' | 'year';
 
 export type DisplayRow =
   | { kind: 'change'; field: string; before: DisplayValue | null; after: DisplayValue | null }
@@ -220,7 +220,7 @@ export const proposalTarget = (
   return { kind: 'pending', label: itemLabel({ input: proposal.input, targetLabel: null }) };
 };
 
-export const isStockAdjustment = (proposal: Pick<ChangeProposalOwnerView, 'operation'>): boolean =>
+const isStockAdjustment = (proposal: Pick<ChangeProposalOwnerView, 'operation'>): boolean =>
   proposal.operation === 'stock.adjust';
 
 export const stockAdjustmentProductId = (proposal: Pick<ChangeProposalOwnerView, 'operation' | 'input'>): string | null => {

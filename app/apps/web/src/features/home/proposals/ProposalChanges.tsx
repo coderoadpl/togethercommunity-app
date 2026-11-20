@@ -23,7 +23,7 @@ const COLLAPSED_LENGTH = 280;
 const isKnownField = (fields: Translations['fields'], field: string): field is keyof Translations['fields'] =>
   Object.hasOwn(fields, field);
 
-export const fieldLabel = (t: Translations, field: string): string =>
+const fieldLabel = (t: Translations, field: string): string =>
   isKnownField(t.fields, field) ? t.fields[field] : field;
 
 export const referenceText = (t: Translations, reference: GroupItemReference): string => {
@@ -89,7 +89,7 @@ const LongText = ({ text }: { text: string }) => {
   );
 };
 
-export const ProposalValue = ({ value }: { value: DisplayValue }) => {
+const ProposalValue = ({ value }: { value: DisplayValue }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
   switch (value.kind) {

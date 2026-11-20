@@ -288,13 +288,13 @@ export type ChangeProposalEventView = z.output<typeof changeProposalEventViewSch
 
 export const CHANGE_PROPOSAL_SETTINGS_LABEL = 'Shop settings';
 
-export const changeProposalIssuerSchema = z.object({
+const changeProposalIssuerSchema = z.object({
   issuerUserId: z.string(),
   issuerEmail: z.string().nullable(),
   issuerIsVerifiedOwner: z.boolean(),
 }).strict();
 
-export type ChangeProposalIssuer = z.output<typeof changeProposalIssuerSchema>;
+type ChangeProposalIssuer = z.output<typeof changeProposalIssuerSchema>;
 
 export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),

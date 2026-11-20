@@ -3057,7 +3057,7 @@ export interface ChangeProposalTargetLabelRequest {
   id: string;
 }
 
-export interface ChangeProposalTargetLabel extends ChangeProposalTargetLabelRequest {
+interface ChangeProposalTargetLabel extends ChangeProposalTargetLabelRequest {
   label: string;
 }
 

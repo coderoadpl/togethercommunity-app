@@ -17,7 +17,7 @@ interface ProposedChange {
   group: { id: string; title: string } | null;
 }
 
-export const changeProposalNotificationSourceKey = (keyId: string): string => `change-proposal:${keyId}`;
+const changeProposalNotificationSourceKey = (keyId: string): string => `change-proposal:${keyId}`;
 
 const raiseForOwners = async (deps: ChangeProposalNotifyDeps, change: ProposedChange): Promise<void> => {
   const owners = (await deps.tenantAccess.listStaffForTenant(change.tenantId)).filter((staff) => staff.staffRole === 'owner');

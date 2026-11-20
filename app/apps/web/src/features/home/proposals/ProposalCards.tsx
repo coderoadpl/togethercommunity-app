@@ -100,7 +100,7 @@ const ProposerWarnings = ({ keyState, issuerIsVerifiedOwner }: { keyState: Chang
   );
 };
 
-export const ProposalMeta = ({
+const ProposalMeta = ({
   keyName,
   createdAt,
   expiresAt,

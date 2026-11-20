@@ -66,9 +66,6 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{
 
 export const isSameOriginPublicAssetPath = (value: string): boolean => PUBLIC_ASSET_PATH.test(value);
 
-const isRecord = (value: JsonValue | undefined): value is { [key: string]: JsonValue } =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 const stringField = (record: { [key: string]: JsonValue }, field: string): string | null => {
   const value = record[field];
   return typeof value === 'string' && value.length > 0 ? value : null;
@@ -188,8 +185,8 @@ export const proposalRows = (
         });
 };
 
-export const proposalInputText = (proposal: Pick<ChangeProposalOwnerView, 'input'>, field: string): string | null =>
-  stringField(proposal.input, field);
+export const stockAdjustmentReason = (proposal: Pick<ChangeProposalOwnerView, 'input'>): string | null =>
+  stringField(proposal.input, 'reason');
 
 const itemLabel = (item: Pick<ChangeProposalOwnerView, 'input' | 'targetLabel'>): string | null =>
   stringField(item.input, 'title') ?? stringField(item.input, 'heading') ?? item.targetLabel;

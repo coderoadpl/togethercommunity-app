@@ -1,9 +1,3 @@
-import type {
-  ChangeProposalGroupOwnerView,
-  ChangeProposalOwnerDetail,
-  ChangeProposalOwnerView,
-} from '#core/domain/index.js';
-
 const proposer = {
   keyId: 'shop-key-catalogue-agent',
   keyName: 'Catalogue agent',
@@ -31,12 +25,7 @@ const pendingBase = {
 
 export const CHANGE_PROPOSAL_GROUP_ID = 'proposal-group-field-guide';
 
-const groupItem = (
-  position: number,
-  id: string,
-  createdAt: string,
-  fields: Pick<ChangeProposalOwnerView, 'operation' | 'target' | 'targetLabel' | 'input' | 'effect'>,
-): ChangeProposalOwnerView => ({
+const groupItem = <F extends object>(position: number, id: string, createdAt: string, fields: F) => ({
   id,
   groupId: CHANGE_PROPOSAL_GROUP_ID,
   groupTitle: 'Launch the printed field guide',
@@ -49,10 +38,10 @@ const groupItem = (
 
 const productReference = '$proposal:proposal-field-guide-product';
 
-const groupItemViews: ChangeProposalOwnerView[] = [
+const groupItemViews = [
   groupItem(1, 'proposal-field-guide-product', '2026-11-20T09:00:00.000Z', {
     operation: 'product.create',
-    target: { kind: 'product', id: null },
+    target: { kind: 'product' as const, id: null },
     targetLabel: null,
     input: { title: 'Field Guide (print)', slug: 'field-guide-print', type: 'physical', priceCents: 3900, currency: 'PLN' },
     effect: {
@@ -74,7 +63,7 @@ const groupItemViews: ChangeProposalOwnerView[] = [
   }),
   groupItem(2, 'proposal-field-guide-price', '2026-11-20T09:00:05.000Z', {
     operation: 'price.create',
-    target: { kind: 'product', id: productReference },
+    target: { kind: 'product' as const, id: productReference },
     targetLabel: null,
     input: { productId: productReference, kind: 'one_time', amountCents: 3900, currency: 'PLN' },
     effect: {
@@ -83,7 +72,7 @@ const groupItemViews: ChangeProposalOwnerView[] = [
   }),
   groupItem(3, 'proposal-field-guide-stock', '2026-11-20T09:00:10.000Z', {
     operation: 'stock.enable',
-    target: { kind: 'product', id: productReference },
+    target: { kind: 'product' as const, id: productReference },
     targetLabel: null,
     input: { productId: productReference, onHand: 40, lowStockThreshold: 5 },
     effect: {
@@ -94,14 +83,14 @@ const groupItemViews: ChangeProposalOwnerView[] = [
   }),
   groupItem(4, 'proposal-field-guide-publish', '2026-11-20T09:00:15.000Z', {
     operation: 'product.publish',
-    target: { kind: 'product', id: productReference },
+    target: { kind: 'product' as const, id: productReference },
     targetLabel: null,
     input: { id: productReference },
     effect: { published: { before: false, after: true } },
   }),
   groupItem(5, 'proposal-field-guide-link', '2026-11-20T09:00:20.000Z', {
     operation: 'sales-link.create',
-    target: { kind: 'sales-link', id: null },
+    target: { kind: 'sales-link' as const, id: null },
     targetLabel: null,
     input: { slug: 'field-guide-offer', title: 'Field guide offer', heading: 'The printed field guide', productIds: [productReference] },
     effect: {
@@ -116,15 +105,15 @@ const groupItemViews: ChangeProposalOwnerView[] = [
   }),
 ];
 
-export const changeProposalGroupItems: ChangeProposalOwnerDetail[] = groupItemViews.map((item) => ({
+export const changeProposalGroupItems = groupItemViews.map((item) => ({
   ...item,
-  events: [{ sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: proposer.keyId, note: null, at: item.createdAt }],
+  events: [{ sequence: 1, kind: 'proposed' as const, actorUserId: null, apiKeyId: proposer.keyId, note: null, at: item.createdAt }],
 }));
 
-export const changeProposalGroup: ChangeProposalGroupOwnerView = {
+export const changeProposalGroup = {
   id: CHANGE_PROPOSAL_GROUP_ID,
   title: 'Launch the printed field guide',
-  status: 'open',
+  status: 'open' as const,
   proposedBy: proposer,
   createdAt: '2026-11-20T08:59:00.000Z',
   expiresAt: '2026-12-20T09:00:00.000Z',
@@ -133,13 +122,13 @@ export const changeProposalGroup: ChangeProposalGroupOwnerView = {
 
 export const STOCK_PRODUCT_ID = 'product-studio-workbook-print';
 
-export const stockAdjustmentProposal: ChangeProposalOwnerView = {
+export const stockAdjustmentProposal = {
   id: 'proposal-workbook-restock',
   groupId: null,
   groupTitle: null,
   groupPosition: null,
   operation: 'stock.adjust',
-  target: { kind: 'product', id: STOCK_PRODUCT_ID },
+  target: { kind: 'product' as const, id: STOCK_PRODUCT_ID },
   targetLabel: 'Creator Workbook (print)',
   input: { productId: STOCK_PRODUCT_ID, delta: 50, reason: 'New delivery from the printer' },
   effect: { onHand: { delta: 50 } },
@@ -148,13 +137,13 @@ export const stockAdjustmentProposal: ChangeProposalOwnerView = {
   expiresAt: '2026-12-19T15:30:00.000Z',
 };
 
-export const settingsProposal: ChangeProposalOwnerView = {
+export const settingsProposal = {
   id: 'proposal-support-settings',
   groupId: null,
   groupTitle: null,
   groupPosition: null,
   operation: 'settings.update',
-  target: { kind: 'settings', id: null },
+  target: { kind: 'settings' as const, id: null },
   targetLabel: 'Shop settings',
   input: { supportEmail: 'help@studio.example.org', autoIssueInvoices: true },
   effect: {
@@ -162,12 +151,12 @@ export const settingsProposal: ChangeProposalOwnerView = {
     autoIssueInvoices: { before: false, after: true },
   },
   ...pendingBase,
-  proposedBy: { ...proposer, keyName: 'Settings assistant', keyId: 'shop-key-settings-assistant', keyState: 'expired' },
+  proposedBy: { ...proposer, keyName: 'Settings assistant', keyId: 'shop-key-settings-assistant', keyState: 'expired' as const },
   createdAt: '2026-11-20T10:15:00.000Z',
   expiresAt: '2026-12-20T10:15:00.000Z',
 };
 
-export const pendingChangeProposals: ChangeProposalOwnerView[] = [
+export const pendingChangeProposals = [
   settingsProposal,
   ...groupItemViews.toReversed(),
   stockAdjustmentProposal,
@@ -182,18 +171,18 @@ const decided = {
   decisionNote: null,
 } as const;
 
-export const historyChangeProposals: ChangeProposalOwnerView[] = [
+export const historyChangeProposals = [
   {
     id: 'proposal-workshop-title',
     groupId: null,
     groupTitle: null,
     groupPosition: null,
     operation: 'product.update',
-    target: { kind: 'product', id: 'product-studio-workshop' },
+    target: { kind: 'product' as const, id: 'product-studio-workshop' },
     targetLabel: 'Scenario Workshop',
     input: { id: 'product-studio-workshop', title: 'Scenario Workshop', priceCents: 52900 },
     effect: { title: { before: 'Scenario workshop', after: 'Scenario Workshop' }, priceCents: { before: 49900, after: 52900 } },
-    status: 'applied',
+    status: 'applied' as const,
     proposedBy: proposer,
     createdAt: '2026-11-18T08:00:00.000Z',
     expiresAt: '2026-12-18T08:00:00.000Z',
@@ -207,7 +196,7 @@ export const historyChangeProposals: ChangeProposalOwnerView[] = [
     groupTitle: null,
     groupPosition: null,
     operation: 'price.create',
-    target: { kind: 'product', id: 'product-club' },
+    target: { kind: 'product' as const, id: 'product-club' },
     targetLabel: 'Studio Club - subscription',
     input: { productId: 'product-club', kind: 'recurring', interval: 'year', amountCents: 49000, currency: 'PLN' },
     effect: {
@@ -219,7 +208,7 @@ export const historyChangeProposals: ChangeProposalOwnerView[] = [
         ],
       },
     },
-    status: 'rejected',
+    status: 'rejected' as const,
     proposedBy: proposer,
     createdAt: '2026-11-17T12:00:00.000Z',
     expiresAt: '2026-12-17T12:00:00.000Z',
@@ -233,11 +222,11 @@ export const historyChangeProposals: ChangeProposalOwnerView[] = [
     groupTitle: null,
     groupPosition: null,
     operation: 'stock.adjust',
-    target: { kind: 'product', id: STOCK_PRODUCT_ID },
+    target: { kind: 'product' as const, id: STOCK_PRODUCT_ID },
     targetLabel: 'Creator Workbook (print)',
     input: { productId: STOCK_PRODUCT_ID, delta: -3, reason: 'Damaged copies' },
     effect: { onHand: { delta: -3 } },
-    status: 'failed',
+    status: 'failed' as const,
     proposedBy: proposer,
     createdAt: '2026-11-16T10:00:00.000Z',
     expiresAt: '2026-12-16T10:00:00.000Z',
@@ -252,12 +241,12 @@ export const historyChangeProposals: ChangeProposalOwnerView[] = [
     groupTitle: null,
     groupPosition: null,
     operation: 'product.unpublish',
-    target: { kind: 'product', id: 'product-free-preview' },
+    target: { kind: 'product' as const, id: 'product-free-preview' },
     targetLabel: 'Free preview',
     input: { id: 'product-free-preview' },
     effect: { published: { before: true, after: false } },
-    status: 'stale',
-    proposedBy: { ...proposer, keyState: 'revoked' },
+    status: 'stale' as const,
+    proposedBy: { ...proposer, keyState: 'revoked' as const },
     createdAt: '2026-11-15T10:00:00.000Z',
     expiresAt: '2026-12-15T10:00:00.000Z',
     ...decided,
@@ -265,10 +254,19 @@ export const historyChangeProposals: ChangeProposalOwnerView[] = [
   },
 ];
 
-export const historyDetail = (proposal: ChangeProposalOwnerView): ChangeProposalOwnerDetail => ({
+interface DecidedProposal {
+  status: string;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
+  decisionNote: string | null;
+  proposedBy: { keyId: string };
+}
+
+export const historyDetail = <P extends DecidedProposal>(proposal: P) => ({
   ...proposal,
   events: [
-    { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: proposal.proposedBy.keyId, note: null, at: proposal.createdAt },
+    { sequence: 1, kind: 'proposed' as const, actorUserId: null, apiKeyId: proposal.proposedBy.keyId, note: null, at: proposal.createdAt },
     ...(proposal.decidedAt === null ? [] : [{
       sequence: 2,
       kind: proposal.status === 'failed' ? 'apply_failed' as const : proposal.status === 'applied' ? 'applied' as const : proposal.status === 'rejected' ? 'rejected' as const : 'stale' as const,

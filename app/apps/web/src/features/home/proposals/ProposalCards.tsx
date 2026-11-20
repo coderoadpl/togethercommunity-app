@@ -372,6 +372,9 @@ export const SingleProposalCard = ({
   );
 };
 
+const groupStatusLabel = (t: Translations, status: ChangeProposalGroupOwnerView['status']): string =>
+  status === 'open' ? t.status.pending : t.status[status];
+
 const orderedItems = (group: ChangeProposalGroupOwnerView) =>
   group.items.toSorted((left, right) => (left.groupPosition ?? 0) - (right.groupPosition ?? 0));
 
@@ -478,7 +481,7 @@ export const GroupProposalCard = ({
           {changed ? <CardNotice testId="proposal-group-changed">{t.changeProposals.groupChanged}</CardNotice> : null}
           {busy ? <CardNotice testId="proposal-busy">{t.changeProposals.busy}</CardNotice> : null}
           {open ? <Typography variant="body2">{t.changeProposals.groupAllOrNothing}</Typography> : (
-            <Typography variant="body2">{t.changeProposals.status[group.data.group.status === 'open' ? 'pending' : group.data.group.status]}</Typography>
+            <Typography variant="body2">{groupStatusLabel(t.changeProposals, group.data.group.status)}</Typography>
           )}
           <Stack component="ol" useFlexGap spacing="1.25rem" sx={{ m: 0, p: 0 }}>
             {items.map((item, index) => (

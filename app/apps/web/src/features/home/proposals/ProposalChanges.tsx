@@ -8,9 +8,9 @@ import { formatDateTime, formatFileSize, formatPrice } from '../../../lib/format
 import { FinePrint, PreLineText } from '../../../theme.js';
 import { FieldDiffEmpty, FieldDiffImage, FieldDiffList, FieldDiffRow, FieldDiffText } from '../FieldDiff.js';
 import {
-  proposalInputText,
   proposalRemovesRecord,
   proposalRows,
+  stockAdjustmentReason,
   type DisplayValue,
   type GroupItemReference,
   type GroupReferences,
@@ -112,7 +112,13 @@ const ProposalValue = ({ value }: { value: DisplayValue }) => {
           }))}
         />
       );
-    default:
+    case 'boolean':
+    case 'number':
+    case 'money':
+    case 'price':
+    case 'date':
+    case 'reference':
+    case 'file':
       return <FieldDiffText breakAnywhere>{valueText(value, t, language)}</FieldDiffText>;
   }
 };
@@ -138,7 +144,7 @@ export const ProposalFieldRows = ({
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
       {rows.map((row) => {
         if (row.kind === 'delta') {
-          const reason = proposalInputText(proposal, 'reason');
+          const reason = stockAdjustmentReason(proposal);
           return (
             <FieldDiffRow
               key={row.field}

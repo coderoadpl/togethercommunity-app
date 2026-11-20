@@ -8,9 +8,7 @@ const changeProposalTargetKindSchema = z.enum(['product', 'price', 'sales-link',
 
 export type ChangeProposalTargetKind = z.output<typeof changeProposalTargetKindSchema>;
 
-const changeProposalFamilySchema = z.enum(['catalog', 'settings']);
-
-export type ChangeProposalFamily = z.output<typeof changeProposalFamilySchema>;
+export type ChangeProposalFamily = 'catalog' | 'settings';
 
 interface ChangeProposalOperationDefinition {
   operation: string;
@@ -117,9 +115,7 @@ export const CHANGE_PROPOSAL_WITHDRAWAL_NOTES = {
   keyPurged: 'key_purged',
 } as const;
 
-const changeProposalCapSchema = z.enum(['key_pending', 'workspace_pending', 'key_daily', 'effect_size']);
-
-export type ChangeProposalCap = z.output<typeof changeProposalCapSchema>;
+export type ChangeProposalCap = 'key_pending' | 'workspace_pending' | 'key_daily' | 'effect_size';
 
 const capMessages: Record<ChangeProposalCap, string> = {
   key_pending: `This key already has ${String(CHANGE_PROPOSAL_LIMITS.pendingPerKey)} pending proposals`,

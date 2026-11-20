@@ -15,7 +15,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(529);
+    expect(inventory.routes).toHaveLength(535);
     expect(inventory.useCases).toHaveLength(400);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
@@ -25,13 +25,13 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(47);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(50);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(47);
+    expect(shopRoutes).toHaveLength(50);
     for (const row of shopRoutes) {
       const principals = row.subject.includes(' /api/m2m/shop/proposals')
         ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
@@ -270,7 +270,10 @@ describe('permission inventory', () => {
 
   it('gives the key-side proposal routes only to the propose-mode key and the session proposal routes only to the owner', () => {
     const inventory = collectPermissionInventory();
-    for (const subject of ['GET /api/m2m/shop/proposals', 'GET /api/m2m/shop/proposals/:id', 'POST /api/m2m/shop/proposals/:id/withdraw']) {
+    for (const subject of [
+      'GET /api/m2m/shop/proposals', 'GET /api/m2m/shop/proposals/:id', 'POST /api/m2m/shop/proposals/:id/withdraw',
+      'POST /api/m2m/shop/proposals/groups', 'GET /api/m2m/shop/proposals/groups/:id', 'POST /api/m2m/shop/proposals/groups/:id/withdraw',
+    ]) {
       expect(inventory.routes.find((row) => row.subject === subject), subject).toMatchObject({
         capability: 'proposal:own:manage', before: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL],
       });
@@ -280,6 +283,9 @@ describe('permission inventory', () => {
       ['GET /api/change-proposals/:id', 'proposal:read'],
       ['POST /api/change-proposals/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/:id/approve', 'proposal:decide'],
+      ['GET /api/change-proposals/groups/:id', 'proposal:read'],
+      ['POST /api/change-proposals/groups/:id/reject', 'proposal:decide'],
+      ['POST /api/change-proposals/groups/:id/approve', 'proposal:decide'],
     ] as const) {
       expect(inventory.routes.find((row) => row.subject === subject), subject).toMatchObject({ capability, before: ['owner'], after: ['owner'] });
     }

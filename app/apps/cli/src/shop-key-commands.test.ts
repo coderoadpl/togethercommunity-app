@@ -810,4 +810,120 @@ describe('shop key CLI with a propose-mode key', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(calls).toEqual([]);
   });
+
+  it('prints the proposal group column and filters the list by group', async () => {
+    h.fetchImpl = async (input, init) => {
+      await proposalFetch(input, init);
+      return Response.json({ ok: true, data: { proposals: [{ ...receipt, groupId: 'group-1' }], nextCursor: null } });
+    };
+    process.argv = ['node', 'together', 'shop', 'proposals', 'list', '--group', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual(['GET /api/m2m/shop/proposals?groupId=group-1']);
+    expect(logSpy).toHaveBeenCalledWith('2026-11-15T10:00:00.000Z\tpending\tstock.adjust\tproduct:product-1\tgroup:group-1\t(proposal-1)');
+  });
+});
+
+const groupReceipt = (items: unknown[]) => ({
+  id: 'group-1', title: 'Spring launch', status: 'open', createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', items,
+});
+
+const groupFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const method = init?.method ?? 'GET';
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+  if (url.pathname.startsWith('/api/m2m/shop/proposals/groups')) {
+    const items = url.pathname === '/api/m2m/shop/proposals/groups' ? [] : [receipt];
+    return Response.json({ ok: true, data: { group: { ...groupReceipt(items), status: url.pathname.endsWith('/withdraw') ? 'withdrawn' : 'open' } } }, { status: method === 'POST' && items.length === 0 ? 201 : 200 });
+  }
+  const proposal = { ...receipt, groupId: 'group-1' };
+  return Response.json({ ok: true, data: { outcome: 'proposed', proposal, group: groupReceipt([proposal]) } }, { status: 202 });
+};
+
+describe('shop key CLI with a proposal group', () => {
+  beforeEach(() => { h.fetchImpl = groupFetch; });
+
+  it('creates, shows and withdraws a group of the key', async () => {
+    await run('shop', 'proposals', 'group', 'create', '--title', 'Spring launch');
+    await run('shop', 'proposals', 'group', 'show', 'group-1');
+    await run('shop', 'proposals', 'group', 'withdraw', 'group-1');
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'POST /api/m2m/shop/proposals/groups',
+      'GET /api/m2m/shop/proposals/groups/group-1',
+      'POST /api/m2m/shop/proposals/groups/group-1/withdraw',
+    ]);
+    expect(calls[0]?.body).toEqual({ title: 'Spring launch' });
+    for (const call of calls) expect(call.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    expect(JSON.parse(String(logSpy.mock.calls[2]?.[0]))).toMatchObject({ ok: true, data: { group: { status: 'withdrawn' } } });
+  });
+
+  it('refuses an empty group title before any request', async () => {
+    await run('shop', 'proposals', 'group', 'create', '--title', '   ');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    [['shop', 'products', 'create', '--title', 'Printed handbook', '--price', '49']],
+    [['shop', 'products', 'update', 'product-1', '--title', 'Renamed']],
+    [['shop', 'products', 'publish', 'product-1']],
+    [['shop', 'products', 'unpublish', 'product-1']],
+    [['shop', 'products', 'delete', 'product-1', '--confirm']],
+    [['shop', 'prices', 'add', '--product', 'product-1', '--kind', 'one_time', '--price-cents', '4900']],
+    [['shop', 'prices', 'deactivate', 'price-1']],
+    [['shop', 'stock', 'enable', 'product-1', '--on-hand', '3']],
+    [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
+    [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
+    [['shop', 'sales-links', 'delete', 'link-1']],
+  ])('sends the group header once for %j with --group', async (args) => {
+    await run(...args, '--group', 'group-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { groupId: 'group-1' }, group: { id: 'group-1' } } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.headers.get('x-proposal-group')).toBe('group-1');
+  });
+
+  it.each([
+    ['settings', ['shop', 'settings', 'set'], { name: 'Proposed shop' }],
+    ['sales-link create', ['shop', 'sales-links', 'create'], { ...salesLinkFields, productIds: ['$proposal:proposal-1'] }],
+    ['sales-link update', ['shop', 'sales-links', 'update', 'link-1'], { ...salesLinkFields, expectedRevision: 1 }],
+  ])('sends the group header for the %s write with --group', async (_label, args, fields) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-group-cli-'));
+    try {
+      const file = join(directory, 'input.json');
+      await writeFile(file, JSON.stringify(fields));
+      await run(...args, '--json-file', file, '--group', 'group-1');
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.headers.get('x-proposal-group')).toBe('group-1');
+      expect(calls[0]?.body).toMatchObject(fields);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('passes a proposal reference in an id argument through unchanged', async () => {
+    await run('shop', 'prices', 'add', '--product', '$proposal:proposal-1', '--kind', 'one_time', '--price-cents', '4900', '--group', 'group-1');
+    expect(calls[0]?.body).toMatchObject({ productId: '$proposal:proposal-1' });
+    await run('shop', 'products', 'publish', '$proposal:proposal-1', '--group', 'group-1');
+    expect(calls[1]?.body).toEqual({ id: '$proposal:proposal-1' });
+  });
+
+  it('sends no group header without --group', async () => {
+    await run('shop', 'products', 'publish', 'product-1');
+    expect(calls[0]?.headers.has('x-proposal-group')).toBe(false);
+  });
+
+  it('refuses a malformed group id before any request', async () => {
+    await run('shop', 'products', 'publish', 'product-1', '--group', 'not a group');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('prints the group and the reference of a grouped proposal without --json', async () => {
+    process.argv = ['node', 'together', 'shop', 'products', 'publish', 'product-1', '--group', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('group: Spring launch (group-1), item 1');
+    expect(printed).toContain('refer to what this item creates as $proposal:proposal-1');
+  });
 });

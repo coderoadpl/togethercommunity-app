@@ -6,14 +6,17 @@ import { shopSettingsSchema } from '#core/domain/index.js';
 
 import { createApiClient, createShopManagementClient, isProposedChange } from './http.js';
 import {
+  approveChangeProposalGroupMutation,
   approveChangeProposalInvalidates,
   approveChangeProposalMutation,
+  changeProposalGroupQuery,
   changeProposalQuery,
   changeProposalsInvalidates,
   changeProposalsQuery,
   productPricesQuery,
   productsQuery,
   productStockQuery,
+  rejectChangeProposalGroupMutation,
   rejectChangeProposalMutation,
   tenantSettingsQuery,
 } from './queries.js';
@@ -138,6 +141,109 @@ describe('shop management client with a propose-mode key', () => {
       expect(call.headers.has('authorization')).toBe(false);
       expect(call.headers.has('cookie')).toBe(false);
     }
+  });
+});
+
+const groupReceipt = {
+  id: 'group-1', title: 'Spring launch', status: 'open', createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z',
+  items: [{ ...receipt, groupId: 'group-1' }],
+};
+
+describe('shop management client with a proposal group', () => {
+  it('sends the group header on every proposable mutation given a group id, and returns the group with the receipt', async () => {
+    const seen: Headers[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      seen.push(new Headers(init?.headers));
+      return Response.json({ ok: true, data: { outcome: 'proposed', proposal: groupReceipt.items[0], group: groupReceipt } }, { status: 202 });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    const group = { groupId: 'group-1' };
+    const link = { slug: 'spring', title: 'Spring', heading: 'Spring sale', productIds: ['$proposal:proposal-0'] };
+    const results = [
+      await client.createProduct({ title: 'Handbook', type: 'physical', priceCents: 4900 }, undefined, group),
+      await client.updateProduct({ id: 'product-1', title: 'Renamed' }, undefined, group),
+      await client.publishProduct({ id: '$proposal:proposal-0' }, undefined, group),
+      await client.unpublishProduct({ id: 'product-1' }, undefined, group),
+      await client.deleteProductDraft({ productId: 'product-1' }, undefined, group),
+      await client.createProductPrice({ productId: '$proposal:proposal-0', kind: 'one_time', amountCents: 4900 }, undefined, group),
+      await client.deactivateProductPrice({ id: 'price-1' }, undefined, group),
+      await client.enableProductStock({ productId: 'product-1', onHand: 3, lowStockThreshold: null }, undefined, group),
+      await client.adjustProductStock({ productId: 'product-1', delta: 1, reason: 'delivery' }, undefined, group),
+      await client.setProductStockThreshold({ productId: 'product-1', lowStockThreshold: 1 }, undefined, group),
+      await client.createSalesLink(link, undefined, group),
+      await client.updateSalesLink({ ...link, id: 'link-1', expectedRevision: 1 }, undefined, group),
+      await client.deleteSalesLink({ id: 'link-1' }, undefined, group),
+      await client.updateSettings({ name: 'Acme shop' }, undefined, group),
+    ];
+    expect(results).toHaveLength(14);
+    for (const result of results) expect(result).toMatchObject({ ok: true, value: { outcome: 'proposed', group: { id: 'group-1' } } });
+    for (const headers of seen) expect(headers.get('x-proposal-group')).toBe('group-1');
+    await client.publishProduct({ id: 'product-1' });
+    expect(seen.at(-1)?.has('x-proposal-group')).toBe(false);
+  });
+
+  it('creates, shows and withdraws a group of the key', async () => {
+    const seen: string[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      seen.push(`${init?.method ?? 'GET'} ${urlOf(input).pathname} ${typeof init?.body === 'string' ? init.body : ''}`);
+      return Response.json({ ok: true, data: { group: groupReceipt } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect(await client.createProposalGroup({ title: 'Spring launch' })).toMatchObject({ ok: true, value: { group: { id: 'group-1' } } });
+    expect(await client.getProposalGroup('group/1')).toMatchObject({ ok: true });
+    expect(await client.withdrawProposalGroup('group-1')).toMatchObject({ ok: true });
+    expect(seen).toEqual([
+      'POST /api/m2m/shop/proposals/groups {"title":"Spring launch"}',
+      'GET /api/m2m/shop/proposals/groups/group%2F1 ',
+      'POST /api/m2m/shop/proposals/groups/group-1/withdraw {}',
+    ]);
+  });
+
+  it('refuses a group receipt that carries an effect', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ok: true, data: { group: { ...groupReceipt, items: [{ ...receipt, effect: {} }] } } }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect(await client.getProposalGroup('group-1')).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+});
+
+const ownerGroup = {
+  id: 'group-1', title: 'Spring launch', status: 'open',
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z',
+  items: [{ ...ownerView, groupId: 'group-1', groupTitle: 'Spring launch', groupPosition: 1, events: [] }],
+};
+
+describe('owner change proposal group client', () => {
+  it('reads, approves with the shown item ids and rejects a group through the session routes', async () => {
+    const requests: string[] = [];
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url, init) => {
+      requests.push(`${init?.method ?? 'GET'} ${new URL(String(url)).pathname} ${typeof init?.body === 'string' ? init.body : ''}`);
+      return Response.json({ ok: true, data: { group: ownerGroup } });
+    } });
+    expect(await api.getChangeProposalGroup({ id: 'group-1' })).toMatchObject({ ok: true, value: { group: { items: [{ effect: ownerView.effect }] } } });
+    expect(await api.approveChangeProposalGroup({ id: 'group-1', itemIds: ['proposal-1'] })).toMatchObject({ ok: true });
+    expect(await api.rejectChangeProposalGroup({ id: 'group-1', note: 'Not now' })).toMatchObject({ ok: true });
+    expect(await api.rejectChangeProposalGroup({ id: 'group/1' })).toMatchObject({ ok: true });
+    expect(requests).toEqual([
+      'GET /api/change-proposals/groups/group-1 ',
+      'POST /api/change-proposals/groups/group-1/approve {"itemIds":["proposal-1"]}',
+      'POST /api/change-proposals/groups/group-1/reject {"note":"Not now"}',
+      'POST /api/change-proposals/groups/group%2F1/reject {}',
+    ]);
+  });
+
+  it('describes the group query and the group decisions under the proposal prefix', async () => {
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { group: { ...ownerGroup, status: 'applied' } } }) });
+    const prefix = changeProposalsInvalidates().queryKey;
+    const detail = changeProposalGroupQuery(api, 'group-1');
+    const approve = approveChangeProposalGroupMutation(api);
+    const reject = rejectChangeProposalGroupMutation(api);
+    for (const key of [detail.queryKey, approve.mutationKey, reject.mutationKey]) expect(key.slice(0, prefix.length)).toEqual([...prefix]);
+    expect(approve.mutationKey).not.toEqual(approveChangeProposalMutation(api).mutationKey);
+    await expect(approve.mutationFn({ id: 'group-1', itemIds: ['proposal-1'] }, { client: new QueryClient(), meta: undefined, mutationKey: approve.mutationKey }))
+      .resolves.toMatchObject({ group: { status: 'applied' } });
+    const filters = approveChangeProposalInvalidates().map((filter) => filter.queryKey);
+    expect(filters.some((filter) => filter.every((part, index) => detail.queryKey[index] === part))).toBe(true);
   });
 });
 

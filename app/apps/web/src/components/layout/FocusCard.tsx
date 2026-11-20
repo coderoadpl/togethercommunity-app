@@ -28,7 +28,7 @@ const GUTTERS = {
     page: { px: '1.5rem', pt: { xs: '4rem', sm: '1.5rem' } },
     cardInline: '1.8rem',
   },
-  // Only for pages that suppress the floating switchers and host them in headerAction.
+  // The floating switchers would overlap this smaller top inset, so a page using it must host them in headerAction.
   tight: {
     page: { px: { xs: '0.75rem', sm: '1.5rem' }, pt: { xs: '0.75rem', sm: '2.5rem' } },
     cardInline: { xs: '1.25rem', sm: '1.8rem' },

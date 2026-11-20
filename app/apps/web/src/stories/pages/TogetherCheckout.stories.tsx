@@ -198,7 +198,7 @@ const chooseLockerOnMap = async (canvasElement: HTMLElement, pick: boolean) => {
 };
 const settled = async () => {
   const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
-  await Promise.all(finite.map((animation) => animation.finished));
+  await Promise.all(finite.map((animation) => animation.finished.catch(() => undefined)));
 };
 const openSummaryDetails = async (canvasElement: HTMLElement) => {
   await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));

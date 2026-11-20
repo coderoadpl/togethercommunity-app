@@ -70,6 +70,7 @@ const importContentApiKey = ['import-content-api-key'] as const;
 const importUsersApiKey = ['import-users-api-key'] as const;
 const importApiKeys = ['import-content-api-key', 'import-users-api-key'] as const;
 const operatorSecret = ['operator-secret'] as const;
+const secretFingerprintReader = ['secret-fingerprint-reader'] as const;
 const webhook = ['webhook'] as const;
 const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
@@ -363,6 +364,7 @@ const beforeForRoute = (
       if (path === '/api/m2m/shop/proposals' || path.startsWith('/api/m2m/shop/proposals/')) return proposeShopManagementKey;
       return method === 'GET' ? shopManagementKey : directShopManagementKey;
     }
+    if (selfAuthenticatingEntry.mechanism === 'Secret fingerprint read secret') return secretFingerprintReader;
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;

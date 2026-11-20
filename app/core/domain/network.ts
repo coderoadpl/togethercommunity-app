@@ -65,3 +65,17 @@ export const privateNetworkAddress = (address: string): boolean => {
 
 export const privateNetworkHostname = (hostname: string): boolean =>
   hostname === 'localhost' || hostname.endsWith('.localhost') || privateNetworkAddress(hostname);
+
+export const isLocalHostname = (hostname: string): boolean =>
+  hostname === 'localhost'
+  || hostname.endsWith('.localhost')
+  || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+  || hostname === '[::1]';
+
+export const secureApiBaseUrl = (raw: string): string | null => {
+  if (!URL.canParse(raw)) return null;
+  const url = new URL(raw);
+  const secure = url.protocol === 'https:' || (url.protocol === 'http:' && isLocalHostname(url.hostname));
+  const plain = url.username === '' && url.password === '' && url.search === '' && url.hash === '';
+  return secure && plain ? `${url.origin}${url.pathname.replace(/\/+$/, '')}` : null;
+};

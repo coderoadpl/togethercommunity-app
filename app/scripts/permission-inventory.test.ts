@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { PRINCIPALS, ROLE_CAPABILITIES } from '#core/contract/index.js';
+
 import {
   collectPermissionInventory,
   collectUseCasesInSource,
@@ -15,7 +17,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(535);
+    expect(inventory.routes).toHaveLength(536);
     expect(inventory.useCases).toHaveLength(400);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
@@ -346,6 +348,17 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'community:moderate', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
+  });
+
+  it('classifies the secret fingerprint route under its own read credential, which no other principal holds', () => {
+    expect(collectPermissionInventory().routes.find((row) => row.subject === 'GET /api/internal/secret-fingerprints')).toMatchObject({
+      capability: 'secret:fingerprint:read',
+      before: ['secret-fingerprint-reader'],
+      after: ['secret-fingerprint-reader'],
+    });
+    expect(PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes('secret:fingerprint:read')))
+      .toEqual(['secret-fingerprint-reader']);
+    expect(ROLE_CAPABILITIES['secret-fingerprint-reader']).toEqual(['secret:fingerprint:read']);
   });
 
   it('classifies subscription routes and use-cases with dedicated capabilities', () => {

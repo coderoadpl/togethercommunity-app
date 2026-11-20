@@ -6,7 +6,7 @@ import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import { consumerSalesSummarySchema } from '#core/contract/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
-import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
+import { operatorTenantReadinessSchema, provisionTenantOutputSchema, secretFingerprintsOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import {
   operatorCreateOrganizationOutputSchema,
   operatorOrganizationLimitsOutputSchema,
@@ -167,6 +167,7 @@ import {
   globalSchedulerRunOutputSchema,
   globalSchedulerRunsOutputSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
+  SECRET_FINGERPRINT_READ_SECRET_HEADER,
   tenantSchedulerRunOutputSchema,
   tenantSchedulerRunsOutputSchema,
   eventDeleteOutputSchema,
@@ -408,6 +409,7 @@ import {
   type WriteMethod,
 } from '#core/contract/index.js';
 import {
+  appError,
   err,
   internal,
   ok,
@@ -492,6 +494,60 @@ const failedAt = (source: Exclude<ApiFailureSource, 'client'>, error: AppError):
 // A failure the client makes up while reading an answer shares the `internal` code with the server's own internal error; only the source tells them apart.
 export const apiFailureSource = (error: AppError): ApiFailureSource => failureSources.get(error) ?? 'client';
 
+export const REDACTED_OPERATOR_SECRET = '[redacted operator secret]';
+export const REDACTED_SECRET_FINGERPRINT_READ_SECRET = '[redacted secret fingerprint read secret]';
+
+const CREDENTIAL_HEADER_REDACTIONS: ReadonlyArray<readonly [header: string, redaction: string]> = [
+  [SCHEDULER_OPERATOR_SECRET_HEADER, REDACTED_OPERATOR_SECRET],
+  [SECRET_FINGERPRINT_READ_SECRET_HEADER, REDACTED_SECRET_FINGERPRINT_READ_SECRET],
+];
+
+type CredentialRedaction = { value: string; redaction: string };
+
+const HTTP_WHITESPACE = new Set(['\t', '\n', '\r', ' ']);
+
+const withoutHttpWhitespaceEdges = (value: string): string => {
+  let start = 0;
+  let end = value.length;
+  while (start < end && HTTP_WHITESPACE.has(value.charAt(start))) start += 1;
+  while (end > start && HTTP_WHITESPACE.has(value.charAt(end - 1))) end -= 1;
+  return value.slice(start, end);
+};
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A credential reaches the server header-normalized and may come back that way, so its edge-trimmed forms are secret too; one pass keeps a marker from being rewritten by a shorter form.
+export const redactCredentials = (text: string, credentials: readonly CredentialRedaction[]): string => {
+  const redactions = new Map<string, string>();
+  for (const { value, redaction } of credentials) {
+    for (const form of [value, withoutHttpWhitespaceEdges(value), value.trim()]) {
+      if (form !== '' && !redactions.has(form)) redactions.set(form, redaction);
+    }
+  }
+  if (redactions.size === 0) return text;
+  const pattern = new RegExp([...redactions.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|'), 'g');
+  return text.replace(pattern, (form) => redactions.get(form) ?? form);
+};
+
+const sentCredentialOf = (headers: Readonly<Record<string, string>>): CredentialRedaction | undefined => {
+  for (const [header, redaction] of CREDENTIAL_HEADER_REDACTIONS) {
+    const value = headers[header];
+    if (value !== undefined) return { value, redaction };
+  }
+  return undefined;
+};
+
+const withoutSecret = (value: unknown, secret: CredentialRedaction): unknown => {
+  if (typeof value === 'string') return redactCredentials(value, [secret]);
+  if (Array.isArray(value)) return value.map((item) => withoutSecret(item, secret));
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [withoutSecret(key, secret), withoutSecret(item, secret)]));
+};
+
+const serverErrorWithout = (error: AppError, secret: CredentialRedaction | undefined): AppError =>
+  secret === undefined
+    ? error
+    : appError(error.code, redactCredentials(error.message, [secret]), withoutSecret(error.details, secret));
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -520,7 +576,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
       headers,
       body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
-      ...(!refuseRedirects && headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined
+      ...(!refuseRedirects && sentCredentialOf(headers) === undefined
         ? {}
         : { redirect: 'error' as const }),
       signal: signal ?? null,
@@ -561,7 +617,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   if (!envelope.success) {
     return err(internal(`Response from ${path} does not match the contract envelope`));
   }
-  if (!envelope.data.ok) return err(failedAt('server', envelope.data.error));
+  if (!envelope.data.ok) {
+    const sentCredential = raw?.redactErrors === true ? sentCredentialOf(raw.headers) : undefined;
+    return err(failedAt('server', serverErrorWithout(envelope.data.error, sentCredential)));
+  }
 
   const data = outputSchema.safeParse(envelope.data.data);
   if (!data.success) {
@@ -642,6 +701,9 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.operatorTenantReadiness.method,
       API_ROUTES.operatorTenantReadiness.path.replace(':slug', encodeURIComponent(slug)),
       operatorTenantReadinessSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  getSecretFingerprints: (secret: string) =>
+    request(options, API_ROUTES.secretFingerprints.method, API_ROUTES.secretFingerprints.path,
+      secretFingerprintsOutputSchema, undefined, undefined, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: secret }, redactErrors: true }),
   operatorCreateOrganization: (input: CreateOrganizationInput, secret: string) =>
     request(options, API_ROUTES.operatorOrganizationCreate.method, API_ROUTES.operatorOrganizationCreate.path,
       operatorCreateOrganizationOutputSchema, input, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),

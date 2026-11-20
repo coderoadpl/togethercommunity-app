@@ -15,6 +15,7 @@ import { isMarketingSignupSubmissionPath, requestBodyLimit } from './body-limits
 import { trustedAuthRequest } from './auth-network.js';
 import { impersonationGuard } from './impersonation-guard.js';
 import { registerInternalRoutes } from './internal-app.js';
+import { secretFingerprintsGuard } from './secret-fingerprints.js';
 import {
   assertPublicRouteManifest,
   PUBLIC_ROUTE_MANIFEST,
@@ -144,6 +145,7 @@ export const buildApp = (deps: AppDeps) => {
   app.use('/api/*', requestOriginGuard(deps));
   app.use(API_PATHS.operatorTenantProvision, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.operatorTenantReadiness, operatorTenantSecretGuard(deps.operatorSecret));
+  app.use(API_PATHS.secretFingerprints, secretFingerprintsGuard(deps));
   app.use(API_PATHS.operatorOrganizationCreate, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.operatorOrganizationLimits, operatorTenantSecretGuard(deps.operatorSecret));
   app.use('*', impersonationGuard(deps));

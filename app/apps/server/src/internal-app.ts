@@ -14,6 +14,7 @@ import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
 import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
+import { registerSecretFingerprintsRoute } from './secret-fingerprints.js';
 import { registerOperatorOrganizationRoutes, registerOrganizationRoutes } from './organization-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
@@ -905,6 +906,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await sanitizeStagingSecrets(deps.sanitizeStagingSecrets));
   });
   registerAuthSendLogLatestRoute(app, deps);
+  registerSecretFingerprintsRoute(app, deps);
 
   app.get(API_PATHS.tenantDomainDispatch, async (c) => {
     if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.domainCheckSecret}`)) {

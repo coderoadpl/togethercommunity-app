@@ -11,7 +11,14 @@ import { Command, CommanderError } from 'commander';
 import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
-import { changeProposalGroupItemsDigest, createApiClient, type ApiClient } from '#core/client/index.js';
+import {
+  changeProposalGroupItemsDigest,
+  createApiClient,
+  redactCredentials,
+  REDACTED_OPERATOR_SECRET,
+  REDACTED_SECRET_FINGERPRINT_READ_SECRET,
+  type ApiClient,
+} from '#core/client/index.js';
 import {
   API_KEY_HEADER,
   EXIT_CODE_BY_ERROR_CODE,
@@ -4751,12 +4758,17 @@ myErasureRequest.command('cancel').action(
   }),
 );
 
+const withoutEnvironmentCredentials = (message: string): string => redactCredentials(message, [
+  { value: process.env['OPERATOR_SECRET'] ?? '', redaction: REDACTED_OPERATOR_SECRET },
+  { value: process.env['SECRET_FINGERPRINT_READ_SECRET'] ?? '', redaction: REDACTED_SECRET_FINGERPRINT_READ_SECRET },
+]);
+
 try {
   await program.parseAsync(process.argv);
 } catch (error) {
   if (error instanceof CommanderError) {
     if (error.exitCode !== 0) {
-      emit(err(validation(error.message.replace(/^error:\s*/i, ''))), wantsJson, () => '');
+      emit(err(validation(withoutEnvironmentCredentials(error.message).replace(/^error:\s*/i, ''))), wantsJson, () => '');
     }
   } else if (error instanceof Error && error.message.startsWith('together:')) {
     emit(err(internal(error.message)), wantsJson, () => '');

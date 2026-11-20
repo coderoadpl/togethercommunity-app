@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { privateNetworkAddress, privateNetworkHostname } from './network.js';
+import { privateNetworkAddress, privateNetworkHostname, secureApiBaseUrl } from './network.js';
 
 describe('private network addresses', () => {
   it.each([
@@ -30,5 +30,29 @@ describe('private network addresses', () => {
     ['localhost', true], ['a.localhost', true], ['cluster.example.test', false],
   ] as const)('classifies hostname %s', (hostname, expected) => {
     expect(privateNetworkHostname(hostname)).toBe(expected);
+  });
+});
+
+describe('secure API base URLs', () => {
+  it.each([
+    ['https://platform.example.test', 'https://platform.example.test'],
+    ['https://platform.example.test/', 'https://platform.example.test'],
+    ['https://platform.example.test/together/', 'https://platform.example.test/together'],
+    ['https://platform.example.test/edge/together', 'https://platform.example.test/edge/together'],
+    ['http://localhost:48730/api', 'http://localhost:48730/api'],
+    ['http://acme.localhost:48730', 'http://acme.localhost:48730'],
+    ['http://127.0.0.1:48730', 'http://127.0.0.1:48730'],
+    ['http://[::1]:48730', 'http://[::1]:48730'],
+  ])('accepts %s as %s, keeping its path prefix', (raw, baseUrl) => {
+    expect(secureApiBaseUrl(raw)).toBe(baseUrl);
+  });
+
+  it.each([
+    'http://platform.example.test', 'http://10.0.0.5', 'ftp://platform.example.test', 'not a url', '',
+    'http://localhost.evil.example', 'http://127.0.0.1.evil.example', 'http://localhost:48730@evil.example',
+    'http://[::ffff:127.0.0.1]', 'https://platform.example.test/path?q=1', 'https://platform.example.test/#fragment',
+    'https://user:password@platform.example.test',
+  ])('refuses %j', (raw) => {
+    expect(secureApiBaseUrl(raw)).toBeNull();
   });
 });

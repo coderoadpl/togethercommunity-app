@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type * as ClientModule from '#core/client/index.js';
+import { REDACTED_OPERATOR_SECRET, REDACTED_SECRET_FINGERPRINT_READ_SECRET } from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, SECRET_FINGERPRINT_READ_SECRET_HEADER } from '#core/contract/index.js';
 import { appError, changeProposalGroupItemsDigest, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result, type ShipxOrderView } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
@@ -43,6 +44,7 @@ interface Hoisted {
   shipxConfigure: ReturnType<typeof vi.fn>;
   provisionOperatorTenant: ReturnType<typeof vi.fn>;
   getOperatorTenantReadiness: ReturnType<typeof vi.fn>;
+  getSecretFingerprints: ReturnType<typeof vi.fn>;
   activitySummary: ReturnType<typeof vi.fn>;
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
@@ -149,6 +151,7 @@ const h = vi.hoisted(
     shipxConfigure: vi.fn(),
     provisionOperatorTenant: vi.fn(),
     getOperatorTenantReadiness: vi.fn(),
+    getSecretFingerprints: vi.fn(),
     activitySummary: vi.fn(),
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
@@ -303,6 +306,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     shipxConfigure: h.shipxConfigure,
     provisionOperatorTenant: h.provisionOperatorTenant,
     getOperatorTenantReadiness: h.getOperatorTenantReadiness,
+    getSecretFingerprints: h.getSecretFingerprints,
     activitySummary: h.activitySummary,
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
@@ -1738,6 +1742,177 @@ describe('operator tenant commands', () => {
     });
     expect(process.exitCode).toBe(10);
   });
+});
+
+
+describe('operator secret fingerprint command', () => {
+  const secrets = [
+    { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
+    { name: 'SMTP_PASSWORD', set: false, fingerprint: null },
+  ];
+  beforeEach(() => {
+    h.getSecretFingerprints.mockReset().mockResolvedValue(ok({ secrets }));
+    vi.stubEnv('SECRET_FINGERPRINT_READ_SECRET', 'hidden-read-secret');
+    vi.stubEnv('OPERATOR_SECRET', 'hidden-operator-secret');
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('prints one fingerprint line per secret, authenticating with the read secret only', async () => {
+    await run('operator', 'secrets', 'fingerprints');
+    expect(h.getSecretFingerprints).toHaveBeenCalledExactlyOnceWith('hidden-read-secret');
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-read-secret');
+    expect(logSpy).toHaveBeenCalledWith('CRON_SECRET=0123456789abcdef\nSMTP_PASSWORD=not-set');
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-operator-secret');
+  });
+
+  it('emits the list as one JSON envelope', async () => {
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(soleJson()).toEqual({ ok: true, data: { secrets } });
+  });
+
+  it('refuses a missing read secret before calling the client, even with OPERATOR_SECRET set', async () => {
+    vi.stubEnv('SECRET_FINGERPRINT_READ_SECRET', '');
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'SECRET_FINGERPRINT_READ_SECRET is required' } });
+    expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('preserves unauthorized exit code 3 and redacts unexpected exceptions', async () => {
+    h.getSecretFingerprints.mockResolvedValueOnce(err(appError('unauthorized', 'Invalid operator secret')));
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+    expect(process.exitCode).toBe(3);
+    logSpy.mockClear();
+    h.getSecretFingerprints.mockRejectedValueOnce(new Error('hidden-read-secret'));
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'internal', message: 'Operator request failed' } });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-read-secret');
+  });
+
+  it('prints a server error envelope that reflects the read secret with the secret replaced', async () => {
+    const { createApiClient, REDACTED_SECRET_FINGERPRINT_READ_SECRET } = await vi.importActual<typeof ClientModule>('#core/client/index.js');
+    const reflecting = createApiClient({ baseUrl: 'https://platform.example.test', fetchImpl: async (_url, init) => {
+      const sent = new Headers(init?.headers).get(SECRET_FINGERPRINT_READ_SECRET_HEADER) ?? '';
+      return Response.json({ ok: false, error: { code: 'unauthorized', message: `Rejected ${sent}`, details: { sent } } }, { status: 401 });
+    } });
+    h.getSecretFingerprints.mockResolvedValueOnce(await reflecting.getSecretFingerprints('hidden-read-secret'));
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(h.getSecretFingerprints).toHaveBeenCalledExactlyOnceWith('hidden-read-secret');
+    expect(soleJson()).toEqual({
+      ok: false,
+      error: {
+        code: 'unauthorized',
+        message: `Rejected ${REDACTED_SECRET_FINGERPRINT_READ_SECRET}`,
+        details: { sent: REDACTED_SECRET_FINGERPRINT_READ_SECRET },
+      },
+    });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-read-secret');
+    expect(process.exitCode).toBe(3);
+  });
+
+  describe('argument errors carrying a credential', () => {
+    const printed = (): string => JSON.stringify([logSpy.mock.calls, errorSpy.mock.calls]);
+    const unsupportedOption = ['operator', 'secrets', 'fingerprints', '--auth-with=hidden-read-secret'];
+    const unexpectedArgument = ['operator', 'secrets', 'hidden-read-secret'];
+    const unsupportedOptionMessage = `unknown option '--auth-with=${REDACTED_SECRET_FINGERPRINT_READ_SECRET}'`;
+    const unexpectedArgumentMessage = `unknown command '${REDACTED_SECRET_FINGERPRINT_READ_SECRET}'`;
+    const excessArgument = ['operator', 'secrets', 'fingerprints', 'hidden-read-secret'];
+    const excessArgumentMessage = "too many arguments for 'fingerprints'. Expected 0 arguments but got 1.";
+
+    it.each([
+      [unsupportedOption, unsupportedOptionMessage],
+      [unexpectedArgument, unexpectedArgumentMessage],
+      [excessArgument, excessArgumentMessage],
+    ])('replaces the read secret in the JSON argument error of %j', async (args, message) => {
+      await run('--json', ...args);
+      expect(soleJson()).toEqual({ ok: false, error: { code: 'validation', message } });
+      expect(printed()).not.toContain('hidden-read-secret');
+      expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(2);
+    });
+
+    it.each([
+      [unsupportedOption, unsupportedOptionMessage],
+      [unexpectedArgument, unexpectedArgumentMessage],
+      [excessArgument, excessArgumentMessage],
+    ])('replaces the read secret in the text argument error of %j', async (args, message) => {
+      await run(...args);
+      expect(errorSpy).toHaveBeenCalledExactlyOnceWith(`error(validation): ${message}`);
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(printed()).not.toContain('hidden-read-secret');
+      expect(process.exitCode).toBe(2);
+    });
+
+    it('replaces the operator secret and the trimmed form of a read secret set with surrounding whitespace', async () => {
+      vi.stubEnv('SECRET_FINGERPRINT_READ_SECRET', ' hidden-read-secret\n');
+      await run('--json', 'operator', 'secrets', 'fingerprints', '--auth-with=hidden-read-secret');
+      expect(soleJson()).toEqual({ ok: false, error: { code: 'validation', message: unsupportedOptionMessage } });
+      await run('--json', 'operator', 'secrets', 'hidden-operator-secret');
+      expect(JSON.parse(String(logSpy.mock.calls[1]?.[0]))).toEqual({
+        ok: false, error: { code: 'validation', message: `unknown command '${REDACTED_OPERATOR_SECRET}'` },
+      });
+      expect(printed()).not.toContain('hidden-read-secret');
+      expect(printed()).not.toContain('hidden-operator-secret');
+    });
+
+    it('keeps an ordinary argument error message unchanged', async () => {
+      await run('--json', 'operator', 'secrets', 'fingerprints', '--auth-with=something-else');
+      expect(soleJson()).toEqual({ ok: false, error: { code: 'validation', message: "unknown option '--auth-with=something-else'" } });
+      expect(process.exitCode).toBe(2);
+    });
+  });
+});
+
+
+describe('operator API URL check', () => {
+  const fetchSpy = vi.fn<typeof fetch>();
+  beforeEach(() => {
+    fetchSpy.mockReset();
+    vi.stubGlobal('fetch', fetchSpy);
+    h.getSecretFingerprints.mockReset().mockResolvedValue(ok({ secrets: [] }));
+    h.getOperatorTenantReadiness.mockReset().mockResolvedValue(ok(operatorReadiness));
+    h.provisionOperatorTenant.mockReset();
+    vi.stubEnv('OPERATOR_SECRET', 'hidden-operator-secret');
+    vi.stubEnv('SECRET_FINGERPRINT_READ_SECRET', 'hidden-read-secret');
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  const refused = {
+    ok: false,
+    error: { code: 'validation', message: 'Operator commands need an https API URL, or http on a local host' },
+  };
+
+  it.each([
+    ['operator', 'secrets', 'fingerprints'],
+    ['operator', 'tenant', 'readiness', '--slug', 'acme'],
+    operatorProvisionArgs,
+  ])('refuses a plain http --api-url on a non-local host before sending the secret: %j', async (...args) => {
+    await run('--json', '--api-url', 'http://platform.example.test', ...args);
+    expect(soleJson()).toMatchObject(refused);
+    expect(process.exitCode).toBe(2);
+    expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+    expect(h.getOperatorTenantReadiness).not.toHaveBeenCalled();
+    expect(h.provisionOperatorTenant).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('applies the check to TOGETHER_CLI_API_URL and before reading the secret', async () => {
+    vi.stubEnv('TOGETHER_CLI_API_URL', 'http://10.0.0.5:48730');
+    vi.stubEnv('SECRET_FINGERPRINT_READ_SECRET', '');
+    await run('--json', 'operator', 'secrets', 'fingerprints');
+    expect(soleJson()).toMatchObject(refused);
+    expect(h.getSecretFingerprints).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(['https://platform.example.test', 'http://localhost:48730', 'http://127.0.0.1:48730'])(
+    'accepts %s', async (apiUrl) => {
+      await run('--json', '--api-url', apiUrl, 'operator', 'secrets', 'fingerprints');
+      expect(soleJson()).toEqual({ ok: true, data: { secrets: [] } });
+      expect(h.getSecretFingerprints).toHaveBeenCalledExactlyOnceWith('hidden-read-secret');
+    },
+  );
 });
 
 

@@ -33,6 +33,7 @@ import {
   ordersListOutputSchema,
   salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
+  SECRET_FINGERPRINT_READ_SECRET_HEADER,
   studentLessonOutputSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
@@ -665,6 +666,11 @@ const deps = (input: {
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
     domainCheckSecret: 'test-domain-check-secret',
     operatorSecret: 'test-operator-secret',
+    secretFingerprintReadSecret: 'test-secret-fingerprint-read-secret',
+    secretFingerprints: [
+      { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
+      { name: 'SMTP_PASSWORD', set: false, fingerprint: null },
+    ],
     sanitizeStagingSecrets: input.sanitizeStagingSecrets ?? {
       production: false,
       databaseFingerprint: 'staging-fingerprint',
@@ -10499,15 +10505,86 @@ describe('operator provisioning public-surface regression', () => {
     const base = deps();
     const publicApp = new Hono<AppVars>();
     registerPublicRoutes(publicApp, base);
-    for (const route of [API_ROUTES.operatorTenantProvision, API_ROUTES.operatorTenantReadiness]) {
+    for (const [route, mechanism] of [
+      [API_ROUTES.operatorTenantProvision, 'Operator secret'],
+      [API_ROUTES.operatorTenantReadiness, 'Operator secret'],
+      [API_ROUTES.secretFingerprints, 'Secret fingerprint read secret'],
+    ] as const) {
       expect(publicRouteManifestEntry(route)).toBeUndefined();
       expect(publicApp.routes.some((candidate) => candidate.path === route.path)).toBe(false);
-      expect(selfAuthenticatingRouteManifestEntry(route)?.mechanism).toBe('Operator secret');
+      expect(selfAuthenticatingRouteManifestEntry(route)?.mechanism).toBe(mechanism);
       expect(collectRuntimeRoutes().some((candidate) => candidate.path === route.path && candidate.method === route.method)).toBe(true);
     }
     const app = buildApp(base);
     expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', body: '{}' })).status).toBe(401);
     expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'))).status).toBe(401);
+    expect((await app.request(API_PATHS.secretFingerprints)).status).toBe(401);
+  });
+
+  it('answers a wrong read secret on the fingerprint route exactly like a wrong secret on the other operator routes', async () => {
+    const app = buildApp(deps());
+    const readiness = await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-operator-secret' },
+    });
+    const fingerprints = await app.request(API_PATHS.secretFingerprints, {
+      headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'wrong-read-secret' },
+    });
+    expect(fingerprints.status).toBe(readiness.status);
+    expect(await fingerprints.text()).toBe(await readiness.text());
+  });
+
+  it.each([
+    ['the operator secret in the operator header', { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }],
+    ['the operator secret in the read header', { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'test-operator-secret' }],
+    ['the read secret in the operator header', { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-secret-fingerprint-read-secret' }],
+  ])('refuses %s at the early guard while the operator routes still accept the operator secret', async (_case, credential) => {
+    const base = deps();
+    const getAuthenticatedUser = vi.fn(base.authPort.getAuthenticatedUser);
+    const app = buildApp({ ...base, authPort: { ...base.authPort, getAuthenticatedUser } });
+    const cookie = `${impersonationCookieName(base.secureCookies)}=untrusted-view-cookie`;
+    const fingerprints = await app.request(API_PATHS.secretFingerprints, { headers: { cookie, ...credential } });
+    const wrong = await app.request(API_PATHS.secretFingerprints, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'wrong-read-secret' } });
+    expect(fingerprints.status).toBe(401);
+    expect(await fingerprints.text()).toBe(await wrong.text());
+    expect(getAuthenticatedUser).not.toHaveBeenCalled();
+    const readiness = await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), {
+      headers: { cookie, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' },
+    });
+    expect(readiness.status).not.toBe(401);
+    expect(getAuthenticatedUser).toHaveBeenCalled();
+  });
+
+  it('rejects the matching read secret at the early guard when the deployment configured none', async () => {
+    const base = deps();
+    const getAuthenticatedUser = vi.fn(base.authPort.getAuthenticatedUser);
+    const app = buildApp({ ...base, secretFingerprintReadSecret: undefined, authPort: { ...base.authPort, getAuthenticatedUser } });
+    const response = await app.request(API_PATHS.secretFingerprints, {
+      headers: {
+        cookie: `${impersonationCookieName(base.secureCookies)}=untrusted-view-cookie`,
+        [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'test-secret-fingerprint-read-secret',
+      },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Invalid operator secret' } });
+    expect(getAuthenticatedUser).not.toHaveBeenCalled();
+  });
+
+  it('serves the composed fingerprints to the read secret without a session', async () => {
+    const app = buildApp(deps());
+    const response = await app.request(API_PATHS.secretFingerprints, {
+      headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: 'test-secret-fingerprint-read-secret' },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        secrets: [
+          { name: 'CRON_SECRET', set: true, fingerprint: '0123456789abcdef' },
+          { name: 'SMTP_PASSWORD', set: false, fingerprint: null },
+        ],
+      },
+    });
   });
 });
 
@@ -10527,6 +10604,7 @@ it.each([undefined, 'wrong-operator-secret'])('rejects operator authentication b
   };
   expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', headers, body: '{}' })).status).toBe(401);
   expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).toBe(401);
+  expect((await app.request(API_PATHS.secretFingerprints, { headers })).status).toBe(401);
   expect(getAuthenticatedUser).not.toHaveBeenCalled();
   expect(findBySlug).not.toHaveBeenCalled();
 });

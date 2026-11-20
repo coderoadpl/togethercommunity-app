@@ -2010,6 +2010,7 @@ export const API_ROUTES = {
   ...META_CAPI_ROUTES,
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
+  secretFingerprints: { method: 'GET', path: '/api/internal/secret-fingerprints' },
   ...ORGANIZATION_ROUTES,
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
@@ -2386,6 +2387,7 @@ export const API_PATHS = {
 
   operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
   operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,
+  secretFingerprints: API_ROUTES.secretFingerprints.path,
   activitySummary: API_ROUTES.activitySummary.path,
   memberActivity: API_ROUTES.memberActivity.path,
   listMarketingSignupForms: API_ROUTES.listMarketingSignupForms.path,
@@ -2782,3 +2784,4 @@ export const TENANT_HEADER = 'x-tenant';
 /** Header carrying a tenant API-key secret for the M2M enroll endpoint. */
 export const API_KEY_HEADER = 'x-api-key';
 export const SCHEDULER_OPERATOR_SECRET_HEADER = 'x-scheduler-operator-secret';
+export const SECRET_FINGERPRINT_READ_SECRET_HEADER = 'x-secret-fingerprint-read-secret';

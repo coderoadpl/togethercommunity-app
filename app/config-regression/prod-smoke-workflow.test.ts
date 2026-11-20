@@ -1,11 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER } from '#core/contract/index.js';
+import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, SECRET_FINGERPRINT_READ_SECRET_HEADER } from '#core/contract/index.js';
 import { SMOKE_TENANT_SLUG } from '#core/domain/index.js';
 
 const workflowSchema = z.object({
@@ -126,5 +126,21 @@ describe('prod-smoke workflow', () => {
     expect(env['SMOKE_MEMBER_EMAIL']).toBe('${{ secrets.SMOKE_MEMBER_EMAIL }}');
     expect(env['SMOKE_MEMBER_PASSWORD']).toBe('${{ secrets.SMOKE_MEMBER_PASSWORD }}');
     expect(env).not.toHaveProperty('SMOKE_CREATOR_PASSWORD');
+  });
+});
+
+describe('secret fingerprint read credential', () => {
+  const workflowsDir = join(import.meta.dirname, '..', '..', '.github', 'workflows');
+  const workflowFiles = readdirSync(workflowsDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
+
+  it('never reaches a GitHub Actions workflow', () => {
+    expect(workflowFiles).toContain(join(workflowsDir, 'prod-smoke.yml'));
+    const mentions = workflowFiles.filter((file) => {
+      const text = readFileSync(file, 'utf8').toLowerCase();
+      return text.includes('secret_fingerprint_read_secret') || text.includes(SECRET_FINGERPRINT_READ_SECRET_HEADER);
+    });
+    expect(mentions).toEqual([]);
   });
 });

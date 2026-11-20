@@ -247,9 +247,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const emailMattersForCoupon = signedInEmail === null && (pageCollectsBuyer || couponEmailRequested);
   const couponEmail = signedInEmail ?? (emailMattersForCoupon ? typedEmail : undefined);
+  const [autoCouponCode, setAutoCouponCode] = useState(initialCouponCode);
   const [autoValidatedFor, setAutoValidatedFor] = useState<string | null>(null);
   const autoValidationKey = `${couponEmail ?? ''}|${selectedPrice?.id ?? ''}`;
-  const autoValidationDue = initialCouponCode !== '' && couponCode === initialCouponCode &&
+  const autoValidationDue = autoCouponCode !== '' && couponCode === autoCouponCode &&
     (!emailMattersForCoupon || typedEmail !== undefined) && autoValidatedFor !== autoValidationKey;
   const couponResolving = couponValidation.isPending || autoValidationDue;
 
@@ -263,11 +264,11 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...(variantSelections.length === 0 ? {} : { variantSelections }),
         ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
         ...(couponEmail === undefined ? {} : { email: couponEmail }),
-        couponCode: initialCouponCode,
+        couponCode: autoCouponCode,
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [autoValidationDue, autoValidationKey, couponEmail, couponValidation, initialCouponCode, me.isPending, paymentConfig.isPending, product, productId, salesLinkSlug, selectedPrice, variantSelections]);
+  }, [autoCouponCode, autoValidationDue, autoValidationKey, couponEmail, couponValidation, me.isPending, paymentConfig.isPending, product, productId, salesLinkSlug, selectedPrice, variantSelections]);
 
   const purchaseRequest = () => ({
     productId,
@@ -289,10 +290,18 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     event.preventDefault();
     if (couponResolving || delivery.status === 'incomplete' || personalization.blocked) return;
     if (stripeConfigured || payableCents === 0) {
+      const codeAtSubmit = appliedCoupon === undefined ? null : couponCode;
+      const keyAtSubmit = autoValidationKey;
       checkoutSession.mutate({
         attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
         ...(buyerEmail === undefined ? {} : { email: buyerEmail }),
         ...purchaseRequest(),
+      }, {
+        onError: (error) => {
+          if (codeAtSubmit === null || !stripeTermsRefused(error)) return;
+          setAutoCouponCode(codeAtSubmit);
+          setAutoValidatedFor(keyAtSubmit);
+        },
       });
       return;
     }

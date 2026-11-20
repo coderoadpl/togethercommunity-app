@@ -103,6 +103,36 @@ describe('checkout terms when Stripe cannot collect them', () => {
     });
   });
 
+  it('keeps a code applied by hand through the refusal and validates it again with the typed e-mail', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1');
+    const sessions: unknown[] = [];
+    const couponRequests: unknown[] = [];
+    serve(sessions, [refuseStripeTerms]);
+    server.use(http.post('/api/public/checkout/coupon', async ({ request }) => {
+      couponRequests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: coupon });
+    }));
+    renderCheckout();
+
+    await userEvent.click(await courier());
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.couponReveal }));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+    await screen.findByTestId('checkout-coupon-final');
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(sessions).toHaveLength(1));
+    expect(sessions[0]).toMatchObject({ couponCode: 'SAVE' });
+
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(within(screen.getByTestId('terms-consent')).getByRole('checkbox'));
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(5899) }))));
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+    expect(couponRequests.at(-1)).toMatchObject({ couponCode: 'SAVE', email: 'buyer@example.org' });
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(sessions).toHaveLength(2));
+    expect(sessions[1]).toMatchObject({ couponCode: 'SAVE', email: 'buyer@example.org', termsOnPage: true, termsAccepted: true });
+  });
+
   it('starts in page-terms mode when the sales-link handoff already learned that Stripe cannot collect the terms', async () => {
     window.history.replaceState(null, '', '/checkout/course-1?terms=page');
     const sessions: unknown[] = [];

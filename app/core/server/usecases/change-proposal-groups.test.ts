@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   CHANGE_PROPOSAL_GROUP_LIMITS,
+  CHANGE_PROPOSAL_LIMITS,
   changeProposalExpiresAt,
   changeProposalGroupKeyReceiptSchema,
   changeProposalGroupOwnerViewSchema,
@@ -22,7 +23,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { ChangeProposalTransaction, StorageProvider } from '../ports.js';
+import type { ChangeProposalGroupRepository, ChangeProposalTransaction, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
@@ -671,5 +672,268 @@ describe('reading groups', () => {
     expect(filtered.proposals.map((item) => item.id).toSorted()).toEqual(h.items(groupId).map((item) => item.id).toSorted());
     expect(unwrap(await getChangeProposal(ownerSession, { id: linked }, h.deps))).toMatchObject({ groupId, groupTitle: 'Spring launch', groupPosition: 5 });
     expect(unwrap(await getChangeProposal(ownerSession, { id: created }, h.deps)).groupPosition).toBe(1);
+  });
+});
+
+const reversingIds = (h: Harness) => {
+  let count = 0;
+  let descending = false;
+  h.deps.ids.nextId = () => {
+    count += 1;
+    return descending ? `id-${String(9000 - count)}` : `id-${String(1000 + count)}`;
+  };
+  return { reverse: () => { descending = true; } };
+};
+
+describe('stable effects when the ids created at approval sort the other way', () => {
+  it('applies a draft deletion of a product whose two prices the group created', async () => {
+    const h = harness();
+    const ids = reversingIds(h);
+    const groupId = await h.group();
+    const created = h.lastItemId(await h.add(groupId, 'product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 }));
+    const teapot = changeProposalReference(created);
+    await h.add(groupId, 'price.create', { productId: teapot, kind: 'one_time', amountCents: 2500, currency: 'EUR' });
+    await h.add(groupId, 'price.create', { productId: teapot, kind: 'one_time', amountCents: 3500, currency: 'EUR' });
+    await h.add(groupId, 'product.delete-draft', { productId: teapot });
+    ids.reverse();
+
+    const approved = unwrap(await h.approve(groupId));
+
+    expect(approved.items.map((item) => item.status)).toEqual(['applied', 'applied', 'applied', 'applied']);
+    expect(h.state.products.some((candidate) => candidate.slug === 'teapot')).toBe(false);
+  });
+
+  it('applies a draft deletion of a product with one existing price and one the group created', async () => {
+    const h = harness();
+    h.state.prices.push(price({ id: 'id-5000', productId: 'product-draft', amountCents: 900 }));
+    const ids = reversingIds(h);
+    const groupId = await h.group();
+    await h.add(groupId, 'price.create', { productId: 'product-draft', kind: 'one_time', amountCents: 2500, currency: 'EUR' });
+    await h.add(groupId, 'product.delete-draft', { productId: 'product-draft' });
+    ids.reverse();
+
+    expect(unwrap(await h.approve(groupId)).status).toBe('applied');
+    expect(liveProduct(h, 'product-draft')).toBeUndefined();
+  });
+
+  it('keeps the order of a sales link\'s products as given', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    const created = h.lastItemId(await h.add(groupId, 'product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 }));
+    await h.add(groupId, 'sales-link.create', { slug: 'offer', title: 'Offer', heading: 'Offer', productIds: ['product-live', changeProposalReference(created)] });
+
+    expect(h.items(groupId)[1]?.effect).toMatchObject({ productIds: { before: null, after: ['product-live', changeProposalReference(created)] } });
+  });
+});
+
+describe('group decisions read the clock after their locks', () => {
+  const expiringWhileLocked = (h: Harness): ChangeProposalGroupRepository => ({
+    ...h.store.groups,
+    decide: (tenantId, id, guard, decide) => h.store.groups.decide(tenantId, id, guard, (locked) => {
+      h.clock.now = changeProposalExpiresAt(NOW);
+      return decide(locked);
+    }),
+    addItem: (tenantId, proposal, event, clock) => {
+      h.clock.now = changeProposalExpiresAt(NOW);
+      return h.store.groups.addItem(tenantId, proposal, event, clock);
+    },
+  });
+
+  it('records the expiry on every item instead of rejecting a group that expired while the reject waited', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+
+    expect(await rejectChangeProposalGroup(ownerSession, { id: groupId, note: 'Late' }, { ...h.deps, changeProposalGroups: expiringWhileLocked(h) }))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    for (const item of h.items(groupId)) {
+      expect(item.status).toBe('pending');
+      expect(h.events(item.id)).toEqual(['1:proposed', '2:expired']);
+    }
+  });
+
+  it('records the expiry on every item instead of withdrawing a group that expired while the withdrawal waited', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+
+    expect(await withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, { ...h.deps, changeProposalGroups: expiringWhileLocked(h) }))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    for (const item of h.items(groupId)) expect(h.events(item.id)).toEqual(['1:proposed', '2:expired']);
+  });
+
+  it('answers the group conflict to a join whose group expired while it waited', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    await h.add(groupId, 'product.update', { id: 'product-mug', title: 'Big mug' });
+
+    expect(await submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, {
+      ...h.deps, changeProposalGroups: expiringWhileLocked(h),
+    })).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    expect(h.items(groupId)).toHaveLength(1);
+  });
+
+  it('records the expiry on every item when its key withdraws a group that is already expired', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+    h.clock.now = changeProposalExpiresAt(NOW);
+
+    expect(await withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    for (const item of h.items(groupId)) {
+      expect(item.status).toBe('pending');
+      expect(h.events(item.id)).toEqual(['1:proposed', '2:expired']);
+    }
+  });
+
+  it.each([
+    ['reject', (h: Harness, groupId: string) => rejectChangeProposalGroup(ownerSession, { id: groupId }, { ...h.deps, changeProposalGroups: { ...h.store.groups, decide: async () => ({ kind: 'busy' }) } })],
+    ['withdraw', (h: Harness, groupId: string) => withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, { ...h.deps, changeProposalGroups: { ...h.store.groups, decide: async () => ({ kind: 'busy' }) } })],
+  ] as const)('answers busy when the %s runs out of lock wait', async (_label, decide) => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+
+    expect(await decide(h, groupId)).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
+    expect(h.items(groupId).every((item) => item.status === 'pending')).toBe(true);
+  });
+});
+
+describe('the group dry run', () => {
+  it('runs one dry run per group at a time', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    await h.add(groupId, 'product.update', { id: 'product-mug', title: 'Big mug' });
+
+    expect(h.transaction.dryRunGroups).toEqual([groupId]);
+  });
+
+  it.each([
+    ['withdrawn', async (h: Harness, groupId: string) => { unwrap(await withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, h.deps)); }],
+    ['rejected', async (h: Harness, groupId: string) => { unwrap(await rejectChangeProposalGroup(ownerSession, { id: groupId }, h.deps)); }],
+    ['applied', async (h: Harness, groupId: string) => { unwrap(await h.approve(groupId)); }],
+  ] as const)('answers the group status, not a stale earlier item, when the group was %s while the submit waited', async (status, decide) => {
+    const h = harness();
+    const groupId = await h.group();
+    await h.add(groupId, 'product.update', { id: 'product-mug', title: 'Big mug' });
+    const waiting: ChangeProposalTransaction = {
+      ...h.transaction,
+      dryRun: async (tenantId, operation, options) => {
+        await decide(h, groupId);
+        return h.transaction.dryRun(tenantId, operation, options);
+      },
+    };
+
+    const joined = await submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, {
+      ...h.deps, changeProposalTransaction: waiting,
+    });
+
+    expect(joined).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: status } } });
+    if (joined.ok) throw new Error('expected a conflict');
+    expect(joined.error.details).not.toHaveProperty('changeProposalGroupItem');
+    expect(h.items(groupId)).toHaveLength(1);
+  });
+
+  it('answers the group conflict when another item joined while the submit waited', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    await h.add(groupId, 'product.update', { id: 'product-mug', title: 'Big mug' });
+    const waiting: ChangeProposalTransaction = {
+      ...h.transaction,
+      dryRun: async (tenantId, operation, options) => {
+        unwrap(await h.join(groupId, 'stock.adjust', { productId: 'product-live', delta: 2, reason: 'Count' }));
+        return h.transaction.dryRun(tenantId, operation, options);
+      },
+    };
+
+    expect(await submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, {
+      ...h.deps, changeProposalTransaction: waiting,
+    })).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'open' } } });
+    expect(h.items(groupId)).toHaveLength(2);
+  });
+});
+
+const seedProposals = (h: Harness, count: number, fields: Partial<ChangeProposal>) => {
+  for (let index = 0; index < count; index += 1) {
+    h.store.seed({
+      id: `seeded-${String(index)}`, tenantId: TENANT, groupId: null, groupPosition: null, operation: 'stock.adjust',
+      input: { productId: 'product-live', delta: 1, reason: 'Count' }, effect: { onHand: { delta: 1 } }, target: { kind: 'product', id: 'product-live' },
+      status: 'pending', proposedByKeyId: KEY_ID, proposedByKeyName: 'Catalogue agent', proposedByIssuerUserId: ISSUER, createdAt: NOW,
+      expiresAt: changeProposalExpiresAt(NOW), decidedByUserId: null, decidedAt: null, decisionNote: null, appliedResourceId: null,
+      failureCode: null, failureMessage: null, ...fields,
+    });
+  }
+};
+
+describe('the proposal limits on a group join', () => {
+  it.each([
+    ['key_pending', CHANGE_PROPOSAL_LIMITS.pendingPerKey, {}],
+    ['key_daily', CHANGE_PROPOSAL_LIMITS.createdPerKeyPerWindow, { status: 'rejected' }],
+    ['workspace_pending', CHANGE_PROPOSAL_LIMITS.pendingPerWorkspace, { proposedByKeyId: OTHER_KEY_ID }],
+  ] as const)('refuses a join of a key at the %s limit and stores nothing', async (cap, count, fields) => {
+    const h = harness();
+    const groupId = await h.group();
+    seedProposals(h, count, fields);
+
+    expect(await h.join(groupId, 'product.update', { id: 'product-mug', title: 'Big mug' }))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: cap } } });
+    expect(h.items(groupId)).toEqual([]);
+    expect(h.transaction.calls).toEqual([]);
+  });
+
+  it('refuses at the repository a join that reached a limit after the pre-check', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    const filling: ChangeProposalTransaction = {
+      ...h.transaction,
+      dryRun: async (tenantId, operation, options) => {
+        const result = await h.transaction.dryRun(tenantId, operation, options);
+        seedProposals(h, CHANGE_PROPOSAL_LIMITS.pendingPerKey, {});
+        return result;
+      },
+    };
+
+    expect(await submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'product.update', input: { id: 'product-mug', title: 'Big mug' } }, {
+      ...h.deps, changeProposalTransaction: filling,
+    })).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_pending' } } });
+    expect(h.items(groupId)).toEqual([]);
+  });
+});
+
+describe('sales links created earlier in the same group', () => {
+  const linkFields = { slug: 'teapot-offer', title: 'Teapot', heading: 'Teapot offer', productIds: ['product-live'] };
+
+  it('updates the link through its reference and applies both items', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    const created = h.lastItemId(await h.add(groupId, 'sales-link.create', linkFields));
+    const reference = changeProposalReference(created);
+    await h.add(groupId, 'sales-link.update', { ...linkFields, id: reference, title: 'Renamed offer', expectedRevision: 1 });
+
+    const stored = h.items(groupId);
+    expect(stored[1]?.target).toEqual({ kind: 'sales-link', id: reference });
+    expect(stored[1]?.effect).toMatchObject({ title: { before: 'Teapot', after: 'Renamed offer' } });
+    expect(unwrap(await h.approve(groupId)).status).toBe('applied');
+    expect(h.state.salesLinks.find((link) => link.slug === 'teapot-offer')).toMatchObject({ title: 'Renamed offer', deleted: false });
+  });
+
+  it('deletes the link through its reference and leaves no link behind', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    const created = h.lastItemId(await h.add(groupId, 'sales-link.create', linkFields));
+    await h.add(groupId, 'sales-link.delete', { id: changeProposalReference(created) });
+
+    expect(h.items(groupId)[1]?.effect).toMatchObject({ exists: { before: true, after: false } });
+    expect(unwrap(await h.approve(groupId)).status).toBe('applied');
+    expect(h.state.salesLinks.filter((link) => link.slug === 'teapot-offer' && !link.deleted)).toEqual([]);
+  });
+
+  it('deactivates a price through its reference', async () => {
+    const h = harness();
+    const groupId = await h.group();
+    const created = h.lastItemId(await h.add(groupId, 'price.create', { productId: 'product-mug', kind: 'one_time', amountCents: 2500, currency: 'EUR' }));
+    await h.add(groupId, 'price.deactivate', { id: changeProposalReference(created) });
+
+    expect(h.items(groupId)[1]?.effect).toEqual({ active: { before: true, after: false } });
+    const approved = unwrap(await h.approve(groupId));
+    expect(approved.status).toBe('applied');
+    expect(h.state.prices.find((candidate) => candidate.id === approved.items[0]?.appliedResourceId)).toMatchObject({ amountCents: 2500, active: false });
   });
 });

@@ -26,6 +26,7 @@ import {
   changeProposalProposedOutputSchema,
   changeProposalReceiptOutputSchema,
   changeProposalsListOutputSchema,
+  SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
   SHOP_PROPOSAL_ROUTES,
   shopCatalogContracts,
@@ -49,6 +50,7 @@ const PROPOSE_SCOPES = ['shop:catalog:read', 'shop:catalog:write'];
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
+let quickApp: ReturnType<typeof buildApp>;
 let deps: ReturnType<typeof createDeps>;
 let ownerToken: string;
 let ownerId: string;
@@ -154,6 +156,12 @@ beforeAll(async () => {
     BETTER_AUTH_SECRET: 'shop-proposal-groups-test-secret-at-least-32-characters',
   }), { db: database.db, clock: { nowIso: () => now } });
   app = buildApp({ ...deps, dispatchEmail: () => undefined });
+  const quickDeps = createDeps(envSchema.parse({
+    NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
+    APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
+    BETTER_AUTH_SECRET: 'shop-proposal-groups-test-secret-at-least-32-characters',
+  }), { db: database.db, clock: { nowIso: () => now }, changeProposalBounds: { lockWaitMs: 100, dryRunStatementMs: 2_000, approvalStatementMs: 2_000 } });
+  quickApp = buildApp({ ...quickDeps, dispatchEmail: () => undefined });
 
   const owner = await signUp('shop-groups-owner@example.test', 'Groups Owner');
   const admin = await signUp('shop-groups-admin@example.test', 'Groups Admin');
@@ -242,9 +250,13 @@ describe('the key-side group routes', () => {
       expect((await failure(directResponse)).message).toBe('Only a propose-mode shop management key manages change proposals');
       expect([401, 403], `legacy ${method} ${path}`).toContain((await keyed(legacySecret, method, path, body)).status);
     }
-    const applied = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: live, lowStockThreshold: null }, { 'x-proposal-group': group.id });
-    expect(applied.status).not.toBe(202);
+    const proposalsBefore = await proposalCount();
+    const applied = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: live, lowStockThreshold: 9 }, { 'x-proposal-group': group.id });
+    expect(applied.status).toBe(200);
+    expect((await database.db.select().from(productStock)).find((row) => row.productId === live)?.lowStockThreshold).toBe(9);
+    expect(await proposalCount()).toBe(proposalsBefore);
     expect((await ownerGroup(group.id)).items).toEqual([]);
+    expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: live, lowStockThreshold: null })).status).toBe(200);
   });
 
   it('refuses a malformed group header and an empty title, and stores nothing', async () => {
@@ -479,5 +491,121 @@ describe('the owner group routes', () => {
     const approved = await approveGroup(group.id, [item.proposal.id]);
     expect(envelope(changeProposalGroupOutputSchema).parse(await approved.json()).data.group.status).toBe('applied');
     expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, title: 'Live handbook' })).status).toBe(200);
+  }, 30_000);
+});
+
+const salesLinkPath = (template: string, id: string): string => template.replace(':id', encodeURIComponent(id));
+
+describe('sales links and prices referenced inside a group over HTTP', () => {
+  beforeAll(async () => { proposer = await createShopKey(PROPOSE_SCOPES, 'propose'); });
+
+  const linkFields = (slug: string) => ({ slug, title: 'Grouped offer', heading: 'Grouped offer', productIds: [live] });
+
+  it('updates a sales link the group creates through the percent-encoded reference path, then applies both', async () => {
+    const group = await createGroup();
+    const created = await joined(group.id, SHOP_ASSETS_ROUTES.createSalesLink.path, linkFields('grouped-offer-update'));
+    const reference = changeProposalReference(created.proposal.id);
+    const path = salesLinkPath(SHOP_ASSETS_ROUTES.updateSalesLink.path, reference);
+    expect(path).toContain(`%24proposal%3A${created.proposal.id}`);
+    const updated = await joined(group.id, path, { ...linkFields('grouped-offer-update'), id: reference, title: 'Renamed offer', expectedRevision: 1 });
+    expect(updated.proposal).toMatchObject({ operation: 'sales-link.update', target: { kind: 'sales-link', id: reference } });
+    expect((await database.db.select().from(salesLinks)).filter((row) => row.slug === 'grouped-offer-update')).toEqual([]);
+
+    const shown = await ownerGroup(group.id);
+    const response = await approveGroup(group.id, shown.items.map((item) => item.id));
+    expect(response.status).toBe(200);
+    expect(envelope(changeProposalGroupOutputSchema).parse(await response.json()).data.group.status).toBe('applied');
+    const [link] = (await database.db.select().from(salesLinks)).filter((row) => row.slug === 'grouped-offer-update');
+    expect(link).toMatchObject({ title: 'Renamed offer', revision: 2, deletedAt: null });
+  });
+
+  it('deletes a sales link the group creates through its reference', async () => {
+    const group = await createGroup();
+    const created = await joined(group.id, SHOP_ASSETS_ROUTES.createSalesLink.path, linkFields('grouped-offer-delete'));
+    const deleted = await keyed(proposer.secret, 'DELETE', salesLinkPath(SHOP_ASSETS_ROUTES.deleteSalesLink.path, changeProposalReference(created.proposal.id)), undefined, { 'x-proposal-group': group.id });
+    expect(deleted.status).toBe(202);
+
+    const response = await approveGroup(group.id, (await ownerGroup(group.id)).items.map((item) => item.id));
+    expect(envelope(changeProposalGroupOutputSchema).parse(await response.json()).data.group.status).toBe('applied');
+    const rows = (await database.db.select().from(salesLinks)).filter((row) => row.slug === 'grouped-offer-delete');
+    expect(rows.every((row) => row.deletedAt !== null)).toBe(true);
+  });
+
+  it('deactivates a price the group creates through its reference', async () => {
+    const group = await createGroup();
+    const created = await joined(group.id, SHOP_CATALOG_ROUTES.createProductPrice.path, { productId: live, kind: 'one_time', amountCents: 4200 });
+    await joined(group.id, SHOP_CATALOG_ROUTES.deactivateProductPrice.path, { id: changeProposalReference(created.proposal.id) });
+
+    const response = await approveGroup(group.id, (await ownerGroup(group.id)).items.map((item) => item.id));
+    const decided = envelope(changeProposalGroupOutputSchema).parse(await response.json()).data.group;
+    expect(decided.status).toBe('applied');
+    const priceId = decided.items[0]?.appliedResourceId;
+    expect((await database.db.select().from(productPrices)).find((row) => row.id === priceId)).toMatchObject({ amountCents: 4200, active: false });
+  });
+});
+
+describe('busy answers of the proposal decision routes', () => {
+  beforeAll(async () => { proposer = await createShopKey(PROPOSE_SCOPES, 'propose'); });
+
+  const quickKeyed = (secret: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) => quickApp.request(`${baseUrl}${path}`, {
+    method,
+    headers: { host: acmeHost, 'x-api-key': secret, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const quickSession = (method: string, path: string, body: unknown) => quickApp.request(`${baseUrl}${path}`, {
+    method,
+    headers: { host: acmeHost, authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const whileLocked = async (statement: string, work: () => Promise<Response>): Promise<Response> => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let locked: () => void = () => undefined;
+    const lockTaken = new Promise<void>((resolve) => { locked = resolve; });
+    const holder = database.db.transaction(async (tx) => {
+      await tx.execute(statement);
+      locked();
+      await held;
+    });
+    await lockTaken;
+    try {
+      return await work();
+    } finally {
+      release();
+      await holder;
+    }
+  };
+
+  const expectBusy = (response: Response) => {
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('5');
+  };
+
+  it('answers 503 with a retry-after on a join, a group withdrawal and a group rejection while the group row stays locked', async () => {
+    const group = await createGroup();
+    await joined(group.id, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, title: 'Busy group title' });
+    const lockGroup = `select id from change_proposal_groups where tenant_id = 'acme' and id = '${group.id}' for update`;
+
+    expectBusy(await whileLocked(lockGroup, () => quickKeyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: live, lowStockThreshold: 3 }, { 'x-proposal-group': group.id })));
+    expectBusy(await whileLocked(lockGroup, () => quickKeyed(proposer.secret, 'POST', groupPath(SHOP_PROPOSAL_ROUTES.withdrawGroup.path, group.id), {})));
+    expectBusy(await whileLocked(lockGroup, () => quickSession('POST', groupPath(API_PATHS.changeProposalGroupReject, group.id), {})));
+    const shown = await ownerGroup(group.id);
+    expect(shown.status).toBe('open');
+    expect(shown.items.map((item) => item.status)).toEqual(['pending']);
+    expect((await sessionRequest(ownerToken, 'POST', groupPath(API_PATHS.changeProposalGroupReject, group.id), {})).status).toBe(200);
+  }, 30_000);
+
+  it('answers 503 with a retry-after on a single rejection and withdrawal while the proposal row stays locked', async () => {
+    const response = await keyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, title: 'Busy single title' });
+    expect(response.status).toBe(202);
+    const { proposal } = envelope(changeProposalProposedOutputSchema).parse(await response.json()).data;
+    const lockProposal = `select id from change_proposals where tenant_id = 'acme' and id = '${proposal.id}' for update`;
+
+    expectBusy(await whileLocked(lockProposal, () => quickSession('POST', API_PATHS.changeProposalReject.replace(':id', proposal.id), {})));
+    expectBusy(await whileLocked(lockProposal, () => quickKeyed(proposer.secret, 'POST', groupPath(SHOP_PROPOSAL_ROUTES.withdrawProposal.path, proposal.id), {})));
+    const events = (await database.db.select().from(changeProposalEvents)).filter((event) => event.proposalId === proposal.id);
+    expect(events.map((event) => event.kind)).toEqual(['proposed']);
+    expect((await keyed(proposer.secret, 'POST', groupPath(SHOP_PROPOSAL_ROUTES.withdrawProposal.path, proposal.id), {})).status).toBe(200);
   }, 30_000);
 });

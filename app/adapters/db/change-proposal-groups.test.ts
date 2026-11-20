@@ -30,6 +30,7 @@ import {
   type StorageProvider,
 } from '#core/server/index.js';
 
+import { CHANGE_PROPOSAL_BOUNDS, type ChangeProposalBounds } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from './change-proposals.js';
@@ -107,13 +108,15 @@ const storage: StorageProvider = (() => {
   };
 })();
 
-const deps = (db: Db = database.db) => {
+const QUICK: ChangeProposalBounds = { lockWaitMs: 100, dryRunStatementMs: 2_000, approvalStatementMs: 2_000 };
+
+const deps = (db: Db = database.db, bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS) => {
   const logger = { error: vi.fn<(message: string) => void>() };
   return {
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
-      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
-    changeProposals: createChangeProposalRepository(db),
-    changeProposalGroups: createChangeProposalGroupRepository(db),
+      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), bounds),
+    changeProposals: createChangeProposalRepository(db, bounds),
+    changeProposalGroups: createChangeProposalGroupRepository(db, bounds),
     changeProposalEvents: createChangeProposalEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     storage,
@@ -493,7 +496,7 @@ describe('group storage rules', () => {
       proposedByKeyId: OTHER_KEY_ID, proposedByKeyName: 'Agent', proposedByIssuerUserId: ISSUER, createdAt,
       expiresAt: changeProposalExpiresAt(createdAt), decidedByUserId: null, decidedAt: null, decisionNote: null, appliedResourceId: null,
       failureCode: null, failureMessage: null,
-    }, { id: 'planted-event', actorUserId: null, apiKeyId: OTHER_KEY_ID, note: null, at: createdAt }, createdAt);
+    }, { id: 'planted-event', actorUserId: null, apiKeyId: OTHER_KEY_ID, note: null, at: createdAt }, { nowIso: () => createdAt });
 
     expect(added).toEqual({ kind: 'not_found' });
     expect(await itemsOf(groupId)).toEqual([]);
@@ -563,5 +566,227 @@ describe('group storage rules', () => {
     expect(single.groupId).toBeNull();
     const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, single.id));
     expect(row).toMatchObject({ groupId: null, groupPosition: null });
+  });
+});
+
+const holdingLocks = async <T>(statements: Array<[string, unknown[]]>, work: (observer: pg.Client) => Promise<T>): Promise<T> => {
+  const blocker = await connectedClient();
+  const observer = await connectedClient();
+  try {
+    await blocker.query('begin');
+    for (const [text, values] of statements) await blocker.query(text, values);
+    return await work(observer);
+  } finally {
+    await blocker.query('rollback');
+    await blocker.end();
+    await observer.end();
+  }
+};
+
+const lockGroupRow = (groupId: string): [string, unknown[]] =>
+  ['select id from change_proposal_groups where tenant_id = $1 and id = $2 for update', [TENANT, groupId]];
+
+describe('bounded lock waits of the standalone group writes', () => {
+  it('answers busy and stores nothing when a join waits too long for the group row', async () => {
+    const groupId = await newGroup();
+    await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
+    const before = await proposalTables();
+
+    const joined = await holdingLocks([lockGroupRow(groupId)], () =>
+      submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'live', delta: 1, reason: 'Count' } }, deps(database.db, QUICK)));
+
+    expect(joined).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
+    expect(await proposalTables()).toEqual(before);
+  }, 30_000);
+
+  it.each([
+    ['reject', (groupId: string) => rejectChangeProposalGroup(ownerSession, { id: groupId }, deps(database.db, QUICK))],
+    ['withdraw', (groupId: string) => withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, deps(database.db, QUICK))],
+  ] as const)('answers busy and moves nothing when a group %s waits too long for the group row', async (_label, decide) => {
+    const groupId = await newGroup();
+    await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
+    const before = await proposalTables();
+
+    expect(await holdingLocks([lockGroupRow(groupId)], () => decide(groupId)))
+      .toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
+    expect(await proposalTables()).toEqual(before);
+  }, 30_000);
+
+  it('answers busy when the key withdraws an empty group whose row stays locked', async () => {
+    const groupId = await newGroup();
+
+    expect(await holdingLocks([lockGroupRow(groupId)], () => withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, deps(database.db, QUICK))))
+      .toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect((await proposalTables()).groups.map((group) => group.id)).toContain(groupId);
+  }, 30_000);
+
+  it('answers busy when a second dry run of the same group is in flight', async () => {
+    const groupId = await newGroup();
+    await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
+    const before = await proposalTables();
+
+    const joined = await holdingLocks([['select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-group-dry-run:${TENANT}:${groupId}`]]], () =>
+      submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'live', delta: 1, reason: 'Count' } }, deps(database.db, QUICK)));
+
+    expect(joined).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(await proposalTables()).toEqual(before);
+    const other = await newGroup(keyCtx(), 'Other');
+    expect(await holdingLocks([['select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-group-dry-run:${TENANT}:${groupId}`]]], () =>
+      join(other, 'stock.adjust', { productId: 'live', delta: 1, reason: 'Count' }, keyCtx(), database.db))).toMatchObject({ ok: true });
+  }, 30_000);
+
+  it('answers busy and applies nothing when an approval statement runs past its time bound', async () => {
+    const groupId = await newGroup();
+    await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
+    const live = await liveTables();
+    const slowStatements: ChangeProposalBounds = { lockWaitMs: 10_000, dryRunStatementMs: 100, approvalStatementMs: 100 };
+
+    const approved = await holdingLocks([['select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug']]], async () =>
+      approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: await itemIdsOf(groupId) }, deps(database.db, slowStatements)));
+
+    expect(approved).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(await liveTables()).toEqual(live);
+    expect(await statusesOf(groupId)).toEqual(['pending']);
+  }, 30_000);
+});
+
+describe('group decisions whose group expires during the lock wait', () => {
+  it.each([
+    ['reject', (groupId: string) => rejectChangeProposalGroup(ownerSession, { id: groupId }, deps())],
+    ['withdraw', (groupId: string) => withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, deps())],
+  ] as const)('records the expiry on every item instead of the %s', async (_label, decide) => {
+    const groupId = await newGroup();
+    const items = [await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' }), await add(groupId, 'stock.adjust', { productId: 'live', delta: 1, reason: 'Count' })];
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query(...lockGroupRow(groupId));
+      const decision = decide(groupId);
+      await untilLockWaiters(observer, 1);
+      now = changeProposalExpiresAt(NOW);
+      await blocker.query('commit');
+
+      expect(await decision).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    expect(await statusesOf(groupId)).toEqual(['pending', 'pending']);
+    for (const id of items) expect((await eventsOf(id)).map((event) => event.kind)).toEqual(['proposed', 'expired']);
+  }, 30_000);
+
+  it('answers the group conflict to a join whose group expired while it waited', async () => {
+    const groupId = await newGroup();
+    await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query(...lockGroupRow(groupId));
+      const joined = join(groupId, 'stock.adjust', { productId: 'live', delta: 1, reason: 'Count' });
+      await untilLockWaiters(observer, 1);
+      now = changeProposalExpiresAt(NOW);
+      await blocker.query('commit');
+
+      expect(await joined).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    expect(await itemIdsOf(groupId)).toHaveLength(1);
+  }, 30_000);
+
+  it('records the expiry on every item when its key withdraws an expired group', async () => {
+    const groupId = await newGroup();
+    const items = [await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' }), await add(groupId, 'stock.adjust', { productId: 'live', delta: 1, reason: 'Count' })];
+    now = changeProposalExpiresAt(NOW);
+
+    expect(await withdrawOwnChangeProposalGroup(keyCtx(), { id: groupId }, deps()))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupStatus: 'expired' } } });
+    for (const id of items) expect((await eventsOf(id)).map((event) => event.kind)).toEqual(['proposed', 'expired']);
+  });
+});
+
+describe('empty groups of a revoked or purged key', () => {
+  it('deletes the key\'s empty groups and withdraws the items of its other groups on revocation', async () => {
+    const empty = await newGroup();
+    const filled = await newGroup(keyCtx(), 'Filled');
+    await add(filled, 'product.update', { id: 'mug', title: 'Big mug' });
+    const otherKeysEmpty = await newGroup(keyCtx(OTHER_KEY_ID), 'Other key');
+
+    expect(await revokeKey()).not.toBeNull();
+
+    const groups = (await proposalTables()).groups.map((group) => group.id);
+    expect(groups).not.toContain(empty);
+    expect(groups).toEqual(expect.arrayContaining([filled, otherKeysEmpty]));
+    expect(await statusesOf(filled)).toEqual(['withdrawn']);
+    expect(await withdrawOwnChangeProposalGroup(keyCtx(), { id: empty }, deps())).toMatchObject({ ok: false });
+  });
+
+  it('deletes every purged key\'s empty groups and withdraws the items of its other groups', async () => {
+    const empty = await newGroup(keyCtx(OTHER_KEY_ID), 'Empty');
+    const filled = await newGroup();
+    await add(filled, 'product.update', { id: 'mug', title: 'Big mug' });
+    const neighbourEmpty = await newGroup(keyCtx(NEIGHBOUR_KEY_ID, NEIGHBOUR), 'Neighbour');
+
+    await createShopManagementKeyRepository(database.db).purge(TENANT, (apiKeyId) => ({
+      id: `purge-${apiKeyId}`, tenantId: TENANT, apiKeyId, kind: 'purged', actorUserId: OWNER, method: null, route: null, resourceId: null, at: NOW,
+    }), { at: NOW, actorUserId: OWNER, nextEventId: () => `purge-withdrawal-${String(++sequence)}` });
+
+    const groups = (await proposalTables()).groups.map((group) => group.id);
+    expect(groups).not.toContain(empty);
+    expect(groups).toEqual(expect.arrayContaining([filled, neighbourEmpty]));
+    expect(await statusesOf(filled)).toEqual(['withdrawn']);
+  });
+});
+
+describe('sales links created earlier in the same group, over the database', () => {
+  const linkFields = { slug: 'grouped-offer', title: 'Grouped offer', heading: 'Grouped offer', productIds: ['live'] };
+
+  it('updates the link through its reference and applies both items', async () => {
+    const groupId = await newGroup();
+    const created = await add(groupId, 'sales-link.create', linkFields);
+    await add(groupId, 'sales-link.update', { ...linkFields, id: changeProposalReference(created), title: 'Renamed offer', expectedRevision: 1 });
+    const live = await liveTables();
+    expect(live.salesLinks).toEqual([]);
+
+    expect(unwrap(await approve(groupId)).status).toBe('applied');
+    const [link] = await database.db.select().from(salesLinks).where(eq(salesLinks.slug, 'grouped-offer'));
+    expect(link).toMatchObject({ title: 'Renamed offer', revision: 2 });
+    expect((await itemsOf(groupId)).map((item) => item.appliedResourceId)).toEqual([link?.id, link?.id]);
+  });
+
+  it('deletes the link through its reference and leaves no live link', async () => {
+    const groupId = await newGroup();
+    const created = await add(groupId, 'sales-link.create', linkFields);
+    await add(groupId, 'sales-link.delete', { id: changeProposalReference(created) });
+
+    expect(unwrap(await approve(groupId)).status).toBe('applied');
+    const rows = await database.db.select().from(salesLinks).where(eq(salesLinks.slug, 'grouped-offer'));
+    expect(rows.every((row) => row.deletedAt !== null)).toBe(true);
+  });
+});
+
+describe('stable effects when the ids created at approval sort the other way, over the database', () => {
+  it('applies a draft deletion of a product whose two prices the group created', async () => {
+    let count = 0;
+    let descending = false;
+    const ids = { nextId: () => { count += 1; return descending ? `id-${String(9000 - count)}` : `id-${String(1000 + count)}`; } };
+    const reversing = { ...deps(), ids };
+    const groupId = unwrap(await createChangeProposalGroup(keyCtx(), { title: 'Reversing' }, reversing)).id;
+    const step = async (operation: ChangeProposalOperation, input: unknown) =>
+      unwrap(await submitGroupedChangeProposal(keyCtx(), { groupId, operation, input }, reversing)).items.at(-1)?.id ?? '';
+    const created = await step('product.create', TEAPOT);
+    const teapot = changeProposalReference(created);
+    await step('price.create', { productId: teapot, kind: 'one_time', amountCents: 2500, currency: 'EUR' });
+    await step('price.create', { productId: teapot, kind: 'one_time', amountCents: 3500, currency: 'EUR' });
+    await step('product.delete-draft', { productId: teapot });
+    descending = true;
+
+    const approved = unwrap(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: await itemIdsOf(groupId) }, reversing));
+
+    expect(approved.items.map((item) => item.status)).toEqual(['applied', 'applied', 'applied', 'applied']);
+    expect(await database.db.select().from(products).where(eq(products.slug, 'teapot'))).toEqual([]);
   });
 });

@@ -21,6 +21,7 @@ import {
   type StorageProvider,
 } from '#core/server/index.js';
 
+import { CHANGE_PROPOSAL_BOUNDS, type ChangeProposalBounds } from './change-proposal-bounds.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { closeDb, createDb, type Db } from './client.js';
 import { createTenantSecretRepository } from './repositories.js';
@@ -47,7 +48,10 @@ const secretCrypto = createSecretCrypto(Buffer.alloc(32, 9).toString('base64'));
 
 const realSecretResolverOver = (connection: Db) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto);
 
-const transactionOf = (log = logger(), db: Db = database.db) => createChangeProposalTransaction(db, log, realSecretResolverOver);
+const transactionOf = (log = logger(), db: Db = database.db, bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS) =>
+  createChangeProposalTransaction(db, log, realSecretResolverOver, bounds);
+
+const QUICK: ChangeProposalBounds = { lockWaitMs: 100, dryRunStatementMs: 100, approvalStatementMs: 100 };
 
 const lockWaiters = async (observer: pg.Client): Promise<number> => {
   const waiting = await observer.query<{ count: number }>(
@@ -433,7 +437,7 @@ describe('change proposal transaction connections and locks', () => {
       await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-transaction:${TENANT}`]);
       const operation = vi.fn(async () => ok(null));
 
-      const result = await transactionOf().dryRun(TENANT, operation);
+      const result = await transactionOf(logger(), database.db, QUICK).dryRun(TENANT, operation);
 
       expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'unavailable', details: { retryAfterSeconds: 5 } }) });
       expect(operation).not.toHaveBeenCalled();
@@ -442,5 +446,39 @@ describe('change proposal transaction connections and locks', () => {
       await holder.end();
     }
     expect(await transactionOf().dryRun(TENANT, async () => ok('free'))).toEqual({ ok: true, value: 'free' });
+  }, 30_000);
+
+  it('answers busy without running the operation while another dry run of the same group holds its lock', async () => {
+    const holder = await connectedClient();
+    try {
+      await holder.query('begin');
+      await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-group-dry-run:${TENANT}:group-1`]);
+      const operation = vi.fn(async () => ok(null));
+
+      expect(await transactionOf(logger(), database.db, QUICK).dryRun(TENANT, operation, { groupId: 'group-1' }))
+        .toEqual({ ok: false, error: expect.objectContaining({ code: 'unavailable' }) });
+      expect(operation).not.toHaveBeenCalled();
+      expect(await transactionOf(logger(), database.db, QUICK).dryRun(TENANT, async () => ok('other group'), { groupId: 'group-2' }))
+        .toEqual({ ok: true, value: 'other group' });
+    } finally {
+      await holder.query('rollback');
+      await holder.end();
+    }
+  }, 30_000);
+
+  it.each(['run', 'dryRun'] as const)('answers busy and keeps nothing when a statement of %s runs past its time bound', async (mode) => {
+    const holder = await connectedClient();
+    try {
+      await holder.query('begin');
+      await holder.query('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'published']);
+      const slow: ChangeProposalBounds = { lockWaitMs: 10_000, dryRunStatementMs: 100, approvalStatementMs: 100 };
+
+      expect(await transactionOf(logger(), database.db, slow)[mode](TENANT, async ({ repositories }) =>
+        ok(await repositories.targets.lock(TENANT, { kind: 'product', id: 'published' }))))
+        .toEqual({ ok: false, error: expect.objectContaining({ code: 'unavailable', details: { retryAfterSeconds: 5 } }) });
+    } finally {
+      await holder.query('rollback');
+      await holder.end();
+    }
   }, 30_000);
 });

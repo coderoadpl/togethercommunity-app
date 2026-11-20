@@ -172,12 +172,102 @@ describe('checkout terms when Stripe cannot collect them', () => {
 
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(within(screen.getByTestId('terms-consent')).getByRole('checkbox'));
-    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(5899) }))));
-    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
-    expect(couponRequests.at(-1)).toMatchObject({ couponCode: 'SAVE', email: 'buyer@example.org' });
+    await waitFor(() => expect(couponRequests.at(-1)).toMatchObject({ couponCode: 'SAVE', email: 'buyer@example.org' }));
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(5899) })));
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(sessions).toHaveLength(2));
     expect(sessions[1]).toMatchObject({ couponCode: 'SAVE', email: 'buyer@example.org', termsOnPage: true, termsAccepted: true });
+  });
+
+  const reachFallbackWithCodeAppliedByHand = async (answer: (body: { email?: unknown }) => Response = () => HttpResponse.json({ ok: true, data: coupon })) => {
+    window.history.replaceState(null, '', '/checkout/course-1');
+    const sessions: unknown[] = [];
+    const couponRequests: { email?: unknown }[] = [];
+    serve(sessions, [refuseStripeTerms]);
+    server.use(http.post('/api/public/checkout/coupon', async ({ request }) => {
+      const body = sessionBody.parse(await request.json());
+      couponRequests.push(body);
+      return answer(body);
+    }));
+    renderCheckout();
+
+    await userEvent.click(await courier());
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.couponReveal }));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+    await screen.findByTestId('checkout-coupon-final');
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(sessions).toHaveLength(1));
+    const email = await screen.findByLabelText(en.checkout.emailLabel);
+    await userEvent.click(within(screen.getByTestId('terms-consent')).getByRole('checkbox'));
+    return { sessions, couponRequests, email };
+  };
+
+  const discountShown = () => {
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(5899) })));
+    expect(screen.getByTestId('checkout-coupon-reveal')).toHaveTextContent(en.checkout.couponAppliedRow({ code: 'SAVE' }));
+  };
+
+  const revalidatedFor = async (couponRequests: { email?: unknown }[], address: string) => {
+    await waitFor(() => expect(couponRequests.at(-1)).toMatchObject({ couponCode: 'SAVE', email: address }));
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    discountShown();
+  };
+
+  const paysWithCode = async (sessions: unknown[], address: string) => {
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    discountShown();
+    const sent = sessions.length;
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(sessions).toHaveLength(sent + 1));
+    expect(sessions.at(-1)).toMatchObject({ couponCode: 'SAVE', email: address });
+  };
+
+  it('keeps the remembered discount on screen while the e-mail is typed, until the new address is validated', async () => {
+    const { couponRequests, email } = await reachFallbackWithCodeAppliedByHand();
+
+    await userEvent.type(email, 'b');
+    discountShown();
+    await userEvent.paste('uyer@example.org');
+    discountShown();
+    await revalidatedFor(couponRequests, 'buyer@example.org');
+  });
+
+  it('keeps the remembered discount when the validated address is cleared and pasted again', async () => {
+    const { sessions, couponRequests, email } = await reachFallbackWithCodeAppliedByHand();
+    await userEvent.type(email, 'buyer@example.org');
+    await revalidatedFor(couponRequests, 'buyer@example.org');
+
+    await userEvent.clear(email);
+    await userEvent.paste('buyer@example.org');
+    await paysWithCode(sessions, 'buyer@example.org');
+  });
+
+  it('keeps the remembered discount when the last character of the validated address is deleted and retyped at once', async () => {
+    const { sessions, couponRequests, email } = await reachFallbackWithCodeAppliedByHand();
+    await userEvent.type(email, 'buyer@example.org');
+    await revalidatedFor(couponRequests, 'buyer@example.org');
+
+    await userEvent.type(email, '{Backspace}g');
+    expect(email).toHaveValue('buyer@example.org');
+    await paysWithCode(sessions, 'buyer@example.org');
+  });
+
+  it('drops the remembered discount when the server refuses it for the typed address', async () => {
+    const { sessions, email } = await reachFallbackWithCodeAppliedByHand((body) => body.email === 'used@example.org'
+      ? HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Coupon cannot be applied' } }, { status: 400 })
+      : HttpResponse.json({ ok: true, data: coupon }));
+
+    await userEvent.type(email, 'used@example.org');
+    expect(await screen.findByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponUnavailable);
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(6899) })));
+    expect(screen.getByTestId('checkout-coupon-reveal')).toHaveTextContent(exact(en.checkout.couponReveal));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(sessions).toHaveLength(2));
+    expect(sessions[1]).toMatchObject({ email: 'used@example.org' });
+    expect(sessions[1]).not.toHaveProperty('couponCode');
   });
 
   it('starts in page-terms mode when the sales-link handoff already learned that Stripe cannot collect the terms', async () => {

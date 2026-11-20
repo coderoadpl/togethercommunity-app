@@ -197,6 +197,33 @@ describe('checkout step one', () => {
     expect(sessions[0]).toMatchObject({ email: 'buyer@example.org', couponCode: 'SAVE' });
   });
 
+  it('validates the link code again when the price choice returns to the price it was validated for', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?code=SAVE');
+    const couponBodies: CouponBody[] = [];
+    const sessions: unknown[] = [];
+    serve({
+      sessions,
+      product: { prices: [
+        { id: 'price-once', kind: 'one_time', interval: null, amountCents: 4900, currency: 'PLN' },
+        { id: 'price-yearly', kind: 'recurring', interval: 'year', amountCents: 9900, currency: 'PLN' },
+      ] },
+      coupon: (body) => { couponBodies.push(body); return HttpResponse.json(breakdown(3920)); },
+    });
+    renderCheckout();
+
+    await screen.findByTestId('checkout-coupon-final');
+    const pay = screen.getByTestId('checkout-pay-cta');
+    expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920) })));
+    await userEvent.click(within(screen.getByTestId('checkout-price-price-yearly')).getByRole('radio'));
+    await userEvent.click(within(screen.getByTestId('checkout-price-price-once')).getByRole('radio'));
+    await waitFor(() => expect(pay).toBeEnabled());
+    await waitFor(() => expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920) }))));
+    expect(couponBodies.at(-1)).toMatchObject({ couponCode: 'SAVE', priceId: 'price-once' });
+    await userEvent.click(pay);
+    await waitFor(() => expect(sessions).toHaveLength(1));
+    expect(sessions[0]).toMatchObject({ couponCode: 'SAVE', priceId: 'price-once' });
+  });
+
   const perPersonCoupon = (couponBodies: CouponBody[]) => (body: CouponBody) => {
     couponBodies.push(body);
     return body.email === undefined

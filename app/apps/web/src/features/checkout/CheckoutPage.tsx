@@ -275,8 +275,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const [autoCouponCode, setAutoCouponCode] = useState(initialCouponCode);
   const [autoValidatedFor, setAutoValidatedFor] = useState<string | null>(null);
   const autoValidationKey = `${couponEmail ?? ''}|${selectedPrice?.id ?? ''}`;
-  const autoValidationDue = autoCouponCode !== '' && couponCode === autoCouponCode &&
+  const rememberedCode = autoCouponCode !== '' && couponCode === autoCouponCode;
+  const autoValidationDue = rememberedCode &&
     (!emailMattersForCoupon || typedEmail !== undefined) && autoValidatedFor !== autoValidationKey;
+  const discardCouponResult = () => {
+    couponValidation.reset();
+    setAutoValidatedFor(null);
+  };
   const couponResolving = couponValidation.isPending || autoValidationDue;
 
   useEffect(() => {
@@ -541,7 +546,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const couponOffered = selectedAmountCents > 0 || couponCode.trim() !== '';
   const removeCoupon = () => {
     dispatchCheckout({ type: 'couponCodeChanged', couponCode: '' });
-    couponValidation.reset();
+    discardCouponResult();
   };
   const variantLines = (bundle?.lines ?? []).flatMap((line) => {
     const chips = renderBundleLineVariants(line);
@@ -554,7 +559,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       required={required}
       onChange={(value) => {
         setEmail(value);
-        if (emailMattersForCoupon) couponValidation.reset();
+        if (emailMattersForCoupon && !(rememberedCode && couponValidation.data !== undefined)) discardCouponResult();
       }}
     />
   );
@@ -636,7 +641,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 value={selectedPrice?.id ?? ''}
                 onChange={(event) => {
                   dispatchCheckout({ type: 'priceSelected', priceId: event.target.value });
-                  couponValidation.reset();
+                  discardCouponResult();
                 }}
               >
                 {product.prices.map((price) => (
@@ -715,7 +720,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   code={couponCode}
                   onCodeChange={(code) => {
                     dispatchCheckout({ type: 'couponCodeChanged', couponCode: code });
-                    couponValidation.reset();
+                    discardCouponResult();
                   }}
                   onApply={() => couponValidation.mutate({
                     productId,

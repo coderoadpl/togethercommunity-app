@@ -20,6 +20,7 @@ import {
   authenticateShopManagementKey,
   recordShopManagementKeyRequest,
   shopManagementKeyCapabilities,
+  shopManagementKeyHash,
   type ShopMachineAuthDeps,
 } from './shop-machine-auth.js';
 
@@ -28,12 +29,13 @@ const TENANT: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', status: 'acti
 const OTHER_TENANT: Tenant = { ...TENANT, id: 't-studio', slug: 'studio', name: 'Studio' };
 const SECRET = 'shop-secret';
 const OWNER_ID = 'user-owner';
+const stubCrypto = { generateSecret: () => SECRET, hash: (value: string) => `hash:${value}` };
 
 const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey => ({
   id: 'shop-key-1',
   tenantId: TENANT.id,
   name: 'Shop backend',
-  keyHash: `hash:${SECRET}`,
+  keyHash: shopManagementKeyHash(stubCrypto, SECRET, overrides.mode ?? 'direct'),
   scopes: ['shop:catalog:read'],
   mode: 'direct',
   issuedByUserId: OWNER_ID,
@@ -112,7 +114,7 @@ const harness = (options: {
       findByHash: async (tenantId, keyHash) =>
         keys.find((key) => key.tenantId === tenantId && key.keyHash === keyHash) ?? null,
     },
-    apiKeyCrypto: { generateSecret: () => SECRET, hash: (value) => `hash:${value}` },
+    apiKeyCrypto: stubCrypto,
     accountIdentities: { findById: async (userId) => (state.account?.userId === userId ? state.account : null) },
     tenantAccess: { findStaffGrant, findMember },
     shopManagementKeyRateLimits: rateLimits,
@@ -355,6 +357,34 @@ describe('propose-mode shop management keys', () => {
     expect(authorize(result.value.ctx, 'proposal:read')).toMatchObject({ code: 'forbidden' });
     expect(authorize(result.value.ctx, 'proposal:decide')).toMatchObject({ code: 'forbidden' });
     expect(authorize(result.value.ctx, 'api-key:write')).toMatchObject({ code: 'forbidden' });
+  });
+});
+
+describe('shop management key hash domains', () => {
+  const proposeRow = { mode: 'propose' as const, scopes: ['shop:catalog:read' as const, 'shop:catalog:write' as const] };
+
+  it('stores a direct-mode key under the plain hash of its secret and a propose-mode key under another hash', () => {
+    expect(shopManagementKeyHash(stubCrypto, SECRET, 'direct')).toBe(`hash:${SECRET}`);
+    expect(shopManagementKeyHash(stubCrypto, SECRET, 'propose')).not.toBe(stubCrypto.hash(SECRET));
+  });
+
+  it('accepts each mode only through the hash domain of its mode', async () => {
+    expect(await authenticate(harness({ keys: [shopKey()] }))).toMatchObject({ ok: true, value: { apiKey: { mode: 'direct' } } });
+    expect(await authenticate(harness({ keys: [shopKey(proposeRow)] }))).toMatchObject({ ok: true, value: { apiKey: { mode: 'propose' } } });
+  });
+
+  it.each([
+    ['a propose-mode row stored under the plain hash', shopKey({ ...proposeRow, keyHash: stubCrypto.hash(SECRET) })],
+    ['a direct-mode row stored under the propose-mode hash', shopKey({ keyHash: shopManagementKeyHash(stubCrypto, SECRET, 'propose') })],
+  ])('refuses %s with 401 and attributes the refusal to the row', async (_label, row) => {
+    const outcome = await authenticateWithAttribution(harness({ keys: [row] }));
+    expect(outcome.result).toEqual(invalidKey);
+    expect(outcome.attribution).toEqual({ match: 'matched', apiKeyId: 'shop-key-1', issuerUserId: OWNER_ID });
+  });
+
+  it('refuses a secret that finds a row in both hash domains', async () => {
+    const h = harness({ keys: [shopKey(), shopKey({ ...proposeRow, id: 'shop-key-2' })] });
+    expect(await authenticate(h)).toEqual(invalidKey);
   });
 });
 

@@ -176,6 +176,8 @@ describe('createShopManagementKey', () => {
     expect(await createShopManagementKey(ctx('owner'), { ...shopInput, mode: 'propose' }, h.deps))
       .toMatchObject({ ok: true, value: { apiKey: { mode: 'propose' } } });
     expect(h.rows).toEqual([expect.objectContaining({ mode: 'propose' })]);
+    expect(h.rows[0]?.keyHash).not.toBe('hash:super-secret-value');
+    expect(h.rows[0]?.keyHash).toMatch(/^hash:.+super-secret-value$/u);
     expect(await createShopManagementKey(ctx('owner'), {
       ...shopInput, mode: 'propose', scopes: ['shop:catalog:read', 'shop:catalog:write', 'shop:integrations:write'],
     }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });

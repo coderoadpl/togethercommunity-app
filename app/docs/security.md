@@ -570,7 +570,12 @@ scopes on every shop key.
 - **Rollback.** Migration 0159 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
-  owner controls, not rollback steps.
+  owner controls, not rollback steps. A release that predates migration 0163
+  reads shop keys but not their mode, and refuses a propose-mode key with
+  `401`: the key's stored hash is taken in a separate propose-mode hash
+  domain, so the plain hash of the presented secret finds no row. Such a key
+  never gains live write access, direct-mode keys keep working, and pending
+  change proposals stay untouched until the roll forward; no purge is needed.
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
   `PATCH` or `DELETE` to a shop route that passed every check write a row to
   the dedicated `shop_management_key_events` table with the key id, never the

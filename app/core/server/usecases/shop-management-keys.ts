@@ -28,6 +28,7 @@ import type {
   ShopManagementKeyEventRepository,
   ShopManagementKeyRepository,
 } from '../ports.js';
+import { shopManagementKeyHash } from './shop-machine-auth.js';
 
 export interface ShopManagementKeyDeps {
   shopManagementKeys: ShopManagementKeyRepository;
@@ -101,7 +102,7 @@ export const createShopManagementKey = async (
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     name: parsed.data.name,
-    keyHash: deps.apiKeyCrypto.hash(secret),
+    keyHash: shopManagementKeyHash(deps.apiKeyCrypto, secret, parsed.data.mode),
     scopes: [...new Set(parsed.data.scopes)],
     mode: parsed.data.mode,
     issuedByUserId: ctx.identity.userId,

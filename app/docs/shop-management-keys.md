@@ -1342,6 +1342,18 @@ was built with. This is expected while the newer schema remains. The order,
 settings, asset and integration routes add no migration, so a retreat from
 them to the release with only the catalog routes needs no data step either.
 
+A retreat to a release that predates migration `0163_change_proposals` needs
+no purge either, although that release reads `shop_management_keys` and
+ignores its `mode` column. A propose-mode key is stored under the hash of its
+secret in a separate propose-mode hash domain, so a release that looks keys up
+by the plain hash of the presented secret finds no row and answers
+`401 Invalid API key`: a propose-mode key never gains live write access there.
+Direct-mode keys are stored under the plain hash as before and keep working.
+Pending [change proposals](change-proposals.md) stay in their tables
+untouched and are visible again after rolling forward. A propose-mode key that
+is revoked or purged during the retreat leaves its proposals pending, for the
+owner to reject after rolling forward.
+
 The hourly production health monitor (`.github/workflows/prod-health.yml`)
 treats `schemaFingerprintMatch: false` as a failed `health` check: every run
 during the retreat fails, and its deep health probe is skipped. It pages

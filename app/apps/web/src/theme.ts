@@ -2965,10 +2965,30 @@ export const CheckoutSafetySection = styled('section')(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const CheckoutSafetyWarnings = styled(Box)(({ theme }) => ({
+export const CheckoutSafetyWarnings = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'clamped',
+})<{ clamped?: boolean }>(({ clamped = false, theme }) => ({
   ...theme.typography.body2,
+  overflowWrap: 'anywhere',
   '& p, & ul, & ol': { margin: 0 },
   '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
+  ...(clamped ? { maxHeight: `calc(3em * ${String(theme.typography.body2.lineHeight ?? 1.5)})`, overflow: 'hidden' } : {}),
+}));
+
+export const CheckoutSafetyProduct = styled('div')({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.625rem',
+  minWidth: 0,
+});
+
+export const CheckoutSafetyThumbnail = styled('img')(({ theme }) => ({
+  flexShrink: 0,
+  width: '2.5rem',
+  height: '2.5rem',
+  objectFit: 'cover',
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
 }));
 
 export const CheckoutSafetyPart = styled('span', {

@@ -798,6 +798,8 @@ export interface Messages {
     details: string;
     detailsFor: (params: { name: string }) => string;
     appliesTo: (params: { count: number }) => string;
+    showMore: string;
+    showLess: string;
   };
   personalization: {
     forLine: (params: { name: string }) => string;

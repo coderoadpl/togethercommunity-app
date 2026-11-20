@@ -18,11 +18,17 @@ const compliance = {
   manufacturerAddress: 'Example Street 1, 00-001 Warsaw',
   manufacturerEmail: 'safety@studio.togethercommunity.app',
   modelIdentifier: 'STAND-1',
-  batchIdentifier: null,
+  batchIdentifier: 'B-2026-11',
   safetyWarnings: 'Keep away from open flame.',
   safetyWarningsHtml: '<p>Keep away from open flame.</p>',
-  instructionsUrl: null,
+  instructionsUrl: 'https://studio.togethercommunity.app/manuals/stand.pdf',
 };
+const standCover = '/icons/pwa-512.png';
+const longWarning = [
+  'Keep away from open flame and heat sources above 60 °C; the printed material softens and the stand may deform under load.',
+  'Place the stand on a flat, dry surface and do not load it with more than 5 kg. Check the joints before each use and stop using a cracked stand.',
+  'Not a toy: small parts can come loose, keep it out of the reach of children under 3 years. Clean with a dry cloth only.',
+];
 const shippingRates = [
   { id: 'locker', label: 'InPost parcel locker', amountCents: 0, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 3 } },
   { id: 'courier', label: 'InPost courier', amountCents: 1000, carrier: 'inpost', pickupPoint: 'none', deliveryEstimateDays: { min: 1, max: 3 } },
@@ -62,6 +68,13 @@ const lockerMapFixture = fixtureFor('together-checkout-locker-map', stand, { shi
 const variantsFixture = fixtureFor('together-checkout-variants', { ...stand, variants: standVariants }, { shippingRates });
 const freeFixture = fixtureFor('together-checkout-free', { priceCents: 0, prices: [price(0)] }, {});
 const signedInFixture = fixtureFor('together-checkout-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'] } });
+const safetyFixture = (scenario: string, change: Record<string, unknown>) => fixtureFor(scenario, { ...stand, coverUrl: standCover, ...change }, { shippingRates });
+const safetyNoWarningFixture = safetyFixture('together-checkout-safety-no-warning', { compliance: { ...compliance, safetyWarnings: '', safetyWarningsHtml: '' } });
+const safetyShortWarningFixture = safetyFixture('together-checkout-safety-short-warning', {});
+const safetyLongWarningFixture = safetyFixture('together-checkout-safety-long-warning', {
+  compliance: { ...compliance, safetyWarnings: longWarning.join('\n\n'), safetyWarningsHtml: longWarning.map((paragraph) => `<p>${paragraph}</p>`).join('') },
+});
+const safetyNoCoverFixture = safetyFixture('together-checkout-safety-no-cover', { coverUrl: null });
 const personalisationFixture = (scenario: string, condition: string | null) => fixtureFor(scenario, { ...stand, personalization: { ...engraving, condition } }, { shippingRates });
 
 const termsRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"rateId":"courier"}}]';
@@ -113,7 +126,7 @@ const couponEmailFixture = {
 
 const bundleLines = [
   {
-    productId: 'product-studio-stand-oak', baseProductId: 'product-studio-stand-oak', name: 'Printed desk stand', type: 'physical', deliveryMethod: 'shipping',
+    productId: 'product-studio-stand-oak', baseProductId: 'product-studio-stand-oak', name: 'Printed desk stand', coverUrl: standCover, type: 'physical', deliveryMethod: 'shipping',
     compliance, personalization: null, grossCents: 15900, netCents: 12927, vatCents: 2973, vatRate: 23, vatExemptionBasis: null,
     variants: [
       { productId: 'product-studio-stand-oak', slug: 'stand-oak', label: 'Oak', soldOut: false },
@@ -121,12 +134,12 @@ const bundleLines = [
     ],
   },
   {
-    productId: 'product-studio-workbook', name: 'Printed workbook', type: 'physical', deliveryMethod: 'shipping',
+    productId: 'product-studio-workbook', name: 'Printed workbook', coverUrl: null, type: 'physical', deliveryMethod: 'shipping',
     compliance: { ...compliance, modelIdentifier: 'BOOK-2', safetyWarnings: '', safetyWarningsHtml: '' }, personalization: null,
     grossCents: 4200, netCents: 4000, vatCents: 200, vatRate: 5, vatExemptionBasis: null, variants: [],
   },
   {
-    productId: 'product-studio-course-101', name: 'Together 101 Course', type: 'course', deliveryMethod: 'pickup',
+    productId: 'product-studio-course-101', name: 'Together 101 Course', coverUrl: null, type: 'course', deliveryMethod: 'pickup',
     compliance: null, personalization: null, grossCents: 12300, netCents: 10000, vatCents: 2300, vatRate: 23, vatExemptionBasis: null, variants: [],
   },
 ];
@@ -291,6 +304,20 @@ export const CouponEmailRequired: Story = {
   play: async ({ canvasElement }) => askForCouponEmail(canvasElement),
 };
 export const CouponEmailRequiredMobile: Story = withMobile(CouponEmailRequired);
+export const SafetyNoWarning: Story = { parameters: { fixture: safetyNoWarningFixture } };
+export const SafetyNoWarningMobile: Story = withMobile(SafetyNoWarning);
+export const SafetyShortWarning: Story = { parameters: { fixture: safetyShortWarningFixture } };
+export const SafetyShortWarningMobile: Story = withMobile(SafetyShortWarning);
+export const SafetyLongWarning: Story = { parameters: { fixture: safetyLongWarningFixture } };
+export const SafetyLongWarningMobile: Story = withMobile(SafetyLongWarning);
+export const SafetyLongWarningExpanded: Story = {
+  parameters: { fixture: safetyLongWarningFixture },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(await within(canvasElement).findByTestId('product-safety-info')).findByRole('button', { name: 'Show more' }));
+  },
+};
+export const SafetyNoCover: Story = { parameters: { fixture: safetyNoCoverFixture } };
+export const SafetyNoCoverMobile: Story = withMobile(SafetyNoCover);
 export const SafetyDetailsOpen: Story = { play: async ({ canvasElement }) => openSafetyDetails(canvasElement) };
 export const Variants: Story = { parameters: { fixture: variantsFixture } };
 export const ValidationError: Story = {

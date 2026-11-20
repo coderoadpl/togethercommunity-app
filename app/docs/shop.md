@@ -748,18 +748,43 @@ content; the platform only validates the shape.
 The public offer returns `compliance` for each product with
 `safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
 used for sales-link descriptions (links, emphasis and lists only; HTML and
-images are escaped or dropped). The Together checkout page shows a compact
-**Product safety information** section above the pay button, for every product
-type: one line per manufacturer with the name, the postal address, the contact
-e-mail and, when the offer sells more than one product, `applies to N products`.
-These data stay visible without a click, as Regulation (EU) 2023/988 art. 19
-requires them clearly and visibly in the offer. Products whose manufacturer name,
-address and e-mail are identical share one line. **Details** on a line opens, per
-product, the product name (for more than one product), the model, the batch, the
-warnings rendered through the product description sanitiser and the
-instructions link. Public sales-link offers carry `compliance` on each line the
-same way. The cart checkout keeps one section per product, expanded for physical
-products. A sales link with any product that carries safety information never
+images are escaped or dropped). Public sales-link offers carry `compliance` and
+the product `coverUrl` on each line the same way.
+
+Regulation (EU) 2023/988 art. 19 says an online offer "shall clearly and
+visibly indicate at least":
+
+- (a) the manufacturer's name, registered trade name or trade mark, with its
+  postal and electronic address;
+- (b) where the manufacturer is not established in the Union, the name, postal
+  and electronic address of the responsible person;
+- (c) "information allowing the identification of the product, including a
+  picture of it, its type and any other product identifier";
+- (d) "any warning or safety information" to be affixed to the product or its
+  packaging or included in an accompanying document, in a language consumers
+  can easily understand.
+
+The Together checkout page shows a compact **Product safety information**
+section above the pay button, for every product type with `compliance`. Without
+a click it shows, per manufacturer, the name, the postal address, the contact
+e-mail and, when the offer sells more than one product, `applies to N products`
+(a); then, for each product of that manufacturer, a 40 px picture from the
+product cover with the product title as its alternative text when the product
+has a cover, the product title when the offer sells more than one product, the
+model identifier (c), and the safety warnings as plain text when the workspace
+entered any (d). A warning longer than 280 characters shows its first three
+lines with **Show more**, which extends the same text; screen readers read the
+whole warning either way. Products without warnings show no warning line.
+Products whose manufacturer name, address and e-mail are identical share one
+manufacturer line.
+
+**Details** on a manufacturer line holds only what goes beyond that minimum: per
+product (titled when the offer sells more than one product) the batch and the
+instructions link. A manufacturer whose products have neither shows no
+**Details**. The product data has no separate responsible-person field, so the
+page shows no line of its own for (b). The cart checkout keeps one section per
+product, expanded for physical products.
+A sales link with any product that carries safety information never
 takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
 consent-bound products it stays on the Together page at `?checkout=together`,
 so the section is shown before payment, and

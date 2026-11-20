@@ -7,9 +7,9 @@ import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { closesOnEscape } from '../../components/ui/CheckoutStepParts.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { useTranslations } from '../../i18n/index.js';
-import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyLastPart, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetyWarnings } from '../../theme.js';
+import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyLastPart, CheckoutSafetyPart, CheckoutSafetyProduct, CheckoutSafetySection, CheckoutSafetyThumbnail, CheckoutSafetyWarnings } from '../../theme.js';
 
-type SafetyEntry = { productId: string; title: string; compliance: PublicProductCompliance };
+type SafetyEntry = { productId: string; title: string; coverUrl: string | null; compliance: PublicProductCompliance };
 
 type SafetyGroup = {
   key: string;
@@ -18,6 +18,8 @@ type SafetyGroup = {
   manufacturerEmail: string;
   entries: SafetyEntry[];
 };
+
+const LONG_WARNING_CHARACTERS = 280;
 
 const groupSafetyEntries = (entries: readonly SafetyEntry[]): SafetyGroup[] => {
   const groups = new Map<string, SafetyGroup>();
@@ -31,6 +33,10 @@ const groupSafetyEntries = (entries: readonly SafetyEntry[]): SafetyGroup[] => {
   return [...groups.values()];
 };
 
+const hasExtras = ({ compliance }: SafetyEntry): boolean => compliance.batchIdentifier != null || compliance.instructionsUrl != null;
+
+const compactToggleHeight = { minHeight: { xs: '2.75rem', sm: '1.75rem' } };
+
 const Detail = ({ label, children }: { label: string; children: ReactNode }) => (
   <Typography variant="body2">
     <Box component="span" color="text.secondary">{label}: </Box>
@@ -38,19 +44,56 @@ const Detail = ({ label, children }: { label: string; children: ReactNode }) => 
   </Typography>
 );
 
-const ProductDetails = ({ entry, titled }: { entry: SafetyEntry; titled: boolean }) => {
+const ProductPicture = ({ src, alt }: { src: string | null | undefined; alt: string }) => {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (src == null || failedSrc === src) return null;
+  return <CheckoutSafetyThumbnail src={src} alt={alt} width={40} height={40} loading="lazy" onError={() => setFailedSrc(src)} data-testid="product-safety-picture" />;
+};
+
+const SafetyWarning = ({ compliance }: { compliance: PublicProductCompliance }) => {
+  const t = useTranslations();
+  const [expanded, setExpanded] = useState(false);
+  const warningId = useId();
+  if (compliance.safetyWarningsHtml.trim() === '') return null;
+  const long = compliance.safetyWarnings.length > LONG_WARNING_CHARACTERS;
+  return (
+    <Box {...closesOnEscape}>
+      <CheckoutSafetyWarnings id={warningId} clamped={long && !expanded}>
+        <RichTextContent html={compliance.safetyWarningsHtml} data-testid="product-safety-warnings" />
+      </CheckoutSafetyWarnings>
+      {long ? (
+        <CheckoutInlineToggle type="button" aria-expanded={expanded} aria-controls={warningId} onClick={() => setExpanded((current) => !current)} sx={compactToggleHeight}>
+          {expanded ? t.productSafety.showLess : t.productSafety.showMore}
+        </CheckoutInlineToggle>
+      ) : null}
+    </Box>
+  );
+};
+
+const ProductIdentity = ({ entry, titled }: { entry: SafetyEntry; titled: boolean }) => {
+  const t = useTranslations();
+  return (
+    <CheckoutSafetyProduct data-testid={`product-safety-product-${entry.productId}`}>
+      <ProductPicture src={entry.coverUrl} alt={entry.title} />
+      <Stack useFlexGap spacing="0.2rem" sx={{ minWidth: 0, flex: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+          {titled ? <><Box component="span" color="text.primary">{entry.title}</Box>{' · '}</> : null}
+          <span>{t.productSafety.model}: </span>
+          <span>{entry.compliance.modelIdentifier}</span>
+        </Typography>
+        <SafetyWarning compliance={entry.compliance} />
+      </Stack>
+    </CheckoutSafetyProduct>
+  );
+};
+
+const ProductExtras = ({ entry, titled }: { entry: SafetyEntry; titled: boolean }) => {
   const t = useTranslations();
   const { compliance } = entry;
   return (
-    <Stack useFlexGap spacing="0.35rem" data-testid={`product-safety-product-${entry.productId}`}>
+    <Stack useFlexGap spacing="0.35rem" data-testid={`product-safety-details-${entry.productId}`}>
       {titled ? <Typography variant="subtitle2" color="text.primary">{entry.title}</Typography> : null}
-      <Detail label={t.productSafety.model}>{compliance.modelIdentifier}</Detail>
       {compliance.batchIdentifier == null ? null : <Detail label={t.productSafety.batch}>{compliance.batchIdentifier}</Detail>}
-      {compliance.safetyWarningsHtml.trim() === '' ? null : (
-        <CheckoutSafetyWarnings>
-          <RichTextContent html={compliance.safetyWarningsHtml} data-testid="product-safety-warnings" />
-        </CheckoutSafetyWarnings>
-      )}
       {compliance.instructionsUrl == null ? null : (
         <Link href={compliance.instructionsUrl} target="_blank" rel="noopener noreferrer" variant="body2">{t.productSafety.instructions}</Link>
       )}
@@ -62,6 +105,7 @@ const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group:
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const extras = group.entries.filter(hasExtras);
   const parts = [
     <CheckoutSafetyPart key="name" emphasised={emphasised}>{group.manufacturerName}</CheckoutSafetyPart>,
     <CheckoutSafetyPart key="address">{group.manufacturerAddress}</CheckoutSafetyPart>,
@@ -74,24 +118,31 @@ const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group:
         {parts.slice(0, -1)}
         <CheckoutSafetyLastPart>
           {parts.at(-1)}
-          <CheckoutInlineToggle
-            type="button"
-            aria-expanded={open}
-            aria-controls={panelId}
-            aria-label={t.productSafety.detailsFor({ name: group.manufacturerName })}
-            onClick={() => setOpen((current) => !current)}
-            sx={{ minHeight: { xs: '2.75rem', sm: '1.75rem' } }}
-          >
-            {t.productSafety.details}
-            <ChevronDownIcon />
-          </CheckoutInlineToggle>
+          {extras.length === 0 ? null : (
+            <CheckoutInlineToggle
+              type="button"
+              aria-expanded={open}
+              aria-controls={panelId}
+              aria-label={t.productSafety.detailsFor({ name: group.manufacturerName })}
+              onClick={() => setOpen((current) => !current)}
+              sx={compactToggleHeight}
+            >
+              {t.productSafety.details}
+              <ChevronDownIcon />
+            </CheckoutInlineToggle>
+          )}
         </CheckoutSafetyLastPart>
       </Typography>
-      <Box id={panelId} hidden={!open} sx={{ pt: '0.5rem', pb: '0.25rem' }}>
-        <Stack useFlexGap spacing="0.75rem">
-          {group.entries.map((entry) => <ProductDetails key={entry.productId} entry={entry} titled={titled} />)}
-        </Stack>
-      </Box>
+      <Stack useFlexGap spacing="0.5rem" sx={{ pt: '0.375rem' }}>
+        {group.entries.map((entry) => <ProductIdentity key={entry.productId} entry={entry} titled={titled} />)}
+      </Stack>
+      {extras.length === 0 ? null : (
+        <Box id={panelId} hidden={!open} sx={{ pt: '0.5rem', pb: '0.25rem' }}>
+          <Stack useFlexGap spacing="0.75rem">
+            {extras.map((entry) => <ProductExtras key={entry.productId} entry={entry} titled={titled} />)}
+          </Stack>
+        </Box>
+      )}
     </Box>
   );
 };

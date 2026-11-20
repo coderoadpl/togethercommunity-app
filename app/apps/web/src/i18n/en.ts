@@ -848,6 +848,8 @@ export const en: Messages = {
     details: 'Details',
     detailsFor: ({ name }) => format('Details for {name}', { name }),
     appliesTo: ({ count }) => plural(count, `applies to ${count} product`, `applies to ${count} products`),
+    showMore: 'Show more',
+    showLess: 'Show less',
   },
   personalization: {
     forLine: ({ name }) => `For: ${name}`,

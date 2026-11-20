@@ -58,7 +58,7 @@ describe('checkout product safety information', () => {
     window.history.replaceState(null, '', '/checkout/stand-black?utm_source=newsletter&checkout=together');
   });
 
-  it('shows the manufacturer of a physical product in one compact stacked block and the model and warnings behind Details', async () => {
+  it('shows the manufacturer, the model and the warnings of a physical product without a click and keeps the batch and instructions behind Details', async () => {
     serve([product('black', { compliance })]);
     renderCheckout('stand-black');
     const section = await screen.findByTestId('product-safety-info');
@@ -70,7 +70,14 @@ describe('checkout product safety information', () => {
       expect(within(line).getByText(exactly(part)).closest('span')).toHaveTextContent(exactly(part));
     }
     expect(within(section).getByRole('link', { name: 'safety@example.com' })).toHaveAttribute('href', 'mailto:safety@example.com');
-    expect(within(section).getByText('STAND-1')).not.toBeVisible();
+    const identity = within(line).getByTestId('product-safety-product-black');
+    expect(identity).toHaveTextContent(`${en.productSafety.model}: STAND-1`);
+    expect(within(identity).getByText('STAND-1')).toBeVisible();
+    expect(within(identity).getByText('open flame')).toBeVisible();
+    expect(within(identity).getByText('open flame').tagName).toBe('STRONG');
+    expect(within(identity).queryByRole('button', { name: en.productSafety.showMore })).toBeNull();
+    expect(within(section).getByText('B-2026-11')).not.toBeVisible();
+    expect(within(section).getByRole('link', { name: en.productSafety.instructions, hidden: true })).not.toBeVisible();
     const details = within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
     expect(details).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(details);
@@ -78,7 +85,6 @@ describe('checkout product safety information', () => {
     expect(document.getElementById(details.getAttribute('aria-controls') ?? '')).toBeVisible();
     expect(within(section).getByText('STAND-1')).toBeVisible();
     expect(within(section).getByText('B-2026-11')).toBeVisible();
-    expect(within(section).getByText('open flame').tagName).toBe('STRONG');
     expect(within(section).getByRole('link', { name: en.productSafety.instructions })).toHaveAttribute('href', 'https://example.com/manual.pdf');
     expect(section.compareDocumentPosition(screen.getByTestId('checkout-pay-cta')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -116,9 +122,61 @@ describe('checkout product safety information', () => {
     renderCheckout('stand-black');
     const section = await screen.findByTestId('product-safety-info');
     expect(within(section).getByTestId('product-safety-manufacturer')).toHaveTextContent(stacked('Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com'));
-    expect(within(section).queryByText('STAND-1')).not.toBeVisible();
+    expect(within(section).getByText('STAND-1')).toBeVisible();
+    expect(within(section).getByText('B-2026-11')).not.toBeVisible();
     await userEvent.click(within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
-    expect(await within(section).findByText('STAND-1')).toBeVisible();
+    expect(await within(section).findByText('B-2026-11')).toBeVisible();
+  });
+
+  it('shows a small picture of the product next to its model line when the product has a cover', async () => {
+    serve([product('black', { compliance, coverUrl: 'https://cdn.example.com/stand.jpg' })]);
+    renderCheckout('stand-black');
+    const identity = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-product-black');
+    const picture = within(identity).getByRole('img', { name: 'Printed stand black' });
+    expect(picture).toBeVisible();
+    expect(picture).toHaveAttribute('src', 'https://cdn.example.com/stand.jpg');
+    expect(picture).toHaveAttribute('width', '40');
+    expect(picture.parentElement).toBe(identity);
+    expect(picture.compareDocumentPosition(within(identity).getByText('STAND-1')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no picture and no warning text when the product has neither a cover nor warnings', async () => {
+    serve([product('black', { compliance: { ...compliance, safetyWarnings: '', safetyWarningsHtml: '' } })]);
+    renderCheckout('stand-black');
+    const section = await screen.findByTestId('product-safety-info');
+    expect(within(section).getByText('STAND-1')).toBeVisible();
+    expect(within(section).queryByTestId('product-safety-warnings')).toBeNull();
+    expect(within(section).queryByTestId('product-safety-picture')).toBeNull();
+    expect(within(section).queryByRole('button', { name: en.productSafety.showMore })).toBeNull();
+  });
+
+  it('shows the start of a long warning without a click and lets Show more extend the same text', async () => {
+    const longWarning = `Keep away from open flame. ${'Do not leave the stand in direct sunlight for long periods. '.repeat(6)}Recycle the packaging.`;
+    serve([product('black', { compliance: { ...compliance, safetyWarnings: longWarning, safetyWarningsHtml: `<p>${longWarning}</p>` } })]);
+    renderCheckout('stand-black');
+    const section = await screen.findByTestId('product-safety-info');
+    const warning = within(section).getByTestId('product-safety-warnings');
+    expect(warning).toBeVisible();
+    expect(warning).toHaveTextContent(/^Keep away from open flame\./u);
+    expect(warning).toHaveTextContent('Recycle the packaging.');
+    const more = within(section).getByRole('button', { name: en.productSafety.showMore });
+    const clamp = document.getElementById(more.getAttribute('aria-controls') ?? '');
+    expect(clamp).toContainElement(warning);
+    expect(clamp).toHaveStyle({ overflow: 'hidden' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(more);
+    expect(within(section).getByRole('button', { name: en.productSafety.showLess })).toHaveAttribute('aria-expanded', 'true');
+    expect(clamp).not.toHaveStyle({ overflow: 'hidden' });
+    expect(within(section).getByTestId('product-safety-warnings')).toBe(warning);
+  });
+
+  it('offers no Details toggle when a product has nothing beyond the visible minimum', async () => {
+    serve([product('black', { compliance: { ...compliance, batchIdentifier: null, instructionsUrl: null } })]);
+    renderCheckout('stand-black');
+    const section = await screen.findByTestId('product-safety-info');
+    expect(within(section).getByText('STAND-1')).toBeVisible();
+    expect(within(section).getByText('open flame')).toBeVisible();
+    expect(within(section).queryByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) })).toBeNull();
   });
 
   it('renders no safety section without safety information', async () => {
@@ -162,15 +220,17 @@ describe('sales-link product safety information', () => {
     const section = await screen.findByTestId('product-safety-info');
     expect(within(section).getByRole('heading', { name: en.productSafety.offerHeading })).toBeVisible();
     expect(within(section).getByTestId('product-safety-manufacturer')).not.toHaveTextContent(en.productSafety.appliesTo({ count: 1 }));
-    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
     expect(within(section).getByText('STAND-1')).toBeVisible();
+    expect(within(section).getByText('open flame')).toBeVisible();
+    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
+    expect(within(section).getByText('B-2026-11')).toBeVisible();
     expect(within(section).queryByText('Printed stand')).toBeNull();
   });
 
-  it('shares one line between products with identical manufacturer data and lists each product behind Details', async () => {
+  it('shares one line between products with identical manufacturer data, names each product with its model, picture and warnings without a click and lists the extras behind Details', async () => {
     const other = { ...compliance, manufacturerName: 'Other Works', manufacturerEmail: 'hello@other.example', modelIdentifier: 'BOOK-1', batchIdentifier: null, instructionsUrl: null, safetyWarningsHtml: '' };
     serveLink([
-      line('black', 'Printed stand', 'physical', compliance),
+      { ...line('black', 'Printed stand', 'physical', compliance), coverUrl: 'https://cdn.example.com/stand.jpg' },
       line('guide', 'Assembly guide', 'digital_download', null),
       line('lamp', 'Printed lamp', 'physical', { ...compliance, modelIdentifier: 'LAMP-1', batchIdentifier: null, instructionsUrl: null, safetyWarningsHtml: '<p>Do not cover the <em>shade</em>.</p>' }),
       line('book', 'Printed book', 'physical', other),
@@ -183,19 +243,29 @@ describe('sales-link product safety information', () => {
     expect(rest).toEqual([]);
     expect(shared).toHaveTextContent(stacked('Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com', en.productSafety.appliesTo({ count: 2 })));
     expect(single).toHaveTextContent(stacked('Other Works', 'Example Street 1, Warsaw', 'hello@other.example', en.productSafety.appliesTo({ count: 1 })));
-    expect(within(shared).getByText('LAMP-1')).not.toBeVisible();
-
-    expect(within(single).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Other Works' }) })).toHaveTextContent(en.productSafety.details);
-    await userEvent.click(within(shared).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
     const stand = within(shared).getByTestId('product-safety-product-black');
     const lamp = within(shared).getByTestId('product-safety-product-lamp');
     expect(within(stand).getByText('Printed stand')).toBeVisible();
     expect(within(stand).getByText('STAND-1')).toBeVisible();
     expect(within(stand).getByText('open flame').tagName).toBe('STRONG');
+    expect(within(stand).getByRole('img', { name: 'Printed stand' })).toHaveAttribute('src', 'https://cdn.example.com/stand.jpg');
     expect(within(lamp).getByText('Printed lamp')).toBeVisible();
     expect(within(lamp).getByText('LAMP-1')).toBeVisible();
     expect(within(lamp).getByText('shade').tagName).toBe('EM');
-    expect(within(single).getByText('BOOK-1')).not.toBeVisible();
+    expect(within(lamp).queryByRole('img')).toBeNull();
+    expect(within(single).getByText('BOOK-1')).toBeVisible();
+    expect(within(single).queryByTestId('product-safety-warnings')).toBeNull();
+    expect(within(single).queryByRole('button', { name: en.productSafety.detailsFor({ name: 'Other Works' }) })).toBeNull();
+
+    const toggle = within(shared).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
+    expect(toggle).toHaveTextContent(en.productSafety.details);
+    expect(within(shared).getByText('B-2026-11')).not.toBeVisible();
+    await userEvent.click(toggle);
+    const standExtras = within(shared).getByTestId('product-safety-details-black');
+    expect(within(standExtras).getByText('Printed stand')).toBeVisible();
+    expect(within(standExtras).getByText('B-2026-11')).toBeVisible();
+    expect(within(standExtras).getByRole('link', { name: en.productSafety.instructions })).toHaveAttribute('href', 'https://example.com/manual.pdf');
+    expect(within(shared).queryByTestId('product-safety-details-lamp')).toBeNull();
   });
 
   it('spaces several manufacturers apart and names each one in the primary text colour', async () => {

@@ -116,6 +116,8 @@ Besides the lines, the total and the workspace context it carries:
   tracked. It is `0` exactly when `soldOut` is `true`.
 - `lines[].maxQuantity`: the quantity of that product one checkout accepts, `1`,
   or `0` when the product is sold out.
+- `lines[].coverUrl`: the product cover, or `null`; the checkout page shows it
+  as a small picture beside the product's safety information.
 - `lines[].variants[].available`: the available count of each eligible variant,
   `null` for an untracked one, next to its `soldOut` flag.
 

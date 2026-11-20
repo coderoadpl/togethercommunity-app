@@ -40,7 +40,7 @@ export const salesLinkDeleteInputSchema = z.object({ id: z.string().min(1), expe
 export const salesLinkSchema = z.object({ ...fields, id: z.string(), tenantId: z.string(), revision: z.number().int().positive(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).refine(validWindow, 'Validity end must follow its start');
 const salesLinkLineSchema = z.object({
   baseProductId: z.string().optional(), variants: z.array(publicProductVariantSchema).default([]),
-  productId: z.string(), name: z.string(), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), compliance: publicProductComplianceSchema.nullable().default(null), personalization: publicProductPersonalizationSchema.nullable().default(null), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
+  productId: z.string(), name: z.string(), coverUrl: z.string().nullable().default(null), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), compliance: publicProductComplianceSchema.nullable().default(null), personalization: publicProductPersonalizationSchema.nullable().default(null), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
   maxQuantity: z.number().int().min(0).default(1),
 });
 export const salesLinkOfferSchema = z.object({

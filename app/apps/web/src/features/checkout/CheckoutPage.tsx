@@ -209,8 +209,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ? singleOffer.data?.products.find((candidate) => candidate.id === productRef || candidate.slug === productRef)?.stock.soldOut === true
     : bundle?.soldOut === true;
   const safetyEntries = salesLinkSlug === undefined
-    ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, type: offerProduct.type, compliance: offerProduct.compliance }]
-    : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, type: line.type, compliance: line.compliance }]);
+    ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, coverUrl: offerProduct.coverUrl, compliance: offerProduct.compliance }]
+    : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, coverUrl: line.coverUrl, compliance: line.compliance }]);
   const multiProduct = (bundle?.lines.length ?? 0) > 1;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
   const personalization = usePersonalizations(salesLinkSlug === undefined ? offerProduct === undefined || selectedPrice?.kind === 'recurring' ? [] : [{ productId: offerProduct.id, name: offerProduct.title, personalization: offerProduct.personalization }] : bundle?.lines ?? []);

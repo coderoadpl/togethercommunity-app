@@ -855,6 +855,8 @@ export const pl: Messages = {
     details: 'Szczegóły',
     detailsFor: ({ name }) => format('Szczegóły: {name}', { name }),
     appliesTo: ({ count }) => plural(count, `dotyczy ${count} produktu`, `dotyczy ${count} produktów`, `dotyczy ${count} produktów`),
+    showMore: 'Pokaż więcej',
+    showLess: 'Pokaż mniej',
   },
   personalization: {
     forLine: ({ name }) => `Dotyczy: ${name}`,

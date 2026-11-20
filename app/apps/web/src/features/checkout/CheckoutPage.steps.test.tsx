@@ -328,6 +328,20 @@ describe('checkout step one', () => {
     expect(sessions[0]).not.toHaveProperty('email');
   });
 
+  it('draws one focus ring on Apply in the code row, without the focus ripple', async () => {
+    serve({ coupon: perPersonCoupon([]) });
+    renderCheckout();
+
+    const email = await applyTypedCodeUntilEmailIsAsked();
+    email.focus();
+    await userEvent.tab();
+    const apply = screen.getByTestId('checkout-coupon-apply');
+    expect(apply).toHaveFocus();
+    expect(apply).toHaveClass('Mui-focusVisible');
+    await new Promise((resolve) => { window.setTimeout(resolve, 50); });
+    expect(apply.querySelector('.MuiTouchRipple-ripplePulsate')).toBeNull();
+  });
+
   it('keeps Enter in the email field of the details placement a submit of the checkout', async () => {
     const sessions: unknown[] = [];
     serve({ sessions, tenantLegal: { termsUrl: 'https://acme.test/terms', privacyUrl: null } });

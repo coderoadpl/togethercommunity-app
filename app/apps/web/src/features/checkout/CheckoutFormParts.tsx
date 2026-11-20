@@ -289,6 +289,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
             ref={removeRef}
             type="button"
             variant="text"
+            disableFocusRipple
             data-testid="checkout-coupon-remove"
             aria-label={t.checkout.couponRemoveLabel({ code: applied.code })}
             onClick={() => {
@@ -305,6 +306,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
           <Button
             type="button"
             variant="outlined"
+            disableFocusRipple
             data-testid="checkout-coupon-apply"
             disabled={!canApply}
             aria-describedby={emptyReason ? emptyReasonId : undefined}

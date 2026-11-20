@@ -131,6 +131,9 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_PROPOSAL_ROUTES.listProposals.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
   { path: SHOP_PROPOSAL_ROUTES.getProposal.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
   { path: SHOP_PROPOSAL_ROUTES.withdrawProposal.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.createGroup.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.getGroup.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.withdrawGroup.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
 ] as const;
 
 export const selfAuthenticatingRouteManifestEntry = (

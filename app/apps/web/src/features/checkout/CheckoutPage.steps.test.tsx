@@ -69,6 +69,13 @@ const breakdown = (finalCents: number) => ({
   },
 });
 
+const perPersonCoupon = (couponBodies: CouponBody[]) => (body: CouponBody) => {
+  couponBodies.push(body);
+  return body.email === undefined
+    ? HttpResponse.json({ ok: false, error: { code: 'validation', message: 'An email is required to validate this coupon' } }, { status: 400 })
+    : HttpResponse.json(breakdown(3920));
+};
+
 const following = (first: Element, second: Element) => (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
 describe('checkout step one', () => {
@@ -197,6 +204,38 @@ describe('checkout step one', () => {
     expect(sessions[0]).toMatchObject({ email: 'buyer@example.org', couponCode: 'SAVE' });
   });
 
+  it('drops the discount of a link code once its address in the code row is cleared and validates it again when the address is back', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?code=SAVE');
+    const couponBodies: CouponBody[] = [];
+    const sessions: unknown[] = [];
+    serve({ sessions, coupon: perPersonCoupon(couponBodies) });
+    renderCheckout();
+
+    const email = await screen.findByLabelText(en.checkout.emailLabel);
+    await userEvent.type(email, 'buyer@example.org');
+    await screen.findByTestId('checkout-coupon-final');
+    const pay = screen.getByTestId('checkout-pay-cta');
+    await waitFor(() => expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920) }))));
+
+    await userEvent.clear(email);
+    await waitFor(() => expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(4900) }))));
+    expect(screen.getByTestId('checkout-coupon-reveal')).toHaveTextContent(exact(en.checkout.couponReveal));
+    expect(screen.getByTestId('checkout-summary-total')).toHaveTextContent(exact(pln(4900)));
+    expect(pay).toBeEnabled();
+    await userEvent.click(pay);
+    await waitFor(() => expect(sessions).toHaveLength(1));
+    expect(sessions[0]).not.toHaveProperty('couponCode');
+    expect(sessions[0]).not.toHaveProperty('email');
+
+    await userEvent.type(email, 'buyer@example.org');
+    await waitFor(() => expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920) }))));
+    expect(couponBodies.at(-1)).toEqual({ productId: 'course-1', couponCode: 'SAVE', email: 'buyer@example.org' });
+    await waitFor(() => expect(pay).toBeEnabled());
+    await userEvent.click(pay);
+    await waitFor(() => expect(sessions).toHaveLength(2));
+    expect(sessions[1]).toMatchObject({ couponCode: 'SAVE', email: 'buyer@example.org' });
+  });
+
   it('validates the link code again when the price choice returns to the price it was validated for', async () => {
     window.history.replaceState(null, '', '/checkout/course-1?code=SAVE');
     const couponBodies: CouponBody[] = [];
@@ -223,13 +262,6 @@ describe('checkout step one', () => {
     await waitFor(() => expect(sessions).toHaveLength(1));
     expect(sessions[0]).toMatchObject({ couponCode: 'SAVE', priceId: 'price-once' });
   });
-
-  const perPersonCoupon = (couponBodies: CouponBody[]) => (body: CouponBody) => {
-    couponBodies.push(body);
-    return body.email === undefined
-      ? HttpResponse.json({ ok: false, error: { code: 'validation', message: 'An email is required to validate this coupon' } }, { status: 400 })
-      : HttpResponse.json(breakdown(3920));
-  };
 
   const applyTypedCodeUntilEmailIsAsked = async () => {
     await userEvent.click(await screen.findByRole('button', { name: en.checkout.couponReveal }));

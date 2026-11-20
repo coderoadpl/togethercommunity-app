@@ -40,7 +40,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const size = t.shipx.parcelTemplates[chosenTemplate ?? view.parcelTemplate];
   const showCreate = canCreate && view.available;
   const reason = canCreate ? hintReason(view.reason) : null;
-  const hint = reason === null ? null : t.shipx.unavailableReasons[reason];
+  const hint = reason === null ? null : t.shipx.unavailableReasons[reason][view.environment];
   const busy = pending || discarding;
   if (!labelReady && !showCreate && hint === null && shipment === null) return null;
   const parcelTemplateField = (

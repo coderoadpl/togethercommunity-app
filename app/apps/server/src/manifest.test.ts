@@ -70,7 +70,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
         defaultHomeSpaceId: null,
       };
     },
-    updateSettings: async (_id, settings) => settings,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async (input) => ({
       id: input.tenant.id,
       slug: input.tenant.slug,

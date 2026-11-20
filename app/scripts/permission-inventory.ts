@@ -9,6 +9,7 @@ import {
   ROLE_CAPABILITIES,
 } from '#core/contract/index.js';
 import {
+  ORGANIZATION_PRINCIPALS,
   shopManagementCapabilities,
   shopManagementScopeSchema,
   type Capability,
@@ -91,6 +92,26 @@ const effectiveAfter = (
 const capabilityForRoute = (method: string, path: string): Capability | null => {
   const declared = selfAuthenticatingRouteManifestEntry({ method, path })?.capability;
   if (declared !== undefined) return declared;
+  if (path === '/api/organizations') return 'tenant:list-own';
+  if (path === '/api/organizations/:organizationId') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/update') return 'organization:settings:write';
+  if (path === '/api/organizations/:organizationId/secrets') {
+    return method === 'GET' ? 'organization:secret:read' : 'organization:secret:write';
+  }
+  if (path === '/api/organizations/:organizationId/secrets/:key') return 'organization:secret:write';
+  if (path === '/api/organizations/:organizationId/workspaces/:tenantId/sources') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/members') {
+    return method === 'GET' ? 'organization:member:read' : 'organization:member:write';
+  }
+  if (path === '/api/organizations/:organizationId/members/role' || path === '/api/organizations/:organizationId/members/remove') {
+    return 'organization:member:write';
+  }
+  if (path === '/api/organizations/:organizationId/audit-events') return 'organization:audit:read';
+  if (path === '/api/organizations/:organizationId/workspaces') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/workspaces/link' || path === '/api/organizations/:organizationId/workspaces/unlink') {
+    return 'organization:workspace:link';
+  }
+  if (path === '/api/tenant/organization/unlink') return 'tenant:organization:unlink';
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
@@ -328,7 +349,11 @@ const beforeForRoute = (
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;
   }
-  if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/me' || path === '/api/tenants' || path === '/api/organizations') return allHumans;
+  if (path.startsWith('/api/organizations/')) {
+    const capability = capabilityForRoute(method, path);
+    return capability === null ? [] : principalsForCapability(capability);
+  }
   if (path === '/api/meta-capi/events') return owner;
   if (path.startsWith('/api/me/meta-capi/')) return tenantActors;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
@@ -347,6 +372,7 @@ const beforeForRoute = (
   if (path === '/api/integrations/shipx' && method === 'GET') return staff;
   if (path === '/api/tenant/settings' && method === 'GET') return staff;
   if (path.startsWith('/api/tenant/team')) return owner;
+  if (path === '/api/tenant/organization/unlink') return owner;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
   if (path === '/api/support/message') return tenantActors;
@@ -379,7 +405,8 @@ const reachableForRoute = (
   if (publicEntry !== undefined) return beforeForRoute(method, path);
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) return beforeForRoute(method, path);
-  if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/me' || path === '/api/tenants' || path === '/api/organizations') return allHumans;
+  if (path.startsWith('/api/organizations/')) return ORGANIZATION_PRINCIPALS;
   if (path === '/api/platform/data-reset') return platformOwner;
   return tenantActors;
 };
@@ -412,6 +439,7 @@ export interface CollectedUseCase {
   name: string;
   file: string;
   capability: Capability;
+  organizationContext?: true;
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
@@ -425,6 +453,7 @@ const authorizationCallNames = new Set([
   'authorize',
   'authorizeRequiredTenant',
   'authorizeTenant',
+  'authorizeOrganization',
   'requireActor',
   'requireMember',
   'requireMemberOrStaff',
@@ -436,6 +465,8 @@ const authorizationCallNames = new Set([
   'tenantIdFrom',
 ]);
 
+const capabilityArgumentIndex = (callName: string): number => callName === 'authorizeOrganization' ? 2 : 1;
+
 const capabilityFromBody = (
   body: ts.ConciseBody,
   subject: string,
@@ -443,7 +474,7 @@ const capabilityFromBody = (
   const capabilities: Capability[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && authorizationCallNames.has(node.expression.text)) {
-      const argument = node.arguments[1];
+      const argument = node.arguments[capabilityArgumentIndex(node.expression.text)];
       if (argument !== undefined && ts.isStringLiteral(argument)) {
         const capability = CAPABILITIES.find((candidate) => candidate === argument.text);
         if (capability === undefined) {
@@ -489,6 +520,14 @@ const isBareCtxType = (
   && parameter.type.typeName.text === 'Ctx'
   && parameter.type.typeArguments === undefined;
 
+const isOrganizationCtxType = (
+  parameter: ts.ParameterDeclaration | undefined,
+): boolean =>
+  parameter?.type !== undefined
+  && ts.isTypeReferenceNode(parameter.type)
+  && ts.isIdentifier(parameter.type.typeName)
+  && parameter.type.typeName.text === 'OrganizationCtx';
+
 const isCtxTypedParameter = (
   parameter: ts.ParameterDeclaration | undefined,
   sourceFile: ts.SourceFile,
@@ -524,6 +563,15 @@ export const collectUseCasesInSource = (
       const subject = `${file}#${declaration.name.text}`;
       if (AUTHORIZATION_UTILITIES.has(subject)) return;
       const firstParameter = initializer.parameters[0];
+      if (isOrganizationCtxType(firstParameter)) {
+        found.push({
+          name: declaration.name.text,
+          file,
+          capability: capabilityFromBody(initializer.body, subject),
+          organizationContext: true,
+        });
+        return;
+      }
       if (!isBareCtxType(firstParameter)) {
         if (
           isCtxShapedParameter(firstParameter, sourceFile)
@@ -580,7 +628,7 @@ const beforeForUseCase = (
   if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts' || file === 'm2m-import-redirects.ts') {
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
-  if (file === 'provision-tenant.ts' || file === 'operator-tenant-readiness.ts') return operatorSecret;
+  if (file === 'provision-tenant.ts' || file === 'operator-tenant-readiness.ts' || file === 'operator-organizations.ts') return operatorSecret;
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'account-sessions.ts') return tenantActors;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return tenantActors;
@@ -603,6 +651,7 @@ const beforeForUseCase = (
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
   if (file === 'meta-capi.ts') return name === 'listMetaCapiEvents' ? owner : tenantActors;
   if (file === 'tenant-team.ts') return owner;
+  if (file === 'organization-workspaces.ts' && name === 'unlinkWorkspaceFromOrganization') return owner;
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
   if (file === 'shop-settings.ts') return name === 'getShopSettings' ? staff : owner;
@@ -637,7 +686,18 @@ const beforeForUseCase = (
 };
 
 const useCaseRows = (): PermissionRow[] =>
-  collectCtxUseCases().map(({ file, name, capability }) => {
+  collectCtxUseCases().map(({ file, name, capability, organizationContext }) => {
+    if (organizationContext === true) {
+      const before = principalsForCapability(capability);
+      return {
+        subject: `${file}#${name}`,
+        capability,
+        before,
+        after: effectiveAfter(ORGANIZATION_PRINCIPALS, capability),
+        derivable: true,
+        evidence: `${relative(appRoot, join(useCasesRoot, file))} organization authorization call`,
+      };
+    }
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
     const reachable = directory || before === reportApiKey || before === operatorSecret ? before : before === allHumans
@@ -763,6 +823,10 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
     '',
     '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
+    '',
+    'The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller\'s own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning. `tenant:organization:unlink` is listed for `owner`, and the use-case and the repository additionally require that owner role to come from a direct workspace grant: an owner derived from the organization is refused. The same direct-grant requirement applies to `api-keys.ts#createTenantApiKey`, `tenant-team.ts#addTenantAdmin` and `tenant-team.ts#removeTenantAdmin`, whose results outlive the request; shop management keys stay open to a derived owner because the key issuer\'s grant is re-read on every request.',
+    '',
+    'The workspace `owner` and `admin` principals in the rows below include organization-derived roles. In a workspace linked to an active organization, an organization `owner` holds the workspace `owner` principal and an organization `admin` the workspace `admin` principal; `findStaffGrant` returns the higher of the direct and the derived role with its source (`direct` or `organization`, a tie keeps `direct`), read on every request. A suspended organization derives no workspace role, and `authorizeOrganization` refuses every `organization:*` capability outside the read allow-list in `core/domain/authorization.ts` while the organization is suspended. Staff notification recipients and the team list\'s members come from direct grants only.',
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',

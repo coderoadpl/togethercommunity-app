@@ -346,6 +346,64 @@ describe('shop management key rate limits', () => {
     expect(await limits.claim(AUDIT_TENANT, { apiKeyId: 'collision-a', period: 'day', windowStartedAt: window, limit: 10 })).toBe(false);
     expect(await limits.claim(TENANT, { apiKeyId: 'old-unscoped', period: 'day', windowStartedAt: window, limit: 10 })).toBe(false);
   });
+
+  const boundaries = {
+    minute: { older: '1998-08-03T10:00:00.000Z', newer: '1998-08-03T10:01:00.000Z' },
+    day: { older: '1998-08-03T00:00:00.000Z', newer: '1998-08-04T00:00:00.000Z' },
+  } as const;
+
+  const rateKey = async (id: string): Promise<string> => {
+    await createShopManagementKeyRepository(db).create(
+      TENANT,
+      shopKey({ id, keyHash: `hash-${id}` }),
+      keyEvent({ id: `event-${id}`, apiKeyId: id }),
+    );
+    return id;
+  };
+
+  const bucket = async (apiKeyId: string, period: 'minute' | 'day') => {
+    const { rows } = await pool.query<{ window_started_at: Date; count: number }>(
+      'select window_started_at, count from shop_management_key_rate_limit_buckets where api_key_id = $1 and period = $2',
+      [apiKeyId, period],
+    );
+    return rows.map((row) => ({ windowStartedAt: row.window_started_at.toISOString(), count: row.count }));
+  };
+
+  it.each(['minute', 'day'] as const)('counts a late %s claim of the older window against the newer window', async (period) => {
+    const limits = createShopManagementKeyRateLimitRepository(db);
+    const apiKeyId = await rateKey(`rate-late-${period}`);
+    const { older, newer } = boundaries[period];
+    const claim = (windowStartedAt: string) => limits.claim(TENANT, { apiKeyId, period, windowStartedAt, limit: 2 });
+
+    expect([await claim(newer), await claim(older), await claim(newer), await claim(older)]).toEqual([true, true, false, false]);
+    expect(await bucket(apiKeyId, period)).toEqual([{ windowStartedAt: newer, count: 2 }]);
+  });
+
+  it.each(['minute', 'day'] as const)('keeps alternating %s windows at a boundary within the limit', async (period) => {
+    const limits = createShopManagementKeyRateLimitRepository(db);
+    const apiKeyId = await rateKey(`rate-boundary-${period}`);
+    const { older, newer } = boundaries[period];
+    const results: boolean[] = [];
+    for (const windowStartedAt of [older, newer, older, newer, older, newer, older, newer]) {
+      results.push(await limits.claim(TENANT, { apiKeyId, period, windowStartedAt, limit: 3 }));
+    }
+
+    expect(results).toEqual([true, true, true, true, false, false, false, false]);
+    expect(await bucket(apiKeyId, period)).toEqual([{ windowStartedAt: newer, count: 3 }]);
+  });
+
+  it.each(['minute', 'day'] as const)('leaves the newer %s window untouched by a release of the older window', async (period) => {
+    const limits = createShopManagementKeyRateLimitRepository(db);
+    const apiKeyId = await rateKey(`rate-release-${period}`);
+    const { older, newer } = boundaries[period];
+    const claim = (windowStartedAt: string) => limits.claim(TENANT, { apiKeyId, period, windowStartedAt, limit: 2 });
+
+    expect([await claim(older), await claim(newer), await claim(newer)]).toEqual([true, true, true]);
+    await limits.release(TENANT, { apiKeyId, period, windowStartedAt: older });
+
+    expect(await bucket(apiKeyId, period)).toEqual([{ windowStartedAt: newer, count: 2 }]);
+    expect(await claim(newer)).toBe(false);
+  });
 });
 
 describe('shop management key events', () => {

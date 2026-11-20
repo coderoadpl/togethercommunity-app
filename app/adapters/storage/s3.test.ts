@@ -29,12 +29,66 @@ const storageResponse = (
 ) => ({
   ok: status < 400,
   status,
-  body: { cancel: async () => undefined },
+  body: {
+    cancel: async () => undefined,
+    getReader: () => {
+      let delivered = body === '';
+      return {
+        read: async () => {
+          if (delivered) return { done: true };
+          delivered = true;
+          return { done: false, value: new TextEncoder().encode(body) };
+        },
+        cancel: async () => undefined,
+        releaseLock: () => undefined,
+      };
+    },
+  },
   headers: {
     get: (name: string) => responseHeaders[name.toLowerCase()] ?? null,
   },
   text: async () => body,
 });
+
+const streamedResponse = (status: number, chunks: number | 'endless') => {
+  const chunkBytes = chunks === 'endless' ? 8 : 1024;
+  let pulled = 0;
+  const cancel = vi.fn(async () => undefined);
+  const read = async (): Promise<{ done: boolean; value?: Uint8Array }> => {
+    if (chunks === 'endless' && pulled > 0) return new Promise(() => undefined);
+    if (chunks !== 'endless' && pulled >= chunks * chunkBytes) return { done: true };
+    pulled += chunkBytes;
+    return { done: false, value: new Uint8Array(chunkBytes).fill(120) };
+  };
+  const response = {
+    ok: status < 400,
+    status,
+    headers: { get: () => null },
+    body: { cancel, getReader: () => ({ read, cancel, releaseLock: () => undefined }) },
+    text: async () => {
+      let text = '';
+      for (let chunk = await read(); !chunk.done; chunk = await read()) {
+        text += new TextDecoder().decode(chunk.value);
+      }
+      return text;
+    },
+  };
+  return { response, cancel, pulled: () => pulled };
+};
+
+const probeWithGetResponse = (response: ReturnType<typeof streamedResponse>['response']) => {
+  const methods: string[] = [];
+  const storage = createS3StorageProvider(resolver, {
+    now: () => new Date('2026-08-03T12:00:00.000Z'),
+    probeKey: () => 'probe-id',
+    allowPrivateEndpoints: true,
+    fetchStorage: async (_url, init) => {
+      methods.push(init.method);
+      return init.method === 'GET' ? response : storageResponse(200, '');
+    },
+  });
+  return { result: storage.probe(MINIO_CONFIGURATION), methods };
+};
 
 const fakeBucket = (
   failure?: {
@@ -406,6 +460,44 @@ describe('createS3StorageProvider', () => {
       ok: false,
       error: { details: { providerCode: 'storage.unavailable' } },
     });
+  });
+
+  it.each([
+    ['an error answer', 500, 9 * 1024],
+    ['the read-back', 200, 1024],
+  ])('stops reading an oversized body on %s at the probe byte ceiling', async (_label, status, maxPulled) => {
+    const streamed = streamedResponse(status, 1024);
+    const { result, methods } = probeWithGetResponse(streamed.response);
+
+    await expect(result).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable', details: { providerCode: 'storage.unavailable' } },
+    });
+    expect(streamed.pulled()).toBeLessThanOrEqual(maxPulled);
+    expect(streamed.cancel).toHaveBeenCalledOnce();
+    expect(methods).toEqual(['PUT', 'GET', 'DELETE']);
+  });
+
+  it.each([
+    ['an error answer', 500],
+    ['the read-back', 200],
+  ])('gives up on a body that never ends on %s after the probe deadline', async (_label, status) => {
+    vi.useFakeTimers();
+    try {
+      const streamed = streamedResponse(status, 'endless');
+      const { result, methods } = probeWithGetResponse(streamed.response);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'integration_unavailable', details: { providerCode: 'storage.unavailable' } },
+      });
+      expect(streamed.pulled()).toBe(8);
+      expect(streamed.cancel).toHaveBeenCalledOnce();
+      expect(methods).toEqual(['PUT', 'GET', 'DELETE']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('maps an unreachable endpoint to the unavailable code', async () => {

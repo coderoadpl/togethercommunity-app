@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
@@ -43,6 +44,7 @@ import {
 } from '#adapters/auth/create-auth.js';
 import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
+import { inMemoryChangeSettings } from '#core/server/testing/tenant-settings-fake.js';
 import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
@@ -210,6 +212,18 @@ const deps = (input: {
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
+  const findSettings: AppDeps['tenants']['findSettings'] = async (tenantId) =>
+    tenants.some((tenant) => tenant.id === tenantId) ? {
+      name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+      socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
+      billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
+      accentColor: null,
+      accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+      ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+      privacyUrl: null,
+      defaultHomeSpaceId: null,
+    } : null;
   const domains = input.domains ?? [];
   const products = input.products ?? [
     product({ id: 'acme-published', tenantId: 't-acme', title: 'Acme Published', published: true }),
@@ -416,11 +430,12 @@ const deps = (input: {
       endLapsed: async () => 0,
       listLapsedTenantIds: async () => [],
     },
-    team: { list: async () => [], inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
+    team: { list: async () => [], findOrganizationStaff: async () => null, inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
     auditEvents: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
     },
+    ...createOrganizationFakes().repositories,
     impersonationTokens: {
       issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
       verify: (token) => token.startsWith('token:')
@@ -587,7 +602,9 @@ const deps = (input: {
         },
       }),
     },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation(appDeps) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
+      operation({ ...appDeps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
+        members: { ...appDeps.members, findByIdForShare: (tenantId, memberId) => appDeps.members.findById(tenantId, memberId) } }) },
     paymentTransaction: {
       run: async (operation) =>
         operation({
@@ -903,19 +920,8 @@ const deps = (input: {
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
       hasAny: async () => tenants.length > 0,
-      findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? {
-          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
-          socialLinks: [],
-          signInNotice: { enabled: false, text: '' },
-          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-          accentColor: null,
-          accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
-          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
-          privacyUrl: null,
-          defaultHomeSpaceId: null,
-        } : null,
-      updateSettings: async (_tenantId, settings) => settings,
+      findSettings,
+      changeSettings: inMemoryChangeSettings(findSettings),
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,
@@ -1054,7 +1060,7 @@ const scopedApp = (
     bannedByUserId: null,
     dmOptOutAt: null,
   };
-  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin' };
+  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin', source: 'direct' };
   const post: Post = {
     id: 'post-1',
     tenantId: acme.id,
@@ -6456,7 +6462,7 @@ describe('single-tenant mode', () => {
       },
       tenantAccess: {
         ...base.tenantAccess,
-        findStaffGrant: async () => ({ tenant, staffRole: 'owner' }),
+        findStaffGrant: async () => ({ tenant, staffRole: 'owner', source: 'direct' }),
       },
     });
   };
@@ -6749,7 +6755,7 @@ describe('public offer route', () => {
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
   });
 
-  it('revalidates the offer when a tracked product sells out and exposes only stock flags', async () => {
+  it('revalidates the offer when a tracked product sells out and exposes the public stock without stored levels', async () => {
     const base = deps();
     const stock = createStockRepositoryFake();
     stock.track(acme.id, 'acme-published', 1);
@@ -6758,15 +6764,55 @@ describe('public offer route', () => {
     const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
     const etag = first.headers.get('etag') ?? '';
     expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
-    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false, available: 1 }, maxQuantity: 1 }] } });
     expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
     await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 1 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
     const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
     expect(soldOut.status).toBe(200);
     expect(soldOut.headers.get('etag')).not.toBe(etag);
     const body = await soldOut.json();
-    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true } }] } });
+    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true, available: 0 }, maxQuantity: 0 }] } });
     expect(JSON.stringify(body)).not.toContain('onHand');
+  });
+
+  it('revalidates the offer when only the available count of a tracked product changes', async () => {
+    const base = deps();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const fewer = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(fewer.status).toBe(200);
+    expect(fewer.headers.get('etag')).not.toBe(etag);
+    expect(await fewer.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 3 } }] } });
+  });
+
+  it.each([
+    { published: false, salesChannel: 'any' },
+    { published: true, salesChannel: 'sales_links_only' },
+  ] as const)('keeps the offer ETag when only hidden stock changes (published: $published, salesChannel: $salesChannel)', async ({ published, salesChannel }) => {
+    const base = deps({ products: [
+      product({ id: 'acme-published', tenantId: acme.id, title: 'Acme Published', published: true }),
+      { ...product({ id: 'acme-hidden', tenantId: acme.id, title: 'Acme Hidden', published }), salesChannel },
+    ] });
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    stock.track(acme.id, 'acme-hidden', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(first.status).toBe(200);
+    expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-hidden', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const unchanged = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get('etag')).toBe(etag);
   });
 
   it('changes the offer ETag after adding a price to a published product', async () => {
@@ -9627,7 +9673,7 @@ describe('impersonation HTTP surface', () => {
     expect(mutations.length).toBeGreaterThan(100);
     for (const route of mutations) {
       const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
-      const requestHeaders = route.path === API_PATHS.operatorTenantProvision
+      const requestHeaders = [API_PATHS.operatorTenantProvision, API_PATHS.operatorOrganizationCreate, API_PATHS.operatorOrganizationLimits].some((operatorPath) => operatorPath === route.path)
         ? { ...impersonated, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }
         : impersonated;
       const response = await app.request(path, { method: route.method, headers: requestHeaders });
@@ -9838,7 +9884,7 @@ describe('staff member self-service routes', () => {
       authPort: { ...base.authPort, getAuthenticatedUser: async () => user, ensureUser: async () => ({ userId: user.userId, created: false }) },
       tenantAccess: {
         ...base.tenantAccess,
-        findStaffGrant: async () => ({ tenant: acme, staffRole }),
+        findStaffGrant: async () => ({ tenant: acme, staffRole, source: 'direct' }),
         findMember: async (tenantId, userId) => rows.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null,
       },
       members: {
@@ -10279,12 +10325,12 @@ describe('Stripe subscription adoption authorization', () => {
       });
       const retrieve = vi.fn(async () => ok({
         id: payload.subscriptionId, status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
-        cancelAtPeriodEnd: false, customerEmail: 'buyer@example.com',
+        cancelAtPeriodEnd: false, customerId: 'cus_existing', customerEmail: 'buyer@example.com', metadataTenantId: null,
         price: { id: 'price_existing', amountCents: 3500, currency: 'EUR' as const, interval: 'month' as const, intervalCount: 1 },
       }));
       const list = vi.fn(async () => ok({ subscriptions: [
-        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing' },
-        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other' },
+        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing', customerId: 'cus_existing', metadataTenantId: null },
+        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other', customerId: 'cus_other', metadataTenantId: acme.id },
       ], nextCursor: null }));
       base.payment.retrieveStripeSubscription = retrieve;
       base.payment.listStripeSubscriptions = list;
@@ -10668,6 +10714,8 @@ it('exposes only public sales-link fields and accepts its slug for checkout', as
   const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
   if (!body.ok) throw new Error(body.error.message);
   expect(body.data.salesLink).toEqual({ slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
+  expect(response.headers.has('etag')).toBe(false);
+  expect(response.headers.get('cache-control')).toBe('no-store');
   const raw = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
   expect((await raw.json()).data.salesLink).toEqual(body.data.salesLink);
   const purchaseResponse = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });
@@ -11593,7 +11641,7 @@ describe('direct public sales-link checkout', () => {
     const h = await directSalesLinkApp();
     const authenticated = vi.fn(async () => actor === 'anonymous' ? null : ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null }));
     h.base.authPort.getAuthenticatedUser = authenticated;
-    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const }));
+    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const, source: 'direct' as const }));
     h.base.tenantAccess.findStaffGrant = staffGrant;
     const decrypt = vi.fn((stored: { ciphertext: string }) => ok(stored.ciphertext));
     h.base.secretCrypto.decrypt = decrypt;
@@ -11801,7 +11849,7 @@ describe('direct public sales-link checkout', () => {
   it.each([false, true])('never provisions the supplied third-party identity with the staff test switch enabled: %s', async (enabled) => {
     const h = await directSalesLinkApp();
     h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
-    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin', source: 'direct' });
     h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
     h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
     h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });

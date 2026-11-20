@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { DELETED_MEMBER_DISPLAY, memberTombstone, orderLineSchema, orderSchema, type Identity, type OrderShipping } from '#core/domain/index.js';
 import { exportOrders } from '#core/server/index.js';
+import { writeSettings } from '#core/server/testing/tenant-settings-fake.js';
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
 import { createMemberErasureRepository, createOrderRepository, createTenantRepository } from './repositories.js';
@@ -92,7 +93,7 @@ describe('order shipping persistence', () => {
     expect(current).toMatchObject({ shippingRates: [], inpostGeowidgetToken: null });
     if (current === null) return;
     const rates = [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const, pickupPoint: 'inpost_locker' as const, active: true, deliveryEstimateDays: { min: 1, max: 2 } }];
-    await tenantRepository.updateSettings('workspace', { ...current, shippingRates: rates, inpostGeowidgetToken: 'public-map-token' });
+    await writeSettings(tenantRepository, 'workspace', { shippingRates: rates, inpostGeowidgetToken: 'public-map-token' });
     expect(await tenantRepository.findSettings('workspace')).toMatchObject({ shippingRates: rates, inpostGeowidgetToken: 'public-map-token' });
     expect(await tenantRepository.findSettings('other')).toMatchObject({ shippingRates: [], inpostGeowidgetToken: null });
   });

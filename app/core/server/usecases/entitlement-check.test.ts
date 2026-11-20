@@ -98,6 +98,9 @@ interface PaidOrder {
   status: 'paid' | 'refunded' | 'partially_refunded' | 'pending';
   cancelled?: boolean;
   mode?: 'live' | 'test';
+  kind?: 'one_time' | 'recurring';
+  provider?: 'stripe' | 'simulated';
+  subscriptionId?: string;
 }
 
 interface World {
@@ -125,10 +128,11 @@ const harness = (world: Partial<World> = {}) => {
       state.members.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null),
     findMembersByEmail: vi.fn(async (tenantId: string, email: string) =>
       state.members.filter((row) => row.tenantId === tenantId && row.email.trim().toLowerCase() === email).slice(0, 2)),
-    listPaidOrderProductIds: vi.fn(async (_tenantId: string, memberId: string) =>
+    listPaidCheckoutOrders: vi.fn(async (_tenantId: string, memberId: string) =>
       (state.orders ?? [])
-        .filter((order) => order.memberId === memberId && order.status === 'paid' && order.cancelled !== true && (order.mode ?? 'live') === 'live')
-        .flatMap((order) => order.productIds)),
+        .filter((order) => order.memberId === memberId && order.status === 'paid' && order.cancelled !== true
+          && (order.mode ?? 'live') === 'live' && (order.provider ?? 'stripe') === 'stripe')
+        .map((order) => ({ kind: order.kind ?? 'one_time', productIds: order.productIds, providerSubscriptionId: order.subscriptionId ?? null }))),
     hasSignedIn: vi.fn(async (tenantId: string, memberId: string) =>
       (state.signedIn ?? state.members.map((row) => row.id)).includes(memberId) && state.members.some((row) => row.tenantId === tenantId && row.id === memberId)),
     listActiveGrants: vi.fn(async (tenantId: string, memberId: string, now: string) =>
@@ -293,9 +297,27 @@ describe('checkEntitlements', () => {
       expect(answer).toEqual({ subject: { email: BUYER.email }, identity: null, products: [NO_ACCESS], member: null });
     });
 
-    it('matches an unverified subscriber whose subscription still pays', async () => {
-      const h = freshBuyer({ orders: [], grants: [grant('m-buyer', 'prod-pro', { expiresAt: '2026-12-23T00:00:00.000Z' })], subscriptions: [subscription('m-buyer', 'prod-pro', { status: 'past_due' })] });
+    const checkoutSubscription = { memberId: 'm-buyer', productIds: ['prod-pro'], status: 'paid' as const, kind: 'recurring' as const, subscriptionId: 'sub_provider' };
+
+    it('matches an unverified subscriber whose checkout subscription still pays', async () => {
+      const h = freshBuyer({ orders: [checkoutSubscription], grants: [grant('m-buyer', 'prod-pro', { expiresAt: '2026-12-23T00:00:00.000Z' })], subscriptions: [subscription('m-buyer', 'prod-pro', { status: 'past_due' })] });
       expect((await purchaseCheck(h, BUYER.email)).products[0]).toMatchObject({ access: true, source: 'subscription' });
+    });
+
+    it.each([
+      ['an owner grant that renewed the stripe grant of a lapsed checkout subscription', {
+        orders: [checkoutSubscription], grants: [grant('m-buyer', 'prod-pro', { expiresAt: '2027-01-01T00:00:00.000Z' })],
+        subscriptions: [subscription('m-buyer', 'prod-pro', { status: 'canceled' })],
+      }],
+      ['an enrollment after a refund, whose order is simulated', {
+        orders: [{ memberId: 'm-buyer', productIds: ['prod-pro'], status: 'refunded' as const }, { memberId: 'm-buyer', productIds: ['prod-pro'], status: 'paid' as const, provider: 'simulated' as const }],
+      }],
+      ['a subscription adopted without a checkout order', {
+        orders: [], grants: [grant('m-buyer', 'prod-pro', { expiresAt: '2026-12-23T00:00:00.000Z' })],
+        subscriptions: [subscription('m-buyer', 'prod-pro', { status: 'active' })],
+      }],
+    ])('never matches an unverified address through %s', async (_label, overrides) => {
+      expect((await purchaseCheck(freshBuyer(overrides), BUYER.email)).identity).toBeNull();
     });
 
     it('answers only the products the address paid for, never an owner grant beside them', async () => {
@@ -322,7 +344,7 @@ describe('checkEntitlements', () => {
       await purchaseCheck(buyer, BUYER.email);
       await purchaseCheck(verified, ADA.email);
       await purchaseCheck(unknown, 'nobody@example.test');
-      for (const method of ['findAccountByEmail', 'findMemberByUser', 'hasSignedIn', 'findMembersByEmail', 'listPaidOrderProductIds', 'listActiveGrants', 'listSubscriptions'] as const) {
+      for (const method of ['findAccountByEmail', 'findMemberByUser', 'hasSignedIn', 'findMembersByEmail', 'listPaidCheckoutOrders', 'listActiveGrants', 'listSubscriptions'] as const) {
         const counts = [buyer, verified, unknown].map((h) => vi.mocked(h.reader[method]).mock.calls.length);
         expect(new Set(counts).size).toBe(1);
       }

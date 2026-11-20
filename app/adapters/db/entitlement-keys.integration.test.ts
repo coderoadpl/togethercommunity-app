@@ -149,7 +149,7 @@ describe('entitlement subject reader', () => {
       currency: 'PLN', provider: 'stripe' as const, providerObjectIds: {}, lines: [line(`prod-${id}`)], createdAt: NOW, ...overrides,
     });
     await database.db.insert(dbSchema.products).values([
-      ...['paid', 'sold-out', 'refunded', 'partial', 'test'].map((id) => ({ id: `prod-${id}`, tenantId: TENANT })),
+      ...['paid', 'sold-out', 'refunded', 'partial', 'test', 'simulated', 'subscribed'].map((id) => ({ id: `prod-${id}`, tenantId: TENANT })),
     ].map((product) => ({ ...product, slug: product.id, title: product.id, description: '', priceCents: 100, currency: 'PLN', createdAt: NOW })));
     await database.db.insert(dbSchema.orders).values([
       order('paid', { lines: [line('prod-paid'), line('prod-line')] }),
@@ -157,12 +157,18 @@ describe('entitlement subject reader', () => {
       order('refunded', { status: 'refunded' }),
       order('partial', { status: 'partially_refunded' }),
       order('test', { mode: 'test' }),
+      order('simulated', { provider: 'simulated' }),
+      order('subscribed', { kind: 'recurring', providerObjectIds: { subscription: 'sub_1' } }),
     ]);
     const reader = createEntitlementSubjectReader(database.db);
     expect((await reader.findMembersByEmail(TENANT, 'buyer@example.test')).map((row) => row.id)).toEqual(['m-buyer']);
     expect((await reader.findMembersByEmail(NEIGHBOUR, 'buyer@example.test')).map((row) => row.id)).toEqual(['m-buyer-neighbour']);
-    expect(await reader.listPaidOrderProductIds(NEIGHBOUR, 'm-buyer')).toEqual([]);
-    expect([...new Set(await reader.listPaidOrderProductIds(TENANT, 'm-buyer'))].sort()).toEqual(['prod-line', 'prod-paid']);
+    expect(await reader.listPaidCheckoutOrders(NEIGHBOUR, 'm-buyer')).toEqual([]);
+    expect(await reader.listPaidCheckoutOrders(TENANT, 'm-buyer')).toEqual(expect.arrayContaining([
+      { kind: 'one_time', productIds: ['prod-paid', 'prod-line'], providerSubscriptionId: null },
+      { kind: 'recurring', productIds: ['prod-subscribed'], providerSubscriptionId: 'sub_1' },
+    ]));
+    expect(await reader.listPaidCheckoutOrders(TENANT, 'm-buyer')).toHaveLength(2);
   });
 
   it('keeps the e-mail being checked out of a database error and keeps only the SQLSTATE', async () => {

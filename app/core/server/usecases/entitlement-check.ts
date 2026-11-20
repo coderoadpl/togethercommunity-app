@@ -104,14 +104,20 @@ const lookupPurchaseEmail = async (
   const [only] = candidates;
   const member = candidates.length === 1 && only !== undefined ? only : null;
   const scope = { tenantId, memberId: member?.id ?? NO_MEMBER_ID };
-  const paidProductIds = new Set(await reader.listPaidOrderProductIds(tenantId, scope.memberId));
+  const paidOrders = await reader.listPaidCheckoutOrders(tenantId, scope.memberId);
   const grants = await activeMemberGrants(scope, now, { grants: { listActiveForMember: reader.listActiveGrants } });
   const subscriptions = (await reader.listSubscriptions(tenantId, scope.memberId)).filter((subscription) => subscription.mode === 'live');
+  const oneTimeProductIds = new Set(paidOrders.filter((order) => order.kind === 'one_time').flatMap((order) => order.productIds));
+  const checkoutSubscriptionIds = new Set(paidOrders.flatMap((order) =>
+    order.kind === 'recurring' && order.providerSubscriptionId !== null ? [order.providerSubscriptionId] : []));
+  // A renewed grant keeps its first source and an adopted subscription has no checkout order, so only a paying subscription the checkout itself opened counts.
   const payingSubscriptionProductIds = new Set(subscriptions
-    .filter((subscription) => PAYING_SUBSCRIPTION_STATUSES.includes(subscription.status))
+    .filter((subscription) => PAYING_SUBSCRIPTION_STATUSES.includes(subscription.status)
+      && subscription.providerSubscriptionId !== null
+      && checkoutSubscriptionIds.has(subscription.providerSubscriptionId))
     .map((subscription) => subscription.productId));
   const paidGrants = grants.filter((grant) => grant.source === 'stripe'
-    && (paidProductIds.has(grant.productId) || payingSubscriptionProductIds.has(grant.productId)));
+    && (oneTimeProductIds.has(grant.productId) || payingSubscriptionProductIds.has(grant.productId)));
   return member === null || paidGrants.length === 0 ? NO_MATCH : { member, grants: paidGrants, subscriptions };
 };
 

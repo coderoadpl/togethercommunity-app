@@ -784,9 +784,12 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   access this workspace's payment flow created for it. The member must be the
   workspace's only member with that checkout-normalized address. The access
   must be an active grant from a payment, backed by a paid, live, not
-  cancelled order or by an `active` or `past_due` subscription. Owner grants,
-  imports, registrations without a payment, sold-out cancellations, refunds
-  and lapsed subscriptions never match. The answer says
+  cancelled one-time Stripe checkout order, or by an `active` or `past_due`
+  subscription that a paid Stripe checkout order opened (matched by its
+  subscription id). The grant's own source is not trusted alone, because
+  renewing a grant keeps its first source. Owner grants, enrollments, imports,
+  staff-adopted subscriptions, registrations without a payment, sold-out
+  cancellations, refunds and lapsed subscriptions never match. The answer says
   `identity: "purchase-email"`, and verifying the address is the other
   application's duty. A key in this mode runs the verified and the
   purchase lookups for every e-mail subject, so its query sequence does not

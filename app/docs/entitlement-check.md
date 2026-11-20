@@ -217,12 +217,13 @@ workspace's own payment flow created for that exact address:
 - the member of this workspace whose e-mail is the queried address,
   normalized as checkout normalizes it (trimmed, lower-case), and only when
   exactly one member has that address;
-- only products with an active grant from a payment, backed by a paid, live
-  order that was not cancelled, or by a subscription that is `active` or
-  `past_due`;
-- never access from an owner grant or an import, never an account that
-  registered without paying, never an order cancelled as sold out, refunded or
-  partly refunded, never a lapsed subscription.
+- only products with an active grant from a payment, backed by a paid, live,
+  one-time card payment through checkout that was not cancelled, or by a
+  subscription that checkout opened and that is `active` or `past_due`;
+- never access from an owner grant, an enrollment or an import (even when it
+  renews an earlier paid grant), never a subscription adopted by staff, never
+  an account that registered without paying, never an order cancelled as sold
+  out, refunded or partly refunded, never a lapsed subscription.
 
 Such answers carry `"identity": "purchase-email"`. A verified match still wins
 and answers every product of the person with `"identity": "verified"`. Member

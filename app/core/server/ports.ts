@@ -940,7 +940,11 @@ export interface EntitlementSubjectReader {
   findMemberById(tenantId: string, memberId: string): Promise<Member | null>;
   hasSignedIn(tenantId: string, memberId: string): Promise<boolean>;
   findMembersByEmail(tenantId: string, email: string): Promise<Member[]>;
-  listPaidOrderProductIds(tenantId: string, memberId: string): Promise<string[]>;
+  listPaidCheckoutOrders(tenantId: string, memberId: string): Promise<{
+    kind: 'one_time' | 'recurring';
+    productIds: string[];
+    providerSubscriptionId: string | null;
+  }[]>;
   listActiveGrants(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
   listSubscriptions(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
 }

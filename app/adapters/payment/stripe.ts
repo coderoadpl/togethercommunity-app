@@ -452,29 +452,24 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
 
 const PROBE_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-const REFUND_PROBE_RESOURCE_MISSING_MEANS_PERMITTED = false;
-const REFUND_PROBE_UNCONFIRMED_DETAIL = 'This probe cannot tell whether the key may create refunds (Stripe answered resource_missing) until the one-time Stripe sandbox check with a test restricted key without Charges and Refunds, or the first real refund, settles it.';
+const REFUND_PROBE_CHECK = { resource: 'Charges and Refunds', permission: 'write' } as const;
 
-const resourceMissingRefundCheck = (meansPermitted: boolean): StripePermissionCheck => meansPermitted
-  ? { resource: 'Charges and Refunds', permission: 'write', status: 'ok' }
-  : { resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: REFUND_PROBE_UNCONFIRMED_DETAIL };
+const refundProbePermissionMissing = (failure: { code?: string | undefined; message?: string | undefined }): boolean =>
+  failure.code === 'more_permissions_required' || stripePermissionMissing({ code: failure.code, message: failure.message });
 
-const probeRefundPermission = async (
-  client: Stripe,
-  tenantId: string,
-  failure: (resource: StripePermissionCheck['resource'], permission: StripePermissionCheck['permission'], cause: unknown) => StripePermissionCheck,
-): Promise<StripePermissionCheck> => {
+const probeRefundPermission = async (client: Stripe, tenantId: string): Promise<StripePermissionCheck> => {
   const suffix = Array.from({ length: 24 }, () => PROBE_ID_ALPHABET[randomInt(PROBE_ID_ALPHABET.length)]).join('');
   try {
-    await client.refunds.create({ payment_intent: `pi_togetherprobe${suffix}`, metadata: { togetherProbe: '1', tenantId } });
+    await client.refunds.update(`re_togetherprobe${suffix}`, { metadata: { togetherProbe: '1', tenantId } });
   } catch (cause) {
-    const check = failure('Charges and Refunds', 'write', cause);
     const parsed = stripeCancelErrorSchema.safeParse(cause);
-    return check.status === 'error' && parsed.success && parsed.data.code === 'resource_missing'
-      ? resourceMissingRefundCheck(REFUND_PROBE_RESOURCE_MISSING_MEANS_PERMITTED)
-      : check;
+    const failure = parsed.success ? parsed.data : {};
+    if (refundProbePermissionMissing(failure)) return { ...REFUND_PROBE_CHECK, status: 'missing', detail: failure.message ?? 'Stripe refused the refund permission' };
+    if (failure.statusCode === 404 && failure.code === 'resource_missing') return { ...REFUND_PROBE_CHECK, status: 'ok' };
+    const detail = failure.message ?? (cause instanceof Error ? cause.message : String(cause));
+    return { ...REFUND_PROBE_CHECK, status: 'error', detail };
   }
-  return { resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: 'Stripe accepted a refund for a payment intent that should not exist' };
+  return { ...REFUND_PROBE_CHECK, status: 'error', detail: 'Stripe updated a refund that should not exist' };
 };
 
 export const createStripePaymentProvider = (config: StripePaymentProviderConfig): PaymentProvider => {
@@ -558,7 +553,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           if (sessionId !== undefined) await client.checkout.sessions.expire(sessionId);
         }
       });
-      checks.push(await probeRefundPermission(client, input.tenantId, failure));
+      checks.push(await probeRefundPermission(client, input.tenantId));
       return ok(checks);
     },
     retrieveStripeSubscription: async (tenantId, subscriptionId) => {

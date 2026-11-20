@@ -484,27 +484,19 @@ reason `coupon-probe-failed` and no detail; Studio translates the reason, and th
 checkout probe still runs. The checkout is a PLN 1.00
 payment session with return URLs on the tenant's canonical origin, a 30-minute
 expiry and immediate expiration in cleanup. No purchase is completed.
-The last check, Charges and Refunds (write), asks Stripe to refund a payment
-intent ID that does not exist; nothing is refunded. A 403 answer reports
-`missing`. A `resource_missing` answer is not treated as proof of the
-permission: Stripe does not document whether it checks the permission before
-it looks the payment intent up, so a key without the permission might get the
-same answer. The check therefore reports `error` with the detail "This probe
-cannot tell whether the key may create refunds (Stripe answered
-resource_missing) until the one-time Stripe sandbox check with a test
-restricted key without Charges and Refunds, or the first real refund, settles
-it." The probe itself still succeeds (the CLI exits 0 and prints every row),
-but `allOk` stays `false` for every key while this assumption is open.
+The last check, Charges and Refunds (write), asks Stripe to update the metadata
+of a refund that does not exist (`POST /v1/refunds/re_togetherprobe<24
+alphanumeric characters>` with `togetherProbe=1` and `tenantId`); no refund is
+created or changed. The answer is mapped as follows:
 
-The sandbox check settles it: in a Stripe sandbox, create a test restricted key
-without Charges and Refunds and run the probe with it. If Stripe answers 403,
-`resource_missing` means the permission is present, and
-`REFUND_PROBE_RESOURCE_MISSING_MEANS_PERMITTED` in
-`adapters/payment/stripe.ts` is switched to `true` together with its test, so
-the check reports `ok`. If it answers `resource_missing`, the probe cannot
-check this permission and the constant stays `false`. Until then the first
-real refund settles it for a workspace: a missing permission moves the refund
-job to `blocked_permission` and alerts staff (see the shop guide).
+| Stripe answer | Row status |
+| --- | --- |
+| 403 `more_permissions_required`, or another permission refusal (see below) | `missing` |
+| 404 `resource_missing` | `ok`: the permission is present and nothing was touched |
+| anything else: another 4xx or 5xx, a network failure, or an unexpected success | `error`, with the detail |
+
+An `error` row never guesses either way; run the check again or confirm the
+permission in the Stripe Dashboard.
 
 Stripe cannot delete promotion codes. Each successful check leaves one deactivated
 `TOGETHER-PROBE-<8 uppercase alphanumeric characters>` code. Probe objects carry
@@ -514,8 +506,7 @@ resource check; an object may remain if Stripe rejects its cleanup.
 A Stripe status code of 403, `permission_denied` code, or message containing
 `does not have the required permissions` is classified as `missing`. Other
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
-`ok`, which the Charges and Refunds row does not reach while the assumption
-above is open. Listing Webhook Endpoints alone does not prove create/delete access.
+`ok`. Listing Webhook Endpoints alone does not prove create/delete access.
 
 ## Adopting existing Stripe subscriptions
 

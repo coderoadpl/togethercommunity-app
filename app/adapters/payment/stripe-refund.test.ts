@@ -250,10 +250,11 @@ describe('Stripe listRefunds', () => {
 });
 
 describe('refund permission probe', () => {
-  const probe = (refundAnswer: Response) => {
+  const isRefundProbe = (request: Request): boolean => new URL(request.url).pathname.startsWith('/v1/refunds/');
+  const probe = (refundAnswer: () => Response) => {
     const h = providerOverFetch((request) => {
       const path = new URL(request.url).pathname;
-      if (path === '/v1/refunds') return refundAnswer;
+      if (isRefundProbe(request)) return refundAnswer();
       if (request.method === 'GET') return stripeJson({ object: 'list', data: [], has_more: false });
       if (path === '/v1/coupons') return stripeJson({ id: 'coupon_probe', object: 'coupon' });
       if (path === '/v1/promotion_codes') return stripeJson({ id: 'promo_probe', object: 'promotion_code' });
@@ -262,41 +263,68 @@ describe('refund permission probe', () => {
     });
     return { h, run: () => h.probeStripePermissions({ tenantId: 'tenant-1', mode: 'live', origin: 'https://acme.example.test' }) };
   };
-  const refundCheck = async (refundAnswer: Response) => {
+  const refundCheck = async (refundAnswer: () => Response) => {
     const { h, run } = probe(refundAnswer);
     const result = await run();
     if (!result.ok) throw new Error('Probe failed');
     return { check: result.value.find((check) => check.resource === 'Charges and Refunds'), h };
   };
 
-  it('reports resource_missing on a nonexistent payment intent as unconfirmed, neither present nor missing', async () => {
-    const { check, h } = await refundCheck(stripeError(404, { code: 'resource_missing', message: "No such payment_intent: 'pi_x'" }));
-    expect(check).toEqual({
-      resource: 'Charges and Refunds', permission: 'write', status: 'error',
-      detail: 'This probe cannot tell whether the key may create refunds (Stripe answered resource_missing) until the one-time Stripe sandbox check with a test restricted key without Charges and Refunds, or the first real refund, settles it.',
-    });
-    const request = h.requests.find((candidate) => new URL(candidate.url).pathname === '/v1/refunds');
+  it('updates a nonexistent refund with probe metadata and reads resource_missing as the permission being present', async () => {
+    const { check, h } = await refundCheck(() => stripeError(404, { code: 'resource_missing', message: "No such refund: 're_x'" }));
+    expect(check).toEqual({ resource: 'Charges and Refunds', permission: 'write', status: 'ok' });
+    const probes = h.requests.filter(isRefundProbe);
+    expect(probes).toHaveLength(1);
+    const request = probes[0];
     if (request === undefined) throw new Error('Refund probe request missing');
-    const body = new URLSearchParams(await request.text());
-    expect(body.get('payment_intent')).toMatch(/^pi_togetherprobe[A-Za-z0-9]{24}$/);
-    expect(body.has('amount')).toBe(false);
-    expect(body.get('metadata[togetherProbe]')).toBe('1');
-    expect(body.get('metadata[tenantId]')).toBe('tenant-1');
+    expect(request.method).toBe('POST');
+    expect(new URL(request.url).pathname).toMatch(/^\/v1\/refunds\/re_togetherprobe[A-Za-z0-9]{24}$/);
+    expect(request.headers.get('authorization')).toBe('Bearer rk_live_refund');
+    expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({ 'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1' });
+    expect(h.requests.some((candidate) => candidate.method === 'POST' && new URL(candidate.url).pathname === '/v1/refunds')).toBe(false);
   });
 
-  it('classifies a 403 as missing', async () => {
-    const { check } = await refundCheck(stripeError(403, { message: 'The provided key does not have the required permissions for this endpoint' }));
-    expect(check).toMatchObject({ resource: 'Charges and Refunds', permission: 'write', status: 'missing' });
+  it('draws a fresh refund id for every probe run', async () => {
+    const { h, run } = probe(() => stripeError(404, { code: 'resource_missing', message: 'No such refund' }));
+    await run();
+    await run();
+    const paths = h.requests.filter(isRefundProbe).map((request) => new URL(request.url).pathname);
+    expect(paths).toHaveLength(2);
+    expect(new Set(paths).size).toBe(2);
   });
 
-  it('reports any other refusal as an error', async () => {
-    const { check } = await refundCheck(stripeError(400, { message: 'Invalid request' }));
-    expect(check).toMatchObject({ status: 'error', detail: 'Invalid request' });
+  it.each([
+    ['more_permissions_required', { code: 'more_permissions_required', message: 'This key needs more permissions' }],
+    ['the permission message', { message: "The provided key 'rk_live_x' does not have the required permissions for this endpoint" }],
+    ['permission_denied', { code: 'permission_denied', message: 'Permission denied' }],
+  ] as const)('reports a 403 with %s as missing', async (_label, error) => {
+    const { check } = await refundCheck(() => stripeError(403, error));
+    expect(check).toEqual({ resource: 'Charges and Refunds', permission: 'write', status: 'missing', detail: error.message });
   });
 
-  it('reports an accepted refund as an error rather than as present', async () => {
-    const { check } = await refundCheck(stripeJson(refundObject()));
-    expect(check).toMatchObject({ status: 'error' });
+  it('reports a 403 that names no missing permission as an error', async () => {
+    const { check } = await refundCheck(() => stripeError(403, { code: 'account_invalid', message: 'This account cannot make live charges' }));
+    expect(check).toEqual({ resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: 'This account cannot make live charges' });
+  });
+
+  it.each([
+    [400, { code: 'parameter_invalid_empty', message: 'Invalid request' }],
+    [404, { message: 'Unrecognized request URL' }],
+    [500, { type: 'api_error', message: 'Something went wrong' }],
+  ] as const)('reports a %s answer that is not resource_missing as an error', async (status, error) => {
+    const { check } = await refundCheck(() => stripeError(status, error));
+    expect(check).toEqual({ resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: error.message });
+  });
+
+  it('reports a network failure as an error', async () => {
+    const { check } = await refundCheck(() => { throw new TypeError('fetch failed'); });
+    expect(check).toMatchObject({ resource: 'Charges and Refunds', permission: 'write', status: 'error' });
+    expect(check?.detail).toEqual(expect.any(String));
+  });
+
+  it('reports an unexpected successful update as an error rather than as present', async () => {
+    const { check } = await refundCheck(() => stripeJson(refundObject({ id: 're_togetherprobe' })));
+    expect(check).toEqual({ resource: 'Charges and Refunds', permission: 'write', status: 'error', detail: 'Stripe updated a refund that should not exist' });
   });
 });
 

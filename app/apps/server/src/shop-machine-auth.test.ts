@@ -70,7 +70,7 @@ const probeResponseSchema = z.object({
   staffRole: z.string().nullable(),
   tenantId: z.string(),
   capabilities: z.array(z.string()),
-  machineActor: z.object({ kind: z.literal('shop_management_key'), apiKeyId: z.string() }),
+  machineActor: z.object({ kind: z.literal('shop_management_key'), apiKeyId: z.string(), mode: z.enum(['direct', 'propose']) }),
 });
 
 const issuers = {

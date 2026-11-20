@@ -91,7 +91,7 @@ const writeRoutes = [
   ['POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { mode: 'test', restrictedKey: 'rk_test_refused' }],
   ['POST', SHOP_INTEGRATION_ROUTES.stripeProbe.path, { mode: 'test' }],
   ['POST', SHOP_INTEGRATION_ROUTES.storageConfigure.path, storage],
-  ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { organizationId: '999' }],
+  ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { production: { organizationId: '999' } }],
 ] as const;
 
 const readRoutes = [SHOP_INTEGRATION_ROUTES.listSecrets.path, SHOP_INTEGRATION_ROUTES.shipxSettings.path] as const;
@@ -247,29 +247,51 @@ describe('shop integration routes with a shop management key', () => {
     expect(JSON.parse(await storedSecret('acme', 's3.configuration') ?? '{}')).toEqual(storage);
   });
 
-  it('configures the ShipX sender and credentials, shows them masked and rejects malformed input before persistence', async () => {
+  it('configures each ShipX slot and the sender, shows them masked and writes no other secret name', async () => {
     const { secret } = await createShopKey([READ, WRITE]);
-    const configured = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, {
-      environment: 'sandbox', sender, organizationId: '12345', token: 'shipx-token-abcd',
+    const keysBefore = await storedKeys('acme');
+    const sandbox = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, {
+      sender, sandbox: { organizationId: '12345', token: 'shipx-token-abcd' },
     });
-    expect(configured.status).toBe(200);
-    const view = envelope(shopIntegrationContracts.shipxConfigure.output).parse(await configured.json()).data;
+    expect(sandbox.status).toBe(200);
+    expect(envelope(shopIntegrationContracts.shipxConfigure.output).parse(await sandbox.json()).data).toEqual({
+      sender,
+      sandbox: { organizationId: { maskedPreview: '••••2345', updatedAt: now }, token: { maskedPreview: '••••abcd', updatedAt: now }, configured: true },
+      production: { organizationId: null, token: null, configured: false },
+    });
+    const production = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, {
+      production: { organizationId: '67890', token: 'shipx-live-token-wxyz' },
+    });
+    expect(production.status).toBe(200);
+    const view = envelope(shopIntegrationContracts.shipxConfigure.output).parse(await production.json()).data;
     expect(view).toEqual({
-      environment: 'sandbox', sender, configured: true,
-      organizationId: { maskedPreview: '••••2345', updatedAt: now }, token: { maskedPreview: '••••abcd', updatedAt: now },
+      sender,
+      sandbox: { organizationId: { maskedPreview: '••••2345', updatedAt: now }, token: { maskedPreview: '••••abcd', updatedAt: now }, configured: true },
+      production: { organizationId: { maskedPreview: '••••7890', updatedAt: now }, token: { maskedPreview: '••••wxyz', updatedAt: now }, configured: true },
     });
     const shown = await keyed(secret, 'GET', SHOP_INTEGRATION_ROUTES.shipxSettings.path);
     expect(shown.status).toBe(200);
     expect(envelope(shopIntegrationContracts.shipxSettings.output).parse(await shown.json()).data).toEqual(view);
-    expect(await storedSecret('acme', 'shipx.token')).toBe('shipx-token-abcd');
+    expect(await storedSecret('acme', 'shipx.sandbox.token')).toBe('shipx-token-abcd');
+    expect(await storedSecret('acme', 'shipx.production.token')).toBe('shipx-live-token-wxyz');
+    const added = (await storedKeys('acme')).filter((key) => !keysBefore.includes(key));
+    expect(added.toSorted()).toEqual(['shipx.production.organizationId', 'shipx.production.token', 'shipx.sandbox.organizationId', 'shipx.sandbox.token']);
 
+    const others = (await deps.tenantSecrets.listByTenant('acme')).filter((row) => !row.key.startsWith('shipx.'));
     for (const body of [
-      { organizationId: 'not-a-number' },
+      { production: { organizationId: 'not-a-number' } },
       { sender: { ...sender, phone: '12' } },
       { sender: { ...sender, postCode: '00950' } },
-      { token: 'replacement', clearCredentials: true },
-      { environment: 'staging' },
+      { sandbox: { token: 'replacement', clearCredentials: true } },
+      { environment: 'sandbox' },
+      { organizationId: '11111' },
+      { token: 'replacement' },
+      { clearCredentials: true },
       { unknownField: true },
+      { live: { organizationId: '11111', token: 'replacement' } },
+      { production: { key: 'stripe.restrictedKey', token: 'rk_live_smuggled' } },
+      { 'stripe.restrictedKey': 'rk_live_smuggled' },
+      { production: { 'shipx.organizationId': '11111' } },
     ]) {
       const response = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, body);
       expect(response.status, JSON.stringify(body)).toBe(400);
@@ -277,7 +299,17 @@ describe('shop integration routes with a shop management key', () => {
     }
     const after = await keyed(secret, 'GET', SHOP_INTEGRATION_ROUTES.shipxSettings.path);
     expect(envelope(shopIntegrationContracts.shipxSettings.output).parse(await after.json()).data).toEqual(view);
-    expect(await storedSecret('acme', 'shipx.token')).toBe('shipx-token-abcd');
+    expect(await storedSecret('acme', 'shipx.production.token')).toBe('shipx-live-token-wxyz');
+    expect((await deps.tenantSecrets.listByTenant('acme')).filter((row) => !row.key.startsWith('shipx.'))).toEqual(others);
+
+    const cleared = await keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { production: { clearCredentials: true } });
+    expect(cleared.status).toBe(200);
+    expect(envelope(shopIntegrationContracts.shipxConfigure.output).parse(await cleared.json()).data).toEqual({
+      ...view, production: { organizationId: null, token: null, configured: false },
+    });
+    expect(await storedSecret('acme', 'shipx.sandbox.token')).toBe('shipx-token-abcd');
+    expect(await storedKeys('acme')).not.toContain('shipx.production.token');
+    expect((await deps.tenantSecrets.listByTenant('acme')).filter((row) => !row.key.startsWith('shipx.'))).toEqual(others);
   });
 
   it('rejects an unknown field at any level of a configure body before any provider call or write', async () => {
@@ -332,6 +364,7 @@ describe('shop integration routes with a shop management key', () => {
   it.each([
     'stripe.restrictedKey', 'stripe.testRestrictedKey', 'stripe.webhookSecret', 'stripe.testWebhookEndpointId',
     's3.configuration', 's3.accessKeyId', 'shipx.token', 'shipx.organizationId', 'telemetry.mongodb',
+    'shipx.sandbox.organizationId', 'shipx.sandbox.token', 'shipx.production.organizationId', 'shipx.production.token',
     'bunny.apiKey', 'ses.secretAccessKey', 'smtp.password', 'resend.apiKey', 'analyticsMetaCapiAccessToken', 'unknown.key',
   ])('rejects a generic write and delete of %s with validation and keeps every secret', async (key) => {
     const { secret } = await createShopKey([READ, WRITE]);
@@ -352,6 +385,7 @@ describe('shop integration routes with a shop management key', () => {
     ['a video-hosting credential', 'bunny.securityKey'],
     ['a mail credential', 'ses.accessKeyId'],
     ['a carrier credential', 'shipx.organizationId'],
+    ['a carrier slot credential', 'shipx.production.token'],
   ] as const)('refuses a key the generic write and delete of %s that an owner session stored, and the owner session still removes it', async (_group, key) => {
     const stored = await ownerRequest(API_ROUTES.tenantSecretSet.method, API_ROUTES.tenantSecretSet.path, { key, value: `owner-${key}` });
     expect(stored.status, key).toBe(200);
@@ -452,7 +486,7 @@ describe('shop integration routes with a shop management key', () => {
       [API_ROUTES.stripeProbePermissions.method, API_ROUTES.stripeProbePermissions.path, { mode: 'live' }],
       [API_ROUTES.storageConfigure.method, API_ROUTES.storageConfigure.path, storage],
       ['GET', API_PATHS.shipxSettings, undefined],
-      ['POST', API_PATHS.shipxConfigure, { organizationId: '999' }],
+      ['POST', API_PATHS.shipxConfigure, { production: { organizationId: '999' } }],
     ] as const) {
       const response = await keyed(secret, method, path, body);
       expect(response.status, `${method} ${path}`).toBe(401);
@@ -498,7 +532,7 @@ describe('shop management key history of keyed integration writes', () => {
       ['POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { mode: 'test', restrictedKey: 'rk_test_history_4242' }, null],
       ['POST', SHOP_INTEGRATION_ROUTES.stripeProbe.path, SHOP_INTEGRATION_ROUTES.stripeProbe.path, { mode: 'test' }, null],
       ['POST', SHOP_INTEGRATION_ROUTES.storageConfigure.path, SHOP_INTEGRATION_ROUTES.storageConfigure.path, { ...storage, accessKeyId: 'history-access-key-id', secretAccessKey: 'history-secret-access-key' }, null],
-      ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { organizationId: '54321', token: 'shipx-history-token' }, null],
+      ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { production: { organizationId: '54321', token: 'shipx-history-token' } }, null],
     ] as const;
     const expected = [];
     for (const [method, path, route, body, resourceId] of calls) {

@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -71,8 +71,10 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
+import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerTeamCommands } from './team-commands.js';
+import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
@@ -248,21 +250,16 @@ const ordersIssueOptionsSchema = z.object({
 const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
-  environment: shipxEnvironmentSchema.optional(),
+  slot: shipxEnvironmentSchema.optional(),
   organizationId: z.string().min(1).optional(),
-  token: z.string().min(1).optional(),
+  tokenEnv: z.string().min(1).optional(),
+  tokenStdin: z.boolean().optional(),
   sender: z.string().optional(),
-  clearCredentials: z.boolean().default(false),
+  clearCredentials: z.boolean().optional(),
 });
-const shipxSettingsLines = (view: ShipxSettingsView): string => [
-  `environment: ${view.environment}`,
-  `organization id: ${view.organizationId?.maskedPreview ?? '(not set)'}`,
-  `token: ${view.token?.maskedPreview ?? '(not set)'}`,
-  `sender: ${view.sender === null ? '(not set)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
-  `configured: ${String(view.configured)}`,
-].join('\n');
 const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
+  `environment: ${view.environment}`,
   `service: ${view.service ?? '(none)'}`,
   `parcel template: ${view.parcelTemplate}`,
   `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
@@ -793,6 +790,7 @@ registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
+registerOrganizationCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
 registerShopKeyCommands(program, cliCtx);
@@ -964,6 +962,11 @@ originCommand
     }),
   );
 
+const publicStockLabel = (stock: { soldOut: boolean; available: number | null }): string => {
+  if (stock.soldOut) return '  sold out';
+  return stock.available === null ? '' : `  ${String(stock.available)} left`;
+};
+
 const publicCommand = program.command('public').description('Public read-only API');
 
 publicCommand.command('offer').description('Show the public offer').action(
@@ -972,7 +975,7 @@ publicCommand.command('offer').description('Show the public offer').action(
       data.products.length === 0
         ? `${data.tenant.name} (${data.tenant.slug}) has no published products`
         : data.products
-            .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})`)
+            .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})${publicStockLabel(product.stock)}`)
             .join('\n'),
     );
   }),
@@ -1184,14 +1187,20 @@ tenant.command('shipx').description('Show the InPost ShipX settings (credentials
 
 tenant
   .command('shipx-set')
-  .description('Update the InPost ShipX environment, sender and credentials (owner)')
-  .option('--environment <environment>', 'sandbox or production')
+  .description('Update the InPost ShipX sender or the credentials of one connection (owner)')
+  .option('--slot <slot>', 'connection the credential options change: production (paid orders) or sandbox (test-mode orders)')
   .option('--organization-id <id>', 'ShipX organization id from Manager Paczek')
-  .option('--token <token>', 'ShipX API token from Manager Paczek; stored encrypted')
-  .option('--sender <json>', 'sender block as JSON (name, company, email, phone, street, buildingNumber, city, postCode), or null to clear')
-  .option('--clear-credentials', 'remove the stored organization id and token')
+  .option('--token-env <name>', 'environment variable holding the ShipX API token from Manager Paczek; stored encrypted')
+  .option('--token-stdin', 'read the ShipX API token from stdin')
+  .option('--sender <json>', 'optional sender block as JSON (name, company, email, phone, street, buildingNumber, city, postCode), or null to let InPost use the organization data')
+  .option('--clear-credentials', 'remove the stored organization id and token of the --slot connection')
   .action(
     withInput(z.tuple([tenantShipxSetOptionsSchema]), async (ctx, [options]) => {
+      const slot = await shipxSlotPatch(options);
+      if (!slot.ok) {
+        emit(slot, ctx.json, () => '');
+        return;
+      }
       let sender: z.output<typeof shipxSenderSchema> | null | undefined;
       if (options.sender !== undefined) {
         const payload = await readJsonPayload(options.sender, undefined);
@@ -1204,11 +1213,8 @@ tenant
       }
       emit(
         await ctx.api.shipxConfigure({
-          ...(options.environment === undefined ? {} : { environment: options.environment }),
-          ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
-          ...(options.token === undefined ? {} : { token: options.token }),
           ...(sender === undefined ? {} : { sender }),
-          ...(options.clearCredentials ? { clearCredentials: true } : {}),
+          ...slot.value,
         }),
         ctx.json,
         shipxSettingsLines,

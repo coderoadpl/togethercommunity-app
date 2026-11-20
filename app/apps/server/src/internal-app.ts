@@ -14,6 +14,7 @@ import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
 import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
+import { registerOperatorOrganizationRoutes, registerOrganizationRoutes } from './organization-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema, SIMULATED_SHIPPING_DETAILS } from '#core/domain/index.js';
@@ -819,6 +820,7 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   registerOperatorTenantRoutes(app, deps);
+  registerOperatorOrganizationRoutes(app, deps);
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
     routing: deps,
@@ -1388,6 +1390,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderFulfilmentRoutes(app, deps);
   registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
+  registerOrganizationRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

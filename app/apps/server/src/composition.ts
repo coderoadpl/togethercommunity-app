@@ -3,6 +3,18 @@ import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
 import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import {
+  createOrganizationAuditRepository,
+  createOrganizationMemberRepository,
+  createOrganizationRepository,
+  createOrganizationWorkspaceRepository,
+} from '#adapters/db/organizations.js';
+import type {
+  OrganizationAuditRepository,
+  OrganizationMemberRepository,
+  OrganizationRepository,
+  OrganizationWorkspaceRepository,
+} from '#core/server/index.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
 import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
@@ -527,6 +539,10 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
   auditEvents: TenantAuditEventRepository;
+  organizations: OrganizationRepository;
+  organizationMembers: OrganizationMemberRepository;
+  organizationAudit: OrganizationAuditRepository;
+  organizationWorkspaces: OrganizationWorkspaceRepository;
   team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
@@ -1558,6 +1574,10 @@ export const createDeps = (
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,
     auditEvents,
+    organizations: createOrganizationRepository(db),
+    organizationMembers: createOrganizationMemberRepository(db),
+    organizationAudit: createOrganizationAuditRepository(db),
+    organizationWorkspaces: createOrganizationWorkspaceRepository(db),
     team,
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,

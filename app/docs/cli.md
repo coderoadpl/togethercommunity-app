@@ -143,3 +143,56 @@ string cells are neutralised with a leading apostrophe, like the member export;
 numeric values are unchanged. Errors retain the normal CLI taxonomy and produce
 no partial CSV.
 See [report definitions and limitations](reports-api.md).
+
+## Organizations
+
+An organization sits above workspaces. Only the instance operator creates one,
+for an existing account with a verified e-mail address, and sets how many
+workspaces it may hold. Both commands read the secret from `OPERATOR_SECRET`:
+
+```bash
+OPERATOR_SECRET=... pnpm --silent run cli --json operator org create \
+  --slug holding --name 'Holding' --owner-email owner@example.test --max-workspaces 3
+OPERATOR_SECRET=... pnpm --silent run cli --json operator org limits <organization-id> --max-workspaces 5
+```
+
+Creation is idempotent by slug for the same owner (`created: false` on replay);
+the same slug for another owner is a `conflict`. An unknown and an unverified
+owner produce the same validation error.
+
+An organization holds at most `max_workspaces` workspaces, whether they are
+linked now or created in it later. The limit defaults to 0 until the operator
+raises it with `operator org limits`. Linking a workspace that would exceed it
+is refused with `workspace_quota_exceeded` (HTTP 409, CLI exit 31) and changes
+nothing; linking a workspace that is already in the organization does not count
+it twice.
+
+Members read their organizations with their usual session. `--org` accepts the
+organization ID or slug and falls back to `TOGETHER_CLI_ORG`:
+
+```bash
+pnpm --silent run cli org list
+pnpm --silent run cli org show --org holding
+pnpm --silent run cli org member list --org holding
+pnpm --silent run cli org audit --org holding --limit 50
+```
+
+Organization owners and admins can read; an organization that the caller does
+not belong to answers `not_found`, whether or not it exists.
+
+An organization owner links a workspace in which they also hold a direct owner
+grant. The workspace is named by its slug and resolved from the caller's staff
+workspaces:
+
+```bash
+pnpm --silent run cli org workspace list --org holding
+pnpm --silent run cli org workspace link acme --org holding
+pnpm --silent run cli org workspace unlink acme --org holding
+```
+
+Linking changes nothing in the workspace's settings, secrets, payments or
+checkout. Linking a workspace that is already in the organization, or unlinking
+one that is not linked, reports `changed: false`. A workspace that belongs to
+another organization is a `conflict`; an organization admin, or an owner who is
+only a workspace admin, is `forbidden`. Both changes are recorded in the
+organization audit and in the workspace audit.

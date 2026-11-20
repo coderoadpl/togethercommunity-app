@@ -104,6 +104,27 @@ fields reset. Cancellation and Retry retain variant parameters. The direct
 handoff POST does not accept selections and continues to sell the saved products;
 public listing cards also retain saved-product totals. See [Product variants](shop.md#product-variants).
 
+## Public offer
+
+`GET /api/public/sales-links/<slug>` answers anonymously and without caching
+(`cache-control: no-store`, no ETag), so its counts are current on every read.
+Besides the lines, the total and the workspace context it carries:
+
+- `soldOut`: `true` when any selected product is tracked and has no piece left.
+- `available`: how many whole sets a buyer can take now, the smallest available
+  count over the tracked selected products; `null` when no selected product is
+  tracked. It is `0` exactly when `soldOut` is `true`.
+- `lines[].maxQuantity`: the quantity of that product one checkout accepts, `1`,
+  or `0` when the product is sold out.
+- `lines[].variants[].available`: the available count of each eligible variant,
+  `null` for an untracked one, next to its `soldOut` flag.
+
+A checkout buys exactly one set, so a storefront shows `available` as a "sets
+left" line rather than a quantity picker; buying several sets means several
+checkouts. Counts follow the selected variants when the request carries
+`variant` parameters. See [Public offer](shop.md#public-offer) for the
+catalogue counterpart.
+
 ## Product VAT and physical items
 
 Products support 5%, 8%, 23%, or VAT exemption with a legal basis. New products

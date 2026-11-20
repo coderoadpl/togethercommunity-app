@@ -29,7 +29,7 @@ export interface TenantScopeSource {
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AccountSecurityReader.read': 'Authentication security state belongs to the platform user identity, not to a tenant membership.',
-  'AccountIdentityReader.findById': 'The account e-mail, name and verification state belong to the platform user identity, not to a tenant membership.',
+  'AccountIdentityReader.findById': 'Called only by shop management key authentication with the issuer user id stored on the key row the presented secret matched in the resolved workspace; the identity is then used only with an owner grant in that workspace.',
   'TelemetryTenantDirectory.listTenantIds': 'The platform telemetry worker discovers connected tenants before tenant-scoped outbox delivery.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
@@ -84,6 +84,14 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TenantSesSettingsRepository.findByWebhookToken': 'The signed provider webhook token resolves the owning tenant.',
   'TenantAccessReader.findStaffGrant': 'Tenant resolution may start from a slug before a tenant ID exists.',
   'TenantAccessReader.listTenantsForStaff': 'Sign-in discovers the tenants available to a platform user.',
+  'OrganizationRepository.createWithOwner': 'Called only by createOrganization behind the operator-secret route with the operator context (tenant:provision); it creates the organisation, so no organisation or tenant ID exists before it.',
+  'OrganizationRepository.findById': 'Called by getOrganization after authorizeOrganization, and by listOrganizations only with organisation ids taken from the caller\'s own memberships (listForUser keyed by the session user id).',
+  'OrganizationRepository.setMaxWorkspaces': 'Called only by setOrganizationLimits behind the operator-secret route with the operator context (tenant:provision); no tenant is involved.',
+  'OrganizationMemberRepository.find': 'Membership lookup that builds the organisation context for authorizeOrganization; organizationContext keys it by the caller\'s own server-resolved session user id.',
+  'OrganizationMemberRepository.listAccounts': 'Called only by listOrganizationMembers after authorizeOrganization (organization:member:read) for that organisation.',
+  'OrganizationMemberRepository.listForUser': 'Called only by listOrganizations with the caller\'s own server-resolved session user id.',
+  'OrganizationWorkspaceRepository.list': 'Called only by listOrganizationWorkspaces after authorizeOrganization (organization:read) for that organisation.',
+  'OrganizationAuditRepository.list': 'Called only by listOrganizationAuditEvents after authorizeOrganization (organization:audit:read) for that organisation.',
 };
 
 export const NON_DATA_PORTS: Readonly<Record<string, string>> = {

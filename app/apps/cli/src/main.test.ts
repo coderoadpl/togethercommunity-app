@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result, type ShipxOrderView } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -67,6 +67,7 @@ interface Hoisted {
   deleteProductDraft: ReturnType<typeof vi.fn>;
   listProducts: ReturnType<typeof vi.fn>;
   getProductStock: ReturnType<typeof vi.fn>;
+  publicOffer: ReturnType<typeof vi.fn>;
   enableProductStock: ReturnType<typeof vi.fn>;
   adjustProductStock: ReturnType<typeof vi.fn>;
   setProductStockThreshold: ReturnType<typeof vi.fn>;
@@ -161,6 +162,7 @@ const h = vi.hoisted(
     deleteProductDraft: vi.fn(),
     listProducts: vi.fn(),
     getProductStock: vi.fn(),
+    publicOffer: vi.fn(),
     enableProductStock: vi.fn(),
     adjustProductStock: vi.fn(),
     setProductStockThreshold: vi.fn(),
@@ -286,6 +288,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     deleteProductDraft: h.deleteProductDraft,
     listProducts: h.listProducts,
     getProductStock: h.getProductStock,
+    publicOffer: h.publicOffer,
     enableProductStock: h.enableProductStock,
     adjustProductStock: h.adjustProductStock,
     setProductStockThreshold: h.setProductStockThreshold,
@@ -340,6 +343,10 @@ const redirectFixture = {
   createdAt: '1998-08-14T10:00:00.000Z',
 };
 
+const shipxOrderView: ShipxOrderView = {
+  available: true, reason: null, environment: 'sandbox', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null,
+};
+
 const originalArgv = process.argv;
 let logSpy: MockInstance<typeof console.log>;
 let errorSpy: MockInstance<typeof console.error>;
@@ -380,13 +387,18 @@ beforeEach(() => {
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
-  h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
-  h.shipxRefresh.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
+  h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
+  h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
-  h.shipxSettings.mockReset().mockResolvedValue(ok({ environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false }));
-  h.shipxConfigure.mockReset().mockResolvedValue(ok({ environment: 'production', sender: null, organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: false }));
+  const unconnected = { organizationId: null, token: null, configured: false };
+  h.shipxSettings.mockReset().mockResolvedValue(ok({ sender: null, sandbox: unconnected, production: unconnected }));
+  h.shipxConfigure.mockReset().mockResolvedValue(ok({
+    sender: null,
+    sandbox: unconnected,
+    production: { organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: true },
+  }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -1863,6 +1875,38 @@ describe('product stock CLI', () => {
   });
 });
 
+describe('public offer CLI', () => {
+  const offerProduct = (id: string, title: string, stock: { tracked: boolean; soldOut: boolean; low: boolean; available: number | null }, maxQuantity: number) => ({
+    id, title, priceCents: 4900, currency: 'PLN', stock, maxQuantity,
+  });
+  const offer = {
+    tenant: { slug: 'acme', name: 'Acme' },
+    products: [
+      offerProduct('poster', 'Poster', { tracked: true, soldOut: false, low: true, available: 3 }, 3),
+      offerProduct('mug', 'Mug', { tracked: true, soldOut: true, low: false, available: 0 }, 0),
+      offerProduct('course', 'Course', { tracked: false, soldOut: false, low: false, available: null }, 1),
+    ],
+  };
+
+  beforeEach(() => {
+    h.publicOffer.mockReset().mockResolvedValue(ok(offer));
+  });
+
+  it('appends how many units of a tracked product are left', async () => {
+    await run('public', 'offer');
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')).toEqual([
+      '- Poster  4900 PLN  (poster)  3 left',
+      '- Mug  4900 PLN  (mug)  sold out',
+      '- Course  4900 PLN  (course)',
+    ]);
+  });
+
+  it('passes the counts through the JSON envelope unchanged', async () => {
+    await run('--json', 'public', 'offer');
+    expect(soleJson()).toEqual({ ok: true, data: offer });
+  });
+});
+
 describe('team CLI', () => {
   beforeEach(() => {
     h.listTenantTeam.mockReset().mockResolvedValue(ok({
@@ -2217,6 +2261,8 @@ describe('personalisation CLI', () => {
 });
 
 describe('InPost ShipX CLI', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
     expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
@@ -2272,14 +2318,41 @@ describe('InPost ShipX CLI', () => {
   it('shows the order readiness and configures the integration with a parsed sender', async () => {
     await run('orders', 'shipx', 'show', 'order-number');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('available: true'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('environment: sandbox'));
     const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
-    await run('--json', 'tenant', 'shipx-set', '--environment', 'production', '--organization-id', '1234', '--token', 'token-5678', '--sender', JSON.stringify(sender));
+    vi.stubEnv('SHIPX_PRODUCTION_TOKEN', 'token-5678');
+    await run('--json', 'tenant', 'shipx-set', '--slot', 'production', '--organization-id', '1234', '--token-env', 'SHIPX_PRODUCTION_TOKEN', '--sender', JSON.stringify(sender));
     expect(h.shipxConfigure).toHaveBeenCalledExactlyOnceWith({
-      environment: 'production', organizationId: '1234', token: 'token-5678', sender: { ...sender, company: null },
+      production: { organizationId: '1234', token: 'token-5678' }, sender: { ...sender, company: null },
     });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('token-5678');
     await run('--json', 'tenant', 'shipx-set', '--sender', '{"name":"Only a name"}');
     expect(h.shipxConfigure).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(2);
+  });
+
+  it('changes one ShipX connection named by --slot and the sender without a slot', async () => {
+    await run('--json', 'tenant', 'shipx-set', '--slot', 'sandbox', '--clear-credentials');
+    expect(h.shipxConfigure).toHaveBeenLastCalledWith({ sandbox: { clearCredentials: true } });
+    await run('--json', 'tenant', 'shipx-set', '--sender', 'null');
+    expect(h.shipxConfigure).toHaveBeenLastCalledWith({ sender: null });
+    await run('tenant', 'shipx');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('production: not connected, organization id (not set), token (not set)'));
+    expect(h.shipxConfigure).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [['--organization-id', '1234']],
+    [['--clear-credentials']],
+    [['--slot', 'production']],
+    [['--slot', 'staging', '--organization-id', '1234']],
+    [['--environment', 'production', '--organization-id', '1234']],
+    [['--slot', 'production', '--token', 'token-5678']],
+    [['--slot', 'production', '--token-env', 'SHIPX_TOKEN', '--token-stdin']],
+  ])('refuses tenant shipx-set %j without calling the API', async (args) => {
+    await run('--json', 'tenant', 'shipx-set', ...args);
+    expect(h.shipxConfigure).not.toHaveBeenCalled();
+    expect(process.exitCode).not.toBe(0);
   });
 
   it('passes the parcel template to product create and update', async () => {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ok, productSchema, salesLinkOfferSchema, salesLinkSchema, type Product } from '#core/domain/index.js';
 import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { createSalesLink, deleteSalesLink, getPublicSalesLink, getSalesLink, listSalesLinks, updateSalesLink } from './sales-links.js';
 
 const now = '2026-10-08T12:00:00.000Z';
@@ -101,4 +102,48 @@ it('carries the personalisation setting of each offer line and parses through th
   if (!result.ok) throw new Error('offer failed');
   expect(result.value.lines.map((line) => line.personalization)).toEqual([personalization, null]);
   expect(salesLinkOfferSchema.parse(result.value).lines.map((line) => line.personalization)).toEqual([personalization, null]);
+});
+
+describe('how many sets a buyer can take', () => {
+  const offer = async (setUp: (stock: ReturnType<typeof createStockRepositoryFake>) => void) => {
+    const stock = createStockRepositoryFake();
+    setUp(stock);
+    const result = await getPublicSalesLink('workspace', link.slug, { ...deps, stock: stock.repository });
+    if (!result.ok) throw new Error('offer failed');
+    return { soldOut: result.value.soldOut, available: result.value.available, maxQuantities: result.value.lines.map((line) => line.maxQuantity) };
+  };
+
+  it('has no count and one unit per line when no product is tracked', async () => {
+    expect(await offer(() => undefined)).toEqual({ soldOut: false, available: null, maxQuantities: [1, 1] });
+  });
+
+  it('is the smallest available count over the tracked lines', async () => {
+    expect(await offer((stock) => {
+      stock.track('workspace', 'print', 7);
+      stock.track('workspace', 'digital', 3);
+      const held = stock.levels.get('workspace', 'print');
+      if (held !== null) held.reserved = 5;
+    })).toEqual({ soldOut: false, available: 2, maxQuantities: [1, 1] });
+  });
+
+  it('ignores an untracked line', async () => {
+    expect(await offer((stock) => stock.track('workspace', 'digital', 4))).toEqual({ soldOut: false, available: 4, maxQuantities: [1, 1] });
+  });
+
+  it('is zero and sold out when one tracked line has nothing left', async () => {
+    const result = await offer((stock) => {
+      stock.track('workspace', 'print', 5);
+      stock.track('workspace', 'digital', 0);
+    });
+    expect(result).toEqual({ soldOut: true, available: 0, maxQuantities: [1, 0] });
+  });
+});
+
+it('parses an offer recorded before the counts with one unit per line and no set count', () => {
+  const recorded = { salesLink: { slug: 'collection', heading: 'Your collection', description: '', validFrom: null, validTo: null }, descriptionHtml: '', currency: 'PLN', totalCents: 1050,
+    lines: [{ productId: 'print', name: 'Printed item', type: 'physical', grossCents: 1050, netCents: 1000, vatCents: 50, vatRate: 5, vatExemptionBasis: null }] };
+  const parsed = salesLinkOfferSchema.parse(recorded);
+  expect({ soldOut: parsed.soldOut, available: parsed.available, maxQuantity: parsed.lines[0]?.maxQuantity }).toEqual({ soldOut: false, available: null, maxQuantity: 1 });
+  expect(salesLinkOfferSchema.safeParse({ ...recorded, available: -1 }).success).toBe(false);
+  expect(salesLinkOfferSchema.safeParse({ ...recorded, lines: [{ ...recorded.lines[0], maxQuantity: -1 }] }).success).toBe(false);
 });

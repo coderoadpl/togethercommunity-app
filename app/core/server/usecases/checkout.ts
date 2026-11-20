@@ -2,6 +2,7 @@ import {
   CART_LINES_PARAM,
   HOSTED_CART_PATH,
   SALES_LINK_VARIANT_PARAM,
+  SINGLE_CHECKOUT_LINE_QUANTITY,
   formatCartLinesParam,
   formatSalesLinkVariantParam,
   attributionSchema,
@@ -142,7 +143,7 @@ const selectCheckoutProducts = async (
     if (!resolvedPrices.ok) return resolvedPrices;
     const product = products[0];
     if (product === undefined) return err(notFound('Sales link not found'));
-    const inStock = await ensureProductsInStock(tenantId, products.map((item) => ({ product: item, quantity: 1 })), deps);
+    const inStock = await ensureProductsInStock(tenantId, products.map((item) => ({ product: item, quantity: SINGLE_CHECKOUT_LINE_QUANTITY })), deps);
     if (!inStock.ok) return inStock;
     return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug, variantSelections: selections.filter((selection) => selection.productId !== selection.variantProductId) });
   }
@@ -165,7 +166,7 @@ const selectCheckoutProducts = async (
   if (product.type === 'membership' && price?.kind !== 'recurring') {
     return err(validation('Membership products require a recurring price'));
   }
-  const inStock = await ensureProductsInStock(tenantId, [{ product, quantity: 1 }], deps);
+  const inStock = await ensureProductsInStock(tenantId, [{ product, quantity: SINGLE_CHECKOUT_LINE_QUANTITY }], deps);
   if (!inStock.ok) return inStock;
 
   return ok({ product, price });

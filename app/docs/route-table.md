@@ -80,6 +80,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
 | `POST /api/internal/tenants/provision` | self-authenticating | mutating | operator tenant provision |
 | `GET /api/internal/tenants/:slug/readiness` | self-authenticating | read | operator tenant readiness |
+| `POST /api/internal/organizations` | self-authenticating | mutating | operator organization create |
+| `POST /api/internal/organizations/:organizationId/limits` | self-authenticating | mutating | operator organization limits |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
@@ -265,6 +267,13 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/orders/:orderId/shipx` | authenticated | mutating | shipx create |
 | `POST /api/orders/:orderId/shipx/discard` | authenticated | mutating | shipx discard |
 | `POST /api/orders/:orderId/shipx/label` | authenticated | mutating | shipx label |
+| `GET /api/organizations` | authenticated | read | organizations |
+| `GET /api/organizations/:organizationId` | authenticated | read | organization |
+| `GET /api/organizations/:organizationId/members` | authenticated | read | organization members |
+| `GET /api/organizations/:organizationId/audit-events` | authenticated | read | organization audit events |
+| `GET /api/organizations/:organizationId/workspaces` | authenticated | read | organization workspaces |
+| `POST /api/organizations/:organizationId/workspaces/link` | authenticated | mutating | organization workspace link |
+| `POST /api/organizations/:organizationId/workspaces/unlink` | authenticated | mutating | organization workspace unlink |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

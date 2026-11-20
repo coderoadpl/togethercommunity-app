@@ -123,6 +123,19 @@ export const CAPABILITIES = [
   'offer:read',
   'legal:read',
   'webhook:process',
+  'organization:read',
+  'organization:member:read',
+  'organization:member:write',
+  'organization:settings:write',
+  'organization:secret:read',
+  'organization:secret:write',
+  'organization:workspace:create',
+  'organization:workspace:link',
+  'organization:workspace:configure',
+  'organization:config-source:write',
+  'organization:api-key:read',
+  'organization:api-key:write',
+  'organization:audit:read',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -144,6 +157,8 @@ export const PRINCIPALS = [
   'webhook',
   'token',
   'public',
+  'organization-owner',
+  'organization-admin',
 ] as const;
 
 export type Principal = (typeof PRINCIPALS)[number];
@@ -273,6 +288,27 @@ const ownerOnlyCapabilities = [
   'integration:test',
 ] as const satisfies readonly Capability[];
 
+const organizationAdminCapabilities = [
+  'organization:read',
+  'organization:member:read',
+  'organization:secret:read',
+  'organization:workspace:configure',
+  'organization:audit:read',
+] as const satisfies readonly Capability[];
+
+const organizationOwnerOnlyCapabilities = [
+  'organization:member:write',
+  'organization:settings:write',
+  'organization:secret:write',
+  'organization:workspace:create',
+  'organization:workspace:link',
+  'organization:config-source:write',
+  'organization:api-key:read',
+  'organization:api-key:write',
+] as const satisfies readonly Capability[];
+
+export const ORGANIZATION_PRINCIPALS = ['organization-owner', 'organization-admin'] as const satisfies readonly Principal[];
+
 export const ROLE_CAPABILITIES: CapabilityMatrix = {
   owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities],
   admin: sharedStaffCapabilities,
@@ -334,6 +370,8 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'development:inspect',
     'development:mutate',
   ],
+  'organization-owner': [...organizationAdminCapabilities, ...organizationOwnerOnlyCapabilities],
+  'organization-admin': organizationAdminCapabilities,
 };
 
 export const capabilitiesForPrincipal = (principal: Principal): readonly Capability[] =>

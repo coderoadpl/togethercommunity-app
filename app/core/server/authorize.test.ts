@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { capabilitiesForPrincipal, type Identity, type ImpersonationPrincipal } from '#core/domain/index.js';
 
-import { authorize, authorizeRequiredTenant, authorizeTenant } from './authorize.js';
+import { authorize, authorizeOrganization, authorizeRequiredTenant, authorizeTenant } from './authorize.js';
+import type { OrganizationCtx } from './context.js';
 
 const identity = (tenantId: string | null): Identity => ({
   userId: 'user-1',
@@ -237,3 +238,55 @@ describe('member self-service authorization matrix', () => {
     }
   });
 });
+
+describe('authorizeOrganization', () => {
+  const octx = (role: 'owner' | 'admin' | null, organizationId = 'org-1'): OrganizationCtx => ({
+    identity: { userId: 'user-1', email: 'person@example.test', emailVerified: true },
+    membership: role === null ? null : { organizationId, role },
+  });
+  const writes = [
+    'organization:member:write',
+    'organization:settings:write',
+    'organization:secret:write',
+    'organization:workspace:create',
+    'organization:workspace:link',
+    'organization:config-source:write',
+    'organization:api-key:read',
+    'organization:api-key:write',
+  ] as const;
+  const reads = ['organization:read', 'organization:member:read', 'organization:secret:read', 'organization:workspace:configure', 'organization:audit:read'] as const;
+
+  it('answers not_found to a non-member and to a member of another organization', () => {
+    expect(authorizeOrganization(octx(null), 'org-1', 'organization:read')).toEqual({
+      ok: false, error: { code: 'not_found', message: 'Organization not found' },
+    });
+    expect(authorizeOrganization(octx('owner', 'org-2'), 'org-1', 'organization:read')).toEqual({
+      ok: false, error: { code: 'not_found', message: 'Organization not found' },
+    });
+  });
+
+  it('lets an admin read but refuses every organization write', () => {
+    for (const capability of reads) {
+      expect(authorizeOrganization(octx('admin'), 'org-1', capability)).toEqual({ ok: true, value: { organizationId: 'org-1', role: 'admin' } });
+    }
+    for (const capability of writes) {
+      expect(authorizeOrganization(octx('admin'), 'org-1', capability)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    }
+  });
+
+  it('lets an owner use every organization capability and no workspace capability', () => {
+    for (const capability of [...reads, ...writes]) {
+      expect(authorizeOrganization(octx('owner'), 'org-1', capability)).toEqual({ ok: true, value: { organizationId: 'org-1', role: 'owner' } });
+    }
+    expect(authorizeOrganization(octx('owner'), 'org-1', 'tenant:settings:write')).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('intersects declared context capabilities with the member role', () => {
+    const owner = { ...octx('owner'), capabilities: ['organization:read', 'organization:member:write'] as const };
+    expect(authorizeOrganization(owner, 'org-1', 'organization:read').ok).toBe(true);
+    expect(authorizeOrganization(owner, 'org-1', 'organization:audit:read')).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    const admin = { ...octx('admin'), capabilities: ['organization:member:write'] as const };
+    expect(authorizeOrganization(admin, 'org-1', 'organization:member:write')).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+

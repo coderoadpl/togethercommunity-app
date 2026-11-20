@@ -32,6 +32,10 @@ export const tenantSecretKeySchema = z.enum([
   'ksef.test.contextNip',
   'shipx.organizationId',
   'shipx.token',
+  'shipx.sandbox.organizationId',
+  'shipx.sandbox.token',
+  'shipx.production.organizationId',
+  'shipx.production.token',
 ]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;

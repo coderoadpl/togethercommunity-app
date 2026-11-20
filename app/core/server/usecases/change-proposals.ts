@@ -96,7 +96,7 @@ const invalid = (message: string, error: { flatten(): unknown }): Result<never, 
 
 const settledConflict = (proposal: ChangeProposal, now: string): AppError => {
   const status = changeProposalDisplayStatus(proposal, now);
-  return appError('conflict', `This change proposal is ${status}, not pending`, { changeProposalStatus: status });
+  return appError('conflict', 'This change proposal is no longer pending', { changeProposalStatus: status });
 };
 
 const listQuery = (input: ChangeProposalListInput, now: string): Result<ChangeProposalListQuery, AppError> => {

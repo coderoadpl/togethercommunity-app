@@ -17,10 +17,11 @@ import {
   createOrderRepository,
   createPaymentRefundRepository,
   createProcessedPaymentEventRepository,
+  createCheckoutConsentCaptureRepository,
   createProductGrantRepository,
 } from './repositories.js';
 import {
-  autoInvoiceJobs, checkoutSnapshots, emailEvents, emailOutbox, members, metaCapiOutbox, orderRefundJobs, orders, processedPaymentEvents, productGrants,
+  autoInvoiceJobs, checkoutConsentCaptures, checkoutConsentJobs, checkoutSnapshots, emailEvents, emailOutbox, members, metaCapiOutbox, orderRefundJobs, orders, processedPaymentEvents, productGrants,
   memberEvents, productPrices, products, productStock, stockEvents, stockReservations, consents, tenants,
 } from './schema.js';
 import { createStockRepository } from './stock.js';
@@ -33,11 +34,8 @@ type Harness = ReturnType<typeof createLegacyCheckoutHarness>;
 
 const harness = () => {
   const h = createLegacyCheckoutHarness({ stock: createStockRepository(database.db), checkoutSnapshots: createCheckoutSnapshotRepository(database.db) });
-  h.captures.set('capture-1', {
-    termsAccepted: true, termsUrl: 'https://acme.togethercommunity.app/terms', privacyUrl: 'https://acme.togethercommunity.app/privacy',
-    selectedDefinitionIds: [], attachedDefinitionIds: [], collectedAt: '2026-11-15T10:00:00.000Z', confirmationBaseUrl: `${legacyBaseUrl}/marketing/confirm`,
-  });
   Object.assign(h.webhookDeps, {
+    checkoutConsentCaptures: createCheckoutConsentCaptureRepository(database.db),
     paymentTransaction: createPaymentTransactionPort(database.db),
     processedPaymentEvents: createProcessedPaymentEventRepository(database.db),
     paymentRefunds: createPaymentRefundRepository(database.db),
@@ -153,9 +151,16 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await database?.close(); });
 beforeEach(async () => {
-  for (const table of [orderRefundJobs, autoInvoiceJobs, metaCapiOutbox, emailEvents, emailOutbox, consents, productGrants, processedPaymentEvents, orders, memberEvents, members, stockReservations, stockEvents, productStock, checkoutSnapshots]) {
+  for (const table of [orderRefundJobs, autoInvoiceJobs, metaCapiOutbox, emailEvents, emailOutbox, consents, productGrants, processedPaymentEvents, orders, memberEvents, members, stockReservations, stockEvents, productStock, checkoutSnapshots, checkoutConsentCaptures]) {
     await database.db.delete(table);
   }
+  await createCheckoutConsentCaptureRepository(database.db).create(legacyTenant.id, {
+    id: 'capture-1', createdAt: '2026-11-15T10:00:00.000Z',
+    capture: {
+      termsAccepted: true, termsUrl: 'https://acme.togethercommunity.app/terms', privacyUrl: 'https://acme.togethercommunity.app/privacy',
+      selectedDefinitionIds: [], attachedDefinitionIds: [], collectedAt: '2026-11-15T10:00:00.000Z', confirmationBaseUrl: `${legacyBaseUrl}/marketing/confirm`,
+    },
+  });
 });
 
 describe('payment for goods that sold out after the hold ended', () => {
@@ -192,6 +197,12 @@ describe('payment for goods that sold out after the hold ended', () => {
     expect(await createOrderRefundJobRepository(database.db).findByOrderId('other-tenant', orderId)).toBeNull();
     expect(h.warnings).toContain(`[stock] out of stock tenant=tenant-a order=${orderId} products=printed-1 refund=oos-refund-${orderId}`);
     expect(h.warnings.some((line) => line.includes('oversold'))).toBe(false);
+    expect(await database.db.select({ email: consents.email, source: consents.source, termsUrl: consents.termsUrl, privacyUrl: consents.privacyUrl }).from(consents)
+      .where(eq(consents.tenantId, legacyTenant.id))).toStrictEqual([
+      { email: 'buyer@example.com', source: 'checkout', termsUrl: 'https://acme.togethercommunity.app/terms', privacyUrl: 'https://acme.togethercommunity.app/privacy' },
+    ]);
+    expect(await database.db.select({ orderId: checkoutConsentJobs.orderId }).from(checkoutConsentJobs).where(eq(checkoutConsentJobs.tenantId, legacyTenant.id))).toStrictEqual([]);
+    expect(h.errors).toStrictEqual([]);
 
     const [buyer] = await database.db.select({ id: members.id, userId: members.userId }).from(members).where(eq(members.tenantId, legacyTenant.id));
     if (buyer === undefined) throw new Error('The sold-out payment left no member');

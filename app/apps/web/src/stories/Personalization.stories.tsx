@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Box, Button, Stack } from '@mui/material';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { within } from 'storybook/test';
 import type { OrderLinePersonalization } from '#core/domain/index.js';
 import { SectionCard } from '../components/layout/index.js';
 import { PersonalizationField, personalizationState, type PersonalizableLine, type PersonalizationEntry } from '../features/checkout/PersonalizationField.js';
@@ -14,6 +15,12 @@ const engraving = { label: 'Add an engraving', description: 'We engrave the text
 const offerLines = (withCondition: boolean): PersonalizableLine[] => [
   { productId: 'stand', name: 'Printed stand', personalization: { ...engraving, condition: withCondition ? condition : null } },
 ];
+
+const blurField = async (canvasElement: HTMLElement, role: 'textbox' | 'checkbox', name: string) => {
+  const field = await within(canvasElement).findByRole(role, { name });
+  field.focus();
+  field.blur();
+};
 
 const CheckoutPreview = ({ entry, withCondition = false }: { entry?: PersonalizationEntry; withCondition?: boolean }) => {
   const t = useTranslations();
@@ -64,10 +71,20 @@ type Story = StoryObj<typeof meta>;
 
 export const Unticked: Story = {};
 export const Ticked: Story = { render: () => <CheckoutPreview entry={{ ticked: true, text: 'For Alex, with love', conditionAccepted: false }} /> };
-export const ErrorMissingText: Story = { render: () => <CheckoutPreview entry={{ ticked: true, text: '', conditionAccepted: false }} /> };
-export const WithCondition: Story = { render: () => <CheckoutPreview withCondition entry={{ ticked: true, text: 'For Alex, with love', conditionAccepted: false }} /> };
+export const ErrorMissingText: Story = {
+  render: () => <CheckoutPreview entry={{ ticked: true, text: '', conditionAccepted: false }} />,
+  play: async ({ canvasElement }) => blurField(canvasElement, 'textbox', engraving.inputLabel),
+};
+export const WithCondition: Story = {
+  render: () => <CheckoutPreview withCondition entry={{ ticked: true, text: 'For Alex, with love', conditionAccepted: false }} />,
+  play: async ({ canvasElement }) => blurField(canvasElement, 'checkbox', condition),
+};
 export const WithConditionMobile: Story = { render: () => <CheckoutPreview withCondition entry={{ ticked: true, text: 'For Alex, with love', conditionAccepted: true }} />, globals: { viewport: { value: 'mobile' } } };
-export const WithConditionPolish: Story = { render: () => <CheckoutPreview withCondition entry={{ ticked: true, text: '', conditionAccepted: false }} />, parameters: { locale: 'pl' } };
+export const WithConditionPolish: Story = {
+  render: () => <CheckoutPreview withCondition entry={{ ticked: true, text: '', conditionAccepted: false }} />,
+  parameters: { locale: 'pl' },
+  play: async ({ canvasElement }) => blurField(canvasElement, 'textbox', engraving.inputLabel),
+};
 export const StudioEditor: Story = { render: () => <EditorPreview /> };
 export const StudioOrder: Story = { render: () => <OrderPreview /> };
 export const StudioOrderCorrected: Story = { render: () => <OrderPreview corrected /> };

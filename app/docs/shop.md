@@ -55,14 +55,64 @@ products with purchase consent checkboxes: it keeps the Together page at
 `?checkout=together`, and `POST /api/public/sales-links/<slug>/checkout` refuses
 the link.
 
-The checkout page renders a **Delivery** step above the pay button with the
-active options and their prices. For a parcel locker option it shows a
+The checkout page renders a **Delivery** section with the active options and
+their prices directly under the order summary, the variant chips and the price
+choice, before the personalisation, the invoice and discount code rows and the
+pay button. For a parcel locker option it shows, inside the chosen option, a
 **Parcel locker code** input (upper-cased, 4–12 letters or digits) and the
 InPost map under the rule in
 [Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).
 Choosing a locker on the map fills the code and shows the locker name and
 address. The pay button stays disabled until an option, and a valid code when
-the option needs one, is chosen.
+the option needs one, is chosen, and a line under the button says which of the
+two is missing.
+
+### Layout of the Together checkout page
+
+`/checkout/<productRef>` and `/offer/<slug>?checkout=together` show one short
+step before Stripe and keep only what Stripe Checkout does not show:
+
+1. A step indicator, `1 Delivery · 2 Details and payment`, or `1 Your order`
+   when nothing is shipped. It is shown only when the order continues to
+   Stripe.
+2. The offer title and one summary row, `N items · total`, with the total after
+   the discount code and the delivery fee. **Details and VAT** opens the cover,
+   the description and, for a sales link, the per-line net amount, VAT rate,
+   VAT amount and gross amount.
+3. The variant chips, the price choice when a product has several prices, the
+   delivery options with the parcel locker picker under the locker option, and
+   the personalisation rows.
+4. Two collapsed rows: **I need an invoice** (the invoice data stays on the
+   page because Stripe's tax ID form does not guarantee an address for the
+   invoice) and **I have a discount code** (the coupon rules and the lowest
+   price in the last 30 days are shown before payment).
+5. The workspace purchase consents, the staff test-mode switch for staff, and
+   the compact [product safety line](#product-safety-information-gpsr).
+6. The pay button with the total, `Go to payment · PLN 159.00`, sticky at the
+   bottom of the screen, a line that names what Stripe asks for next (email,
+   delivery address, terms) and, when the button is disabled, the reason under
+   it.
+
+The email and the terms acceptance move to Stripe when the workspace has both a
+terms URL and a privacy URL (see
+[Payments](payments.md#terms-acceptance-on-the-together-checkout-page)). The page
+asks for the email only for a discount code with a per-person limit (the field
+appears inside the code row after the server asks for it), and for the email and
+the terms for an order with nothing to pay, which never reaches Stripe. A
+signed-in buyer is never asked for the email: the account email is sent with the
+request. A workspace without both legal URLs, and the development simulated
+payment, keep the email field and, when a URL is set, the terms checkbox on the
+page. When the workspace's Stripe account has no terms URL in its Dashboard public
+details, Stripe refuses to collect the terms; the page then shows the email field
+and the terms checkbox itself, keeps everything the buyer chose and asks once to
+accept the terms there (see
+[Payments](payments.md#stripe-accounts-without-a-dashboard-terms-url)). Expandable parts are buttons with `aria-expanded` and `aria-controls`;
+their panels open below the button, so nothing above them moves.
+
+The shared parts (`CheckoutSteps`, `CheckoutSummaryRow`, `CheckoutDisclosureRow`
+and `CheckoutPayBar` in `apps/web/src/components/ui/CheckoutStepParts.tsx`, and
+`ProductSafetySummary` in `apps/web/src/features/checkout/`) take plain props so
+the cart checkout can adopt them; the cart page keeps its current layout.
 The locker name and address stored on the order are as entered by the buyer;
 only the code is validated, and staff pack by the code. When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
@@ -698,14 +748,43 @@ content; the platform only validates the shape.
 The public offer returns `compliance` for each product with
 `safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
 used for sales-link descriptions (links, emphasis and lists only; HTML and
-images are escaped or dropped). The Together checkout page shows the section
-**Product safety information** directly under the description and renders the
-warnings through the product description sanitiser. For physical products the
-section is always expanded; for other product types it is collapsed until
-opened. Public sales-link offers carry `compliance` on each line the same way,
-and the sales-link checkout shows one section per product with safety
-information, titled with the product name when the link sells more than one
-product. A sales link with any product that carries safety information never
+images are escaped or dropped). Public sales-link offers carry `compliance` and
+the product `coverUrl` on each line the same way.
+
+Regulation (EU) 2023/988 art. 19 says an online offer "shall clearly and
+visibly indicate at least":
+
+- (a) the manufacturer's name, registered trade name or trade mark, with its
+  postal and electronic address;
+- (b) where the manufacturer is not established in the Union, the name, postal
+  and electronic address of the responsible person;
+- (c) "information allowing the identification of the product, including a
+  picture of it, its type and any other product identifier";
+- (d) "any warning or safety information" to be affixed to the product or its
+  packaging or included in an accompanying document, in a language consumers
+  can easily understand.
+
+The Together checkout page shows a compact **Product safety information**
+section above the pay button, for every product type with `compliance`. Without
+a click it shows, per manufacturer, the name, the postal address, the contact
+e-mail and, when the offer sells more than one product, `applies to N products`
+(a); then, for each product of that manufacturer, a 40 px picture from the
+product cover with the product title as its alternative text when the product
+has a cover, the product title when the offer sells more than one product, the
+model identifier (c), and the safety warnings as plain text when the workspace
+entered any (d). A warning longer than 280 characters shows its first three
+lines with **Show more**, which extends the same text; screen readers read the
+whole warning either way. Products without warnings show no warning line.
+Products whose manufacturer name, address and e-mail are identical share one
+manufacturer line.
+
+**Details** on a manufacturer line holds only what goes beyond that minimum: per
+product (titled when the offer sells more than one product) the batch and the
+instructions link. A manufacturer whose products have neither shows no
+**Details**. The product data has no separate responsible-person field, so the
+page shows no line of its own for (b). The cart checkout keeps one section per
+product, expanded for physical products.
+A sales link with any product that carries safety information never
 takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
 consent-bound products it stays on the Together page at `?checkout=together`,
 so the section is shown before payment, and
@@ -728,8 +807,8 @@ every product.
 The public offer returns `variants: [{ productId, slug, label, soldOut, available }]` for a
 product whose group has at least two published products, including the product
 itself, in creation order; otherwise the list is empty. A variant without a
-label uses its title. The checkout page renders the variants as chips above the
-price: the current product is selected, the others link to their own checkout
+label uses its title. The checkout page renders the variants as chips under the
+order summary row: the current product is selected, the others link to their own checkout
 page (campaign parameters are kept), and a sold-out variant is disabled with
 "Sold out". The sold-out flag and the `available` count are the public stock
 of the sibling: a tracked variant without an available piece is sold out, an

@@ -8,7 +8,7 @@ import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const offerBody = {
@@ -48,7 +48,7 @@ const renderCheckout = (productRef: string) => {
 describe('CheckoutPage', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/checkout/course-1');
-    server.use(http.get('/api/public/checkout/session-status', () =>
+    server.use(anonymousMe(), http.get('/api/public/checkout/session-status', () =>
       HttpResponse.json({ ok: true, data: { status: 'paid' } }),
     ));
   });
@@ -95,8 +95,8 @@ describe('CheckoutPage', () => {
       width: '100%',
     });
     expect(stylesAt(cover, 1440)['max-height']).toBeUndefined();
-    expect(screen.getByText(textPattern(pln(4900)))).toBeInTheDocument();
-    expect(screen.getByText(en.checkout.checkoutEyebrow)).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-summary-total')).toHaveTextContent(textPattern(pln(4900)));
+    expect(screen.getByText(en.checkout.orderEyebrow)).toBeInTheDocument();
     expect(screen.getByText(en.checkout.simulatedPaymentNote)).toBeInTheDocument();
 
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
@@ -142,7 +142,7 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     const pay = await screen.findByTestId('checkout-pay-cta');
-    await waitFor(() => expect(pay).toHaveTextContent(textPattern(en.checkout.payIdle({ price: pln(4900) }))));
+    await waitFor(() => expect(pay).toHaveTextContent(textPattern(en.checkout.goToPayment({ price: pln(4900) }))));
     expect(pay).toBeEnabled();
   });
 
@@ -215,8 +215,8 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('button', { name: textPattern(en.checkout.freeIdle({ price: pln(0) })) })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: textPattern(en.checkout.freeOrderIdle) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: textPattern(en.checkout.goToPayment({ price: pln(4900) })) })).not.toBeInTheDocument();
     expect(screen.getByText(en.common.free)).toBeInTheDocument();
   });
 
@@ -304,10 +304,10 @@ describe('CheckoutPage', () => {
     expect(screen.getByTestId('checkout-coupon-input')).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-apply')).toBeInTheDocument();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
-    expect(await screen.findByText(textPattern(en.checkout.couponFinal({ price: pln(3920) })))).toBeInTheDocument();
+    expect(await screen.findByText(textPattern(en.checkout.couponAfterDiscount({ price: pln(3920) })))).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-breakdown')).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent(
-      textPattern(en.checkout.couponFinal({ price: pln(3920) })),
+      textPattern(en.checkout.couponAfterDiscount({ price: pln(3920) })),
     );
     expect(screen.getByText(textPattern(en.checkout.omnibusLowest({ price: pln(4500) })))).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(3920) })) }));
@@ -576,7 +576,7 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: textPattern(en.checkout.goToPayment({ price: pln(4900) })) })).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: textPattern(en.checkout.submitIdle({ price: pln(4900) })) })).toBeInTheDocument();
     expect(screen.getByText(en.checkout.simulatedPaymentNote)).toBeInTheDocument();
@@ -658,9 +658,9 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByText(textPattern(pln(4900)))).toBeInTheDocument();
+    expect(await screen.findByTestId('checkout-summary-total')).toHaveTextContent(textPattern(pln(4900)));
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: textPattern(en.checkout.goToPayment({ price: pln(4900) })) })).toBeInTheDocument();
   });
 
   it('renders webhook-driven success guidance without fulfilling from the page', async () => {
@@ -879,7 +879,7 @@ describe('CheckoutPage', () => {
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     releaseCoupon();
     await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
-    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(textPattern(en.checkout.payIdle({ price: pln(3920) })));
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(textPattern(en.checkout.goToPayment({ price: pln(3920) })));
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(payload).toMatchObject({ couponCode: 'save' }));
   });
@@ -921,7 +921,7 @@ describe('CheckoutPage', () => {
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     await waitFor(() => expect(couponRequests).toMatchObject([{ email: 'buyer@together.de' }, { email: 'buyer@together.dev', couponCode: 'save' }]));
     await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
-    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(textPattern(en.checkout.payIdle({ price: pln(3920) })));
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(textPattern(en.checkout.goToPayment({ price: pln(3920) })));
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(payload).toMatchObject({ email: 'buyer@together.dev', couponCode: 'save' }));
   });
@@ -930,6 +930,7 @@ describe('CheckoutPage', () => {
 
 it('loads a direct unlisted checkout and enables a free purchase without a payment provider', async () => {
   server.use(
+    anonymousMe(),
     http.get('/api/public/offer', ({ request }) => {
       const direct = new URL(request.url).searchParams.get('productRef') === 'course-1';
       return HttpResponse.json({ ok: true, data: {

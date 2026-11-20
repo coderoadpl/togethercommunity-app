@@ -13,17 +13,21 @@ import {
   type ChangeProposalEventKind,
 } from '#core/domain/index.js';
 import type {
+  ChangeProposalCreation,
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
   ChangeProposalListQuery,
   ChangeProposalPage,
   ChangeProposalRepository,
   ChangeProposalTargetLocks,
+  ChangeProposalTransition,
   ChangeProposalTransitionGuard,
   ChangeProposalWithdrawal,
+  ChangeProposalWrite,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
+import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
+import { boundLockWait, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import {
   changeProposalEvents,
@@ -39,7 +43,7 @@ import {
 
 type ChangeProposalRow = typeof changeProposals.$inferSelect;
 
-const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeProposalSchema.parse({
+export const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeProposalSchema.parse({
   id: row.id,
   tenantId: row.tenantId,
   groupId: row.groupId,
@@ -64,10 +68,16 @@ const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeProposal
 
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
 
-const lockWorkspaceProposals = (executor: Db, tenantId: string, waitMs: number): Promise<boolean> =>
-  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: waitMs, lockWaitAfterMs: null });
+export const lockWorkspaceProposals = (executor: Db, tenantId: string, bounds: ChangeProposalBounds): Promise<boolean> =>
+  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs });
 
-const appendEvent = async (
+export const boundedWrite = <T>(db: Db, bounds: ChangeProposalBounds, work: (tx: Db) => Promise<T>): Promise<ChangeProposalWrite<T>> =>
+  busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<T>> => {
+    await boundLockWait(tx, bounds);
+    return { kind: 'written', value: await work(tx) };
+  }), { kind: 'busy' } as const);
+
+const appendChangeProposalEvent = async (
   executor: Db,
   tenantId: string,
   proposalId: string,
@@ -108,7 +118,7 @@ const guardFilter = (guard: ChangeProposalTransitionGuard): SQL[] => [
 ];
 
 const listPage = async (executor: Db, scope: SQL | undefined, query: ChangeProposalListQuery): Promise<ChangeProposalPage> => {
-  const filtered = and(scope, statusFilter(query));
+  const filtered = and(scope, statusFilter(query), query.groupId === undefined ? undefined : eq(changeProposals.groupId, query.groupId));
   const boundary = query.cursor === undefined
     ? undefined
     : (await executor
@@ -138,7 +148,7 @@ const countProposals = async (executor: Db, where: SQL | undefined): Promise<num
   return row?.total ?? 0;
 };
 
-const keyAcceptsProposals = async (executor: Db, tenantId: string, keyId: string, now: string): Promise<boolean> => {
+export const keyAcceptsProposals = async (executor: Db, tenantId: string, keyId: string, now: string): Promise<boolean> => {
   const [key] = await executor
     .select({ id: shopManagementKeys.id })
     .from(shopManagementKeys)
@@ -156,7 +166,7 @@ const keyAcceptsProposals = async (executor: Db, tenantId: string, keyId: string
 const creationWindowStart = (now: string): string =>
   new Date(Date.parse(now) - CHANGE_PROPOSAL_LIMITS.creationWindowMs).toISOString();
 
-const countCapReached = async (executor: Db, tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null> => {
+export const countCapReached = async (executor: Db, tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null> => {
   const workspace = eq(changeProposals.tenantId, tenantId);
   const byKey = and(workspace, eq(changeProposals.proposedByKeyId, keyId));
   if (await countProposals(executor, and(byKey, pendingAt(now))) >= CHANGE_PROPOSAL_LIMITS.pendingPerKey) return 'key_pending';
@@ -186,6 +196,96 @@ const lockPendingRow = async (
   return row === undefined ? null : parseProposal(row);
 };
 
+export const insertProposal = async (
+  executor: Db,
+  tenantId: string,
+  parsed: ChangeProposal,
+  event: ChangeProposalEventDraft,
+): Promise<ChangeProposal> => {
+  const [row] = await executor.insert(changeProposals).values({
+    id: parsed.id,
+    tenantId,
+    groupId: parsed.groupId,
+    groupPosition: parsed.groupPosition,
+    operation: parsed.operation,
+    input: parsed.input,
+    effect: parsed.effect,
+    targetKind: parsed.target.kind,
+    targetId: parsed.target.id,
+    status: parsed.status,
+    proposedByKeyId: parsed.proposedByKeyId,
+    proposedByKeyName: parsed.proposedByKeyName,
+    proposedByIssuerUserId: parsed.proposedByIssuerUserId,
+    createdAt: parsed.createdAt,
+    expiresAt: parsed.expiresAt,
+    decidedByUserId: parsed.decidedByUserId,
+    decidedAt: parsed.decidedAt,
+    decisionNote: parsed.decisionNote,
+    appliedResourceId: parsed.appliedResourceId,
+    failureCode: parsed.failureCode,
+    failureMessage: parsed.failureMessage,
+  }).returning();
+  if (row === undefined) throw new Error('Change proposal insert returned no row');
+  await appendChangeProposalEvent(executor, tenantId, parsed.id, 'proposed', event);
+  return parseProposal(row);
+};
+
+export const updateProposalStatus = async (
+  executor: Db,
+  tenantId: string,
+  id: string,
+  transition: ChangeProposalTransition,
+): Promise<ChangeProposal | null> => {
+  const [row] = await executor
+    .update(changeProposals)
+    .set({
+      status: transition.status,
+      decidedByUserId: transition.decidedByUserId,
+      decidedAt: transition.decidedAt,
+      decisionNote: transition.decisionNote,
+      appliedResourceId: transition.appliedResourceId,
+      failureCode: transition.failureCode,
+      failureMessage: transition.failureMessage,
+    })
+    .where(and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.id, id)))
+    .returning();
+  if (row === undefined) return null;
+  const updated = parseProposal(row);
+  await appendChangeProposalEvent(executor, tenantId, id, CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS[transition.status], transition.event);
+  return updated;
+};
+
+export const recordProposalExpiry = async (
+  executor: Db,
+  tenantId: string,
+  id: string,
+  event: ChangeProposalEventDraft,
+): Promise<boolean> => {
+  const [row] = await executor
+    .select({ id: changeProposals.id })
+    .from(changeProposals)
+    .where(and(
+      eq(changeProposals.tenantId, tenantId),
+      eq(changeProposals.id, id),
+      eq(changeProposals.status, 'pending'),
+      lte(changeProposals.expiresAt, event.at),
+    ))
+    .for('update');
+  if (row === undefined) return false;
+  const [recorded] = await executor
+    .select({ id: changeProposalEvents.id })
+    .from(changeProposalEvents)
+    .where(and(
+      eq(changeProposalEvents.tenantId, tenantId),
+      eq(changeProposalEvents.proposalId, id),
+      eq(changeProposalEvents.kind, 'expired'),
+    ))
+    .limit(1);
+  if (recorded !== undefined) return false;
+  await appendChangeProposalEvent(executor, tenantId, id, 'expired', event);
+  return true;
+};
+
 export const withdrawPendingChangeProposalsOfKey = async (
   executor: Db,
   tenantId: string,
@@ -208,7 +308,7 @@ export const withdrawPendingChangeProposalsOfKey = async (
       .update(changeProposals)
       .set({ status: 'withdrawn', decidedByUserId: withdrawal.actorUserId, decidedAt: withdrawal.at })
       .where(and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.id, id)));
-    await appendEvent(executor, tenantId, id, 'withdrawn', {
+    await appendChangeProposalEvent(executor, tenantId, id, 'withdrawn', {
       id: withdrawal.nextEventId(),
       actorUserId: withdrawal.actorUserId,
       apiKeyId: keyId,
@@ -218,44 +318,19 @@ export const withdrawPendingChangeProposalsOfKey = async (
   }
 };
 
-const changeProposalRepositoryOver = (db: Db, waitMs: number): ChangeProposalRepository => ({
+const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangeProposalRepository => ({
   create: async (tenantId, proposal, event, now) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
     if (!changeProposalEffectWithinLimit(parsed.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
-    return db.transaction(async (tx) => {
-      if (!await lockWorkspaceProposals(tx, tenantId, waitMs)) return { kind: 'busy' };
+    return busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalCreation> => {
+      if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
-      const [row] = await tx.insert(changeProposals).values({
-        id: parsed.id,
-        tenantId,
-        groupId: parsed.groupId,
-        groupPosition: parsed.groupPosition,
-        operation: parsed.operation,
-        input: parsed.input,
-        effect: parsed.effect,
-        targetKind: parsed.target.kind,
-        targetId: parsed.target.id,
-        status: parsed.status,
-        proposedByKeyId: parsed.proposedByKeyId,
-        proposedByKeyName: parsed.proposedByKeyName,
-        proposedByIssuerUserId: parsed.proposedByIssuerUserId,
-        createdAt: parsed.createdAt,
-        expiresAt: parsed.expiresAt,
-        decidedByUserId: parsed.decidedByUserId,
-        decidedAt: parsed.decidedAt,
-        decisionNote: parsed.decisionNote,
-        appliedResourceId: parsed.appliedResourceId,
-        failureCode: parsed.failureCode,
-        failureMessage: parsed.failureMessage,
-      }).returning();
-      if (row === undefined) throw new Error('Change proposal insert returned no row');
-      await appendEvent(tx, tenantId, parsed.id, 'proposed', event);
-      return { kind: 'created', proposal: parseProposal(row) };
-    });
+      return { kind: 'created', proposal: await insertProposal(tx, tenantId, parsed, event) };
+    }), { kind: 'busy' } as const);
   },
   countCapReached: (tenantId, keyId, now) => countCapReached(db, tenantId, keyId, now),
   findById: async (tenantId, id) => {
@@ -282,56 +357,16 @@ const changeProposalRepositoryOver = (db: Db, waitMs: number): ChangeProposalRep
   listByKey: (tenantId, keyId, query) =>
     listPage(db, and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.proposedByKeyId, keyId)), query),
   lockPending: (tenantId, id, guard = {}) => db.transaction((tx) => lockPendingRow(tx, tenantId, id, guard)),
-  transition: (tenantId, id, transition, guard = {}) => db.transaction(async (tx) => {
+  transition: (tenantId, id, transition, guard = {}) => boundedWrite(db, bounds, async (tx) => {
     const locked = await lockPendingRow(tx, tenantId, id, guard);
     if (locked === null) return null;
-    const [row] = await tx
-      .update(changeProposals)
-      .set({
-        status: transition.status,
-        decidedByUserId: transition.decidedByUserId,
-        decidedAt: transition.decidedAt,
-        decisionNote: transition.decisionNote,
-        appliedResourceId: transition.appliedResourceId,
-        failureCode: transition.failureCode,
-        failureMessage: transition.failureMessage,
-      })
-      .where(and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.id, id)))
-      .returning();
-    if (row === undefined) return null;
-    const updated = parseProposal(row);
-    await appendEvent(tx, tenantId, id, CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS[transition.status], transition.event);
-    return updated;
+    return updateProposalStatus(tx, tenantId, id, transition);
   }),
-  recordExpiry: (tenantId, id, event) => db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ id: changeProposals.id })
-      .from(changeProposals)
-      .where(and(
-        eq(changeProposals.tenantId, tenantId),
-        eq(changeProposals.id, id),
-        eq(changeProposals.status, 'pending'),
-        lte(changeProposals.expiresAt, event.at),
-      ))
-      .for('update');
-    if (row === undefined) return false;
-    const [recorded] = await tx
-      .select({ id: changeProposalEvents.id })
-      .from(changeProposalEvents)
-      .where(and(
-        eq(changeProposalEvents.tenantId, tenantId),
-        eq(changeProposalEvents.proposalId, id),
-        eq(changeProposalEvents.kind, 'expired'),
-      ))
-      .limit(1);
-    if (recorded !== undefined) return false;
-    await appendEvent(tx, tenantId, id, 'expired', event);
-    return true;
-  }),
+  recordExpiry: (tenantId, id, event) => boundedWrite(db, bounds, (tx) => recordProposalExpiry(tx, tenantId, id, event)),
 });
 
-export const createChangeProposalRepository = (db: Db, options: { lockWaitMs?: number } = {}): ChangeProposalRepository =>
-  changeProposalRepositoryOver(db, lockWaitMs(options.lockWaitMs));
+export const createChangeProposalRepository = (db: Db, options: ChangeProposalBoundOptions = {}): ChangeProposalRepository =>
+  changeProposalRepositoryOver(db, changeProposalBounds(options));
 
 export const createChangeProposalEventRepository = (db: Db): ChangeProposalEventRepository => ({
   listByProposal: async (tenantId, proposalId) =>

@@ -3,6 +3,7 @@ import { and, asc, eq, or, sql, type SQL } from 'drizzle-orm';
 import { shopManagementKeySchema, type ShopManagementKey } from '#core/domain/index.js';
 import type { ShopManagementKeyRateLimitRepository, ShopManagementKeyRepository } from '#core/server/index.js';
 
+import { deleteEmptyGroupsOfKey } from './change-proposal-groups.js';
 import { withdrawPendingChangeProposalsOfKey } from './change-proposals.js';
 import type { Db } from './client.js';
 import { shopManagementKeyRateLimitBuckets, shopManagementKeys } from './schema.js';
@@ -59,6 +60,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     if (!row) return null;
     // Proposal rows before the tenant row, the order an approval takes them in; the key event's foreign key share-locks the tenant row.
     await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawal);
+    await deleteEmptyGroupsOfKey(tx, tenantId, row.id);
     await insertShopManagementKeyEvent(tx, tenantId, event);
     return parseKey(row);
   }),
@@ -67,7 +69,10 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       .delete(shopManagementKeys)
       .where(eq(shopManagementKeys.tenantId, tenantId))
       .returning({ id: shopManagementKeys.id });
-    for (const { id } of purged) await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
+    for (const { id } of purged) {
+      await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
+      await deleteEmptyGroupsOfKey(tx, tenantId, id);
+    }
     for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
     return purged.length;
   }),

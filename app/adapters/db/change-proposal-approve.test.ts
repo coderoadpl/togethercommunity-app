@@ -26,6 +26,7 @@ import {
   type StorageProvider,
 } from '#core/server/index.js';
 
+import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
@@ -668,7 +669,11 @@ describe('a proposal whose operation this release does not know', () => {
     return 'proposal-later';
   };
 
-  const readDeps = () => ({ ...deps(), changeProposalEvents: createChangeProposalEventRepository(database.db) });
+  const readDeps = () => ({
+    ...deps(),
+    changeProposalEvents: createChangeProposalEventRepository(database.db),
+    changeProposalGroups: createChangeProposalGroupRepository(database.db),
+  });
 
   it('stays readable for the owner and the key', async () => {
     const id = await plantLaterProposal();

@@ -182,8 +182,27 @@ describe('change proposal creation', () => {
     expect(await repo().create(TENANT, proposal(), keyEvent(), NOW)).toMatchObject({ kind: 'created' });
   }, 30_000);
 
+  it('answers busy without writing when a row after the workspace lock stays locked past the bounded wait', async () => {
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('select id from shop_management_keys where tenant_id = $1 and id = $2 for update', [TENANT, 'key-propose']);
+      const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100 });
+      expect(await quick.create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
+    } finally {
+      await holder.query('rollback');
+      await holder.end();
+    }
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
+  }, 30_000);
+
   it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a lock wait of %s ms', (lockWaitMs) => {
     expect(() => createChangeProposalRepository(database.db, { lockWaitMs })).toThrow(/lock wait/u);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a statement time bound of %s ms', (approvalStatementMs) => {
+    expect(() => createChangeProposalRepository(database.db, { approvalStatementMs })).toThrow(/statement time bound/u);
   });
 
   it('refuses an effect over the stored size limit before writing', async () => {
@@ -297,17 +316,17 @@ describe('change proposal transitions', () => {
 
   it('moves a pending proposal once, with the next event in sequence', async () => {
     await repo().create(TENANT, proposal({ id: 'p-1' }), keyEvent(), NOW);
-    expect(await repo().transition(TENANT, 'p-1', rejection())).toMatchObject({ status: 'rejected', decisionNote: 'Not now' });
-    expect(await repo().transition(TENANT, 'p-1', rejection())).toBeNull();
+    expect(await repo().transition(TENANT, 'p-1', rejection())).toMatchObject({ kind: 'written', value: { status: 'rejected', decisionNote: 'Not now' } });
+    expect(await repo().transition(TENANT, 'p-1', rejection())).toEqual({ kind: 'written', value: null });
     expect((await eventsOf('p-1')).map(({ sequence, kind }) => ({ sequence, kind })))
       .toEqual([{ sequence: 1, kind: 'proposed' }, { sequence: 2, kind: 'rejected' }]);
   });
 
   it('moves nothing across workspaces, for another key or past expiry', async () => {
     await repo().create(TENANT, proposal({ id: 'p-1' }), keyEvent(), NOW);
-    expect(await repo().transition(NEIGHBOUR, 'p-1', rejection())).toBeNull();
-    expect(await repo().transition(TENANT, 'p-1', rejection(), { keyId: 'key-other' })).toBeNull();
-    expect(await repo().transition(TENANT, 'p-1', rejection(), { unexpiredAt: '2026-03-01T00:00:00.000Z' })).toBeNull();
+    expect(await repo().transition(NEIGHBOUR, 'p-1', rejection())).toEqual({ kind: 'written', value: null });
+    expect(await repo().transition(TENANT, 'p-1', rejection(), { keyId: 'key-other' })).toEqual({ kind: 'written', value: null });
+    expect(await repo().transition(TENANT, 'p-1', rejection(), { unexpiredAt: '2026-03-01T00:00:00.000Z' })).toEqual({ kind: 'written', value: null });
     expect(await repo().findById(TENANT, 'p-1')).toMatchObject({ status: 'pending' });
     expect(await eventsOf('p-1')).toHaveLength(1);
   });
@@ -315,11 +334,30 @@ describe('change proposal transitions', () => {
   it('records an expiry once and only past the expiry instant', async () => {
     await repo().create(TENANT, proposal({ id: 'p-1' }), keyEvent(), NOW);
     const expiry = (at: string) => ({ id: nextId('event'), actorUserId: OWNER, apiKeyId: null, note: null, at });
-    expect(await repo().recordExpiry(TENANT, 'p-1', expiry(NOW))).toBe(false);
-    expect(await repo().recordExpiry(TENANT, 'p-1', expiry('2026-02-01T00:00:00.000Z'))).toBe(true);
-    expect(await repo().recordExpiry(TENANT, 'p-1', expiry('2026-02-02T00:00:00.000Z'))).toBe(false);
+    expect(await repo().recordExpiry(TENANT, 'p-1', expiry(NOW))).toEqual({ kind: 'written', value: false });
+    expect(await repo().recordExpiry(TENANT, 'p-1', expiry('2026-02-01T00:00:00.000Z'))).toEqual({ kind: 'written', value: true });
+    expect(await repo().recordExpiry(TENANT, 'p-1', expiry('2026-02-02T00:00:00.000Z'))).toEqual({ kind: 'written', value: false });
     expect((await eventsOf('p-1')).map(({ kind }) => kind)).toEqual(['proposed', 'expired']);
   });
+
+  it('answers busy and moves nothing when the proposal row stays locked past the bounded wait', async () => {
+    await repo().create(TENANT, proposal({ id: 'p-1' }), keyEvent(), NOW);
+    const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100 });
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('select id from change_proposals where tenant_id = $1 and id = $2 for update', [TENANT, 'p-1']);
+      expect(await quick.transition(TENANT, 'p-1', rejection())).toEqual({ kind: 'busy' });
+      expect(await quick.recordExpiry(TENANT, 'p-1', { id: nextId('event'), actorUserId: OWNER, apiKeyId: null, note: null, at: '2026-02-01T00:00:00.000Z' }))
+        .toEqual({ kind: 'busy' });
+    } finally {
+      await holder.query('rollback');
+      await holder.end();
+    }
+    expect(await repo().findById(TENANT, 'p-1')).toMatchObject({ status: 'pending' });
+    expect(await eventsOf('p-1')).toHaveLength(1);
+  }, 30_000);
 });
 
 describe('key revocation and purge', () => {

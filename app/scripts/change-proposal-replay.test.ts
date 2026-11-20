@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
-import { emailOutbox, entityVersions, productPrices, products, productStock, stockEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
+import { changeProposalEvents, emailOutbox, entityVersions, productPrices, products, productStock, salesLinks, stockEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createShopManagementClient, isProposedChange, type ShopManagementClient } from '#core/client/index.js';
 import {
@@ -10,11 +10,14 @@ import {
   API_ROUTES,
   apiKeysShopManagementCreateOutputSchema,
   changeProposalApproveOutputSchema,
+  changeProposalGroupOutputSchema,
   changeProposalRejectOutputSchema,
   changeProposalShowOutputSchema,
+  SHOP_CATALOG_ROUTES,
+  shopCatalogContracts,
   type ChangeProposalProposedOutput,
 } from '#core/contract/index.js';
-import type { AppError, ChangeProposalEffect, ChangeProposalKeyReceipt, Result } from '#core/domain/index.js';
+import { changeProposalReference, type AppError, type ChangeProposalEffect, type ChangeProposalKeyReceipt, type Result } from '#core/domain/index.js';
 
 import { buildApp } from '../apps/server/src/app.js';
 import { createDeps } from '../apps/server/src/composition.js';
@@ -74,6 +77,7 @@ const liveState = async () => {
     stockEvents: ofWorkspace(await database.db.select().from(stockEvents)),
     versions: ofWorkspace(await database.db.select().from(entityVersions)),
     outbox: ofWorkspace(await database.db.select().from(emailOutbox)),
+    salesLinks: ofWorkspace(await database.db.select().from(salesLinks)),
   });
 };
 
@@ -183,6 +187,127 @@ describe('change proposal replay on a clean workspace', () => {
       'stock.adjust applied',
       'stock.enable applied',
     ]);
+  });
+});
+
+const issueKey = async (mode: 'direct' | 'propose', name: string) => {
+  const issued = await ownerRequest(API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, {
+    name, scopes: ['shop:catalog:read', 'shop:catalog:write'], expiresAt, mode,
+  });
+  expect(issued.status).toBe(200);
+  return envelope(apiKeysShopManagementCreateOutputSchema).parse(await issued.json()).data;
+};
+
+const ownerGroup = async (id: string) => {
+  const response = await ownerRequest('GET', API_PATHS.changeProposalGroup.replace(':id', id));
+  expect(response.status).toBe(200);
+  return envelope(changeProposalGroupOutputSchema).parse(await response.json()).data.group;
+};
+
+const approveGroup = async (id: string, itemIds: string[]) => {
+  const response = await ownerRequest('POST', API_PATHS.changeProposalGroupApprove.replace(':id', id), { itemIds });
+  expect(response.status).toBe(200);
+  return envelope(changeProposalGroupOutputSchema).parse(await response.json()).data.group;
+};
+
+const unwrapped = <T>(result: Result<T, AppError>): T => {
+  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+  return result.value;
+};
+
+describe('change proposal group replay', () => {
+  it('a propose-mode key builds a product, its price, its stock, its publication and a sales link as one group; the owner approves it and everything exists exactly as shown', async () => {
+    const key = await issueKey('propose', 'Launch agent');
+    const agent = createShopManagementClient({ baseUrl, apiKey: key.secret, fetchImpl: workspaceFetch });
+    const empty = await liveState();
+    const group = unwrapped(await agent.createProposalGroup({ title: 'Launch the field guide' })).group;
+    const inGroup = { groupId: group.id };
+
+    const product = proposed(await agent.createProduct({ title: 'Field guide', slug: 'field-guide', type: 'physical', priceCents: 3900, currency: 'PLN' }, undefined, inGroup));
+    const productRef = changeProposalReference(product.id);
+    const price = proposed(await agent.createProductPrice({ productId: productRef, kind: 'one_time', amountCents: 3900, currency: 'PLN' }, undefined, inGroup));
+    const stock = proposed(await agent.enableProductStock({ productId: productRef, onHand: 10, lowStockThreshold: 2 }, undefined, inGroup));
+    const publish = proposed(await agent.publishProduct({ id: productRef }, undefined, inGroup));
+    const link = proposed(await agent.createSalesLink({ slug: 'field-guide-offer', title: 'Field guide', heading: 'The field guide', productIds: [productRef] }, undefined, inGroup));
+    expect(await liveState()).toBe(empty);
+    expect([product, price, stock, publish, link].map((item) => item.groupId)).toEqual(Array.from({ length: 5 }, () => group.id));
+    expect(publish.input).toEqual({ id: productRef });
+
+    const shown = await ownerGroup(group.id);
+    expect(shown.status).toBe('open');
+    expect(shown.items.map((item) => item.operation)).toEqual(['product.create', 'price.create', 'stock.enable', 'product.publish', 'sales-link.create']);
+    expect(shown.items[3]?.effect).toEqual({ published: { before: false, after: true } });
+    expect(shown.items[2]?.effect).toMatchObject({ tracked: { before: false, after: true }, onHand: { before: null, after: 10 } });
+    const productEffect = shown.items[0]?.effect ?? {};
+    const priceEffect = shown.items[1]?.effect ?? {};
+    const linkEffect = shown.items[4]?.effect ?? {};
+    expect(await liveState()).toBe(empty);
+
+    const decided = await approveGroup(group.id, shown.items.map((item) => item.id));
+    expect(decided.status).toBe('applied');
+    expect(decided.items.map((item) => item.effect)).toEqual(shown.items.map((item) => item.effect));
+    const [productId, priceId, , , linkId] = decided.items.map((item) => item.appliedResourceId ?? '');
+    if (productId === undefined || priceId === undefined || linkId === undefined || [productId, priceId, linkId].includes('')) throw new Error('An applied item names no resource');
+    expect(decided.items.slice(1, 4).map((item) => item.appliedResourceId)).toEqual([priceId, productId, productId]);
+
+    const liveProduct = unwrappedProduct(await agent.listProducts(), productId);
+    for (const field of ['title', 'slug', 'type', 'priceCents', 'currency'] as const) {
+      expect(liveProduct[field], field).toEqual(afterValue(productEffect, field));
+    }
+    expect(liveProduct.published).toBe(true);
+    const prices = (await database.db.select().from(productPrices)).filter((row) => row.productId === productId && row.active);
+    expect(prices.map((row) => row.id)).toEqual([priceId]);
+    expect(prices.map(({ kind, interval, amountCents, currency }) => ({ kind, interval, amountCents, currency }))).toEqual(afterValue(priceEffect, 'activePrices'));
+    expect((await database.db.select().from(productStock)).find((row) => row.productId === productId)).toMatchObject({ onHand: 10, lowStockThreshold: 2 });
+    const liveLink = (await database.db.select().from(salesLinks)).find((row) => row.id === linkId);
+    expect(liveLink).toMatchObject({ slug: 'field-guide-offer', heading: 'The field guide', productIds: [productId] });
+    expect(afterValue(linkEffect, 'productIds')).toEqual([productRef]);
+
+    const receipt = unwrapped(await agent.getProposalGroup(group.id)).group;
+    expect(receipt.status).toBe('applied');
+    expect(receipt.items.map((item) => item.appliedResourceId)).toEqual([productId, priceId, productId, productId, linkId]);
+    expect(JSON.stringify(receipt)).not.toContain('effect');
+  });
+
+  it('a group with one stale item applies nothing: the new product and its price are rolled back with it', async () => {
+    const proposer = await issueKey('propose', 'Stale agent');
+    const writer = await issueKey('direct', 'Live writer');
+    const agent = createShopManagementClient({ baseUrl, apiKey: proposer.secret, fetchImpl: workspaceFetch });
+    const live = await workspaceFetch(`${baseUrl}${SHOP_CATALOG_ROUTES.createProduct.path}`, {
+      method: 'POST', headers: { 'x-api-key': writer.secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Existing atlas', type: 'physical', priceCents: 1000 }),
+    });
+    expect(live.status).toBe(200);
+    const atlas = envelope(shopCatalogContracts.createProduct.output).parse(await live.json()).data.product.id;
+
+    const group = unwrapped(await agent.createProposalGroup({ title: 'Second edition' })).group;
+    const inGroup = { groupId: group.id };
+    const product = proposed(await agent.createProduct({ title: 'Atlas, second edition', type: 'physical', priceCents: 1500 }, undefined, inGroup));
+    proposed(await agent.createProductPrice({ productId: changeProposalReference(product.id), kind: 'one_time', amountCents: 1500 }, undefined, inGroup));
+    const rename = proposed(await agent.updateProduct({ id: atlas, title: 'Atlas, first edition' }, undefined, inGroup));
+
+    const renamed = await workspaceFetch(`${baseUrl}${SHOP_CATALOG_ROUTES.updateProduct.path}`, {
+      method: 'POST', headers: { 'x-api-key': writer.secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: atlas, title: 'Atlas, owner edition' }),
+    });
+    expect(renamed.status).toBe(200);
+    const before = await liveState();
+    const shown = await ownerGroup(group.id);
+
+    const decided = await approveGroup(group.id, shown.items.map((item) => item.id));
+
+    expect(decided.status).toBe('stale');
+    expect(decided.items.map((item) => [item.status, item.appliedResourceId])).toEqual([['stale', null], ['stale', null], ['stale', null]]);
+    expect(await liveState()).toBe(before);
+    expect((await database.db.select().from(products)).filter((row) => row.title === 'Atlas, second edition')).toEqual([]);
+    const note = `Not applied: item 3 (${rename.id}) of this group could not be applied, so nothing in the group was changed`;
+    const staleNotes = (await database.db.select().from(changeProposalEvents))
+      .filter((event) => event.kind === 'stale' && decided.items.some((item) => item.id === event.proposalId))
+      .map((event) => [event.proposalId, event.note]);
+    const byProposal = (left: readonly unknown[], right: readonly unknown[]) => String(left[0]).localeCompare(String(right[0]));
+    expect(staleNotes.toSorted(byProposal)).toEqual(decided.items.map((item) => [item.id, item.id === rename.id ? null : note]).toSorted(byProposal));
+    expect((await ownerRequest('POST', API_PATHS.changeProposalGroupApprove.replace(':id', group.id), { itemIds: shown.items.map((item) => item.id) })).status).toBe(409);
+    expect(await liveState()).toBe(before);
   });
 });
 

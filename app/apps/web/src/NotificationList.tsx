@@ -7,7 +7,7 @@ import { UserAvatar } from './components/ui/UserAvatar.js';
 import { useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate, formatDateTime, formatRelativeTime } from './lib/format.js';
 import { NotificationKindIcon } from './notification-icons.js';
-import { notificationTarget, notificationTitle, notificationTitleParts } from './notification-links.js';
+import { notificationSnippet, notificationTarget, notificationTitle, notificationTitleParts } from './notification-links.js';
 import {
   FinePrint,
   NotificationActor,
@@ -51,7 +51,8 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
   const { language } = useLanguage();
   const unread = notification.readAt === null;
   const parts = notificationTitleParts(t, notification);
-  const { authorDisplay, authorAvatarUrl, snippet } = notification.payload;
+  const { authorDisplay, authorAvatarUrl } = notification.payload;
+  const snippet = notificationSnippet(t, notification);
   return (
     <>
       <NotificationActor>
@@ -76,7 +77,7 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
         </NotificationLine>
         {snippet.length === 0 ? null : (
           <NotificationSnippetLine variant="body2" component="p">
-            {translateDeletedContent(snippet, t)}
+            {snippet}
           </NotificationSnippetLine>
         )}
       </NotificationItemMain>

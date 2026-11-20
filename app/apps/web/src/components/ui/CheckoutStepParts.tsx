@@ -19,6 +19,9 @@ import {
 } from '../../theme.js';
 import { ChevronDownIcon, MinusIcon, PlusIcon } from './account-icons.js';
 
+export const CLOSES_ON_ESCAPE_SELECTOR = '[data-closes-on-escape]';
+export const closesOnEscape = { 'data-closes-on-escape': true } as const;
+
 export const CheckoutSteps = ({ label, steps, current }: { label: string; steps: readonly string[]; current: number }) => (
   <CheckoutStepList aria-label={label} data-testid="checkout-steps">
     {steps.map((step, index) => (
@@ -40,7 +43,7 @@ export const CheckoutSummaryRow = ({ items, total, detailsLabel, detailsShortLab
   const [open, setOpen] = useState(false);
   const panelId = useId();
   return (
-    <CheckoutSummarySurface data-testid="checkout-summary" sx={{ px: '0.875rem' }}>
+    <CheckoutSummarySurface data-testid="checkout-summary" {...closesOnEscape} sx={{ px: '0.875rem' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: '0.75rem' }}>
         <CheckoutSummaryText component="p" sx={{ py: '0.625rem' }}>
           {items}{' · '}<CheckoutSummaryTotal aria-live="polite" aria-atomic="true" data-testid="checkout-summary-total">{total}</CheckoutSummaryTotal>
@@ -81,18 +84,19 @@ export const CheckoutPriceBreakdown = ({ lines, total }: { lines: readonly Check
   </CheckoutBreakdownList>
 );
 
-export const CheckoutDisclosureRow = ({ label, open, onToggle, disabled = false, testId, after, children }: {
+export const CheckoutDisclosureRow = ({ label, open, onToggle, disabled = false, collapseOnEscape = true, testId, after, children }: {
   label: ReactNode;
   open: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  collapseOnEscape?: boolean;
   testId?: string;
   after?: ReactNode;
   children: ReactNode;
 }) => {
   const panelId = useId();
   return (
-    <Box>
+    <Box {...(collapseOnEscape ? closesOnEscape : {})}>
       <CheckoutRowButton
         type="button"
         aria-expanded={open}

@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from 'react';
 import type { PublicProductCompliance } from '#core/domain/index.js';
 
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
+import { closesOnEscape } from '../../components/ui/CheckoutStepParts.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { useTranslations } from '../../i18n/index.js';
 import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyLastPart, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetyWarnings } from '../../theme.js';
@@ -68,7 +69,7 @@ const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group:
     ...(countProducts ? [<CheckoutSafetyPart key="count">{t.productSafety.appliesTo({ count: group.entries.length })}</CheckoutSafetyPart>] : []),
   ];
   return (
-    <Box data-testid="product-safety-manufacturer">
+    <Box data-testid="product-safety-manufacturer" {...closesOnEscape}>
       <Typography variant="body2" color="text.secondary">
         {parts.slice(0, -1)}
         <CheckoutSafetyLastPart>

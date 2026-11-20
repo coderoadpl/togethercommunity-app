@@ -17,6 +17,7 @@ import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/inde
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
+import { rowAction } from './checkout-keys.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
 import type { CheckoutEvent, CheckoutState, GeowidgetAccess } from './index.web.js';
 
@@ -36,7 +37,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
   const lockerHint = layout === 'list' || geowidget.status === 'map' ? t.shipping.lockerCodeMapHint : t.shipping.lockerCodeHint;
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
-    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker">
+    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
       <Typography role="status" variant="body2" sx={{ mb: state.pickupPoint === null ? 0 : '0.75rem' }}>
         {state.pickupPoint === null ? null : (
           <span data-testid="checkout-pickup-point-selected">

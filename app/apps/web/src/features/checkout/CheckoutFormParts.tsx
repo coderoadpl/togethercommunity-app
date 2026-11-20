@@ -23,6 +23,7 @@ import { ApiError } from '#core/client/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutDisclosureButton, FinePrint } from '../../theme.js';
+import { rowAction } from './checkout-keys.js';
 
 type Translations = ReturnType<typeof useTranslations>;
 type InvoiceField = { id: string; label: string; value: string; setValue: (value: string) => void; autoComplete?: string };
@@ -259,6 +260,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
     <Stack
       useFlexGap
       spacing="0.5rem"
+      {...rowAction('apply')}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' || !(event.target instanceof HTMLInputElement)) return;
         event.preventDefault();

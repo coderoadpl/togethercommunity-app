@@ -1,6 +1,7 @@
 import { MetaCapiConsent } from './MetaCapiConsent.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { checkoutSessionError, completeEmail, CouponInputs, couponNeedsEmail, CouponTestModeNote, InvoiceInputs, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
+import { checkoutFormKeyDown } from './checkout-keys.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { PersonalizationField, usePersonalizations } from './PersonalizationField.js';
 import { ProductVariantChips } from './ProductSafetyInfo.js';
@@ -570,6 +571,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       eyebrow={t.checkout.orderEyebrow}
       width="wide"
       onSubmit={submit}
+      onKeyDown={checkoutFormKeyDown(payDisabled)}
     >
         <Stack useFlexGap spacing="1.25rem">
           {viaStripe ? (
@@ -698,6 +700,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               label={t.checkout.invoiceReveal}
               open={invoice.visible}
               onToggle={invoice.toggle}
+              collapseOnEscape={false}
               testId="checkout-invoice-reveal"
             >
               <InvoiceInputs invoice={invoice} />

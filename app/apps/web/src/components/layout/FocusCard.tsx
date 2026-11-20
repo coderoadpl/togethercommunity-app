@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { Box, Divider, Paper } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 
@@ -15,6 +15,7 @@ interface FocusCardProps {
   headerAction?: ReactNode;
   footer?: ReactNode;
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLFormElement>) => void;
   children: ReactNode;
   'data-testid'?: string;
 }
@@ -58,6 +59,7 @@ export const FocusCard = ({
   headerAction,
   footer,
   onSubmit,
+  onKeyDown,
   children,
   'data-testid': testId,
 }: FocusCardProps) => {
@@ -81,6 +83,7 @@ export const FocusCard = ({
         variant="outlined"
         component={onSubmit === undefined ? 'div' : 'form'}
         onSubmit={onSubmit}
+        onKeyDown={onKeyDown}
         sx={{
           width: '100%',
           maxWidth: CARD_WIDTH[width],

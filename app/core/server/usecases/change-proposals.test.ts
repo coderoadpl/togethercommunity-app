@@ -231,7 +231,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
       clock: clockPort,
     },
     keyDeps: { changeProposals: store.repository, ids, clock: clockPort },
-    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, shopManagementKeys, clock: clockPort },
+    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, clock: clockPort },
     decisionDeps: { changeProposals: store.repository, shopManagementKeys, ids, clock: clockPort },
   };
 };
@@ -738,9 +738,18 @@ describe('owner-side proposal review', () => {
   it('answers conflict when the proposal leaves pending between the read and the transition', async () => {
     const h = harness(ownerKeys());
     seedForOwner(h);
-    const raced = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => null } };
+    const raced = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => ({ kind: 'written' as const, value: null }) } };
     expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, raced))
       .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'pending' } } });
+    expect(h.store.eventRows).toEqual([]);
+  });
+
+  it('answers busy and records nothing when the reject runs out of lock wait', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const busy = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => ({ kind: 'busy' as const }) } };
+    expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, busy))
+      .toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
     expect(h.store.eventRows).toEqual([]);
   });
 

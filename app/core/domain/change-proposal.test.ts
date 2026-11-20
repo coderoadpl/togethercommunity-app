@@ -213,7 +213,7 @@ describe('change proposal views', () => {
   });
 
   it('gives the owner the full effect, the key state and the ordered events', () => {
-    const detail = toChangeProposalOwnerDetail(proposal(), 'revoked', [
+    const detail = toChangeProposalOwnerDetail(proposal(), 'revoked', null, [
       { id: 'event-1', tenantId: 'tenant-1', proposalId: 'proposal-1', sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'key-1', note: null, at: CREATED },
     ], NOW);
 

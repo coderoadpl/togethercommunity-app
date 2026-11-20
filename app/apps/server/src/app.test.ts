@@ -381,6 +381,7 @@ const deps = (input: {
     },
     changeProposals: changeProposalStore.repository,
     changeProposalEvents: changeProposalStore.events,
+    changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     importContent: {
       commit: async () => 'saved',
@@ -9564,7 +9565,9 @@ describe('impersonation HTTP surface', () => {
     const list = vi.spyOn(store.repository, 'list');
     const findById = vi.spyOn(store.repository, 'findById');
     const transition = vi.spyOn(store.repository, 'transition');
-    const { app } = impersonatingApp({ changeProposals: store.repository, changeProposalEvents: store.events });
+    const findGroup = vi.spyOn(store.groups, 'findById');
+    const transitionGroup = vi.spyOn(store.groups, 'transition');
+    const { app } = impersonatingApp({ changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups });
     const started = await app.request(API_PATHS.impersonationStart, {
       method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
     });
@@ -9575,14 +9578,20 @@ describe('impersonation HTTP surface', () => {
       ['GET', API_PATHS.changeProposal.replace(':id', 'proposal-1')],
       ['POST', API_PATHS.changeProposalReject.replace(':id', 'proposal-1')],
       ['POST', API_PATHS.changeProposalApprove.replace(':id', 'proposal-1')],
+      ['GET', API_PATHS.changeProposalGroup.replace(':id', 'group-1')],
+      ['POST', API_PATHS.changeProposalGroupApprove.replace(':id', 'group-1')],
+      ['POST', API_PATHS.changeProposalGroupReject.replace(':id', 'group-1')],
     ] as const) {
-      const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify({}) } : {}) });
+      const body = path.endsWith('/groups/group-1/approve') ? { itemIds: ['proposal-1'] } : {};
+      const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
       expect(response.status, `${method} ${path}`).toBe(403);
       expect(await response.json(), `${method} ${path}`).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
     }
     expect(list).not.toHaveBeenCalled();
     expect(findById).not.toHaveBeenCalled();
     expect(transition).not.toHaveBeenCalled();
+    expect(findGroup).not.toHaveBeenCalled();
+    expect(transitionGroup).not.toHaveBeenCalled();
   });
 
   it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {

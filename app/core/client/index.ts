@@ -13,3 +13,4 @@ export * from './order-verification.js';
 export { metaCapiActions } from './meta-capi.js';
 export * from './order-fulfilment.js';
 export * from './shipx.js';
+export { changeProposalCreatedKind, changeProposalGroupItemsDigest } from '#core/domain/index.js';

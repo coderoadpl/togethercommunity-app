@@ -588,6 +588,37 @@ scopes on every shop key.
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers
   today. A retention purge of settled proposals is a follow-up.
+- **Proposal groups.** A propose-mode key may group proposals that depend on
+  each other; the owner approves or rejects the group as one unit. Only the
+  key that created a group joins, reads or withdraws it: the
+  `x-proposal-group` header is read once by the shared shop dispatch,
+  validated as an identifier, ignored for a direct-mode key, and the group is
+  looked up by workspace and key, so another key's or another workspace's
+  group answers `404` like an unknown id. A later item names what an earlier
+  item of its group creates only as `$proposal:<proposal id>` and only in the
+  id positions of its operation; such a reference resolves only to an earlier
+  item of the same group, key and workspace that creates that kind of
+  resource, never to a live id, and anything else is refused with `400`.
+  Submitting an item replays the group's earlier items and the new item in
+  one transaction that always rolls back and keeps only the new item's
+  effect, so it leaves nothing behind; an earlier item that no longer applies
+  answers `409` and stores nothing. Created ids appear in stored effects only
+  in their reference form, which names the creating item, so swapping
+  references between items changes the effect. The owner's approval names
+  the ordered item ids they were shown; any other list answers `409`, so an
+  item added after the owner looked is never applied, and the owner CLI
+  approves only with the digest of the item ids that `proposals group show`
+  printed, sending nothing when the group changed since. One transaction locks
+  the group and its items, applies each item with every check of a single
+  approval and commits only when every item matches; otherwise all live work
+  is rolled back and every item is recorded `stale` or `failed`. Targets are
+  locked in item order; two groups locking the same rows in opposite orders
+  end on the bounded lock wait or the database's deadlock detection and are
+  answered busy with nothing applied. A grouped item cannot be decided on its
+  own. A group holds at most 50 items and a key at most 20 open groups; with
+  the key's rate limit, one dry run per group at a time and the per-statement
+  time bounds of dry runs and approvals, that bounds the cost of the
+  replaying dry runs.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs

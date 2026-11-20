@@ -130,7 +130,7 @@ propose-mode key the catalogue, `shop settings set` and
 exit `0` when the server answers `202`, and `shop proposals list|show|withdraw`
 reach that key's own proposals; the receipt of an applied proposal shows the
 resource it created or changed, to name in a follow-up proposal.
-`proposals list [--status <status>] [--cursor <id>] [--limit <n>]`,
+`proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
 `proposals show <id>`, `proposals approve <id>` and
 `proposals reject <id> [--note <text>]` let the owner,
 in their own session, read every change proposal of the workspace with its
@@ -141,6 +141,28 @@ outcome first: `applied` exits `0` and names the resource by the operation
 proposal was made) and `failed` (the live use-case refused the stored change,
 with its error code and message) apply nothing and exit `6`, the conflict exit
 code, as does approving a proposal that is no longer pending.
+Proposals that depend on each other go into a
+[group](change-proposals.md#groups) the owner decides as one unit. The key runs
+`shop proposals group create --title <title>`, then any proposing command with
+`--group <id>`, and reads or withdraws the group with
+`shop proposals group show|withdraw <id>`. An id argument or JSON field of a
+later item names what an earlier item of the same group creates as
+`$proposal:<proposal id>` (the receipt prints that form only for an item that
+creates something: a product, a price or a sales link), quoted so the shell
+leaves the `$` alone, for
+example `shop prices add --product '$proposal:<id>' --kind one_time --price 49 --group <group id>`.
+The owner runs `proposals group show <id>` (the items in order with their
+effects, the items digest and the exact approve command; `itemsDigest` and
+`approveCommand` with `--json`),
+`proposals group approve <id> --items-digest <digest>` (the digest that `show`
+printed is required; the command reads the group again and, when its items
+changed since, prints the current items with their new digest and exits `6`
+without sending anything; otherwise it approves exactly those items: `0` when
+every item was applied, `6` when the group ends `stale` or `failed`, as for a
+single approval) and
+`proposals group reject <id> [--note <text>]`; `proposals list --group <id>`
+lists one group and `proposals list` shows the group and position of each
+grouped item. A grouped item cannot be approved, rejected or withdrawn alone.
 
 Supply the secret through an environment variable, using the same
 `--api-key-env <name>` mechanism as marketing commands. Reports default to

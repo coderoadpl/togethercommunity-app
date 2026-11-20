@@ -1,7 +1,7 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 
-import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
   err,
   forbidden,
@@ -11,6 +11,7 @@ import {
   tenantNotFound,
   unauthorized,
   unavailable,
+  validation,
   type AppError,
   type ChangeProposalOperation,
   type Result,
@@ -23,6 +24,8 @@ import {
   recordShopManagementKeyRequest,
   resolveTenant,
   submitChangeProposal,
+  submitGroupedChangeProposal,
+  type ChangeProposalGroupSubmitDeps,
   type ChangeProposalSubmitDeps,
   type ResolveTenantDeps,
   type ShopMachineAuthDeps,
@@ -52,7 +55,7 @@ export const shopManagementKeysSwitchMiddleware = (state: ShopManagementKeysSwit
     await next();
   };
 
-type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementKeyRequestDeps & ChangeProposalSubmitDeps;
+type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementKeyRequestDeps & ChangeProposalSubmitDeps & ChangeProposalGroupSubmitDeps;
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
@@ -151,17 +154,44 @@ const proposalManagementRefusal = (): AppError =>
 
 const isDirectModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'direct';
 
+const proposalGroupOf = (c: Context<AppVars>): Result<string | null, AppError> => {
+  const header = c.req.header(PROPOSAL_GROUP_HEADER);
+  if (header === undefined) return ok(null);
+  const parsed = changeProposalGroupIdSchema.safeParse(header);
+  return parsed.success ? ok(parsed.data) : err(validation(`Invalid ${PROPOSAL_GROUP_HEADER} header`, parsed.error.flatten()));
+};
+
+const submitProposal = async (
+  request: ShopMachineRequest,
+  operation: ChangeProposalOperation,
+  input: unknown,
+  groupId: string | null,
+  deps: ShopMachineDeps,
+) => {
+  if (groupId === null) {
+    const submitted = await submitChangeProposal(request.ctx, { operation, input }, deps);
+    return submitted.ok ? ok({ outcome: 'proposed' as const, proposal: submitted.value }) : submitted;
+  }
+  const submitted = await submitGroupedChangeProposal(request.ctx, { groupId, operation, input }, deps);
+  if (!submitted.ok) return submitted;
+  const proposal = submitted.value.items.at(-1);
+  if (proposal === undefined) throw new Error(`Change proposal group ${groupId} answered a submission without items`);
+  return ok({ outcome: 'proposed' as const, proposal, group: submitted.value });
+};
+
 const proposeChange = async (
   c: Context<AppVars>,
   request: ShopMachineRequest,
   proposeMode: Extract<ShopMachineProposeMode, { kind: 'proposal' }>,
   deps: ShopMachineDeps,
 ): Promise<Response> => {
+  const groupId = proposalGroupOf(c);
+  if (!groupId.ok) return respond(groupId);
   const input = await proposeMode.toInput(c);
   if (!input.ok) return respond(input);
-  const submitted = await submitChangeProposal(request.ctx, { operation: proposeMode.operation, input: input.value }, deps);
+  const submitted = await submitProposal(request, proposeMode.operation, input.value, groupId.value, deps);
   return submitted.ok
-    ? respond(ok({ outcome: 'proposed' as const, proposal: submitted.value }), { successStatus: 202 })
+    ? respond(submitted, { successStatus: 202 })
     : respond(submitted, { headers: retryAfterHeaders(submitted.error) });
 };
 

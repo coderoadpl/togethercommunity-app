@@ -187,36 +187,36 @@ const changeProposalEffectBytes = (effect: ChangeProposalEffect): number =>
 export const changeProposalEffectWithinLimit = (effect: ChangeProposalEffect): boolean =>
   changeProposalEffectBytes(effect) <= CHANGE_PROPOSAL_LIMITS.effectMaxBytes;
 
-const timestampSchema = z.string().datetime({ precision: 3 });
+export const changeProposalTimestampSchema = z.string().datetime({ precision: 3 });
 
-const identifierSchema = z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.identifierMaxLength);
+export const changeProposalIdentifierSchema = z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.identifierMaxLength);
 
 const changeProposalTargetSchema = z.object({
   kind: changeProposalTargetKindSchema,
-  id: identifierSchema.nullable(),
+  id: changeProposalIdentifierSchema.nullable(),
 }).strict();
 
 export type ChangeProposalTarget = z.output<typeof changeProposalTargetSchema>;
 
 export const changeProposalSchema = z.object({
-  id: identifierSchema,
+  id: changeProposalIdentifierSchema,
   tenantId: z.string().min(1),
-  groupId: identifierSchema.nullable(),
+  groupId: changeProposalIdentifierSchema.nullable(),
   groupPosition: z.number().int().min(1).nullable(),
   operation: changeProposalStoredOperationSchema,
   input: changeProposalInputSchema,
   effect: changeProposalEffectSchema,
   target: changeProposalTargetSchema,
   status: changeProposalStatusSchema,
-  proposedByKeyId: identifierSchema,
+  proposedByKeyId: changeProposalIdentifierSchema,
   proposedByKeyName: z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.keyNameMaxLength),
   proposedByIssuerUserId: z.string().min(1),
-  createdAt: timestampSchema,
-  expiresAt: timestampSchema,
+  createdAt: changeProposalTimestampSchema,
+  expiresAt: changeProposalTimestampSchema,
   decidedByUserId: z.string().min(1).nullable(),
-  decidedAt: timestampSchema.nullable(),
+  decidedAt: changeProposalTimestampSchema.nullable(),
   decisionNote: z.string().max(CHANGE_PROPOSAL_LIMITS.decisionNoteMaxLength).nullable(),
-  appliedResourceId: identifierSchema.nullable(),
+  appliedResourceId: changeProposalIdentifierSchema.nullable(),
   failureCode: z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.failureCodeMaxLength).nullable(),
   failureMessage: z.string().max(CHANGE_PROPOSAL_LIMITS.failureMessageMaxLength).nullable(),
 }).strict().superRefine((proposal, context) => {
@@ -232,15 +232,15 @@ export const changeProposalSchema = z.object({
 export type ChangeProposal = z.output<typeof changeProposalSchema>;
 
 export const changeProposalEventSchema = z.object({
-  id: identifierSchema,
+  id: changeProposalIdentifierSchema,
   tenantId: z.string().min(1),
-  proposalId: identifierSchema,
+  proposalId: changeProposalIdentifierSchema,
   sequence: z.number().int().min(1),
   kind: changeProposalEventKindSchema,
   actorUserId: z.string().min(1).nullable(),
-  apiKeyId: identifierSchema.nullable(),
+  apiKeyId: changeProposalIdentifierSchema.nullable(),
   note: z.string().max(CHANGE_PROPOSAL_LIMITS.eventNoteMaxLength).nullable(),
-  at: timestampSchema,
+  at: changeProposalTimestampSchema,
 }).strict().refine(
   (event) => event.actorUserId !== null || event.apiKeyId !== null,
   { message: 'A change proposal event needs an acting account or key', path: ['actorUserId'] },
@@ -259,7 +259,10 @@ export const changeProposalDisplayStatus = (
 export const changeProposalExpiresAt = (createdAt: string): string =>
   new Date(Date.parse(createdAt) + CHANGE_PROPOSAL_LIFETIME_MS).toISOString();
 
-const changeProposalKeyStateSchema = z.enum(['active', 'expired', 'revoked', 'purged']);
+export const changeProposalLifetimeStart = (now: string): string =>
+  new Date(Date.parse(now) - CHANGE_PROPOSAL_LIFETIME_MS).toISOString();
+
+export const changeProposalKeyStateSchema = z.enum(['active', 'expired', 'revoked', 'purged']);
 
 export type ChangeProposalKeyState = z.output<typeof changeProposalKeyStateSchema>;
 
@@ -286,6 +289,7 @@ export type ChangeProposalEventView = z.output<typeof changeProposalEventViewSch
 export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),
   groupId: z.string().nullable(),
+  groupTitle: z.string().nullable(),
   groupPosition: z.number().int().nullable(),
   operation: changeProposalStoredOperationSchema,
   target: changeProposalTargetSchema,
@@ -350,20 +354,21 @@ const CHANGE_PROPOSAL_PAGE_SIZE = { default: 50, max: 100 } as const;
 
 export const changeProposalListInputSchema = z.object({
   status: changeProposalDisplayStatusSchema.optional(),
-  cursor: identifierSchema.optional(),
+  cursor: changeProposalIdentifierSchema.optional(),
+  groupId: changeProposalIdentifierSchema.optional(),
   limit: z.number().int().min(1).max(CHANGE_PROPOSAL_PAGE_SIZE.max).default(CHANGE_PROPOSAL_PAGE_SIZE.default),
 }).strict();
 
 export type ChangeProposalListInput = z.input<typeof changeProposalListInputSchema>;
 
-export const changeProposalIdInputSchema = z.object({ id: identifierSchema }).strict();
+export const changeProposalIdInputSchema = z.object({ id: changeProposalIdentifierSchema }).strict();
 
 export type ChangeProposalIdInput = z.input<typeof changeProposalIdInputSchema>;
 
-export const changeProposalProductIdInputSchema = z.object({ productId: identifierSchema }).strict();
+export const changeProposalProductIdInputSchema = z.object({ productId: changeProposalIdentifierSchema }).strict();
 
 export const rejectChangeProposalInputSchema = z.object({
-  id: identifierSchema,
+  id: changeProposalIdentifierSchema,
   note: z.string().trim().max(CHANGE_PROPOSAL_LIMITS.decisionNoteMaxLength).nullable().optional()
     .transform((note) => note === undefined || note === null || note.length === 0 ? null : note),
 }).strict();
@@ -389,10 +394,12 @@ const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEv
 export const toChangeProposalOwnerView = (
   proposal: ChangeProposal,
   keyState: ChangeProposalKeyState,
+  groupTitle: string | null,
   now: string,
 ): ChangeProposalOwnerView => ({
   id: proposal.id,
   groupId: proposal.groupId,
+  groupTitle: proposal.groupId === null ? null : groupTitle,
   groupPosition: proposal.groupPosition,
   operation: proposal.operation,
   target: proposal.target,
@@ -418,10 +425,11 @@ export const toChangeProposalOwnerView = (
 export const toChangeProposalOwnerDetail = (
   proposal: ChangeProposal,
   keyState: ChangeProposalKeyState,
+  groupTitle: string | null,
   events: readonly ChangeProposalEvent[],
   now: string,
 ): ChangeProposalOwnerDetail => ({
-  ...toChangeProposalOwnerView(proposal, keyState, now),
+  ...toChangeProposalOwnerView(proposal, keyState, groupTitle, now),
   events: events.map(toChangeProposalEventView),
 });
 

@@ -506,7 +506,7 @@ const capabilityFromBody = (
   };
   visit(body);
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
-  const proposalFamilyChoice = subject === 'change-proposals.ts#submitChangeProposal' && capabilities.join(',') === 'proposal:submit:catalog,product:read,proposal:submit:settings,tenant:settings:read';
+  const proposalFamilyChoice = ['change-proposals.ts#submitChangeProposal', 'change-proposal-groups.ts#submitGroupedChangeProposal'].includes(subject) && capabilities.join(',') === 'proposal:submit:catalog,product:read,proposal:submit:settings,tenant:settings:read';
   if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
@@ -636,12 +636,15 @@ const marketingTenantContextUseCases = new Set([
 
 const ownerSideChangeProposalUseCases = new Set(['approveChangeProposal', 'getChangeProposal', 'listChangeProposals', 'rejectChangeProposal']);
 
+const ownerSideChangeProposalGroupUseCases = new Set(['approveChangeProposalGroup', 'getChangeProposalGroup', 'rejectChangeProposalGroup']);
+
 const beforeForUseCase = (
   file: string,
   name: string,
   capability: Capability,
 ): readonly InventoryPrincipal[] => {
   if (file === 'change-proposals.ts') return ownerSideChangeProposalUseCases.has(name) ? owner : proposeShopManagementKey;
+  if (file === 'change-proposal-groups.ts') return ownerSideChangeProposalGroupUseCases.has(name) ? owner : proposeShopManagementKey;
   if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'activity-reports.ts') return reportApiKey;
   if (file === 'marketing-email.ts') {
@@ -855,7 +858,7 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\` instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (\`docs/change-proposals.md\`) that only the owner can approve. The \`/api/m2m/shop/proposals\` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.`,
     '',
-    '`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key\'s write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.',
+    '`change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key\'s write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

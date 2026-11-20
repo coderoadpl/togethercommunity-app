@@ -92,12 +92,13 @@ const sessionRequest = (token: string, method: string, path: string, body?: unkn
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
-const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost) => app.request(`${baseUrl}${path}`, {
+const keyed = (secret: string, method: string, path: string, body?: unknown, host = acmeHost, extra: Record<string, string> = {}) => app.request(`${baseUrl}${path}`, {
   method,
   headers: {
     host,
     'x-api-key': secret,
     ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    ...extra,
   },
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
@@ -307,6 +308,9 @@ describe('shop route classification', () => {
       'GET /api/m2m/shop/proposals': 'proposal-management',
       'GET /api/m2m/shop/proposals/:id': 'proposal-management',
       'POST /api/m2m/shop/proposals/:id/withdraw': 'proposal-management',
+      'POST /api/m2m/shop/proposals/groups': 'proposal-management',
+      'GET /api/m2m/shop/proposals/groups/:id': 'proposal-management',
+      'POST /api/m2m/shop/proposals/groups/:id/withdraw': 'proposal-management',
     });
   });
 
@@ -347,6 +351,43 @@ describe('a propose-mode key on every registered shop route', () => {
     expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(16);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
     expect(stored).toHaveLength(14);
+  });
+
+  it('never reaches a live write with the group header either: every proposal joins its group, refusals stay 403, reads still read', async () => {
+    const bodies = proposalBodies();
+    const grouper = await createShopKey(PROPOSE_SCOPES, 'propose');
+    const before = await liveState();
+    const proposed: string[] = [];
+    for (const route of registeredShopRoutes()) {
+      const label = `${route.method} ${route.path}`;
+      const mode = route.proposeMode;
+      if (mode?.kind === 'proposal-management') continue;
+      minute += 1;
+      now = new Date(START + minute * 60_000).toISOString();
+      const created = await keyed(grouper.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: label });
+      expect(created.status, label).toBe(201);
+      const group = envelope(shopProposalContracts.createGroup.output).parse(await created.json()).data.group;
+      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
+      const response = await keyed(grouper.secret, route.method, salesLinkPath(route.path), body, acmeHost, { 'x-proposal-group': group.id });
+      if (mode === undefined) {
+        expect([401, 403], label).not.toContain(response.status);
+      } else if (mode.kind === 'proposal') {
+        expect(response.status, label).toBe(202);
+        const receipt = envelope(changeProposalProposedOutputSchema).parse(await response.json()).data;
+        expect(receipt.proposal, label).toMatchObject({ operation: mode.operation, status: 'pending', groupId: group.id });
+        expect(receipt.group?.items.map((item) => item.id), label).toEqual([receipt.proposal.id]);
+        proposed.push(label);
+      } else {
+        expect(response.status, label).toBe(403);
+      }
+      const withdrawn = await keyed(grouper.secret, 'POST', SHOP_PROPOSAL_ROUTES.withdrawGroup.path.replace(':id', group.id), {});
+      expect(withdrawn.status, label).toBe(200);
+    }
+    expect(await liveState()).toBe(before);
+    expect(proposed).toHaveLength(14);
+    const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === grouper.apiKey.id);
+    expect(stored).toHaveLength(14);
+    expect(stored.every((row) => row.groupId !== null && row.groupPosition === 1)).toBe(true);
   });
 
   it('answers a refused write with the refusal reason and records the request in the key history', async () => {
@@ -390,12 +431,12 @@ describe('a propose-mode key on every registered shop route', () => {
 });
 
 describe('a direct-mode key on every registered shop route', () => {
-  it('runs the live handler on proposal and refusal routes and is refused on the proposal-management routes', async () => {
+  it('runs the live handler on proposal and refusal routes, ignores the group header and is refused on the proposal-management routes', async () => {
     for (const route of registeredShopRoutes()) {
       const label = `${route.method} ${route.path}`;
       const mode = route.proposeMode;
       if (mode === undefined) continue;
-      const response = await keyed(direct.secret, route.method, concretePath(route.path), route.method === 'GET' || route.method === 'DELETE' ? undefined : {});
+      const response = await keyed(direct.secret, route.method, concretePath(route.path), route.method === 'GET' || route.method === 'DELETE' ? undefined : {}, acmeHost, { 'x-proposal-group': 'ignored-group' });
       const error = response.status >= 400 ? await errorOf(response) : null;
       if (mode.kind === 'proposal-management') {
         expect(response.status, label).toBe(403);

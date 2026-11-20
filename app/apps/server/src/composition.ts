@@ -54,9 +54,16 @@ import { createDownloadPersonaliser } from '#adapters/personalisation/index.js';
 import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypto, DownloadPersonaliser, PersonalisationSlots } from '#core/server/index.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
+import type { ChangeProposalBoundOptions } from '#adapters/db/change-proposal-bounds.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
+import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
-import type { ChangeProposalEventRepository, ChangeProposalRepository, ChangeProposalTransaction } from '#core/server/index.js';
+import type {
+  ChangeProposalEventRepository,
+  ChangeProposalGroupRepository,
+  ChangeProposalRepository,
+  ChangeProposalTransaction,
+} from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
@@ -563,6 +570,7 @@ export interface AppDeps {
   shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
+  changeProposalGroups: ChangeProposalGroupRepository;
   changeProposalTransaction: ChangeProposalTransaction;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
@@ -951,6 +959,7 @@ export const createDeps = (
     db?: Db;
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
+    changeProposalBounds?: ChangeProposalBoundOptions;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
@@ -1607,9 +1616,15 @@ export const createDeps = (
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
-    changeProposals: createChangeProposalRepository(db),
+    changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),
-    changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
+    changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),
+    changeProposalTransaction: createChangeProposalTransaction(
+      db,
+      logger,
+      (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      options.changeProposalBounds,
+    ),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,

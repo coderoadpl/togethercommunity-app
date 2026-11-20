@@ -44,6 +44,7 @@ import {
 } from '#adapters/auth/create-auth.js';
 import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
+import { inMemoryChangeSettings } from '#core/server/testing/tenant-settings-fake.js';
 import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
@@ -211,6 +212,18 @@ const deps = (input: {
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
+  const findSettings: AppDeps['tenants']['findSettings'] = async (tenantId) =>
+    tenants.some((tenant) => tenant.id === tenantId) ? {
+      name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+      socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
+      billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
+      accentColor: null,
+      accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+      ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+      privacyUrl: null,
+      defaultHomeSpaceId: null,
+    } : null;
   const domains = input.domains ?? [];
   const products = input.products ?? [
     product({ id: 'acme-published', tenantId: 't-acme', title: 'Acme Published', published: true }),
@@ -907,19 +920,8 @@ const deps = (input: {
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
       hasAny: async () => tenants.length > 0,
-      findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? {
-          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
-          socialLinks: [],
-          signInNotice: { enabled: false, text: '' },
-          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-          accentColor: null,
-          accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
-          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
-          privacyUrl: null,
-          defaultHomeSpaceId: null,
-        } : null,
-      updateSettings: async (_tenantId, settings) => settings,
+      findSettings,
+      changeSettings: inMemoryChangeSettings(findSettings),
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,
@@ -6753,7 +6755,7 @@ describe('public offer route', () => {
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
   });
 
-  it('revalidates the offer when a tracked product sells out and exposes only stock flags', async () => {
+  it('revalidates the offer when a tracked product sells out and exposes the public stock without stored levels', async () => {
     const base = deps();
     const stock = createStockRepositoryFake();
     stock.track(acme.id, 'acme-published', 1);
@@ -6762,15 +6764,55 @@ describe('public offer route', () => {
     const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
     const etag = first.headers.get('etag') ?? '';
     expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
-    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false, available: 1 }, maxQuantity: 1 }] } });
     expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
     await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 1 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
     const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
     expect(soldOut.status).toBe(200);
     expect(soldOut.headers.get('etag')).not.toBe(etag);
     const body = await soldOut.json();
-    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true } }] } });
+    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true, available: 0 }, maxQuantity: 0 }] } });
     expect(JSON.stringify(body)).not.toContain('onHand');
+  });
+
+  it('revalidates the offer when only the available count of a tracked product changes', async () => {
+    const base = deps();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const fewer = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(fewer.status).toBe(200);
+    expect(fewer.headers.get('etag')).not.toBe(etag);
+    expect(await fewer.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 3 } }] } });
+  });
+
+  it.each([
+    { published: false, salesChannel: 'any' },
+    { published: true, salesChannel: 'sales_links_only' },
+  ] as const)('keeps the offer ETag when only hidden stock changes (published: $published, salesChannel: $salesChannel)', async ({ published, salesChannel }) => {
+    const base = deps({ products: [
+      product({ id: 'acme-published', tenantId: acme.id, title: 'Acme Published', published: true }),
+      { ...product({ id: 'acme-hidden', tenantId: acme.id, title: 'Acme Hidden', published }), salesChannel },
+    ] });
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    stock.track(acme.id, 'acme-hidden', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(first.status).toBe(200);
+    expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-hidden', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const unchanged = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get('etag')).toBe(etag);
   });
 
   it('changes the offer ETag after adding a price to a published product', async () => {
@@ -10672,6 +10714,8 @@ it('exposes only public sales-link fields and accepts its slug for checkout', as
   const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
   if (!body.ok) throw new Error(body.error.message);
   expect(body.data.salesLink).toEqual({ slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
+  expect(response.headers.has('etag')).toBe(false);
+  expect(response.headers.get('cache-control')).toBe('no-store');
   const raw = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
   expect((await raw.json()).data.salesLink).toEqual(body.data.salesLink);
   const purchaseResponse = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });

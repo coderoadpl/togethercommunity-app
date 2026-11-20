@@ -577,7 +577,8 @@ scopes on every shop key.
   `core/server/authorize.ts` below every route: the Stripe configure and
   permission probe use-cases (the payment account, including the live slot;
   configuring creates the webhook signing secret and endpoint id), the ShipX
-  configure use-case (carrier credentials and sender), the storage configure
+  configure use-case (the credentials of both carrier connections and the
+  sender), the storage configure
   use-case (the object storage connection) and the generic secret write or
   delete of the invoicing credentials (`ifirma.invoiceApiKey`,
   `ifirma.username`, `ksef.token`, `ksef.contextNip`, `ksef.test.token`,
@@ -702,22 +703,39 @@ Member erasure removes registry rows; see [copy identifiers](storage.md#copy-ide
 
 ## InPost ShipX credentials
 
-The ShipX organization id and API token are encrypted tenant secrets
-(`shipx.organizationId`, `shipx.token`), written only through the owner-only
+Each workspace keeps two ShipX connections, `production` for live orders and
+`sandbox` for test-mode orders. Their organization ids and API tokens are
+encrypted tenant secrets (`shipx.production.organizationId`,
+`shipx.production.token`, `shipx.sandbox.organizationId`,
+`shipx.sandbox.token`), written only through the owner-only
 session route `POST /api/integrations/shipx/configure` (or the owner-only
 generic tenant-secret route) and through the keyed
 `POST /api/m2m/shop/integrations/shipx/configure` with a
 [shop management key](#shop-management-keys) holding
 `shop:integrations:write`. A shop management key may write them only through
 the ShipX configure use-case, never through the generic tenant-secret write;
-the keyed generic secret route refuses both names. They are returned only as
+the keyed generic secret route refuses all four names, which stay off the
+shop-key secret allow-list, and the configure route writes no other secret
+name. Saving or clearing one connection never touches the other's rows. They
+are returned only as
 masked previews. They are not part of tenant
 settings, the public offer or the public payment configuration. The server
-decrypts them only for a ShipX call; the readiness check on the order page asks
-the secret repository whether both secrets exist without decrypting them. Each
+decrypts them only for a ShipX call, and only the connection of the order's
+mode: a test-mode order never resolves the production credentials or the
+production URL, and a live order never the sandbox ones. The readiness check on
+the order page asks the secret repository whether both secrets of that
+connection exist without decrypting them. There is no data migration: the
+legacy single-connection rows (`shipx.organizationId`, `shipx.token`) keep
+serving only the connection that the workspace's stored environment names, for
+each value that connection has no row of; a connection row that cannot be
+decrypted never falls back to them, and an order of the other mode never reads
+them. Removing the credentials of that connection deletes the legacy rows as
+well (see
+[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). Each
 `order_shipments` row keeps a plain copy of the organization id it was created
 with (an identifier that also appears in every ShipX URL), so later calls for
-that shipment can refuse to run against another organization; the shipment
+that shipment can refuse to run against another organization or another
+connection than the order's mode; the shipment
 view returned to staff omits it, and the token is never copied. Error envelopes carry
 only the ShipX error key, a description cut to 300 characters with control
 characters removed and the field keys of the validation details, never the raw
@@ -762,9 +780,9 @@ Labels are proxied: `POST /api/orders/<orderId>/shipx/label` returns the PDF wit
 ShipX origin is added to any content security policy and the browser never
 contacts ShipX. Deployments with `PAYMENT_PROVIDER=fake` use the in-process
 fake client for every order and never call InPost; with `PAYMENT_PROVIDER=stripe`
-the workspace's ShipX environment decides: the sandbox serves test-mode orders
-only and refuses paid orders, production serves paid orders and leaves test-mode
-orders to the fake client. See [Which ShipX client answers](shop.md#which-shipx-client-answers).
+the real client serves every order, against the sandbox for test-mode orders and
+against production for paid orders, and a missing connection refuses the
+order. See [Which ShipX client answers](shop.md#which-shipx-client-answers).
 
 ## Meta conversions credentials
 

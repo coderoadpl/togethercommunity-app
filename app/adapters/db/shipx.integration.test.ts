@@ -1,11 +1,11 @@
-import { sql } from 'drizzle-orm';
+import { and, eq, like, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { err, ok, orderListItemSchema, shipxRejected, type ShipxSender, type TenantSecretKey } from '#core/domain/index.js';
-import { createInpostShipment, type CreateInpostShipmentDeps, type OrderFulfilmentRepository, type ShipxShipmentRepository } from '#core/server/index.js';
+import { configureShipx, createInpostShipment, type CreateInpostShipmentDeps, type OrderFulfilmentRepository, type ShipxShipmentRepository } from '#core/server/index.js';
 import { createScriptedShipxClient, remoteShipment } from '#core/server/testing/shipx-fakes.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
-import { createProductRepository } from './repositories.js';
-import { products, tenants } from './schema.js';
+import { createProductRepository, createTenantSecretRepository } from './repositories.js';
+import { products, tenantSecrets, tenants } from './schema.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from './shipx.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -326,7 +326,7 @@ describe('InPost shipment use-case on the database', () => {
   const depsFor = (orderId: string, client: ReturnType<typeof createScriptedShipxClient>['client']): CreateInpostShipmentDeps => {
     const stored = order(orderId);
     const findById = async (tenantId: string, id: string) => (tenantId === 'workspace' && id === orderId ? stored : null);
-    const values: Partial<Record<TenantSecretKey, string>> = { 'shipx.organizationId': '1234', 'shipx.token': 'token' };
+    const values: Partial<Record<TenantSecretKey, string>> = { 'shipx.production.organizationId': '1234', 'shipx.production.token': 'token' };
     const ids = { nextId: () => `${orderId}-${String(++sequence)}` };
     const clock = { nowIso: () => new Date().toISOString() };
     return {
@@ -368,7 +368,7 @@ describe('InPost shipment use-case on the database', () => {
   const unpaid = (id: string) => ok(remoteShipment(id, { status: 'offers_prepared', offers: [{ id: '55', status: 'available', service: 'inpost_locker_standard' }] }));
 
   it('buys once when a second click arrives while the first one is paying', async () => {
-    await createShipxSettingsRepository(database.db).save('workspace', { environment: 'production', sender });
+    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
     await seedShipment(createShipxShipmentRepository(database.db), 'order-buy', '777');
     let releaseBuy: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
@@ -405,7 +405,7 @@ describe('InPost shipment use-case on the database', () => {
   });
 
   it('lets only one of two simultaneous clicks reach ShipX', async () => {
-    await createShipxSettingsRepository(database.db).save('workspace', { environment: 'production', sender });
+    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
     await seedShipment(createShipxShipmentRepository(database.db), 'order-twin', '888');
     const client = createScriptedShipxClient({
       polls: [unpaid, (id) => ok(remoteShipment(id, { status: 'confirmed', trackingNumber: '520000011395200025754312' }))],
@@ -425,7 +425,7 @@ describe('InPost shipment use-case on the database', () => {
   });
 
   it('ignores the late cleanup of a released attempt, so a third click cannot create a second shipment', async () => {
-    await createShipxSettingsRepository(database.db).save('workspace', { environment: 'production', sender });
+    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
     const repository = createShipxShipmentRepository(database.db);
     const rejecting = createScriptedShipxClient({
       create: () => err(shipxRejected({ status: 400, error: 'validation_failed', description: 'Invalid', fields: {} })),
@@ -484,14 +484,19 @@ describe('InPost shipment use-case on the database', () => {
 });
 
 describe('ShipX settings repository and parcel template', () => {
-  it('defaults to the sandbox without a sender and stores the settings per workspace', async () => {
+  it('stores the shared sender per workspace and never writes the stored environment', async () => {
     const repository = createShipxSettingsRepository(database.db);
-    await repository.save('workspace', { environment: 'sandbox', sender: null });
-    expect(await repository.find('workspace')).toEqual({ environment: 'sandbox', sender: null });
-    await repository.save('workspace', { environment: 'production', sender });
-    expect(await repository.find('workspace')).toEqual({ environment: 'production', sender });
-    expect(await repository.find('other')).toEqual({ environment: 'sandbox', sender: null });
-    expect(await repository.find('missing')).toBeNull();
+    await database.db.update(tenants).set({ shipxEnvironment: 'production', shipxSender: null }).where(eq(tenants.id, 'workspace'));
+    expect(await repository.findSender('workspace')).toBeNull();
+    await repository.saveSender('workspace', sender);
+    expect(await repository.findSender('workspace')).toEqual(sender);
+    expect(await repository.findSender('other')).toBeNull();
+    expect(await repository.findSender('missing')).toBeNull();
+    await repository.saveSender('workspace', null);
+    expect(await repository.findSender('workspace')).toBeNull();
+    expect(await repository.legacyEnvironment('workspace')).toBe('production');
+    expect(await repository.legacyEnvironment('other')).toBe('sandbox');
+    expect(await repository.legacyEnvironment('missing')).toBeNull();
   });
 
   it('stores the product parcel template with medium as the default', async () => {
@@ -503,5 +508,65 @@ describe('ShipX settings repository and parcel template', () => {
       id: 'version-1', entityKind: 'product', entityId: 'stand', schemaVersion: 9, payload: {}, createdBy: null, createdAt: now,
     });
     expect(updated?.parcelTemplate).toBe('large');
+  });
+});
+
+describe('ShipX slots on the database', () => {
+  const masterSecrets = {
+    encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: 'iv', authTag: 'tag' }),
+    decrypt: (input: { ciphertext: string }) => ok(input.ciphertext.slice(4)),
+  };
+  const owner = {
+    identity: {
+      userId: 'owner', email: 'owner@example.org', name: 'Owner', emailVerified: true, image: null, tenantAccess: 'staff' as const,
+      tenantId: 'other', tenantSlug: 'other', tenantName: 'Other workspace', staffRole: 'owner' as const,
+      memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+    },
+    capabilities: ['tenant:secret:write' as const, 'tenant:secret:read' as const],
+  };
+  const deps = () => ({
+    shipxSettings: createShipxSettingsRepository(database.db),
+    tenantSecrets: createTenantSecretRepository(database.db),
+    secretCrypto: masterSecrets,
+    ids: { nextId: () => `slot-secret-${String(++sequence)}` },
+    clock: { nowIso: () => now },
+  });
+  const shipxRows = async () => (await database.db.select({ key: tenantSecrets.key, ciphertext: tenantSecrets.ciphertext }).from(tenantSecrets)
+    .where(and(eq(tenantSecrets.tenantId, 'other'), like(tenantSecrets.key, 'shipx.%'))))
+    .map((row) => `${row.key}=${row.ciphertext}`).sort();
+  const legacy = (key: 'shipx.organizationId' | 'shipx.token') => ({
+    id: `legacy-${key}`, tenantId: 'other', key, ciphertext: `enc:legacy-${key}`, iv: 'iv', authTag: 'tag', maskedPreview: '••••', updatedAt: now,
+  });
+
+  it('saves and clears each slot without touching the other slot, and clears the legacy rows only with the stored environment', async () => {
+    await database.db.update(tenants).set({ shipxEnvironment: 'production' }).where(eq(tenants.id, 'other'));
+    await database.db.insert(tenantSecrets).values([legacy('shipx.organizationId'), legacy('shipx.token')]);
+    expect(await configureShipx(owner, { production: { organizationId: '1234', token: 'production-token' } }, deps())).toMatchObject({ ok: true });
+    expect(await configureShipx(owner, { sandbox: { organizationId: '5678', token: 'sandbox-token' } }, deps())).toMatchObject({
+      ok: true, value: { sender: null, sandbox: { configured: true }, production: { configured: true } },
+    });
+    expect(await shipxRows()).toEqual([
+      'shipx.organizationId=enc:legacy-shipx.organizationId',
+      'shipx.production.organizationId=enc:1234',
+      'shipx.production.token=enc:production-token',
+      'shipx.sandbox.organizationId=enc:5678',
+      'shipx.sandbox.token=enc:sandbox-token',
+      'shipx.token=enc:legacy-shipx.token',
+    ]);
+    expect(await configureShipx(owner, { sandbox: { clearCredentials: true } }, deps())).toMatchObject({
+      ok: true, value: { sandbox: { configured: false }, production: { configured: true } },
+    });
+    expect(await shipxRows()).toEqual([
+      'shipx.organizationId=enc:legacy-shipx.organizationId',
+      'shipx.production.organizationId=enc:1234',
+      'shipx.production.token=enc:production-token',
+      'shipx.token=enc:legacy-shipx.token',
+    ]);
+    expect(await configureShipx(owner, { production: { clearCredentials: true } }, deps())).toMatchObject({
+      ok: true, value: { sandbox: { configured: false }, production: { configured: false } },
+    });
+    expect(await shipxRows()).toEqual([]);
+    const [workspace] = await database.db.select({ environment: tenants.shipxEnvironment }).from(tenants).where(eq(tenants.id, 'other'));
+    expect(workspace?.environment).toBe('production');
   });
 });

@@ -127,10 +127,8 @@ const reconcileAdoption = async (
     ? await resolvePrice(tenantId, product.id, undefined, remote, now, deps)
     : ok({ price: known, created: false });
   if (!resolved.ok) return resolved;
-  const claim = { customerId: remote.customerId, memberId: member.id, claimedAt: now };
-  if (await deps.customerOwners.claimStripeCustomer(tenantId, claim) === 'another-workspace') {
-    return foreignOwnerRefusal();
-  }
+  // A customer held by another workspace does not take away a subscription this workspace already stores; the claim then writes nothing.
+  await deps.customerOwners.claimStripeCustomer(tenantId, { customerId: remote.customerId, memberId: member.id, claimedAt: now });
   const billable: Partial<Pick<MemberSubscription, 'status' | 'currentPeriodEnd' | 'cancelAtPeriodEnd'>> =
     remote.status === 'active' || remote.status === 'past_due'
       ? { status: remote.status, currentPeriodEnd: remote.currentPeriodEnd, cancelAtPeriodEnd: remote.cancelAtPeriodEnd }

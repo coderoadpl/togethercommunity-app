@@ -234,7 +234,7 @@ const dependencies = (over: {
     findSole: async () => null,
     hasAny: async () => false,
     findSettings: async () => settings(over.cdnHostname === undefined ? 'vz-demo.b-cdn.net' : over.cdnHostname),
-    updateSettings: async (_tenantId, value) => value,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
   };
   return {

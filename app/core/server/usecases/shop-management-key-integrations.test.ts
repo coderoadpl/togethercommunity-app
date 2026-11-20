@@ -131,6 +131,10 @@ const excludedSecrets: ReadonlyArray<readonly [string, TenantSecretKey]> = [
   ['an SES secret', 'ses.secretAccessKey'],
   ['an SMTP password', 'smtp.password'],
   ['a carrier token written directly', 'shipx.token'],
+  ['a sandbox carrier token written directly', 'shipx.sandbox.token'],
+  ['a sandbox carrier organization written directly', 'shipx.sandbox.organizationId'],
+  ['a production carrier token written directly', 'shipx.production.token'],
+  ['a production carrier organization written directly', 'shipx.production.organizationId'],
 ];
 
 describe('shop management key integration allow-list', () => {
@@ -190,12 +194,18 @@ describe('shop management key integration allow-list', () => {
 
   it('lets a key ctx configure the carrier credentials and the object storage connection', async () => {
     const h = harness();
-    expect(await configureShipx(keyCtx, { organizationId: '1234', token: 'carrier-token-9876' }, h.deps))
-      .toMatchObject({ ok: true, value: { token: { maskedPreview: '••••9876' } } });
+    expect(await configureShipx(keyCtx, { sandbox: { organizationId: '5678', token: 'sandbox-token-4321' } }, h.deps))
+      .toMatchObject({ ok: true, value: { sandbox: { token: { maskedPreview: '••••4321' }, configured: true }, production: { configured: false } } });
+    expect(await configureShipx(keyCtx, { production: { organizationId: '1234', token: 'carrier-token-9876' } }, h.deps))
+      .toMatchObject({ ok: true, value: { sandbox: { configured: true }, production: { token: { maskedPreview: '••••9876' }, configured: true } } });
     expect(await configureStorageConnection(keyCtx, {
       provider: 'minio', endpoint: 'http://127.0.0.1:19000', region: 'us-east-1', bucket: 'shop', accessKeyId: 'access', secretAccessKey: 'secret',
     }, h.deps)).toMatchObject({ ok: true, value: { secret: { key: 's3.configuration' } } });
-    expect(h.rows.map((row) => row.key).sort()).toEqual(['s3.configuration', 'shipx.organizationId', 'shipx.token']);
+    expect(h.rows.map((row) => row.key).sort()).toEqual([
+      's3.configuration', 'shipx.production.organizationId', 'shipx.production.token', 'shipx.sandbox.organizationId', 'shipx.sandbox.token',
+    ]);
+    expect(await configureShipx(keyCtx, { sandbox: { clearCredentials: true } }, h.deps)).toMatchObject({ ok: true, value: { sandbox: { configured: false }, production: { configured: true } } });
+    expect(h.rows.map((row) => row.key).sort()).toEqual(['s3.configuration', 'shipx.production.organizationId', 'shipx.production.token']);
   });
 
   it.each(excludedSecrets)('still lets an owner session write and delete %s', async (_label, key) => {

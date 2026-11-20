@@ -4,11 +4,16 @@ import { eq, or } from 'drizzle-orm';
 import pg from 'pg';
 
 import { DELETED_MEMBER_DISPLAY, appError, err, memberTombstone, ok, validation, type StripeSubscriptionSnapshot } from '#core/domain/index.js';
-import { m2mAdoptStripeSubscription, m2mListStripeSubscriptions, type StripeSubscriptionAdoptionDeps } from '#core/server/index.js';
+import {
+  m2mAdoptStripeSubscription, m2mListStripeSubscriptions, validateStripeInvoiceTenant,
+  type PaymentWebhookEvent, type StripeSubscriptionAdoptionDeps,
+} from '#core/server/index.js';
 
 import { createProviderCustomerOwnerRepository } from './provider-customer-owners.js';
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
-import { createMemberErasureRepository, createMemberSubscriptionRepository, createProductGrantRepository } from './repositories.js';
+import {
+  createMemberErasureRepository, createMemberSubscriptionRepository, createPaymentRefundRepository, createProductGrantRepository,
+} from './repositories.js';
 import { createTestDatabase } from './test-database-name.js';
 import { createSubscriptionAdoptionTransaction } from './subscription-adoption.js';
 import {
@@ -213,6 +218,55 @@ it('records the owner of a customer adopted before ownership rows existed when i
   expect(await adopt('t2', 'legacy-t2', snapshot('sub_legacySecond', 'cus_legacy', email))).toMatchObject(conflict);
   expect(await counts()).toEqual(before);
   expect(await ownersOf('cus_legacy')).toEqual(['t1']);
+});
+
+const storeLegacySubscription = async (tenantId: 't1' | 't2', memberId: string, subscriptionId: string) => {
+  await database.db.insert(productPrices).values({ id: `price-${subscriptionId}`, tenantId, productId: productOf[tenantId], kind: 'recurring',
+    interval: 'month', amountCents: 2500, currency: 'EUR', providerPriceId: `price_${subscriptionId}`, createdAt: now });
+  await database.db.insert(memberSubscriptions).values({ id: `subscription-${subscriptionId}`, tenantId, memberId,
+    productId: productOf[tenantId], priceId: `price-${subscriptionId}`, provider: 'stripe', providerSubscriptionId: subscriptionId,
+    status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z', createdAt: now, updatedAt: now });
+};
+
+const renewalOf = (subscriptionId: string, customerId: string): PaymentWebhookEvent => ({
+  id: `evt_${subscriptionId}`, type: 'invoice.paid', objectId: `in_${subscriptionId}`, checkoutSession: null,
+  customerId, mode: 'live', livemode: true,
+  invoice: { subscriptionId, chargeId: `ch_${subscriptionId}`, paymentIntentId: `pi_${subscriptionId}`,
+    amountCents: null, currency: null, periodEnd: null },
+});
+
+it('keeps the events and reconcile of a subscription a workspace stores after another workspace claims its customer', async () => {
+  const email = await addMembers('carried', {});
+  await storeLegacySubscription('t2', 'carried-t2', 'sub_carriedStored');
+  expect(await adopt('t1', 'carried-t1', snapshot('sub_carriedNew', 'cus_carried', email)))
+    .toMatchObject({ ok: true, value: { subscriptionCreated: true } });
+  expect(await ownerRowOf('cus_carried')).toEqual([{ tenantId: 't1', memberId: 'carried-t1' }]);
+
+  const reader = createStripeWebhookOwnershipReader(database.db);
+  expect(await reader.hasForeignOwner('t2', { subscription: 'sub_carriedStored', customer: 'cus_carried' })).toBe(false);
+  expect(await validateStripeInvoiceTenant('t2', renewalOf('sub_carriedStored', 'cus_carried'), {
+    stripeWebhookOwnership: reader, subscriptions: createMemberSubscriptionRepository(database.db),
+    paymentRefunds: createPaymentRefundRepository(database.db),
+  })).toEqual(ok('owned'));
+
+  expect(await adopt('t2', 'carried-t2', snapshot('sub_carriedStored', 'cus_carried', email)))
+    .toMatchObject({ ok: true, value: { subscriptionCreated: false } });
+  expect(await ownerRowOf('cus_carried')).toEqual([{ tenantId: 't1', memberId: 'carried-t1' }]);
+  expect(await stripeCustomerOf('carried-t2')).toEqual({});
+});
+
+it('still treats a customer claimed elsewhere as foreign for a subscription this workspace does not store', async () => {
+  const reader = createStripeWebhookOwnershipReader(database.db);
+  expect(await reader.hasForeignOwner('t2', { subscription: 'sub_carriedUnstored', customer: 'cus_carried' })).toBe(true);
+  expect(await reader.hasForeignOwner('t2', { customer: 'cus_carried' })).toBe(true);
+  expect(await adopt('t2', 'carried-t2', snapshot('sub_carriedUnstored', 'cus_carried', 'carried@example.com'))).toMatchObject(conflict);
+  expect(await ownerRowOf('cus_carried')).toEqual([{ tenantId: 't1', memberId: 'carried-t1' }]);
+});
+
+it('treats a subscription another workspace stores as foreign even when this workspace holds its customer', async () => {
+  const reader = createStripeWebhookOwnershipReader(database.db);
+  expect(await reader.hasForeignOwner('t1', { subscription: 'sub_carriedStored', customer: 'cus_carried' })).toBe(true);
+  expect(await reader.hasForeignOwner('t1', { subscription: 'sub_carriedNew', customer: 'cus_carried' })).toBe(false);
 });
 
 const erase = (memberId: string, deletedAt = now) => {

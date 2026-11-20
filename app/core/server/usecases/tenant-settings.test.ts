@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Identity, Space, TenantSettings } from '#core/domain/index.js';
 
 import type { SpaceRepository } from '../ports.js';
+import { inMemoryChangeSettings } from '../testing/tenant-settings-fake.js';
 
 import { getMemberSettings, getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
 
@@ -80,7 +81,7 @@ const deps: TenantSettingsDeps = {
     findSole: async () => null,
     hasAny: async () => false,
     findSettings: async () => settings,
-    updateSettings: async (_tenantId, next) => next,
+    changeSettings: inMemoryChangeSettings(() => settings),
     createTenantWithOwnerGrant: async () => {
       throw new Error('not used');
     },
@@ -89,6 +90,12 @@ const deps: TenantSettingsDeps = {
   products: { bumpContentVersion: async () => undefined },
   personalisationMaxBytes: 20 * 1024 * 1024,
 };
+
+const tenantsReading = (current: TenantSettings): TenantSettingsDeps['tenants'] => ({
+  ...deps.tenants,
+  findSettings: async () => current,
+  changeSettings: inMemoryChangeSettings(() => current),
+});
 
 const memberSettings = {
   billingPortalUrl: null,
@@ -178,7 +185,7 @@ describe('updateTenantSettings', () => {
   it('stores, preserves and clears the optional light accent', async () => {
     const saved = await updateTenantSettings(adminCtx, { accentLight: '#786000' }, deps);
     expect(saved).toMatchObject({ ok: true, value: { accentLight: '#786000', accentColor: null } });
-    const configured = { ...deps, tenants: { ...deps.tenants, findSettings: async () => ({ ...settings, accentLight: '#786000' }) } };
+    const configured = { ...deps, tenants: tenantsReading({ ...settings, accentLight: '#786000' }) };
     expect(await updateTenantSettings(adminCtx, { name: 'Acme' }, configured))
       .toMatchObject({ ok: true, value: { accentLight: '#786000' } });
     expect(await updateTenantSettings(adminCtx, { accentLight: '' }, configured))
@@ -231,10 +238,9 @@ describe('updateTenantSettings', () => {
       tenants: {
         ...deps.tenants,
         findSettings: async () => current,
-        updateSettings: async (_tenantId, next) => {
+        changeSettings: inMemoryChangeSettings(() => current, (next) => {
           current = next;
-          return next;
-        },
+        }),
       },
     };
 
@@ -286,16 +292,13 @@ describe('updateTenantSettings', () => {
   it('rejects clearing the basis through a partial update while exempt', async () => {
     const exemptDeps: TenantSettingsDeps = {
       ...deps,
-      tenants: {
-        ...deps.tenants,
-        findSettings: async () => ({
-          ...settings,
-          invoiceVatMode: 'exempt',
-          invoiceVatRatePercent: null,
-          invoiceExemptionBasisKind: 'art_113_1',
-          invoiceExemptionBasis: 'art. 113 ust. 1',
-        }),
-      },
+      tenants: tenantsReading({
+        ...settings,
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: 'art_113_1',
+        invoiceExemptionBasis: 'art. 113 ust. 1',
+      }),
     };
 
     expect(await updateTenantSettings(adminCtx, {
@@ -333,16 +336,13 @@ describe('updateTenantSettings', () => {
   it('clears exemption fields when switching back to a VAT rate', async () => {
     const exemptDeps: TenantSettingsDeps = {
       ...deps,
-      tenants: {
-        ...deps.tenants,
-        findSettings: async () => ({
-          ...settings,
-          invoiceVatMode: 'exempt',
-          invoiceVatRatePercent: null,
-          invoiceExemptionBasisKind: 'art_113_1',
-          invoiceExemptionBasis: 'art. 113 ust. 1',
-        }),
-      },
+      tenants: tenantsReading({
+        ...settings,
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: 'art_113_1',
+        invoiceExemptionBasis: 'art. 113 ust. 1',
+      }),
     };
 
     expect(await updateTenantSettings(adminCtx, {
@@ -387,10 +387,10 @@ describe('analytics settings permissions', () => {
   });
 
   it('preserves omitted fields and clears text through the existing patch path', async () => {
-    const configured = { ...deps, tenants: { ...deps.tenants, findSettings: async () => ({
+    const configured = { ...deps, tenants: tenantsReading({
       ...settings, analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
       analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
-    }) } };
+    }) };
     expect(await updateTenantSettings({ identity: identity('owner') }, { analyticsTagId: '', analyticsMetaPixelId: '' }, configured))
       .toMatchObject({ ok: true, value: {
         analyticsTagId: null, analyticsMetaPixelId: null, analyticsConsentCookieName: 'consent',

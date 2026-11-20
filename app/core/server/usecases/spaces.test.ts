@@ -684,7 +684,7 @@ const tenantRepo = (defaultHomeSpaceId: string | null): TenantRepository => ({
   findSole: async () => null,
   hasAny: async () => false,
   findSettings: async () => tenantSettings(defaultHomeSpaceId),
-  updateSettings: async (_tenantId, next) => next,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => null,
 });
 

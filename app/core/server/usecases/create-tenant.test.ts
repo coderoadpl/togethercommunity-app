@@ -50,7 +50,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
       privacyUrl: null,
       defaultHomeSpaceId: null,
     }),
-    updateSettings: async (_tenantId, settings) => settings,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async (input, options) => {
       if (options?.requireEmpty === true && tenants.length > 0) return null;
       const tenant: Tenant = {

@@ -66,7 +66,7 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
     privacyUrl: null,
     defaultHomeSpaceId: null,
   }),
-  updateSettings: async (_tenantId, settings) => settings,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async (input) => ({
     id: input.tenant.id,
     slug: input.tenant.slug,

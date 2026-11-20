@@ -6,6 +6,7 @@ import { registerMetaCapiRoutes } from './meta-capi-routes.js';
 import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
+import { registerOrderChangeRoutes } from './order-change-routes.js';
 import { registerShipxRoutes } from './shipx-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
@@ -13,6 +14,7 @@ import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
 import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
+import { registerOperatorOrganizationRoutes, registerOrganizationRoutes } from './organization-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema, SIMULATED_SHIPPING_DETAILS } from '#core/domain/index.js';
@@ -38,6 +40,9 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
+  apiKeysShopManagementCreateInputSchema,
+  apiKeysShopManagementEventsQuerySchema,
+  apiKeysShopManagementRevokeInputSchema,
   authSendLogLatestOutputSchema,
   authSendLogLatestQuerySchema,
   bunnyVideosInputSchema,
@@ -367,6 +372,11 @@ import {
   listSpacesForStaff,
   listTenantApiKeys,
   listImportAuditForApiKey,
+  createShopManagementKey,
+  listShopManagementKeys,
+  revokeShopManagementKey,
+  purgeShopManagementKeys,
+  listShopManagementKeyEvents,
   listTenantDocuments,
   m2mEnroll,
   createEvent,
@@ -480,6 +490,14 @@ import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
+import { shopCatalogRoutes } from './shop-catalog-routes.js';
+import { shopOrderRoutes } from './shop-order-routes.js';
+import { shopAssetsRoutes } from './shop-assets-routes.js';
+import { shopIntegrationRoutes } from './shop-integration-routes.js';
+import { shopSettingsRoutes } from './shop-settings-routes.js';
+import { shopProposalRoutes } from './shop-proposal-routes.js';
+import { registerChangeProposalRoutes } from './change-proposal-routes.js';
+import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
   parseLastEventId,
@@ -819,6 +837,7 @@ const dispatchDueOrderRefunds = async (
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   registerOperatorTenantRoutes(app, deps);
+  registerOperatorOrganizationRoutes(app, deps);
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
     routing: deps,
@@ -1020,6 +1039,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
             ...(parsed.data.shipping === undefined ? {} : { shipping: parsed.data.shipping }),
+            ...(parsed.data.personalizations === undefined ? {} : { personalizations: parsed.data.personalizations }),
           },
           deps,
         );
@@ -1323,6 +1343,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -1389,7 +1410,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerChangeProposalRoutes(app, deps);
+  registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
+  registerOrganizationRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
@@ -2360,6 +2384,46 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid API key id', parsed.error.flatten())));
     const result = await revokeTenantApiKey(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.get(API_PATHS.apiKeysShopManagement, async (c) => {
+    const result = await listShopManagementKeys(ctxOf(c), deps);
+    return respond(result.ok ? ok({ apiKeys: result.value }) : result);
+  });
+
+  app.post(API_PATHS.apiKeysShopManagement, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = apiKeysShopManagementCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid shop management key payload', parsed.error.flatten())));
+    return respond(await createShopManagementKey(ctxOf(c), parsed.data, deps));
+  });
+
+  app.delete(API_PATHS.apiKeysShopManagementRevoke, async (c) => {
+    const parsed = apiKeysShopManagementRevokeInputSchema.safeParse({ id: c.req.param('id') });
+    if (!parsed.success) return respond(err(validation('Invalid shop management key id', parsed.error.flatten())));
+    const result = await revokeShopManagementKey(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.post(API_PATHS.apiKeysShopManagementPurge, async (c) =>
+    respond(await purgeShopManagementKeys(ctxOf(c), deps)));
+
+  app.get(API_PATHS.apiKeysShopManagementEvents, async (c) => {
+    const parsed = apiKeysShopManagementEventsQuerySchema.safeParse({
+      keyId: c.req.query('keyId'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid shop management key event query', parsed.error.flatten())));
+    return respond(await listShopManagementKeyEvents(
+      ctxOf(c),
+      {
+        limit: parsed.data.limit,
+        ...(parsed.data.keyId === undefined ? {} : { apiKeyId: parsed.data.keyId }),
+        ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
+      },
+      deps,
+    ));
   });
 
   app.get(API_PATHS.apiKeyImportAudit, async (c) => {

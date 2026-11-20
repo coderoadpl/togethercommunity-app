@@ -405,7 +405,7 @@ export const SalesPanel = () => {
                         {order.memberName ?? order.memberEmail}
                       </MuiLink>
                     </TableCell>
-                    <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
+                    <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}{order.lines?.some((line) => line.personalization !== undefined) === true ? <Chip size="small" variant="outlined" color="info" label={t.personalization.marker} data-testid="sales-personalization-chip" sx={{ ml: '0.25rem' }} /> : null}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
                     <TableCell>{order.couponCode ?? '—'}</TableCell>

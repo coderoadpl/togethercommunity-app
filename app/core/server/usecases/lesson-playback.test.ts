@@ -116,6 +116,7 @@ const product: Product = {
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'c1' }],
@@ -233,7 +234,7 @@ const dependencies = (over: {
     findSole: async () => null,
     hasAny: async () => false,
     findSettings: async () => settings(over.cdnHostname === undefined ? 'vz-demo.b-cdn.net' : over.cdnHostname),
-    updateSettings: async (_tenantId, value) => value,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
   };
   return {

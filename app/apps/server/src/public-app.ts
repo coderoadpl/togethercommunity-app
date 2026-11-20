@@ -45,6 +45,7 @@ import {
   emailBrandingFrom,
   err,
   internal,
+  isStandalonePurchasable,
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
   normalizeEmail,
@@ -410,7 +411,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const listedLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : (await deps.salesLinkManagement.salesLinks.list(tenant.value.tenant.id))
       .filter((link) => link.listed && salesLinkAvailable(link, deps.clock.nowIso()));
     const linkVersion = listedLinks.length === 0 ? '' : `-${createHash('sha256').update(JSON.stringify(listedLinks.map((link) => [link.id, link.revision]).sort())).digest('hex')}`;
-    const stockLevels = await deps.stock.listByTenant(tenant.value.tenant.id);
+    const publishedProducts = await deps.products.listPublishedByTenant(tenant.value.tenant.id);
+    const stockProductIds = publishedProducts.filter(isStandalonePurchasable).map((product) => product.id);
+    const stockLevels = stockProductIds.length === 0 ? [] : await deps.stock.listByProducts(tenant.value.tenant.id, stockProductIds);
     const stockVersion = stockLevels.length === 0 ? '' : `-${createHash('sha256').update(publicStockVersion(stockLevels)).digest('hex')}`;
     const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}${linkVersion}${stockVersion}"`;
     if (c.req.header('if-none-match') === etag) {
@@ -563,7 +566,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const workspace = tenant.value.tenant;
     const contexts = await Promise.all(result.value.lines.map(({ productId: productRef }) => getPublicOffer(workspace, {
       courses: deps.courses, products: deps.products, lessons: deps.lessons, prices: deps.prices, tenants: deps.tenants, definitions: deps.marketing?.definitions, documents: deps.marketing?.documents,
-    }, productRef)));
+    }, productRef, 'sales_link')));
     const context = contexts[0];
     if (context === undefined || !context.ok) return respondPublic(err(internal('Offer context is unavailable')));
     const consents = contexts.flatMap((item) => item.ok ? item.value.products.flatMap((product) => product.marketingConsents) : []);

@@ -31,6 +31,7 @@ const product = (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published,
   accessItems: [],
@@ -99,7 +100,7 @@ const fakeTenants = (branding?: {
           accentLight: null,
           ...branding,
         },
-  updateSettings: async (_tenantId, next) => next,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => {
     throw new Error('not used');
   },
@@ -118,7 +119,7 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
 });
 
 describe('getPublicOffer', () => {
-  it('exposes sold-out and low flags for tracked products without the exact count', async () => {
+  it('exposes the flags and the available count of tracked products without the stored levels', async () => {
     const stock = createStockRepositoryFake();
     stock.track('t-acme', 'download', 2, 3);
     stock.track('t-acme', 'club', 0);
@@ -132,11 +133,59 @@ describe('getPublicOffer', () => {
     });
     if (!result.ok) throw new Error('offer failed');
     expect(Object.fromEntries(result.value.products.map((item) => [item.id, item.stock]))).toEqual({
-      published: { tracked: false, soldOut: false, low: false },
-      download: { tracked: true, soldOut: false, low: true },
-      club: { tracked: true, soldOut: true, low: false },
+      published: { tracked: false, soldOut: false, low: false, available: null },
+      download: { tracked: true, soldOut: false, low: true, available: 2 },
+      club: { tracked: true, soldOut: true, low: false, available: 0 },
     });
     expect(JSON.stringify(result.value)).not.toContain('onHand');
+  });
+
+  describe('the largest quantity a buyer can put on one line', () => {
+    const quantities = async (products: Product[], setUp: (stock: ReturnType<typeof createStockRepositoryFake>) => void) => {
+      const stock = createStockRepositoryFake();
+      setUp(stock);
+      const result = await getPublicOffer(tenant, {
+        products: fakeProducts(products), prices: noPrices, lessons: noLessons, courses: noCourses, tenants: fakeTenants(), stock: stock.repository,
+      });
+      if (!result.ok) throw new Error('offer failed');
+      return Object.fromEntries(result.value.products.map((item) => [item.id, { available: item.stock.available, maxQuantity: item.maxQuantity }]));
+    };
+
+    it('is the cart rule bound for untracked products', async () => {
+      expect(await quantities([product('poster', 't-acme', true, 'physical'), product('ebook', 't-acme', true, 'digital_download'), product('lessons', 't-acme', true)], () => undefined)).toEqual({
+        poster: { available: null, maxQuantity: 10 },
+        ebook: { available: null, maxQuantity: 1 },
+        lessons: { available: null, maxQuantity: 1 },
+      });
+    });
+
+    it('is the smaller of the cart rule bound and the available count for tracked products', async () => {
+      expect(await quantities([product('few', 't-acme', true, 'physical'), product('many', 't-acme', true, 'physical'), product('ebook', 't-acme', true, 'digital_download')], (stock) => {
+        stock.track('t-acme', 'few', 3);
+        stock.track('t-acme', 'many', 40);
+        stock.track('t-acme', 'ebook', 5);
+      })).toEqual({
+        few: { available: 3, maxQuantity: 3 },
+        many: { available: 40, maxQuantity: 10 },
+        ebook: { available: 5, maxQuantity: 1 },
+      });
+    });
+
+    it('subtracts the pieces held by open checkouts', async () => {
+      expect(await quantities([product('poster', 't-acme', true, 'physical')], (stock) => {
+        stock.track('t-acme', 'poster', 6);
+        const held = stock.levels.get('t-acme', 'poster');
+        if (held !== null) held.reserved = 4;
+      })).toEqual({ poster: { available: 2, maxQuantity: 2 } });
+    });
+
+    it('is zero for a sold-out product', async () => {
+      expect(await quantities([product('poster', 't-acme', true, 'physical')], (stock) => {
+        stock.track('t-acme', 'poster', 2);
+        const held = stock.levels.get('t-acme', 'poster');
+        if (held !== null) held.reserved = 2;
+      })).toEqual({ poster: { available: 0, maxQuantity: 0 } });
+    });
   });
 
   it('returns only public product fields for published products', async () => {
@@ -183,9 +232,11 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
-            stock: { tracked: false, soldOut: false, low: false },
+            stock: { tracked: false, soldOut: false, low: false, available: null },
+            maxQuantity: 1,
             marketingConsents: [],
             compliance: null,
+            personalization: null,
             variants: [],
           },
           {
@@ -201,9 +252,11 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
-            stock: { tracked: false, soldOut: false, low: false },
+            stock: { tracked: false, soldOut: false, low: false, available: null },
+            maxQuantity: 1,
             marketingConsents: [],
             compliance: null,
+            personalization: null,
             variants: [],
           },
           {
@@ -219,9 +272,11 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
-            stock: { tracked: false, soldOut: false, low: false },
+            stock: { tracked: false, soldOut: false, low: false, available: null },
+            maxQuantity: 1,
             marketingConsents: [],
             compliance: null,
+            personalization: null,
             variants: [],
           },
         ],
@@ -229,6 +284,22 @@ describe('getPublicOffer', () => {
         inpostGeowidgetToken: null,
       },
     });
+  });
+
+  it('exposes the personalisation setting of a product as plain seller text', async () => {
+    const personalization = {
+      label: 'Add an engraving', description: 'Up to three <b>short</b> lines.', inputLabel: 'Engraving text', maxLength: 40,
+      condition: 'I understand a personalised item is made to my order.',
+    };
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([{ ...product('book', 't-acme', true, 'physical'), personalization }, product('poster', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    });
+    if (!result.ok) throw new Error('offer failed');
+    expect(result.value.products.map((item) => item.personalization)).toEqual([personalization, null]);
   });
 
   it('exposes the product safety information and the published variants of the group', async () => {
@@ -258,8 +329,8 @@ describe('getPublicOffer', () => {
     expect(result.value.products).toHaveLength(1);
     expect(result.value.products[0]?.compliance).toEqual({ ...compliance, safetyWarningsHtml: '<p>Keep away from <strong>open flame</strong>.&lt;script&gt;alert(1)&lt;/script&gt;</p>\n' });
     expect(result.value.products[0]?.variants).toEqual([
-      { productId: 'black', slug: 'physical-black', label: 'Black · ASA', soldOut: false },
-      { productId: 'white', slug: 'physical-white', label: 'White · PLA', soldOut: false },
+      { productId: 'black', slug: 'physical-black', label: 'Black · ASA', soldOut: false, available: null },
+      { productId: 'white', slug: 'physical-white', label: 'White · PLA', soldOut: false, available: null },
     ]);
     const lone = await getPublicOffer(tenant, {
       products: fakeProducts([{ ...product('lone', 't-acme', true, 'physical'), variantGroup: 'lone', variantLabel: 'Only one' }]),
@@ -271,7 +342,7 @@ describe('getPublicOffer', () => {
     expect(lone.ok && lone.value.products[0]?.variants).toEqual([]);
   });
 
-  it('marks a sold-out sibling chip from one stock read without changing the offered product stock', async () => {
+  it('gives each variant its own sold-out flag and available count from one stock read without changing the offered product stock', async () => {
     const stock = createStockRepositoryFake();
     stock.track('t-acme', 'white', 0);
     stock.track('t-acme', 'green', 3);
@@ -294,11 +365,11 @@ describe('getPublicOffer', () => {
     }, 'physical-black');
     if (!result.ok) throw new Error('offer failed');
     expect(reads).toEqual([['black', 'green', 'white']]);
-    expect(result.value.products[0]?.stock).toEqual({ tracked: false, soldOut: false, low: false });
+    expect(result.value.products[0]?.stock).toEqual({ tracked: false, soldOut: false, low: false, available: null });
     expect(result.value.products[0]?.variants).toEqual([
-      { productId: 'black', slug: 'physical-black', label: 'Black', soldOut: false },
-      { productId: 'white', slug: 'physical-white', label: 'White', soldOut: true },
-      { productId: 'green', slug: 'physical-green', label: 'Green', soldOut: false },
+      { productId: 'black', slug: 'physical-black', label: 'Black', soldOut: false, available: null },
+      { productId: 'white', slug: 'physical-white', label: 'White', soldOut: true, available: 0 },
+      { productId: 'green', slug: 'physical-green', label: 'Green', soldOut: false, available: 3 },
     ]);
   });
 
@@ -584,4 +655,60 @@ it('hides archived course previews from the offer and restores them', async () =
   expect(await getPublicOffer(tenant, input)).toMatchObject({ ok: true, value: { previewLessons: [] } });
   courses[0] = course('course-1', true);
   expect(await getPublicOffer(tenant, input)).toMatchObject({ ok: true, value: { previewLessons: [{ id: 'preview' }] } });
+});
+
+describe('a product sold only through sales links', () => {
+  const linkOnly = (id: string, visibility: Product['visibility'] = 'listed'): Product => ({
+    ...product(id, tenant.id, true), visibility, salesChannel: 'sales_links_only',
+  });
+  const consentDefinitions: ConsentDefinitionRepository = {
+    create: async () => undefined,
+    findById: async () => ({
+      id: 'definition-news', tenantId: tenant.id, key: 'news', kind: 'optional_marketing', channel: 'email', doubleOptIn: false,
+      documentRef: { mode: 'url', url: 'https://acme.test/news' }, status: 'active',
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    }),
+    list: async () => [],
+    update: async () => null,
+    appendVersion: async () => undefined,
+    listVersions: async () => [{
+      id: 'version-1', tenantId: tenant.id, definitionId: 'definition-news', version: 1, label: 'News from the workshop',
+      documentVersionRef: { mode: 'url', url: 'https://acme.test/news-v1' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null,
+    }],
+  };
+  const offerDeps = (products: Product[]) => ({
+    products: fakeProducts(products), prices: noPrices, lessons: noLessons, courses: noCourses, tenants: fakeTenants(), definitions: consentDefinitions,
+  });
+
+  it.each(['listed', 'unlisted'] as const)('answers a standalone %s product reference exactly like an unknown product', async (visibility) => {
+    const hidden = { ...linkOnly('private', visibility), checkoutConsentDefinitionIds: ['definition-news'] };
+    for (const ref of [hidden.id, hidden.slug]) {
+      const refused = await getPublicOffer(tenant, offerDeps([hidden, product('listed', tenant.id, true)]), ref);
+      expect(refused).toEqual(await getPublicOffer(tenant, offerDeps([product('listed', tenant.id, true)]), ref));
+      expect(refused.ok && refused.value.products).toEqual([]);
+    }
+  });
+
+  it('never lists it in the catalogue, whatever its visibility or stock', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track(tenant.id, 'private', 5);
+    stock.track(tenant.id, 'listed', 4);
+    const listing = await getPublicOffer(tenant, { ...offerDeps([linkOnly('private'), linkOnly('hidden', 'unlisted'), product('listed', tenant.id, true, 'physical')]), stock: stock.repository });
+    expect(listing.ok && listing.value.products.map((entry) => [entry.id, entry.maxQuantity])).toEqual([['listed', 4]]);
+  });
+
+  it('drops it from the variant choice of a standalone offer', async () => {
+    const variant = (item: Product, label: string): Product => ({ ...item, type: 'physical', variantGroup: 'stand', variantLabel: label });
+    const products = [variant(product('black', tenant.id, true), 'Black'), variant(product('green', tenant.id, true), 'Green'), variant(linkOnly('white'), 'White')];
+    const result = await getPublicOffer(tenant, offerDeps(products), 'black');
+    expect(result.ok && result.value.products[0]?.variants.map((entry) => entry.productId)).toEqual(['black', 'green']);
+    const pair = await getPublicOffer(tenant, offerDeps(products.filter((item) => item.id !== 'green')), 'black');
+    expect(pair.ok && pair.value.products[0]?.variants).toEqual([]);
+  });
+
+  it('still resolves it with its checkout consents for a sales-link read', async () => {
+    const hidden = { ...linkOnly('private'), checkoutConsentDefinitionIds: ['definition-news'] };
+    const result = await getPublicOffer(tenant, offerDeps([hidden]), hidden.id, 'sales_link');
+    expect(result).toMatchObject({ ok: true, value: { products: [{ id: hidden.id, marketingConsents: [{ definitionId: 'definition-news', label: 'News from the workshop' }] }] } });
+  });
 });

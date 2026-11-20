@@ -3,6 +3,7 @@ import { orderAttributionSchema } from './attribution.js';
 import { CHECKOUT_RETURN_URL_MAX_LENGTH } from './checkout-return.js';
 
 import { invoiceSchema } from './invoice.js';
+import { orderLinePersonalizationSchema } from './personalization.js';
 import { stripeModeSchema } from './integration.js';
 
 import { currencySchema, PRODUCT_TYPES } from './product.js';
@@ -138,6 +139,7 @@ export const orderLineSchema = z.object({
   issuedCount: z.number().int().nonnegative().nullable(),
   issuedAt: z.string().datetime().optional(),
   issuedBy: z.string().min(1).optional(),
+  personalization: orderLinePersonalizationSchema.optional(),
 });
 
 export type OrderLine = z.infer<typeof orderLineSchema>;

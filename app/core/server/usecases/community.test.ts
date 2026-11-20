@@ -141,6 +141,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems,
@@ -777,6 +778,7 @@ const deps = (
               id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
             },
             staffRole: 'admin',
+            source: 'direct',
           }
         : null,
     findMember: async (tenantId, userId) => members.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,

@@ -1,5 +1,6 @@
 export * from './auth-schema.js';
 export * from './app-schema.js';
+export * from './organization-schema.js';
 export * from './telemetry-schema.js';
 export * from './survey-schema.js';
 export * from './sales-link-schema.js';
@@ -10,3 +11,5 @@ export * from './stock-schema.js';
 export * from './order-fulfilment-schema.js';
 export * from './shipx-schema.js';
 export * from './order-refund-job-schema.js';
+export * from './order-change-schema.js';
+export * from './change-proposal-schema.js';

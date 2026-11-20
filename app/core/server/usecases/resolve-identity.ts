@@ -90,6 +90,7 @@ export const resolveIdentity = async (
     tenantSlug: tenant.value.tenant.slug,
     tenantName: tenant.value.tenant.name,
     staffRole: staffGrant?.staffRole ?? null,
+    ...(staffGrant ? { staffGrantSource: staffGrant.source } : {}),
     memberId: member?.id ?? null,
     memberDisplayName: member?.displayName ?? null,
     memberBannedAt: member?.bannedAt ?? null,

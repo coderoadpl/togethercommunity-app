@@ -25,7 +25,7 @@ const tenant: Tenant = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: '
 
 const accessory: Product = {
   id: 'accessory', tenantId: tenant.id, type: 'physical', slug: 'accessory', title: 'Printed accessory', description: '',
-  coverUrl: null, priceCents: 4900, currency: 'PLN', published: true, visibility: 'listed', deliveryMethod: 'shipping',
+  coverUrl: null, priceCents: 4900, currency: 'PLN', published: true, visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping',
   accessItems: [], legacyId: null, vatRate: 23, createdAt: now,
 };
 const course: Product = { ...accessory, id: 'course', slug: 'course', title: 'Course', type: 'course', deliveryMethod: 'pickup' };
@@ -75,7 +75,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
     },
     tenants: {
       findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
-      findSettings: async () => settings, updateSettings: async (_tenantId, value) => value,
+      findSettings: async () => settings, changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
     },
     salesLinks: {

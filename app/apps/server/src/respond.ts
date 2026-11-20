@@ -28,6 +28,12 @@ export const respond = <T>(
   });
 };
 
+export const retryAfterHeaders = (error: AppError): HeadersInit => {
+  if (error.code !== 'rate_limited' && error.code !== 'unavailable') return {};
+  const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
+  return typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {};
+};
+
 export const respondNotModified = (headers: HeadersInit = {}): Response => {
   const responseHeaders = new Headers(headers);
   responseHeaders.set('cache-control', PUBLIC_REVALIDATED_CACHE_CONTROL);

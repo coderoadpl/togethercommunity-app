@@ -34,7 +34,9 @@ export const stripeSubscriptionSnapshotSchema = z.object({
   status: z.string(),
   currentPeriodEnd: z.string().datetime(),
   cancelAtPeriodEnd: z.boolean(),
+  customerId: z.string().min(1),
   customerEmail: z.string().email().nullable(),
+  metadataTenantId: z.string().min(1).nullable(),
   price: z.object({
     id: z.string().min(1),
     amountCents: z.number().int().nonnegative(),
@@ -53,6 +55,16 @@ export const listStripeSubscriptionsInputSchema = z.object({
 });
 
 export type ListStripeSubscriptionsInput = z.infer<typeof listStripeSubscriptionsInputSchema>;
+
+export const stripeSubscriptionListEntrySchema = z.object({
+  id: z.string().min(1),
+  status: z.string(),
+  providerPriceId: z.string().nullable(),
+  customerId: z.string().min(1),
+  metadataTenantId: z.string().min(1).nullable(),
+});
+
+export type StripeSubscriptionListEntry = z.infer<typeof stripeSubscriptionListEntrySchema>;
 
 const stripeSubscriptionListItemSchema = z.object({
   id: z.string().min(1),
@@ -83,7 +95,8 @@ export const stripeAdoptionObjectSchema = z.object({
   status: z.string(),
   cancel_at_period_end: z.boolean(),
   current_period_end: z.number().int().optional(),
-  customer: z.object({ email: z.string().email().nullable().optional(), deleted: z.boolean().optional() }),
+  metadata: z.record(z.string(), z.string()).nullable().optional(),
+  customer: z.object({ id: z.string().min(1), email: z.string().email().nullable().optional(), deleted: z.boolean().optional() }),
   items: z.object({ data: z.array(z.object({
     current_period_end: z.number().int().optional(),
     price: z.object({

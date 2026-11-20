@@ -2,6 +2,10 @@ import {
   buildSnapshot,
   deliveryMethodAllowed,
   resolveProductVat,
+  PERSONALIZATION_MEMBERSHIP_MESSAGE,
+  personalizationAllowed,
+  SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE,
+  salesChannelAllowed,
   err,
   newProductSchema,
   notFound,
@@ -25,6 +29,7 @@ import type {
   IdGenerator,
   ProductDownloadAssetRepository,
   ProductMetadataRepository,
+  ProductMetadataUpdate,
   ProductPriceRepository,
   ProductRepository,
   SpaceRepository,
@@ -94,6 +99,12 @@ export const createProduct = async (
   if (!deliveryMethodAllowed(parsed.data.type, parsed.data.deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
+  if (!salesChannelAllowed(parsed.data.type, parsed.data.salesChannel)) {
+    return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  }
+  if (!personalizationAllowed(parsed.data.type, parsed.data.personalization)) {
+    return err(validation(PERSONALIZATION_MEMBERSHIP_MESSAGE));
+  }
   const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
   if (parsed.data.vatRate === 'exempt' && resolveProductVat(parsed.data, settings) === null) {
     return err(validation('VAT exemption requires a legal basis'));
@@ -117,9 +128,11 @@ export const createProduct = async (
     currency: parsed.data.currency,
     published: false,
     visibility: parsed.data.visibility,
+    salesChannel: parsed.data.salesChannel,
     deliveryMethod: parsed.data.deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate,
     compliance: parsed.data.compliance ?? null,
+    personalization: parsed.data.personalization,
     variantGroup: parsed.data.variantGroup ?? null,
     variantLabel: parsed.data.variantLabel ?? null,
     accessItems: parsed.data.accessItems,
@@ -154,6 +167,14 @@ export const updateProduct = async (
   if (!deliveryMethodAllowed(existing.type, deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
+  const { salesChannel: existingSalesChannel, ...unchanged } = existing;
+  if (!salesChannelAllowed(existing.type, parsed.data.salesChannel ?? existingSalesChannel)) {
+    return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
+  }
+  const personalization = parsed.data.personalization === undefined ? existing.personalization ?? null : parsed.data.personalization;
+  if (!personalizationAllowed(existing.type, personalization)) {
+    return err(validation(PERSONALIZATION_MEMBERSHIP_MESSAGE));
+  }
 
   const vatInput = {
     vatRate: parsed.data.vatRate === undefined ? existing.vatRate : parsed.data.vatRate,
@@ -166,14 +187,16 @@ export const updateProduct = async (
   const vat = resolveProductVat(vatInput, settings);
   const snapshot = snapshotOf(ctx, existing, deps);
   if (!snapshot.ok) return snapshot;
-  const updated: Product = {
-    ...existing,
+  const updated: ProductMetadataUpdate = {
+    ...unchanged,
+    ...(parsed.data.salesChannel === undefined ? {} : { salesChannel: parsed.data.salesChannel }),
     vatRate: vatInput.vatRate ?? null,
     vatExemptionBasis: vatInput.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     visibility: parsed.data.visibility ?? existing.visibility,
     deliveryMethod,
     parcelTemplate: parsed.data.parcelTemplate ?? existing.parcelTemplate,
     compliance: parsed.data.compliance === undefined ? existing.compliance ?? null : parsed.data.compliance,
+    personalization,
     variantGroup: parsed.data.variantGroup === undefined ? existing.variantGroup ?? null : parsed.data.variantGroup,
     variantLabel: parsed.data.variantLabel === undefined ? existing.variantLabel ?? null : parsed.data.variantLabel,
     title: parsed.data.title ?? existing.title,

@@ -16,8 +16,9 @@ import { ok } from '#core/domain/index.js';
 import { dispatchMetaCapi } from '#core/server/usecases/meta-capi.js';
 import { en } from '../apps/web/src/i18n/en.js';
 import { bootServer, ephemeralPort, killServer, rootDir, run } from './server-harness.js';
+import { resolveE2eDatabaseUrl } from './e2e-config.js';
 
-const database = await createTestDatabase('together_meta_capi_e2e', process.env['DATABASE_URL'] ?? process.env['E2E_DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
+const database = await createTestDatabase('together_meta_capi_e2e', resolveE2eDatabaseUrl(process.env));
 let server: ChildProcess | undefined;
 let browser: Browser | undefined;
 try {

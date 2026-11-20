@@ -17,7 +17,7 @@ const signer = new Stripe('sk_test_unused');
 
 const product = (id: string, title: string, vatRate: Product['vatRate']): Product => ({
   id, tenantId: legacyTenant.id, type: 'physical', slug: `product-${id.slice(-1)}`, title, description: '', coverUrl: null,
-  priceCents: 0, currency: 'PLN', visibility: 'listed', published: true, accessItems: [], legacyId: null,
+  priceCents: 0, currency: 'PLN', visibility: 'listed', salesChannel: 'any', published: true, accessItems: [], legacyId: null,
   deliveryMethod: 'pickup', vatRate, createdAt: '2026-11-01T09:00:00.000Z',
 });
 

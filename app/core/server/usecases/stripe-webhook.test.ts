@@ -56,6 +56,7 @@ const product = (tenantId: string, overrides: Partial<Product> = {}): Product =>
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -239,7 +240,7 @@ const harness = (
       findSole: async () => null,
       hasAny: async () => false,
       findSettings: async () => null,
-      updateSettings: async (_tenantId, next) => next,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => {
         throw new Error('not used');
       },
@@ -3025,13 +3026,15 @@ it('renews and cancels an adopted subscription without Together checkout metadat
   const h = harness({ prices: [price] });
   const member = memberSchema.parse({ id: 'member-adopted', tenantId: tenantA.id, userId: 'user-adopted',
     email: 'buyer@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: now, deletedAt: null });
-  h.members.set(member.id, member);
+  h.members.set(`${member.tenantId}:${member.id}`, member);
   const adopted = await m2mAdoptStripeSubscription(tenantA.id, { subscriptionId: 'sub_existing', email: member.email, productId: price.productId }, {
-    clock: h.deps.clock, ids: h.deps.ids,
+    clock: h.deps.clock, ids: h.deps.ids, stripeWebhookOwnership: h.deps.stripeWebhookOwnership,
     payment: { retrieveStripeSubscription: async () => ok({ id: 'sub_existing', status: 'active',
-      customerEmail: member.email, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
+      customerId: 'cus_existing', customerEmail: member.email, metadataTenantId: null, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
       price: { id: 'price_existing', amountCents: price.amountCents, currency: price.currency, interval: 'month', intervalCount: 1 } }) },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation({ ...h.deps, memberEvents: { append: async () => undefined } }) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) => operation({ ...h.deps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
+      members: { ...h.deps.members, findByIdForShare: (tenantId, memberId) => h.deps.members.findById(tenantId, memberId) },
+      memberEvents: { append: async () => undefined } }) },
   });
   expect(adopted.ok).toBe(true);
   if (!adopted.ok) throw new Error('Adoption failed');
@@ -3129,6 +3132,18 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
   expect(replay.ok).toBe(true);
   expect(h.orders).toHaveLength(1);
   expect(h.grants.size).toBe(2);
+});
+
+it('fulfils a sales-link payment for products sold only through sales links', async () => {
+  const h = bundlePayment();
+  const findById = h.deps.products.findById;
+  h.deps.products.findById = async (tenantId, id) => {
+    const found = await findById(tenantId, id);
+    return found === null ? null : { ...found, salesChannel: 'sales_links_only' };
+  };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ salesLinkId: 'link-1', amountCents: 12400 }]);
+  expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
 });
 
 it('carries a line quantity above one into the purchase confirmation only for that line', async () => {
@@ -3656,4 +3671,30 @@ describe('shipped checkout fulfilment', () => {
     }, h.deps)).ok).toBe(true);
     expect(lookups.mock.calls.map(([, , productId]) => productId).sort()).toEqual(['product-1', 'product-2']);
   });
+});
+
+it('copies the personalisation of a snapshot line onto the paid order and its purchase confirmation, never into logs', async () => {
+  const h = bundlePayment();
+  const personalization = {
+    text: 'For Alex <3', label: 'Add an engraving', description: '', inputLabel: 'Engraving text',
+    condition: 'I understand a personalised item is made to my order.', maxLength: 200,
+    requestedAt: now, conditionAcceptedAt: now,
+  };
+  const printed = h.lines[2];
+  if (printed === undefined) throw new Error('Missing printed line');
+  h.lines[2] = { ...printed, personalization };
+  const logged: string[] = [];
+  h.deps.logger = { warn: (message) => { logged.push(message); }, error: (message) => { logged.push(message); } };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.lines?.[2]).toEqual({ ...printed, personalization });
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({
+    purchase: { personalizations: [{ name: 'Printed item', text: 'For Alex <3', condition: personalization.condition }] },
+  });
+  expect(logged.join('\n')).not.toContain('For Alex');
+});
+
+it('sends no personalisation block when no line is personalised', async () => {
+  const h = bundlePayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).not.toHaveProperty('purchase.personalizations');
 });

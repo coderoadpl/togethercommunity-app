@@ -28,8 +28,9 @@ and hashes that exact copy and privacy URL. Switching locale fetches a distinct
 status query, and a stale text version is rejected before the first decision. The default describes purchase
 value, ad click and browser identifiers, hashed email, IP, user agent and country;
 Meta Platforms Ireland; measurement, optimization, matching and personalization;
-voluntary consent; and withdrawal without promising deletion of already delivered
-events. The checkout response supplies the privacy-policy URL separately. The
+voluntary consent; and withdrawal on the purchase confirmation page or in the
+account settings' Notifications tab, without promising deletion of already
+delivered events. The checkout response supplies the privacy-policy URL separately. The
 workspace must identify the controller and publish its applicable privacy notice
 before enabling the feature.
 

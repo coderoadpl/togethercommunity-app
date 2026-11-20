@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_ROUTES } from '#core/contract/index.js';
+import { API_ROUTES, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import {
   BETTER_AUTH_API_PATH_PATTERN,
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
@@ -19,6 +19,8 @@ const classify = (policy: RequestOriginPolicy, routes: readonly Route[]): Entry[
 const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
   ...classify('secret', [
     API_ROUTES.operatorTenantProvision,
+    API_ROUTES.operatorOrganizationCreate,
+    API_ROUTES.operatorOrganizationLimits,
     API_ROUTES.emailDispatch,
     API_ROUTES.autoInvoiceDispatch,
     API_ROUTES.tenantDomainDispatch,
@@ -60,6 +62,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.deleteSalesLink,
     API_ROUTES.issueOrderLine,
     API_ROUTES.shipOrder,
+    API_ROUTES.correctOrderPersonalization,
     API_ROUTES.shipxRefresh,
     API_ROUTES.shipxCreate,
     API_ROUTES.shipxDiscard,
@@ -163,6 +166,13 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.grantRevoke,
     API_ROUTES.apiKeysCreate,
     API_ROUTES.apiKeyRevoke,
+    API_ROUTES.apiKeysShopManagementCreate,
+    API_ROUTES.apiKeysShopManagementRevoke,
+    API_ROUTES.apiKeysShopManagementPurge,
+    API_ROUTES.changeProposalReject,
+    API_ROUTES.changeProposalApprove,
+    API_ROUTES.changeProposalGroupApprove,
+    API_ROUTES.changeProposalGroupReject,
     API_ROUTES.tenantSecretSet,
     API_ROUTES.tenantSecretDelete,
     API_ROUTES.integrationTest,
@@ -200,6 +210,15 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.marketingStaffSuppressionsCreate,
     API_ROUTES.tenantTeamAdd,
     API_ROUTES.tenantTeamRemove,
+    API_ROUTES.organizationUpdate,
+    API_ROUTES.organizationSecretSet,
+    API_ROUTES.organizationSecretDelete,
+    API_ROUTES.organizationMemberAdd,
+    API_ROUTES.organizationMemberRole,
+    API_ROUTES.organizationMemberRemove,
+    API_ROUTES.organizationWorkspaceLink,
+    API_ROUTES.organizationWorkspaceUnlink,
+    API_ROUTES.tenantOrganizationUnlink,
     API_ROUTES.tenantRedirectCreate,
     API_ROUTES.tenantRedirectUpdate,
     API_ROUTES.tenantRedirectDelete,
@@ -213,6 +232,12 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.onboardingDismiss,
   ]),
   ...classify('api-key', [
+    ...Object.values(SHOP_ASSETS_ROUTES).filter((route) => route.method !== 'GET'),
+    ...Object.values(SHOP_CATALOG_ROUTES).filter((route) => route.method === 'POST'),
+    ...Object.values(SHOP_ORDER_ROUTES).filter((route) => route.method === 'POST'),
+    ...Object.values(SHOP_SETTINGS_ROUTES).filter((route) => route.method === 'POST'),
+    ...Object.values(SHOP_INTEGRATION_ROUTES).filter((route) => route.method !== 'GET'),
+    ...Object.values(SHOP_PROPOSAL_ROUTES).filter((route) => route.method !== 'GET'),
     API_ROUTES.m2mUpsertMarketingContact,
     API_ROUTES.m2mUpdateMarketingContact,
     API_ROUTES.m2mArchiveMarketingContact,

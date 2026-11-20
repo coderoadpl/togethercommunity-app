@@ -305,6 +305,25 @@ a staff token to the storefront. The separate
 `POST /api/public/sales-links/<slug>/checkout` direct-checkout route is **not**
 opened cross-origin by the sales-link read CORS registration.
 
+Every offer product carries its public stock and the quantity a buyer can order:
+
+| Field | Meaning |
+| --- | --- |
+| `stock.tracked` | Stock tracking is enabled for the product |
+| `stock.available` | Pieces a buyer can take now (on hand minus pieces held by open checkouts); `null` when not tracked |
+| `stock.soldOut` | A tracked product with no available piece |
+| `stock.low` | A low-stock threshold is set and availability reached it |
+| `maxQuantity` | The largest quantity one checkout line accepts now: `0` when sold out, otherwise 10 for a physical product and 1 for any other type, capped by `stock.available`; a membership's 1 is its single-product checkout, never a cart line |
+| `variants[].available` | The same count for each variant, next to its `soldOut` flag |
+
+Use `maxQuantity` as the upper bound of a quantity picker and `stock.available`
+for an "N left" line. The offer ETag changes whenever a count changes, so a
+storefront that revalidates with `If-None-Match` never keeps a stale count, but
+a count can still drop between reading the offer and starting checkout: the
+session route then answers `sold_out` (409). The sales-link offer carries
+`available` (whole sets left) and `lines[].maxQuantity` and buys one set per
+checkout; see [Sales links: public offer](sales-links.md#public-offer).
+
 For the smallest custom UI, read the public offer, render its cover and active
 prices, then navigate the browser to the workspace's `/checkout/<product-id>`.
 For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. For a cart
@@ -414,6 +433,16 @@ in the session-status answer of a paid session. It is not sent to Stripe, it
 need not be unique, and it must not carry personal data. A request without it
 behaves as before, and its order has no `clientReference`.
 
+Optional `personalizations` carries the buyer's request for a product that
+offers a personalisation (`personalization` in the offer):
+`[{ productId, text, conditionAccepted }]`, at most one entry per product. The
+text is trimmed and must fit the product's `maxLength`, and a product with a
+`condition` needs `conditionAccepted: true`; otherwise the request is a
+`validation` error (400). Show the seller's `label`, `description`,
+`inputLabel` and `condition` as plain text. A cart request refuses the field.
+The order lines then carry `personalization`. See
+[Personalisation](shop.md#personalisation).
+
 For bundles the same session route takes `productId` equal to the bundle's first
 base product and `salesLinkSlug` (or `salesLinkId`, not both), without `priceId`.
 The server derives the product selection and amounts from the stored sales link.
@@ -457,7 +486,7 @@ one-time price of that product; without it the product needs exactly one).
 `email`, `language`, `termsAccepted`, `marketingConsentDefinitionIds`,
 `couponCode`, `billing`, `shipping`, `attribution` and `clientReference` work
 as in the single-product request. A cart request must not contain `productId`, `priceId`,
-`salesLinkId`, `salesLinkSlug` or `variantSelections`, and the cart schema is
+`salesLinkId`, `salesLinkSlug`, `variantSelections` or `personalizations`, and the cart schema is
 strict: an unknown field in the body or in a line, such as a price or an amount,
 is rejected, not ignored. The client sends product IDs and quantities only; the
 server sets every price from the stored prices. Stripe shows one line item per
@@ -477,9 +506,28 @@ The cart answers with the same error envelope as the other routes:
 | a body or line that breaks the schema or the limits below, a duplicate product, a forbidden or unknown field | `validation` (400) |
 | a line above the quantity allowed for its product (`"<title>" can be ordered in a quantity of at most <n>`) | `validation` (400) |
 | a membership product, a product without exactly one active one-time price, a recurring `priceId`, products in different currencies, a product without a VAT rate | `validation` (400) |
-| an unknown or unpublished product, an unknown or inactive `priceId` | `not_found` (404) |
+| an unknown or unpublished product, a product sold only through sales links, an unknown or inactive `priceId` | `not_found` (404) |
 | a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
 | a shipped product without `shipping` | `shipping_required` (400) |
+
+A custom cart form bounds each quantity picker by `maxQuantity` and shows the
+remaining count from `stock.available`. Membership products cannot join a cart
+(`validation`, 400); send the buyer to `/checkout/<product-id>` for them. With a
+product read from the offer as above:
+
+```js
+const quantityPicker = (product) => {
+  const picker = document.createElement('select');
+  for (let quantity = 1; quantity <= product.maxQuantity; quantity += 1) {
+    picker.append(new Option(String(quantity), String(quantity)));
+  }
+  picker.disabled = product.maxQuantity === 0;
+  const stockLine = document.createElement('p');
+  if (product.stock.soldOut) stockLine.textContent = 'Sold out';
+  else if (product.stock.available !== null) stockLine.textContent = `${product.stock.available} left`;
+  return { elements: [picker, stockLine], quantity: () => Number(picker.value) };
+};
+```
 
 A storefront without its own form can send the buyer to the hosted cart page
 instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
@@ -633,8 +681,8 @@ checkout is complete:
   `/checkout/cart/pay` or `/offer/<slug>`) with `status=success`;
 - with a coupon, `data.coupon` holds the price breakdown, `finalCents` being 0.
 
-`checkoutSessionOutputSchema` declares only `url`, so a parse with it drops
-`free`: read `data.free` from the JSON answer before that parse.
+`checkoutSessionOutputSchema` declares `free` and `coupon` as optional fields,
+so a typed client reads `session.data.free` after the parse.
 
 The calling shop keeps control of the page, so it should not navigate to
 `data.url`. It shows its own confirmation instead: the order is complete,
@@ -661,14 +709,96 @@ The corresponding staff-session read is
 live/test list; `mode=test` selects test rows; an unknown or empty mode is a
 validation error. Workspace authorization still applies independently of mode.
 
-Poll all relevant pages, overlap successive scans and de-duplicate by order ID.
-The list is newest-first offset pagination, not a cursor or an updated-since
-feed: new orders can shift page boundaries, and older orders can change state.
-Revisit outstanding orders and reconcile periodically rather than remembering
-only the latest creation time. Use `GET /api/orders/<order-id>` for protected
-detail (`data.order` and nullable `data.invoice`). Protect buyer addresses and
-emails as personal data. This integration uses polling; it does not rely on an
-outbound order-push contract.
+The list is newest-first offset pagination: new orders can shift page
+boundaries, and older orders can change state. To follow every new order and
+every later change, read the change feed below instead of rescanning the list.
+Use `GET /api/orders/<order-id>` for protected detail (`data.order` and nullable
+`data.invoice`). Protect buyer addresses and emails as personal data. This
+integration uses polling; it does not rely on an outbound order-push contract.
+
+### Follow order changes
+
+`GET /api/orders/changes?after=<cursor>&limit=100&mode=live` returns the orders
+of the workspace that were created or changed after the cursor, oldest change
+first. It needs the same staff session and `order:read` permission as the order
+list:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "changes": [{ "cursor": "<cursor>", "order": { "id": "<order-id>", "status": "paid", "fulfilmentStatus": "shipped" } }],
+    "nextCursor": "<cursor>"
+  }
+}
+```
+
+Each `order` has the shape of an entry in `data.orders` of the order list, in
+its state at the time of the read, not at the time of the change. An order
+changed several times within one page appears once, at its latest cursor.
+Payment, refunds, collection, shipping and issuing or changing the invoice all
+produce a change. The member name and e-mail address, the product title and the
+sales link title (`memberName`, `memberEmail`, `productTitle`,
+`salesLinkTitle`) are read at fetch time, and editing them produces no entry.
+`limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`
+selects one mode, and an omitted mode returns both. A malformed cursor or limit
+is a validation error (HTTP 400).
+
+A shop backend follows the feed like this:
+
+1. Start without `after` to read from the oldest change. Orders last written
+   before the change log was introduced appear only after their next change,
+   so read those once from the order list.
+2. Process every entry of `changes` (for example, update the order in the shop's
+   database by `order.id`).
+3. Store `nextCursor` only after the processing is saved, then request the next
+   page with `after=<nextCursor>`.
+4. When `changes` is empty, `nextCursor` stays the cursor that was sent (or is
+   `null` before the first change); wait a minute and ask again.
+
+The feed delivers each change at least once: a backend that stops between
+processing and storing the cursor receives the same entries again, so the
+processing must be idempotent by `order.id`. The cursor is opaque: store and
+send it unchanged, and do not compare, sort or build cursors. A change becomes
+visible only after every earlier database transaction has finished, so it can
+appear a little later than the write that caused it, but it never lands behind
+a cursor that was already returned.
+
+After a move or restore of its database the platform rotates the feed epoch,
+and a cursor issued before that is answered with HTTP 409:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "feed_cursor_reset",
+    "message": "Order change feed reset: resync from the order list, then start from the cursor in this answer",
+    "details": { "cursor": "<cursor>" }
+  }
+}
+```
+
+The client resyncs once: read the order list, update the shop's database from
+it, then store `error.details.cursor` and continue the feed from it. Changes
+made while the order list was read appear again in the feed, which the
+idempotent processing absorbs.
+
+CLI: `orders changes --mode live --after '<cursor>'` prints one line per change
+(cursor, order ID, status, fulfilment status, client reference) and the next
+cursor; `--json` prints the envelope above. `orders changes --mode live --after
+'<cursor>' --follow` keeps polling every `--interval` seconds (default 10)
+while nothing changes, prints each change once and stops cleanly on Ctrl+C; with
+`--json` it prints one single-line envelope per page that has changes. A poll
+that fails with a network error, or that the server answers with an error of
+HTTP 5xx or rate limiting (HTTP 429), is repeated from the same cursor after a pause that starts at
+`--interval` and doubles after each further failure up to 60 seconds (or
+`--interval` when that is longer), with one line per failure on stderr; the
+first successful poll resets the pause. Any other answer, including one that is
+not JSON or does not match the contract, stops the command with its message and
+the taxonomy exit code, for example `unauthorized` (3), `forbidden` (4),
+`validation` (2) and `internal` (10). On `feed_cursor_reset` the command prints
+the cursor to continue from after the resync and exits with code 30 instead of
+polling again.
 
 For shipping, select live, paid orders whose `fulfilmentStatus` is `to_pack`.
 Packing-list/export tools are also available, but they are not proof of carrier
@@ -707,9 +837,14 @@ return `validation` (HTTP 400) and issue nothing. Each order line in
 only when the goods actually change hands; neither verification nor the buyer's
 QR image alone records collection.
 
-Configured ShipX operations are a separate option. Creating/paying a real ShipX
-shipment is an external financial action requiring operational approval; a token
-or a test fixture is not that approval. Manual fulfilment needs no such purchase.
+Configured ShipX operations are a separate option. A workspace keeps two ShipX
+connections, `production` for live orders and `sandbox` for test-mode orders;
+the order's mode picks the connection, and an order whose connection is not
+saved answers `integration_not_configured` naming it (see
+[InPost ShipX](shop.md#inpost-shipx)). Creating/paying a real ShipX shipment for
+a live order is an external financial action requiring operational approval; a
+token or a test fixture is not that approval. Manual fulfilment needs no such
+purchase.
 
 ## 9. What the buyer receives
 
@@ -744,6 +879,13 @@ or certify a live provider/KSeF submission.
   a price or an amount.
 - **Fixed bundles stay sales links.** A sales link keeps its stored products and
   one unit of each; use a cart request for a buyer-chosen selection.
+- **Products sold only through sales links.** A product with the sales channel
+  `sales_links_only` answers every standalone request exactly as an unknown
+  product: `?productRef=` returns an empty `products` list, and the session,
+  cart and coupon requests without a sales link return `not_found` (404). It is
+  never in the listed catalogue. Sell it through its sales link (`salesLinkSlug`
+  or `salesLinkId`, `/offer/<slug>`); see
+  [Sales links](sales-links.md#products-sold-only-through-sales-links).
 - **One cover.** The product exposes `coverUrl`, not a product gallery.
 - **Delivery in Poland.** Shipping is limited to `PL`, with at most five rates.
   Pickup instructions remain seller/storefront content.
@@ -753,7 +895,8 @@ or certify a live provider/KSeF submission.
 - **Buyer account.** Physical checkout creates or reuses an account/member; it is
   not a guest-only flow.
 - **Polling instead of push.** Plan this integration around protected order
-  reads and reconciliation, not a promised general outbound order webhook.
+  reads and the order change feed, not a promised general outbound order
+  webhook.
 - **Shared seller invoice numbering.** KSeF allocation is workspace/year scoped,
   while the printed number is `FV/<year>/<six-digit-sequence>` without a workspace
   prefix. Several workspaces using one legal seller can therefore allocate the
@@ -766,13 +909,16 @@ or certify a live provider/KSeF submission.
 Request/response shapes and paths are defined in
 [`core/contract/routes.ts`](../core/contract/routes.ts),
 [`sales-links.ts`](../core/contract/sales-links.ts),
-[`order-fulfilment.ts`](../core/contract/order-fulfilment.ts) and
+[`order-fulfilment.ts`](../core/contract/order-fulfilment.ts),
+[`order-changes.ts`](../core/contract/order-changes.ts) and
 [`order-verification.ts`](../core/contract/order-verification.ts).
 The executable client boundary is [`core/client/http.ts`](../core/client/http.ts).
 The corresponding session handlers are in
-[`internal-app.ts`](../apps/server/src/internal-app.ts), public handlers and CORS
-in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI flags in
-[`main.ts`](../apps/cli/src/main.ts). Follow those schemas instead of guessing
+[`internal-app.ts`](../apps/server/src/internal-app.ts) and
+[`order-change-routes.ts`](../apps/server/src/order-change-routes.ts), public
+handlers and CORS in [`public-app.ts`](../apps/server/src/public-app.ts), and CLI
+flags in [`main.ts`](../apps/cli/src/main.ts) and
+[`order-change-commands.ts`](../apps/cli/src/order-change-commands.ts). Follow those schemas instead of guessing
 uniform body IDs or undocumented checkout fields.
 
 ## Several workspaces of one company

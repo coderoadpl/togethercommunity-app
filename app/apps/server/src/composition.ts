@@ -3,17 +3,35 @@ import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
 import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import {
+  createOrganizationAuditRepository,
+  createOrganizationMemberRepository,
+  createEffectiveTenantConfigReader,
+  createOrganizationRepository,
+  createOrganizationSecretRepository,
+  createOrganizationWorkspaceRepository,
+  createTenantConfigSourceRepository,
+} from '#adapters/db/organizations.js';
+import type {
+  OrganizationAuditRepository,
+  OrganizationMemberRepository,
+  OrganizationRepository,
+  OrganizationSecretRepository,
+  OrganizationWorkspaceRepository,
+  TenantConfigSourceRepository,
+} from '#core/server/index.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
 import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
-import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
+import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
+import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
 import { createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -36,6 +54,16 @@ import { createDownloadPersonaliser } from '#adapters/personalisation/index.js';
 import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypto, DownloadPersonaliser, PersonalisationSlots } from '#core/server/index.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
+import type { ChangeProposalBoundOptions } from '#adapters/db/change-proposal-bounds.js';
+import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
+import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
+import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
+import type {
+  ChangeProposalEventRepository,
+  ChangeProposalGroupRepository,
+  ChangeProposalRepository,
+  ChangeProposalTransaction,
+} from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
@@ -64,6 +92,8 @@ import { createMemberErasureRequestRepository } from '#adapters/db/member-erasur
 import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import { createShopManagementKeyEventRepository } from '#adapters/db/shop-management-key-events.js';
+import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import {
   createImpersonationSessionRepository,
   createTenantAuditEventRepository,
@@ -116,6 +146,7 @@ import {
   createAvatarSourceReader,
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountIdentityReader,
   createAccountSecurityReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
@@ -175,6 +206,7 @@ import { databaseHostFingerprint, databaseIdentityFingerprint } from '#adapters/
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
+import { createEffectiveTenantSecretResolver } from '#adapters/crypto/effective-tenant-secret-resolver.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '#adapters/payment/fake.js';
@@ -213,6 +245,7 @@ import type {
   LessonEditionRepository,
   LessonEditionTransaction,
   ActivityReportRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
@@ -263,6 +296,9 @@ import type {
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
   ImportAuditEventRepository,
+  ShopManagementKeyEventRepository,
+  ShopManagementKeyRateLimitRepository,
+  ShopManagementKeyRepository,
   ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -369,6 +405,7 @@ import {
   type ResettableEnvironment,
   type SmokeTenantPasswords,
   type Result,
+  type ShopManagementKeysSwitch,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
@@ -510,6 +547,8 @@ export interface AppDeps {
   orderRefundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'>;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
+  orderPersonalizations?: OrderPersonalizationRepository;
+  orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
@@ -519,10 +558,23 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
   auditEvents: TenantAuditEventRepository;
+  organizations: OrganizationRepository;
+  organizationMembers: OrganizationMemberRepository;
+  organizationAudit: OrganizationAuditRepository;
+  organizationWorkspaces: OrganizationWorkspaceRepository;
+  organizationSecrets: OrganizationSecretRepository;
+  tenantConfigSources: TenantConfigSourceRepository;
   team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
+  shopManagementKeyEvents: ShopManagementKeyEventRepository;
+  shopManagementKeys: ShopManagementKeyRepository;
+  shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
+  changeProposals: ChangeProposalRepository;
+  changeProposalEvents: ChangeProposalEventRepository;
+  changeProposalGroups: ChangeProposalGroupRepository;
+  changeProposalTransaction: ChangeProposalTransaction;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -588,12 +640,14 @@ export interface AppDeps {
   tenantAccess: TenantAccessReader;
   signInTelemetrySecret: string;
   accountSecurity: AccountSecurityReader;
+  accountIdentities: AccountIdentityReader;
   health: HealthPort;
   appVersion: string;
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
   databaseIdentity: string | null;
   tenantCreationMode: TenantCreationMode;
+  shopManagementKeysSwitch: ShopManagementKeysSwitch;
   consentTokens: TokenGenerator;
   ids: IdGenerator;
   clock: Clock;
@@ -910,6 +964,7 @@ export const createDeps = (
     db?: Db;
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
+    changeProposalBounds?: ChangeProposalBoundOptions;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
@@ -943,7 +998,9 @@ export const createDeps = (
     egress: createTelemetryEgressProbe({ declaredIp: env.PLATFORM_EGRESS_IP, endpoint: env.PLATFORM_EGRESS_ECHO_URL }),
     hidesStatistics: env.TELEMETRY_FREE_PLAN_HIDES_STATS,
   };
-  const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  const secretResolver = createEffectiveTenantSecretResolver(
+    createTenantSecretResolver(tenantSecrets, secretCrypto), createEffectiveTenantConfigReader(db), secretCrypto,
+  );
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
   const stock = createStockRepository(db);
@@ -1041,7 +1098,11 @@ export const createDeps = (
     const connectionTenants = createTenantRepository(connection, tenantRepositoryOptions);
     return {
       tenants: connectionTenants,
-      secrets: createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      secrets: createEffectiveTenantSecretResolver(
+        createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+        createEffectiveTenantConfigReader(connection),
+        secretCrypto,
+      ),
       resolveOrigin: createTenantOriginResolver({
         tenants: connectionTenants, tenantDomains: createTenantDomainRepository(connection), appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
       }),
@@ -1550,6 +1611,8 @@ export const createDeps = (
     metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
+    orderPersonalizations: createOrderPersonalizationRepository(db),
+    orderChangeFeed: { changes: createOrderChangeRepository(db), orders: orderRepository },
     shipxIntegration: {
       shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
       shipxShipments: createShipxShipmentRepository(db),
@@ -1564,10 +1627,28 @@ export const createDeps = (
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,
     auditEvents,
+    organizations: createOrganizationRepository(db),
+    organizationMembers: createOrganizationMemberRepository(db),
+    organizationAudit: createOrganizationAuditRepository(db),
+    organizationWorkspaces: createOrganizationWorkspaceRepository(db),
+    organizationSecrets: createOrganizationSecretRepository(db),
+    tenantConfigSources: createTenantConfigSourceRepository(db),
     team,
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
+    shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
+    shopManagementKeys: createShopManagementKeyRepository(db),
+    shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
+    changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
+    changeProposalEvents: createChangeProposalEventRepository(db),
+    changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),
+    changeProposalTransaction: createChangeProposalTransaction(
+      db,
+      logger,
+      (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      options.changeProposalBounds,
+    ),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1650,12 +1731,14 @@ export const createDeps = (
     tenantAccess,
     signInTelemetrySecret: env.BETTER_AUTH_SECRET,
     accountSecurity,
+    accountIdentities: createAccountIdentityReader(db),
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
     deploymentIdentity: selectDeploymentIdentity(env),
     databaseIdentity: databaseIdentityFingerprint(env.DATABASE_URL),
     tenantCreationMode,
+    shopManagementKeysSwitch: env.SHOP_MANAGEMENT_KEYS,
     ids,
     clock,
     logger,

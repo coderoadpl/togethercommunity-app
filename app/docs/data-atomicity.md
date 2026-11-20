@@ -122,6 +122,11 @@ at all.
 - Surveys: `SurveyRepository.save` writes the current survey and its append-only
   lifecycle event together. `SurveyRepository.submit` validates the locked
   survey and upserts a member's current response in one transaction.
+- Tenant settings: `TenantRepository.changeSettings` locks the tenant row with
+  `FOR UPDATE`, re-reads the settings for the update to validate its patch
+  against, and writes only the patched columns and the VAT fields the
+  coherence rule clears, so an owner session and a shop management key never
+  write back stale values of each other's fields.
 - Download copies: `DownloadCopyRepository.create` locks the member row with
   `FOR UPDATE`, checks that the member is not erased, and inserts the registry
   row in one transaction to serialize issuance with member erasure.
@@ -269,3 +274,64 @@ tenant-scoped order row with `FOR UPDATE`, re-checks the payment status and the
 fails, the transaction rolls back and the order stays `to_pack`. A unique index
 on the tenant, order and event type backs the row lock. The e-mail is
 dispatched only after commit, so a refused shipment never sends a message.
+
+## Order change log
+
+Every insert into `orders`, and every update that changes at least one column,
+appends a row to `order_changes` with the workspace, the order ID, the writing
+transaction's ID (`xact_id`, `xid8`) and `changed_at`. Two `AFTER ... FOR EACH
+ROW` triggers on `orders` share the `record_order_change()` function, so the row
+commits or rolls back with the order write and no repository method has to
+remember it: payment, test checkout completion, refunds, collection, shipping and
+member erasure are all captured. An update that leaves the order row identical
+is not logged.
+
+`invoices` has the same pair of triggers through `record_invoice_order_change()`,
+which logs the invoice's order in the invoice's workspace, so issuing an invoice
+or changing it produces an entry. It logs only an order of that same workspace,
+so an invoice row whose workspace disagrees with its order's is still written
+and appears in no feed. The feed entry (the order list entry) also
+carries values from `members` (the buyer's e-mail address and name), `products`
+(the title) and `sales_links` (the title); they are read at fetch time, and a
+write to those tables alone is not logged. `coupons` adds the coupon code,
+which no write path changes. Triggers on `members` and `products` would have to
+log one row per order that references the changed row, and both tables are
+written in bulk by the import, which updates every changed member and product in
+one transaction.
+
+The read is scoped to one workspace, ordered by `(xact_id, id)` and returns only
+rows whose `xact_id` is below the `xmin` of the reader's snapshot, so every
+transaction that could still add a row before the cursor has already finished.
+The cursor is `<epoch>.<xact_id>.<id>`; clients treat it as opaque. Ordering by `id`
+alone would skip changes: a transaction can take a lower `id` and commit after a
+reader has passed a higher one. The price is that the feed lags behind the
+oldest transaction still open on the database server.
+
+Transaction IDs and `id` values are meaningful only on the database that issued
+them, so a move or a restore would leave clients holding positions of another
+timeline. The single-row table `order_feed_epoch` holds a random epoch (32
+hexadecimal characters, created by the migration with `gen_random_uuid()`), and
+every cursor carries it. A cursor with another epoch is answered with
+`feed_cursor_reset` and a fresh cursor at the current end of the workspace's
+log: the largest settled `(xact_id, id)` of that workspace, or position `0.0`
+when it has none, so it never points into another workspace's rows. A cursor
+of the current epoch whose `xact_id` is at or beyond `pg_snapshot_xmax` of the
+current snapshot cannot come from this database, so it is answered the same way
+with a fresh cursor of the caller's workspace. The epoch stays as it is: the read
+runs in a `READ ONLY` transaction, so a forged cursor cannot change what any
+other workspace's cursors mean. The guard uses only the snapshot functions, no
+control functions that a hosted database may refuse. A restore to an earlier
+state can leave cursors behind the current position that the guard cannot tell
+apart, so only `pnpm run orders:rotate-feed-epoch` changes the epoch: the
+[move and restore runbook](deployment-environments.md#order-change-feed-after-a-move-or-restore)
+runs it, and the deployment build runs it after migrating every preview and
+staging database.
+
+The rows are kept without a retention purge for now. Deleting an order, for
+example through a product deletion, deletes its change rows.
+
+Creating the triggers takes a `SHARE ROW EXCLUSIVE` lock on `orders` and
+`invoices`, which blocks order and invoice writes until the migration
+transaction commits. Deploy migration
+`0157_order_changes` in a quiet window. The column type and the snapshot
+functions need PostgreSQL 13 or later.

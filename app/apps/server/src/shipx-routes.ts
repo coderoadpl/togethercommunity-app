@@ -10,6 +10,7 @@ import {
   getShipxSettings,
   inpostShipmentLabel,
   refreshInpostShipment,
+  type InpostLabelFile,
   type ProductBatchReader,
   type ShipOrderDeps,
 } from '#core/server/index.js';
@@ -23,25 +24,36 @@ const bodySchema = z.object({}).passthrough();
 
 const attachmentName = (filename: string): string => filename.replace(/[^A-Za-z0-9._-]/g, '_');
 
-export const registerShipxRoutes = (
-  app: Hono<AppVars>,
-  deps: Omit<ShipOrderDeps, 'fulfilment' | 'orderDetails'>
-    & Pick<AppDeps, 'orderFulfilment' | 'orderDetails' | 'tenantSecrets' | 'secretCrypto' | 'secretResolver' | 'shipxIntegration'>
-    & { products: ProductBatchReader },
-): void => {
-  const orderDeps = () => {
-    if (deps.shipxIntegration === undefined || deps.orderDetails === undefined) return null;
-    return {
-      orderDetails: deps.orderDetails,
-      products: deps.products,
-      shipxShipments: deps.shipxIntegration.shipxShipments,
-      shipxSettings: deps.shipxIntegration.shipxSettings,
-      tenantSecrets: deps.tenantSecrets,
-      secrets: deps.secretResolver,
-      shipx: deps.shipxIntegration.shipx,
-      clock: deps.clock,
-    };
+type ShipxRouteDeps = Omit<ShipOrderDeps, 'fulfilment' | 'orderDetails'>
+  & Pick<AppDeps, 'orderFulfilment' | 'orderDetails' | 'tenantSecrets' | 'secretCrypto' | 'secretResolver' | 'shipxIntegration'>
+  & { products: ProductBatchReader };
+
+export const shipxOrderDeps = (deps: ShipxRouteDeps) => {
+  if (deps.shipxIntegration === undefined || deps.orderDetails === undefined) return null;
+  return {
+    orderDetails: deps.orderDetails,
+    products: deps.products,
+    shipxShipments: deps.shipxIntegration.shipxShipments,
+    shipxSettings: deps.shipxIntegration.shipxSettings,
+    tenantSecrets: deps.tenantSecrets,
+    secrets: deps.secretResolver,
+    shipx: deps.shipxIntegration.shipx,
+    clock: deps.clock,
   };
+};
+
+export const shipxLabelResponse = (file: InpostLabelFile): Response =>
+  new Response(Uint8Array.from(file.bytes).buffer, {
+    headers: {
+      'content-type': file.contentType,
+      'content-disposition': `attachment; filename="${attachmentName(file.filename)}"`,
+      'content-length': String(file.bytes.byteLength),
+      'cache-control': 'private, no-store',
+    },
+  });
+
+export const registerShipxRoutes = (app: Hono<AppVars>, deps: ShipxRouteDeps): void => {
+  const orderDeps = () => shipxOrderDeps(deps);
   const unavailable = () => respond(err(internal('InPost ShipX is unavailable')));
 
   app.get(API_PATHS.shipxSettings, async (c) => {
@@ -90,14 +102,6 @@ export const registerShipxRoutes = (
     const shipxDeps = orderDeps();
     if (shipxDeps === null) return unavailable();
     const result = await inpostShipmentLabel(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, shipxDeps);
-    if (!result.ok) return respond(result);
-    return new Response(Uint8Array.from(result.value.bytes).buffer, {
-      headers: {
-        'content-type': result.value.contentType,
-        'content-disposition': `attachment; filename="${attachmentName(result.value.filename)}"`,
-        'content-length': String(result.value.bytes.byteLength),
-        'cache-control': 'private, no-store',
-      },
-    });
+    return result.ok ? shipxLabelResponse(result.value) : respond(result);
   });
 };

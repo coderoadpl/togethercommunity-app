@@ -36,10 +36,11 @@ export const createSalesLinkRepository = (db: Db): SalesLinkRepository => ({
     await tx.insert(salesLinkEvents).values({ tenantId, salesLinkId: link.id, revision: link.revision, type: expectedRevision === null ? 'created' : 'updated', snapshot: link, occurredAt: link.updatedAt });
     return ok(parseRow(row));
   }),
-  delete: async (tenantId, id, occurredAt) => db.transaction(async (tx) => {
+  delete: async (tenantId, id, occurredAt, expectedRevision) => db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-links:${tenantId}`}, 0))`);
     const [existing] = await tx.select().from(salesLinks).where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, id), isNull(salesLinks.deletedAt))).for('update');
     if (existing === undefined) return err(notFound('Sales link was not found'));
+    if (expectedRevision !== undefined && existing.revision !== expectedRevision) return err(appError('conflict', 'Sales link changed; reload before deleting'));
     const [paid] = await tx.select({ id: orders.id }).from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.salesLinkId, id), inArray(orders.status, ['paid', 'partially_refunded', 'refunded']))).limit(1);
     if (paid !== undefined) return err(appError('conflict', 'This sales link has paid orders; deactivate it instead'));
     const revision = existing.revision + 1;

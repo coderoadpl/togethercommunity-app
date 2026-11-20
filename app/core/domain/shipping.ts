@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { appError, validation, type AppError } from './errors.js';
+import type { ProductPersonalization } from './personalization.js';
 import type { ProductCompliance } from './product-compliance.js';
 import { err, ok, type Result } from './result.js';
 
@@ -26,7 +27,9 @@ export const requiresWorkspaceCheckout = (product: {
   checkoutConsentDefinitionIds?: string[] | undefined;
   deliveryMethod?: DeliveryMethod | undefined;
   compliance?: ProductCompliance | null | undefined;
-}): boolean => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0 || needsShipping(product) || product.compliance != null;
+  personalization?: ProductPersonalization | null | undefined;
+}): boolean => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0 || needsShipping(product) || product.compliance != null ||
+  product.personalization != null;
 
 const shippingVatRateSchema = z.union([z.literal(5), z.literal(8), z.literal(23)]);
 

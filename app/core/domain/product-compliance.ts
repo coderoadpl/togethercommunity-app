@@ -44,6 +44,7 @@ export const publicProductVariantSchema = z.object({
   slug: z.string(),
   label: z.string(),
   soldOut: z.boolean(),
+  available: z.number().int().min(0).nullable().default(null),
 });
 
 export type PublicProductVariant = z.infer<typeof publicProductVariantSchema>;
@@ -58,16 +59,14 @@ export const productVariants = <T extends {
 }>(
   product: Pick<T, 'id' | 'variantGroup'>,
   candidates: readonly T[],
-  soldOutProductIds: ReadonlySet<string>,
+  stockOf: (productId: string) => { soldOut: boolean; available: number | null },
 ): PublicProductVariant[] => {
   const group = product.variantGroup ?? null;
   if (group === null) return [];
   const siblings = candidates.filter((candidate) => candidate.published && candidate.variantGroup === group);
   if (siblings.length < 2 || !siblings.some((sibling) => sibling.id === product.id)) return [];
-  return siblings.map((sibling) => ({
-    productId: sibling.id,
-    slug: sibling.slug,
-    label: sibling.variantLabel ?? sibling.title,
-    soldOut: soldOutProductIds.has(sibling.id),
-  }));
+  return siblings.map((sibling) => {
+    const { soldOut, available } = stockOf(sibling.id);
+    return { productId: sibling.id, slug: sibling.slug, label: sibling.variantLabel ?? sibling.title, soldOut, available };
+  });
 };

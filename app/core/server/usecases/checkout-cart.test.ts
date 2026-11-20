@@ -20,7 +20,7 @@ const DRAFT = id(7);
 const TWO_PRICES = id(8);
 
 const product = (productId: string, fields: Pick<Product, 'type' | 'title' | 'deliveryMethod' | 'vatRate'> & Partial<Product>): Product => ({
-  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', published: true,
+  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', salesChannel: 'any', published: true,
   accessItems: [], legacyId: null, createdAt: '2026-11-01T09:00:00.000Z', id: productId, slug: `product-${productId.slice(-2)}`, priceCents: 0,
   ...fields,
 });
@@ -140,6 +140,25 @@ describe('cart selection', () => {
       .toStrictEqual(err(notFound(`No published product "${DRAFT}" in this tenant`)));
     expect(await validateCartSelection(legacyTenant.id, { lines: [{ productId: NO_VAT, quantity: 1 }] }, deps))
       .toStrictEqual(err(validation('Configure a VAT rate for every cart product')));
+  });
+
+  it('refuses a whole cart holding a product sold only through sales links, exactly like an unknown product', async () => {
+    const answer = async (present: boolean, lines: { productId: string; quantity: number }[]) => {
+      const { deps } = createCart();
+      const findById = deps.products.findById;
+      deps.products.findById = async (tenantId, productId) => {
+        const found = await findById(tenantId, productId);
+        if (productId !== EBOOK) return found;
+        return present && found !== null ? { ...found, salesChannel: 'sales_links_only' } : null;
+      };
+      return validateCartSelection(legacyTenant.id, { lines }, deps);
+    };
+    for (const lines of [[{ productId: EBOOK, quantity: 1 }], [{ productId: POSTER, quantity: 1 }, { productId: EBOOK, quantity: 1 }]]) {
+      const refused = await answer(true, lines);
+      expect(refused).toStrictEqual(await answer(false, lines));
+      expect(refused).toStrictEqual(err(notFound(`No published product "${EBOOK}" in this tenant`)));
+    }
+    expect((await answer(true, [{ productId: POSTER, quantity: 1 }])).ok).toBe(true);
   });
 
   it('checks tracked stock against the line quantity', async () => {

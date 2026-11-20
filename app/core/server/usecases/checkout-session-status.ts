@@ -1,7 +1,6 @@
 import { checkoutSessionStatusInputSchema, err, ok, resolveCheckoutReturnUrl, orderLineQuantity, productLines, validation, type AppError, type Result, type CheckoutPurchaseAnalytics, type Language, type OrderLine, type TenantSettings } from '#core/domain/index.js';
 
-import type { PaymentRefundRepository, TenantRepository, ProductRepository } from '../ports.js';
-import type { SalesLinkRepository } from '../sales-link-ports.js';
+import type { PaymentRefundRepository, TenantRepository, ProductRepository, SalesLinkRepository } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { MetaCapiConfig } from '#core/domain/meta-capi.js';
 import { getMetaCapiConfig, type MetaCapiDeps } from './meta-capi.js';

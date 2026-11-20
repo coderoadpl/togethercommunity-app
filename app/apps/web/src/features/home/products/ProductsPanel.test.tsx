@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
+import { useEffect, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -36,6 +37,7 @@ const initialProducts: Product[] = [
     priceCents: 2500,
     currency: 'PLN',
     visibility: 'listed',
+    salesChannel: 'any',
     deliveryMethod: 'pickup',
     published: false,
     accessItems: [{ level: 'course', courseId: 'c1' }],
@@ -70,6 +72,7 @@ const renderProductsPanel = async (
   let assets = [...seededAssets];
   let directUploadCalled = false;
   let updatedProduct: Product | null = null;
+  const updateInputs: unknown[] = [];
   const created: Product[] = [];
 
   server.use(
@@ -88,6 +91,7 @@ const renderProductsPanel = async (
         priceCents: input.priceCents,
         currency: input.currency,
         visibility: 'listed',
+        salesChannel: 'any',
         deliveryMethod: 'pickup',
         published: false,
         accessItems: input.accessItems,
@@ -104,12 +108,15 @@ const renderProductsPanel = async (
       return HttpResponse.json({ ok: true, data: { deleted: true } });
     }),
     http.post('/api/products/update', async ({ request }) => {
-      const input = updateProductInputSchema.parse(await request.json());
+      const body: unknown = await request.json();
+      updateInputs.push(body);
+      const input = updateProductInputSchema.parse(body);
       const existing = products.find((candidate) => candidate.id === input.id);
       if (existing === undefined) return HttpResponse.json({ ok: false }, { status: 404 });
       const product: Product = {
         ...existing,
         visibility: input.visibility ?? existing.visibility,
+        salesChannel: input.salesChannel ?? existing.salesChannel,
         title: input.title ?? existing.title,
         description: input.description ?? existing.description,
         coverUrl: input.coverUrl === undefined ? existing.coverUrl : input.coverUrl,
@@ -232,16 +239,23 @@ const renderProductsPanel = async (
     }),
   );
 
+  let showEditedProduct: (product: Product) => void = () => undefined;
+  const EditedProduct = () => {
+    const [shown, setShown] = useState<Product | null>(null);
+    useEffect(() => {
+      showEditedProduct = setShown;
+    }, []);
+    const product = shown ?? created.at(-1) ?? products[0];
+    return product === undefined ? null : <ProductEditorPage product={product} />;
+  };
+
   const rootRoute = createRootRoute();
   const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products', component: ProductsPanel });
   const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products/new', component: ProductCreatePage });
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/panel/products/$productId',
-    component: () => {
-      const product = created.at(-1) ?? products[0];
-      return product === undefined ? null : <ProductEditorPage product={product} />;
-    },
+    component: EditedProduct,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([listRoute, createRoutePage, detailRoute]),
@@ -254,6 +268,11 @@ const renderProductsPanel = async (
     created,
     directUploadCalled: () => directUploadCalled,
     updatedProduct: () => updatedProduct,
+    updateInputs,
+    changeEditedProductElsewhere: (product: Product) => {
+      products = products.map((candidate) => candidate.id === product.id ? product : candidate);
+      act(() => showEditedProduct(product));
+    },
   };
 };
 
@@ -405,7 +424,7 @@ describe('ProductsPanel', () => {
   it('shows the stock column only for tracked products in the list', async () => {
     const poster: Product = {
       id: 'poster', tenantId: 't1', type: 'physical', deliveryMethod: 'pickup', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
-      priceCents: 4900, currency: 'PLN', visibility: 'listed', published: true, accessItems: [], legacyId: null, createdAt: '2026-07-12T09:00:00.000Z',
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', published: true, accessItems: [], legacyId: null, createdAt: '2026-07-12T09:00:00.000Z',
     };
     const stock: ProductStock = { productId: 'poster', onHand: 12, reserved: 1, available: 11, lowStockThreshold: null, lowStockNotifiedAt: null, low: false, soldOut: false, updatedAt: '2026-07-12T10:00:00.000Z' };
     await renderProductsPanel([], '/panel/products', [...initialProducts, poster], initialPrices, [], [], [stock]);
@@ -698,17 +717,68 @@ describe('ProductsPanel', () => {
     expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(rendered.updatedProduct()).toMatchObject({
       visibility: 'unlisted',
+      salesChannel: 'any',
       title: 'Updated course offer',
       slug: 'draft-course',
       coverUrl: 'https://cdn.test/new-cover.jpg',
     });
   });
 
+  it('limits a product to sales links from the editor next to its visibility', async () => {
+    const user = userEvent.setup();
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+
+    const channel = await screen.findByRole('combobox', { name: en.products.salesChannelLabel });
+    expect(channel).toHaveTextContent(en.products.salesChannelAny);
+    expect(channel).toHaveAccessibleDescription(en.products.salesChannelHelper);
+    await user.click(channel);
+    await user.click(screen.getByRole('option', { name: en.products.salesChannelSalesLinksOnly }));
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updatedProduct()).toMatchObject({ visibility: 'listed', salesChannel: 'sales_links_only' });
+  });
+
+  it('saves a title edit without writing back a sales channel or visibility changed elsewhere after the editor opened', async () => {
+    const user = userEvent.setup();
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const title = await screen.findByLabelText(en.products.titleLabel);
+
+    rendered.changeEditedProductElsewhere({ ...baseProduct, salesChannel: 'sales_links_only', visibility: 'unlisted' });
+    expect(screen.getByRole('combobox', { name: en.products.salesChannelLabel })).toHaveTextContent(en.products.salesChannelSalesLinksOnly);
+    expect(screen.getByRole('combobox', { name: en.products.visibilityLabel })).toHaveTextContent(en.products.unlisted);
+    await user.clear(title);
+    await user.type(title, 'Renamed course');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.objectContaining({ title: 'Renamed course' })]);
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ salesChannel: expect.anything() })]);
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ visibility: expect.anything() })]);
+    expect(rendered.updatedProduct()).toMatchObject({ title: 'Renamed course', salesChannel: 'sales_links_only', visibility: 'unlisted' });
+  });
+
+  it('offers no sales channel for a membership and leaves it out of the saved details', async () => {
+    const user = userEvent.setup();
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const rendered = await renderProductsPanel([], '/panel/products/membership-1', [{ ...baseProduct, id: 'membership-1', type: 'membership', slug: 'creator-club', title: 'Creator Club' }]);
+
+    await screen.findByRole('combobox', { name: en.products.visibilityLabel });
+    expect(screen.queryByRole('combobox', { name: en.products.salesChannelLabel })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ salesChannel: expect.anything() })]);
+  });
+
   it('saves product safety information and variant fields for a physical product', async () => {
     const user = userEvent.setup();
     const physical: Product = {
       id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
-      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', published: false, accessItems: [],
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', published: false, accessItems: [],
       legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
     };
     await renderProductsPanel([], '/panel/products/draft-1', [physical]);
@@ -757,7 +827,7 @@ describe('ProductsPanel', () => {
   it('saves the InPost parcel size of a shipped physical product', async () => {
     const physical: Product = {
       id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
-      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', parcelTemplate: 'small', published: false, accessItems: [],
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', parcelTemplate: 'small', published: false, accessItems: [],
       legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
     };
     await renderProductsPanel([], '/panel/products/draft-1', [physical]);
@@ -776,7 +846,7 @@ describe('ProductsPanel', () => {
   it('hides the parcel size for products collected in person', async () => {
     const pickup: Product = {
       id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
-      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'pickup', published: false, accessItems: [],
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'pickup', published: false, accessItems: [],
       legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
     };
     await renderProductsPanel([], '/panel/products/draft-1', [pickup]);
@@ -789,6 +859,66 @@ describe('ProductsPanel', () => {
     expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('product-compliance')).not.toBeInTheDocument();
     expect(screen.queryByTestId('product-variants')).not.toBeInTheDocument();
+  });
+
+  it('saves a buyer personalisation with a condition and refuses an incomplete one', async () => {
+    const user = userEvent.setup();
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+    const section = await screen.findByTestId('product-personalization');
+    await user.click(within(section).getByRole('button', { name: new RegExp(en.personalization.heading, 'u') }));
+    await user.click(await screen.findByRole('switch', { name: en.personalization.enable }));
+    await user.click(screen.getByLabelText(en.personalization.label));
+    await user.paste('Add an engraving');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.personalization.incomplete);
+    expect(rendered.updateInputs).toEqual([]);
+    await user.click(screen.getByLabelText(en.personalization.inputLabel));
+    await user.paste('Engraving text');
+    await user.click(screen.getByLabelText(en.personalization.description));
+    await user.paste('Engraved by hand.');
+    await user.clear(screen.getByLabelText(en.personalization.maxLength));
+    await user.type(screen.getByLabelText(en.personalization.maxLength), '60');
+    await user.click(screen.getByRole('switch', { name: en.personalization.requireCondition }));
+    await user.click(screen.getByLabelText(en.personalization.condition));
+    await user.paste('I understand a personalised item is made to my order.');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.objectContaining({
+      id: 'draft-1',
+      personalization: {
+        label: 'Add an engraving',
+        description: 'Engraved by hand.',
+        inputLabel: 'Engraving text',
+        maxLength: 60,
+        condition: 'I understand a personalised item is made to my order.',
+      },
+    })]);
+  });
+
+  it('leaves the stored personalisation alone unless it is edited and clears it when switched off', async () => {
+    const user = userEvent.setup();
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const personalised: Product = { ...baseProduct, personalization: { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null } };
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1', [personalised]);
+    await user.click(await screen.findByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toEqual([expect.not.objectContaining({ personalization: expect.anything() })]);
+    await user.click(screen.getByRole('switch', { name: en.personalization.enable }));
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await waitFor(() => expect(rendered.updateInputs).toHaveLength(2));
+    expect(rendered.updateInputs[1]).toMatchObject({ personalization: null });
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    await waitFor(() => expect(rendered.updateInputs).toHaveLength(3));
+    expect(rendered.updateInputs[2]).not.toHaveProperty('personalization');
+  });
+
+  it('offers no personalisation for a membership', async () => {
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    await renderProductsPanel([], '/panel/products/membership-1', [{ ...baseProduct, id: 'membership-1', type: 'membership', slug: 'creator-club', title: 'Creator Club' }]);
+    expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('product-personalization')).not.toBeInTheDocument();
   });
 
   it('unpublishes a live product after confirmation', async () => {
@@ -850,6 +980,20 @@ it('keeps unlisted products in Studio with a chip and copyable checkout link', a
   expect(screen.getByRole('button', { name: en.products.copyCheckoutLink })).toBeEnabled();
 });
 
+
+it('marks a product sold only through sales links and offers no standalone checkout link for it', async () => {
+  const base = initialProducts[0];
+  if (base === undefined) throw new Error('Missing fixture');
+  await renderProductsPanel([], '/panel/products', [
+    { ...base, published: true, visibility: 'unlisted', salesChannel: 'sales_links_only' },
+    { ...base, id: 'open-1', slug: 'open-course', title: 'Open Course', published: true },
+  ]);
+  expect(await screen.findByTestId('product-sales-links-only-draft-1')).toHaveTextContent(en.products.salesChannelSalesLinksOnly);
+  expect(screen.getByText(en.products.unlisted)).toBeInTheDocument();
+  expect(screen.queryByTestId('copy-checkout-draft-1')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('product-sales-links-only-open-1')).not.toBeInTheDocument();
+  expect(screen.getByTestId('copy-checkout-open-1')).toBeEnabled();
+});
 
 it('reuses the upload control with replacement details and hides earlier versions initially', async () => {
   const user = userEvent.setup();

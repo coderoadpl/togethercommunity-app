@@ -149,11 +149,11 @@ describe('order detail shipment', () => {
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'shipped'), invoice: null } })),
       http.get('/api/orders/o1/shipx', () => {
         views.push('stored');
-        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
       }),
       http.post('/api/orders/o1/shipx/refresh', () => {
         views.push('refreshed');
-        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
       }),
       http.post('/api/orders/o1/shipx/label', () => labelAnswer === 'error'
         ? HttpResponse.json({ ok: false, error: { code: 'shipx_rejected', message: 'InPost could not generate the label', details: { status: 400, error: 'label_generation_failed', description: 'Template error', fields: {} } } }, { status: 422 })
@@ -187,7 +187,7 @@ describe('order detail shipment', () => {
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'to_pack'), invoice: null } })),
       http.get('/api/orders/o1/shipx', () => {
         views.push('stored');
-        return HttpResponse.json({ ok: true, data: { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+        return HttpResponse.json({ ok: true, data: { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
       }),
       http.post('/api/orders/o1/shipx/refresh', () => {
         views.push('refreshed');
@@ -209,7 +209,7 @@ describe('order detail shipment', () => {
       http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
         ok: true,
         data: {
-          available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium',
+          available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium',
           shipment: calls.includes('discard') ? null : {
             shipxShipmentId: null, status: 'unknown', trackingNumber: null, environment: 'production', createAttemptedAt: '2026-11-08T09:55:00.000Z',
             boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-08T09:55:00.000Z', updatedAt: '2026-11-08T09:55:00.000Z',
@@ -245,7 +245,7 @@ describe('order detail shipment', () => {
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), memberEmail: 'buyer@example.org' }, invoice: null } })),
       http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
         ok: true,
-        data: { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null },
+        data: { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null },
       })),
       http.post('/api/orders/o1/shipx', async ({ request }) => {
         createBodies.push(await request.json());

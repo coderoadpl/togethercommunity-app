@@ -6,6 +6,8 @@ import {
   collectPermissionInventory,
   collectUseCasesInSource,
   renderPermissionTable,
+  SHOP_MANAGEMENT_KEY_PRINCIPAL,
+  SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL,
 } from './permission-inventory.js';
 
 const root = join(import.meta.dirname, '..');
@@ -13,8 +15,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(453);
-    expect(inventory.useCases).toHaveLength(355);
+    expect(inventory.routes).toHaveLength(535);
+    expect(inventory.useCases).toHaveLength(400);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -23,11 +25,33 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(50);
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
+      .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
+      .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
+    const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
+    expect(shopRoutes).toHaveLength(50);
+    for (const row of shopRoutes) {
+      const principals = row.subject.includes(' /api/m2m/shop/proposals')
+        ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
+        : row.subject.startsWith('GET ')
+          ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
+          : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
+      expect(row, row.subject).toMatchObject({ before: principals, after: principals });
+      expect([...row.before, ...row.after], row.subject).not.toContain('owner');
+    }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
     ]) {
       expect(row).toMatchObject({ capability: 'invoice:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/changes'),
+      inventory.useCases.find((entry) => entry.subject === 'order-changes.ts#listOrderChangeFeed'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'order:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/integrations/stripe/probe'),
@@ -228,6 +252,72 @@ describe('permission inventory', () => {
     }
   });
 
+  it('never lists a propose-mode shop management key with a live write', () => {
+    const inventory = collectPermissionInventory();
+    const proposeRows = inventory.routes.filter((row) =>
+      [...row.before, ...row.after].includes(SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL));
+    expect(proposeRows.length).toBeGreaterThan(0);
+    for (const row of proposeRows) {
+      expect(row.subject, row.subject).toMatch(/^(?:GET \/api\/m2m\/shop\/|[A-Z]+ \/api\/m2m\/shop\/proposals(?:\/|$))/u);
+      expect(['product:write', 'product:price:write', 'product:publish', 'order:write', 'tenant:settings:write', 'tenant:secret:write'], row.subject)
+        .not.toContain(row.capability);
+    }
+    for (const subject of ['POST /api/m2m/shop/products/update', 'POST /api/m2m/shop/settings', 'POST /api/m2m/shop/sales-links', 'DELETE /api/m2m/shop/sales-links/:id']) {
+      expect(inventory.routes.find((row) => row.subject === subject)?.after, subject)
+        .toEqual([SHOP_MANAGEMENT_KEY_PRINCIPAL]);
+    }
+  });
+
+  it('gives the key-side proposal routes only to the propose-mode key and the session proposal routes only to the owner', () => {
+    const inventory = collectPermissionInventory();
+    for (const subject of [
+      'GET /api/m2m/shop/proposals', 'GET /api/m2m/shop/proposals/:id', 'POST /api/m2m/shop/proposals/:id/withdraw',
+      'POST /api/m2m/shop/proposals/groups', 'GET /api/m2m/shop/proposals/groups/:id', 'POST /api/m2m/shop/proposals/groups/:id/withdraw',
+    ]) {
+      expect(inventory.routes.find((row) => row.subject === subject), subject).toMatchObject({
+        capability: 'proposal:own:manage', before: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL],
+      });
+    }
+    for (const [subject, capability] of [
+      ['GET /api/change-proposals', 'proposal:read'],
+      ['GET /api/change-proposals/:id', 'proposal:read'],
+      ['POST /api/change-proposals/:id/reject', 'proposal:decide'],
+      ['POST /api/change-proposals/:id/approve', 'proposal:decide'],
+      ['GET /api/change-proposals/groups/:id', 'proposal:read'],
+      ['POST /api/change-proposals/groups/:id/reject', 'proposal:decide'],
+      ['POST /api/change-proposals/groups/:id/approve', 'proposal:decide'],
+    ] as const) {
+      expect(inventory.routes.find((row) => row.subject === subject), subject).toMatchObject({ capability, before: ['owner'], after: ['owner'] });
+    }
+  });
+
+  it('gives the change proposal use-cases to the propose-mode key on its side and to the owner on the decision side', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('change-proposals.ts#'));
+    expect(useCases.map(({ subject, capability, after }) => [subject.replace('change-proposals.ts#', ''), capability, after])).toEqual([
+      ['submitChangeProposal', 'proposal:submit:catalog', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['listOwnChangeProposals', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['getOwnChangeProposal', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['withdrawOwnChangeProposal', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['listChangeProposals', 'proposal:read', ['owner']],
+      ['getChangeProposal', 'proposal:read', ['owner']],
+      ['rejectChangeProposal', 'proposal:decide', ['owner']],
+      ['approveChangeProposal', 'proposal:decide', ['owner']],
+    ]);
+  });
+
+  it('gives the change proposal group use-cases to the propose-mode key on its side and to the owner on the decision side', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('change-proposal-groups.ts#'));
+    expect(useCases.map(({ subject, capability, after }) => [subject.replace('change-proposal-groups.ts#', ''), capability, after])).toEqual([
+      ['createChangeProposalGroup', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['submitGroupedChangeProposal', 'proposal:submit:catalog', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['getOwnChangeProposalGroup', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['withdrawOwnChangeProposalGroup', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['getChangeProposalGroup', 'proposal:read', ['owner']],
+      ['rejectChangeProposalGroup', 'proposal:decide', ['owner']],
+      ['approveChangeProposalGroup', 'proposal:decide', ['owner']],
+    ]);
+  });
+
   it('machine-checks every derivable before and after principal set', () => {
     const inventory = collectPermissionInventory();
     const changes = [...inventory.routes, ...inventory.useCases]
@@ -382,4 +472,25 @@ describe('use-case shape probe', () => {
       },
     ]);
   });
+
+  it('classifies organization use-cases by the capability given to authorizeOrganization', () => {
+    const source = `
+      export const getOrganizationThing = async (octx: OrganizationCtx, input: { organizationId: string }) =>
+        authorizeOrganization(octx, input.organizationId, 'organization:read');
+    `;
+    expect(collectUseCasesInSource('probe.ts', source)).toEqual([
+      { name: 'getOrganizationThing', file: 'probe.ts', capability: 'organization:read', organizationContext: true },
+    ]);
+  });
+
+  it('keeps organization rows on organization principals only', () => {
+    const inventory = collectPermissionInventory();
+    const rows = [...inventory.routes, ...inventory.useCases].filter((row) => row.capability?.startsWith('organization:') === true);
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    for (const row of rows) {
+      expect(row.after.every((principal) => principal.startsWith('organization-')), row.subject).toBe(true);
+      expect(row.after, row.subject).toEqual(row.before);
+    }
+  });
 });
+

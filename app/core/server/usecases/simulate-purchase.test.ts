@@ -26,6 +26,7 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published,
   accessItems: [],
@@ -123,7 +124,7 @@ const fakeTenants = (): TenantRepository => ({
   findBySlug: async () => null,
   findSole: async () => null,
   findSettings: async () => null,
-  updateSettings: async (_tenantId, settings) => settings,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => null,
   hasAny: async () => true,
 });
@@ -419,7 +420,7 @@ describe('simulated shipped purchase', () => {
       findSettings: async () => tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
         { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
       ] }),
-      updateSettings: async (_tenantId, value) => value, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
+      changeSettings: async () => null, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
     };
     h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants, emailOutbox: { enqueue: async (message) => ok({ id: message.id }) } }) };
     return h;

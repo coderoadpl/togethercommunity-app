@@ -41,6 +41,7 @@ import type { Db } from './client.js';
 import {
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountIdentityReader,
   createAccountSecurityReader,
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -85,7 +86,7 @@ import {
   createTenantSecretScan,
   createUserDisplayReader,
 } from './repositories.js';
-import { tenantDomainEvents } from './schema.js';
+import { providerCustomerOwners, tenantDomainEvents } from './schema.js';
 import { appendGrantMemberEvent, createMemberEventRepository } from './member-events.js';
 import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
@@ -96,6 +97,7 @@ import {
 import { createInvoiceRepository } from './invoice-repositories.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { recordFulfilledCheckoutConsents } from '#core/server/usecases/fulfilled-checkout-consents.js';
+import { writeSettings } from '#core/server/testing/tenant-settings-fake.js';
 import { createConsentDefinitionRepository, createMarketingConsentRepository, createConsentConfirmationTokenRepository } from './marketing-repositories.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
 import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
@@ -166,6 +168,7 @@ const product = (over: Partial<Product> & { id: string; tenantId: string }): Pro
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -348,6 +351,42 @@ describe('product repository', () => {
       tenantId: ACME,
       slug: 'prod-acme',
     }))).resolves.toBe('slug_taken');
+  });
+
+  it('stores the sales channel, defaults it to any, and returns it on every product read', async () => {
+    const repo = createProductRepository(db);
+    await repo.create(GLOBEX, product({ id: 'prod-globex-link-only', tenantId: GLOBEX, salesChannel: 'sales_links_only' }));
+    await db.insert(products).values({
+      id: 'prod-globex-sql-default', tenantId: GLOBEX, slug: 'prod-globex-sql-default', title: 'Raw insert', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW,
+    });
+    expect(await repo.findById(GLOBEX, 'prod-globex-link-only')).toMatchObject({ salesChannel: 'sales_links_only' });
+    expect(await repo.findById(GLOBEX, 'prod-globex-sql-default')).toMatchObject({ salesChannel: 'any' });
+
+    const linkOnly = await repo.findById(GLOBEX, 'prod-globex-link-only');
+    if (linkOnly === null) throw new Error('Link-only product missing');
+    const version = {
+      id: 'version-sales-channel', entityKind: 'product' as const, entityId: linkOnly.id, schemaVersion: 10,
+      payload: linkOnly, createdAt: NOW, createdBy: null,
+    };
+    const staleRead = await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'any' }, version);
+    expect(staleRead).toMatchObject({ salesChannel: 'any' });
+    expect(await repo.update(GLOBEX, { ...linkOnly, salesChannel: 'sales_links_only' }, { ...version, id: 'version-sales-channel-2' }))
+      .toMatchObject({ salesChannel: 'sales_links_only' });
+    if (staleRead === null) throw new Error('Stale read missing');
+    const { salesChannel: staleChannel, ...staleWithoutChannel } = staleRead;
+    expect(staleChannel).toBe('any');
+    expect(await repo.update(GLOBEX, { ...staleWithoutChannel, title: 'Renamed link-only' }, { ...version, id: 'version-sales-channel-3' }))
+      .toMatchObject({ title: 'Renamed link-only', salesChannel: 'sales_links_only' });
+
+    await createMemberRepository(db).create(GLOBEX, member({ id: 'mem-globex-link', tenantId: GLOBEX, userId: 'user-globex-link', email: 'link-buyer@together.dev' }));
+    await createProductGrantRepository(db).createGrant(GLOBEX, grant({ id: 'grant-globex-link', tenantId: GLOBEX, memberId: 'mem-globex-link', productId: 'prod-globex-link-only' }));
+    expect(await createProductGrantRepository(db).listGrantedProducts(GLOBEX, 'mem-globex-link'))
+      .toEqual([expect.objectContaining({ id: 'prod-globex-link-only', salesChannel: 'sales_links_only' })]);
+    await expect(db.insert(products).values({
+      id: 'prod-globex-bad-channel', tenantId: GLOBEX, slug: 'prod-globex-bad-channel', title: 'Bad channel', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW, salesChannel: sql`'catalogue'`,
+    })).rejects.toThrow();
   });
 });
 
@@ -1259,11 +1298,11 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
       analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
     };
-    const updated = await repo.updateSettings(ACME, { ...current, ...configured });
+    const updated = await writeSettings(repo, ACME, configured);
     expect(updated).toMatchObject(configured);
     expect(await repo.findSettings(ACME)).toMatchObject(configured);
     expect(await repo.findSettings(GLOBEX)).toMatchObject(disabled);
-    expect(await repo.updateSettings(ACME, { ...updated, ...disabled })).toMatchObject(disabled);
+    expect(await writeSettings(repo, ACME, disabled)).toMatchObject(disabled);
     expect(await repo.findSettings(ACME)).toMatchObject(disabled);
   });
 
@@ -1302,7 +1341,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       { requireEmpty: true },
     )).toBeNull();
     expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
-    const updated = await repo.updateSettings(ACME, {
+    const updated = await writeSettings(repo, ACME, {
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
@@ -1355,7 +1394,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: '#786000' });
     expect(await repo.findSettings(GLOBEX)).toMatchObject({ accentLight: null });
     expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
-    await repo.updateSettings(ACME, { ...updated, accentLight: null });
+    await writeSettings(repo, ACME, { accentLight: null });
     expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: null });
   });
 
@@ -4272,6 +4311,24 @@ describe('member erasure repository', () => {
   });
 });
 
+describe('createAccountIdentityReader', () => {
+  it('reads the account identity by id and returns null for a missing account', async () => {
+    await db.insert(user).values({
+      id: 'user-identity-reader', name: 'Identity Reader', email: 'identity-reader@together.dev', emailVerified: true,
+    });
+    const reader = createAccountIdentityReader(db);
+
+    await expect(reader.findById('user-identity-reader')).resolves.toEqual({
+      userId: 'user-identity-reader',
+      email: 'identity-reader@together.dev',
+      name: 'Identity Reader',
+      emailVerified: true,
+    });
+    await expect(reader.findById('user-globex-member')).resolves.toMatchObject({ emailVerified: false });
+    await expect(reader.findById('user-missing')).resolves.toBeNull();
+  });
+});
+
 describe('createAccountSecurityReader', () => {
   it('projects password and verified two-factor state from the auth tables', async () => {
     await db.insert(account).values({
@@ -4455,6 +4512,14 @@ describe('Stripe webhook ownership reader', () => {
     expect(await reader.hasForeignOwner('local', { [key]: `local-stripe-${suffix}` })).toBe(false);
     expect(await reader.hasForeignOwner('local', { [key]: `foreign-stripe-${suffix}` })).toBe(true);
     expect(await reader.hasForeignOwner('local', { [key]: `foreign-simulated-${suffix}` })).toBe(false);
+  });
+
+  it('treats a customer that only the customer owner table assigns to another workspace as foreign', async () => {
+    await db.insert(providerCustomerOwners).values({ provider: 'stripe', customerId: 'owner-table-customer', tenantId: 'foreign', createdAt });
+    const reader = createStripeWebhookOwnershipReader(db);
+    expect(await reader.hasForeignOwner('local', { customer: 'owner-table-customer' })).toBe(true);
+    expect(await reader.hasForeignOwner('local', { customer: 'local-customer', subscription: 'local-stripe-subscription' })).toBe(false);
+    expect(await reader.hasForeignOwner('foreign', { customer: 'owner-table-customer' })).toBe(false);
   });
 
   it('rejects foreign ownership even when another identifier belongs to the local tenant', async () => {

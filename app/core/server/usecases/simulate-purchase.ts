@@ -13,10 +13,10 @@ import {
   type BillingData,
   type SalesLinkVariantSelection,
   type CheckoutShippingInput,
+  type CheckoutPersonalizationRequest,
 } from '#core/domain/index.js';
 
-import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
-import type { SalesLinkRepository } from '../sales-link-ports.js';
+import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, SalesLinkRepository, TenantRepository } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { validateCheckoutSelection } from './checkout.js';
@@ -55,6 +55,7 @@ export interface SimulatePurchaseInputData {
   priceId?: string;
   billing?: BillingData;
   shipping?: CheckoutShippingInput;
+  personalizations?: CheckoutPersonalizationRequest[];
 }
 
 export const simulatePurchase = async (

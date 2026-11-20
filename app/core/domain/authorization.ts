@@ -12,6 +12,7 @@ export const CAPABILITIES = [
   'tenant:domain:read',
   'tenant:secret:read',
   'tenant:secret:write',
+  'tenant:organization:unlink',
   'tenant:onboarding:read',
   'tenant:onboarding:write',
   'terms:accept',
@@ -123,6 +124,25 @@ export const CAPABILITIES = [
   'offer:read',
   'legal:read',
   'webhook:process',
+  'proposal:submit:catalog',
+  'proposal:submit:settings',
+  'proposal:asset:upload',
+  'proposal:own:manage',
+  'proposal:read',
+  'proposal:decide',
+  'organization:read',
+  'organization:member:read',
+  'organization:member:write',
+  'organization:settings:write',
+  'organization:secret:read',
+  'organization:secret:write',
+  'organization:workspace:create',
+  'organization:workspace:link',
+  'organization:workspace:configure',
+  'organization:config-source:write',
+  'organization:api-key:read',
+  'organization:api-key:write',
+  'organization:audit:read',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -144,6 +164,8 @@ export const PRINCIPALS = [
   'webhook',
   'token',
   'public',
+  'organization-owner',
+  'organization-admin',
 ] as const;
 
 export type Principal = (typeof PRINCIPALS)[number];
@@ -153,6 +175,7 @@ export type CapabilityMatrix = Record<Principal, readonly Capability[]>;
 const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = [
   'tenant:create',
   'platform:data:reset',
+  'proposal:decide',
 ];
 
 export const requiresVerifiedEmail = (capability: Capability): boolean =>
@@ -269,12 +292,44 @@ const sharedStaffCapabilities = [
 const ownerOnlyCapabilities = [
   'tenant:settings:write',
   'tenant:secret:write',
+  'tenant:organization:unlink',
   'api-key:write',
   'integration:test',
+  'proposal:read',
+  'proposal:decide',
 ] as const satisfies readonly Capability[];
 
+// Only a propose-mode shop management key exercises these; the owner holds them so the key's owner intersection keeps them.
+const ownerDelegatedProposalCapabilities = [
+  'proposal:submit:catalog',
+  'proposal:submit:settings',
+  'proposal:asset:upload',
+  'proposal:own:manage',
+] as const satisfies readonly Capability[];
+
+const organizationAdminCapabilities = [
+  'organization:read',
+  'organization:member:read',
+  'organization:secret:read',
+  'organization:workspace:configure',
+  'organization:audit:read',
+] as const satisfies readonly Capability[];
+
+const organizationOwnerOnlyCapabilities = [
+  'organization:member:write',
+  'organization:settings:write',
+  'organization:secret:write',
+  'organization:workspace:create',
+  'organization:workspace:link',
+  'organization:config-source:write',
+  'organization:api-key:read',
+  'organization:api-key:write',
+] as const satisfies readonly Capability[];
+
+export const ORGANIZATION_PRINCIPALS = ['organization-owner', 'organization-admin'] as const satisfies readonly Principal[];
+
 export const ROLE_CAPABILITIES: CapabilityMatrix = {
-  owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities],
+  owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities, ...ownerDelegatedProposalCapabilities],
   admin: sharedStaffCapabilities,
   member: memberSelfCapabilities,
   authenticated: [
@@ -334,6 +389,8 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'development:inspect',
     'development:mutate',
   ],
+  'organization-owner': [...organizationAdminCapabilities, ...organizationOwnerOnlyCapabilities],
+  'organization-admin': organizationAdminCapabilities,
 };
 
 export const capabilitiesForPrincipal = (principal: Principal): readonly Capability[] =>
@@ -367,3 +424,18 @@ const IMPERSONATION_READ_CAPABILITIES: readonly Capability[] = [
 
 export const isImpersonationReadCapability = (capability: Capability): boolean =>
   IMPERSONATION_READ_CAPABILITIES.includes(capability);
+
+/**
+ * Default-deny: a new organization capability stays refused while the
+ * organization is suspended until it is reviewed and listed here.
+ */
+const ORGANIZATION_READ_CAPABILITIES: readonly Capability[] = [
+  'organization:read',
+  'organization:member:read',
+  'organization:secret:read',
+  'organization:api-key:read',
+  'organization:audit:read',
+];
+
+export const isOrganizationReadCapability = (capability: Capability): boolean =>
+  ORGANIZATION_READ_CAPABILITIES.includes(capability);

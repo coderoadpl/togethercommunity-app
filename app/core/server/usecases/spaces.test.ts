@@ -110,6 +110,7 @@ const product = (id: string): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
@@ -645,7 +646,7 @@ const grantRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRep
 
 const productRepo = (contentVersionBumps: string[], products: Product[]): ProductRepository => ({
   listByTenant: async (tenantId) => products.filter((item) => item.tenantId === tenantId),
-  listPublishedByTenant: async () => [],
+  listPublishedByTenant: async (tenantId) => products.filter((item) => item.tenantId === tenantId && item.published),
   findById: async () => null,
   create: async () => 'created',
   updateAccessItems: async () => null,
@@ -683,7 +684,7 @@ const tenantRepo = (defaultHomeSpaceId: string | null): TenantRepository => ({
   findSole: async () => null,
   hasAny: async () => false,
   findSettings: async () => tenantSettings(defaultHomeSpaceId),
-  updateSettings: async (_tenantId, next) => next,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => null,
 });
 
@@ -727,7 +728,9 @@ const fixture = (input: {
   };
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
-    listStaffForTenant: async () => [],
+    listStaffForTenant: async (tenantId) => tenantId === 't1'
+      ? (input.staffUserIds ?? []).map((userId) => ({ userId, email: `${userId}@example.com`, staffRole: 'admin' as const, language: null }))
+      : [],
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && (input.staffUserIds ?? []).includes(userId)
         ? {
@@ -735,6 +738,7 @@ const fixture = (input: {
               id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
             },
             staffRole: 'admin',
+            source: 'direct',
           }
         : null,
     findMember: async (tenantId, userId) => {
@@ -841,6 +845,39 @@ describe('space visibility', () => {
       value: [
         { id: 's-open', products: [] },
         { id: 's-club', products: [{ id: 'p-club', title: 'Club Pass' }] },
+      ],
+    });
+  });
+
+  it('hides a sales-links-only product of the space from a member who owns another of its products', async () => {
+    const f = fixture({
+      spaces: [space({ ...gatedSpace, productIds: ['p-club', 'p-link-only'] })],
+      grants: [grant('m1', 'p-club')],
+      products: [
+        { ...product('p-club'), title: 'Club Pass' },
+        { ...product('p-link-only'), title: 'Link-only Pass', salesChannel: 'sales_links_only' },
+      ],
+    });
+
+    const listed = await listSpacesForMember(ctx(), f.deps);
+    const staffListed = await listSpacesForMember(ctx({ staffRole: 'owner', memberId: null }), f.deps);
+
+    expect(listed).toMatchObject({
+      ok: true,
+      value: [{ id: 's-club', productIds: ['p-club'], products: [{ id: 'p-club', title: 'Club Pass' }] }],
+    });
+    expect(JSON.stringify(listed)).not.toMatch(/p-link-only|Link-only Pass/);
+    expect(staffListed).toMatchObject({
+      ok: true,
+      value: [
+        {
+          id: 's-club',
+          productIds: ['p-club', 'p-link-only'],
+          products: [
+            { id: 'p-club', title: 'Club Pass' },
+            { id: 'p-link-only', title: 'Link-only Pass' },
+          ],
+        },
       ],
     });
   });

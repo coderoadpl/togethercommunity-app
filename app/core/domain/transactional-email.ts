@@ -46,6 +46,12 @@ const purchaseDeliverySchema = z.object({
   }).nullable(),
 });
 
+const purchasePersonalizationSchema = z.object({
+  name: z.string().min(1),
+  text: z.string(),
+  condition: z.string().nullable(),
+});
+
 export const purchaseEmailDetailsSchema = z.object({
   orderNumber: z.string().min(1),
   verificationUrl: z.string().url(),
@@ -54,6 +60,7 @@ export const purchaseEmailDetailsSchema = z.object({
   currency: currencySchema.optional(),
   totalCents: z.number().int().nonnegative().optional(),
   delivery: purchaseDeliverySchema.optional(),
+  personalizations: z.array(purchasePersonalizationSchema).optional(),
 }).refine((purchase) => (purchase.currency === undefined) === (purchase.totalCents === undefined), {
   message: 'Currency and total must both be present or both be absent',
 });
@@ -211,6 +218,17 @@ const purchaseDelivery = (
   };
 };
 
+const purchasePersonalizations = (
+  personalizations: z.output<typeof purchasePersonalizationSchema>[] | undefined,
+  labels: TransactionalEmailMessages['purchase'],
+): { html: string; text: string } => {
+  const entries = personalizations ?? [];
+  return {
+    html: entries.map((entry) => `<p><strong>${escapeHtml(labels.personalization)}: ${escapeHtml(entry.name)}</strong><br>${escapeHtml(entry.text)}${entry.condition === null ? '' : `<br>${escapeHtml(labels.personalizationCondition)}: ${escapeHtml(entry.condition)}`}</p>`).join(''),
+    text: entries.map((entry) => `\n\n${labels.personalization}: ${entry.name}\n${entry.text}${entry.condition === null ? '' : `\n${labels.personalizationCondition}: ${entry.condition}`}`).join(''),
+  };
+};
+
 export const welcomeSignIn = (
   language: string,
   input: { tenantName: string; actionUrl: string; branding?: EmailBranding; productType?: WelcomeSignInProductType; purchase?: z.output<typeof purchaseEmailDetailsSchema> },
@@ -236,11 +254,12 @@ export const welcomeSignIn = (
   const labels = messages.purchase;
   const items = purchaseItems(language, purchase, labels);
   const delivery = purchaseDelivery(purchase.delivery, labels);
+  const personalizations = purchasePersonalizations(purchase.personalizations, labels);
   return emailMessageSchema.parse({
     ...rendered,
     subject: labels.subject(purchase.orderNumber, input.tenantName),
-    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}${delivery.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
-    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${delivery.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
+    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}${personalizations.html}${delivery.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
+    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${personalizations.text}${delivery.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
   });
 };
 

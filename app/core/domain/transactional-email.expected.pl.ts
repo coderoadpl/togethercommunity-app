@@ -122,3 +122,10 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     text: 'Cześć!\n\nAlex wysłał(a) Ci wiadomość na platformie Acme Courses:\n\nHello!\n\nOtwórz rozmowę: https://acme.test/messages/dc1\n\nZarządzaj powiadomieniami (w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników): https://acme.test/messages/dc1',
   },
 };
+
+export const expectedPurchasePersonalizationPl = {
+  conditionHtml: '<p><strong>Personalizacja: Printed &lt;book&gt;</strong><br>For &quot;Alex&quot; &amp; Sam<br>Zaakceptowany warunek: I understand a personalised item is made to my order.</p>',
+  plainHtml: '<p><strong>Personalizacja: Card</strong><br>Hi</p>',
+  conditionText: '\n\nPersonalizacja: Printed <book>\nFor "Alex" & Sam\nZaakceptowany warunek: I understand a personalised item is made to my order.',
+  plainText: '\n\nPersonalizacja: Card\nHi',
+};

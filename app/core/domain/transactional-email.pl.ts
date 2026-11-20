@@ -23,6 +23,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     qrAlt: 'Kod QR zamówienia',
     delivery: 'Dostawa',
     pickupPoint: 'Paczkomat',
+    personalization: 'Personalizacja',
+    personalizationCondition: 'Zaakceptowany warunek',
   },
   orderShipped: {
     items: 'Wysłane produkty',

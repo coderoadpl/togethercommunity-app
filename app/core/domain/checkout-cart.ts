@@ -8,6 +8,7 @@ export const CART_MAX_UNITS = 200;
 export const CART_PHYSICAL_LINE_MAX_QUANTITY = 99;
 // A 36-minute stock hold on 99 pieces would let one abandoned cart lock a whole stock; lifted when holds stop.
 export const CART_LINE_MAX_QUANTITY_WITH_HOLD = 10;
+export const SINGLE_CHECKOUT_LINE_QUANTITY = 1;
 
 const cartLineSchema = z.object({
   productId: z.string().uuid(),

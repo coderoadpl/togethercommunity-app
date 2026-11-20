@@ -34,13 +34,17 @@ export const server = setupServer(
     HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } }),
   ),
   http.get('*/api/integrations/shipx', () =>
-    HttpResponse.json({ ok: true, data: { environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false } }),
+    HttpResponse.json({ ok: true, data: {
+      sender: null,
+      sandbox: { organizationId: null, token: null, configured: false },
+      production: { organizationId: null, token: null, configured: false },
+    } }),
   ),
   http.get('*/api/orders/:orderId/shipx', () =>
-    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', service: null, parcelTemplate: 'medium', shipment: null } }),
+    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, parcelTemplate: 'medium', shipment: null } }),
   ),
   http.post('*/api/orders/:orderId/shipx/refresh', () =>
-    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', service: null, parcelTemplate: 'medium', shipment: null } }),
+    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, parcelTemplate: 'medium', shipment: null } }),
   ),
   http.get('*/api/public/payment-config', () =>
     HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: false } }),

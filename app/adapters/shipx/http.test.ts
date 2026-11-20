@@ -98,6 +98,14 @@ describe('ShipX HTTP client', () => {
     expect(sent.body).not.toHaveProperty('custom_attributes');
   });
 
+  it('omits the sender so InPost uses the organization data when the workspace saved no sender', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => json(fixture('create-locker-response.json'), 201));
+    await createShipxHttpClient({ fetchImpl }).createShipment(credentials, { ...lockerRequest, sender: null });
+    const sent = requestOf(fetchImpl);
+    expect(sent.body).not.toHaveProperty('sender');
+    expect(sent.body).toMatchObject({ receiver: { first_name: 'Jan' }, service: 'inpost_locker_standard', reference: 'order-1' });
+  });
+
   it('reads a confirmed shipment and the offers of a bought one', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(json(fixture('shipment-confirmed.json')))

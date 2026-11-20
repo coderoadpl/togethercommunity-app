@@ -1,17 +1,24 @@
 import {
   EMPTY_LEGAL_URLS,
+  cartLineMaxQuantity,
   defaultProductVat,
+  isCatalogueListed,
+  isStandalonePurchasable,
   productVariants,
   publicShippingRates,
   type DeliveryMethod,
   type ProductCompliance,
+  type ProductPersonalization,
   type PublicProductCompliance,
+  type PublicProductPersonalization,
   type PublicProductVariant,
   type PublicShippingRate,
   type ProductVatRate,
   EMPTY_TENANT_BRANDING,
   ok,
   publicProductStock,
+  publicStockLookup,
+  purchasableLineQuantity,
   type PublicProductStock,
   type AppError,
   type LegalUrls,
@@ -74,6 +81,7 @@ interface PublicOfferProduct {
   type: ProductType;
   deliveryMethod: DeliveryMethod;
   compliance: PublicProductCompliance | null;
+  personalization: PublicProductPersonalization | null;
   variants: PublicProductVariant[];
   slug: string;
   title: string;
@@ -83,6 +91,7 @@ interface PublicOfferProduct {
   currency: string;
   prices: PublicOfferPrice[];
   stock: PublicProductStock;
+  maxQuantity: number;
   marketingConsents: Array<{
     definitionId: string;
     label: string;
@@ -106,15 +115,19 @@ export const getPublicOffer = async (
   tenant: Tenant,
   deps: PublicOfferDeps,
   productRef?: string,
+  channel: 'standalone' | 'sales_link' = 'standalone',
 ): Promise<Result<PublicOffer, AppError>> => {
   const [publishedProducts, lessons, courses] = await Promise.all([
     deps.products.listPublishedByTenant(tenant.id),
     deps.lessons.listPreviews(tenant.id),
     deps.courses.list(tenant.id),
   ]);
-  const products = publishedProducts.filter((product) => product.published && (productRef === undefined
-    ? product.visibility === 'listed'
-    : product.id === productRef || product.slug === productRef));
+  const offerable = channel === 'sales_link'
+    ? publishedProducts.filter((product) => product.published)
+    : publishedProducts.filter(isStandalonePurchasable);
+  const products = offerable.filter((product) => productRef === undefined
+    ? isCatalogueListed(product)
+    : product.id === productRef || product.slug === productRef);
   const publicCourseIds = new Set(
     courses.filter((course) => course.publiclyVisible && !course.archivedAt).map((course) => course.id),
   );
@@ -132,10 +145,10 @@ export const getPublicOffer = async (
   const variantGroups = new Set(products.flatMap((product) => product.variantGroup == null ? [] : [product.variantGroup]));
   const stockProductIds = new Set([
     ...products.map((product) => product.id),
-    ...publishedProducts.filter((product) => product.published && product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
+    ...offerable.filter((product) => product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
   ]);
   const stock = await deps.stock?.listByProducts(tenant.id, [...stockProductIds]) ?? [];
-  const soldOutProductIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
+  const stockOf = publicStockLookup(stock);
   return ok({
     tenant: {
       slug: tenant.slug,
@@ -164,8 +177,9 @@ export const getPublicOffer = async (
     products: await Promise.all(products.map(async (product) => ({
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
-      variants: productVariants(product, publishedProducts, soldOutProductIds),
-      stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
+      variants: productVariants(product, offerable, stockOf),
+      stock: stockOf(product.id),
+      maxQuantity: purchasableLineQuantity(cartLineMaxQuantity(product.type), stockOf(product.id)),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
     shippingRates: publicShippingRates(settings?.shippingRates),
@@ -175,6 +189,15 @@ export const getPublicOffer = async (
 
 export const toPublicCompliance = (compliance: ProductCompliance | null | undefined): PublicProductCompliance | null =>
   compliance == null ? null : { ...compliance, safetyWarningsHtml: renderPostContent(compliance.safetyWarnings, 'markdown').html };
+
+export const toPublicPersonalization = (personalization: ProductPersonalization | null | undefined): PublicProductPersonalization | null =>
+  personalization == null ? null : {
+    label: personalization.label,
+    description: personalization.description,
+    inputLabel: personalization.inputLabel,
+    maxLength: personalization.maxLength,
+    condition: personalization.condition,
+  };
 
 const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
   id: price.id,
@@ -189,6 +212,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   type: product.type,
   deliveryMethod: product.deliveryMethod,
   compliance: toPublicCompliance(product.compliance),
+  personalization: toPublicPersonalization(product.personalization),
   variants: [],
   slug: product.slug,
   title: product.title,
@@ -198,6 +222,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   currency: product.currency,
   prices,
   stock: publicProductStock(null),
+  maxQuantity: cartLineMaxQuantity(product.type),
   marketingConsents: [],
 });
 

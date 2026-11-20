@@ -116,6 +116,7 @@ const pCourse: Product = {
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  salesChannel: 'any',
   deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'c1' }],
@@ -237,7 +238,7 @@ const tenantsRepo = (settings: TenantSettings | null = tenantSettings): TenantRe
   findSole: async () => null,
   hasAny: async () => false,
   findSettings: async () => settings,
-  updateSettings: async (_tenantId, next) => next,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => {
     throw new Error('not used');
   },

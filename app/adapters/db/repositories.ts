@@ -4,10 +4,11 @@ import { orderRefundJobs } from './order-refund-job-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
+import { erasedPersonalizationLines, erasedPurchasePersonalizations, linesHavePersonalization, purchaseHasPersonalizations } from './personalization-erasure.js';
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
-import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
@@ -17,7 +18,9 @@ import {
   SMOKE_TENANT_ID,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
+  effectiveStaffGrant,
   orderBillingDataSchema,
+  organizationRoleSchema,
   courseLessonSchema,
   lessonAttachmentSchema,
   courseModuleSchema,
@@ -39,6 +42,7 @@ import {
   shippingRatesSchema,
   notificationSchema,
   orderSchema,
+  ok,
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
@@ -56,7 +60,10 @@ import {
   tenantApiKeySchema,
   tenantSecretSchema,
   tenantTeamMemberSchema,
+  tenantTeamOrganizationSchema,
+  ORGANIZATION_DERIVED_STAFF_ROLE,
   termsConsentSchema,
+  type AppError,
   type Course,
   type CourseLesson,
   type LessonAttachment,
@@ -80,6 +87,7 @@ import {
   type PostReport,
   type Product,
   type ReactionSummary,
+  type Result,
   type Space,
   type SpaceEvent,
   type SpaceEventRsvp,
@@ -121,6 +129,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   MemberOrderListReader,
+  OrderListItemReader,
   PaymentRefundRepository,
   ProductPriceRepository,
   ProductDownloadAssetRepository,
@@ -141,6 +150,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  AccountIdentityReader,
   AccountSecurityReader,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -209,6 +219,7 @@ import {
   productDownloadAssets,
   downloadCopies,
   processedPaymentEvents,
+  providerCustomerOwners,
   salesLinks,
   products,
   spaces,
@@ -217,6 +228,8 @@ import {
   spaceEvents,
   spaceSeenMarks,
   spaceSubscriptions,
+  organizationMembers,
+  organizations,
   tenantAdmins,
   tenantAdminInvitations,
   tenantApiKeys,
@@ -424,9 +437,11 @@ export const createProductRepository = (
           description: product.description,
           coverUrl: product.coverUrl,
           visibility: product.visibility,
+          salesChannel: product.salesChannel,
           deliveryMethod: product.deliveryMethod,
           parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
           compliance: product.compliance ?? null,
+          personalization: product.personalization ?? null,
           variantGroup: product.variantGroup ?? null,
           variantLabel: product.variantLabel ?? null,
           priceCents: product.priceCents,
@@ -455,9 +470,11 @@ export const createProductRepository = (
         description: product.description,
         coverUrl: product.coverUrl,
         visibility: product.visibility,
+        ...(product.salesChannel === undefined ? {} : { salesChannel: product.salesChannel }),
         deliveryMethod: product.deliveryMethod,
         parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
         compliance: product.compliance ?? null,
+        ...(product.personalization === undefined ? {} : { personalization: product.personalization }),
         variantGroup: product.variantGroup ?? null,
         variantLabel: product.variantLabel ?? null,
         vatRate: product.vatRate ?? null,
@@ -2877,6 +2894,23 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
         sql`jsonb_typeof(${emailOutbox.payload}#>'{purchase,delivery,address}') = 'object'`,
       ));
+      await tx.update(orders).set({ lines: erasedPersonalizationLines(orders.lines, input.postAuthorDisplay) }).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), linesHavePersonalization(orders.lines),
+      ));
+      await tx.update(checkoutSnapshots).set({ lines: erasedPersonalizationLines(checkoutSnapshots.lines, input.postAuthorDisplay) }).where(and(
+        eq(checkoutSnapshots.tenantId, tenantId),
+        linesHavePersonalization(checkoutSnapshots.lines),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.memberId, input.memberId),
+          eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+        ))),
+      ));
+      await tx.update(emailOutbox).set({ payload: erasedPurchasePersonalizations(emailOutbox.payload, input.postAuthorDisplay) }).where(and(
+        eq(emailOutbox.tenantId, tenantId),
+        sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
+        purchaseHasPersonalizations(emailOutbox.payload),
+      ));
       await tx.update(emailOutbox).set({
         payload: sql`jsonb_set(${emailOutbox.payload}, '{shipment,delivery,address}', (${emailOutbox.payload}#>'{shipment,delivery,address}') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null))`,
       }).where(and(
@@ -2970,6 +3004,18 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           ),
         ));
 
+      const stripeCustomerId = member.externalCustomerIds['stripe'];
+      await tx.delete(providerCustomerOwners).where(and(
+        eq(providerCustomerOwners.tenantId, tenantId),
+        or(
+          eq(providerCustomerOwners.memberId, input.memberId),
+          stripeCustomerId === undefined ? undefined : and(
+            eq(providerCustomerOwners.provider, 'stripe'),
+            eq(providerCustomerOwners.customerId, stripeCustomerId),
+          ),
+        ),
+      ));
+
       await tx
         .update(members)
         .set({
@@ -3048,8 +3094,12 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .select({ value: sql<number>`count(*)::int` })
         .from(tenantAdminInvitations)
         .where(eq(tenantAdminInvitations.userId, member.userId));
+      const organizationLinks = await tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, member.userId));
       const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0)
-        + (invitationLinks[0]?.value ?? 0);
+        + (invitationLinks[0]?.value ?? 0) + (organizationLinks[0]?.value ?? 0);
       if (openErasureRequest !== undefined) {
         await tx
           .update(memberErasureRequests)
@@ -3288,6 +3338,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           vatExemptionBasis: products.vatExemptionBasis,
           currency: products.currency,
           visibility: products.visibility,
+          salesChannel: products.salesChannel,
           deliveryMethod: products.deliveryMethod,
           published: products.published,
           accessItems: products.accessItems,
@@ -3373,7 +3424,7 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
 
 export const createOrderRepository = (
   db: Db,
-): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
+): OrderRepository & OrderDetailRepository & MemberOrderListReader & OrderListItemReader => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.mode !== undefined) conditions.push(eq(orders.mode, query.mode));
@@ -3395,6 +3446,44 @@ export const createOrderRepository = (
       if (search) conditions.push(search);
     }
     return conditions;
+  };
+
+  const selectListRows = () => db
+    .select({
+      order: orders,
+      memberEmail: members.email,
+      memberName: members.displayName,
+      productTitle: products.title,
+      couponCode: coupons.code,
+      salesLinkTitle: salesLinks.title,
+    })
+    .from(orders)
+    .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+    .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+    .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
+    .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)));
+
+  const toListItems = async (tenantId: string, rows: Awaited<ReturnType<typeof selectListRows>>): Promise<OrderListItem[]> => {
+    const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
+      .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
+      .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
+    const cancelledOrderIds = rows.flatMap((row) => row.order.cancelReason == null ? [] : [row.order.id]);
+    const refundJobRows = cancelledOrderIds.length === 0 ? [] : await db
+      .select({ orderId: orderRefundJobs.orderId, status: orderRefundJobs.status })
+      .from(orderRefundJobs)
+      .where(and(eq(orderRefundJobs.tenantId, tenantId), inArray(orderRefundJobs.orderId, cancelledOrderIds)));
+    return rows.map((row) => orderListItemSchema.parse({
+      ...normalizeOrderDates(row.order),
+      memberEmail: row.memberEmail,
+      memberName: row.memberName,
+      productTitle: row.productTitle,
+      couponCode: row.couponCode,
+      salesLinkTitle: row.salesLinkTitle ?? undefined,
+      invoice: invoiceRows.find((invoice) => invoice.orderId === row.order.id) ?? null,
+      ...(row.order.cancelReason == null ? {} : {
+        refundJobStatus: refundJobRows.find((job) => job.orderId === row.order.id)?.status ?? null,
+      }),
+    }));
   };
 
   return {
@@ -3506,20 +3595,7 @@ export const createOrderRepository = (
     },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
-      const rows = await db
-        .select({
-          order: orders,
-          memberEmail: members.email,
-          memberName: members.displayName,
-          productTitle: products.title,
-          couponCode: coupons.code,
-          salesLinkTitle: salesLinks.title,
-        })
-        .from(orders)
-        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
-        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
-        .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
-        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+      const rows = await selectListRows()
         .where(and(...conditions))
         .orderBy(desc(orders.createdAt), desc(orders.id))
         .limit(query.pageSize)
@@ -3536,33 +3612,17 @@ export const createOrderRepository = (
           ...(query.mode === undefined ? [] : [eq(orders.mode, query.mode)]),
           sql`${orders.attribution}->>'utmSource' IS NOT NULL`,
         )).orderBy(sql`${orders.attribution}->>'utmSource'`);
-      const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
-        .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
-        .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
-      const cancelledOrderIds = rows.flatMap((row) => row.order.cancelReason == null ? [] : [row.order.id]);
-      const refundJobRows = cancelledOrderIds.length === 0 ? [] : await db
-        .select({ orderId: orderRefundJobs.orderId, status: orderRefundJobs.status })
-        .from(orderRefundJobs)
-        .where(and(eq(orderRefundJobs.tenantId, tenantId), inArray(orderRefundJobs.orderId, cancelledOrderIds)));
       return {
-        orders: rows.map(
-          (row): OrderListItem =>
-            orderListItemSchema.parse({
-              ...normalizeOrderDates(row.order),
-              memberEmail: row.memberEmail,
-              memberName: row.memberName,
-              productTitle: row.productTitle,
-              couponCode: row.couponCode,
-              salesLinkTitle: row.salesLinkTitle ?? undefined,
-              invoice: invoiceRows.find((invoice) => invoice.orderId === row.order.id) ?? null,
-              ...(row.order.cancelReason == null ? {} : {
-                refundJobStatus: refundJobRows.find((job) => job.orderId === row.order.id)?.status ?? null,
-              }),
-            }),
-        ),
+        orders: await toListItems(tenantId, rows),
         total: totals[0]?.value ?? 0,
         sources: sourceRows.map((row) => row.value),
       };
+    },
+    listByIds: async (tenantId, orderIds) => {
+      if (orderIds.length === 0) return [];
+      const rows = await selectListRows()
+        .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, [...orderIds])));
+      return toListItems(tenantId, rows);
     },
     listForMember: async (tenantId, memberId) => {
       const rows = await db
@@ -4460,20 +4520,78 @@ export const createTenantDomainEventRepository = (db: Db): TenantDomainEventRepo
   },
 });
 
+// Organization links stay out of tenant reads until the organization layer exposes them deliberately.
+const tenantColumnsWithoutOrganization = (): Omit<typeof tenants._.columns, 'organizationId'> => {
+  const columns = { ...getTableColumns(tenants) };
+  Reflect.deleteProperty(columns, 'organizationId');
+  return columns;
+};
+
+const tenantSettingsColumns = (changes: Partial<TenantSettings>) => ({
+  name: changes.name,
+  defaultLanguage: changes.defaultLanguage,
+  socialLinks: changes.socialLinks,
+  billingPortalUrl: changes.billingPortalUrl,
+  bunnyStreamLibraryId: changes.bunnyStreamLibraryId,
+  bunnyStreamCdnHostname: changes.bunnyStreamCdnHostname,
+  logoUrl: changes.logoUrl,
+  logoDarkUrl: changes.logoDarkUrl,
+  signInNotice: changes.signInNotice,
+  analyticsTagId: changes.analyticsTagId,
+  analyticsMetaPixelId: changes.analyticsMetaPixelId,
+  analyticsMetaCapiEnabled: changes.analyticsMetaCapiEnabled,
+  analyticsMetaCapiTestEventCode: changes.analyticsMetaCapiTestEventCode,
+  analyticsMetaCapiConsentHeading: changes.analyticsMetaCapiConsentHeading,
+  analyticsMetaCapiConsentBody: changes.analyticsMetaCapiConsentBody,
+  analyticsMetaCapiConsentAcceptLabel: changes.analyticsMetaCapiConsentAcceptLabel,
+  analyticsMetaCapiConsentDeclineLabel: changes.analyticsMetaCapiConsentDeclineLabel,
+  analyticsConsentCookieName: changes.analyticsConsentCookieName,
+  analyticsConsentCookieValue: changes.analyticsConsentCookieValue,
+  analyticsLoadWithoutConsent: changes.analyticsLoadWithoutConsent,
+  checkoutAppearance: changes.checkoutAppearance,
+  shippingRates: changes.shippingRates,
+  inpostGeowidgetToken: changes.inpostGeowidgetToken,
+  checkoutReturnOrigins: changes.checkoutReturnOrigins,
+  accentColor: changes.accentColor,
+  accentLight: changes.accentLight,
+  faviconUrl: changes.faviconUrl,
+  ogTitle: changes.ogTitle,
+  ogDescription: changes.ogDescription,
+  ogImageUrl: changes.ogImageUrl,
+  supportEmail: changes.supportEmail,
+  supportUrl: changes.supportUrl,
+  termsUrl: changes.termsUrl,
+  privacyUrl: changes.privacyUrl,
+  defaultHomeSpaceId: changes.defaultHomeSpaceId,
+  directMessagesEnabled: changes.directMessagesEnabled,
+  videoAutoplayDefault: changes.videoAutoplayDefault,
+  memberVideoAutoplayOverride: changes.memberVideoAutoplayOverride,
+  autoIssueInvoices: changes.autoIssueInvoices,
+  autoIssueInvoiceScope: changes.autoIssueInvoiceScope,
+  ksefSubmissionMode: changes.ksefSubmissionMode,
+  invoiceVatRatePercent: changes.invoiceVatRatePercent,
+  invoiceVatMode: changes.invoiceVatMode ?? undefined,
+  invoiceExemptionBasisKind: changes.invoiceExemptionBasisKind,
+  invoiceExemptionBasis: changes.invoiceExemptionBasis,
+  invoicingProvider: changes.invoicingProvider,
+  invoiceSellerName: changes.invoiceSellerName,
+  invoiceSellerAddress: changes.invoiceSellerAddress,
+});
+
 export const createTenantRepository = (
   db: Db,
   options: { onMultipleTenants?(): void } = {},
 ): TenantRepository => ({
   findById: async (tenantId) => {
-    const rows = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const rows = await db.select(tenantColumnsWithoutOrganization()).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     return rows[0] ?? null;
   },
   findBySlug: async (slug) => {
-    const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    const rows = await db.select(tenantColumnsWithoutOrganization()).from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
   findSole: async () => {
-    const rows = await db.select().from(tenants).limit(2);
+    const rows = await db.select(tenantColumnsWithoutOrganization()).from(tenants).limit(2);
     if (rows.length > 1) options.onMultipleTenants?.();
     return rows.length === 1 ? rows[0] ?? null : null;
   },
@@ -4601,112 +4719,20 @@ export const createTenantRepository = (
         }
       : null;
   },
-  updateSettings: async (tenantId, settings): Promise<TenantSettings> => {
-    await db
+  changeSettings: async (tenantId, change) => db.transaction(async (tx): Promise<Result<TenantSettings, AppError> | null> => {
+    // No key column changes, so foreign-key inserts that reference this tenant (key events, proposals) need not wait behind it.
+    const [locked] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('no key update');
+    if (!locked) return null;
+    const current = await createTenantRepository(tx).findSettings(tenantId);
+    if (current === null) return null;
+    const changes = await change(current);
+    if (!changes.ok) return changes;
+    await tx
       .update(tenants)
-      .set({
-        name: settings.name,
-        defaultLanguage: settings.defaultLanguage,
-        socialLinks: settings.socialLinks,
-        contentVersion: sql`${tenants.contentVersion} + 1`,
-        billingPortalUrl: settings.billingPortalUrl,
-        bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
-        bunnyStreamCdnHostname: settings.bunnyStreamCdnHostname,
-        logoUrl: settings.logoUrl,
-        logoDarkUrl: settings.logoDarkUrl,
-        signInNotice: settings.signInNotice,
-        analyticsTagId: settings.analyticsTagId,
-        analyticsMetaPixelId: settings.analyticsMetaPixelId,
-        analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
-        analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
-        analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
-        analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
-        analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
-        analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
-        analyticsConsentCookieName: settings.analyticsConsentCookieName,
-        analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
-        analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
-        checkoutAppearance: settings.checkoutAppearance,
-        shippingRates: settings.shippingRates,
-        inpostGeowidgetToken: settings.inpostGeowidgetToken,
-        checkoutReturnOrigins: settings.checkoutReturnOrigins,
-        accentColor: settings.accentColor,
-        accentLight: settings.accentLight,
-        faviconUrl: settings.faviconUrl,
-        ogTitle: settings.ogTitle,
-        ogDescription: settings.ogDescription,
-        ogImageUrl: settings.ogImageUrl,
-        supportEmail: settings.supportEmail,
-        supportUrl: settings.supportUrl,
-        termsUrl: settings.termsUrl,
-        privacyUrl: settings.privacyUrl,
-        defaultHomeSpaceId: settings.defaultHomeSpaceId,
-        directMessagesEnabled: settings.directMessagesEnabled,
-        videoAutoplayDefault: settings.videoAutoplayDefault,
-        memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
-        autoIssueInvoices: settings.autoIssueInvoices,
-        autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
-        ksefSubmissionMode: settings.ksefSubmissionMode,
-        invoiceVatRatePercent: settings.invoiceVatRatePercent,
-        invoiceVatMode: settings.invoiceVatMode ?? undefined,
-        invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
-        invoiceExemptionBasis: settings.invoiceExemptionBasis,
-        invoicingProvider: settings.invoicingProvider,
-        invoiceSellerName: settings.invoiceSellerName,
-        invoiceSellerAddress: settings.invoiceSellerAddress,
-      })
+      .set({ ...tenantSettingsColumns(changes.value), contentVersion: sql`${tenants.contentVersion} + 1` })
       .where(eq(tenants.id, tenantId));
-    return {
-      name: settings.name,
-      defaultLanguage: settings.defaultLanguage,
-      socialLinks: settings.socialLinks,
-      billingPortalUrl: settings.billingPortalUrl,
-      bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
-      bunnyStreamCdnHostname: settings.bunnyStreamCdnHostname,
-      logoUrl: settings.logoUrl,
-      logoDarkUrl: settings.logoDarkUrl,
-      signInNotice: settings.signInNotice,
-      analyticsTagId: settings.analyticsTagId,
-      analyticsMetaPixelId: settings.analyticsMetaPixelId,
-      analyticsMetaCapiEnabled: settings.analyticsMetaCapiEnabled,
-      analyticsMetaCapiTestEventCode: settings.analyticsMetaCapiTestEventCode,
-      analyticsMetaCapiConsentHeading: settings.analyticsMetaCapiConsentHeading,
-      analyticsMetaCapiConsentBody: settings.analyticsMetaCapiConsentBody,
-      analyticsMetaCapiConsentAcceptLabel: settings.analyticsMetaCapiConsentAcceptLabel,
-      analyticsMetaCapiConsentDeclineLabel: settings.analyticsMetaCapiConsentDeclineLabel,
-      analyticsConsentCookieName: settings.analyticsConsentCookieName,
-      analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
-      analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
-      checkoutAppearance: settings.checkoutAppearance,
-      shippingRates: settings.shippingRates,
-      inpostGeowidgetToken: settings.inpostGeowidgetToken,
-      checkoutReturnOrigins: settings.checkoutReturnOrigins,
-      accentColor: settings.accentColor,
-      accentLight: settings.accentLight,
-      faviconUrl: settings.faviconUrl,
-      ogTitle: settings.ogTitle,
-      ogDescription: settings.ogDescription,
-      ogImageUrl: settings.ogImageUrl,
-      supportEmail: settings.supportEmail,
-      supportUrl: settings.supportUrl,
-      termsUrl: settings.termsUrl,
-      privacyUrl: settings.privacyUrl,
-      defaultHomeSpaceId: settings.defaultHomeSpaceId,
-      directMessagesEnabled: settings.directMessagesEnabled,
-      videoAutoplayDefault: settings.videoAutoplayDefault,
-      memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
-      autoIssueInvoices: settings.autoIssueInvoices,
-      autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
-      ksefSubmissionMode: settings.ksefSubmissionMode,
-      invoiceVatRatePercent: settings.invoiceVatRatePercent,
-      invoiceVatMode: settings.invoiceVatMode,
-      invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
-      invoiceExemptionBasis: settings.invoiceExemptionBasis,
-      invoicingProvider: settings.invoicingProvider,
-      invoiceSellerName: settings.invoiceSellerName,
-      invoiceSellerAddress: settings.invoiceSellerAddress,
-    };
-  },
+    return ok({ ...current, ...changes.value });
+  }),
   createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
@@ -4765,7 +4791,7 @@ export const createTenantRepository = (
  */
 export const createTenantDirectory = (db: Db, hideSmokeTenant = false): TenantDirectory => ({
   listAll: () => db
-    .select()
+    .select(tenantColumnsWithoutOrganization())
     .from(tenants)
     .where(hideSmokeTenant ? ne(tenants.id, SMOKE_TENANT_ID) : undefined)
     .orderBy(asc(tenants.slug)),
@@ -4820,6 +4846,17 @@ export const createOnboardingStateRepository = (db: Db): OnboardingStateReposito
       .update(tenants)
       .set({ onboardingDismissedAt: dismissedAt })
       .where(eq(tenants.id, tenantId));
+  },
+});
+
+export const createAccountIdentityReader = (db: Db): AccountIdentityReader => ({
+  findById: async (userId) => {
+    const [row] = await db
+      .select({ userId: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    return row ?? null;
   },
 });
 
@@ -4878,6 +4915,28 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
       ...invited.map((row) => tenantTeamMemberSchema.parse({ ...row, name: null, role: 'admin', status: 'invited' })),
     ];
   },
+  findOrganizationStaff: async (tenantId) => {
+    const linked = await db.select({ id: organizations.id, slug: organizations.slug, name: organizations.name })
+      .from(tenants)
+      .innerJoin(organizations, and(eq(organizations.id, tenants.organizationId), eq(organizations.status, 'active')))
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const organization = linked[0];
+    if (organization === undefined) return null;
+    const rows = await db.select({
+      userId: organizationMembers.userId,
+      email: user.email,
+      name: user.name,
+      role: organizationMembers.role,
+    }).from(organizationMembers)
+      .innerJoin(user, eq(organizationMembers.userId, user.id))
+      .where(eq(organizationMembers.organizationId, organization.id))
+      .orderBy(desc(organizationMembers.role), asc(user.email));
+    return tenantTeamOrganizationSchema.parse({
+      ...organization,
+      members: rows.map(({ role, ...row }) => ({ ...row, role: ORGANIZATION_DERIVED_STAFF_ROLE[role], source: 'organization' })),
+    });
+  },
   inviteAdmin: async (tenantId, userId, email, id, audit) => db.transaction(async (tx) => {
     await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for('update');
     const active = await tx.select({ id: tenantAdmins.id }).from(tenantAdmins).where(and(
@@ -4931,7 +4990,7 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
 });
 
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {
-  const baseQuery = () =>
+  const grantQuery = (userId: string) =>
     db
       .select({
         id: tenants.id,
@@ -4940,14 +4999,28 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         status: tenants.status,
         plan: tenants.plan,
         contentVersion: tenants.contentVersion,
-        staffRole: tenantAdmins.role,
+        directRole: tenantAdmins.role,
+        organizationRole: organizationMembers.role,
       })
-      .from(tenantAdmins)
-      .innerJoin(tenants, eq(tenantAdmins.tenantId, tenants.id));
+      .from(tenants)
+      .leftJoin(tenantAdmins, and(eq(tenantAdmins.tenantId, tenants.id), eq(tenantAdmins.userId, userId)))
+      .leftJoin(organizations, and(eq(organizations.id, tenants.organizationId), eq(organizations.status, 'active')))
+      .leftJoin(organizationMembers, and(
+        eq(organizationMembers.organizationId, organizations.id),
+        eq(organizationMembers.organizationId, tenants.organizationId),
+        eq(organizationMembers.userId, userId),
+      ));
+  const hasGrant = or(isNotNull(tenantAdmins.id), isNotNull(organizationMembers.id));
 
-  const toMembership = (row: Tenant & { staffRole: string }): Membership | null => {
-    const staffRole = parseStaffRole(row.staffRole);
-    return staffRole
+  const toMembership = (
+    row: Tenant & { directRole: string | null; organizationRole: string | null },
+  ): Membership | null => {
+    const organizationRole = organizationRoleSchema.safeParse(row.organizationRole);
+    const grant = effectiveStaffGrant(
+      row.directRole === null ? null : parseStaffRole(row.directRole),
+      organizationRole.success ? organizationRole.data : null,
+    );
+    return grant
       ? {
           tenant: {
             id: row.id,
@@ -4957,14 +5030,14 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
             plan: row.plan,
             contentVersion: row.contentVersion,
           },
-          staffRole,
+          ...grant,
         }
       : null;
   };
 
   return {
     listTenantsForStaff: async (userId) => {
-      const rows = await baseQuery().where(eq(tenantAdmins.userId, userId));
+      const rows = await grantQuery(userId).where(hasGrant);
       const memberships: Membership[] = [];
       for (const row of rows) {
         const membership = toMembership(row);
@@ -5001,8 +5074,8 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
     findStaffGrant: async (userId, lookup) => {
       const tenantCondition =
         'tenantId' in lookup ? eq(tenants.id, lookup.tenantId) : eq(tenants.slug, lookup.tenantSlug);
-      const rows = await baseQuery()
-        .where(and(eq(tenantAdmins.userId, userId), tenantCondition))
+      const rows = await grantQuery(userId)
+        .where(and(tenantCondition, hasGrant))
         .limit(1);
       const row = rows[0];
       return row ? toMembership(row) : null;

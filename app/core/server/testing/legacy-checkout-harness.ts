@@ -24,13 +24,14 @@ import { InMemoryConsentConfirmationTokenRepository, InMemoryMarketingConsentRep
 import { createOrderRefundJobFake } from './order-refund-job-fake.js';
 import { createStockRepositoryFake } from './stock-fake.js';
 import { createInMemoryTenantDomainRepository } from './tenant-domain-fakes.js';
+import { inMemoryChangeSettings } from './tenant-settings-fake.js';
 
 export const legacyNow = '2026-11-15T10:00:00.000Z';
 export const legacyBaseUrl = 'https://acme.togethercommunity.app';
 export const legacyTenant: Tenant = { id: 'tenant-a', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1 };
 
-const productBase: Pick<Product, 'tenantId' | 'description' | 'coverUrl' | 'currency' | 'visibility' | 'published' | 'accessItems' | 'legacyId' | 'createdAt'> = {
-  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', published: true,
+const productBase: Pick<Product, 'tenantId' | 'description' | 'coverUrl' | 'currency' | 'visibility' | 'salesChannel' | 'published' | 'accessItems' | 'legacyId' | 'createdAt'> = {
+  tenantId: legacyTenant.id, description: '', coverUrl: null, currency: 'PLN', visibility: 'listed', salesChannel: 'any', published: true,
   accessItems: [], legacyId: null, createdAt: '2026-11-01T09:00:00.000Z',
 };
 
@@ -125,7 +126,7 @@ export const createLegacyCheckoutHarness = (options: {
     findSole: async () => legacyTenant,
     hasAny: async () => true,
     findSettings: async () => legacySettings,
-    updateSettings: async (_tenantId, next) => next,
+    changeSettings: inMemoryChangeSettings(() => legacySettings),
     createTenantWithOwnerGrant: async () => legacyTenant,
   };
 

@@ -19,7 +19,8 @@ exactly the effect the owner saw, or applies nothing.
 | Owner-session list, read, approve and reject (`/api/change-proposals`) | Available |
 | Withdrawal of pending proposals when their key is revoked or purged | Available |
 | Typed client outcomes and CLI commands | Available |
-| Images (product covers, branding), groups, owner panel | Not yet available |
+| Groups: storage, item references, group dry run, all-or-nothing approval (this document, [Groups](#groups)) | Available in the core; no route yet |
+| Images (product covers, branding), group routes, owner panel | Not yet available |
 
 ## What a proposal is
 
@@ -401,13 +402,123 @@ approve route alike. Nothing is stored or applied, and a proposal being
 approved stays `pending`. A deadlock that the database detects inside the
 transaction is answered the same way, busy, like a lock wait that ran out.
 
+## Groups
+
+A group is several proposals of one key that belong together and depend on
+each other, for example a new product, its price, its stock, publishing it
+and a sales link for it. The owner approves or rejects a group as one unit:
+it is applied completely or not at all.
+
+**Creating and joining.** A propose-mode key creates a group with a title (1
+to 500 characters). Every later proposal it adds to the group gets the next
+position, assigned atomically; items keep that order. Only the key that
+created a group may add to it, read it or withdraw it: for another key or
+another workspace the group answers exactly like an unknown id. A group is
+*open* while every item is `pending` and unexpired, and an item can join only
+an open group.
+
+**References.** An item may name a resource that an earlier item of the same
+group creates, written as `$proposal:<proposal id>`, for example
+`{ "productId": "$proposal:3f6c…" }` after a `product.create` item. A
+reference stands only where the operation takes the id of that kind of
+resource:
+
+| Operation | Positions that accept a reference |
+|---|---|
+| `product.update`, `product.publish`, `product.unpublish` | `id` (a product) |
+| `product.delete-draft`, `price.create`, `stock.enable`, `stock.adjust`, `stock.set-threshold` | `productId` (a product) |
+| `price.deactivate` | `id` (a price) |
+| `sales-link.create` | each entry of `productIds` (a product) |
+| `sales-link.update` | `id` (a sales link), each entry of `productIds` (a product) |
+| `sales-link.delete` | `id` (a sales link) |
+
+Products are created by `product.create`, prices by `price.create` and sales
+links by `sales-link.create`. A reference resolves only to an earlier item of
+the same group, the same key and the same workspace whose operation creates
+that kind of resource: never to a live id, never forward, never across
+groups. Anything else answers `400` when the item is submitted: an unknown or
+later item, an item of another kind, a malformed reference, and any string
+starting with `$proposal` outside a position of the table (in a title, a
+description, a nested field). A proposal outside a group keeps every value as
+given; there a reference is just an id that does not exist.
+
+**Group dry run.** Adding an item runs one transaction that always rolls
+back: the earlier items of the group are applied in order, exactly as an
+approval would apply them (strict re-validation, references resolved to the
+ids created in this same transaction, the stale pre-check, the effect
+comparison), then the new item runs and only its effect is kept. A price for
+a proposed product, or publishing a product whose price is proposed earlier
+in the group, is therefore validated and previewed against the state the
+group will have produced. A refusal of the new item is returned to the key
+unchanged and nothing is stored. When an earlier item no longer applies
+because the live state moved, the answer is `409` (`changeProposalGroupItem`
+names that item) and nothing is stored. The dry run leaves no row, event,
+outbox message or content version behind, and object storage deletes wait
+for a commit that never comes.
+
+**Stable effects.** The ids an item creates differ between a dry run and the
+approval. Wherever such an id appears in an effect, it is stored as the
+creating item's reference, both when the effect is stored and when it is
+recomputed at approval, so the two compare equal; because the reference
+names the item, a reference moved to another item no longer matches.
+
+**Approval.** The owner sends the ordered list of item ids they were shown;
+when it differs from the group's current items the answer is `409`
+(`changeProposalGroupItemIds` lists the current ones) and nothing is applied.
+Otherwise one transaction locks the group row and its items, then applies
+each item in order as the approving owner, with every step of a single
+approval: strict re-validation, references resolved from the ids created
+earlier in the transaction, target lock, stale pre-check, the live use-case,
+the effect comparison. When every item matches, all items become `applied`
+with their `appliedResourceId` and commit together; post-commit effects run
+afterwards. When an item is stale or fails, all live work of the group is
+rolled back: that item is recorded `stale` or `failed` (with its failure
+code and message), every other item is recorded `stale` with the event note
+"Not applied: item *n* (*id*) of this group could not be applied, so nothing
+in the group was changed", and nothing live changes. A lock wait that runs
+out, a deadlock or an infrastructure failure rolls everything back and leaves
+the group pending. A repeated approval answers `409` with
+`changeProposalGroupStatus` and every item's status in
+`changeProposalStatuses`.
+
+Target rows are locked in item order, one item after the other. Two groups
+that touch the same rows in opposite orders can wait on each other; the
+bounded lock wait and the database's deadlock detection end such a wait, and
+the approval answers busy with nothing applied, so the owner retries.
+
+**Other decisions.** The owner can reject a whole group (every pending item,
+with one note) and its key can withdraw a whole group; a group without items
+is deleted when its key withdraws it. An item of a group cannot be approved,
+rejected or withdrawn on its own: the single-proposal routes answer `409`
+with `changeProposalGroupId`. Revoking or purging a key withdraws its open
+groups with its other pending proposals.
+
+**Expiry.** Every item of a group expires with the group's first item (an
+item added later takes that expiry), so a group is never half expired; an
+empty group expires 30 days after it was created. Approve, reject and
+withdraw record the `expired` event on every item of an expired group.
+
+**Reading.** The owner proposal list carries `groupId`, `groupTitle` and
+`groupPosition` on every item and filters by group; the owner group view has
+the title, the key name, id, issuer and state, the creation and expiry times,
+the derived group status (`open`, `expired`, `applied`, `rejected`,
+`withdrawn`, `stale`, `failed`) and the ordered items with their effects and
+events. The key reads its group as a receipt with its ordered item receipts,
+which never contain an effect or a before value.
+
+**Limits.** At most 50 items per group and 20 open groups per key; over a
+limit the answer is `409` with `changeProposalCap` set to `group_items` or
+`key_open_groups`. Every item counts against the proposal limits above. The
+cost of the group dry runs grows with the group, which the item cap and the
+key's rate limit bound.
+
 ## Not yet available
 
 - **Images.** The product cover and branding image routes refuse a
   propose-mode key. Images will be uploaded to a private quarantine and
   published only on approval.
-- **Groups.** Several proposals that belong together, approved all or
-  nothing; the `change_proposal_groups` table exists but no route uses it.
+- **Group routes.** The group rules below are implemented in the core and
+  the database; the key and owner routes that reach them come next.
 - **Owner panel.** The owner decides through the session routes and the CLI;
   no panel page exists yet.
 - **Retention.** Terminal proposals and their events are kept; a retention

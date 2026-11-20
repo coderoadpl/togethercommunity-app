@@ -13,6 +13,10 @@ import {
 } from '#core/domain/index.js';
 import {
   approveChangeProposal,
+  getChangeProposal,
+  getOwnChangeProposal,
+  listChangeProposals,
+  listOwnChangeProposals,
   rejectChangeProposal,
   shopManagementKeyCapabilities,
   submitChangeProposal,
@@ -407,4 +411,238 @@ describe('approval races with the other terminal transitions', () => {
     expect((await productRow('mug'))?.title).toBe('Title of mug');
     expect(await productVersionAuthors('mug')).toEqual([]);
   }, 30_000);
+});
+
+describe('approving a draft deletion compares everything the deletion destroys', () => {
+  it('is stale and deletes nothing when a download was added after the proposal', async () => {
+    const id = await submit('product.delete-draft', { productId: 'draft' });
+    await database.db.insert(productDownloadAssets).values({
+      id: 'asset-late', tenantId: TENANT, productId: 'draft', lineageId: 'lineage-late', fileName: 'late.pdf', contentType: 'application/pdf',
+      sizeBytes: 20, storageKey: 'downloads/late.pdf', status: 'ready', createdAt: NOW,
+    });
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'stale', appliedResourceId: null } });
+
+    expect(await productRow('draft')).toBeDefined();
+    expect((await database.db.select({ id: productDownloadAssets.id }).from(productDownloadAssets)).map(({ id: assetId }) => assetId).sort())
+      .toEqual(['asset-1', 'asset-late']);
+    expect(storageDeletes).toEqual([]);
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:stale']);
+  });
+
+  it('is stale and deletes nothing when the stock moved after the proposal', async () => {
+    await database.db.insert(productStock).values({ tenantId: TENANT, productId: 'draft', onHand: 4, reserved: 0, lowStockThreshold: null, updatedAt: NOW });
+    const id = await submit('product.delete-draft', { productId: 'draft' });
+    await database.db.update(productStock).set({ onHand: 5 }).where(eq(productStock.productId, 'draft'));
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'stale' } });
+
+    expect(await productRow('draft')).toBeDefined();
+    expect(await onHand('draft')).toBe(5);
+    expect(storageDeletes).toEqual([]);
+  });
+
+  it('shows the owner the downloads, every price and the stock it destroys', async () => {
+    await database.db.insert(productPrices).values({
+      id: 'price-draft-old', tenantId: TENANT, productId: 'draft', kind: 'one_time', amountCents: 500, currency: 'EUR', active: false, createdAt: NOW,
+    });
+    const id = await submit('product.delete-draft', { productId: 'draft' });
+    const [row] = await database.db.select({ effect: changeProposals.effect }).from(changeProposals).where(eq(changeProposals.id, id));
+
+    expect(row?.effect).toMatchObject({
+      exists: { before: true, after: false },
+      downloads: { before: [{ id: 'asset-1', fileName: 'guide.pdf', sizeBytes: 10, status: 'ready', versionNumber: 1 }], after: null },
+      prices: { before: [{ id: 'price-draft-old', active: false, amountCents: 500 }], after: null },
+      stock: { before: { tracked: false, onHand: null, reserved: null, lowStockThreshold: null }, after: null },
+    });
+  });
+});
+
+describe('approval against key revocation and purge', () => {
+  const revocation = () => createShopManagementKeyRepository(database.db).revoke(TENANT, KEY_ID, NOW, {
+    id: `key-event-${String(++sequence)}`, tenantId: TENANT, apiKeyId: KEY_ID, kind: 'revoked', actorUserId: OWNER,
+    method: null, route: null, resourceId: null, at: NOW,
+  }, { at: NOW, actorUserId: OWNER, nextEventId: () => `withdrawal-${String(++sequence)}` });
+
+  const purge = () => createShopManagementKeyRepository(database.db).purge(TENANT, (apiKeyId) => ({
+    id: `key-event-${String(++sequence)}`, tenantId: TENANT, apiKeyId, kind: 'purged', actorUserId: OWNER,
+    method: null, route: null, resourceId: null, at: NOW,
+  }), { at: NOW, actorUserId: OWNER, nextEventId: () => `withdrawal-${String(++sequence)}` });
+
+  const keyChanges = [['a key revocation', revocation], ['a key purge', purge]] as const;
+
+  const tenantName = async () => (await database.db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, TENANT)))[0]?.name;
+
+  it.each(keyChanges)('applies the settings change when %s queues behind the approval, without a deadlock', async (_label, keyChange) => {
+    const id = await submit('settings.update', { name: 'Acme shop' });
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select id from tenants where id = $1 for no key update', [TENANT]);
+      const approval = approve(id);
+      await untilLockWaiters(observer, 1);
+      const competing = keyChange();
+      await untilLockWaiters(observer, 2);
+      await blocker.query('commit');
+
+      expect(await approval).toMatchObject({ ok: true, value: { status: 'applied' } });
+      await expect(competing).resolves.toBeTruthy();
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    expect(await statusOf(id)).toBe('applied');
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:applied']);
+    expect(await tenantName()).toBe('Acme shop');
+  }, 30_000);
+
+  it.each(keyChanges)('withdraws the settings change when the approval queues behind %s, without a deadlock', async (_label, keyChange) => {
+    const id = await submit('settings.update', { name: 'Acme shop' });
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select id from change_proposals where tenant_id = $1 and id = $2 for update', [TENANT, id]);
+      const competing = keyChange();
+      await untilLockWaiters(observer, 1);
+      const approval = approve(id);
+      await untilLockWaiters(observer, 2);
+      await blocker.query('commit');
+
+      await expect(competing).resolves.toBeTruthy();
+      expect(await approval).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'withdrawn' } } });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    expect(await statusOf(id)).toBe('withdrawn');
+    expect(await tenantName()).toBe('Acme');
+  }, 30_000);
+});
+
+describe('lock waits inside a change proposal transaction', () => {
+  const holding = async <T>(statement: string, values: unknown[], work: () => Promise<T>): Promise<T> => {
+    const blocker = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query(statement, values);
+      return await work();
+    } finally {
+      await blocker.query('rollback');
+      await blocker.end();
+    }
+  };
+
+  const busy = { ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } };
+
+  it('answers busy within the bound when the target row stays locked, and leaves the proposal pending', async () => {
+    const id = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    const started = Date.now();
+
+    const result = await holding('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug'], () => approve(id));
+
+    expect(result).toMatchObject(busy);
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(await statusOf(id)).toBe('pending');
+    expect(await eventsOf(id)).toEqual(['1:proposed']);
+    expect((await productRow('mug'))?.title).toBe('Title of mug');
+    expect(await productVersionAuthors('mug')).toEqual([]);
+  }, 30_000);
+
+  it('answers busy for a dry run whose target row stays locked and stores nothing', async () => {
+    const result = await holding('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug'], () =>
+      submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Big mug' } }, deps()));
+
+    expect(result).toMatchObject(busy);
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
+  }, 30_000);
+
+  it('answers busy instead of failing when the sales links of the workspace stay locked', async () => {
+    const id = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
+
+    const result = await holding('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`sales-links:${TENANT}`], () => approve(id));
+
+    expect(result).toMatchObject(busy);
+    expect(await statusOf(id)).toBe('pending');
+    expect(await createSalesLinkRepository(database.db).findById(TENANT, 'link-spring')).toMatchObject({ heading: 'Spring sale', revision: 1 });
+  }, 30_000);
+});
+
+describe('a proposal whose operation this release does not know', () => {
+  const plantLaterProposal = async (): Promise<string> => {
+    await database.db.insert(changeProposals).values({
+      id: 'proposal-later', tenantId: TENANT, groupId: null, groupPosition: null, operation: 'image.attach-cover',
+      input: { productId: 'mug', imageId: 'image-1' }, effect: { coverUrl: { before: null, after: 'https://cdn.example.test/cover.png' } },
+      targetKind: 'product', targetId: 'mug', status: 'pending', proposedByKeyId: KEY_ID, proposedByKeyName: 'Catalogue agent',
+      proposedByIssuerUserId: ISSUER, createdAt: NOW, expiresAt: '2026-03-31T10:00:00.000Z', decidedByUserId: null, decidedAt: null,
+    });
+    return 'proposal-later';
+  };
+
+  const readDeps = () => ({ ...deps(), changeProposalEvents: createChangeProposalEventRepository(database.db) });
+
+  it('stays readable for the owner and the key', async () => {
+    const id = await plantLaterProposal();
+
+    expect(await listChangeProposals(ownerSession, {}, readDeps())).toMatchObject({ ok: true, value: { proposals: [{ id, operation: 'image.attach-cover', status: 'pending' }] } });
+    expect(await getChangeProposal(ownerSession, { id }, readDeps())).toMatchObject({ ok: true, value: { id, operation: 'image.attach-cover' } });
+    expect(await listOwnChangeProposals(keyCtx, {}, deps())).toMatchObject({ ok: true, value: { proposals: [{ id, operation: 'image.attach-cover' }] } });
+    expect(await getOwnChangeProposal(keyCtx, { id }, deps())).toMatchObject({ ok: true, value: { id, operation: 'image.attach-cover' } });
+  });
+
+  it('cannot be approved: the approval marks it stale, says why and applies nothing', async () => {
+    const id = await plantLaterProposal();
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'stale', operation: 'image.attach-cover', appliedResourceId: null } });
+
+    const [event] = (await createChangeProposalEventRepository(database.db).listByProposal(TENANT, id)).filter(({ kind }) => kind === 'stale');
+    expect(event?.note).toBe('This release does not know the operation "image.attach-cover", so the proposal cannot be applied; nothing was changed');
+    expect((await productRow('mug'))?.coverUrl).toBeNull();
+    expect(await productVersionAuthors('mug')).toEqual([]);
+  });
+});
+
+describe('a proposal whose stored effect is empty', () => {
+  const contentVersion = async () =>
+    (await database.db.select({ contentVersion: tenants.contentVersion }).from(tenants).where(eq(tenants.id, TENANT)))[0]?.contentVersion;
+  const storedEffect = async (id: string) =>
+    (await database.db.select({ effect: changeProposals.effect }).from(changeProposals).where(eq(changeProposals.id, id)))[0]?.effect;
+
+  it('rolls the product change back and is stale when the field moved live', async () => {
+    const id = await submit('product.update', { id: 'mug', title: 'Title of mug' });
+    expect(await storedEffect(id)).toEqual({});
+    await database.db.update(products).set({ title: 'Owner title' }).where(eq(products.id, 'mug'));
+    const version = await contentVersion();
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'stale' } });
+
+    expect((await productRow('mug'))?.title).toBe('Owner title');
+    expect(await productVersionAuthors('mug')).toEqual([]);
+    expect(await contentVersion()).toBe(version);
+  });
+
+  it('rolls the settings change back and is stale when the field moved live', async () => {
+    const id = await submit('settings.update', { name: 'Acme' });
+    expect(await storedEffect(id)).toEqual({});
+    await database.db.update(tenants).set({ name: 'Owner name' }).where(eq(tenants.id, TENANT));
+    const version = await contentVersion();
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'stale' } });
+
+    expect((await database.db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, TENANT)))[0]?.name).toBe('Owner name');
+    expect(await contentVersion()).toBe(version);
+  });
+
+  it('rolls the sales link change back and is stale when a field moved live without a new revision', async () => {
+    const id = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale', productIds: ['live'] });
+    expect(Object.keys((await storedEffect(id)) ?? {}).filter((field) => field !== 'revision')).toEqual([]);
+    await database.db.update(salesLinks).set({ heading: 'Owner heading' }).where(eq(salesLinks.id, 'link-spring'));
+    const events = (await database.db.select().from(salesLinkEvents)).length;
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'stale' } });
+
+    expect(await createSalesLinkRepository(database.db).findById(TENANT, 'link-spring')).toMatchObject({ heading: 'Owner heading', revision: 1 });
+    expect((await database.db.select().from(salesLinkEvents)).length).toBe(events);
+  });
 });

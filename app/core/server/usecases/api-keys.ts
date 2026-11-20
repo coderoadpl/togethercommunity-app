@@ -16,7 +16,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { authorizeTenant } from '../authorize.js';
+import { authorizeTenant, requireDirectGrant } from '../authorize.js';
 import type {
   ApiKeyCrypto,
   Clock,
@@ -47,7 +47,11 @@ export const createTenantApiKey = async (
   input: CreateApiKeyInput,
   deps: ApiKeyDeps,
 ): Promise<Result<CreatedApiKey, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'api-key:write');
+  const tenant = requireDirectGrant(
+    ctx,
+    authorizeTenant(ctx, 'api-key:write'),
+    'Creating an API key requires a direct owner grant in this workspace',
+  );
   if (!tenant.ok) return tenant;
 
   const parsed = createApiKeyInputSchema.safeParse(input);

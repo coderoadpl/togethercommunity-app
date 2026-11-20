@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
 
-import { createMemberErasureRepository } from './repositories.js';
-import { members, tenantAdminInvitations, tenants, user } from './schema.js';
+import { createOrganizationMemberRepository } from './organizations.js';
+import { createMemberErasureRepository, createTenantAccessReader } from './repositories.js';
+import { members, organizationMembers, organizations, tenantAdminInvitations, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -28,7 +29,14 @@ beforeAll(async () => {
   await database.db.insert(tenants).values(['acme', 'studio'].map((id) => ({
     id, slug: id, name: id, createdAt: now,
   })));
-  await database.db.insert(user).values(['orphan', 'invited', 'shared', 'unrelated', 'direct'].map((id) => ({
+  await database.db.insert(organizations).values({
+    id: 'org-owned', slug: 'org-owned', name: 'Owned organization', maxWorkspaces: 1, createdAt: now, updatedAt: now,
+  });
+  await database.db.insert(tenants).values([
+    { id: 'org-workspace', slug: 'org-workspace', name: 'org-workspace', createdAt: now, organizationId: 'org-owned' },
+    { id: 'buyer-workspace', slug: 'buyer-workspace', name: 'buyer-workspace', createdAt: now },
+  ]);
+  await database.db.insert(user).values(['orphan', 'invited', 'shared', 'unrelated', 'direct', 'org-owner'].map((id) => ({
     id, email: `${id}@example.test`, name: id,
   })));
   await database.db.insert(members).values([
@@ -36,7 +44,12 @@ beforeAll(async () => {
     { id: 'invited-member', tenantId: 'acme', userId: 'invited', email: 'invited@example.test', createdAt: now },
     { id: 'shared-acme', tenantId: 'acme', userId: 'shared', email: 'shared@example.test', createdAt: now },
     { id: 'shared-studio', tenantId: 'studio', userId: 'shared', email: 'shared@example.test', createdAt: now },
+    { id: 'org-owner-buyer', tenantId: 'buyer-workspace', userId: 'org-owner', email: 'org-owner@example.test', createdAt: now },
   ]);
+  await database.db.insert(organizationMembers).values({
+    id: 'org-owned-owner', organizationId: 'org-owned', userId: 'org-owner', role: 'owner',
+    createdAt: now, createdByUserId: 'operator',
+  });
   await database.db.insert(tenantAdminInvitations).values([
     invitation('acme', 'orphan'),
     invitation('acme', 'invited'), invitation('studio', 'invited'),
@@ -94,5 +107,19 @@ describe('pending team invitation erasure', () => {
     await database.db.delete(user).where(eq(user.id, 'direct'));
     expect(await database.db.select().from(tenantAdminInvitations).where(eq(tenantAdminInvitations.userId, 'direct'))).toEqual([]);
     await expect(database.db.insert(tenantAdminInvitations).values(invitation('studio', 'direct'))).rejects.toThrow();
+  });
+});
+
+describe('auth user retention', () => {
+  it('retains the auth user of an organization owner whose only workspace membership is erased', async () => {
+    const repository = createMemberErasureRepository(database.db, { compute: (_, value) => value });
+    expect(await repository.pseudonymize('buyer-workspace', erasureInput('org-owner-buyer'))).toMatchObject({
+      authUserErased: false, deletedTeamInvitations: 0,
+    });
+    expect(await database.db.select().from(user).where(eq(user.id, 'org-owner'))).toHaveLength(1);
+    expect(await createOrganizationMemberRepository(database.db).find('org-owned', 'org-owner'))
+      .toMatchObject({ role: 'owner' });
+    expect(await createTenantAccessReader(database.db).findStaffGrant('org-owner', { tenantId: 'org-workspace' }))
+      .toMatchObject({ staffRole: 'owner', source: 'organization' });
   });
 });

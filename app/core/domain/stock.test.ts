@@ -5,12 +5,15 @@ import {
   availableStock,
   enableStockTrackingInputSchema,
   firstShortStockProductId,
-  firstSoldOutProductId,
   lowStockAlertFor,
   mergeStockQuantities,
   productStockView,
   publicProductStock,
+  publicProductStockSchema,
+  publicStockLookup,
   publicStockVersion,
+  purchasableLineQuantity,
+  purchasableSets,
   stockAdjustmentEventType,
   stockAlertMarkers,
   stockIsLow,
@@ -61,16 +64,40 @@ describe('stock availability', () => {
     expect(productStockView(level())).toMatchObject({ available: 4, low: false, soldOut: false });
   });
 
-  it('never exposes counts publicly and treats untracked products as unlimited', () => {
-    expect(publicProductStock(null)).toEqual({ tracked: false, soldOut: false, low: false });
-    expect(publicProductStock(level({ onHand: 1, reserved: 1 }))).toEqual({ tracked: true, soldOut: true, low: false });
-    expect(publicProductStock(level({ onHand: 3, reserved: 1, lowStockThreshold: 2 }))).toEqual({ tracked: true, soldOut: false, low: true });
+  it('exposes the available count of tracked products and no count for untracked ones', () => {
+    expect(publicProductStock(null)).toEqual({ tracked: false, soldOut: false, low: false, available: null });
+    expect(publicProductStock(level({ onHand: 1, reserved: 1 }))).toEqual({ tracked: true, soldOut: true, low: false, available: 0 });
+    expect(publicProductStock(level({ onHand: 3, reserved: 1, lowStockThreshold: 2 }))).toEqual({ tracked: true, soldOut: false, low: true, available: 2 });
+    expect(publicProductStock(level({ onHand: 1, reserved: 4 }))).toMatchObject({ soldOut: true, available: 0 });
   });
 
-  it('finds the first sold-out tracked product in selection order and skips untracked ones', () => {
-    const levels = [level({ productId: 'a', onHand: 1, reserved: 0 }), level({ productId: 'b', onHand: 1, reserved: 1 })];
-    expect(firstSoldOutProductId(['untracked', 'a', 'b'], levels)).toBe('b');
-    expect(firstSoldOutProductId(['untracked', 'a'], levels)).toBeNull();
+  it('looks up the public stock per product and treats a product without a level as untracked', () => {
+    const stockOf = publicStockLookup([level({ productId: 'a', onHand: 4, reserved: 1 })]);
+    expect(stockOf('a')).toEqual({ tracked: true, soldOut: false, low: false, available: 3 });
+    expect(stockOf('untracked')).toEqual({ tracked: false, soldOut: false, low: false, available: null });
+  });
+
+  it('defaults the available count of a payload recorded without it and rejects negative counts', () => {
+    expect(publicProductStockSchema.parse({ tracked: true, soldOut: false, low: false })).toEqual({ tracked: true, soldOut: false, low: false, available: null });
+    expect(publicProductStockSchema.safeParse({ tracked: true, soldOut: false, low: false, available: -1 }).success).toBe(false);
+    expect(publicProductStockSchema.safeParse({ tracked: true, soldOut: false, low: false, available: 1.5 }).success).toBe(false);
+  });
+
+  it('bounds the purchasable line quantity by the rule and the available count', () => {
+    expect(purchasableLineQuantity(10, { soldOut: false, available: null })).toBe(10);
+    expect(purchasableLineQuantity(10, { soldOut: false, available: 3 })).toBe(3);
+    expect(purchasableLineQuantity(10, { soldOut: false, available: 25 })).toBe(10);
+    expect(purchasableLineQuantity(1, { soldOut: false, available: 25 })).toBe(1);
+    expect(purchasableLineQuantity(10, { soldOut: true, available: 0 })).toBe(0);
+  });
+
+  it('counts the whole sets the tracked products cover and ignores untracked ones', () => {
+    const levels = [level({ productId: 'a', onHand: 7, reserved: 2 }), level({ productId: 'b', onHand: 3, reserved: 0 })];
+    expect(purchasableSets([{ productId: 'a', quantity: 1 }, { productId: 'b', quantity: 1 }, { productId: 'untracked', quantity: 1 }], levels)).toBe(3);
+    expect(purchasableSets([{ productId: 'a', quantity: 2 }], levels)).toBe(2);
+    expect(purchasableSets([{ productId: 'a', quantity: 1 }, { productId: 'a', quantity: 1 }, { productId: 'a', quantity: 1 }], levels)).toBe(1);
+    expect(purchasableSets([{ productId: 'untracked', quantity: 1 }], levels)).toBeNull();
+    expect(purchasableSets([{ productId: 'b', quantity: 1 }], [level({ productId: 'b', onHand: 1, reserved: 1 })])).toBe(0);
   });
 
   it('finds the first tracked product whose availability is below the requested quantity', () => {
@@ -171,10 +198,12 @@ describe('stock alert markers after availability changes', () => {
 });
 
 describe('public stock version', () => {
-  it('changes only when a public flag changes, independent of order and exact counts', () => {
+  it('changes whenever a public count or flag changes, independent of order', () => {
     const plenty = [level({ productId: 'b', onHand: 9, reserved: 0 }), level({ productId: 'a', onHand: 5, reserved: 1 })];
     expect(publicStockVersion(plenty)).toBe(publicStockVersion(plenty.toReversed()));
-    expect(publicStockVersion([level({ productId: 'a', onHand: 4, reserved: 1 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).toBe(publicStockVersion(plenty));
+    expect(publicStockVersion([level({ productId: 'a', onHand: 6, reserved: 2 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).toBe(publicStockVersion(plenty));
+    expect(publicStockVersion([level({ productId: 'a', onHand: 4, reserved: 1 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).not.toBe(publicStockVersion(plenty));
     expect(publicStockVersion([level({ productId: 'a', onHand: 1, reserved: 1 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).not.toBe(publicStockVersion(plenty));
+    expect(publicStockVersion([level({ productId: 'a', onHand: 5, reserved: 1, lowStockThreshold: 4 }), level({ productId: 'b', onHand: 9, reserved: 0 })])).not.toBe(publicStockVersion(plenty));
   });
 });

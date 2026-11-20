@@ -1,6 +1,6 @@
 {
-  "hash": "d87b2457d8ff13d851a173ff90e4fe94ce387a0e83f21c5992b9ee0aefbec22f",
-  "shortId": "d87b2457d8ff",
+  "hash": "5d28057594e3bbbd5c3e5aadef5bf17dd023e02d2fc30533a5163207fa5131f6",
+  "shortId": "5d28057594e3",
   "schema": {
     "constraints": [
       {
@@ -174,6 +174,11 @@
         "table": "shop_management_key_events"
       },
       {
+        "definition": "CHECK ((config_group = ANY (ARRAY['payments_live'::text, 'payments_test'::text, 'invoicing'::text, 'email_transport'::text, 'telemetry'::text, 'shipping_carrier'::text])))",
+        "name": "tenant_config_sources_config_group_check",
+        "table": "tenant_config_sources"
+      },
+      {
         "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposal_groups_created_at_check",
         "table": "change_proposal_groups"
@@ -244,6 +249,11 @@
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((invoicing_provider = ANY (ARRAY['ifirma'::text, 'ksef'::text])))",
+        "name": "organizations_invoicing_provider_check",
+        "table": "organizations"
+      },
+      {
         "definition": "CHECK ((jsonb_typeof(effect) = 'object'::text))",
         "name": "change_proposals_effect_check",
         "table": "change_proposals"
@@ -264,6 +274,11 @@
         "table": "change_proposal_events"
       },
       {
+        "definition": "CHECK ((ksef_submission_mode = ANY (ARRAY['automatic'::text, 'manual'::text])))",
+        "name": "organizations_ksef_submission_mode_check",
+        "table": "organizations"
+      },
+      {
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
@@ -272,6 +287,11 @@
         "definition": "CHECK ((low_stock_threshold >= 0))",
         "name": "product_stock_low_stock_threshold_check",
         "table": "product_stock"
+      },
+      {
+        "definition": "CHECK ((max_workspaces >= 0))",
+        "name": "organizations_max_workspaces_check",
+        "table": "organizations"
       },
       {
         "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
@@ -349,6 +369,11 @@
         "table": "order_shipments"
       },
       {
+        "definition": "CHECK ((provider = 'stripe'::text))",
+        "name": "provider_customer_owners_provider_check",
+        "table": "provider_customer_owners"
+      },
+      {
         "definition": "CHECK ((quantity > 0))",
         "name": "stock_reservations_quantity_check",
         "table": "stock_reservations"
@@ -384,6 +409,11 @@
         "table": "surveys"
       },
       {
+        "definition": "CHECK ((role = ANY (ARRAY['owner'::text, 'admin'::text])))",
+        "name": "organization_members_role_check",
+        "table": "organization_members"
+      },
+      {
         "definition": "CHECK ((sales_channel = ANY (ARRAY['any'::text, 'sales_links_only'::text])))",
         "name": "products_sales_channel_check",
         "table": "products"
@@ -395,8 +425,18 @@
       },
       {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
+        "name": "organizations_shipx_environment_check",
+        "table": "organizations"
+      },
+      {
+        "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "tenants_shipx_environment_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((source = 'organization'::text))",
+        "name": "tenant_config_sources_source_check",
+        "table": "tenant_config_sources"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
@@ -407,6 +447,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'committed'::text, 'released'::text])))",
         "name": "stock_reservations_status_check",
         "table": "stock_reservations"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
+        "name": "organizations_status_check",
+        "table": "organizations"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
@@ -672,6 +717,26 @@
         "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
         "name": "ksef_number_allocations_order_id_orders_id_fk",
         "table": "ksef_number_allocations"
+      },
+      {
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+        "name": "organization_audit_events_organization_id_fkey",
+        "table": "organization_audit_events"
+      },
+      {
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+        "name": "organization_members_organization_id_fkey",
+        "table": "organization_members"
+      },
+      {
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+        "name": "organization_secrets_organization_id_fkey",
+        "table": "organization_secrets"
+      },
+      {
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT",
+        "name": "tenants_organization_id_fkey",
+        "table": "tenants"
       },
       {
         "definition": "FOREIGN KEY (parent_post_id) REFERENCES posts(id)",
@@ -1170,6 +1235,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "provider_customer_owners_tenant_id_fkey",
+        "table": "provider_customer_owners"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "sales_link_events_tenant_id_fkey",
         "table": "sales_link_events"
       },
@@ -1277,6 +1347,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_audit_events_tenant_id_tenants_id_fk",
         "table": "tenant_audit_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_config_sources_tenant_id_fkey",
+        "table": "tenant_config_sources"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1467,6 +1542,11 @@
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
         "name": "product_grants_tenant_member_fk",
         "table": "product_grants"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
+        "name": "provider_customer_owners_tenant_member_fk",
+        "table": "provider_customer_owners"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
@@ -1885,6 +1965,26 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "organization_audit_events_pkey",
+        "table": "organization_audit_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "organization_members_pkey",
+        "table": "organization_members"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "organization_secrets_pkey",
+        "table": "organization_secrets"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "organizations_pkey",
+        "table": "organizations"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "passkey_pkey",
         "table": "passkey"
       },
@@ -2079,6 +2179,11 @@
         "table": "meta_capi_outbox"
       },
       {
+        "definition": "PRIMARY KEY (provider, customer_id)",
+        "name": "provider_customer_owners_pkey",
+        "table": "provider_customer_owners"
+      },
+      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -2137,6 +2242,11 @@
         "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
         "name": "checkout_consent_jobs_pkey",
         "table": "checkout_consent_jobs"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, config_group)",
+        "name": "tenant_config_sources_pkey",
+        "table": "tenant_config_sources"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -2858,6 +2968,16 @@
         "table": "orders"
       },
       {
+        "definition": "CREATE INDEX organization_audit_events_org_at_idx ON organization_audit_events USING btree (organization_id, at)",
+        "name": "organization_audit_events_org_at_idx",
+        "table": "organization_audit_events"
+      },
+      {
+        "definition": "CREATE INDEX organization_members_user_idx ON organization_members USING btree (user_id)",
+        "name": "organization_members_user_idx",
+        "table": "organization_members"
+      },
+      {
         "definition": "CREATE INDEX platform_audit_events_created_idx ON platform_audit_events USING btree (created_at, id)",
         "name": "platform_audit_events_created_idx",
         "table": "platform_audit_events"
@@ -2921,6 +3041,11 @@
         "definition": "CREATE INDEX products_tenant_variant_group_idx ON products USING btree (tenant_id, variant_group)",
         "name": "products_tenant_variant_group_idx",
         "table": "products"
+      },
+      {
+        "definition": "CREATE INDEX provider_customer_owners_tenant_idx ON provider_customer_owners USING btree (tenant_id)",
+        "name": "provider_customer_owners_tenant_idx",
+        "table": "provider_customer_owners"
       },
       {
         "definition": "CREATE INDEX rate_limit_buckets_expiry_idx ON rate_limit_buckets USING btree (expires_at)",
@@ -3026,6 +3151,11 @@
         "definition": "CREATE INDEX tenant_domains_pending_idx ON tenant_domains USING btree (kind, verified, last_checked_at)",
         "name": "tenant_domains_pending_idx",
         "table": "tenant_domains"
+      },
+      {
+        "definition": "CREATE INDEX tenants_organization_idx ON tenants USING btree (organization_id)",
+        "name": "tenants_organization_idx",
+        "table": "tenants"
       },
       {
         "definition": "CREATE INDEX thread_subscriptions_tenant_root_idx ON thread_subscriptions USING btree (tenant_id, root_post_id)",
@@ -3331,6 +3461,21 @@
         "definition": "CREATE UNIQUE INDEX orders_verification_token_uidx ON orders USING btree (verification_token)",
         "name": "orders_verification_token_uidx",
         "table": "orders"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX organization_members_org_user_uidx ON organization_members USING btree (organization_id, user_id)",
+        "name": "organization_members_org_user_uidx",
+        "table": "organization_members"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX organization_secrets_org_key_uidx ON organization_secrets USING btree (organization_id, key)",
+        "name": "organization_secrets_org_key_uidx",
+        "table": "organization_secrets"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX organizations_slug_uidx ON organizations USING btree (slug)",
+        "name": "organizations_slug_uidx",
+        "table": "organizations"
       },
       {
         "definition": "CREATE UNIQUE INDEX post_reactions_post_user_emoji_uidx ON post_reactions USING btree (post_id, user_id, emoji)",
@@ -4518,6 +4663,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "organization_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "privacy_url",
             "notNull": false,
             "type": "text"
@@ -5516,6 +5669,115 @@
           }
         ],
         "name": "members"
+      },
+      {
+        "columns": [
+          {
+            "default": "'active'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'automatic'::text",
+            "generated": "",
+            "identity": "",
+            "name": "ksef_submission_mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'sandbox'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "max_workspaces",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoicing_provider",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legal_address",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legal_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sender",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "organizations"
       },
       {
         "columns": [
@@ -6978,6 +7240,91 @@
           }
         ],
         "name": "auto_invoice_jobs"
+      },
+      {
+        "columns": [
+          {
+            "default": "'{}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "data",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_key_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "organization_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_tenant_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_user_id",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "organization_audit_events"
       },
       {
         "columns": [
@@ -12017,6 +12364,75 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "organization_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "organization_secrets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "auth_tag",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ciphertext",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "iv",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "masked_preview",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "tenant_id",
             "notNull": true,
             "type": "text"
@@ -12806,6 +13222,51 @@
           }
         ],
         "name": "survey_responses"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "config_group",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_by_user_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_config_sources"
       },
       {
         "columns": [
@@ -14033,6 +14494,104 @@
           }
         ],
         "name": "dm_conversations"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_by_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "organization_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "role",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "user_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "organization_members"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "customer_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "provider_customer_owners"
       },
       {
         "columns": [

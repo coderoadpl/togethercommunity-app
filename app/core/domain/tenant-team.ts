@@ -14,6 +14,23 @@ export const tenantTeamMemberSchema = z.object({
 
 export type TenantTeamMember = z.infer<typeof tenantTeamMemberSchema>;
 
+const tenantTeamOrganizationMemberSchema = z.object({
+  userId: z.string().min(1),
+  email: z.string().email(),
+  name: z.string().nullable(),
+  role: staffRoleSchema,
+  source: z.literal('organization'),
+});
+
+export const tenantTeamOrganizationSchema = z.object({
+  id: z.string().min(1),
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  members: z.array(tenantTeamOrganizationMemberSchema),
+});
+
+export type TenantTeamOrganization = z.infer<typeof tenantTeamOrganizationSchema>;
+
 export const addTenantAdminInputSchema = z.object({
   email: z.string().transform(normalizeEmail).pipe(z.string().email()),
 });

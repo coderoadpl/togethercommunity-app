@@ -728,7 +728,9 @@ const fixture = (input: {
   };
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
-    listStaffForTenant: async () => [],
+    listStaffForTenant: async (tenantId) => tenantId === 't1'
+      ? (input.staffUserIds ?? []).map((userId) => ({ userId, email: `${userId}@example.com`, staffRole: 'admin' as const, language: null }))
+      : [],
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && (input.staffUserIds ?? []).includes(userId)
         ? {
@@ -736,6 +738,7 @@ const fixture = (input: {
               id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
             },
             staffRole: 'admin',
+            source: 'direct',
           }
         : null,
     findMember: async (tenantId, userId) => {

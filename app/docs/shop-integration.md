@@ -281,6 +281,25 @@ a staff token to the storefront. The separate
 `POST /api/public/sales-links/<slug>/checkout` direct-checkout route is **not**
 opened cross-origin by the sales-link read CORS registration.
 
+Every offer product carries its public stock and the quantity a buyer can order:
+
+| Field | Meaning |
+| --- | --- |
+| `stock.tracked` | Stock tracking is enabled for the product |
+| `stock.available` | Pieces a buyer can take now (on hand minus pieces held by open checkouts); `null` when not tracked |
+| `stock.soldOut` | A tracked product with no available piece |
+| `stock.low` | A low-stock threshold is set and availability reached it |
+| `maxQuantity` | The largest quantity one checkout line accepts now: `0` when sold out, otherwise 10 for a physical product and 1 for any other type, capped by `stock.available`; a membership's 1 is its single-product checkout, never a cart line |
+| `variants[].available` | The same count for each variant, next to its `soldOut` flag |
+
+Use `maxQuantity` as the upper bound of a quantity picker and `stock.available`
+for an "N left" line. The offer ETag changes whenever a count changes, so a
+storefront that revalidates with `If-None-Match` never keeps a stale count, but
+a count can still drop between reading the offer and starting checkout: the
+session route then answers `sold_out` (409). The sales-link offer carries
+`available` (whole sets left) and `lines[].maxQuantity` and buys one set per
+checkout; see [Sales links: public offer](sales-links.md#public-offer).
+
 For the smallest custom UI, read the public offer, render its cover and active
 prices, then navigate the browser to the workspace's `/checkout/<product-id>`.
 For a fixed sales-link bundle use `/offer/<slug>?checkout=together`. For a cart
@@ -466,6 +485,25 @@ The cart answers with the same error envelope as the other routes:
 | an unknown or unpublished product, a product sold only through sales links, an unknown or inactive `priceId` | `not_found` (404) |
 | a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
 | a shipped product without `shipping` | `shipping_required` (400) |
+
+A custom cart form bounds each quantity picker by `maxQuantity` and shows the
+remaining count from `stock.available`. Membership products cannot join a cart
+(`validation`, 400); send the buyer to `/checkout/<product-id>` for them. With a
+product read from the offer as above:
+
+```js
+const quantityPicker = (product) => {
+  const picker = document.createElement('select');
+  for (let quantity = 1; quantity <= product.maxQuantity; quantity += 1) {
+    picker.append(new Option(String(quantity), String(quantity)));
+  }
+  picker.disabled = product.maxQuantity === 0;
+  const stockLine = document.createElement('p');
+  if (product.stock.soldOut) stockLine.textContent = 'Sold out';
+  else if (product.stock.available !== null) stockLine.textContent = `${product.stock.available} left`;
+  return { elements: [picker, stockLine], quantity: () => Number(picker.value) };
+};
+```
 
 A storefront without its own form can send the buyer to the hosted cart page
 instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
@@ -771,9 +809,14 @@ return `validation` (HTTP 400) and issue nothing. Each order line in
 only when the goods actually change hands; neither verification nor the buyer's
 QR image alone records collection.
 
-Configured ShipX operations are a separate option. Creating/paying a real ShipX
-shipment is an external financial action requiring operational approval; a token
-or a test fixture is not that approval. Manual fulfilment needs no such purchase.
+Configured ShipX operations are a separate option. A workspace keeps two ShipX
+connections, `production` for live orders and `sandbox` for test-mode orders;
+the order's mode picks the connection, and an order whose connection is not
+saved answers `integration_not_configured` naming it (see
+[InPost ShipX](shop.md#inpost-shipx)). Creating/paying a real ShipX shipment for
+a live order is an external financial action requiring operational approval; a
+token or a test fixture is not that approval. Manual fulfilment needs no such
+purchase.
 
 ## 9. What the buyer receives
 

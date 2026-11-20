@@ -114,4 +114,28 @@ describe('authorization contract', () => {
     expect(principalForIdentity(identity(null))).toBe('authenticated');
     expect(capabilitiesForIdentity(identity('admin'))).toEqual(capabilitiesForPrincipal('admin'));
   });
+
+  it('keeps every organization capability away from workspace and machine principals', () => {
+    const organizationCapabilities = CAPABILITIES.filter((capability) => capability.startsWith('organization:'));
+    expect(organizationCapabilities).toHaveLength(13);
+    for (const principal of PRINCIPALS.filter((candidate) => !candidate.startsWith('organization-'))) {
+      expect(capabilitiesForPrincipal(principal).filter((capability) => capability.startsWith('organization:')), principal).toEqual([]);
+    }
+  });
+
+  it('maps organization owners to every organization capability and admins to the read set', () => {
+    expect([...capabilitiesForPrincipal('organization-owner')].sort()).toEqual(
+      CAPABILITIES.filter((capability) => capability.startsWith('organization:')).sort(),
+    );
+    expect([...capabilitiesForPrincipal('organization-admin')].sort()).toEqual([
+      'organization:audit:read',
+      'organization:member:read',
+      'organization:read',
+      'organization:secret:read',
+      'organization:workspace:configure',
+    ]);
+    for (const principal of ['organization-owner', 'organization-admin'] as const) {
+      expect(capabilitiesForPrincipal(principal).every((capability) => capability.startsWith('organization:')), principal).toBe(true);
+    }
+  });
 });

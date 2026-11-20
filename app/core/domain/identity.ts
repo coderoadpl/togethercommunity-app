@@ -6,6 +6,10 @@ export const staffRoleSchema = z.enum(['owner', 'admin']);
 
 export type StaffRole = z.infer<typeof staffRoleSchema>;
 
+export const staffGrantSourceSchema = z.enum(['direct', 'organization']);
+
+export type StaffGrantSource = z.infer<typeof staffGrantSourceSchema>;
+
 export const signInMethodSchema = z.enum(['password', 'magic-link', 'passkey']);
 
 export type SignInMethod = z.infer<typeof signInMethodSchema>;
@@ -21,6 +25,7 @@ export interface Identity {
   tenantSlug: string | null;
   tenantName: string | null;
   staffRole: StaffRole | null;
+  staffGrantSource?: StaffGrantSource;
   memberId: string | null;
   memberDisplayName: string | null;
   memberBannedAt: string | null;

@@ -31,7 +31,8 @@ export const registerTeamCommands = (program: Command, context: () => Result<Tea
     run(z.tuple([emailSchema, z.object({})]), async (ctx, [email]) => {
       const result = await ctx.api.listTenantTeam();
       if (!result.ok) return result;
-      const member = result.value.members.find((entry) => entry.email.toLowerCase() === email);
+      const byEmail = (entry: { email: string }) => entry.email.toLowerCase() === email;
+      const member = result.value.members.find(byEmail) ?? result.value.organization?.members.find(byEmail);
       if (!member) return err(notFound('Team member not found'));
       return ctx.api.removeTenantAdmin({ userId: member.userId });
     }),

@@ -128,6 +128,14 @@ The key records the issuing owner. Every request made with it will act with at
 most the issuer's current authority, so a key stops working when its issuer is
 no longer a verified owner of the workspace.
 
+The issuer's owner role may come from the organization the workspace is linked
+to: an owner of an active organization is an owner of every workspace linked
+to it and can create
+shop management keys there, although creating a tenant API key needs a direct
+owner grant. Such a key stops on the next request when that derivation ends:
+the issuer leaves the organization or loses its owner role, the workspace is
+unlinked, or the organization is suspended.
+
 Creation and revocation each write a key event (`created`, `revoked`) to the
 dedicated shop management key history (below) in the same transaction as the
 key change. A purge writes one `purged` event per deleted key in the same
@@ -193,7 +201,8 @@ between requests:
    answers `401 Missing API key`; an unknown, revoked, expired, legacy or
    other-workspace key answers the same `401 Invalid API key`.
 3. The issuing account must still exist, have a verified e-mail address and
-   hold the owner role in that workspace. Otherwise the request answers the
+   hold the owner role in that workspace, directly or derived from the
+   organization the workspace is linked to. Otherwise the request answers the
    same `401 Invalid API key` as every other unusable key, so a caller cannot
    tell an issuer change from a revoked or unknown key; demoting or removing
    the issuer, or deleting the account, takes effect on the next request.
@@ -540,8 +549,9 @@ shipped answers `409 fulfilment_conflict`; issuing more units of a line than
 are left to issue answers `409 conflict`. A manual shipment (`carrier` `other` or
 `inpost` with a tracking number) needs no ShipX configuration and e-mails the
 buyer the tracking number for a live order. `POST .../shipx` creates and pays
-a real InPost shipment when the workspace's ShipX integration is configured for
-production, so automate it only with explicit operational approval. Its body
+a real InPost shipment for a live order when the workspace's `production`
+ShipX connection is saved, so automate it only with explicit operational
+approval; a test-mode order uses the `sandbox` connection. Its body
 may carry the optional `parcelTemplate` (`small`, `medium` or `large`) for this
 shipment; without it the parcel takes the largest product size, and any other
 value or an unknown field answers `400 validation` before anything is sent to
@@ -773,10 +783,19 @@ storing their KSeF credentials.
   (`provider`, `endpoint`, `region`, `bucket`, `accessKeyId`,
   `secretAccessKey`), probes the bucket and the workspace origins for CORS and
   stores it only when the probe succeeds.
-- **ShipX** `configure` changes only the parts it is given: `environment`,
-  `sender` (or `null` to remove it), `organizationId`, `token`, or
-  `"clearCredentials": true`. The view answers the environment, the sender and
-  masked credentials.
+- **ShipX** keeps two connections: `production` serves live orders and
+  `sandbox` serves test-mode orders. `configure` changes only the parts it is
+  given: the shared optional `sender` (or `null` to remove it, so InPost uses
+  the organization data), and per connection `production` or `sandbox` with
+  `organizationId`, `token` or `"clearCredentials": true` (not together with
+  new credentials). A connection left out keeps its credentials; the earlier
+  top-level `environment`, `organizationId`, `token` and `clearCredentials`
+  answer `400 validation`. The view answers the sender and, per connection, the
+  masked organization id, the masked token and `configured`. This route is the
+  only way a key reaches the four ShipX secret names
+  (`shipx.production.organizationId`, `shipx.production.token`,
+  `shipx.sandbox.organizationId`, `shipx.sandbox.token`); they are not on the
+  generic allow-list above, and the route writes no other secret.
 
 A body that carries a secret (an iFirma or KSeF value, the Stripe restricted
 key, the storage `secretAccessKey`, the ShipX `token`) is built by `jq` from a
@@ -812,12 +831,15 @@ pnpm --silent run cli --tenant acme shop integrations storage configure --provid
   --endpoint https://storage.example.test --region auto --bucket shop-assets \
   --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET
 pnpm --silent run cli --tenant acme shop integrations shipx show
-pnpm --silent run cli --tenant acme shop integrations shipx configure --environment sandbox \
+pnpm --silent run cli --tenant acme shop integrations shipx configure --slot sandbox \
   --sender-json-file sender.json --organization-id 12345 --token-env SHIPX_TOKEN
+pnpm --silent run cli --tenant acme shop integrations shipx configure --slot production \
+  --organization-id 67890 --token-env SHIPX_PRODUCTION_TOKEN
 ```
 
-`shipx configure` also takes `--clear-sender`, `--clear-credentials` and
-`--token-stdin`. The typed client exposes `listIntegrationSecrets`,
+`--slot` names the connection that `--organization-id`, `--token-env`,
+`--token-stdin` and `--clear-credentials` change, and is required with them;
+`--sender-json-file` and `--clear-sender` need no slot. The typed client exposes `listIntegrationSecrets`,
 `setIntegrationSecret`, `deleteIntegrationSecret`, `configureStripe`,
 `probeStripe`, `configureStorage`, `getShipxSettings` and `configureShipx`.
 
@@ -1070,8 +1092,8 @@ run:
 
 - Stripe `configure` registers a webhook endpoint in the Stripe account behind
   the restricted key, for either mode, and the live slot takes real payments.
-- ShipX `POST .../orders/<order-id>/shipx` on a live order with a `production`
-  ShipX environment creates and pays a real InPost shipment.
+- ShipX `POST .../orders/<order-id>/shipx` on a live order with a saved
+  `production` connection creates and pays a real InPost shipment.
 - Stored KSeF credentials together with `autoIssueInvoices` and
   `ksefSubmissionMode` `automatic` submit real invoices to KSeF; keep
   `ksefSubmissionMode` `manual` until that is approved.
@@ -1158,8 +1180,8 @@ storage, and no network:
    (`shop:catalog:*`) and a warehouse key (`shop:orders:read`,
    `shop:fulfilment:write`).
 2. Provisioning sets legal URLs, seller and a courier rate, configures Stripe
-   (test and live slots), storage and a ShipX sandbox, and reads the masked
-   secret list without any secret value; it cannot read the catalog.
+   (test and live slots), storage and the ShipX sandbox connection, and reads
+   the masked secret list without any secret value; it cannot read the catalog.
 3. Catalog uploads a cover through the signed-upload protocol, creates the
    physical book, attaches the cover, prices it, enables stock of 20 and
    publishes it; it cannot read orders. A browser-origin request to a shop
@@ -1205,7 +1227,7 @@ pnpm --silent run cli --tenant acme shop integrations storage configure --provid
   --endpoint https://storage.example.test --region auto --bucket shop-assets \
   --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET
 pnpm --silent run cli --tenant acme shop integrations stripe configure --mode test --restricted-key-env STRIPE_TEST_RESTRICTED_KEY
-pnpm --silent run cli --tenant acme shop integrations shipx configure --environment sandbox \
+pnpm --silent run cli --tenant acme shop integrations shipx configure --slot sandbox \
   --sender-json-file sender.json --organization-id <organization-id> --token-env SHIPX_TOKEN
 pnpm --silent run cli --tenant acme shop integrations secrets list
 

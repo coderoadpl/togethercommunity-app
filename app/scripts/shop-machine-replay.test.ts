@@ -184,8 +184,8 @@ describe('shop management key replay on a clean workspace', () => {
     expect(unwrapped(await provisioning.configureStripe({ mode: 'live', restrictedKey: 'rk_live_replay_fixture' })))
       .toEqual({ mode: 'live', webhookUrl: 'http://acme.localhost:48730/api/webhooks/stripe/acme' });
     unwrapped(await provisioning.configureStorage(storage));
-    expect(unwrapped(await provisioning.configureShipx({ environment: 'sandbox', sender, organizationId: '12345', token: 'shipx-token-abcd' })))
-      .toMatchObject({ environment: 'sandbox', configured: true });
+    expect(unwrapped(await provisioning.configureShipx({ sender, sandbox: { organizationId: '12345', token: 'shipx-token-abcd' } })))
+      .toMatchObject({ sandbox: { configured: true }, production: { configured: false } });
     const masked = JSON.stringify(unwrapped(await provisioning.listIntegrationSecrets()));
     for (const secret of ['rk_test_replay_fixture', 'rk_live_replay_fixture', 'secret-access-key', 'shipx-token-abcd']) expect(masked).not.toContain(secret);
     expect(await provisioning.listProducts()).toMatchObject({ ok: false, error: { code: 'forbidden' } });

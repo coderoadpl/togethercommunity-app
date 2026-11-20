@@ -238,17 +238,17 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
 };
 
 export const createShipxSettingsRepository = (db: Db): ShipxSettingsRepository => ({
-  find: async (tenantId) => {
-    const [row] = await db.select({ environment: tenants.shipxEnvironment, sender: tenants.shipxSender })
-      .from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-    if (row === undefined) return null;
-    const sender = row.sender === null ? null : shipxSenderSchema.safeParse(row.sender);
-    return {
-      environment: shipxEnvironmentSchema.parse(row.environment),
-      sender: sender === null || !sender.success ? null : sender.data,
-    };
+  findSender: async (tenantId) => {
+    const [row] = await db.select({ sender: tenants.shipxSender }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    if (row?.sender == null) return null;
+    const sender = shipxSenderSchema.safeParse(row.sender);
+    return sender.success ? sender.data : null;
   },
-  save: async (tenantId, settings) => {
-    await db.update(tenants).set({ shipxEnvironment: settings.environment, shipxSender: settings.sender }).where(eq(tenants.id, tenantId));
+  saveSender: async (tenantId, sender) => {
+    await db.update(tenants).set({ shipxSender: sender }).where(eq(tenants.id, tenantId));
+  },
+  legacyEnvironment: async (tenantId) => {
+    const [row] = await db.select({ environment: tenants.shipxEnvironment }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    return row === undefined ? null : shipxEnvironmentSchema.parse(row.environment);
   },
 });

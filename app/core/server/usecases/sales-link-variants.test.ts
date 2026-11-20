@@ -36,9 +36,9 @@ const setup = () => {
 it('lists variants in repository creation order with one stock read and suppresses singleton groups', async () => {
   const h = setup();
   const result = await getPublicSalesLink('workspace', h.link.slug, h.deps);
-  expect(result).toMatchObject({ ok: true, value: { soldOut: true, lines: [
-    { productId: 'black', baseProductId: 'black', variants: [{ productId: 'black', soldOut: true }, { productId: 'white', soldOut: false }, { productId: 'red' }] },
-    { productId: 'guide', baseProductId: 'guide', variants: [] },
+  expect(result).toMatchObject({ ok: true, value: { soldOut: true, available: 0, lines: [
+    { productId: 'black', baseProductId: 'black', maxQuantity: 0, variants: [{ productId: 'black', soldOut: true, available: 0 }, { productId: 'white', soldOut: false, available: 2 }, { productId: 'red', soldOut: false, available: null }] },
+    { productId: 'guide', baseProductId: 'guide', maxQuantity: 1, variants: [] },
   ] } });
   expect(h.listStock).toHaveBeenCalledOnce();
   expect(h.listPublished).toHaveBeenCalledExactlyOnceWith('workspace');
@@ -59,9 +59,9 @@ it('skips sibling and sibling-price lookups when no saved line has a variant gro
 it('prices, taxes and renders compliance from the chosen available sibling instead of the sold-out base', async () => {
   const h = setup();
   const result = await getPublicSalesLink('workspace', h.link.slug, h.deps, [{ productId: 'black', variantProductId: 'white' }]);
-  expect(result).toMatchObject({ ok: true, value: { soldOut: false, totalCents: 3210, currency: 'PLN', lines: [
+  expect(result).toMatchObject({ ok: true, value: { soldOut: false, available: 2, totalCents: 3210, currency: 'PLN', lines: [
     { productId: 'white', baseProductId: 'black', name: 'White stand', deliveryMethod: 'pickup', netCents: 2000, vatCents: 160, vatRate: 8, grossCents: 2160,
-      compliance: { modelIdentifier: 'WHITE', safetyWarningsHtml: '<p>Keep <strong>dry</strong>.</p>\n' } }, { productId: 'guide' },
+      compliance: { modelIdentifier: 'WHITE', safetyWarningsHtml: '<p>Keep <strong>dry</strong>.</p>\n' }, maxQuantity: 1 }, { productId: 'guide', maxQuantity: 1 },
   ] } });
   if (!result.ok) throw new Error(result.error.message);
   expect(salesLinkOfferSchema.safeParse(result.value).success).toBe(true);

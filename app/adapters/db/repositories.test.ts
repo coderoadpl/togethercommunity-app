@@ -86,7 +86,7 @@ import {
   createTenantSecretScan,
   createUserDisplayReader,
 } from './repositories.js';
-import { tenantDomainEvents } from './schema.js';
+import { providerCustomerOwners, tenantDomainEvents } from './schema.js';
 import { appendGrantMemberEvent, createMemberEventRepository } from './member-events.js';
 import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
@@ -4512,6 +4512,14 @@ describe('Stripe webhook ownership reader', () => {
     expect(await reader.hasForeignOwner('local', { [key]: `local-stripe-${suffix}` })).toBe(false);
     expect(await reader.hasForeignOwner('local', { [key]: `foreign-stripe-${suffix}` })).toBe(true);
     expect(await reader.hasForeignOwner('local', { [key]: `foreign-simulated-${suffix}` })).toBe(false);
+  });
+
+  it('treats a customer that only the customer owner table assigns to another workspace as foreign', async () => {
+    await db.insert(providerCustomerOwners).values({ provider: 'stripe', customerId: 'owner-table-customer', tenantId: 'foreign', createdAt });
+    const reader = createStripeWebhookOwnershipReader(db);
+    expect(await reader.hasForeignOwner('local', { customer: 'owner-table-customer' })).toBe(true);
+    expect(await reader.hasForeignOwner('local', { customer: 'local-customer', subscription: 'local-stripe-subscription' })).toBe(false);
+    expect(await reader.hasForeignOwner('foreign', { customer: 'owner-table-customer' })).toBe(false);
   });
 
   it('rejects foreign ownership even when another identifier belongs to the local tenant', async () => {

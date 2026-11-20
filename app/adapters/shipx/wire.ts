@@ -6,6 +6,7 @@ import {
   splitPersonName,
   normalizeShipxPhone,
   type ShipxRemoteShipment,
+  type ShipxSender,
   type ShipxShipmentRequest,
 } from '#core/domain/index.js';
 
@@ -78,42 +79,44 @@ const parcelsFor = (request: ShipxShipmentRequest) => {
   }];
 };
 
-export const toWireShipmentRequest = (request: ShipxShipmentRequest) => {
-  const sender = splitPersonName(request.sender.name);
+const toWireSender = (sender: ShipxSender) => {
+  const name = splitPersonName(sender.name);
   return {
-    sender: {
-      ...(request.sender.company === null ? {} : { company_name: request.sender.company }),
-      first_name: sender.firstName,
-      last_name: sender.lastName,
-      email: request.sender.email,
-      phone: normalizeShipxPhone(request.sender.phone) ?? request.sender.phone,
-      address: {
-        street: request.sender.street,
-        building_number: request.sender.buildingNumber,
-        city: request.sender.city,
-        post_code: request.sender.postCode,
-        country_code: SHIPX_COUNTRY_CODE,
-      },
+    ...(sender.company === null ? {} : { company_name: sender.company }),
+    first_name: name.firstName,
+    last_name: name.lastName,
+    email: sender.email,
+    phone: normalizeShipxPhone(sender.phone) ?? sender.phone,
+    address: {
+      street: sender.street,
+      building_number: sender.buildingNumber,
+      city: sender.city,
+      post_code: sender.postCode,
+      country_code: SHIPX_COUNTRY_CODE,
     },
-    receiver: {
-      first_name: request.receiver.firstName,
-      last_name: request.receiver.lastName,
-      email: request.receiver.email,
-      phone: request.receiver.phone,
-      ...(request.receiver.address === null ? {} : {
-        address: {
-          street: request.receiver.address.street,
-          building_number: request.receiver.address.buildingNumber,
-          city: request.receiver.address.city,
-          post_code: request.receiver.address.postCode,
-          country_code: request.receiver.address.countryCode,
-        },
-      }),
-    },
-    parcels: parcelsFor(request),
-    ...(request.targetPoint === null ? {} : { custom_attributes: { target_point: request.targetPoint } }),
-    service: request.service,
-    additional_services: [],
-    reference: request.reference,
   };
 };
+
+export const toWireShipmentRequest = (request: ShipxShipmentRequest) => ({
+  ...(request.sender === null ? {} : { sender: toWireSender(request.sender) }),
+  receiver: {
+    first_name: request.receiver.firstName,
+    last_name: request.receiver.lastName,
+    email: request.receiver.email,
+    phone: request.receiver.phone,
+    ...(request.receiver.address === null ? {} : {
+      address: {
+        street: request.receiver.address.street,
+        building_number: request.receiver.address.buildingNumber,
+        city: request.receiver.address.city,
+        post_code: request.receiver.address.postCode,
+        country_code: request.receiver.address.countryCode,
+      },
+    }),
+  },
+  parcels: parcelsFor(request),
+  ...(request.targetPoint === null ? {} : { custom_attributes: { target_point: request.targetPoint } }),
+  service: request.service,
+  additional_services: [],
+  reference: request.reference,
+});

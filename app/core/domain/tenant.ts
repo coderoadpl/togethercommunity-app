@@ -13,7 +13,7 @@ import {
   type DnsRecord,
   type TenantDomainProvider,
 } from './custom-domain.js';
-import { staffRoleSchema } from './identity.js';
+import { staffGrantSourceSchema, staffRoleSchema } from './identity.js';
 import { languageSchema } from './language.js';
 import { inpostGeowidgetTokenSchema, shippingRatesSchema } from './shipping.js';
 import { storageCorsStatusSchema } from './storage.js';
@@ -372,6 +372,7 @@ export type TenantSupportPublic = z.infer<typeof tenantSupportPublicSchema>;
 export const membershipSchema = z.object({
   tenant: tenantSchema,
   staffRole: staffRoleSchema,
+  source: staffGrantSourceSchema.default('direct'),
 });
 
 export type Membership = z.infer<typeof membershipSchema>;

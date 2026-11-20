@@ -154,3 +154,170 @@ string cells are neutralised with a leading apostrophe, like the member export;
 numeric values are unchanged. Errors retain the normal CLI taxonomy and produce
 no partial CSV.
 See [report definitions and limitations](reports-api.md).
+
+## Organizations
+
+An organization sits above workspaces. Only the instance operator creates one,
+for an existing account with a verified e-mail address, and sets how many
+workspaces it may hold. Both commands read the secret from `OPERATOR_SECRET`:
+
+```bash
+OPERATOR_SECRET=... pnpm --silent run cli --json operator org create \
+  --slug holding --name 'Holding' --owner-email owner@example.test --max-workspaces 3
+OPERATOR_SECRET=... pnpm --silent run cli --json operator org limits <organization-id> --max-workspaces 5
+```
+
+Creation is idempotent by slug for the same owner (`created: false` on replay);
+the same slug for another owner is a `conflict`. An unknown and an unverified
+owner produce the same validation error.
+
+An organization holds at most `max_workspaces` workspaces, whether they are
+linked now or created in it later. The limit defaults to 0 until the operator
+raises it with `operator org limits`. Linking a workspace that would exceed it
+is refused with `workspace_quota_exceeded` (HTTP 409, CLI exit 31) and changes
+nothing; linking a workspace that is already in the organization does not count
+it twice.
+
+Members read their organizations with their usual session. `--org` accepts the
+organization ID or slug and falls back to `TOGETHER_CLI_ORG`:
+
+```bash
+pnpm --silent run cli org list
+pnpm --silent run cli org show --org holding
+pnpm --silent run cli org member list --org holding
+pnpm --silent run cli org audit --org holding --limit 50
+```
+
+Organization owners and admins can read; an organization that the caller does
+not belong to answers `not_found`, whether or not it exists.
+
+Organization owners manage members. Only an existing account with a verified
+e-mail address can be added; no invitation is sent, so create the account
+first. Members are named by e-mail address and hold the role `owner` or
+`admin`:
+
+```bash
+pnpm --silent run cli org member add admin@example.test --role admin --org holding
+pnpm --silent run cli org member role admin@example.test --role owner --org holding
+pnpm --silent run cli org member remove admin@example.test --org holding
+```
+
+Adding a member who already holds the requested role, or setting the role a
+member already has, reports `changed: false`; adding a member with another role
+is a `conflict` (change the role instead). An unknown and an unverified account
+produce the same validation error. The last owner can be neither demoted nor
+removed (`conflict`), including by themselves. An organization admin is
+`forbidden`. A removed member loses organization access on the next request.
+Each change is recorded in the organization audit as `member.added`,
+`member.role_changed` or `member.removed`.
+
+Members also hold a role in every workspace linked to the organization, without
+a workspace grant: an organization `owner` acts as a workspace `owner` and an
+organization `admin` as a workspace `admin`. A member who also holds a direct
+grant in the workspace gets the higher of the two roles; on a tie the direct
+grant counts. The role is read on every request, so removing a member, changing
+their role, unlinking the workspace or suspending the organization takes effect
+on the next request. A suspended organization gives no workspace role; its own
+routes keep their reads and refuse every write with `forbidden`, while the
+`operator org` commands and `tenant organization unlink` keep working. No
+command changes an organization's status.
+
+Adding a member needs no invitation because a member reaches only the
+workspaces that were linked with a direct owner's consent (below), and any
+direct owner of such a workspace can take it out of the organization again.
+
+An owner whose workspace role comes from the organization can use the
+workspace like a direct owner, with three exceptions that need a direct owner
+grant in the workspace: `api-key create` (tenant API keys), `team add` and
+`team remove`, and `tenant organization unlink`; each is `forbidden` otherwise.
+Shop management keys stay open to such an owner because every request with the
+key checks the issuer's role again. `team list` shows the direct team and, for a
+workspace of an active organization, a read-only `organization` section with
+each member's derived role and `source: "organization"`. `team remove` for a
+user whose only access comes from the organization answers
+`organization_managed` (HTTP 409, CLI exit 32): change it with
+`org member role` or `org member remove` instead. Staff notifications go to the
+direct team only.
+
+An organization owner links a workspace in which they also hold a direct owner
+grant. The workspace is named by its slug and resolved from the caller's staff
+workspaces:
+
+```bash
+pnpm --silent run cli org workspace list --org holding
+pnpm --silent run cli org workspace link acme --org holding
+pnpm --silent run cli org workspace unlink acme --org holding
+```
+
+Linking gives every current and future owner of the organization owner-level
+access to the workspace, and every current and future organization admin
+admin-level access, for as long as the workspace stays linked. Organization
+owners add and promote members without asking the workspace, so link only a
+workspace whose access you want the organization's owners to control.
+
+Linking changes nothing in the workspace's settings, secrets, payments or
+checkout. Linking a workspace that is already in the organization reports
+`changed: false`. A workspace that belongs to another organization is a
+`conflict`; an organization admin, or an owner who is only a workspace admin, is
+`forbidden` to link. Both changes are recorded in the organization audit and in
+the workspace audit.
+
+Unlinking needs either side. Any organization owner can unlink a linked
+workspace with `org workspace unlink`, without a grant in it; to an owner
+without a direct owner grant, a workspace outside the organization is
+`not_found`. A direct owner of the
+workspace can take the active workspace out of its organization, whether or not
+they belong to the organization:
+
+```bash
+pnpm --silent run cli tenant organization unlink
+```
+
+An owner whose role comes only from the organization is `forbidden` there.
+Unlinking ends every organization-derived role in the workspace on the next
+request; derived staff cannot be removed one by one (`organization_managed`).
+
+Unlinking is a `conflict` on both routes while the workspace takes any
+configuration group from the organization. `org workspace sources` lists the six groups of a linked
+workspace (`payments_live`, `payments_test`, `invoicing`, `email_transport`,
+`telemetry`, `shipping_carrier`) and whether each comes from the `workspace`
+(the default) or the `organization`; owners and admins can read it:
+
+```bash
+pnpm --silent run cli org workspace sources acme --org holding
+```
+
+Organization owners keep the company identity and the settings that inheriting
+workspaces will use. An empty `--legal-name` or `--legal-address`, and
+`--invoicing-provider none` or `--shipx-sender none`, clear the value; an update
+that changes nothing reports `changed: false`. Each change is recorded as
+`organization.updated` with the names of the changed fields only:
+
+```bash
+pnpm --silent run cli org update --org holding --legal-name "Holding Ltd" \
+  --legal-address "1 Main Street, Warsaw" --invoicing-provider ksef --ksef-submission-mode manual
+pnpm --silent run cli org update --org holding --shipx-environment production \
+  --shipx-sender '{"name":"Warehouse","email":"warehouse@example.test","phone":"500600700","street":"Main","buildingNumber":"1","city":"Warsaw","postCode":"00-001"}'
+```
+
+Organization secrets are encrypted like workspace secrets. Owners and admins
+list them with masked previews only; owners set and delete them. A value is
+read from the environment variable named by `--value-env` or, without it, from
+stdin, and never from a command-line argument:
+
+```bash
+pnpm --silent run cli org secret list --org holding
+pnpm --silent run cli org secret set ifirma.invoiceApiKey --value-env IFIRMA_INVOICE_KEY --org holding
+pnpm --silent run cli org secret set smtp.password --org holding < smtp-password.txt
+pnpm --silent run cli org secret delete smtp.password --org holding
+```
+
+The generic setter accepts the iFirma, KSeF, SES, SMTP, Resend and ShipX keys.
+The Stripe keys and the telemetry connection are stored only through their
+dedicated flows, and webhook secrets, endpoint ids, storage, video and Meta
+conversions credentials stay per workspace, so these are `validation` errors.
+Deleting a secret is a `conflict` while a workspace of the organization takes
+that key's group from the organization. Each change is recorded as `secret.set`
+or `secret.deleted` with the key name and its configuration group, never any
+character of the value. A masked preview shows the last four characters only
+for a value of at least twelve characters; a shorter value shows only the mask.

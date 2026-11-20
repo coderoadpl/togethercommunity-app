@@ -27,7 +27,7 @@ import type {
 } from '#core/server/index.js';
 
 import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
-import { boundLockWait, busyAfterRollback, CHANGE_PROPOSAL_BOUNDS, milliseconds, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import { boundLockWait, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import {
   changeProposalEvents,
@@ -69,7 +69,7 @@ export const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeP
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
 
 export const lockWorkspaceProposals = (executor: Db, tenantId: string, bounds: ChangeProposalBounds): Promise<boolean> =>
-  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, milliseconds(bounds.lockWaitMs), milliseconds(bounds.lockWaitMs));
+  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs });
 
 export const boundedWrite = <T>(db: Db, bounds: ChangeProposalBounds, work: (tx: Db) => Promise<T>): Promise<ChangeProposalWrite<T>> =>
   busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<T>> => {
@@ -318,7 +318,7 @@ export const withdrawPendingChangeProposalsOfKey = async (
   }
 };
 
-export const createChangeProposalRepository = (db: Db, bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS): ChangeProposalRepository => ({
+const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangeProposalRepository => ({
   create: async (tenantId, proposal, event, now) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
@@ -364,6 +364,9 @@ export const createChangeProposalRepository = (db: Db, bounds: ChangeProposalBou
   }),
   recordExpiry: (tenantId, id, event) => boundedWrite(db, bounds, (tx) => recordProposalExpiry(tx, tenantId, id, event)),
 });
+
+export const createChangeProposalRepository = (db: Db, options: ChangeProposalBoundOptions = {}): ChangeProposalRepository =>
+  changeProposalRepositoryOver(db, changeProposalBounds(options));
 
 export const createChangeProposalEventRepository = (db: Db): ChangeProposalEventRepository => ({
   listByProposal: async (tenantId, proposalId) =>

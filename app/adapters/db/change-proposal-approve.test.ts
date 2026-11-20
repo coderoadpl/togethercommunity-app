@@ -95,12 +95,12 @@ const storage: StorageProvider = (() => {
   };
 })();
 
-const deps = (db: Db = database.db) => {
+const deps = (db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) => {
   const logger = { error: vi.fn<(message: string) => void>() };
   return {
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
-      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
-    changeProposals: createChangeProposalRepository(db),
+      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
+    changeProposals: createChangeProposalRepository(db, lockWait),
     shopManagementKeys: createShopManagementKeyRepository(db),
     storage,
     logger,
@@ -597,12 +597,14 @@ describe('lock waits inside a change proposal transaction', () => {
   };
 
   const busy = { ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } };
+  const brief = { lockWaitMs: 300 };
+  const approveBriefly = (id: string) => approveChangeProposal(ownerSession, { id }, deps(database.db, brief));
 
   it('answers busy within the bound when the target row stays locked, and leaves the proposal pending', async () => {
     const id = await submit('product.update', { id: 'mug', title: 'Big mug' });
     const started = Date.now();
 
-    const result = await holding('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug'], () => approve(id));
+    const result = await holding('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug'], () => approveBriefly(id));
 
     expect(result).toMatchObject(busy);
     expect(Date.now() - started).toBeLessThan(15_000);
@@ -614,7 +616,7 @@ describe('lock waits inside a change proposal transaction', () => {
 
   it('answers busy for a dry run whose target row stays locked and stores nothing', async () => {
     const result = await holding('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug'], () =>
-      submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Big mug' } }, deps()));
+      submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Big mug' } }, deps(database.db, brief)));
 
     expect(result).toMatchObject(busy);
     expect(await database.db.select().from(changeProposals)).toEqual([]);
@@ -648,7 +650,7 @@ describe('lock waits inside a change proposal transaction', () => {
   it('answers busy instead of failing when the sales links of the workspace stay locked', async () => {
     const id = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
 
-    const result = await holding('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`sales-links:${TENANT}`], () => approve(id));
+    const result = await holding('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`sales-links:${TENANT}`], () => approveBriefly(id));
 
     expect(result).toMatchObject(busy);
     expect(await statusOf(id)).toBe('pending');

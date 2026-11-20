@@ -188,8 +188,10 @@ and sends each proposal with the header `x-proposal-group: <group id>` (CLI
 can add to it, read it or withdraw it; for any other key the group answers
 `404`. A direct-mode key's writes ignore the header and stay live.
 
-A receipt carries the submitted input, the target id and the status, never the
-effect or any live value. Whether a proposal is accepted or refused depends on
+A receipt carries the submitted input, the target id and the status, and after
+an approval the id of the applied resource, which the key can already read with
+its read scope; it never carries the effect, a before value or the deciding
+account. Whether a proposal is accepted or refused depends on
 live state, so a propose-mode key always holds the read scope of the family it
 proposes in and learns nothing from a refused or accepted proposal that it
 could not read with that read scope. See [Change proposals](change-proposals.md) for the

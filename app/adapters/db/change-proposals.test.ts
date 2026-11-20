@@ -173,8 +173,7 @@ describe('change proposal creation', () => {
     try {
       await holder.query('begin');
       await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposals:${TENANT}`]);
-      const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100, dryRunStatementMs: 1_000, approvalStatementMs: 1_000 });
-      expect(await quick.create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
+      expect(await createChangeProposalRepository(database.db, { lockWaitMs: 300 }).create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
     } finally {
       await holder.query('rollback');
       await holder.end();
@@ -189,7 +188,7 @@ describe('change proposal creation', () => {
     try {
       await holder.query('begin');
       await holder.query('select id from shop_management_keys where tenant_id = $1 and id = $2 for update', [TENANT, 'key-propose']);
-      const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100, dryRunStatementMs: 1_000, approvalStatementMs: 1_000 });
+      const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100 });
       expect(await quick.create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
     } finally {
       await holder.query('rollback');
@@ -197,6 +196,14 @@ describe('change proposal creation', () => {
     }
     expect(await database.db.select().from(changeProposals)).toEqual([]);
   }, 30_000);
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a lock wait of %s ms', (lockWaitMs) => {
+    expect(() => createChangeProposalRepository(database.db, { lockWaitMs })).toThrow(/lock wait/u);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a statement time bound of %s ms', (approvalStatementMs) => {
+    expect(() => createChangeProposalRepository(database.db, { approvalStatementMs })).toThrow(/statement time bound/u);
+  });
 
   it('refuses an effect over the stored size limit before writing', async () => {
     const effect = { description: { before: '', after: 'x'.repeat(CHANGE_PROPOSAL_LIMITS.effectMaxBytes) } };
@@ -335,7 +342,7 @@ describe('change proposal transitions', () => {
 
   it('answers busy and moves nothing when the proposal row stays locked past the bounded wait', async () => {
     await repo().create(TENANT, proposal({ id: 'p-1' }), keyEvent(), NOW);
-    const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100, dryRunStatementMs: 1_000, approvalStatementMs: 1_000 });
+    const quick = createChangeProposalRepository(database.db, { lockWaitMs: 100 });
     const holder = new pg.Client({ connectionString: database.url });
     await holder.connect();
     try {

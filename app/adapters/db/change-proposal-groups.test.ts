@@ -30,7 +30,7 @@ import {
   type StorageProvider,
 } from '#core/server/index.js';
 
-import { CHANGE_PROPOSAL_BOUNDS, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from './change-proposals.js';
@@ -108,9 +108,9 @@ const storage: StorageProvider = (() => {
   };
 })();
 
-const QUICK: ChangeProposalBounds = { lockWaitMs: 100, dryRunStatementMs: 2_000, approvalStatementMs: 2_000 };
+const QUICK: ChangeProposalBoundOptions = { lockWaitMs: 100, dryRunStatementMs: 2_000, approvalStatementMs: 2_000 };
 
-const deps = (db: Db = database.db, bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS) => {
+const deps = (db: Db = database.db, bounds: ChangeProposalBoundOptions = {}) => {
   const logger = { error: vi.fn<(message: string) => void>() };
   return {
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
@@ -639,7 +639,7 @@ describe('bounded lock waits of the standalone group writes', () => {
     const groupId = await newGroup();
     await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
     const live = await liveTables();
-    const slowStatements: ChangeProposalBounds = { lockWaitMs: 10_000, dryRunStatementMs: 100, approvalStatementMs: 100 };
+    const slowStatements: ChangeProposalBoundOptions = { lockWaitMs: 10_000, dryRunStatementMs: 100, approvalStatementMs: 100 };
 
     const approved = await holdingLocks([['select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'mug']]], async () =>
       approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: await itemIdsOf(groupId) }, deps(database.db, slowStatements)));

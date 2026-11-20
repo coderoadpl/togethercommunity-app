@@ -21,7 +21,7 @@ import {
   type StorageProvider,
 } from '#core/server/index.js';
 
-import { CHANGE_PROPOSAL_BOUNDS, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { closeDb, createDb, type Db } from './client.js';
 import { createTenantSecretRepository } from './repositories.js';
@@ -48,10 +48,10 @@ const secretCrypto = createSecretCrypto(Buffer.alloc(32, 9).toString('base64'));
 
 const realSecretResolverOver = (connection: Db) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto);
 
-const transactionOf = (log = logger(), db: Db = database.db, bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS) =>
+const transactionOf = (log = logger(), db: Db = database.db, bounds: ChangeProposalBoundOptions = {}) =>
   createChangeProposalTransaction(db, log, realSecretResolverOver, bounds);
 
-const QUICK: ChangeProposalBounds = { lockWaitMs: 100, dryRunStatementMs: 100, approvalStatementMs: 100 };
+const QUICK: ChangeProposalBoundOptions = { lockWaitMs: 100, dryRunStatementMs: 100, approvalStatementMs: 100 };
 
 const lockWaiters = async (observer: pg.Client): Promise<number> => {
   const waiting = await observer.query<{ count: number }>(
@@ -471,7 +471,7 @@ describe('change proposal transaction connections and locks', () => {
     try {
       await holder.query('begin');
       await holder.query('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'published']);
-      const slow: ChangeProposalBounds = { lockWaitMs: 10_000, dryRunStatementMs: 100, approvalStatementMs: 100 };
+      const slow: ChangeProposalBoundOptions = { lockWaitMs: 10_000, dryRunStatementMs: 100, approvalStatementMs: 100 };
 
       expect(await transactionOf(logger(), database.db, slow)[mode](TENANT, async ({ repositories }) =>
         ok(await repositories.targets.lock(TENANT, { kind: 'product', id: 'published' }))))
@@ -481,4 +481,8 @@ describe('change proposal transaction connections and locks', () => {
       await holder.end();
     }
   }, 30_000);
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a lock wait of %s ms', (lockWaitMs) => {
+    expect(() => transactionOf(logger(), database.db, { lockWaitMs })).toThrow(/lock wait/u);
+  });
 });

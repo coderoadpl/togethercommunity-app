@@ -18,7 +18,7 @@ import type {
   ChangeProposalTransitionGuard,
 } from '#core/server/index.js';
 
-import { busyAfterRollback, CHANGE_PROPOSAL_BOUNDS, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import { busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
 import {
   boundedWrite,
   countCapReached,
@@ -117,7 +117,7 @@ export const deleteEmptyGroupsOfKey = async (executor: Db, tenantId: string, key
   ));
 };
 
-export const createChangeProposalGroupRepository = (db: Db, bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS): ChangeProposalGroupRepository => ({
+const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangeProposalGroupRepository => ({
   create: async (tenantId, group, now) => {
     const parsed = changeProposalGroupSchema.parse(group);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal group belongs to another tenant');
@@ -215,3 +215,6 @@ export const createChangeProposalGroupRepository = (db: Db, bounds: ChangePropos
     return deleted.length > 0;
   }),
 });
+
+export const createChangeProposalGroupRepository = (db: Db, options: ChangeProposalBoundOptions = {}): ChangeProposalGroupRepository =>
+  groupRepositoryOver(db, changeProposalBounds(options));

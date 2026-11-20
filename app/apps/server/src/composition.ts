@@ -54,7 +54,7 @@ import { createDownloadPersonaliser } from '#adapters/personalisation/index.js';
 import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypto, DownloadPersonaliser, PersonalisationSlots } from '#core/server/index.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
-import type { ChangeProposalBounds } from '#adapters/db/change-proposal-bounds.js';
+import type { ChangeProposalBoundOptions } from '#adapters/db/change-proposal-bounds.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
@@ -959,7 +959,7 @@ export const createDeps = (
     db?: Db;
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
-    changeProposalBounds?: ChangeProposalBounds;
+    changeProposalBounds?: ChangeProposalBoundOptions;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);

@@ -11,9 +11,9 @@ import type {
 import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
 import {
   boundStatementTime,
-  CHANGE_PROPOSAL_BOUNDS,
-  milliseconds,
+  changeProposalBounds,
   ranOutOfTime,
+  type ChangeProposalBoundOptions,
   type ChangeProposalBounds,
 } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
@@ -123,9 +123,10 @@ export const createChangeProposalTransaction = (
   db: Db,
   logger: { error(message: string): void },
   secretResolverOver: SecretResolverOver,
-  bounds: ChangeProposalBounds = CHANGE_PROPOSAL_BOUNDS,
+  options: ChangeProposalBoundOptions = {},
 ): ChangeProposalTransaction => {
-  const lockWait = milliseconds(bounds.lockWaitMs);
+  const bounds = changeProposalBounds(options);
+  const waits = { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs };
   const runScoped = async <T>(
     tenantId: string,
     operation: ScopedOperation<T>,
@@ -136,10 +137,10 @@ export const createChangeProposalTransaction = (
     let open = true;
     try {
       const result = await rollingBackErrors(db, async (tx): Promise<Result<T, AppError>> => {
-        if (groupId !== null && !await boundedAdvisoryLock(tx, `change-proposal-group-dry-run:${tenantId}:${groupId}`, lockWait, lockWait)) {
+        if (groupId !== null && !await boundedAdvisoryLock(tx, `change-proposal-group-dry-run:${tenantId}:${groupId}`, waits)) {
           return err(changeProposalsBusy());
         }
-        if (!await boundedAdvisoryLock(tx, `change-proposal-transaction:${tenantId}`, lockWait, lockWait)) return err(changeProposalsBusy());
+        if (!await boundedAdvisoryLock(tx, `change-proposal-transaction:${tenantId}`, waits)) return err(changeProposalsBusy());
         await boundStatementTime(tx, rollBackAlways ? bounds.dryRunStatementMs : bounds.approvalStatementMs);
         return operation(scopeOver(tx, bounds, secretResolverOver, effects, () => open));
       }, rollBackAlways).finally(() => { open = false; });

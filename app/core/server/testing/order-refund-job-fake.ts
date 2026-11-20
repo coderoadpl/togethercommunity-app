@@ -48,9 +48,14 @@ export const createOrderRefundJobFake = () => {
     },
     noteChargeRefunded: async (tenantId, orderId, now) => {
       const job = jobs.find((candidate) => candidate.tenantId === tenantId && candidate.orderId === orderId);
-      if (job?.status === 'failed') Object.assign(job, { status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: now });
-      else if (job?.status === 'pending') Object.assign(job, { nextAttemptAt: now, updatedAt: now });
-      else return null;
+      if (job === undefined) return null;
+      if (job.status === 'failed' || (job.status === 'blocked_permission' && job.providerRefundId === null)) {
+        Object.assign(job, { status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: now });
+      } else if (job.status === 'pending') {
+        Object.assign(job, { nextAttemptAt: now, updatedAt: now });
+      } else {
+        return null;
+      }
       return structuredClone(job);
     },
   };

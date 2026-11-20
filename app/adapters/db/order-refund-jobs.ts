@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, lt, lte } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, lt, lte, or } from 'drizzle-orm';
 
 import { orderRefundJobSchema, type OrderRefundJob } from '#core/domain/index.js';
 import type { OrderRefundJobRepository } from '#core/server/index.js';
@@ -89,7 +89,10 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
     const ofOrder = and(eq(orderRefundJobs.tenantId, tenantId), eq(orderRefundJobs.orderId, orderId));
     const [resolved] = await db.update(orderRefundJobs)
       .set({ status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: now })
-      .where(and(ofOrder, eq(orderRefundJobs.status, 'failed')))
+      .where(and(ofOrder, or(
+        eq(orderRefundJobs.status, 'failed'),
+        and(eq(orderRefundJobs.status, 'blocked_permission'), isNull(orderRefundJobs.providerRefundId)),
+      )))
       .returning();
     if (resolved !== undefined) return toJob(resolved);
     const [due] = await db.update(orderRefundJobs)

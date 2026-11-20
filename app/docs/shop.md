@@ -1306,8 +1306,9 @@ Stripe Dashboard (the order then becomes `refunded`). Requeueing a failed job
 from Studio is not available yet.
 
 When `charge.refunded` reports a full refund of a cancelled order, the same
-payment transaction marks the order `refunded`, moves a `failed` job to
-`resolved_externally` and makes a `pending` job due at once (its next attempt
+payment transaction marks the order `refunded`, moves a `failed` job and a
+`blocked_permission` job without a Stripe refund of its own to
+`resolved_externally`, and makes a `pending` job due at once (its next attempt
 time becomes now, it stays `pending`) and starts the dispatcher, whose refund
 list then decides: a hand refund that already `succeeded` ends the job as
 `skipped_refunded`, one still `pending` makes the job watch it, and the job's
@@ -1315,11 +1316,15 @@ own refund is taken over. The event itself never ends a `pending` job, because
 a hand refund it reports may still fail. A `failed` job is resolved because
 the dispatcher never picks a failed job again either, so without this the
 order page in Studio would keep showing the failed refund after staff refunded
-the payment by hand. Every other job is left as it is: a `submitted` or
+the payment by hand. A blocked job is resolved because the restricted key
+lacks the permission the refund list needs, so the dispatcher could never read
+the hand refund and would end the job as `failed` with a false alert after
+72 hours; the event is the only evidence the platform gets. Known limitation:
+a later failure of that hand refund is not observed, and staff check it in the
+Stripe Dashboard. Every other job is left as it is: a `submitted` or
 `succeeded` job keeps its scheduled status reads, a `running` job keeps its
-lease, and a `blocked_permission` job is settled by its next hourly attempt,
-whose refund list tells the job's own refund (taken over and tracked) from one
-made by hand (subtracted from the amount to refund). A refund or dispute of a
+lease, and a `blocked_permission` job that already holds a Stripe refund of
+its own is settled by its next hourly attempt. A refund or dispute of a
 cancelled order revokes no access, because the cancelled order granted none.
 
 A cancelled order never counts as a purchase: it keeps no access when another

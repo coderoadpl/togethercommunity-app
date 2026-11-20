@@ -423,25 +423,17 @@ describe('order refund dispatcher', () => {
     expect(h.alerts).toStrictEqual([]);
   });
 
-  it('refunds a blocked job exactly once when the hand refund that marked the order refunded fails later', async () => {
-    const h = harness({ steps: [{ outcome: 'error', error: permissionMissing() }] });
+  it('resolves a blocked job when charge.refunded reports the order fully refunded and never calls Stripe or alerts staff for it again', async () => {
+    const h = harness({ steps: Array.from({ length: 100 }, () => ({ outcome: 'error' as const, error: permissionMissing() })) });
     await h.queue();
 
     expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
-    h.refundByHand({ refundId: 're_hand', paymentIntentId: 'pi_1', amountCents: 4099, status: 'pending', failureReason: null, orderId: null, reason: null });
-    expect(await h.chargeRefunded()).toBeNull();
-    h.failRefund('re_hand', 'expired_or_canceled_card');
+    h.refundByHand(handRefund('re_hand', 4099, 'pending'));
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
 
-    expect(await h.tick(at(hours(1)))).toStrictEqual({ processedCount: 1, outcomes: { refunded: 1 } });
-    expect(h.job()).toMatchObject({ status: 'succeeded', keyGeneration: 1, providerRefundId: 're_1', permissionBlockedAt: null });
-    expect(h.refundCalls).toStrictEqual([
-      expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1' }),
-      expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1-1' }),
-    ]);
-    expect(await h.tick(at(hours(2)))).toStrictEqual({ processedCount: 0, outcomes: {} });
-    expect(await h.tick(at(hours(25)))).toStrictEqual({ processedCount: 1, outcomes: { checked: 1 } });
-    expect(h.refundCalls).toHaveLength(2);
-    expect(h.created).toStrictEqual([expect.objectContaining({ refundId: 're_1', amountCents: 4099, orderId: 'order-1' })]);
+    for (const hour of [1, 24, 73, 200]) expect(await h.tick(at(hours(hour)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+    expect(h.refundCalls).toHaveLength(1);
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
   });
 
   it('fails with a staff alert instead of skipping an order marked refunded when its refunds cannot be listed for good', async () => {

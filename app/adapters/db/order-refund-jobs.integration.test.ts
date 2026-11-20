@@ -103,21 +103,26 @@ describe('order refund jobs of two workspaces', () => {
     expect(await jobRows()).toStrictEqual(before);
   });
 
-  it('makes a pending job due at once and resolves a failed one externally when the charge is refunded, and leaves every other job as it is', async () => {
+  it('makes a pending job due at once and resolves a failed one or a blocked one without a Stripe refund externally when the charge is refunded, and leaves every other job as it is', async () => {
     const repository = createOrderRefundJobRepository(database.db);
     const noted = '2026-11-15T10:02:00.000Z';
     const note = (orderId: string) => repository.noteChargeRefunded('tenant-a', orderId, noted);
-    for (const id of ['order-attempted', 'order-submitted', 'order-failed']) await insertOrder('tenant-a', id, 'out_of_stock');
+    for (const id of ['order-attempted', 'order-submitted', 'order-failed', 'order-blocked', 'order-blocked-reopened']) await insertOrder('tenant-a', id, 'out_of_stock');
     await insertJob('tenant-a', 'order-attempted', { attempts: 1, nextAttemptAt: '2026-11-15T12:00:00.000Z', lastError: 'Stripe is unavailable' });
     await insertJob('tenant-a', 'order-submitted', { status: 'submitted', attempts: 1, providerRefundId: 're_ours', nextAttemptAt: '2026-11-16T10:00:00.000Z' });
     await insertJob('tenant-a', 'order-failed', { status: 'failed', attempts: 19, nextAttemptAt: null });
+    await insertJob('tenant-a', 'order-blocked', { status: 'blocked_permission', attempts: 2, nextAttemptAt: '2026-11-15T11:00:00.000Z' });
+    await insertJob('tenant-a', 'order-blocked-reopened', { status: 'blocked_permission', attempts: 4, providerRefundId: 're_ours', nextAttemptAt: '2026-11-15T11:00:00.000Z' });
 
     expect(await note('order-a')).toMatchObject({ status: 'pending', nextAttemptAt: noted });
     expect(await note('order-attempted')).toMatchObject({ status: 'pending', attempts: 1, nextAttemptAt: noted });
     expect(await note('order-submitted')).toBeNull();
     expect(await note('order-failed')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
+    expect(await note('order-blocked')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
+    expect(await note('order-blocked-reopened')).toBeNull();
     expect((await jobRows()).map((row) => [row.orderId, row.status])).toStrictEqual([
-      ['order-a', 'pending'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-failed', 'resolved_externally'], ['order-submitted', 'submitted'],
+      ['order-a', 'pending'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-blocked', 'resolved_externally'],
+      ['order-blocked-reopened', 'blocked_permission'], ['order-failed', 'resolved_externally'], ['order-submitted', 'submitted'],
     ]);
     expect(await repository.countDue({ now: noted })).toBe(2);
   });

@@ -641,7 +641,7 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(dispatcher.calls).toStrictEqual([]);
   });
 
-  it('leaves a blocked refund job to its next hourly attempt when the order is refunded by hand, which ends it as skipped_refunded without a refund call', async () => {
+  it('resolves a blocked refund job when the order is refunded by hand, because the restricted key cannot list the refunds, and never calls Stripe for it again', async () => {
     const h = harness();
     const cancelled = await cancelBundle(h);
     const blocked = providerCalls(h, 'permission_missing');
@@ -650,14 +650,14 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
 
     expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
       .toStrictEqual(ok({ processed: true }));
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'blocked_permission', nextAttemptAt: '2026-11-15T11:42:00.000Z' });
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null, providerRefundId: null });
+    expect(h.warnings).toContain(`[order-refund] resolved externally tenant=tenant-a order=${cancelled.id} job=${(await refundJobOf(cancelled.id))?.id ?? ''} event=evt_refund_by_hand`);
 
-    h.setNow('2026-11-15T11:42:00.000Z');
-    const byHand: ProviderRefund = { refundId: 're_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: null, reason: null };
-    const listing = providerCalls(h, 'permission_missing', [], [byHand]);
-    expect(await listing.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { skipped_refunded: 1 } }));
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null, providerRefundId: null });
-    expect([...blocked.calls, ...listing.calls]).toStrictEqual([`create:oos-refund-${cancelled.id}`]);
+    for (const now of ['2026-11-15T11:42:00.000Z', '2026-11-18T12:00:00.000Z']) {
+      h.setNow(now);
+      expect(await blocked.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
+    }
+    expect(blocked.calls).toStrictEqual([`create:oos-refund-${cancelled.id}`]);
   });
 
   it('claims a blocked refund again an hour later and sends the next key generation', async () => {

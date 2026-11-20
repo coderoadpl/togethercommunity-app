@@ -1,5 +1,12 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getMarketingContactImport:[{\"importId\":\"missing\"}]": {
       "error": {
         "code": "not_found",

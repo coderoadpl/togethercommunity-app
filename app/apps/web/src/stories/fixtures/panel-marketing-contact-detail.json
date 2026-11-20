@@ -1,5 +1,12 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getMarketingContact:[{\"contactId\":\"contact-a3bf86238a1c\"}]": {
       "ok": true,
       "value": {

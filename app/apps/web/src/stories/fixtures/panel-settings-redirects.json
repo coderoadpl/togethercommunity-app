@@ -1,5 +1,12 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getTenantRedirects:[{\"limit\":50,\"offset\":0}]": {
       "ok": true,
       "value": {

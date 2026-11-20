@@ -533,3 +533,38 @@ describe('Creator panel routing', () => {
     expect(screen.getByTestId('user-menu-products')).toBeInTheDocument();
   });
 });
+
+describe('Proposals navigation entry', () => {
+  it('shows the owner the pending proposal count in the navigation badge', async () => {
+    stubViewport(true);
+    commonHandlers();
+    server.use(http.get('/api/change-proposals/summary', () =>
+      HttpResponse.json({ ok: true, data: { pending: 7, pendingGroups: 1 } })));
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('proposals-pending-count')).toHaveTextContent('7');
+    const entry = screen.getByTestId('section-proposals');
+    expect(entry).toHaveTextContent(en.sections.proposals);
+    expect(within(entry).getByText(en.changeProposals.navBadge({ count: 7 }))).toBeInTheDocument();
+  });
+
+  it('hides the entry from an admin and never reads the owner summary', async () => {
+    stubViewport(true);
+    commonHandlers();
+    let summaryRead = false;
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({ ok: true, data: { ...meWithTenant, tenant: { ...meWithTenant.tenant, staffRole: 'admin' } } })),
+      http.get('/api/change-proposals/summary', () => {
+        summaryRead = true;
+        return HttpResponse.json({ ok: true, data: { pending: 7, pendingGroups: 1 } });
+      }),
+    );
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+    expect(summaryRead).toBe(false);
+  });
+});

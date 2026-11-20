@@ -50,6 +50,7 @@ import {
   createThemeForMode,
   Eyebrow,
   PanelNavItem,
+  VisuallyHidden,
   WrapAnywhereText,
 } from '../../theme.js';
 import {
@@ -71,13 +72,14 @@ import {
   MenuIcon,
   MessagesIcon,
   ProductsIcon,
+  ProposalsIcon,
   ReportsIcon,
   SalesIcon,
   SettingsIcon,
   SignOutIcon,
   SpacesIcon,
 } from './panel-icons.js';
-import { PanelContextProvider, type PanelTenant } from './panel-context.js';
+import { PanelContextProvider, usePanelContext, type PanelTenant } from './panel-context.js';
 
 type PanelSection =
   | 'dashboard'
@@ -86,6 +88,7 @@ type PanelSection =
   | 'lessons'
   | 'members'
   | 'reports'
+  | 'proposals'
   | 'spaces'
   | 'sales'
   | 'coupons'
@@ -106,6 +109,12 @@ interface SectionDescriptor {
   id: PanelSection;
   to: string;
   exact?: boolean;
+}
+
+interface NavCount {
+  value: number;
+  testId: string;
+  label?: string;
 }
 
 type NavigationGroupId =
@@ -163,6 +172,7 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'offer',
     sections: [
       { id: 'products', to: '/panel/products' },
+      { id: 'proposals', to: '/panel/proposals' },
       { id: 'coupons', to: '/panel/sales/coupons' },
     ],
   },
@@ -221,6 +231,8 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <MembersIcon />;
     case 'reports':
       return <ReportsIcon />;
+    case 'proposals':
+      return <ProposalsIcon />;
     case 'spaces':
       return <SpacesIcon />;
     case 'sales':
@@ -297,13 +309,13 @@ const NavigationItem = ({
   descriptor,
   pathname,
   onNavigate,
-  openReportCount,
+  count,
   grouped = true,
 }: {
   descriptor: SectionDescriptor;
   pathname: string;
   onNavigate: (to: string) => void;
-  openReportCount: number | undefined;
+  count?: NavCount | undefined;
   grouped?: boolean;
 }) => {
   const t = useTranslations();
@@ -322,9 +334,14 @@ const NavigationItem = ({
         <SectionIcon id={id} />
       </ListItemIcon>
       <ListItemText primary={t.sections[id]} />
-      {id === 'reports' && openReportCount !== undefined ? (
-        <NavCountBadge data-testid="reports-open-count">{openReportCount}</NavCountBadge>
-      ) : null}
+      {count === undefined ? null : (
+        <>
+          <NavCountBadge data-testid={count.testId} aria-hidden={count.label === undefined ? undefined : true}>
+            {count.value}
+          </NavCountBadge>
+          {count.label === undefined ? null : <VisuallyHidden>{count.label}</VisuallyHidden>}
+        </>
+      )}
     </PanelNavItem>
   );
 };
@@ -338,6 +355,18 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
     ? undefined
     : (openReports.data?.openCount ?? 0) + (openDmReports.data?.openCount ?? 0);
   const failedReportQuery = openReports.isError ? openReports : openDmReports.isError ? openDmReports : null;
+  const { tenant } = usePanelContext();
+  const owner = tenant.staffRole === 'owner';
+  const proposalSummary = useQuery({ ...actions.changeProposalSummary, enabled: owner });
+  const pendingProposals = owner ? proposalSummary.data?.pending ?? 0 : 0;
+  const counts: Partial<Record<PanelSection, NavCount>> = {
+    ...(openReportCount === undefined ? {} : { reports: { value: openReportCount, testId: 'reports-open-count' } }),
+    ...(pendingProposals === 0 ? {} : {
+      proposals: { value: pendingProposals, testId: 'proposals-pending-count', label: t.changeProposals.navBadge({ count: pendingProposals }) },
+    }),
+  };
+  const visible = (descriptor: SectionDescriptor): boolean =>
+    descriptor.id !== 'proposals' || (owner && (pendingProposals > 0 || isActive(pathname, descriptor.to, false)));
   const [groupState, setGroupState] = useState<NavigationGroupState>(navigationGroupPreference.load);
 
   const toggleGroup = (groupId: NavigationGroupId) => {
@@ -352,7 +381,6 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         descriptor={overviewDescriptor}
         pathname={pathname}
         onNavigate={onNavigate}
-        openReportCount={undefined}
         grouped={false}
       />
       {sectionDescriptors.map((group) => {
@@ -379,13 +407,13 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
                 disablePadding
                 id={controlsId}
               >
-                {group.sections.map((descriptor) => (
+                {group.sections.filter(visible).map((descriptor) => (
                   <NavigationItem
                     key={descriptor.id}
                     descriptor={descriptor}
                     pathname={pathname}
                     onNavigate={onNavigate}
-                    openReportCount={openReportCount}
+                    count={counts[descriptor.id]}
                   />
                 ))}
               </List>
@@ -398,14 +426,12 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         descriptor={integrationsDescriptor}
         pathname={pathname}
         onNavigate={onNavigate}
-        openReportCount={undefined}
         grouped={false}
       />
       <NavigationItem
         descriptor={settingsDescriptor}
         pathname={pathname}
         onNavigate={onNavigate}
-        openReportCount={undefined}
         grouped={false}
       />
       {failedReportQuery === null ? null : (

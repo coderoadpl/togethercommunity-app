@@ -1,5 +1,12 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getEmailSend:[\"marketing\",\"send-studio-marketing\"]": {
       "ok": true,
       "value": {

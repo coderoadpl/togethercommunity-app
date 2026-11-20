@@ -1,5 +1,12 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getTenantSchedulerRun:[\"scheduler-run-studio-outbox\"]": {
       "ok": true,
       "value": {

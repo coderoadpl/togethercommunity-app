@@ -3131,7 +3131,7 @@ export const en: Messages = {
     cancelledBody: 'You were not charged. You can safely try again.',
     retry: 'Try again',
     paymentUnavailable: 'Stripe payments are not configured yet.',
-    termsOnPageFallbackEmail: 'Enter your e-mail and accept the terms below, then go to payment.',
+    termsOnPageFallbackEmail: 'Enter your email and accept the terms below, then go to payment.',
     termsOnPageFallbackTerms: 'Accept the terms below, then go to payment.',
     soldOut: 'Sold out',
     cartTitle: 'Your cart',

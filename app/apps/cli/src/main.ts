@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalDisplayStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -11,15 +11,17 @@ import { Command, CommanderError } from 'commander';
 import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
-import { createApiClient, type ApiClient } from '#core/client/index.js';
+import { changeProposalGroupItemsDigest, createApiClient, type ApiClient } from '#core/client/index.js';
 import {
   API_KEY_HEADER,
+  EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
   type TenantRedirectCreateBody,
   type TenantRedirectUpdateBody,
 } from '#core/contract/index.js';
 import {
   accessItemSchema,
+  appError,
   cartLinesSchema,
   currencySchema,
   contactCampaignAudienceInputSchema,
@@ -76,10 +78,11 @@ import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
-import { emit } from './output.js';
+import { emit, orderStatusLabel } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
+import { changeProposalAppliedLine } from './change-proposal-output.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -2036,7 +2039,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${orderStatusLabel(order)}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),
@@ -4068,6 +4071,7 @@ const shopManagementKey = apiKey
 const shopManagementKeyCreateOptionsSchema = z.object({
   scope: z.array(shopManagementScopeSchema).min(1),
   expiresAt: z.string().datetime(),
+  mode: shopManagementKeyModeSchema.optional(),
 });
 
 shopManagementKey
@@ -4075,13 +4079,19 @@ shopManagementKey
   .description('Create a shop management key; the secret is shown once')
   .option('--scope <scope...>', 'Shop scopes (required): shop:catalog:read, shop:catalog:write, shop:orders:read, shop:fulfilment:write, shop:settings:read, shop:settings:write, shop:integrations:read, shop:integrations:write')
   .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 30 days ahead (7 days is the suggested lifetime)')
+  .option('--mode <mode>', 'direct (default): writes change live state; propose: writes become change proposals the owner decides on')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), shopManagementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
-        await ctx.api.createShopManagementKey({ name: nameWords.join(' '), scopes: options.scope, expiresAt: options.expiresAt }),
+        await ctx.api.createShopManagementKey({
+          name: nameWords.join(' '),
+          scopes: options.scope,
+          expiresAt: options.expiresAt,
+          ...(options.mode === undefined ? {} : { mode: options.mode }),
+        }),
         ctx.json,
         (data) =>
-          `created shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+          `created ${data.apiKey.mode === 'propose' ? 'propose-mode ' : ''}shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
       );
     }),
   );
@@ -4092,7 +4102,7 @@ shopManagementKey.command('list').description('List shop management keys (no sec
       data.apiKeys.length === 0
         ? 'no shop management keys'
         : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})`)
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})\t${k.mode}`)
             .join('\n'),
     );
   }),
@@ -4157,6 +4167,235 @@ shopManagementKey
           ].join('\t'))),
           ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
         ].join('\n'),
+      );
+    }),
+  );
+
+const changeProposals = program
+  .command('proposals')
+  .description('Change proposals made by propose-mode shop management keys (verified owner session only)');
+
+const changeProposalListOptionsSchema = z.object({
+  status: changeProposalDisplayStatusSchema.optional(),
+  group: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const changeProposalEffectLines = (effect: ChangeProposalEffect): string[] =>
+  Object.entries(effect).map(([field, change]) => 'delta' in change
+    ? `  ${field}: ${change.delta > 0 ? '+' : ''}${String(change.delta)}`
+    : `  ${field}: ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)}`);
+
+const changeProposalGroupLabel = (proposal: Pick<ChangeProposalOwnerView, 'groupId' | 'groupTitle' | 'groupPosition'>): string =>
+  proposal.groupId === null ? '-' : `group ${proposal.groupTitle ?? proposal.groupId} #${String(proposal.groupPosition ?? 0)} (${proposal.groupId})`;
+
+const changeProposalSummary = (proposal: ChangeProposalOwnerView): string =>
+  `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.proposedBy.keyName}\t${changeProposalGroupLabel(proposal)}\t(${proposal.id})`;
+
+const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
+  `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
+  ...(proposal.groupId === null ? [] : [`in ${changeProposalGroupLabel(proposal)}; decide it with the whole group`]),
+  `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
+  `proposed by key: ${proposal.proposedBy.keyName} (${proposal.proposedBy.keyId}, ${proposal.proposedBy.keyState}), issued by ${proposal.proposedBy.issuerUserId}`,
+  `created: ${proposal.createdAt}`,
+  `expires: ${proposal.expiresAt}`,
+  'effect:',
+  ...changeProposalEffectLines(proposal.effect),
+  ...(proposal.decidedAt === null ? [] : [`decided: ${proposal.decidedAt} by ${proposal.decidedByUserId ?? 'the key'}`]),
+  ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
+];
+
+changeProposals
+  .command('list')
+  .description('List the change proposals of the workspace, newest first')
+  .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed or expired')
+  .option('--group <id>', 'only the items of this group')
+  .option('--cursor <id>', 'continue after this proposal id')
+  .option('--limit <n>', 'proposals per page (1-100, default 50)')
+  .action(
+    withInput(z.tuple([changeProposalListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listChangeProposals({
+          ...(options.status === undefined ? {} : { status: options.status }),
+          ...(options.group === undefined ? {} : { groupId: options.group }),
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) => [
+          ...(data.proposals.length === 0 ? ['no change proposals'] : data.proposals.map(changeProposalSummary)),
+          ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
+        ].join('\n'),
+      );
+    }),
+  );
+
+changeProposals
+  .command('show <id>')
+  .description('Show a change proposal with its full before/after effect and its history')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.getChangeProposal({ id }), ctx.json, (data) => [
+        ...changeProposalDetail(data.proposal),
+        'history:',
+        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${event.note}`}`),
+      ].join('\n'));
+    }),
+  );
+
+changeProposals
+  .command('reject <id>')
+  .description('Reject a pending change proposal; nothing is applied')
+  .option('--note <text>', 'reason shown to the proposing key (at most 500 characters)')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ note: z.string().max(500).optional() })]), async (ctx, [id, options]) => {
+      emit(
+        await ctx.api.rejectChangeProposal({ id, ...(options.note === undefined ? {} : { note: options.note }) }),
+        ctx.json,
+        (data) => `rejected:\n${changeProposalDetail(data.proposal).join('\n')}`,
+      );
+    }),
+  );
+
+const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
+  switch (proposal.status) {
+    case 'applied':
+      return changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId);
+    case 'stale':
+      return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
+    case 'failed':
+      return `failed: ${proposal.failureCode ?? 'error'}: ${proposal.failureMessage ?? ''}; nothing was applied`;
+    case 'pending':
+    case 'rejected':
+    case 'withdrawn':
+    case 'expired':
+      return proposal.status;
+  }
+};
+
+changeProposals
+  .command('approve <id>')
+  .description('Approve a pending change proposal: apply it only if the live state still gives exactly the effect shown, otherwise mark it stale or failed')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      const result = await ctx.api.approveChangeProposal({ id });
+      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal), ...changeProposalDetail(data.proposal)].join('\n'));
+      if (result.ok && result.value.proposal.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
+    }),
+  );
+
+const changeProposalGroupHeader = (group: ChangeProposalGroupOwnerView): string[] => [
+  `group ${group.id}: ${group.title} [${group.status}]`,
+  `proposed by key: ${group.proposedBy.keyName ?? '(unknown)'} (${group.proposedBy.keyId}, ${group.proposedBy.keyState}), issued by ${group.proposedBy.issuerUserId ?? '(unknown)'}`,
+  `created: ${group.createdAt}`,
+  `expires: ${group.expiresAt}`,
+  `items: ${String(group.items.length)}`,
+];
+
+const changeProposalGroupItemLines = (group: ChangeProposalGroupOwnerView): string[] =>
+  group.items.flatMap((item) => [
+    `item ${String(item.groupPosition ?? 0)}: ${item.operation} [${item.status}] ${item.target.kind}${item.target.id === null ? ' (new)' : ` ${item.target.id}`} (${item.id})`,
+    ...changeProposalEffectLines(item.effect),
+    ...(item.status === 'applied' ? [`  ${changeProposalAppliedLine(item.operation, item.appliedResourceId)}`] : []),
+    ...(item.status === 'failed' ? [`  failed: ${item.failureCode ?? 'error'}: ${item.failureMessage ?? ''}`] : []),
+    ...item.events.filter((event) => event.note !== null).map((event) => `  ${event.kind}: ${event.note ?? ''}`),
+  ]);
+
+const changeProposalGroupOutcomeLine = (group: ChangeProposalGroupOwnerView): string => {
+  switch (group.status) {
+    case 'applied':
+      return `applied: all ${String(group.items.length)} items of the group`;
+    case 'stale':
+      return 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.';
+    case 'failed':
+      return 'failed: an item was refused by the live rules; nothing in the group was applied';
+    case 'open':
+    case 'expired':
+    case 'rejected':
+    case 'withdrawn':
+      return group.status;
+  }
+};
+
+const changeProposalGroups = changeProposals
+  .command('group')
+  .description('Groups of change proposals: approved or rejected as one unit, applied completely or not at all');
+
+interface ReviewedChangeProposalGroup {
+  group: ChangeProposalGroupOwnerView;
+  itemsDigest: string;
+  approveCommand: string;
+}
+
+const reviewedChangeProposalGroup = (ctx: CliCtx, group: ChangeProposalGroupOwnerView): ReviewedChangeProposalGroup => {
+  const itemsDigest = changeProposalGroupItemsDigest(group.items.map((item) => item.id));
+  return {
+    group,
+    itemsDigest,
+    approveCommand: `together${ctx.tenant === null ? '' : ` --tenant ${ctx.tenant}`} proposals group approve ${group.id} --items-digest ${itemsDigest}`,
+  };
+};
+
+const reviewedChangeProposalGroupLines = (reviewed: ReviewedChangeProposalGroup): string[] => [
+  ...changeProposalGroupHeader(reviewed.group),
+  ...changeProposalGroupItemLines(reviewed.group),
+  `items digest: ${reviewed.itemsDigest}`,
+  `approve exactly these items with: ${reviewed.approveCommand}`,
+];
+
+changeProposalGroups
+  .command('show <id>')
+  .description('Show a group with its items in order, each with its full before/after effect, the digest of those items and the command that approves exactly them')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      const shown = await ctx.api.getChangeProposalGroup({ id });
+      emit(shown.ok ? ok(reviewedChangeProposalGroup(ctx, shown.value.group)) : shown, ctx.json, (data) =>
+        reviewedChangeProposalGroupLines(data).join('\n'));
+    }),
+  );
+
+const itemsDigestSchema = z.string().regex(/^[0-9a-f]{16}$/, 'Pass the 16-character items digest that "proposals group show" printed');
+
+changeProposalGroups
+  .command('approve <id>')
+  .description('Approve exactly the items "proposals group show" showed, as one unit: all are applied, or none when one no longer gives the effect shown. When the items changed since, nothing is sent and the current items are printed')
+  .requiredOption('--items-digest <digest>', 'the items digest "proposals group show" printed for the items you reviewed')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ itemsDigest: itemsDigestSchema })]), async (ctx, [id, options]) => {
+      const current = await ctx.api.getChangeProposalGroup({ id });
+      if (!current.ok) {
+        emit(current, ctx.json, () => '');
+        return;
+      }
+      const reviewed = reviewedChangeProposalGroup(ctx, current.value.group);
+      if (reviewed.itemsDigest !== options.itemsDigest) {
+        if (!ctx.json) console.log(['the group now holds:', ...reviewedChangeProposalGroupLines(reviewed)].join('\n'));
+        emit(err(appError('conflict', 'The items of this group differ from the ones you reviewed; nothing was sent. Review the current items and approve them with their digest', {
+          changeProposalGroupItemIds: reviewed.group.items.map((item) => item.id),
+          itemsDigest: reviewed.itemsDigest,
+          approveCommand: reviewed.approveCommand,
+          group: reviewed.group,
+        })), ctx.json, () => '');
+        return;
+      }
+      if (!ctx.json) console.log(['approving:', ...changeProposalGroupHeader(reviewed.group), ...changeProposalGroupItemLines(reviewed.group)].join('\n'));
+      const result = await ctx.api.approveChangeProposalGroup({ id, itemIds: reviewed.group.items.map((item) => item.id) });
+      emit(result, ctx.json, (data) => [changeProposalGroupOutcomeLine(data.group), ...changeProposalGroupItemLines(data.group)].join('\n'));
+      if (result.ok && result.value.group.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
+    }),
+  );
+
+changeProposalGroups
+  .command('reject <id>')
+  .description('Reject every item of an open group; nothing is applied')
+  .option('--note <text>', 'reason shown to the proposing key (at most 500 characters)')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ note: z.string().max(500).optional() })]), async (ctx, [id, options]) => {
+      emit(
+        await ctx.api.rejectChangeProposalGroup({ id, ...(options.note === undefined ? {} : { note: options.note }) }),
+        ctx.json,
+        (data) => `rejected:\n${[...changeProposalGroupHeader(data.group), ...changeProposalGroupItemLines(data.group)].join('\n')}`,
       );
     }),
   );

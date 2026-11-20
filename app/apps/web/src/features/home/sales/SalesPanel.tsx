@@ -1,4 +1,5 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
+import { OrderCancelledChip } from './OrderCancelledChip.js';
 import { useState } from 'react';
 import {
   Alert,
@@ -28,7 +29,7 @@ import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 
@@ -411,6 +412,7 @@ export const SalesPanel = () => {
                     <TableCell>{[order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ') || '—'}</TableCell>
                     <TableCell>
                       <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
+                      <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
                     </TableCell>
                     <TableCell>
                       {order.fulfilmentStatus == null ? '—' : (
@@ -438,7 +440,7 @@ export const SalesPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
-      {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
+      {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
       {exportError === null ? null : <Alert severity="error">{exportError}</Alert>}
     </PanelPage>
   );

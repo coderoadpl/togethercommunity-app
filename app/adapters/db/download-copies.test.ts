@@ -48,6 +48,14 @@ describe('download copy persistence', () => {
     expect(await reader.findLatestPaidOrderId('copies', 'copies-member', 'other-product')).toBeNull();
   });
 
+  it('never attributes a copy to an order cancelled because it sold out', async () => {
+    await database.db.insert(orders).values([
+      order('kept', { productId: 'copies-product', createdAt: '2026-10-03T12:00:00.000Z' }),
+      order('cancelled', { productId: 'copies-product', cancelReason: 'out_of_stock', createdAt: '2026-10-04T12:00:00.000Z' }),
+    ]);
+    expect(await createDownloadCopyOrderReader(database.db).findLatestPaidOrderId('copies', 'copies-member', 'copies-product')).toBe('kept');
+  });
+
   it('keeps identifiers private to a tenant and enforces uniqueness within it', async () => {
     const repository = createDownloadCopyRepository(database.db);
     expect(await repository.create('copies', copy('copy-1'))).toBe(true);

@@ -10,6 +10,7 @@ import { ORDER_CHANGE_ROUTES } from './order-changes.js';
 import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
+import { orderRefundJobViewSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
@@ -483,7 +484,8 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInputSchema;
 
 export const publicCheckoutSessionStatusOutputSchema = z.object({
-  status: z.enum(['pending', 'paid']),
+  status: z.enum(['pending', 'paid', 'cancelled']),
+  charged: z.boolean().optional(),
   clientReference: z.string().optional(),
   returnUrl: z.string().optional(),
   checkoutRef: z.string().optional(),
@@ -809,6 +811,7 @@ export const ordersListOutputSchema = z.object({
 export const orderDetailOutputSchema = z.object({
   order: orderListItemSchema,
   invoice: invoiceSchema.nullable().default(null),
+  refundJob: orderRefundJobViewSchema.nullable().default(null),
 });
 export const invoiceOutputSchema = z.object({ invoice: invoiceSchema });
 
@@ -2228,6 +2231,13 @@ export const API_ROUTES = {
   apiKeysShopManagementRevoke: { method: 'DELETE', path: '/api/api-keys/shop-management/:id' },
   apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
   apiKeysShopManagementEvents: { method: 'GET', path: '/api/api-keys/shop-management/events' },
+  changeProposals: { method: 'GET', path: '/api/change-proposals' },
+  changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
+  changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
+  changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
+  changeProposalGroup: { method: 'GET', path: '/api/change-proposals/groups/:id' },
+  changeProposalGroupApprove: { method: 'POST', path: '/api/change-proposals/groups/:id/approve' },
+  changeProposalGroupReject: { method: 'POST', path: '/api/change-proposals/groups/:id/reject' },
   apiKeyImportAudit: { method: 'GET', path: '/api/api-keys/:id/import-audit' },
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
@@ -2636,6 +2646,13 @@ export const API_PATHS = {
   apiKeysShopManagementRevoke: API_ROUTES.apiKeysShopManagementRevoke.path,
   apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
   apiKeysShopManagementEvents: API_ROUTES.apiKeysShopManagementEvents.path,
+  changeProposals: API_ROUTES.changeProposals.path,
+  changeProposal: API_ROUTES.changeProposal.path,
+  changeProposalReject: API_ROUTES.changeProposalReject.path,
+  changeProposalApprove: API_ROUTES.changeProposalApprove.path,
+  changeProposalGroup: API_ROUTES.changeProposalGroup.path,
+  changeProposalGroupApprove: API_ROUTES.changeProposalGroupApprove.path,
+  changeProposalGroupReject: API_ROUTES.changeProposalGroupReject.path,
   apiKeyImportAudit: API_ROUTES.apiKeyImportAudit.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,

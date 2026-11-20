@@ -63,6 +63,13 @@ describe('OrderVerification', () => {
     expect(screen.queryByRole('button', { name: 'Mark as issued' })).toBeNull();
   });
 
+  it('shows the sold-out cancellation and offers no issue action for a cancelled paid order', () => {
+    renderWithProviders(<OrderVerification order={{ ...sampleBundleOrder, cancelReason: 'out_of_stock', refundJobStatus: 'blocked_permission' }} canIssue onIssue={() => undefined} />);
+    expect(screen.getByTestId('order-cancelled-out-of-stock')).toBeVisible();
+    expect(screen.getByText('This order was cancelled because it sold out and is being refunded. Do not hand over the goods.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Mark as issued' })).toBeNull();
+  });
+
   it.each(['pending', 'failed', 'refunded', 'partially_refunded'] as const)('prevents issuing a %s order', (status) => {
     renderWithProviders(<OrderVerification order={{ ...sampleBundleOrder, status }} canIssue onIssue={() => undefined} />);
     expect(screen.queryByRole('button', { name: 'Mark as issued' })).toBeNull();

@@ -32,6 +32,8 @@ export const queryCanceled = (cause: unknown): boolean => pgError(cause)?.['code
 
 export const lockNotAvailable = (cause: unknown): boolean => pgError(cause)?.['code'] === '55P03';
 
+export const deadlockDetected = (cause: unknown): boolean => pgError(cause)?.['code'] === '40P01';
+
 export const undefinedRelation = (cause: unknown): boolean => {
   const code = pgError(cause)?.['code'];
   return code === '42P01' || code === '3F000';

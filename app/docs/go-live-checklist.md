@@ -92,8 +92,16 @@ fake adapter remains available outside production for local and staging use.
 in the Vercel project settings.
 
 Open **Integrations → Stripe** and save an `rk_live_…` restricted key with write
-access to Checkout Sessions, Coupons, Promotion Codes, Subscriptions, and
-Webhook Endpoints. The live card refuses `rk_test_…` keys; a sandbox key belongs
+access to Checkout Sessions, Coupons, Promotion Codes, Subscriptions, Webhook
+Endpoints, and Charges and Refunds (`charge_write`). The refund permission lets
+Together return the payment automatically when an order is cancelled because the
+goods sold out before the payment arrived. **Check key permissions** reports
+the refund permission definitively: the Charges and Refunds row is `ok` when the
+key has it and `missing` when it does not; an `error` row means Stripe gave
+another answer, so run the check again. Every row, refund included, must be `ok`
+(`allOk` is `true`) before go-live; without the refund permission the first
+sold-out refund is blocked with a staff
+alert. The live card refuses `rk_test_…` keys; a sandbox key belongs
 to the separate test-mode card described in the
 [payments guide](payments.md). Alternatively, configure a headless deployment
 with the CLI. Together registers the webhook and stores its signing secret. The

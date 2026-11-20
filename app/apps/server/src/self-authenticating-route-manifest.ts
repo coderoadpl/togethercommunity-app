@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -128,6 +128,12 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_INTEGRATION_ROUTES.storageConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
   { path: SHOP_INTEGRATION_ROUTES.shipxSettings.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:secret:read' },
   { path: SHOP_INTEGRATION_ROUTES.shipxConfigure.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
+  { path: SHOP_PROPOSAL_ROUTES.listProposals.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.getProposal.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.withdrawProposal.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.createGroup.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.getGroup.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
+  { path: SHOP_PROPOSAL_ROUTES.withdrawGroup.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'proposal:own:manage' },
 ] as const;
 
 export const selfAuthenticatingRouteManifestEntry = (

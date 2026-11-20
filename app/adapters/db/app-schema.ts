@@ -573,6 +573,7 @@ export const orders = pgTable(
     shipping: jsonb('shipping').$type<OrderShipping>(),
     fulfilmentStatus: text('fulfilment_status', { enum: ['to_pack', 'shipped'] }),
     shipment: jsonb('shipment').$type<OrderShipment>(),
+    cancelReason: text('cancel_reason', { enum: ['out_of_stock'] }),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
     createdAt: text('created_at').notNull(),
@@ -1099,6 +1100,7 @@ export const shopManagementKeys = pgTable(
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
     scopes: jsonb('scopes').$type<ShopManagementScope[]>().notNull(),
+    mode: text('mode', { enum: ['direct', 'propose'] }).notNull().default('direct'),
     issuedByUserId: text('issued_by_user_id').notNull(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at').notNull(),
@@ -1110,6 +1112,15 @@ export const shopManagementKeys = pgTable(
     check(
       'shop_management_keys_scopes_check',
       sql`jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb AND ${table.scopes} <@ '["shop:catalog:read", "shop:catalog:write", "shop:orders:read", "shop:fulfilment:write", "shop:settings:read", "shop:settings:write", "shop:integrations:read", "shop:integrations:write"]'::jsonb`,
+    ),
+    check('shop_management_keys_mode_check', sql`${table.mode} IN ('direct', 'propose')`),
+    check(
+      'shop_management_keys_propose_scopes_check',
+      sql`${table.mode} <> 'propose' OR NOT (${table.scopes} ?| ARRAY['shop:fulfilment:write', 'shop:integrations:write'])`,
+    ),
+    check(
+      'shop_management_keys_propose_read_scopes_check',
+      sql`${table.mode} <> 'propose' OR ((NOT ${table.scopes} ? 'shop:catalog:write' OR ${table.scopes} ? 'shop:catalog:read') AND (NOT ${table.scopes} ? 'shop:settings:write' OR ${table.scopes} ? 'shop:settings:read'))`,
     ),
   ],
 );

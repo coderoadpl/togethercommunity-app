@@ -258,8 +258,32 @@ Checkout atomically reserves available tracked stock. On-hand stock is deducted
 when paid checkout is fulfilled, **not** when staff marks a shipment. A cancelled
 or abandoned browser flow does not immediately release the hold; the expiry
 sweep releases expired reservations. Verify the sweep runs on the deployment.
-Late payments can produce an oversold event, so retain an operational response
-rather than promising that overselling is impossible.
+A late payment for goods that are gone is recorded as a paid order with
+`cancelReason: "out_of_stock"`, is never fulfilled and is queued for a full
+refund. Skip such orders when you ship, and do not promise that a paid order is
+always delivered.
+
+The whole order is cancelled when any tracked line no longer fits at payment,
+even if other lines are still available; nothing is taken from stock. Together
+then refunds the full amount automatically through Stripe, once per order, and
+sends the buyer one "sold out, refund" e-mail (English or Polish) in the
+member's saved language, otherwise the checkout language, otherwise the
+workspace default language. The e-mail says the order was cancelled because the
+goods sold out before the payment completed, that the full refund was started
+and how long it usually takes: a card refund made soon after the payment often shows as a
+reversal, otherwise as a credit after about 5-10 business days; a BLIK refund
+takes about 120 minutes; a Przelewy24 refund arrives as a separate transfer
+within 3 business days. The public session-status route reports such an order
+as `cancelled` (section 6), the hosted success page shows a sold-out message
+instead of the purchase confirmation and no purchase analytics event is sent.
+Studio marks the order "Cancelled: sold out" in the order list and on the order
+page, together with the state of its automatic refund.
+
+The automatic refund needs the Charges and Refunds (write) permission
+(`charge_write`) on the workspace's Stripe restricted key, in each mode you use.
+Without it staff get an alert e-mail and the refund is attempted again every
+hour for 72 hours, so adding the permission lets the next attempt pay it; after
+72 hours the refund has to be made by hand in the Stripe Dashboard.
 
 ## 6. Connect an anonymous storefront from another origin
 
@@ -273,7 +297,7 @@ allow open CORS without credentialed requests:
 | `/api/public/sales-links/<slug>` | `GET`, `OPTIONS` | Active fixed bundle, VAT lines, total and public workspace context |
 | `/api/public/checkout/coupon` | `POST`, `OPTIONS` | Server-side coupon validation |
 | `/api/public/checkout/session` | `POST`, `OPTIONS` | Create the checkout handoff |
-| `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending` or `paid` status, not buyer/address details |
+| `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending`, `paid` or `cancelled` status, not buyer/address details |
 
 The allowed request headers are `x-tenant, content-type, if-none-match`, not
 Authorization or API-key headers. Never widen authenticated-origin rules or send
@@ -601,9 +625,13 @@ it does not provide an external success return for shipped books. This guide
 does not change which documents load vendor scripts.
 
 A browser success URL is not proof of payment. The public session-status route
-returns `data.status` (`pending` or `paid`), for a paid session the
-`clientReference` sent with it, and may include optional analytics fields; use
-it for buyer display only. Fulfil from the authenticated paid-order
+returns `data.status` (`pending`, `paid` or `cancelled`), for a paid session the
+`clientReference` sent with it, and may include optional analytics fields with
+`paid` only; use it for buyer display only. `cancelled` means the payment
+arrived after the goods sold out: the order is cancelled and refunded
+automatically (section 5), and the response carries no analytics, Meta
+conversion data or shop return address. With `cancelled`, `data.charged` is
+`false` when the order was paid with zero, so there is nothing to refund. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ### Back to shop
@@ -709,7 +737,8 @@ Each `order` has the shape of an entry in `data.orders` of the order list, in
 its state at the time of the read, not at the time of the change. An order
 changed several times within one page appears once, at its latest cursor.
 Payment, refunds, collection, shipping and issuing or changing the invoice all
-produce a change. The member name and e-mail address, the product title and the
+produce a change, and so does every change of `refundJobStatus` on an order
+cancelled out of stock (`cancelReason: "out_of_stock"`). The member name and e-mail address, the product title and the
 sales link title (`memberName`, `memberEmail`, `productTitle`,
 `salesLinkTitle`) are read at fetch time, and editing them produces no entry.
 `limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`

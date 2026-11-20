@@ -1,17 +1,19 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
-import type { RouterRoute } from 'hono/types';
 import { z } from 'zod';
 
-import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
   err,
+  forbidden,
   notFound,
   ok,
   shopManagementKeyEventResourceId,
   tenantNotFound,
   unauthorized,
   unavailable,
+  validation,
   type AppError,
+  type ChangeProposalOperation,
   type Result,
   type ShopManagementKeysSwitch,
   type ShopManagementScope,
@@ -21,6 +23,10 @@ import {
   authenticateShopManagementKey,
   recordShopManagementKeyRequest,
   resolveTenant,
+  submitChangeProposal,
+  submitGroupedChangeProposal,
+  type ChangeProposalGroupSubmitDeps,
+  type ChangeProposalSubmitDeps,
   type ResolveTenantDeps,
   type ShopMachineAuthDeps,
   type ShopMachineAuthentication,
@@ -29,7 +35,7 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import { isSafeMethod, requestOriginPolicy } from './request-origin-policy.js';
-import { respond } from './respond.js';
+import { respond, retryAfterHeaders } from './respond.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
 import { recordException, type ApiKeyAttribution } from './telemetry.js';
 
@@ -49,17 +55,38 @@ export const shopManagementKeysSwitchMiddleware = (state: ShopManagementKeysSwit
     await next();
   };
 
-type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementKeyRequestDeps;
+type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementKeyRequestDeps & ChangeProposalSubmitDeps & ChangeProposalGroupSubmitDeps;
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-export interface ShopMachineRoute {
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type ShopMachineRefusalReason = 'secret' | 'side-effect' | 'not-in-release';
+
+type ShopMachineProposeMode =
+  | { kind: 'proposal'; operation: ChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
+  | { kind: 'refuse'; reason: ShopMachineRefusalReason }
+  | { kind: 'direct'; reason: string };
+
+type ShopMachineMutationMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+interface ShopMachineRouteFields {
   path: string;
-  scope: ShopManagementScope;
   resourceIdField?: string;
   resourceIdSchema?: z.ZodType<string>;
   handler: (c: Context<AppVars>, request: ShopMachineRequest) => Response | Promise<Response>;
+}
+
+export type ShopMachineRoute = ShopMachineRouteFields & (
+  | { method: 'GET'; scope: ShopManagementScope; proposeMode?: undefined }
+  | { method: ShopMachineMutationMethod; scope: ShopManagementScope; proposeMode: ShopMachineProposeMode }
+  | { method: 'GET' | ShopMachineMutationMethod; scope: null; proposeMode: { kind: 'proposal-management' } }
+);
+
+type ShopMachineRouteClass = ShopMachineProposeMode['kind'] | 'proposal-management';
+
+export interface ShopMachineRouteShape {
+  method: string;
+  path: string;
+  proposeMode?: { kind: ShopMachineRouteClass } | undefined;
 }
 
 interface ShopMachineAttempt {
@@ -75,7 +102,7 @@ const resolveShopTenant = async (headers: Headers, deps: ShopMachineDeps): Promi
 
 const authenticateShopMachineRequest = async (
   headers: Headers,
-  scope: ShopManagementScope,
+  scope: ShopManagementScope | null,
   deps: ShopMachineDeps,
 ): Promise<ShopMachineAttempt> => {
   if (headers.has('cookie') || headers.has('authorization')) {
@@ -93,12 +120,6 @@ const authenticateShopMachineRequest = async (
     result: result.ok ? ok({ ...result.value, tenant: tenant.value }) : result,
     attribution: { ...attribution, tenantId: tenant.value.id },
   };
-};
-
-const retryAfterHeaders = (error: AppError): HeadersInit => {
-  if (error.code !== 'rate_limited') return {};
-  const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
-  return typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {};
 };
 
 const requestBodySchema = z.record(z.string(), z.unknown());
@@ -125,6 +146,87 @@ const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: 
   );
 };
 
+const proposeModeRefusal = (reason: ShopMachineRefusalReason): AppError =>
+  forbidden(`A propose-mode shop management key cannot call this route (${reason})`);
+
+const proposalManagementRefusal = (): AppError =>
+  forbidden('Only a propose-mode shop management key manages change proposals');
+
+const isDirectModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'direct';
+
+const proposalGroupOf = (c: Context<AppVars>): Result<string | null, AppError> => {
+  const header = c.req.header(PROPOSAL_GROUP_HEADER);
+  if (header === undefined) return ok(null);
+  const parsed = changeProposalGroupIdSchema.safeParse(header);
+  return parsed.success ? ok(parsed.data) : err(validation(`Invalid ${PROPOSAL_GROUP_HEADER} header`, parsed.error.flatten()));
+};
+
+const submitProposal = async (
+  request: ShopMachineRequest,
+  operation: ChangeProposalOperation,
+  input: unknown,
+  groupId: string | null,
+  deps: ShopMachineDeps,
+) => {
+  if (groupId === null) {
+    const submitted = await submitChangeProposal(request.ctx, { operation, input }, deps);
+    return submitted.ok ? ok({ outcome: 'proposed' as const, proposal: submitted.value }) : submitted;
+  }
+  const submitted = await submitGroupedChangeProposal(request.ctx, { groupId, operation, input }, deps);
+  if (!submitted.ok) return submitted;
+  const proposal = submitted.value.items.at(-1);
+  if (proposal === undefined) throw new Error(`Change proposal group ${groupId} answered a submission without items`);
+  return ok({ outcome: 'proposed' as const, proposal, group: submitted.value });
+};
+
+const proposeChange = async (
+  c: Context<AppVars>,
+  request: ShopMachineRequest,
+  proposeMode: Extract<ShopMachineProposeMode, { kind: 'proposal' }>,
+  deps: ShopMachineDeps,
+): Promise<Response> => {
+  const groupId = proposalGroupOf(c);
+  if (!groupId.ok) return respond(groupId);
+  const input = await proposeMode.toInput(c);
+  if (!input.ok) return respond(input);
+  const submitted = await submitProposal(request, proposeMode.operation, input.value, groupId.value, deps);
+  return submitted.ok
+    ? respond(submitted, { successStatus: 202 })
+    : respond(submitted, { headers: retryAfterHeaders(submitted.error) });
+};
+
+const dispatchMutation = (
+  c: Context<AppVars>,
+  route: Exclude<ShopMachineRoute, { method: 'GET'; proposeMode?: undefined }>,
+  request: ShopMachineRequest,
+  deps: ShopMachineDeps,
+): Response | Promise<Response> => {
+  const { proposeMode } = route;
+  if (proposeMode.kind === 'proposal-management') {
+    return isDirectModeKey(request) ? respond(err(proposalManagementRefusal())) : route.handler(c, request);
+  }
+  if (isDirectModeKey(request)) return route.handler(c, request);
+  switch (proposeMode.kind) {
+    case 'direct':
+      return route.handler(c, request);
+    case 'refuse':
+      return respond(err(proposeModeRefusal(proposeMode.reason)));
+    case 'proposal':
+      return proposeChange(c, request, proposeMode, deps);
+  }
+};
+
+const unclassifiedMutation = (route: ShopMachineRouteShape): boolean =>
+  !isSafeMethod(route.method) && route.proposeMode === undefined;
+
+const assertRouteClass = (route: ShopMachineRoute): void => {
+  const label = `${route.method} ${route.path}`;
+  if (unclassifiedMutation(route)) throw new Error(`Shop management route ${label} needs a proposeMode`);
+  if (route.scope === null && route.proposeMode?.kind !== 'proposal-management') {
+    throw new Error(`Only a proposal-management shop route may omit its scope: ${label}`);
+  }
+};
+
 export const registerShopMachineRoute = (
   app: Hono<AppVars>,
   deps: ShopMachineDeps,
@@ -133,18 +235,21 @@ export const registerShopMachineRoute = (
   if (!route.path.startsWith(SHOP_MACHINE_PATH_PREFIX)) {
     throw new Error(`Shop management routes must live under ${SHOP_MACHINE_PATH_PREFIX}: ${route.path}`);
   }
+  assertRouteClass(route);
   app.on(route.method, route.path, async (c) => {
     const body = c.req.raw.clone();
     const { result, attribution } = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     c.set('apiKeyAttribution', attribution);
     if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
     c.set('identity', result.value.ctx.identity);
-    const { method } = route;
-    if (method === 'GET') return route.handler(c, result.value);
+    if (route.method === 'GET' && route.proposeMode === undefined) return route.handler(c, result.value);
+    if (route.method === 'GET') {
+      return isDirectModeKey(result.value) ? respond(err(proposalManagementRefusal())) : route.handler(c, result.value);
+    }
     const recorded = await recordShopManagementKeyRequest(result.value.tenant.id, {
       apiKeyId: result.value.apiKey.id,
       actorUserId: result.value.ctx.identity.userId,
-      method,
+      method: route.method,
       route: route.path,
       resourceId: await resourceIdOf(c, route, body),
     }, deps).then(() => true, (error: unknown) => {
@@ -157,18 +262,21 @@ export const registerShopMachineRoute = (
         { headers: { 'retry-after': String(HISTORY_RETRY_AFTER_SECONDS) } },
       );
     }
-    return route.handler(c, result.value);
+    return dispatchMutation(c, route, result.value, deps);
   });
 };
 
-export const assertShopMachineRouteCoverage = (routes: readonly Pick<RouterRoute, 'method' | 'path'>[]): void => {
+export const assertShopMachineRouteCoverage = (routes: readonly ShopMachineRouteShape[]): void => {
   const uncovered = routes.filter((route) =>
     selfAuthenticatingRouteManifestEntry(route)?.mechanism !== SHOP_MACHINE_MECHANISM
     || (!isSafeMethod(route.method) && requestOriginPolicy(route.method, route.path) !== 'api-key'));
-  if (uncovered.length === 0) return;
-  throw new Error(
-    `Shop management routes need a "${SHOP_MACHINE_MECHANISM}" manifest entry and the api-key origin policy: ${uncovered.map((route) => `${route.method} ${route.path}`).join(', ')}`,
-  );
+  const unclassified = routes.filter(unclassifiedMutation);
+  if (uncovered.length === 0 && unclassified.length === 0) return;
+  const listed = (entries: readonly ShopMachineRouteShape[]): string => entries.map((route) => `${route.method} ${route.path}`).join(', ');
+  throw new Error([
+    ...(uncovered.length === 0 ? [] : [`Shop management routes need a "${SHOP_MACHINE_MECHANISM}" manifest entry and the api-key origin policy: ${listed(uncovered)}`]),
+    ...(unclassified.length === 0 ? [] : [`Shop management mutations need a proposeMode class: ${listed(unclassified)}`]),
+  ].join('; '));
 };
 
 export const registerShopMachineRoutes = (

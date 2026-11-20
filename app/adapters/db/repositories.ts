@@ -1,5 +1,6 @@
 import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-erasure.js';
 import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
+import { orderRefundJobs } from './order-refund-job-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
@@ -3466,6 +3467,11 @@ export const createOrderRepository = (
     const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
       .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
       .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
+    const cancelledOrderIds = rows.flatMap((row) => row.order.cancelReason == null ? [] : [row.order.id]);
+    const refundJobRows = cancelledOrderIds.length === 0 ? [] : await db
+      .select({ orderId: orderRefundJobs.orderId, status: orderRefundJobs.status })
+      .from(orderRefundJobs)
+      .where(and(eq(orderRefundJobs.tenantId, tenantId), inArray(orderRefundJobs.orderId, cancelledOrderIds)));
     return rows.map((row) => orderListItemSchema.parse({
       ...normalizeOrderDates(row.order),
       memberEmail: row.memberEmail,
@@ -3474,6 +3480,9 @@ export const createOrderRepository = (
       couponCode: row.couponCode,
       salesLinkTitle: row.salesLinkTitle ?? undefined,
       invoice: invoiceRows.find((invoice) => invoice.orderId === row.order.id) ?? null,
+      ...(row.order.cancelReason == null ? {} : {
+        refundJobStatus: refundJobRows.find((job) => job.orderId === row.order.id)?.status ?? null,
+      }),
     }));
   };
 
@@ -3523,6 +3532,7 @@ export const createOrderRepository = (
           lines: order.lines ?? [],
           shipping: order.shipping ?? null,
           fulfilmentStatus: order.fulfilmentStatus ?? null,
+          cancelReason: order.cancelReason ?? null,
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),
           createdAt: order.createdAt,
         })
@@ -3692,6 +3702,7 @@ export const createOrderRepository = (
             eq(orders.tenantId, tenantId),
             eq(orders.mode, 'live'),
             eq(orders.status, 'paid'),
+            isNull(orders.cancelReason),
             sql`${orders.createdAt}::timestamptz >= ${sinceIso}::timestamptz`,
           ),
         )
@@ -3746,6 +3757,7 @@ export const createOrderRepository = (
               eq(orders.tenantId, tenantId),
               eq(orders.mode, 'live'),
               eq(orders.status, 'paid'),
+              isNull(orders.cancelReason),
               sql`${orders.createdAt} <= ${query.paidBefore}`,
             ),
           )
@@ -3801,6 +3813,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.memberId, memberId),
           sql`(${orders.productId} = ${productId} OR ${orders.lines} @> ${JSON.stringify([{ productId }])}::jsonb)`,
           inArray(orders.status, [...ACCESS_RETAINING_ORDER_STATUSES]),
+          isNull(orders.cancelReason),
         ),
       )
       .orderBy(desc(orders.createdAt), desc(orders.id));
@@ -4707,7 +4720,8 @@ export const createTenantRepository = (
       : null;
   },
   changeSettings: async (tenantId, change) => db.transaction(async (tx): Promise<Result<TenantSettings, AppError> | null> => {
-    const [locked] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('update');
+    // No key column changes, so foreign-key inserts that reference this tenant (key events, proposals) need not wait behind it.
+    const [locked] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('no key update');
     if (!locked) return null;
     const current = await createTenantRepository(tx).findSettings(tenantId);
     if (current === null) return null;

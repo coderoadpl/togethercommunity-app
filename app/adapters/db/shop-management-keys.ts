@@ -3,6 +3,8 @@ import { and, asc, eq, or, sql, type SQL } from 'drizzle-orm';
 import { shopManagementKeySchema, type ShopManagementKey } from '#core/domain/index.js';
 import type { ShopManagementKeyRateLimitRepository, ShopManagementKeyRepository } from '#core/server/index.js';
 
+import { deleteEmptyGroupsOfKey } from './change-proposal-groups.js';
+import { withdrawPendingChangeProposalsOfKey } from './change-proposals.js';
 import type { Db } from './client.js';
 import { shopManagementKeyRateLimitBuckets, shopManagementKeys } from './schema.js';
 import { insertShopManagementKeyEvent } from './shop-management-key-events.js';
@@ -44,7 +46,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     const row = rows[0];
     return row ? parseKey(row) : null;
   },
-  revoke: async (tenantId, id, revokedAt, event) => db.transaction(async (tx) => {
+  revoke: async (tenantId, id, revokedAt, event, withdrawal) => db.transaction(async (tx) => {
     const rows = await tx
       .update(shopManagementKeys)
       .set({ revokedAt })
@@ -56,14 +58,21 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       .returning();
     const row = rows[0];
     if (!row) return null;
+    // Proposal rows before the tenant row, the order an approval takes them in; the key event's foreign key share-locks the tenant row.
+    await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawal);
+    await deleteEmptyGroupsOfKey(tx, tenantId, row.id);
     await insertShopManagementKeyEvent(tx, tenantId, event);
     return parseKey(row);
   }),
-  purge: async (tenantId, event) => db.transaction(async (tx) => {
+  purge: async (tenantId, event, withdrawal) => db.transaction(async (tx) => {
     const purged = await tx
       .delete(shopManagementKeys)
       .where(eq(shopManagementKeys.tenantId, tenantId))
       .returning({ id: shopManagementKeys.id });
+    for (const { id } of purged) {
+      await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
+      await deleteEmptyGroupsOfKey(tx, tenantId, id);
+    }
     for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
     return purged.length;
   }),

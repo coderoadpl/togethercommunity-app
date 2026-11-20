@@ -221,7 +221,7 @@ describe('unlinking from either side', () => {
       ['unknown source', h.ctx('outsider', 'shared', 'owner'), 'forbidden'],
       ['direct admin', h.ctx('ws-admin', 'shared', 'admin', 'direct'), 'forbidden'],
       ['forged direct source', h.ctx('ws-admin', 'shared', 'owner', 'direct'), 'forbidden'],
-      ['shop key', { ...h.ctx('outsider', 'shared', 'owner', 'direct'), machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' } }, 'forbidden'],
+      ['shop key', { ...h.ctx('outsider', 'shared', 'owner', 'direct'), machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' } }, 'forbidden'],
       ['impersonation', {
         ...h.ctx('outsider', 'shared', 'owner', 'direct'),
         impersonation: {

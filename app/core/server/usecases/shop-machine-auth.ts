@@ -7,10 +7,12 @@ import {
   shopManagementCapabilities,
   unauthorized,
   type AppError,
+  type Capability,
   type Identity,
   type Result,
   type ShopManagementKey,
   type ShopManagementKeyEvent,
+  type ShopManagementKeyMode,
   type ShopManagementScope,
   type Tenant,
 } from '#core/domain/index.js';
@@ -62,13 +64,34 @@ interface ShopMachineAuthOutcome {
   attribution: ShopKeyAttribution;
 }
 
+const PROPOSE_MODE_HASH_DOMAIN = 'together:shop-management-key:propose:';
+
+// A release that predates propose mode hashes the presented secret plainly, so it never finds a propose-mode row and refuses the key instead of granting live writes.
+export const shopManagementKeyHash = (
+  apiKeyCrypto: Pick<ApiKeyCrypto, 'hash'>,
+  secret: string,
+  mode: ShopManagementKeyMode,
+): string => apiKeyCrypto.hash(mode === 'propose' ? `${PROPOSE_MODE_HASH_DOMAIN}${secret}` : secret);
+
+const KEY_HASH_DOMAINS = ['direct', 'propose'] as const satisfies readonly ShopManagementKeyMode[];
+
+interface StoredKeyLookup {
+  found: ShopManagementKey | null;
+  foundInItsOwnDomain: boolean;
+}
+
 const findStoredKey = async (
   tenantId: string,
   secret: string,
   deps: Pick<ShopMachineAuthDeps, 'shopManagementKeys' | 'apiKeyCrypto'>,
-): Promise<ShopManagementKey | null> => {
-  const found = await deps.shopManagementKeys.findByHash(tenantId, deps.apiKeyCrypto.hash(secret));
-  return found?.tenantId === tenantId ? found : null;
+): Promise<StoredKeyLookup> => {
+  const hits = (await Promise.all(KEY_HASH_DOMAINS.map(async (domain) => ({
+    domain,
+    key: await deps.shopManagementKeys.findByHash(tenantId, shopManagementKeyHash(deps.apiKeyCrypto, secret, domain)),
+  })))).flatMap(({ domain, key }) => (key?.tenantId === tenantId ? [{ domain, key }] : []));
+  const [hit] = hits;
+  if (hit === undefined) return { found: null, foundInItsOwnDomain: false };
+  return { found: hit.key, foundInItsOwnDomain: hits.length === 1 && hit.key.mode === hit.domain };
 };
 
 const attributionOf = (found: ShopManagementKey | null): ShopKeyAttribution =>
@@ -77,10 +100,11 @@ const attributionOf = (found: ShopManagementKey | null): ShopKeyAttribution =>
     : { match: 'matched', apiKeyId: found.id, issuerUserId: found.issuedByUserId };
 
 const usableShopKey = (
-  found: ShopManagementKey | null,
+  { found, foundInItsOwnDomain }: StoredKeyLookup,
   deps: Pick<ShopMachineAuthDeps, 'clock'>,
 ): Result<ShopManagementKey, AppError> =>
   found === null
+  || !foundInItsOwnDomain
   || found.revokedAt !== null
   || Date.parse(found.expiresAt) <= Date.parse(deps.clock.nowIso())
     ? err(invalidKey())
@@ -145,24 +169,24 @@ const claimShopKeyRateLimit = async (
   return err(rateLimited(day, dayStartedAt, now));
 };
 
-const shopManagementKeyCapabilities = (apiKey: ShopManagementKey) => {
+export const shopManagementKeyCapabilities = (apiKey: Pick<ShopManagementKey, 'scopes' | 'mode'>): Capability[] => {
   const ownerCapabilities = capabilitiesForPrincipal('owner');
-  return shopManagementCapabilities(apiKey.scopes).filter((capability) => ownerCapabilities.includes(capability));
+  return shopManagementCapabilities(apiKey.scopes, apiKey.mode).filter((capability) => ownerCapabilities.includes(capability));
 };
 
 const authenticateStoredKey = async (
   tenant: ShopTenant,
-  found: ShopManagementKey | null,
-  requiredScope: ShopManagementScope,
+  lookup: StoredKeyLookup,
+  requiredScope: ShopManagementScope | null,
   deps: ShopMachineAuthDeps,
 ): Promise<Result<ShopMachineAuthentication, AppError>> => {
-  const apiKey = usableShopKey(found, deps);
+  const apiKey = usableShopKey(lookup, deps);
   if (!apiKey.ok) return apiKey;
   const identity = await issuerIdentity(tenant, apiKey.value.issuedByUserId, deps);
   if (!identity.ok) return identity;
   const limited = await claimShopKeyRateLimit(apiKey.value.id, tenant.id, deps);
   if (!limited.ok) return limited;
-  if (!apiKey.value.scopes.includes(requiredScope)) {
+  if (requiredScope !== null && !apiKey.value.scopes.includes(requiredScope)) {
     return err(forbidden(`${requiredScope} is not permitted`));
   }
   return ok({
@@ -170,7 +194,7 @@ const authenticateStoredKey = async (
     ctx: {
       identity: identity.value,
       capabilities: shopManagementKeyCapabilities(apiKey.value),
-      machineActor: { kind: 'shop_management_key', apiKeyId: apiKey.value.id },
+      machineActor: { kind: 'shop_management_key', apiKeyId: apiKey.value.id, mode: apiKey.value.mode },
     },
   });
 };
@@ -178,15 +202,15 @@ const authenticateStoredKey = async (
 export const authenticateShopManagementKey = async (
   tenant: ShopTenant,
   presentedSecret: string,
-  requiredScope: ShopManagementScope,
+  requiredScope: ShopManagementScope | null,
   deps: ShopMachineAuthDeps,
 ): Promise<ShopMachineAuthOutcome> => {
   const secret = presentedSecret.trim();
   if (!secret) return { result: err(unauthorized('Missing API key')), attribution: { match: 'missing' } };
-  const found = await findStoredKey(tenant.id, secret, deps);
+  const lookup = await findStoredKey(tenant.id, secret, deps);
   return {
-    result: await authenticateStoredKey(tenant, found, requiredScope, deps),
-    attribution: attributionOf(found),
+    result: await authenticateStoredKey(tenant, lookup, requiredScope, deps),
+    attribution: attributionOf(lookup.found),
   };
 };
 

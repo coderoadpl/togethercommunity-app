@@ -38,6 +38,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.setSecret,
+    proposeMode: { kind: 'refuse', reason: 'secret' },
     resourceIdField: 'key',
     resourceIdSchema: shopIntegrationSecretKeySchema,
     handler: async (c, { ctx }) => {
@@ -49,11 +50,13 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.deleteSecret,
+    proposeMode: { kind: 'refuse', reason: 'secret' },
     resourceIdSchema: shopIntegrationSecretKeySchema,
     handler: async (c, { ctx }) => respond(await deleteShopIntegrationSecret(ctx, c.req.param('key') ?? '', deps)),
   },
   {
     ...SHOP_INTEGRATION_ROUTES.stripeConfigure,
+    proposeMode: { kind: 'refuse', reason: 'secret' },
     handler: async (c, { ctx }) => {
       const parsed = shopIntegrationContracts.stripeConfigure.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid Stripe configuration', parsed.error.flatten())));
@@ -71,6 +74,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.stripeProbe,
+    proposeMode: { kind: 'refuse', reason: 'secret' },
     handler: async (c, { ctx }) => {
       const parsed = shopIntegrationContracts.stripeProbe.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid Stripe permission probe', parsed.error.flatten())));
@@ -79,6 +83,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.storageConfigure,
+    proposeMode: { kind: 'refuse', reason: 'secret' },
     handler: async (c, { ctx, tenant }) => {
       const parsed = shopIntegrationContracts.storageConfigure.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid storage configuration payload', parsed.error.flatten())));
@@ -93,6 +98,7 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
   },
   {
     ...SHOP_INTEGRATION_ROUTES.shipxConfigure,
+    proposeMode: { kind: 'refuse', reason: 'secret' },
     handler: async (c, { ctx }) => {
       if (deps.shipxIntegration === undefined) return shipxUnavailable();
       const parsed = shopIntegrationContracts.shipxConfigure.input.safeParse(await readJson(c.req.raw));

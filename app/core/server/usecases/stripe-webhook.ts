@@ -8,6 +8,7 @@ import {
   nextPeriodEnd,
   normalizeEmail,
   ok,
+  outOfStockRefundJob,
   isShippingLine,
   orderLineQuantity,
   orderProviderIdentifiers,
@@ -23,9 +24,11 @@ import {
   type Coupon,
   type CouponCheckoutSession,
   type Order,
+  type OrderRefundJob,
   type OrderShipping,
   type CheckoutSnapshot,
   type ProductPrice,
+  type StockQuantity,
   type StripeMode,
   type MemberSubscription,
 } from '#core/domain/index.js';
@@ -39,6 +42,7 @@ import type {
   CouponRepository,
   ProductPriceHistoryRepository,
   EmailOutboxRepository,
+  OrderRefundJobRepository,
   PaymentProvider,
   PaymentTransactionPort,
   StripeWebhookOwnershipReader,
@@ -49,7 +53,9 @@ import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
+import { ensureMember } from './ensure-member.js';
 import { fulfillEnrollment, queueEnrollmentWelcome, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
+import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import { commitCheckoutStock } from './stock.js';
 import {
@@ -62,7 +68,11 @@ import {
   type SubscriptionLifecycleDeps,
 } from './subscription-lifecycle.js';
 
-export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+interface OrderRefundDispatchTrigger {
+  dispatchOrderRefunds?(): void;
+}
+
+export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps, OrderRefundDispatchTrigger {
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
@@ -75,7 +85,7 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   payment: Pick<PaymentProvider, 'cancelSubscription'>;
   paymentTransaction: PaymentTransactionPort;
   stock?: StockRepository;
-  tenantAccess?: TenantAccessReader;
+  tenantAccess?: Pick<TenantAccessReader, 'listStaffForTenant'>;
   logger: { warn(message: string): void; error(message: string): void };
 }
 
@@ -93,6 +103,7 @@ interface EventApplication {
   consumed?: boolean;
   paidOrder?: Order;
   pendingConsent?: string;
+  refundQueued?: boolean;
 }
 
 const ignorePaymentMode = (
@@ -142,7 +153,7 @@ const enqueueAutoInvoice = async (
     tenantId,
     providerObjectIds,
   );
-  if (order === null) return;
+  if (order === null || order.cancelReason != null) return;
   const now = deps.clock.nowIso();
   await transactionDeps.autoInvoiceJobs.enqueue(tenantId, {
     id: deps.ids.nextId(),
@@ -350,7 +361,7 @@ const claimDiscountedOrder = async (
   context: CouponPaymentContext,
   billing: Order['billing'],
   snapshot: CheckoutSnapshot | null,
-  shipping: OrderShipping | null,
+  fulfilment: CheckoutOrderFulfilment,
   deps: StripeWebhookDeps,
 ): Promise<{ order: Order; coupon: Coupon } | null> => {
   if (deps.couponRedemptions === undefined) return null;
@@ -387,7 +398,7 @@ const claimDiscountedOrder = async (
     attribution: snapshot?.attribution ?? event.checkoutSession?.metadata.attribution ?? null,
     ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
     ...snapshotClientReference(snapshot),
-    ...shippingFields(shipping),
+    ...fulfilment,
     createdAt: deps.clock.nowIso(),
   };
   const redemptionId = deps.ids.nextId();
@@ -418,8 +429,92 @@ const claimDiscountedOrder = async (
   return claimed ? { order, coupon: context.coupon } : null;
 };
 
-const shippingFields = (shipping: OrderShipping | null): Pick<Order, 'shipping' | 'fulfilmentStatus'> =>
+type CheckoutOrderFulfilment = Pick<Order, 'shipping' | 'fulfilmentStatus' | 'cancelReason'>;
+
+const shippingFields = (shipping: OrderShipping | null): CheckoutOrderFulfilment =>
   shipping === null ? {} : { shipping, fulfilmentStatus: 'to_pack' };
+
+const outOfStockFields = (shipping: OrderShipping | null): CheckoutOrderFulfilment =>
+  ({ ...(shipping === null ? {} : { shipping }), cancelReason: 'out_of_stock' });
+
+type CheckoutCompletionDeps = StripeWebhookDeps & { orderRefundJobs: OrderRefundJobRepository };
+
+const outOfStockProductIds = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  input: { checkoutSession: string; checkoutSnapshotId: string | null; items: readonly StockQuantity[] },
+  deps: CheckoutCompletionDeps,
+): Promise<string[] | 'already_cancelled'> => {
+  if (event.mode === 'test' || deps.stock === undefined) return [];
+  const checked = await deps.stock.lockForCommit(tenant.id, { checkoutSnapshotId: input.checkoutSnapshotId, items: input.items });
+  if (checked.trackedProductIds.length === 0) return [];
+  const existing = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: input.checkoutSession });
+  if (existing?.cancelReason != null) return 'already_cancelled';
+  return existing === null ? checked.shortProductIds : [];
+};
+
+const enqueueSoldOutRefundEmail = async (
+  tenant: Tenant,
+  order: Order,
+  input: { buyerEmail: string; buyerLanguage: string | null; productTitles: string[]; tenantOrigin: string; now: string },
+  deps: CheckoutCompletionDeps,
+): Promise<Result<unknown, AppError>> => {
+  const [member, settings] = await Promise.all([
+    deps.members.findById(tenant.id, order.memberId),
+    deps.tenants.findSettings(tenant.id),
+  ]);
+  const shopUrl = `${input.tenantOrigin}/`;
+  return deps.emailOutbox.enqueue({
+    id: `order-sold-out-refund:${tenant.id}:${order.id}`,
+    tenantId: tenant.id,
+    to: member?.email ?? input.buyerEmail,
+    payload: {
+      kind: 'order-sold-out-refund',
+      language: resolveEmailLanguage(member?.language, input.buyerLanguage, settings?.defaultLanguage),
+      tenantName: tenant.name,
+      orderId: order.id,
+      amountCents: order.amountCents,
+      currency: order.currency,
+      productTitles: input.productTitles,
+      shopUrl,
+      ...(settings === null ? {} : { branding: emailBrandingFrom(settings, shopUrl) }),
+    },
+    now: input.now,
+    onConflict: 'keep-existing',
+  });
+};
+
+const recordOutOfStockCancellation = async (
+  tenant: Tenant,
+  order: Order,
+  input: { buyerEmail: string; buyerLanguage: string | null; shortProductIds: readonly string[] },
+  deps: CheckoutCompletionDeps,
+): Promise<Result<{ job: OrderRefundJob | null; refundQueued: boolean; emailsQueued: boolean }, AppError>> => {
+  const now = deps.clock.nowIso();
+  const job = order.amountCents > 0 ? outOfStockRefundJob(order, { id: deps.ids.nextId(), now }) : null;
+  const refundQueued = job !== null && await deps.orderRefundJobs.enqueue(tenant.id, job);
+  deps.logger.warn(`[stock] out of stock tenant=${tenant.id} order=${order.id} products=${input.shortProductIds.join(',')} refund=${job === null ? 'none' : job.idempotencyKey}`);
+  const recipients = deps.tenantAccess === undefined ? [] : await tenantStaffRecipients(tenant.id, { tenants: deps.tenants, tenantAccess: deps.tenantAccess });
+  const productTitles = await Promise.all(input.shortProductIds.map(async (productId) => (await deps.products.findById(tenant.id, productId))?.title ?? productId));
+  const tenantOrigin = await resolveTenantOrigin(tenant, deps);
+  const orderUrl = `${tenantOrigin}/panel/sales/${encodeURIComponent(order.id)}`;
+  const buyerQueued = await enqueueSoldOutRefundEmail(tenant, order, { ...input, productTitles, tenantOrigin, now }, deps);
+  if (!buyerQueued.ok) return buyerQueued;
+  for (const recipient of recipients) {
+    const queued = await deps.emailOutbox.enqueue({
+      id: deps.ids.nextId(),
+      tenantId: tenant.id,
+      to: recipient.email,
+      payload: {
+        kind: 'order-out-of-stock', language: recipient.language, tenantName: tenant.name, orderId: order.id,
+        buyerEmail: input.buyerEmail, amountCents: order.amountCents, currency: order.currency, productTitles, orderUrl,
+      },
+      now,
+    });
+    if (!queued.ok) return queued;
+  }
+  return ok({ job, refundQueued, emailsQueued: true });
+};
 
 const checkoutShipping = (
   snapshot: CheckoutSnapshot | null,
@@ -436,7 +531,7 @@ const applyCheckoutCompleted = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   provider: 'stripe' | 'simulated',
-  deps: StripeWebhookDeps,
+  deps: CheckoutCompletionDeps,
 ): Promise<Result<EventApplication, AppError>> => {
   if (!event.objectId || !event.checkoutSession) {
     return err(validation('Stripe checkout event is missing session data'));
@@ -495,29 +590,45 @@ const applyCheckoutCompleted = async (
     ...shippingFields(shipping.value),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
-  const fulfilled = await fulfillEnrollment(
-    tenant,
-    {
-      email,
-      name: metadata.directCheckout === true ? event.checkoutSession.customerName ?? null : null,
-      productId: metadata.productId,
-      expiresAt: periodEnd === null ? null : graceExpiresAt(periodEnd),
-      language: metadata.language ?? null,
-      source: provider,
-      mode: event.mode ?? 'live',
-      sendEmail: false,
-      allowUnpublished: true,
-    },
-    deps,
-  );
-  if (!fulfilled.ok) return fulfilled;
-  for (const line of productLines(snapshot?.lines ?? []).slice(1)) {
-    const additional = await fulfillEnrollment(tenant, {
-      email, productId: line.productId, expiresAt: null, language: metadata.language ?? null,
-      source: provider, mode: event.mode ?? 'live', sendEmail: false, allowUnpublished: true,
-    }, deps);
-    if (!additional.ok) return additional;
+  const stockItems = snapshot === null ? [{ productId: metadata.productId, quantity: 1 }] : stockQuantitiesFromLines(snapshot.lines);
+  const shortProductIds = price?.kind === 'recurring' ? [] : await outOfStockProductIds(tenant, event, {
+    checkoutSession: event.objectId, checkoutSnapshotId: snapshot?.id ?? null, items: stockItems,
+  }, deps);
+  if (shortProductIds === 'already_cancelled') return ok({ processed: false, consumed: true });
+  const outOfStock = shortProductIds.length > 0;
+  const memberName = metadata.directCheckout === true ? event.checkoutSession.customerName ?? null : null;
+  let memberId: string;
+  if (outOfStock) {
+    const member = await ensureMember(tenant.id, email, deps, memberName);
+    if (!member.ok) return member;
+    memberId = member.value.id;
+  } else {
+    const fulfilled = await fulfillEnrollment(
+      tenant,
+      {
+        email,
+        name: memberName,
+        productId: metadata.productId,
+        expiresAt: periodEnd === null ? null : graceExpiresAt(periodEnd),
+        language: metadata.language ?? null,
+        source: provider,
+        mode: event.mode ?? 'live',
+        sendEmail: false,
+        allowUnpublished: true,
+      },
+      deps,
+    );
+    if (!fulfilled.ok) return fulfilled;
+    for (const line of productLines(snapshot?.lines ?? []).slice(1)) {
+      const additional = await fulfillEnrollment(tenant, {
+        email, productId: line.productId, expiresAt: null, language: metadata.language ?? null,
+        source: provider, mode: event.mode ?? 'live', sendEmail: false, allowUnpublished: true,
+      }, deps);
+      if (!additional.ok) return additional;
+    }
+    memberId = fulfilled.value.memberId;
   }
+  const fulfilment = outOfStock ? outOfStockFields(shipping.value) : shippingFields(shipping.value);
   const discounted =
     couponContext === null
       ? null
@@ -525,11 +636,11 @@ const applyCheckoutCompleted = async (
           tenant,
           event,
           provider,
-          fulfilled.value.memberId,
+          memberId,
           couponContext,
           billing,
           snapshot,
-          shipping.value,
+          fulfilment,
           deps,
         );
   const couponOverRedeemed = couponCoversFullPrice && discounted === null ? couponContext.coupon : null;
@@ -544,7 +655,7 @@ const applyCheckoutCompleted = async (
       tenant.id,
       {
         mode: event.mode ?? 'live',
-        memberId: fulfilled.value.memberId,
+        memberId,
         productId: metadata.productId,
         priceId: price?.id ?? null,
         kind: price?.kind ?? 'one_time',
@@ -572,12 +683,21 @@ const applyCheckoutCompleted = async (
         attribution: snapshot?.attribution ?? metadata.attribution ?? null,
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
         ...snapshotClientReference(snapshot),
-        ...shippingFields(shipping.value),
+        ...fulfilment,
       },
       deps,
     ));
   if (couponOverRedeemed !== null) {
     deps.logger.warn(`[stripe-webhook] recorded tenant=${tenant.id} event=${event.id} session=${event.objectId} order=${paidOrder.id} coupon=${couponOverRedeemed.id} reason=coupon_over_redeemed`);
+  }
+  if (outOfStock) {
+    if (snapshot !== null && deps.stock !== undefined) {
+      await deps.stock.release(tenant.id, { checkoutSnapshotId: snapshot.id, reason: 'out_of_stock', now: deps.clock.nowIso() });
+    }
+    const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
+    const cancelled = await recordOutOfStockCancellation(tenant, persistedOrder ?? paidOrder, { buyerEmail: normalizeEmail(email), buyerLanguage: metadata.language ?? null, shortProductIds }, deps);
+    if (!cancelled.ok) return cancelled;
+    return ok({ processed: true, paidOrder, emailsQueued: cancelled.value.emailsQueued, refundQueued: cancelled.value.refundQueued });
   }
 
   const stockCommit = event.mode === 'test'
@@ -585,11 +705,11 @@ const applyCheckoutCompleted = async (
     : await commitCheckoutStock(tenant, {
       checkoutSnapshotId: snapshot?.id ?? null,
       orderId: paidOrder.id,
-      items: snapshot === null ? [{ productId: metadata.productId, quantity: 1 }] : stockQuantitiesFromLines(snapshot.lines),
+      items: stockItems,
     }, deps);
   let emailsQueued = stockCommit.alertsQueued;
   if (event.mode !== 'test' && product !== null) {
-    const member = await deps.members.findById(tenant.id, fulfilled.value.memberId);
+    const member = await deps.members.findById(tenant.id, memberId);
     if (member === null) return err(internal('Purchased order member is missing'));
     const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
     const queued = await deps.enrollmentTransaction.run((transaction) => queueEnrollmentWelcome(tenant, member, product, metadata.language ?? null, transaction.emailOutbox, deps, persistedOrder ?? paidOrder));
@@ -602,7 +722,7 @@ const applyCheckoutCompleted = async (
       tenant.id,
       {
         mode: event.mode ?? 'live',
-        memberId: fulfilled.value.memberId,
+        memberId,
         price,
         provider,
         providerSubscriptionId: event.checkoutSession.subscriptionId,
@@ -732,10 +852,49 @@ const applyInvoiceEvent = async (
   return ok({ processed: true });
 };
 
+const revokeRefundedAccess = async (tenant: Tenant, order: Order, deps: StripeWebhookDeps): Promise<void> => {
+  const refundedProductIds = order.lines === undefined ? [order.productId] : productLines(order.lines).filter((line) => line.productType !== 'physical').map((line) => line.productId);
+  for (const productId of refundedProductIds) {
+    const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
+      tenant.id,
+      order.memberId,
+      productId,
+    );
+    let remainingAccess = remainingOrders.some((candidate) => candidate.mode === order.mode && candidate.kind === 'one_time');
+    if (!remainingAccess) {
+      const providerSubscriptionIds = new Set(
+        remainingOrders
+          .filter((candidate) => candidate.mode === order.mode)
+          .map((candidate) => candidate.providerObjectIds['subscription'])
+          .filter((id): id is string => id !== undefined),
+      );
+      for (const providerSubscriptionId of providerSubscriptionIds) {
+        const [latest, subscription] = await Promise.all([
+          deps.paymentRefunds.findLatestSubscriptionOrder(tenant.id, providerSubscriptionId),
+          deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
+        ]);
+        if (
+          latest !== null && latest.mode === order.mode && subscription?.mode === order.mode &&
+          ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
+          subscription?.productId === productId &&
+          subscription.currentPeriodEnd >= deps.clock.nowIso()
+        ) {
+          remainingAccess = true;
+          break;
+        }
+      }
+    }
+    if (!remainingAccess) {
+      const grant = await deps.grants.findGrant(tenant.id, order.memberId, productId, order.mode);
+      if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
+    }
+  }
+};
+
 const applyPaymentAdjustment = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
-  deps: StripeWebhookDeps,
+  deps: CheckoutCompletionDeps,
 ): Promise<Result<EventApplication, AppError>> => {
   const adjustment = event.adjustment;
   if (!adjustment) return ok({ processed: false });
@@ -786,42 +945,17 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
-  const refundedProductIds = order.lines === undefined ? [order.productId] : productLines(order.lines).filter((line) => line.productType !== 'physical').map((line) => line.productId);
-  for (const productId of refundedProductIds) {
-  const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
-    tenant.id,
-    order.memberId,
-    productId,
-  );
-  let remainingAccess = remainingOrders.some((candidate) => candidate.mode === order.mode && candidate.kind === 'one_time');
-  if (!remainingAccess) {
-    const providerSubscriptionIds = new Set(
-      remainingOrders
-        .filter((candidate) => candidate.mode === order.mode)
-        .map((candidate) => candidate.providerObjectIds['subscription'])
-        .filter((id): id is string => id !== undefined),
-    );
-    for (const providerSubscriptionId of providerSubscriptionIds) {
-      const [latest, subscription] = await Promise.all([
-        deps.paymentRefunds.findLatestSubscriptionOrder(tenant.id, providerSubscriptionId),
-        deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
-      ]);
-      if (
-        latest !== null && latest.mode === order.mode && subscription?.mode === order.mode &&
-        ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
-        subscription?.productId === productId &&
-        subscription.currentPeriodEnd >= deps.clock.nowIso()
-      ) {
-        remainingAccess = true;
-        break;
-      }
+  let refundQueued = false;
+  if (order.cancelReason == null) {
+    await revokeRefundedAccess(tenant, order, deps);
+  } else if (event.type === 'charge.refunded') {
+    const noted = await deps.orderRefundJobs.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
+    if (noted?.status === 'resolved_externally') {
+      deps.logger.warn(`[order-refund] resolved externally tenant=${tenant.id} order=${order.id} job=${noted.id} event=${event.id}`);
+    } else if (noted !== null) {
+      refundQueued = true;
+      deps.logger.warn(`[order-refund] refund list due again after charge.refunded tenant=${tenant.id} order=${order.id} job=${noted.id} event=${event.id}`);
     }
-  }
-  if (!remainingAccess) {
-    const grant = await deps.grants.findGrant(tenant.id, order.memberId, productId, order.mode);
-    if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
-  }
-
   }
 
   if (subscriptionToCancel !== null) {
@@ -831,7 +965,7 @@ const applyPaymentAdjustment = async (
       deps,
     );
   }
-  return ok({ processed: true });
+  return ok({ processed: true, ...(refundQueued ? { refundQueued } : {}) });
 };
 
 const asyncPaymentFailed = (
@@ -1191,6 +1325,7 @@ export const fulfillStripeWebhook = async (
     return applied;
   }
   if (applied.value.emailsQueued) deps.dispatchEmail();
+  if (applied.value.refundQueued === true) deps.dispatchOrderRefunds?.();
   if (!applied.value.processed && applied.value.consumed !== true) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
   }

@@ -657,7 +657,7 @@ describe('legacy checkout stock on Postgres', () => {
     });
   });
 
-  it('clamps a late commit at zero and records the oversold piece', async () => {
+  it('cancels a late payment for goods that ran out and leaves the stock untouched instead of clamping at zero', async () => {
     const h = harness();
     await track('printed-1', 1);
     await publicCheckout(h, printedRequest);
@@ -673,10 +673,10 @@ describe('legacy checkout stock on Postgres', () => {
           productId: 'printed-1',
           checkoutSnapshotId: 'checkout-id-1',
           quantity: 1,
-          status: 'committed',
+          status: 'released',
           expiresAt: '2026-11-15 10:36:00+00',
           createdAt: '2026-11-15 10:00:00+00',
-          updatedAt: '2026-11-15 10:42:00+00',
+          updatedAt: '2026-11-15 10:40:00+00',
         },
       ],
       events: [
@@ -716,24 +716,6 @@ describe('legacy checkout stock on Postgres', () => {
           occurredAt: '2026-11-15 10:41:00+00',
           reference: { reason: 'damaged' },
         },
-        {
-          tenantId: 'tenant-a',
-          productId: 'printed-1',
-          type: 'committed_late',
-          quantity: 0,
-          actorUserId: null,
-          occurredAt: '2026-11-15 10:42:00+00',
-          reference: { orderId: 'webhook-id-3', reservationId: 'reservation:printed-1', checkoutSnapshotId: 'checkout-id-1' },
-        },
-        {
-          tenantId: 'tenant-a',
-          productId: 'printed-1',
-          type: 'oversold',
-          quantity: -1,
-          actorUserId: null,
-          occurredAt: '2026-11-15 10:42:00+00',
-          reference: { orderId: 'webhook-id-3', reservationId: 'reservation:printed-1', checkoutSnapshotId: 'checkout-id-1' },
-        },
       ],
       levels: [
         {
@@ -744,12 +726,14 @@ describe('legacy checkout stock on Postgres', () => {
           lowStockThreshold: null,
           lowStockNotifiedAt: null,
           soldOutNotifiedAt: null,
-          updatedAt: '2026-11-15 10:42:00+00',
+          updatedAt: '2026-11-15 10:41:00+00',
         },
       ],
       snapshots: start.snapshots,
     });
-    expect(h.warnings).toStrictEqual(['[stock] released 1 expired checkout reservation(s)', '[stock] oversold tenant=tenant-a product=printed-1 order=webhook-id-3']);
+    expect(h.orders).toStrictEqual([expect.objectContaining({ id: 'webhook-id-3', status: 'paid', cancelReason: 'out_of_stock', amountCents: 4099 })]);
+    expect(h.refundJobs).toStrictEqual([expect.objectContaining({ orderId: 'webhook-id-3', paymentIntentId: 'pi_golden1', amountCents: 4099, idempotencyKey: 'oos-refund-webhook-id-3', status: 'pending' })]);
+    expect(h.warnings).toStrictEqual(['[stock] released 1 expired checkout reservation(s)', '[stock] out of stock tenant=tenant-a order=webhook-id-3 products=printed-1 refund=oos-refund-webhook-id-3']);
   });
 
   it('inserts a committed one-piece reservation when the snapshot never held stock', async () => {

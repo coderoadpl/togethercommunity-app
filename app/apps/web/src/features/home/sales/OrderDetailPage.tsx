@@ -7,11 +7,13 @@ import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel, type Or
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { OrderShipment } from './OrderShipment.js';
+import { OrderRefundJob } from './OrderRefundJob.js';
+import { OrderCancelledChip } from './OrderCancelledChip.js';
 import { OrderShipx } from './OrderShipx.js';
 import { OrderPersonalization } from './OrderPersonalization.js';
 
@@ -166,6 +168,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+            <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={detail.data.refundJob?.status} />
             {order.fulfilmentStatus == null ? null : (
               <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
                 label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
@@ -256,6 +259,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </SectionCard>
       )}
+      {detail.data.refundJob === null ? null : <OrderRefundJob job={detail.data.refundJob} />}
       <SectionCard title={t.sales.invoiceStatus}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
@@ -348,8 +352,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             </Button>
           ) : null}
         </Stack>
-        {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
-        {issueInvoice.isError ? <Alert severity="error">{localizePanelError(issueInvoice.error, t)}</Alert> : null}
+        {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
+        {issueInvoice.isError ? <Alert severity="error">{localizeInvoiceError(issueInvoice.error, t)}</Alert> : null}
         {refreshInvoice.isError ? <Alert severity="error">{localizePanelError(refreshInvoice.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>

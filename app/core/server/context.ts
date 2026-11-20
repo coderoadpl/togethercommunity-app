@@ -1,4 +1,4 @@
-import type { Capability, Identity, ImpersonationPrincipal, Organization, OrganizationRole } from '#core/domain/index.js';
+import type { Capability, Identity, ImpersonationPrincipal, Organization, OrganizationRole, ShopManagementKeyMode } from '#core/domain/index.js';
 
 /** Every tenant-scoped use-case takes this as its first argument. */
 export interface Ctx {
@@ -9,7 +9,7 @@ export interface Ctx {
    * then resolves the subject, while this carries the acting staff account.
    */
   impersonation?: ImpersonationPrincipal;
-  machineActor?: { kind: 'shop_management_key'; apiKeyId: string };
+  machineActor?: { kind: 'shop_management_key'; apiKeyId: string; mode: ShopManagementKeyMode };
 }
 
 export interface OrganizationCtx {

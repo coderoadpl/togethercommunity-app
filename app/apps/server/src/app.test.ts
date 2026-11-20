@@ -8,7 +8,9 @@ import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
+import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '#core/server/testing/change-proposal-fakes.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
@@ -202,6 +204,7 @@ const deps = (input: {
   migrationCounts?: Awaited<ReturnType<AppDeps['health']['migrationCounts']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
+  dispatchOrderRefundJobs?: AppDeps['dispatchOrderRefundJobs'];
   checkTenantDomains?: AppDeps['checkTenantDomains'];
   sanitizeStagingSecrets?: AppDeps['sanitizeStagingSecrets'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
@@ -234,6 +237,7 @@ const deps = (input: {
   const members: Member[] = input.members ?? [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
+  const changeProposalStore = createChangeProposalStoreFake();
   const appDeps: AppDeps = {
     telemetry: { recordAppError: vi.fn() },
     auth: {
@@ -377,6 +381,10 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    changeProposals: changeProposalStore.repository,
+    changeProposalEvents: changeProposalStore.events,
+    changeProposalGroups: changeProposalStore.groups,
+    changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     importContent: {
       commit: async () => 'saved',
     },
@@ -624,6 +632,7 @@ const deps = (input: {
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          orderRefundJobs: createOrderRefundJobFake().repository,
           checkoutConsentJobs: {
             enqueue: async () => undefined,
             lockPending: async () => null,
@@ -647,6 +656,8 @@ const deps = (input: {
       processedCount: 0,
       orderId: null,
     })),
+    dispatchOrderRefundJobs: input.dispatchOrderRefundJobs ?? (async () => ok({ processedCount: 0, outcomes: {} })),
+    dispatchOrderRefunds: () => undefined,
     dispatchEmail: () => undefined,
     emailDispatchSecret: 'test-email-dispatch-secret',
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
@@ -3409,6 +3420,71 @@ describe('email dispatch route', () => {
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledTimes(2);
     expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
+  });
+
+  it('dispatches due order refund jobs on the same tick with a deadline 45 seconds after the tick started and keeps dispatching e-mail when that fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>()
+      .mockResolvedValueOnce(ok({ processedCount: 1, outcomes: { refunded: 1 } }))
+      .mockRejectedValueOnce(new Error('database unavailable'));
+    const app = buildApp(deps({ dispatchEmails, dispatchOrderRefundJobs, logger }));
+    expect((await app.request(API_PATHS.emailDispatch)).status).toBe(401);
+    expect(dispatchOrderRefundJobs).not.toHaveBeenCalled();
+    const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect([cron.status, manual.status]).toEqual([200, 200]);
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 45_000;
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1 }], [{ deadlineAt }]]);
+    expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
+    expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
+  });
+
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('dispatches e-mail on the %s tick before order refunds, so a refund dispatch that hangs cannot hold e-mail back', async (trigger, init) => {
+    const calls: string[] = [];
+    let finishRefunds: () => void = () => undefined;
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async (dispatchTrigger) => {
+      calls.push(`email:${dispatchTrigger}`);
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(() => {
+      calls.push('refunds');
+      return new Promise((resolve) => { finishRefunds = () => { resolve(ok({ processedCount: 0, outcomes: {} })); }; });
+    });
+    const app = buildApp(deps({ dispatchEmails, dispatchOrderRefundJobs }));
+    const response = app.request(API_PATHS.emailDispatch, init);
+    await vi.waitFor(() => { expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce(); });
+    expect(calls).toStrictEqual([`email:${trigger}`, 'refunds']);
+    finishRefunds();
+    expect((await response).status).toBe(200);
+  });
+
+  it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
+    const calls: string[] = [];
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
+      calls.push('email');
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      calls.push('refunds');
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchEmails, dispatchOrderRefundJobs });
+    base.metaCapi = {
+      tenants: base.tenants, clock: base.clock, hash: base.contentHash,
+      directory: { listAll: async () => [] },
+      secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listDueTenantIds: async () => { calls.push('meta-capi'); return []; },
+        processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] },
+    };
+
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+
+    expect(response.status).toBe(200);
+    expect(calls).toStrictEqual(['email', 'refunds', 'meta-capi']);
   });
 
   it('preserves the email result when the Meta tenant directory fails', async () => {
@@ -9552,6 +9628,40 @@ describe('impersonation HTTP surface', () => {
     expect(await afterExit.json()).toMatchObject({
       data: { tenant: { staffRole: 'owner' }, impersonation: null },
     });
+  });
+
+  it('refuses the owner change proposal routes while the owner views as a member', async () => {
+    const store = createChangeProposalStoreFake();
+    const list = vi.spyOn(store.repository, 'list');
+    const findById = vi.spyOn(store.repository, 'findById');
+    const transition = vi.spyOn(store.repository, 'transition');
+    const findGroup = vi.spyOn(store.groups, 'findById');
+    const transitionGroup = vi.spyOn(store.groups, 'transition');
+    const { app } = impersonatingApp({ changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    for (const [method, path] of [
+      ['GET', API_PATHS.changeProposals],
+      ['GET', API_PATHS.changeProposal.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalReject.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalApprove.replace(':id', 'proposal-1')],
+      ['GET', API_PATHS.changeProposalGroup.replace(':id', 'group-1')],
+      ['POST', API_PATHS.changeProposalGroupApprove.replace(':id', 'group-1')],
+      ['POST', API_PATHS.changeProposalGroupReject.replace(':id', 'group-1')],
+    ] as const) {
+      const body = path.endsWith('/groups/group-1/approve') ? { itemIds: ['proposal-1'] } : {};
+      const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json(), `${method} ${path}`).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(findById).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+    expect(findGroup).not.toHaveBeenCalled();
+    expect(transitionGroup).not.toHaveBeenCalled();
   });
 
   it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {

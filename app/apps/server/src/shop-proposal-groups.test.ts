@@ -72,7 +72,19 @@ const keyed = (secret: string, method: string, path: string, body?: unknown, ext
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
-const createShopKey = async (scopes: string[], mode: 'direct' | 'propose', host = acmeHost) => {
+const quickKeyed = (secret: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) => quickApp.request(`${baseUrl}${path}`, {
+  method,
+  headers: { host: acmeHost, 'x-api-key': secret, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra },
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
+
+const quickSession = (method: string, path: string, body: unknown) => quickApp.request(`${baseUrl}${path}`, {
+  method,
+  headers: { host: acmeHost, authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+const createShopKey =async (scopes: string[], mode: 'direct' | 'propose', host = acmeHost) => {
   const response = await sessionRequest(ownerToken, API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, {
     name: `Group ${mode} ${String(minute)}`, scopes, expiresAt, mode,
   }, host);
@@ -476,10 +488,10 @@ describe('the owner group routes', () => {
     await lockTaken;
     try {
       const before = await liveState();
-      const approval = await approveGroup(group.id, [item.proposal.id]);
+      const approval = await quickSession('POST', groupPath(API_PATHS.changeProposalGroupApprove, group.id), { itemIds: [item.proposal.id] });
       expect(approval.status).toBe(503);
       expect(approval.headers.get('retry-after')).toBe('5');
-      const joinedWhileLocked = await join(group.id, SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: live, lowStockThreshold: 2 });
+      const joinedWhileLocked = await quickKeyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.setProductStockThreshold.path, { productId: live, lowStockThreshold: 2 }, { 'x-proposal-group': group.id });
       expect(joinedWhileLocked.status).toBe(503);
       expect(joinedWhileLocked.headers.get('retry-after')).toBe('5');
       expect(await liveState()).toBe(before);
@@ -546,17 +558,6 @@ describe('sales links and prices referenced inside a group over HTTP', () => {
 
 describe('busy answers of the proposal decision routes', () => {
   beforeAll(async () => { proposer = await createShopKey(PROPOSE_SCOPES, 'propose'); });
-
-  const quickKeyed = (secret: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) => quickApp.request(`${baseUrl}${path}`, {
-    method,
-    headers: { host: acmeHost, 'x-api-key': secret, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const quickSession = (method: string, path: string, body: unknown) => quickApp.request(`${baseUrl}${path}`, {
-    method,
-    headers: { host: acmeHost, authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
 
   const whileLocked = async (statement: string, work: () => Response | Promise<Response>): Promise<Response> => {
     let release: () => void = () => undefined;

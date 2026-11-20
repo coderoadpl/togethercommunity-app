@@ -65,6 +65,7 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: API_PATHS.m2mAdoptStripeSubscription, methods: ['POST'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mListStripeSubscriptions, methods: ['GET'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mEnroll, methods: ['POST'], mechanism: 'Tenant API key' },
+  { path: API_PATHS.m2mEntitlementCheck, methods: ['POST'], mechanism: 'Entitlement key', capability: 'entitlement:check' },
   { path: API_PATHS.m2mTransactionalMessagesCreate, methods: ['POST'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mTransactionalMessage, methods: ['GET'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mImportValidate, methods: ['POST'], mechanism: 'Tenant API key' },

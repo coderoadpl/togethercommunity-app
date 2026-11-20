@@ -604,15 +604,19 @@ scopes on every shop key.
   in their reference form, which names the creating item, so swapping
   references between items changes the effect. The owner's approval names
   the ordered item ids they were shown; any other list answers `409`, so an
-  item added after the owner looked is never applied. One transaction locks
+  item added after the owner looked is never applied, and the owner CLI
+  approves only with the digest of the item ids that `proposals group show`
+  printed, sending nothing when the group changed since. One transaction locks
   the group and its items, applies each item with every check of a single
   approval and commits only when every item matches; otherwise all live work
   is rolled back and every item is recorded `stale` or `failed`. Targets are
   locked in item order; two groups locking the same rows in opposite orders
   end on the bounded lock wait or the database's deadlock detection and are
   answered busy with nothing applied. A grouped item cannot be decided on its
-  own. A group holds at most 50 items and a key at most 20 open groups, which
-  with the key's rate limit bounds the cost of the replaying dry runs.
+  own. A group holds at most 50 items and a key at most 20 open groups; with
+  the key's rate limit, one dry run per group at a time and the per-statement
+  time bounds of dry runs and approvals, that bounds the cost of the
+  replaying dry runs.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs

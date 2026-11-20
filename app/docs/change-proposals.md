@@ -364,8 +364,8 @@ Every transition appends an event (`proposed`, `applied`, `stale`,
 `apply_failed`, `rejected`, `withdrawn`, `expired`) in the transaction that
 changes the status. A read never writes: the `expired` event is recorded when
 an approve, a reject or a withdrawal meets an expired proposal. Revoking or purging a key withdraws its pending,
-unexpired proposals in the same transaction as the key change; a proposal
-already past its expiry stays `expired`. A key that simply expires leaves its
+unexpired proposals and deletes its empty groups in the same transaction as
+the key change; a proposal already past its expiry stays `expired`. A key that simply expires leaves its
 proposals decidable; the owner view shows the key state.
 
 ## Limits
@@ -398,12 +398,24 @@ Dry runs and inserts of one workspace queue on a workspace lock. Every lock
 wait after it, for the whole proposal transaction of a dry run or an approval,
 is bounded too: the transaction keeps a 5-second `lock_timeout` for the
 proposal row, the target rows, the rows the live use-case locks and the
-workspace lock of the sales links. A wait that runs out aborts the whole
-transaction; once it has rolled back, the request is answered `503
-unavailable` with `retry-after: 5`, on the keyed write routes and on the owner
-approve route alike. Nothing is stored or applied, and a proposal being
-approved stays `pending`. A deadlock that the database detects inside the
-transaction is answered the same way, busy, like a lock wait that ran out.
+workspace lock of the sales links. The same 5-second bound covers every
+statement of the shorter proposal writes that run on their own: storing a
+proposal or a group item (after the workspace lock), a reject, a withdrawal,
+recording an expiry and deleting an empty group. A wait that runs out aborts
+the whole transaction; once it has rolled back, the request is answered `503
+unavailable` with `retry-after: 5`, on the keyed write, withdraw and group
+routes and on the owner approve and reject routes alike. Nothing is stored or
+applied, and a proposal being decided stays `pending`. A deadlock that the
+database detects inside the transaction is answered the same way, busy, like a
+lock wait that ran out.
+
+**Statement time.** A dry run and an approval also bound the time of each
+statement with a transaction-local `statement_timeout`: 2 seconds in a dry run
+and 5 seconds in an approval. A statement that runs longer is cancelled, the
+transaction rolls back and the answer is the same `503` busy answer. Each
+statement of a 49-item group dry run takes milliseconds on a development
+database, so the bounds stop only a database that is overloaded or stuck, not
+a large group; the measured times are in the Groups limits below.
 
 ## Groups
 
@@ -462,8 +474,11 @@ that kind of resource: never to a live id, never forward, never across
 groups. Anything else answers `400` when the item is submitted: an unknown or
 later item, an item of another kind, a malformed reference, and any string
 starting with `$proposal` outside a position of the table (in a title, a
-description, a nested field). A proposal outside a group keeps every value as
-given; there a reference is just an id that does not exist. For a reference
+description, a nested field). That last rule exists because a reference must
+never be mistaken for content: the stored effects write every id the group
+creates in its reference form, so a text that looked like a reference could be
+read as one, or a real reference as text. A proposal outside a group keeps
+every value as given; there a reference is just an id that does not exist. For a reference
 in a path (`/api/m2m/shop/sales-links/:id`), percent-encode it
 (`%24proposal%3A…`).
 
@@ -498,7 +513,10 @@ it and creates the sales link in one transaction, and each item's
 
 ### Group dry run
 
-Adding an item runs one transaction that always rolls back: the earlier items
+Adding an item runs one transaction that always rolls back. It first reads the
+group again: when the group was decided, withdrawn or expired, or another item
+joined, while the submit waited for its locks, the answer is `409` with
+`changeProposalGroupStatus` and nothing runs. Then the earlier items
 of the group are applied in order, exactly as an approval would apply them
 (strict re-validation, references resolved to the ids created in this same
 transaction, the stale pre-check, the effect comparison), then the new item
@@ -518,11 +536,21 @@ the group is no longer open (decided, withdrawn or expired), and one with
 message or content version behind, and object storage deletes wait for a
 commit that never comes.
 
+**One dry run per group.** At most one dry run of a group runs at a time: a
+submit takes a lock of its group before the workspace lock, waits for it at
+most 5 seconds and otherwise answers `503` busy with `retry-after: 5`. A key
+that sends the items of one group in parallel gets busy answers instead of
+holding the workspace lock with several long replays.
+
 **Stable effects.** The ids an item creates differ between a dry run and the
 approval. Wherever such an id appears in an effect, it is stored as the
 creating item's reference, both when the effect is stored and when it is
 recomputed at approval, so the two compare equal; because the reference
-names the item, a reference moved to another item no longer matches.
+names the item, a reference moved to another item no longer matches. Lists
+without a meaningful order (the prices and download files of a deleted draft)
+are sorted by the id each entry carries after that replacement, so ids that
+sort differently at approval do not reorder them; a list whose order means
+something (the products of a sales link) keeps its order.
 
 ### Approval as one unit
 
@@ -539,6 +567,20 @@ content-type: application/json
 When the list differs from the group's current items (an item was added after
 the owner looked, or the order is different) the answer is `409`
 (`changeProposalGroupItemIds` lists the current ones) and nothing is applied.
+
+**Items digest.** A client that shows the group and approves later carries
+what the owner reviewed as a short digest: the first 16 hexadecimal characters
+of the SHA-256 of the ordered item ids joined by new lines
+(`changeProposalGroupItemsDigest` in `core/domain`, exported through
+`core/client`; it holds no secret). The owner CLI prints it:
+`proposals group show <id>` prints the items, `items digest: <digest>` and the
+exact command `together proposals group approve <id> --items-digest <digest>`
+(with `--json`, the fields `itemsDigest` and `approveCommand` beside `group`).
+`proposals group approve <id> --items-digest <digest>` requires the digest,
+reads the group, and when the current items give another digest prints them
+with their new digest and exits `6`, the conflict exit code, without sending
+anything; when it matches, it sends exactly those item ids, so the server's
+check above protects the owner as well.
 Otherwise one transaction locks the group row and its items, then applies
 each item in order as the approving owner, with every step of a single
 approval: strict re-validation, references resolved from the ids created
@@ -550,7 +592,7 @@ the effect comparison.
 | every item matches | `applied` | all `applied`, each with its `appliedResourceId` | changed exactly as the effects showed; post-commit effects run afterwards |
 | one item is stale | `stale` | that item `stale`, every other item `stale` with a note naming it | unchanged |
 | one item is refused by the live use-case | `failed` | that item `failed` with its failure code and message, every other item `stale` with a note naming it | unchanged |
-| a lock wait runs out, a deadlock | `open` | all still `pending` | unchanged; `503` with `retry-after` |
+| a lock wait or a statement runs out of time, a deadlock | `open` | all still `pending` | unchanged; `503` with `retry-after` |
 | an infrastructure failure (a lost connection, a database error) | `open` | all still `pending` | unchanged; `500 internal`, the owner can retry |
 
 The note on the other items reads "Not applied: item *n* (*id*) of this group
@@ -571,7 +613,15 @@ withdraws a whole group with `POST /api/m2m/shop/proposals/groups/:id/withdraw`,
 and a group without items is deleted when its key withdraws it. An item of a
 group cannot be approved, rejected or withdrawn on its own: the
 single-proposal routes answer `409` with `changeProposalGroupId`. Revoking or
-purging a key withdraws its open groups with its other pending proposals.
+purging a key withdraws its open groups with its other pending proposals and
+deletes its empty groups, in the same transaction as the key change, exactly
+as the key's own withdrawal of an empty group would.
+
+A reject and a withdrawal lock the group and its items first and only then
+read the clock, so a group that expired while they waited is not decided: the
+expiry is recorded on every item and the answer is `409` with status
+`expired`. A join reads the clock after the same locks and answers the group
+conflict.
 
 **Expiry.** Every item of a group expires with the group's first item (an
 item added later takes that expiry), so a group is never half expired; an
@@ -605,8 +655,19 @@ refused on the owner routes.
 At most 50 items per group and 20 open groups per key; over a limit the
 answer is `409` with `changeProposalCap` set to `group_items` or
 `key_open_groups`. Every item counts against the proposal limits above. The
-cost of the group dry runs grows with the group, which the item cap and the
-key's rate limit bound.
+cost of the group dry runs grows with the group; the item cap, the key's rate
+limit, the one-dry-run-per-group rule and the statement time bounds of
+[Lock waits](#lock-waits) bound it.
+
+Measured on a development PostgreSQL 16 (three runs, a mix of product
+creation, a price, stock, a rename and publication of each new product, a
+live stock adjustment and a sales link): submitting the 50th item, whose dry
+run replays the 49 earlier ones, took 340 to 420 ms in all, and approving the
+50-item group took 480 to 520 ms in all. The per-statement bounds (2 seconds
+in a dry run, 5 seconds in an approval) are therefore several times the whole
+replay and the whole approval, so no valid group reaches them; in a dry run
+the 2-second statement bound also ends a row lock wait before the 5-second
+`lock_timeout` would.
 
 ## Not yet available
 

@@ -177,7 +177,8 @@ list|show|withdraw`); a direct-mode key is refused there with `403`. The key
 list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
 in its last column) shows each key's mode. Revoking or purging a propose-mode
 key withdraws its pending, unexpired proposals, those in its open
-[groups](change-proposals.md#groups) included, in the same transaction.
+[groups](change-proposals.md#groups) included, and deletes its empty groups,
+in the same transaction.
 
 A propose-mode key can also put proposals that depend on each other in a
 group the owner approves as one unit: it creates the group

@@ -147,12 +147,19 @@ Proposals that depend on each other go into a
 `--group <id>`, and reads or withdraws the group with
 `shop proposals group show|withdraw <id>`. An id argument or JSON field of a
 later item names what an earlier item of the same group creates as
-`$proposal:<proposal id>`, quoted so the shell leaves the `$` alone, for
+`$proposal:<proposal id>` (the receipt prints that form only for an item that
+creates something: a product, a price or a sales link), quoted so the shell
+leaves the `$` alone, for
 example `shop prices add --product '$proposal:<id>' --kind one_time --price 49 --group <group id>`.
 The owner runs `proposals group show <id>` (the items in order with their
-effects), `proposals group approve <id>` (reads the group, prints its items and
-approves exactly those; `0` when every item was applied, `6` when the group
-ends `stale` or `failed`, as for a single approval) and
+effects, the items digest and the exact approve command; `itemsDigest` and
+`approveCommand` with `--json`),
+`proposals group approve <id> --items-digest <digest>` (the digest that `show`
+printed is required; the command reads the group again and, when its items
+changed since, prints the current items with their new digest and exits `6`
+without sending anything; otherwise it approves exactly those items: `0` when
+every item was applied, `6` when the group ends `stale` or `failed`, as for a
+single approval) and
 `proposals group reject <id> [--note <text>]`; `proposals list --group <id>`
 lists one group and `proposals list` shows the group and position of each
 grouped item. A grouped item cannot be approved, rejected or withdrawn alone.

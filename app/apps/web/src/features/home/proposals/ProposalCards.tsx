@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
@@ -243,7 +243,7 @@ const useDecisionFeedback = () => {
   const [busy, setBusy] = useState(false);
   const refreshLists = () => queryClient.invalidateQueries(actions.changeProposalsInvalidates());
   const refreshAfterApproval = () =>
-    Promise.all(actions.approveChangeProposalInvalidates().map((filter) => queryClient.invalidateQueries(filter)));
+    Promise.all(actions.approveChangeProposalInvalidates().map((filter) => queryClient.invalidateQueries<QueryKey>(filter)));
   const failed = async (error: unknown): Promise<void> => {
     if (errorCode(error) === 'unavailable') {
       setBusy(true);

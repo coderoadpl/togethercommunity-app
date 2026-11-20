@@ -445,6 +445,27 @@ scopes on every shop key.
   `shop_management_key_rate_limit_buckets` whose rows go with their key. A request refused by the minute
   bucket does not consume the day bucket, and a day refusal returns its minute
   unit.
+- **Propose mode.** A key created with `mode: "propose"` (immutable) never
+  changes live state. Its write scopes grant only `proposal:submit:catalog` and
+  `proposal:submit:settings` in place of the live write capabilities, and
+  `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
+  it. Every shop write route declares a propose-mode class in
+  `apps/server/src/shop-machine-auth.ts` and the server refuses to start
+  without one: the ten catalogue write routes store a
+  [change proposal](change-proposals.md) instead of running their handler,
+  every other write route answers `403`, and a test drives a propose-mode key
+  over every registered shop route and asserts that no live row changed. A
+  proposal's effect comes from a dry run of the live use-case in a transaction
+  that is always rolled back, with non-database effects deferred to a commit
+  that never happens. The key's receipt never carries the effect or a live
+  value. Only the verified owner in their own session reads and rejects
+  proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
+  impersonating owner, a direct-mode key, a propose-mode key and a legacy key
+  are refused. Proposals carry no foreign key to their key, so the history
+  survives a purge, and revoking or purging a key withdraws its pending
+  proposals in the same transaction. Pending proposals are capped at 200 per
+  key and 1,000 per workspace and creation at 500 per key a day; a retention
+  purge of settled proposals is a follow-up. Approval is not available yet.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs

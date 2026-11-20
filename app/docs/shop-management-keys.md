@@ -31,6 +31,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
+| Propose mode: catalogue writes become [change proposals](change-proposals.md) the owner decides on | Available (reject only; approval is not available yet) |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -134,6 +135,41 @@ transaction as the deletion. These events carry the key id and the owner's
 account id, never the secret or its hash. They are not workspace audit events:
 the workspace audit list (`GET /api/tenant/audit-events`) is unchanged by shop
 management keys.
+
+## Propose mode
+
+A key is created in one of two modes, fixed for its lifetime:
+
+- `direct` (the default): every write the scopes allow changes the live shop,
+  as described in the rest of this guide.
+- `propose`: the key's writes never change live state. A write to one of the
+  ten catalogue routes is dry-run, stored as a
+  [change proposal](change-proposals.md) with its field-level effect, and
+  answered `202` with a receipt; the owner then reads and rejects it in their
+  own session (approval is not available yet). Every other write route answers
+  `403`. Reads behave as on a direct key.
+
+```bash
+pnpm --silent run cli api-key shop-management create Catalogue agent \
+  --scope shop:catalog:read shop:catalog:write \
+  --expires-at 2026-12-01T00:00:00.000Z --mode propose
+```
+
+Over HTTP the creation body carries `"mode": "propose"`. On a propose-mode key
+`shop:catalog:write` and `shop:settings:write` grant only
+`proposal:submit:catalog` and `proposal:submit:settings` instead of the live
+write capabilities, and `shop:fulfilment:write` and `shop:integrations:write`
+are refused at creation with `400`. The key lists, reads and withdraws only its
+own proposals under `/api/m2m/shop/proposals` (CLI `shop proposals
+list|show|withdraw`); a direct-mode key is refused there with `403`. The key
+list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`)
+shows each key's mode. Revoking or purging a propose-mode key withdraws its
+pending proposals in the same transaction.
+
+A receipt carries the submitted input, the target id and the status, never the
+effect or any live value, so a write-only propose-mode key reads nothing it
+could not read before. See [Change proposals](change-proposals.md) for the
+route classes, statuses, limits and what is not available yet.
 
 ## Authenticating a request
 
@@ -383,6 +419,12 @@ sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `30x` answer fails the call with `internal` (CLI exit code 10) and the message
 `Shop management request to <path> refused a redirect`, so the key never
 reaches another URL. Use it only from a backend.
+
+The ten catalogue writes resolve to `{ outcome: 'applied', ... }` with the
+resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
+the [receipt](change-proposals.md#receipts) for a propose-mode key;
+`isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
+and `withdrawProposal` reach the key's own proposals.
 
 ## Product covers and sales links
 

@@ -108,9 +108,11 @@ pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:r
 scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
 `api-keys revoke <id>`. Studio integrations also supports report keys.
 
-`api-keys shop-management create <name> --scope <shop:*...> --expires-at <ISO>`
+`api-keys shop-management create <name> --scope <shop:*...> --expires-at <ISO> [--mode direct|propose]`
 creates a [shop management key](shop-management-keys.md); it requires `shop:*`
-scopes and an expiry at most 30 days ahead. `api-keys shop-management list` and
+scopes and an expiry at most 30 days ahead. `--mode propose` creates a key whose
+writes become [change proposals](change-proposals.md) instead of live changes;
+`direct` is the default. `api-keys shop-management list` and
 `api-keys shop-management revoke <id>` list and revoke them; `api-keys list`,
 `create` and `revoke` handle only the other keys.
 `api-keys shop-management purge --yes` deletes every shop management key of the
@@ -118,9 +120,16 @@ workspace, revoked or not, and prints the count; it refuses without `--yes`.
 `api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
 lists the workspace's shop management key history (creation, revocation, purge
 and keyed mutating requests handed to a shop route handler), newest first.
-The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations` commands use such a key from the environment
+The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations|proposals` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
-the stored session; see the guide for the full command list.
+the stored session; see the guide for the full command list. With a
+propose-mode key the catalogue commands print the proposal receipt and exit
+`0` when the server answers `202`, and `shop proposals list|show|withdraw`
+reach that key's own proposals.
+`proposals list [--status <status>] [--cursor <id>] [--limit <n>]`,
+`proposals show <id>` and `proposals reject <id> [--note <text>]` let the owner,
+in their own session, read every change proposal of the workspace with its
+before/after effect and reject one.
 
 Supply the secret through an environment variable, using the same
 `--api-key-env <name>` mechanism as marketing commands. Reports default to

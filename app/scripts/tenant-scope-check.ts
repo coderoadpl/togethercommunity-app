@@ -166,7 +166,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   SesOnboardingControlPlane: 'External SES and SNS control-plane boundary.',
   ShipOrderDeps: 'Use-case email dispatch callback.',
   ShipxClient: 'External InPost ShipX API boundary; callers resolve tenant credentials.',
-  ShopMachineRoute: 'Route registration descriptor; its handler receives a request whose workspace the shop key authenticator already resolved.',
+  ShopMachineRouteFields: 'Route registration descriptor; its handler receives a request whose workspace the shop key authenticator already resolved.',
   ShipxIntegrationDeps: 'Server composition polling wait callback.',
   ShutdownPlan: 'Process shutdown callbacks with no persistence access.',
   SmtpTransport: 'External SMTP delivery boundary.',

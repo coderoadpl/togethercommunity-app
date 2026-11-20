@@ -99,6 +99,8 @@ export const runAttributionPurchase = async (webBaseUrl: string): Promise<void> 
     assert(checkoutUrl.searchParams.get('utm_source') === 'meta' && checkoutUrl.searchParams.get('fbclid') === 'X',
       'the checkout redirect lost campaign parameters');
     await page.locator('#checkout-email').fill('attribution-buyer@together.dev');
+    assert((await page.getByTestId('checkout-steps').count()) === 0,
+      'a free order that never reaches Stripe showed the Stripe step indicator');
     await page.getByTestId('terms-consent').getByRole('checkbox').check();
     await page.getByTestId('checkout-pay-cta').click();
     await page.getByRole('heading', { name: en.checkout.successTitle }).waitFor({ state: 'visible', timeout: 15000 });

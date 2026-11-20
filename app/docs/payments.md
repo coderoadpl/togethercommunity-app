@@ -232,11 +232,17 @@ whose mapped value is already an active Stripe promotion code in the account,
 gets a Stripe-generated code. The Stripe coupon name shows at most the first 40
 characters of the code. Local codes are stored and validated unchanged. See
 [Sales links](sales-links.md) for the preview and limiter details.
-Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
-account-level setting even when Together overrides the acceptance message with
-links to the tenant's terms and privacy policy. Together records accepted consent
+Set a valid terms URL once in the Stripe account Dashboard (**Settings → Business
+→ Public details → Terms of service**, in live mode and again in test mode);
+Stripe requires this account-level setting even when Together overrides the
+acceptance message with links to the tenant's terms and privacy policy. Without
+it Stripe refuses to create the session. Together records accepted consent
 against the exact URLs saved in session metadata. Missing tenant legal URLs show
-an error page and prevent session creation.
+an error page and prevent session creation. When Stripe refuses the handoff
+because the Dashboard terms URL is missing, the buyer is sent to the Together page
+of the same link (`?checkout=together&terms=page`, keeping the code, the
+campaign fields and the return address), which asks for the terms itself; see
+[Stripe accounts without a Dashboard terms URL](#stripe-accounts-without-a-dashboard-terms-url).
 
 Webhook fulfillment uses the session customer details for email, name, billing
 address when supplied, and tax IDs. Polish `eu_vat` IDs starting with `PL` are
@@ -278,8 +284,78 @@ A sales link with product purchase consent checkboxes keeps the Together page at
 `?checkout=together`, because Stripe has no custom checkbox field. Its existing
 billing and coupon flow remains available. Both tenant legal URLs are required
 on this fallback page and its checkout endpoint too. Success and cancellation return to the
-Together page and cannot restart the automatic redirect. The single-product
-checkout page retains its existing behavior.
+Together page and cannot restart the automatic redirect.
+
+### Terms acceptance on the Together checkout page
+
+When the workspace has both a terms URL and a privacy URL, the Together page
+(`/checkout/<productRef>` and `/offer/<slug>?checkout=together`) does not ask for
+the terms or the email before a paid order. Stripe collects both: the session sets
+`consent_collection.terms_of_service: 'required'`, the same
+`custom_text.terms_of_service_acceptance` links as the direct handoff (in the
+checkout language, falling back to the workspace default language), and
+`customer_email` only when Together knows the email: typed on the page, required
+by a coupon with a per-member limit, or the signed-in buyer's account email.
+The session metadata carries `stripeTerms: 'true'` with the shown terms and
+privacy URLs. Tax ID collection and the promotion-code field stay off: the page
+keeps its own invoice data and coupon rows.
+
+The page still stores its consent capture before the session starts, with the
+selected marketing consents, the attached consent definitions, the invoice data
+and the request evidence. The webhook refuses a paid session without
+`consent.terms_of_service === 'accepted'` or without both URLs in its metadata,
+exactly as it refuses such a direct checkout. On acceptance it stores a capture
+`stripe:<session id>` that adds the accepted terms and the Stripe-shown URLs to the
+page capture, records the terms consent against those URLs and the marketing
+consents from the page, and takes the order billing from the page capture. A
+consent job retried later reads that capture, so it needs nothing from the Stripe
+event.
+
+An order with nothing to pay (a zero price, or a coupon that covers a one-time
+order without delivery) never reaches Stripe: it still needs the email and the
+terms acceptance from the page. A coupon without a per-member limit no longer
+needs an email before a paid order. A workspace with only one legal URL, or none,
+keeps the earlier behaviour: the page asks for the terms when one URL is set, and
+a sales link still refuses to start without both. The cart checkout
+(`/checkout/cart/pay`) keeps the terms and the email on its page.
+
+### Stripe accounts without a Dashboard terms URL
+
+Stripe collects the terms only when the workspace's Stripe account has a terms
+of service URL in **Settings → Business → Public details** of its Dashboard
+(<https://dashboard.stripe.com/settings/public>), set separately in live mode and
+in test mode. Stripe's reference for `consent_collection.terms_of_service` says
+"There must be a valid terms of service URL set in your Dashboard settings", and
+without it the session request fails with an `invalid_request_error` whose
+message reads "You cannot collect consent to your terms of service unless a URL
+is set in the Stripe Dashboard". The workspace owner sets that URL once, usually
+to the same terms URL as in the workspace settings.
+
+Until then no paid checkout is lost. The Stripe adapter recognises exactly this
+refusal (an `invalid_request_error` on a session that asked for the terms, whose
+message names the terms of service and the Dashboard or the public details, or
+whose parameter is `consent_collection[terms_of_service]`) and returns
+`integration_not_configured` with `details.paymentRefusal:
+'stripe_terms_url_missing'`; every other Stripe error stays the usual diagnostic.
+The stock reserved for the attempt is released like after any failed session
+start, and the server logs a warning naming the workspace. The Together page
+then switches to its own terms mode for this buyer: it shows the terms checkbox
+and, when the email is unknown, the email field, keeps the chosen delivery,
+locker, invoice data, discount code and personalisation, and shows one line
+asking the buyer to accept the terms there. The next request carries
+`termsOnPage: true`, which makes the server take the page-terms path for that
+attempt: no `consent_collection`, no `stripeTerms` metadata, and a refusal
+without `termsAccepted: true`, as for a workspace with one legal URL. The webhook
+fulfils such a session from the page capture. A direct sales-link handoff refused
+for the same reason redirects to the Together page with `terms=page`, so that page
+starts in its terms mode. Together does not remember the refusal between buyers:
+each new buyer first tries the Stripe terms, so setting the Dashboard URL takes
+effect at once.
+
+Parcel-locker delivery keeps Stripe's shipping address collection: Stripe does
+not document whether `shipping_options` works without
+`shipping_address_collection`, so the buyer of a locker delivery still enters an
+address and a phone number in Stripe.
 
 ## Shipping in Stripe Checkout
 

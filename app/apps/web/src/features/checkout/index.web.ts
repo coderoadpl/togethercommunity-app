@@ -2,6 +2,7 @@ export {
   createCheckoutState,
   geowidgetAccess,
   parseGeowidgetPoint,
+  pickedPickupPoint,
   reduceCheckoutState,
   selectDelivery,
   type CheckoutState,

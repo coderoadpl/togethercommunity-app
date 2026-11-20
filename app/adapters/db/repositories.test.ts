@@ -1971,6 +1971,14 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
         termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy',
       });
       const transaction = createPaymentTransactionPort(db);
+      const captures = createCheckoutConsentCaptureRepository(db);
+      await captures.create(ACME, {
+        id: eventId, createdAt: NOW,
+        capture: {
+          termsAccepted: true, selectedDefinitionIds: [definitionId], attachedDefinitionIds: [definitionId],
+          collectedAt: NOW, confirmationBaseUrl: 'https://acme.example/marketing/confirm',
+        },
+      });
       let sequence = 0;
       const deliver = async (fail: boolean) => {
         const claimed = await paymentEvents.claim(ACME, event, lease);
@@ -1994,13 +2002,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
             tenants: { ...createTenantRepository(db), findSettings: async () => settings },
             ids: { nextId: () => `${eventId}-${++sequence}` }, clock: { nowIso: () => NOW },
             marketing: { definitions },
-            checkoutConsentCaptures: {
-              create: async () => undefined,
-              findById: async () => ({
-                termsAccepted: true, selectedDefinitionIds: [definitionId], attachedDefinitionIds: [definitionId],
-                collectedAt: NOW, confirmationBaseUrl: 'https://acme.example/marketing/confirm',
-              }),
-            },
+            checkoutConsentCaptures: captures,
           }, {
             ...repositories,
             emailOutbox: {
@@ -2036,6 +2038,61 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       expect(await db.select().from(emailOutbox).where(and(eq(emailOutbox.tenantId, ACME), eq(emailOutbox.to, email)))).toHaveLength(1);
     },
   );
+
+  it('records the consents of a capture written earlier in the same payment transaction although the pool cannot see it yet', async () => {
+    const sessionId = 'cs-stripe-terms-capture';
+    const captureId = `stripe:${sessionId}`;
+    const email = 'stripe-terms@example.test';
+    const definitions = createConsentDefinitionRepository(db);
+    const definitionId = 'definition-stripe-terms';
+    const documentRef = { mode: 'url' as const, url: 'https://acme.example/privacy' };
+    await definitions.create(ACME, {
+      id: definitionId, tenantId: ACME, key: 'stripe-terms', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef, status: 'active', createdAt: NOW, updatedAt: NOW,
+    }, {
+      id: `${definitionId}-v1`, tenantId: ACME, definitionId, version: 1,
+      label: 'News', documentVersionRef: documentRef, createdAt: NOW, createdBy: null,
+    });
+    const tenant = await createTenantRepository(db).findById(ACME);
+    if (tenant === null) throw new Error('Missing test tenant');
+    const paidOrder = order({ id: 'order-stripe-terms-capture', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme' });
+    const poolCaptures = createCheckoutConsentCaptureRepository(db);
+    let sequence = 0;
+    const result = await createPaymentTransactionPort(db).run(async (repositories) => {
+      await repositories.orders.create(ACME, paidOrder);
+      await repositories.checkoutConsentCaptures?.create(ACME, {
+        id: captureId, createdAt: NOW,
+        capture: {
+          termsAccepted: true, termsUrl: 'https://acme.example/terms-at-stripe', privacyUrl: 'https://acme.example/privacy-at-stripe',
+          selectedDefinitionIds: [definitionId], attachedDefinitionIds: [definitionId],
+          collectedAt: NOW, confirmationBaseUrl: 'https://acme.example/marketing/confirm',
+        },
+      });
+      expect(await poolCaptures.findById(ACME, captureId)).toBeNull();
+      return repositories.consentTransaction.run((nested) => recordFulfilledCheckoutConsents(tenant, {
+        id: `evt-${sessionId}`, type: 'checkout.session.completed', objectId: sessionId,
+        checkoutSession: {
+          email, subscriptionId: null, paymentIntentId: null,
+          metadata: {
+            tenantId: ACME, productId: paidOrder.productId, priceId: null,
+            memberEmail: null, language: 'en', checkoutConsentCaptureId: captureId,
+          },
+        },
+      }, paidOrder, {
+        consentTokens: { nextToken: () => `token-${sessionId}-${String(++sequence)}` },
+        tenants: createTenantRepository(db),
+        ids: { nextId: () => `${sessionId}-${String(++sequence)}` }, clock: { nowIso: () => NOW },
+        marketing: { definitions },
+        checkoutConsentCaptures: poolCaptures,
+      }, nested));
+    });
+    expect(result).toEqual(ok(true));
+    expect(await createTermsConsentRepository(db).listByEmail(ACME, email)).toMatchObject([{
+      source: 'checkout', termsUrl: 'https://acme.example/terms-at-stripe', privacyUrl: 'https://acme.example/privacy-at-stripe',
+    }]);
+    expect(await createMarketingConsentRepository(db).listByEmail(ACME, email)).toHaveLength(1);
+    expect(await poolCaptures.findById(ACME, captureId)).toMatchObject({ termsAccepted: true });
+  });
 
   it('commits fulfillment with a pending consent job, isolates tenants, and serializes consent replay', async () => {
     const transaction = createPaymentTransactionPort(db);

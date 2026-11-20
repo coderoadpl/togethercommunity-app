@@ -2701,12 +2701,12 @@ export interface ChangeProposalPage {
   nextCursor: string | null;
 }
 
-export type ChangeProposalCreation =
+type ChangeProposalCreation =
   | { kind: 'created'; proposal: ChangeProposal }
   | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
   | { kind: 'key_inactive' };
 
-export interface ChangeProposalTransition {
+interface ChangeProposalTransition {
   status: ChangeProposalTerminalStatus;
   decidedByUserId: string | null;
   decidedAt: string;

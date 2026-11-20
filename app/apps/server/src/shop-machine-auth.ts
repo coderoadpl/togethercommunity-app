@@ -56,9 +56,9 @@ type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementK
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-export type ShopMachineRefusalReason = 'secret' | 'side-effect' | 'not-in-release';
+type ShopMachineRefusalReason = 'secret' | 'side-effect' | 'not-in-release';
 
-export type ShopMachineProposeMode =
+type ShopMachineProposeMode =
   | { kind: 'proposal'; operation: ChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
   | { kind: 'refuse'; reason: ShopMachineRefusalReason }
   | { kind: 'direct'; reason: string };

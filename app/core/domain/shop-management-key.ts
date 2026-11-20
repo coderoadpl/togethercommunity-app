@@ -113,7 +113,6 @@ const capabilitiesByShopManagementKeyMode: Record<ShopManagementKeyMode, Record<
   propose: proposeModeCapabilitiesByShopManagementScope,
 };
 
-// Every propose-mode key may list, read and withdraw its own proposals, whatever its scopes.
 const capabilitiesOfEveryKeyByMode: Record<ShopManagementKeyMode, readonly Capability[]> = {
   direct: [],
   propose: ['proposal:own:manage'],

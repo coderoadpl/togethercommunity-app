@@ -4,11 +4,11 @@ import type { Capability } from './authorization.js';
 import { appError, type AppError } from './errors.js';
 import type { ShopManagementKey } from './shop-management-key.js';
 
-export const changeProposalTargetKindSchema = z.enum(['product', 'price', 'sales-link', 'settings']);
+const changeProposalTargetKindSchema = z.enum(['product', 'price', 'sales-link', 'settings']);
 
 export type ChangeProposalTargetKind = z.output<typeof changeProposalTargetKindSchema>;
 
-export const changeProposalFamilySchema = z.enum(['catalog', 'settings']);
+const changeProposalFamilySchema = z.enum(['catalog', 'settings']);
 
 export type ChangeProposalFamily = z.output<typeof changeProposalFamilySchema>;
 
@@ -18,7 +18,7 @@ interface ChangeProposalOperationDefinition {
   targetKind: ChangeProposalTargetKind;
 }
 
-export const CHANGE_PROPOSAL_OPERATION_DEFINITIONS = [
+const CHANGE_PROPOSAL_OPERATION_DEFINITIONS = [
   { operation: 'product.create', family: 'catalog', targetKind: 'product' },
   { operation: 'product.update', family: 'catalog', targetKind: 'product' },
   { operation: 'product.publish', family: 'catalog', targetKind: 'product' },
@@ -75,7 +75,7 @@ export const changeProposalDisplayStatusSchema = z.enum([...changeProposalStatus
 
 export type ChangeProposalDisplayStatus = z.output<typeof changeProposalDisplayStatusSchema>;
 
-export const changeProposalEventKindSchema = z.enum([
+const changeProposalEventKindSchema = z.enum([
   'proposed',
   'applied',
   'rejected',
@@ -95,7 +95,7 @@ export const CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS: Record<ChangeProposalTerminal
   failed: 'apply_failed',
 };
 
-export const CHANGE_PROPOSAL_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const CHANGE_PROPOSAL_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const CHANGE_PROPOSAL_LIMITS = {
   pendingPerKey: 200,
@@ -117,7 +117,7 @@ export const CHANGE_PROPOSAL_WITHDRAWAL_NOTES = {
   keyPurged: 'key_purged',
 } as const;
 
-export const changeProposalCapSchema = z.enum(['key_pending', 'workspace_pending', 'key_daily', 'effect_size']);
+const changeProposalCapSchema = z.enum(['key_pending', 'workspace_pending', 'key_daily', 'effect_size']);
 
 export type ChangeProposalCap = z.output<typeof changeProposalCapSchema>;
 
@@ -150,14 +150,14 @@ const changeProposalFieldChangeSchema = z.object({ before: jsonValueSchema, afte
 
 const changeProposalDeltaChangeSchema = z.object({ delta: z.number().int() }).strict();
 
-export const changeProposalEffectSchema = z.record(
+const changeProposalEffectSchema = z.record(
   z.string().min(1),
   z.union([changeProposalFieldChangeSchema, changeProposalDeltaChangeSchema]),
 );
 
 export type ChangeProposalEffect = z.output<typeof changeProposalEffectSchema>;
 
-export const changeProposalEffectBytes = (effect: ChangeProposalEffect): number =>
+const changeProposalEffectBytes = (effect: ChangeProposalEffect): number =>
   new TextEncoder().encode(JSON.stringify(effect)).length;
 
 export const changeProposalEffectWithinLimit = (effect: ChangeProposalEffect): boolean =>
@@ -167,7 +167,7 @@ const timestampSchema = z.string().datetime({ precision: 3 });
 
 const identifierSchema = z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.identifierMaxLength);
 
-export const changeProposalTargetSchema = z.object({
+const changeProposalTargetSchema = z.object({
   kind: changeProposalTargetKindSchema,
   id: identifierSchema.nullable(),
 }).strict();
@@ -235,7 +235,7 @@ export const changeProposalDisplayStatus = (
 export const changeProposalExpiresAt = (createdAt: string): string =>
   new Date(Date.parse(createdAt) + CHANGE_PROPOSAL_LIFETIME_MS).toISOString();
 
-export const changeProposalKeyStateSchema = z.enum(['active', 'expired', 'revoked', 'purged']);
+const changeProposalKeyStateSchema = z.enum(['active', 'expired', 'revoked', 'purged']);
 
 export type ChangeProposalKeyState = z.output<typeof changeProposalKeyStateSchema>;
 
@@ -248,7 +248,7 @@ export const changeProposalKeyState = (
   return Date.parse(key.expiresAt) <= Date.parse(now) ? 'expired' : 'active';
 };
 
-export const changeProposalEventViewSchema = z.object({
+const changeProposalEventViewSchema = z.object({
   sequence: z.number().int().min(1),
   kind: changeProposalEventKindSchema,
   actorUserId: z.string().nullable(),
@@ -352,7 +352,7 @@ export const submitChangeProposalInputSchema = z.object({
 
 export type SubmitChangeProposalInput = z.input<typeof submitChangeProposalInputSchema>;
 
-export const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEventView => ({
+const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEventView => ({
   sequence: event.sequence,
   kind: event.kind,
   actorUserId: event.actorUserId,

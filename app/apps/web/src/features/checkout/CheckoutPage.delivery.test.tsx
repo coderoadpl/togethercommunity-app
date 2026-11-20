@@ -15,6 +15,7 @@ import { CheckoutPage } from './CheckoutPage.js';
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
+const following = (first: Element, second: Element) => (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
 const offer = (deliveryMethod: 'pickup' | 'shipping') => ({
   tenant: { slug: 'acme', name: 'Acme School' },
@@ -127,6 +128,24 @@ describe('checkout delivery step', () => {
     document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
     expect(await screen.findByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop · Main Street 1, 30-001 Cracow');
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
+  });
+
+  it('announces the picked locker right under the locker option, above the map, with the code field below the map', async () => {
+    serve({ token: 'public-map-token' });
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const host = await screen.findByTestId('checkout-inpost-geowidget');
+    const option = screen.getByTestId('checkout-delivery-option-locker');
+    const status = within(screen.getByTestId('checkout-locker-picker')).getByRole('status');
+    expect(status).toBeEmptyDOMElement();
+    expect(status).toHaveStyle({ marginBottom: '0px' });
+    expect(option.nextElementSibling).toBe(screen.getByTestId('checkout-locker-picker'));
+    expect(following(status, host)).toBe(true);
+    expect(following(host, screen.getByLabelText(en.shipping.lockerCodeLabel))).toBe(true);
+
+    const eventName = host.querySelector('inpost-geowidget')?.getAttribute('onpoint') ?? '';
+    document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
+    expect(await within(status).findByTestId('checkout-pickup-point-selected')).toHaveTextContent(`${en.shipping.lockerSelected}: KRA010`);
   });
 
   it('aligns the locker code hint with the field edge', async () => {

@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react';
 import {
+  Box,
   FormControl,
   FormControlLabel,
   FormHelperText,
@@ -35,30 +36,34 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
   const lockerHint = layout === 'list' || geowidget.status === 'map' ? t.shipping.lockerCodeMapHint : t.shipping.lockerCodeHint;
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
-    <Stack useFlexGap spacing="0.75rem" sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker">
-      {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
-      {geowidget.status === 'withheld_for_staff' ? (
-        <Typography variant="body2" color="text.secondary" data-testid="checkout-locker-map-staff-hint">{t.shipping.lockerMapStaffHint}</Typography>
-      ) : null}
-      <FormControl fullWidth error={codeInvalid}>
-        <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
-        <OutlinedInput
-          id="checkout-pickup-point"
-          value={state.pickupPointCode}
-          disabled={disabled}
-          required
-          inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': 'checkout-pickup-point-hint', 'data-testid': 'checkout-pickup-point' }}
-          onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
-          onBlur={() => setCodeBlurred(true)}
-        />
-        <FormHelperText id="checkout-pickup-point-hint" sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : lockerHint}</FormHelperText>
-      </FormControl>
-      {state.pickupPoint === null ? null : (
-        <Typography variant="body2" data-testid="checkout-pickup-point-selected">
-          {[`${t.shipping.lockerSelected}: ${state.pickupPoint.code}`, state.pickupPoint.name, state.pickupPoint.address].filter((value) => value !== null).join(' · ')}
-        </Typography>
-      )}
-    </Stack>
+    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker">
+      <Typography role="status" variant="body2" sx={{ mb: state.pickupPoint === null ? 0 : '0.75rem' }}>
+        {state.pickupPoint === null ? null : (
+          <span data-testid="checkout-pickup-point-selected">
+            {[`${t.shipping.lockerSelected}: ${state.pickupPoint.code}`, state.pickupPoint.name, state.pickupPoint.address].filter((value) => value !== null).join(' · ')}
+          </span>
+        )}
+      </Typography>
+      <Stack useFlexGap spacing="0.75rem">
+        {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
+        {geowidget.status === 'withheld_for_staff' ? (
+          <Typography variant="body2" color="text.secondary" data-testid="checkout-locker-map-staff-hint">{t.shipping.lockerMapStaffHint}</Typography>
+        ) : null}
+        <FormControl fullWidth error={codeInvalid}>
+          <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
+          <OutlinedInput
+            id="checkout-pickup-point"
+            value={state.pickupPointCode}
+            disabled={disabled}
+            required
+            inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': 'checkout-pickup-point-hint', 'data-testid': 'checkout-pickup-point' }}
+            onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
+            onBlur={() => setCodeBlurred(true)}
+          />
+          <FormHelperText id="checkout-pickup-point-hint" sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : lockerHint}</FormHelperText>
+        </FormControl>
+      </Stack>
+    </Box>
   ) : null;
   return (
     <FormControl data-testid="checkout-delivery">

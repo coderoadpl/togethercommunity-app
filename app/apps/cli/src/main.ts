@@ -1,4 +1,4 @@
-import { changeProposalDisplayStatusSchema, deliveryMethodSchema, entitlementKeyScopeSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalDisplayStatusSchema, deliveryMethodSchema, entitlementKeyMatchSchema, entitlementKeyScopeSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -4074,6 +4074,7 @@ const entitlementKeyCreateOptionsSchema = z.object({
   scope: z.array(entitlementKeyScopeSchema).min(1).default(['entitlements:check']),
   expiresAt: z.string().datetime(),
   product: z.array(z.string().min(1)).min(1).optional(),
+  match: entitlementKeyMatchSchema.optional(),
 });
 
 entitlementKey
@@ -4082,6 +4083,7 @@ entitlementKey
   .option('--scope <scope...>', 'entitlements:check (default) and optionally entitlements:members:read, which adds member ids, member id lookups and lapsed subscriptions')
   .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 90 days ahead')
   .option('--product <id...>', 'Products the key may check; without it the key covers every product of the workspace')
+  .option('--match <mode>', 'verified (default): only addresses proven by signing in to the workspace; purchase-email: also the e-mail a paid order or a paying subscription was bought with, unproven, only for an application that verifies e-mail addresses itself')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), entitlementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
@@ -4090,9 +4092,10 @@ entitlementKey
           scopes: options.scope,
           expiresAt: options.expiresAt,
           ...(options.product === undefined ? {} : { productIds: options.product }),
+          ...(options.match === undefined ? {} : { match: options.match }),
         }),
         ctx.json,
-        (data) => `created entitlement key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+        (data) => `created entitlement key ${data.apiKey.name} (${data.apiKey.id}), match ${data.apiKey.match}\nsecret (shown once): ${data.secret}`,
       );
     }),
   );
@@ -4103,7 +4106,7 @@ entitlementKey.command('list').description('List entitlement keys (no secrets)')
       data.apiKeys.length === 0
         ? 'no entitlement keys'
         : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t${k.productIds === null ? 'all products' : k.productIds.join(',')}\t(${k.id})`)
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t${k.productIds === null ? 'all products' : k.productIds.join(',')}\tmatch ${k.match}\t(${k.id})`)
             .join('\n'),
     );
   }),

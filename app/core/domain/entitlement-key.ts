@@ -6,6 +6,10 @@ export const entitlementKeyScopeSchema = z.enum(['entitlements:check', 'entitlem
 
 export type EntitlementKeyScope = z.output<typeof entitlementKeyScopeSchema>;
 
+export const entitlementKeyMatchSchema = z.enum(['verified', 'purchase-email']);
+
+export type EntitlementKeyMatch = z.output<typeof entitlementKeyMatchSchema>;
+
 export const ENTITLEMENT_KEY_MAX_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
 
 export const ENTITLEMENT_KEY_MAX_PRODUCTS = 50;
@@ -22,6 +26,7 @@ export const entitlementKeySchema = z.object({
   keyHash: z.string().min(1),
   scopes: scopesSchema,
   productIds: z.array(productIdSchema).min(1).max(ENTITLEMENT_KEY_MAX_PRODUCTS).nullable(),
+  match: entitlementKeyMatchSchema,
   issuedByUserId: z.string().min(1),
   createdAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -40,6 +45,7 @@ export const toEntitlementKeyPublic = (key: EntitlementKey): EntitlementKeyPubli
   name: key.name,
   scopes: key.scopes,
   productIds: key.productIds,
+  match: key.match,
   issuedByUserId: key.issuedByUserId,
   createdAt: key.createdAt,
   expiresAt: key.expiresAt,
@@ -51,6 +57,7 @@ export const createEntitlementKeyInputSchema = z.object({
   scopes: scopesSchema,
   expiresAt: z.string().datetime(),
   productIds: z.array(productIdSchema).min(1).max(ENTITLEMENT_KEY_MAX_PRODUCTS).optional(),
+  match: entitlementKeyMatchSchema.default('verified'),
 }).strict();
 
 export type CreateEntitlementKeyInput = z.input<typeof createEntitlementKeyInputSchema>;

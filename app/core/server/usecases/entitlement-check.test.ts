@@ -92,12 +92,21 @@ const subscription = (memberId: string, productId: string, overrides: Partial<Me
   ...overrides,
 });
 
+interface PaidOrder {
+  memberId: string;
+  productIds: string[];
+  status: 'paid' | 'refunded' | 'partially_refunded' | 'pending';
+  cancelled?: boolean;
+  mode?: 'live' | 'test';
+}
+
 interface World {
   accounts: { email: string; userId: string; emailVerified: boolean }[];
   members: Member[];
   grants: ProductGrant[];
   subscriptions: MemberSubscription[];
   signedIn?: string[];
+  orders?: PaidOrder[];
 }
 
 const isActive = (row: ProductGrant, now: string): boolean =>
@@ -114,6 +123,12 @@ const harness = (world: Partial<World> = {}) => {
       state.members.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null),
     findMemberById: vi.fn(async (tenantId: string, memberId: string) =>
       state.members.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null),
+    findMembersByEmail: vi.fn(async (tenantId: string, email: string) =>
+      state.members.filter((row) => row.tenantId === tenantId && row.email.trim().toLowerCase() === email).slice(0, 2)),
+    listPaidOrderProductIds: vi.fn(async (_tenantId: string, memberId: string) =>
+      (state.orders ?? [])
+        .filter((order) => order.memberId === memberId && order.status === 'paid' && order.cancelled !== true && (order.mode ?? 'live') === 'live')
+        .flatMap((order) => order.productIds)),
     hasSignedIn: vi.fn(async (tenantId: string, memberId: string) =>
       (state.signedIn ?? state.members.map((row) => row.id)).includes(memberId) && state.members.some((row) => row.tenantId === tenantId && row.id === memberId)),
     listActiveGrants: vi.fn(async (tenantId: string, memberId: string, now: string) =>
@@ -133,8 +148,9 @@ const checkOne = async (
   productIds: string[] | null = ['prod-pro'],
   ctx: Ctx = keyCtx(),
   keyProducts: readonly string[] | null = null,
+  match: 'verified' | 'purchase-email' = 'verified',
 ) => {
-  const result = await checkEntitlements(ctx, { subjects: [subject], ...(productIds === null ? {} : { productIds }) }, { productIds: keyProducts }, h.deps);
+  const result = await checkEntitlements(ctx, { subjects: [subject], ...(productIds === null ? {} : { productIds }) }, { productIds: keyProducts, match }, h.deps);
   if (!result.ok) throw new Error(result.error.message);
   const [first] = result.value.results;
   if (first === undefined) throw new Error('no result');
@@ -151,13 +167,14 @@ describe('checkEntitlements', () => {
       grants: [grant('m-ada', 'prod-pro', { expiresAt: '2026-12-23T00:00:00.000Z' })],
       subscriptions: [subscription('m-ada', 'prod-pro')],
     });
-    const result = await checkEntitlements(keyCtx(), { subjects: [{ email: ' Ada@Example.test ' }], productIds: ['prod-pro'] }, { productIds: null }, h.deps);
+    const result = await checkEntitlements(keyCtx(), { subjects: [{ email: ' Ada@Example.test ' }], productIds: ['prod-pro'] }, { productIds: null, match: 'verified' }, h.deps);
     expect(result).toEqual({
       ok: true,
       value: {
         version: 1,
         results: [{
           subject: { email: 'ada@example.test' },
+          identity: 'verified',
           products: [{
             productId: 'prod-pro',
             access: true,
@@ -231,6 +248,92 @@ describe('checkEntitlements', () => {
     expect((await checkOne(h, { email: imported.email })).products).toEqual([NO_ACCESS]);
     const byId = await checkOne(h, { memberId: 'm-imported' }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
     expect([byId.member, byId.products]).toEqual([null, [NO_ACCESS]]);
+  });
+
+  describe('purchase-email keys', () => {
+    const BUYER = { email: 'buyer@example.test', userId: 'user-buyer', emailVerified: false };
+    const freshBuyer = (overrides: Partial<World> = {}) => harness({
+      accounts: [BUYER],
+      members: [member('m-buyer', BUYER.userId, { email: BUYER.email })],
+      grants: [grant('m-buyer', 'prod-pro')],
+      orders: [{ memberId: 'm-buyer', productIds: ['prod-pro'], status: 'paid' }],
+      signedIn: [],
+      ...overrides,
+    });
+    const purchaseCheck = (h: ReturnType<typeof harness>, email: string, productIds: string[] | null = ['prod-pro'], ctx: Ctx = keyCtx()) =>
+      checkOne(h, { email }, productIds, ctx, null, 'purchase-email');
+
+    it('matches a fresh unverified buyer with a paid order only on a purchase-email key and says how', async () => {
+      const h = freshBuyer();
+      expect(await checkOne(h, { email: BUYER.email })).toMatchObject({ identity: null, products: [NO_ACCESS] });
+      expect(await purchaseCheck(h, BUYER.email)).toEqual({
+        subject: { email: BUYER.email },
+        identity: 'purchase-email',
+        products: [{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: NOW }],
+        member: null,
+      });
+    });
+
+    it.each([' Buyer@Example.TEST ', 'BUYER@example.test'])('normalizes the queried address %j the way checkout does', async (email) => {
+      expect((await purchaseCheck(freshBuyer(), email)).identity).toBe('purchase-email');
+    });
+
+    it.each([
+      ['an order cancelled as sold out', { orders: [{ memberId: 'm-buyer', productIds: ['prod-pro'], status: 'paid' as const, cancelled: true }], grants: [] }],
+      ['a refunded order', { orders: [{ memberId: 'm-buyer', productIds: ['prod-pro'], status: 'refunded' as const }] }],
+      ['a partially refunded order', { orders: [{ memberId: 'm-buyer', productIds: ['prod-pro'], status: 'partially_refunded' as const }] }],
+      ['a test-mode order', { orders: [{ memberId: 'm-buyer', productIds: ['prod-pro'], status: 'paid' as const, mode: 'test' as const }] }],
+      ['an owner grant without a payment', { orders: [], grants: [grant('m-buyer', 'prod-pro', { source: 'manual' })] }],
+      ['an import without a payment', { orders: [], grants: [grant('m-buyer', 'prod-pro', { source: 'import' })] }],
+      ['a self-registered account without a payment', { orders: [], grants: [] }],
+      ['a paid order for another product', { orders: [{ memberId: 'm-buyer', productIds: ['prod-other'], status: 'paid' as const }] }],
+      ['a lapsed subscription', { orders: [], grants: [grant('m-buyer', 'prod-pro', { expiresAt: '2026-11-01T00:00:00.000Z' })], subscriptions: [subscription('m-buyer', 'prod-pro', { status: 'canceled' })] }],
+    ])('never matches an unverified address through %s', async (_label, overrides) => {
+      const answer = await purchaseCheck(freshBuyer(overrides), BUYER.email);
+      expect(answer).toEqual({ subject: { email: BUYER.email }, identity: null, products: [NO_ACCESS], member: null });
+    });
+
+    it('matches an unverified subscriber whose subscription still pays', async () => {
+      const h = freshBuyer({ orders: [], grants: [grant('m-buyer', 'prod-pro', { expiresAt: '2026-12-23T00:00:00.000Z' })], subscriptions: [subscription('m-buyer', 'prod-pro', { status: 'past_due' })] });
+      expect((await purchaseCheck(h, BUYER.email)).products[0]).toMatchObject({ access: true, source: 'subscription' });
+    });
+
+    it('answers only the products the address paid for, never an owner grant beside them', async () => {
+      const h = freshBuyer({ grants: [grant('m-buyer', 'prod-pro'), grant('m-buyer', 'prod-gift', { source: 'manual' })] });
+      expect((await purchaseCheck(h, BUYER.email, null)).products.map((entry) => entry.productId)).toEqual(['prod-pro']);
+      expect((await purchaseCheck(h, BUYER.email, ['prod-gift'])).products).toEqual([{ ...NO_ACCESS, productId: 'prod-gift' }]);
+    });
+
+    it('fails closed when two member rows share the address', async () => {
+      const h = freshBuyer({ members: [member('m-buyer', BUYER.userId, { email: BUYER.email }), member('m-twin', 'user-twin', { email: BUYER.email })] });
+      expect((await purchaseCheck(h, BUYER.email)).identity).toBeNull();
+    });
+
+    it('keeps the verified answer for a person who signed in', async () => {
+      const h = freshBuyer({ accounts: [{ ...BUYER, emailVerified: true }], signedIn: ['m-buyer'], grants: [grant('m-buyer', 'prod-pro'), grant('m-buyer', 'prod-gift', { source: 'manual' })] });
+      const answer = await purchaseCheck(h, BUYER.email, null);
+      expect([answer.identity, answer.products.map((entry) => entry.productId)]).toEqual(['verified', ['prod-gift', 'prod-pro']]);
+    });
+
+    it('runs the same lookups for a buyer, a verified person and someone unknown', async () => {
+      const buyer = freshBuyer();
+      const verified = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)] });
+      const unknown = harness();
+      await purchaseCheck(buyer, BUYER.email);
+      await purchaseCheck(verified, ADA.email);
+      await purchaseCheck(unknown, 'nobody@example.test');
+      for (const method of ['findAccountByEmail', 'findMemberByUser', 'hasSignedIn', 'findMembersByEmail', 'listPaidOrderProductIds', 'listActiveGrants', 'listSubscriptions'] as const) {
+        const counts = [buyer, verified, unknown].map((h) => vi.mocked(h.reader[method]).mock.calls.length);
+        expect(new Set(counts).size).toBe(1);
+      }
+    });
+
+    it('hides how a person without access was matched unless the key reads members', async () => {
+      const h = freshBuyer();
+      expect((await purchaseCheck(h, BUYER.email, ['prod-other'])).identity).toBeNull();
+      const withMembers = await purchaseCheck(h, BUYER.email, ['prod-other'], keyCtx(['entitlement:check', 'entitlement:member:read']));
+      expect([withMembers.identity, withMembers.member]).toEqual(['purchase-email', { id: 'm-buyer' }]);
+    });
   });
 
   it('never matches an erased member, whose user id is a tombstone, by member id', async () => {
@@ -331,14 +434,14 @@ describe('checkEntitlements', () => {
 
   it('refuses a product outside the key allow-list without answering for the others', async () => {
     const h = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)] });
-    const result = await checkEntitlements(keyCtx(), { subjects: [{ email: ADA.email }], productIds: ['prod-a', 'prod-secret'] }, { productIds: ['prod-a'] }, h.deps);
+    const result = await checkEntitlements(keyCtx(), { subjects: [{ email: ADA.email }], productIds: ['prod-a', 'prod-secret'] }, { productIds: ['prod-a'], match: 'verified' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(h.reader.findAccountByEmail).not.toHaveBeenCalled();
   });
 
   it('refuses a member id subject unless the key holds entitlements:members:read', async () => {
     const h = harness({ members: [member('m-ada', ADA.userId)], grants: [grant('m-ada', 'prod-pro')] });
-    const refused = await checkEntitlements(keyCtx(), { subjects: [{ memberId: 'm-ada' }] }, { productIds: null }, h.deps);
+    const refused = await checkEntitlements(keyCtx(), { subjects: [{ memberId: 'm-ada' }] }, { productIds: null, match: 'verified' }, h.deps);
     expect(refused).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     const allowed = await checkOne(h, { memberId: 'm-ada' }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
     expect(allowed.products[0]?.access).toBe(true);
@@ -348,20 +451,20 @@ describe('checkEntitlements', () => {
   it('refuses a session or a shop management key even when it holds the capability', async () => {
     const h = harness();
     const input = { subjects: [{ email: ADA.email }] };
-    expect(await checkEntitlements({ identity: ownerIdentity }, input, { productIds: null }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await checkEntitlements({ identity: ownerIdentity }, input, { productIds: null, match: 'verified' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await checkEntitlements(
       { identity: ownerIdentity, capabilities: ['entitlement:check'], machineActor: { kind: 'shop_management_key', apiKeyId: 'shop-1', mode: 'direct' } },
       input,
-      { productIds: null },
+      { productIds: null, match: 'verified' },
       h.deps,
     )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
   it('rejects a batch above 25 subjects and an invalid e-mail without echoing the input', async () => {
     const h = harness();
-    const tooMany = await checkEntitlements(keyCtx(), { subjects: Array.from({ length: 26 }, (_, index) => ({ email: `p${String(index)}@example.test` })) }, { productIds: null }, h.deps);
+    const tooMany = await checkEntitlements(keyCtx(), { subjects: Array.from({ length: 26 }, (_, index) => ({ email: `p${String(index)}@example.test` })) }, { productIds: null, match: 'verified' }, h.deps);
     expect(tooMany).toMatchObject({ ok: false, error: { code: 'validation' } });
-    const invalid = await checkEntitlements(keyCtx(), { subjects: [{ email: 'secret-person-at-example' }] }, { productIds: null }, h.deps);
+    const invalid = await checkEntitlements(keyCtx(), { subjects: [{ email: 'secret-person-at-example' }] }, { productIds: null, match: 'verified' }, h.deps);
     expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(JSON.stringify(invalid)).not.toContain('secret-person-at-example');
   });

@@ -74,7 +74,7 @@ const checkRoute = async (c: Context<AppVars>, deps: EntitlementRouteDeps): Prom
     actorUserId: result.value.ctx.identity.userId,
     method: 'POST',
     route: API_PATHS.m2mEntitlementCheck,
-    resourceId: null,
+    resourceId: result.value.apiKey.match,
   }, deps).then(() => true, (error: unknown) => {
     recordException(error);
     return false;
@@ -86,7 +86,7 @@ const checkRoute = async (c: Context<AppVars>, deps: EntitlementRouteDeps): Prom
       { headers: { 'retry-after': String(HISTORY_RETRY_AFTER_SECONDS) } },
     );
   }
-  return respond(await checkEntitlements(result.value.ctx, body, { productIds: result.value.apiKey.productIds }, deps));
+  return respond(await checkEntitlements(result.value.ctx, body, { productIds: result.value.apiKey.productIds, match: result.value.apiKey.match }, deps));
 };
 
 export const registerEntitlementCheckRoute = (app: Hono<AppVars>, deps: EntitlementRouteDeps): void => {

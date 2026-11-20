@@ -27,6 +27,7 @@ const entitlementKey = (overrides: Partial<EntitlementKey> = {}): EntitlementKey
   keyHash: entitlementKeyHash(stubCrypto, SECRET),
   scopes: ['entitlements:check'],
   productIds: null,
+  match: 'verified',
   issuedByUserId: OWNER_ID,
   createdAt: '2026-11-01T00:00:00.000Z',
   expiresAt: '2026-12-01T00:00:00.000Z',
@@ -196,6 +197,7 @@ describe('entitlement key issuance', () => {
     expect(created.value.apiKey).not.toHaveProperty('keyHash');
     expect(h.stored[0]?.keyHash).toBe(`hash:together:entitlement-key:${SECRET}`);
     expect(h.stored[0]?.productIds).toEqual(['prod-pro']);
+    expect(h.stored[0]?.match).toBe('verified');
     expect(h.events.map((event) => event.kind)).toEqual(['created']);
     expect(JSON.stringify(h.events)).not.toContain(SECRET);
   });
@@ -220,6 +222,13 @@ describe('entitlement key issuance', () => {
     expect(await createEntitlementKey(ownerCtx, { name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS, productIds: ['prod-of-studio'] }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await createEntitlementKey(ownerCtx, { name: 'x', scopes: ['entitlements:members:read'], expiresAt: IN_30_DAYS }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.stored).toEqual([]);
+  });
+
+  it('creates a purchase-email key only when asked for by name and keeps the mode on the key', async () => {
+    const h = issueHarness();
+    const created = await createEntitlementKey(ownerCtx, { name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS, match: 'purchase-email' }, h.deps);
+    expect(created).toMatchObject({ ok: true, value: { apiKey: { match: 'purchase-email' } } });
+    expect(await createEntitlementKey(ownerCtx, { name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS, match: 'any' as 'verified' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('refuses issuance while the deployment switch is off', async () => {

@@ -1,11 +1,11 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
-import { normalizeEmail } from '#core/domain/index.js';
+import { memberSchema, normalizeEmail } from '#core/domain/index.js';
 import type { EntitlementSubjectReader } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createMemberRepository, createMemberSubscriptionRepository, createProductGrantRepository, createTenantAccessReader } from './repositories.js';
-import { memberEvents, user } from './schema.js';
+import { memberEvents, members as memberRows, orders, user } from './schema.js';
 
 const databaseErrorCode = (error: unknown): string | undefined => {
   const cause: unknown = error instanceof Error ? error.cause : error;
@@ -49,6 +49,21 @@ export const createEntitlementSubjectReader = (db: Db): EntitlementSubjectReader
         .limit(1);
       return row !== undefined;
     }),
+    findMembersByEmail: (tenantId, email) => sanitized(async () => (await db
+      .select()
+      .from(memberRows)
+      .where(and(eq(memberRows.tenantId, tenantId), sql`lower(btrim(${memberRows.email})) = ${normalizeEmail(email)}`))
+      .limit(2)).map((row) => memberSchema.parse(row))),
+    listPaidOrderProductIds: (tenantId, memberId) => sanitized(async () => (await db
+      .select({ productId: orders.productId, lines: orders.lines })
+      .from(orders)
+      .where(and(
+        eq(orders.tenantId, tenantId),
+        eq(orders.memberId, memberId),
+        eq(orders.mode, 'live'),
+        eq(orders.status, 'paid'),
+        isNull(orders.cancelReason),
+      ))).flatMap((row) => [row.productId, ...row.lines.map((line) => line.productId)])),
     listActiveGrants: (tenantId, memberId, now) => sanitized(() => grants.listActiveForMember(tenantId, memberId, now)),
     listSubscriptions: (tenantId, memberId) => sanitized(() => subscriptions.listForMember(tenantId, memberId)),
   };

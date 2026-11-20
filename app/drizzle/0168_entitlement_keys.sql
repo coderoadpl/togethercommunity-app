@@ -5,6 +5,7 @@ CREATE TABLE "entitlement_keys" (
   "key_hash" text NOT NULL,
   "scopes" jsonb NOT NULL,
   "product_ids" jsonb,
+  "match" text DEFAULT 'verified' NOT NULL CONSTRAINT "entitlement_keys_match_check" CHECK ("match" IN ('verified', 'purchase-email')),
   "issued_by_user_id" text NOT NULL,
   "created_at" text NOT NULL,
   "expires_at" text NOT NULL,

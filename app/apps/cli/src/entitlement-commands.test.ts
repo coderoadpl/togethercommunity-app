@@ -14,6 +14,7 @@ const output: EntitlementCheckOutput = {
   results: [
     {
       subject: { email: 'ada@example.test' },
+      identity: 'verified',
       products: [{
         productId: 'prod-pro', access: true, source: 'subscription',
         subscription: { status: 'active', currentPeriodEnd: '2026-12-20T00:00:00.000Z', cancelAtPeriodEnd: true },
@@ -21,7 +22,7 @@ const output: EntitlementCheckOutput = {
       }],
       member: { id: 'm-ada' },
     },
-    { subject: { memberId: 'm-none' }, products: [], member: null },
+    { subject: { memberId: 'm-none' }, identity: null, products: [], member: null },
   ],
 };
 
@@ -93,7 +94,7 @@ describe('entitlement check output', () => {
 
   it('prints one line per product and says no access for an empty answer', () => {
     expect(formatEntitlementCheck(output)).toBe([
-      'ada@example.test (m-ada)',
+      'ada@example.test (m-ada) [verified]',
       '  prod-pro\taccess\tsource=subscription\tsubscription=active\tperiodEnd=2026-12-20T00:00:00.000Z\tcancelAtPeriodEnd',
       'member m-none',
       '  no access',

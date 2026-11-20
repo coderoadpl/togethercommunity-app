@@ -211,11 +211,18 @@ describe('payment for goods that sold out after the hold ended', () => {
     const check = (productIds?: string[]) => checkEntitlements(
       { identity: keyIssuer, capabilities: ['entitlement:check'], machineActor: { kind: 'entitlement_key', apiKeyId: 'ek-oos' } },
       { subjects: [{ email: 'buyer@example.com' }], ...(productIds === undefined ? {} : { productIds }) },
-      { productIds: null },
+      { productIds: null, match: 'purchase-email' },
       { entitlementSubjects: subjects, clock: { nowIso: () => '2026-11-15T10:43:00.000Z' } },
     );
     expect(await check(['printed-1'])).toMatchObject(ok({ results: [{ products: [{ productId: 'printed-1', access: false, source: null, subscription: null }] }] }));
     expect(await check()).toMatchObject(ok({ results: [{ products: [] }] }));
+    const unverified = await checkEntitlements(
+      { identity: keyIssuer, capabilities: ['entitlement:check'], machineActor: { kind: 'entitlement_key', apiKeyId: 'ek-oos' } },
+      { subjects: [{ email: 'buyer@example.com' }], productIds: ['printed-1'] },
+      { productIds: null, match: 'purchase-email' },
+      { entitlementSubjects: { ...subjects, findAccountByEmail: async () => ({ userId: buyer.userId, emailVerified: false }) }, clock: { nowIso: () => '2026-11-15T10:43:00.000Z' } },
+    );
+    expect(unverified).toMatchObject(ok({ results: [{ identity: null, products: [{ productId: 'printed-1', access: false }] }] }));
     await database.db.insert(productGrants).values({
       id: 'grant-control', tenantId: legacyTenant.id, memberId: buyer.id, productId: 'course-1', source: 'manual', mode: 'live',
       startsAt: '2026-11-01T09:00:00.000Z', createdAt: '2026-11-01T09:00:00.000Z',

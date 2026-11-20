@@ -24,7 +24,7 @@ const NEIGHBOUR = 'tenant-entitlements-neighbour';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 
 const entitlementKey = (overrides: Partial<EntitlementKey> = {}): EntitlementKey => ({
-  id: 'ek-1', tenantId: TENANT, name: 'Companion app', keyHash: 'hash-entitlement', scopes: ['entitlements:check'], productIds: null,
+  id: 'ek-1', tenantId: TENANT, name: 'Companion app', keyHash: 'hash-entitlement', scopes: ['entitlements:check'], productIds: null, match: 'verified',
   issuedByUserId: 'user-owner', createdAt: NOW, expiresAt: EXPIRY, revokedAt: null,
   ...overrides,
 });
@@ -150,6 +150,33 @@ describe('entitlement subject reader', () => {
     await database.db.insert(dbSchema.memberEvents).values({ id: 'sign-in:s1', tenantId: TENANT, memberId: 'm-ada', type: 'sign-in', payload: {}, occurredAt: NOW });
     expect(await reader.hasSignedIn(TENANT, 'm-ada')).toBe(true);
     expect(await reader.hasSignedIn(NEIGHBOUR, 'm-ada')).toBe(false);
+  });
+
+  it('finds members by the checkout-normalized address and lists only paid, live, not cancelled order products', async () => {
+    await database.db.insert(dbSchema.members).values([
+      { id: 'm-buyer', tenantId: TENANT, userId: 'user-buyer', email: ' Buyer@Example.test ', createdAt: NOW },
+      { id: 'm-buyer-neighbour', tenantId: NEIGHBOUR, userId: 'user-buyer', email: 'buyer@example.test', createdAt: NOW },
+    ]);
+    const line = (productId: string) => ({ productId, name: 'Line', productType: 'course' as const, grossCents: 100, netCents: 100, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null });
+    const order = (id: string, overrides: Partial<typeof dbSchema.orders.$inferInsert>) => ({
+      id, tenantId: TENANT, memberId: 'm-buyer', productId: `prod-${id}`, kind: 'one_time' as const, status: 'paid' as const, amountCents: 100,
+      currency: 'PLN', provider: 'stripe' as const, providerObjectIds: {}, lines: [line(`prod-${id}`)], createdAt: NOW, ...overrides,
+    });
+    await database.db.insert(dbSchema.products).values([
+      ...['paid', 'sold-out', 'refunded', 'partial', 'test'].map((id) => ({ id: `prod-${id}`, tenantId: TENANT })),
+    ].map((product) => ({ ...product, slug: product.id, title: product.id, description: '', priceCents: 100, currency: 'PLN', createdAt: NOW })));
+    await database.db.insert(dbSchema.orders).values([
+      order('paid', { lines: [line('prod-paid'), line('prod-line')] }),
+      order('sold-out', { cancelReason: 'out_of_stock' }),
+      order('refunded', { status: 'refunded' }),
+      order('partial', { status: 'partially_refunded' }),
+      order('test', { mode: 'test' }),
+    ]);
+    const reader = createEntitlementSubjectReader(database.db);
+    expect((await reader.findMembersByEmail(TENANT, 'buyer@example.test')).map((row) => row.id)).toEqual(['m-buyer']);
+    expect((await reader.findMembersByEmail(NEIGHBOUR, 'buyer@example.test')).map((row) => row.id)).toEqual(['m-buyer-neighbour']);
+    expect(await reader.listPaidOrderProductIds(NEIGHBOUR, 'm-buyer')).toEqual([]);
+    expect([...new Set(await reader.listPaidOrderProductIds(TENANT, 'm-buyer'))].sort()).toEqual(['prod-line', 'prod-paid']);
   });
 
   it('keeps the e-mail being checked out of a database error and keeps only the SQLSTATE', async () => {

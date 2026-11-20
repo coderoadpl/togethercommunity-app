@@ -65,6 +65,9 @@ pnpm --silent run cli --tenant acme api-key entitlement create Companion app \
   lapsed subscription.
 - `--product` (repeatable) limits the key to those products; without it the
   key covers every product of the workspace.
+- `--match purchase-email` creates a key in the opt-in purchase-email mode
+  (section 4). It must be named explicitly, cannot be changed later and is
+  shown in `api-key entitlement list`; the default is `verified`.
 - The expiry is at most 90 days ahead. Rotate by creating a new key before the
   old one expires, then `api-key entitlement revoke <id>`.
 - `api-key entitlement list` shows keys without secrets. The key history is in
@@ -104,6 +107,7 @@ Answer (`200`, inside the usual `{ "ok": true, "data": … }` envelope):
   "results": [
     {
       "subject": { "email": "ada@example.test" },
+      "identity": "verified",
       "products": [
         {
           "productId": "prod-pro",
@@ -138,6 +142,12 @@ Answer rules:
 - Without `productIds`: a key with an allow-list answers every allow-listed
   product; a key without one lists only the products the person has access
   to, so an empty list means no access.
+- `identity`: how the person was matched. `verified` means the address is
+  proven to Together: a verified account that signed in to this workspace.
+  `purchase-email` (only on keys in that mode) means the address was matched
+  only because a payment was made with it; Together has not verified it.
+  `null` when nothing is matched. Without `entitlements:members:read` it is
+  also `null` when the answer holds no access, so it reveals nothing more.
 - `member`: `{ "id": … }` for a matched person with `entitlements:members:read`,
   otherwise `null`. Store it to keep the link when the person changes e-mail
   address, and check by `memberId` afterwards.
@@ -190,6 +200,34 @@ const answer = await together.check({ subjects: [{ email }], productIds: ['prod-
 
 `--email` exists for quick manual checks; addresses passed as arguments land in
 shell history, so prefer `--subjects-file`.
+
+## 4. Opt-in: match the e-mail a purchase was made with
+
+**Use this mode only if your application verifies its users' e-mail addresses
+itself. An application that does not verify e-mail addresses must not use it.**
+In this mode Together answers for an address it has not verified, so the proof
+that the person asking really owns the address is your application's duty.
+
+A key created with `--match purchase-email` (API: `"match": "purchase-email"`)
+answers as the default key does, and in addition matches a person who has not
+verified their address or signed in yet. This covers the buyer who pays and goes
+straight back to your application. It matches only for access that this
+workspace's own payment flow created for that exact address:
+
+- the member of this workspace whose e-mail is the queried address,
+  normalized as checkout normalizes it (trimmed, lower-case), and only when
+  exactly one member has that address;
+- only products with an active grant from a payment, backed by a paid, live
+  order that was not cancelled, or by a subscription that is `active` or
+  `past_due`;
+- never access from an owner grant or an import, never an account that
+  registered without paying, never an order cancelled as sold out, refunded or
+  partly refunded, never a lapsed subscription.
+
+Such answers carry `"identity": "purchase-email"`. A verified match still wins
+and answers every product of the person with `"identity": "verified"`. Member
+id lookups stay verified-only. Every check made with such a key records the mode
+in the key history.
 
 ## Freshness
 

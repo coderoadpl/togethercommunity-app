@@ -1180,6 +1180,7 @@ export const entitlementKeys = pgTable(
     keyHash: text('key_hash').notNull(),
     scopes: jsonb('scopes').$type<EntitlementKeyScope[]>().notNull(),
     productIds: jsonb('product_ids').$type<string[]>(),
+    match: text('match', { enum: ['verified', 'purchase-email'] }).notNull().default('verified'),
     issuedByUserId: text('issued_by_user_id').notNull(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at').notNull(),
@@ -1196,6 +1197,7 @@ export const entitlementKeys = pgTable(
       'entitlement_keys_product_ids_check',
       sql`${table.productIds} IS NULL OR (jsonb_typeof(${table.productIds}) = 'array' AND jsonb_array_length(${table.productIds}) BETWEEN 1 AND 50)`,
     ),
+    check('entitlement_keys_match_check', sql`${table.match} IN ('verified', 'purchase-email')`),
   ],
 );
 

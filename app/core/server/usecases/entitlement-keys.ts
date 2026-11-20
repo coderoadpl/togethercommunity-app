@@ -104,6 +104,7 @@ export const createEntitlementKey = async (
     keyHash: entitlementKeyHash(deps.apiKeyCrypto, secret),
     scopes: [...new Set(parsed.data.scopes)],
     productIds,
+    match: parsed.data.match,
     issuedByUserId: ctx.identity.userId,
     createdAt,
     expiresAt: parsed.data.expiresAt,

@@ -49,7 +49,8 @@ export const formatEntitlementCheck = (output: EntitlementCheckOutput): string =
           ? []
           : [`subscription=${product.subscription.status}`, `periodEnd=${product.subscription.currentPeriodEnd}`, ...(product.subscription.cancelAtPeriodEnd ? ['cancelAtPeriodEnd'] : [])]),
       ].join('\t'));
-    return [`${subjectLabel(result.subject)}${result.member === null ? '' : ` (${result.member.id})`}`, ...products].join('\n');
+    const identity = result.identity === null ? '' : ` [${result.identity}]`;
+    return [`${subjectLabel(result.subject)}${result.member === null ? '' : ` (${result.member.id})`}${identity}`, ...products].join('\n');
   }).join('\n');
 
 export const runEntitlementCheck = async (

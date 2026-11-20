@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { createEntitlementKeyRepository } from '#adapters/db/entitlement-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { memberEvents, members, productGrants, products, shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
+import { memberEvents, members, orders, productGrants, products, shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
 import { API_PATHS, entitlementContracts, SHOP_CATALOG_ROUTES } from '#core/contract/index.js';
 import type { EntitlementKeyScope } from '#core/domain/index.js';
 import { entitlementKeyHash } from '#core/server/index.js';
@@ -34,11 +34,11 @@ const depsFor = (switchState: 'enabled' | 'disabled') => createDeps(envSchema.pa
   SHOP_MANAGEMENT_KEYS: switchState,
 }), { db: database.db, clock: { nowIso: () => now } });
 
-const insertKey = async (id: string, secret: string, options: { scopes?: EntitlementKeyScope[]; productIds?: string[]; tenantId?: string; revokedAt?: string; expiresAt?: string } = {}) => {
+const insertKey = async (id: string, secret: string, options: { scopes?: EntitlementKeyScope[]; productIds?: string[]; tenantId?: string; revokedAt?: string; expiresAt?: string; match?: 'verified' | 'purchase-email' } = {}) => {
   const tenantId = options.tenantId ?? 'acme';
   await createEntitlementKeyRepository(database.db).create(tenantId, {
     id, tenantId, name: id, keyHash: entitlementKeyHash(deps.apiKeyCrypto, secret), scopes: options.scopes ?? ['entitlements:check'],
-    productIds: options.productIds ?? null, issuedByUserId: OWNER, createdAt: CREATED_AT, expiresAt: options.expiresAt ?? EXPIRES_AT,
+    productIds: options.productIds ?? null, match: options.match ?? 'verified', issuedByUserId: OWNER, createdAt: CREATED_AT, expiresAt: options.expiresAt ?? EXPIRES_AT,
     revokedAt: options.revokedAt ?? null,
   }, { id: `created-${id}`, tenantId, apiKeyId: id, kind: 'created', actorUserId: OWNER, method: null, route: null, resourceId: null, at: CREATED_AT });
 };
@@ -63,6 +63,7 @@ beforeAll(async () => {
     { id: OWNER, name: 'Owner', email: 'entitlement-owner@example.test', emailVerified: true },
     { id: 'user-ada', name: 'Ada', email: 'ada@example.test', emailVerified: true },
     { id: 'user-eve', name: 'Eve', email: 'eve@example.test', emailVerified: false },
+    { id: 'user-fresh', name: 'Fresh', email: 'fresh@example.test', emailVerified: false },
   ]);
   for (const tenantId of ['acme', 'studio']) {
     await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: tenantId, createdAt: CREATED_AT });
@@ -73,11 +74,17 @@ beforeAll(async () => {
     { id: 'm-ada', tenantId: 'acme', userId: 'user-ada', email: 'ada@example.test', createdAt: CREATED_AT },
     { id: 'm-eve', tenantId: 'acme', userId: 'user-eve', email: 'eve@example.test', createdAt: CREATED_AT },
     { id: 'm-ada-studio', tenantId: 'studio', userId: 'user-ada', email: 'ada@example.test', createdAt: CREATED_AT },
+    { id: 'm-fresh', tenantId: 'acme', userId: 'user-fresh', email: 'fresh@example.test', createdAt: CREATED_AT },
   ]);
   await database.db.insert(productGrants).values([
     { id: 'g-ada', tenantId: 'acme', memberId: 'm-ada', productId: 'prod-pro', source: 'stripe', mode: 'live', startsAt: CREATED_AT, createdAt: CREATED_AT },
     { id: 'g-eve', tenantId: 'acme', memberId: 'm-eve', productId: 'prod-pro', source: 'stripe', mode: 'live', startsAt: CREATED_AT, createdAt: CREATED_AT },
+    { id: 'g-fresh', tenantId: 'acme', memberId: 'm-fresh', productId: 'prod-pro', source: 'stripe', mode: 'live', startsAt: CREATED_AT, createdAt: CREATED_AT },
   ]);
+  await database.db.insert(orders).values({
+    id: 'order-fresh', tenantId: 'acme', memberId: 'm-fresh', productId: 'prod-pro', kind: 'one_time', status: 'paid', amountCents: 1000, currency: 'PLN',
+    provider: 'stripe', providerObjectIds: {}, createdAt: CREATED_AT,
+  });
   await database.db.insert(memberEvents).values(['m-ada', 'm-eve', 'm-ada-studio'].map((memberId) => ({
     id: `sign-in:${memberId}`, tenantId: memberId === 'm-ada-studio' ? 'studio' : 'acme', memberId, type: 'sign-in', payload: {}, occurredAt: CREATED_AT,
   })));
@@ -87,6 +94,8 @@ beforeAll(async () => {
   await insertKey('ek-revoked', 'revoked-secret', { revokedAt: CREATED_AT });
   await insertKey('ek-expired', 'expired-secret', { expiresAt: '2026-11-02T00:00:00.000Z' });
   await insertKey('ek-limited', 'limited-secret');
+  await insertKey('ek-purchase', 'purchase-secret', { match: 'purchase-email' });
+  await insertKey('ek-purchase-studio', 'purchase-studio-secret', { match: 'purchase-email', tenantId: 'studio' });
   await database.db.insert(shopManagementKeys).values({
     id: 'shop-read', tenantId: 'acme', name: 'shop', keyHash: deps.apiKeyCrypto.hash('shop-secret'), scopes: ['shop:catalog:read'],
     issuedByUserId: OWNER, createdAt: CREATED_AT, expiresAt: EXPIRES_AT, revokedAt: null,
@@ -109,7 +118,7 @@ describe('POST /api/m2m/entitlements/check', () => {
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
     expect(await answer(response)).toEqual({
       version: 1,
-      results: [{ subject: { email: 'ada@example.test' }, products: [{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: now }], member: null }],
+      results: [{ subject: { email: 'ada@example.test' }, identity: 'verified', products: [{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: now }], member: null }],
     });
   });
 
@@ -188,8 +197,19 @@ describe('POST /api/m2m/entitlements/check', () => {
     const rows = await database.db.select().from(shopManagementKeyEvents);
     const requests = rows.filter((row) => row.apiKeyId === 'ek-members' && row.kind === 'request');
     expect(requests.length).toBeGreaterThan(0);
-    expect(requests.every((row) => row.method === 'POST' && row.route === API_PATHS.m2mEntitlementCheck && row.resourceId === null)).toBe(true);
+    expect(requests.every((row) => row.method === 'POST' && row.route === API_PATHS.m2mEntitlementCheck && row.resourceId === 'verified')).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('ada@example.test');
+  });
+
+  it('matches a fresh unverified buyer only with a purchase-email key, says so and records the mode', async () => {
+    const strict = await answer(await check('check-secret', { subjects: [{ email: 'fresh@example.test' }], productIds: ['prod-pro'] }));
+    expect(strict.results[0]).toMatchObject({ identity: null, products: [{ access: false }] });
+    const optIn = await answer(await check('purchase-secret', { subjects: [{ email: '  FRESH@Example.test ' }, { email: 'eve@example.test' }], productIds: ['prod-pro'] }));
+    expect(optIn.results.map((result) => [result.identity, result.products[0]?.access])).toEqual([['purchase-email', true], [null, false]]);
+    const fromStudio = await answer(await check('purchase-studio-secret', { subjects: [{ email: 'fresh@example.test' }] }, { host: studioHost }));
+    expect(fromStudio.results[0]).toMatchObject({ identity: null, products: [] });
+    const rows = await database.db.select().from(shopManagementKeyEvents);
+    expect(rows.filter((row) => row.apiKeyId === 'ek-purchase' && row.kind === 'request').every((row) => row.resourceId === 'purchase-email')).toBe(true);
   });
 
   it('answers 404 before any key lookup while the deployment switch is off', async () => {

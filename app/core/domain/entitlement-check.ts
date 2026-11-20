@@ -43,8 +43,13 @@ const productEntitlementSchema = z.object({
 
 export type ProductEntitlement = z.output<typeof productEntitlementSchema>;
 
+const entitlementIdentitySchema = z.enum(['verified', 'purchase-email']);
+
+export type EntitlementIdentity = z.output<typeof entitlementIdentitySchema>;
+
 const entitlementCheckResultSchema = z.object({
   subject: entitlementSubjectSchema,
+  identity: entitlementIdentitySchema.nullable(),
   products: z.array(productEntitlementSchema),
   member: z.object({ id: z.string() }).nullable(),
 });

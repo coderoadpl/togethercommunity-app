@@ -778,6 +778,19 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   passkey or Google) is made by the person. A buyer created by a payment
   therefore matches only after their first sign-in, normally through the
   link in the purchase e-mail.
+- **Purchase-email mode (opt-in).** A key created with `match:
+  "purchase-email"` (explicit, immutable, listed, and recorded on every
+  history row of the key) also matches an unverified address, but only for
+  access this workspace's payment flow created for it. The member must be the
+  workspace's only member with that checkout-normalized address. The access
+  must be an active grant from a payment, backed by a paid, live, not
+  cancelled order or by an `active` or `past_due` subscription. Owner grants,
+  imports, registrations without a payment, sold-out cancellations, refunds
+  and lapsed subscriptions never match. The answer says
+  `identity: "purchase-email"`, and verifying the address is the other
+  application's duty. A key in this mode runs the verified and the
+  purchase lookups for every e-mail subject, so its query sequence does not
+  depend on who exists.
 - **Indistinguishability.** Without `entitlements:members:read` an unknown
   person, an unverified address, a deleted or erased member and a known person
   without access give the same entry (`access: false`, `source`,
@@ -793,7 +806,7 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   authenticated before the body is read; an unreadable body costs one unit.
 - **History without the identifier.** Each check that passed authentication
   and the rate limit writes one `request` row to `shop_management_key_events`
-  (route, method, key id, issuer) before it reads anything, and answers `503`
+  (route, method, key id, issuer, and the key's match mode as the resource) before it reads anything, and answers `503`
   if the row cannot be written. The row holds no identifier and no count. A
   salted hash was rejected: with the salt in the same database, a hash of an
   e-mail address is a stable pseudonym that anyone with database access can

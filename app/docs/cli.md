@@ -126,7 +126,9 @@ and keyed mutating requests handed to a shop route handler), newest first.
 creates an [entitlement key](entitlement-check.md) for another application to
 check who has access; the scope defaults to `entitlements:check`, adding
 `entitlements:members:read` returns member ids and allows member id lookups,
-`--product` limits the key to those products, and the expiry is at most 90 days
+`--product` limits the key to those products, `--match purchase-email` opts
+into also matching the e-mail a purchase was made with (only for applications
+that verify e-mail addresses themselves), and the expiry is at most 90 days
 ahead. `api-keys entitlement list` and `api-keys entitlement revoke <id>` list
 and revoke them; the shop management purge also deletes them.
 `entitlement check [--subjects-file <path|->] [--email <address...>] [--member-id <id...>] [--product <id...>]`

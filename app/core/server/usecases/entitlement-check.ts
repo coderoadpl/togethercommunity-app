@@ -10,6 +10,8 @@ import {
   type AppError,
   type EntitlementCheckOutput,
   type EntitlementCheckResult,
+  type EntitlementIdentity,
+  type EntitlementKeyMatch,
   type EntitlementSubject,
   type Member,
   type MemberSubscription,
@@ -30,6 +32,7 @@ export interface EntitlementCheckDeps {
 
 export interface EntitlementKeyProductScope {
   productIds: readonly string[] | null;
+  match: EntitlementKeyMatch;
 }
 
 // A subject that matches nobody still runs every lookup against ids no row can carry, so the query sequence does not reveal whether the person exists.
@@ -41,6 +44,15 @@ interface SubjectLookup {
   grants: ProductGrant[];
   subscriptions: MemberSubscription[];
 }
+
+interface MatchedSubject {
+  identity: EntitlementIdentity | null;
+  lookup: SubjectLookup;
+}
+
+const NO_MATCH: SubjectLookup = { member: null, grants: [], subscriptions: [] };
+
+const PAYING_SUBSCRIPTION_STATUSES: readonly MemberSubscription['status'][] = ['active', 'past_due'];
 
 const isErased = (member: Member): boolean => member.userId === memberTombstone(member.id).userId;
 
@@ -74,8 +86,50 @@ const lookupSubject = async (
   const grants = await activeMemberGrants(scope, now, { grants: { listActiveForMember: deps.entitlementSubjects.listActiveGrants } });
   const subscriptions = await deps.entitlementSubjects.listSubscriptions(tenantId, scope.memberId);
   return member === null
-    ? { member: null, grants: [], subscriptions: [] }
+    ? NO_MATCH
     : { member, grants, subscriptions: subscriptions.filter((subscription) => subscription.mode === 'live') };
+};
+
+const lookupPurchaseEmail = async (
+  tenantId: string,
+  email: string,
+  now: string,
+  deps: EntitlementCheckDeps,
+): Promise<SubjectLookup> => {
+  const reader = deps.entitlementSubjects;
+  const candidates = (await reader.findMembersByEmail(tenantId, email)).flatMap((candidate) => {
+    const usable = usableMember(candidate);
+    return usable === null ? [] : [usable];
+  });
+  const [only] = candidates;
+  const member = candidates.length === 1 && only !== undefined ? only : null;
+  const scope = { tenantId, memberId: member?.id ?? NO_MEMBER_ID };
+  const paidProductIds = new Set(await reader.listPaidOrderProductIds(tenantId, scope.memberId));
+  const grants = await activeMemberGrants(scope, now, { grants: { listActiveForMember: reader.listActiveGrants } });
+  const subscriptions = (await reader.listSubscriptions(tenantId, scope.memberId)).filter((subscription) => subscription.mode === 'live');
+  const payingSubscriptionProductIds = new Set(subscriptions
+    .filter((subscription) => PAYING_SUBSCRIPTION_STATUSES.includes(subscription.status))
+    .map((subscription) => subscription.productId));
+  const paidGrants = grants.filter((grant) => grant.source === 'stripe'
+    && (paidProductIds.has(grant.productId) || payingSubscriptionProductIds.has(grant.productId)));
+  return member === null || paidGrants.length === 0 ? NO_MATCH : { member, grants: paidGrants, subscriptions };
+};
+
+// A purchase-email key runs both lookups for every e-mail subject, so the query sequence still does not depend on who exists.
+const matchSubject = async (
+  tenantId: string,
+  subject: EntitlementSubject,
+  scope: EntitlementKeyProductScope,
+  now: string,
+  deps: EntitlementCheckDeps,
+): Promise<MatchedSubject> => {
+  const verified = await lookupSubject(tenantId, subject, now, deps);
+  const purchase = scope.match === 'purchase-email' && 'email' in subject
+    ? await lookupPurchaseEmail(tenantId, subject.email, now, deps)
+    : NO_MATCH;
+  if (verified.member !== null) return { identity: 'verified', lookup: verified };
+  if (purchase.member !== null) return { identity: 'purchase-email', lookup: purchase };
+  return { identity: null, lookup: NO_MATCH };
 };
 
 const newestSubscriptionFor = (productId: string, subscriptions: readonly MemberSubscription[]): MemberSubscription | null =>
@@ -144,10 +198,13 @@ export const checkEntitlements = async (
   const checkedAt = deps.clock.nowIso();
   const results: EntitlementCheckResult[] = [];
   for (const subject of parsed.data.subjects) {
-    const lookup = await lookupSubject(tenant.value, subject, checkedAt, deps);
+    const { identity, lookup } = await matchSubject(tenant.value, subject, scope, checkedAt, deps);
+    const entries = answeredProductIds(products.value, lookup).map((productId) => productEntitlement(productId, lookup, readsMembers, checkedAt));
+    const revealsMatch = readsMembers || entries.some((entry) => entry.access);
     results.push({
       subject,
-      products: answeredProductIds(products.value, lookup).map((productId) => productEntitlement(productId, lookup, readsMembers, checkedAt)),
+      identity: revealsMatch ? identity : null,
+      products: entries,
       member: readsMembers && lookup.member !== null ? { id: lookup.member.id } : null,
     });
   }

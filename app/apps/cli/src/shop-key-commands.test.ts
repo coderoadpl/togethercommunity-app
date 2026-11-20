@@ -918,12 +918,40 @@ describe('shop key CLI with a proposal group', () => {
     expect(calls).toEqual([]);
   });
 
-  it('prints the group and the reference of a grouped proposal without --json', async () => {
+  it('prints the group of a grouped proposal without --json, and its reference only when the item creates something', async () => {
     process.argv = ['node', 'together', 'shop', 'products', 'publish', 'product-1', '--group', 'group-1'];
     vi.resetModules();
     await import('./main.js');
     const printed = String(logSpy.mock.calls[0]?.[0]);
     expect(printed).toContain('group: Spring launch (group-1), item 1');
-    expect(printed).toContain('refer to what this item creates as $proposal:proposal-1');
+    expect(printed).not.toContain('$proposal:');
+
+    logSpy.mockClear();
+    const created = { ...receipt, groupId: 'group-1', operation: 'product.create', target: { kind: 'product', id: null } };
+    h.fetchImpl = async (input, init) => {
+      await groupFetch(input, init);
+      return Response.json({ ok: true, data: { outcome: 'proposed', proposal: created, group: groupReceipt([created]) } }, { status: 202 });
+    };
+    process.argv = ['node', 'together', 'shop', 'products', 'create', '--title', 'Printed handbook', '--price', '49', '--group', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('refer to what this item creates as $proposal:proposal-1');
+  });
+
+  it('shows a reference in the group listing only next to the items that create something', async () => {
+    const items = [
+      { ...receipt, id: 'proposal-1', groupId: 'group-1', operation: 'product.create', target: { kind: 'product', id: null } },
+      { ...receipt, id: 'proposal-2', groupId: 'group-1', operation: 'price.create' },
+      { ...receipt, id: 'proposal-3', groupId: 'group-1', operation: 'sales-link.create', target: { kind: 'sales-link', id: null } },
+      { ...receipt, id: 'proposal-4', groupId: 'group-1', operation: 'stock.adjust' },
+      { ...receipt, id: 'proposal-5', groupId: 'group-1', operation: 'product.publish' },
+    ];
+    h.fetchImpl = async () => Response.json({ ok: true, data: { group: groupReceipt(items) } });
+    process.argv = ['node', 'together', 'shop', 'proposals', 'group', 'show', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    const lines = String(logSpy.mock.calls[0]?.[0]).split('\n').filter((line) => line.startsWith('  '));
+    expect(lines.map((line) => line.includes('refer to what it creates as $proposal:'))).toEqual([true, true, true, false, false]);
+    expect(lines[0]).toContain('$proposal:proposal-1');
   });
 });

@@ -5,6 +5,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import {
+  changeProposalCreatedKind,
   createShopManagementClient,
   isProposedChange,
   type ProposalRequestOptions,
@@ -391,12 +392,15 @@ const receiptLines = (proposal: ChangeProposalKeyReceipt): string => [
 const receiptLine = (proposal: ChangeProposalKeyReceipt): string =>
   `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.groupId === null ? '-' : `group:${proposal.groupId}`}\t(${proposal.id})`;
 
+const referenceHint = (operation: string, proposalId: string, lead: string): string =>
+  changeProposalCreatedKind(operation) === null ? '' : `${lead}$proposal:${proposalId}`;
+
 const groupReceiptLines = (group: ChangeProposalGroupKeyReceipt): string => [
   `group ${group.id}: ${group.title} [${group.status}]`,
   `created: ${group.createdAt}`,
   `expires: ${group.expiresAt}`,
   `items: ${String(group.items.length)}`,
-  ...group.items.map((item, index) => `  ${String(index + 1)}. ${item.operation} [${item.status}] ${item.target.kind}:${item.target.id ?? '(new)'} (${item.id}); refer to what it creates as $proposal:${item.id}`),
+  ...group.items.map((item, index) => `  ${String(index + 1)}. ${item.operation} [${item.status}] ${item.target.kind}:${item.target.id ?? '(new)'} (${item.id})${referenceHint(item.operation, item.id, '; refer to what it creates as ')}`),
 ].join('\n');
 
 const proposedLines = (value: ChangeProposalProposedOutput): string => [
@@ -404,7 +408,7 @@ const proposedLines = (value: ChangeProposalProposedOutput): string => [
   receiptLines(value.proposal),
   ...(value.group === undefined ? [] : [
     `group: ${value.group.title} (${value.group.id}), item ${String(value.group.items.length)}`,
-    `refer to what this item creates as $proposal:${value.proposal.id}`,
+    ...(changeProposalCreatedKind(value.proposal.operation) === null ? [] : [referenceHint(value.proposal.operation, value.proposal.id, 'refer to what this item creates as ')]),
   ]),
 ].join('\n');
 

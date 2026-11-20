@@ -11,7 +11,7 @@ import { Command, CommanderError } from 'commander';
 import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
-import { createApiClient, type ApiClient } from '#core/client/index.js';
+import { changeProposalGroupItemsDigest, createApiClient, type ApiClient } from '#core/client/index.js';
 import {
   API_KEY_HEADER,
   EXIT_CODE_BY_ERROR_CODE,
@@ -21,6 +21,7 @@ import {
 } from '#core/contract/index.js';
 import {
   accessItemSchema,
+  appError,
   cartLinesSchema,
   currencySchema,
   contactCampaignAudienceInputSchema,
@@ -4321,28 +4322,65 @@ const changeProposalGroups = changeProposals
   .command('group')
   .description('Groups of change proposals: approved or rejected as one unit, applied completely or not at all');
 
-changeProposalGroups
-  .command('show <id>')
-  .description('Show a group with its items in order, each with its full before/after effect')
-  .action(
-    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
-      emit(await ctx.api.getChangeProposalGroup({ id }), ctx.json, (data) =>
-        [...changeProposalGroupHeader(data.group), ...changeProposalGroupItemLines(data.group)].join('\n'));
-    }),
-  );
+interface ReviewedChangeProposalGroup {
+  group: ChangeProposalGroupOwnerView;
+  itemsDigest: string;
+  approveCommand: string;
+}
+
+const reviewedChangeProposalGroup = (ctx: CliCtx, group: ChangeProposalGroupOwnerView): ReviewedChangeProposalGroup => {
+  const itemsDigest = changeProposalGroupItemsDigest(group.items.map((item) => item.id));
+  return {
+    group,
+    itemsDigest,
+    approveCommand: `together${ctx.tenant === null ? '' : ` --tenant ${ctx.tenant}`} proposals group approve ${group.id} --items-digest ${itemsDigest}`,
+  };
+};
+
+const reviewedChangeProposalGroupLines = (reviewed: ReviewedChangeProposalGroup): string[] => [
+  ...changeProposalGroupHeader(reviewed.group),
+  ...changeProposalGroupItemLines(reviewed.group),
+  `items digest: ${reviewed.itemsDigest}`,
+  `approve exactly these items with: ${reviewed.approveCommand}`,
+];
 
 changeProposalGroups
-  .command('approve <id>')
-  .description('Read the group, show its items and approve exactly those items as one unit: all are applied, or none when one no longer gives the effect shown')
+  .command('show <id>')
+  .description('Show a group with its items in order, each with its full before/after effect, the digest of those items and the command that approves exactly them')
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       const shown = await ctx.api.getChangeProposalGroup({ id });
-      if (!shown.ok) {
-        emit(shown, ctx.json, () => '');
+      emit(shown.ok ? ok(reviewedChangeProposalGroup(ctx, shown.value.group)) : shown, ctx.json, (data) =>
+        reviewedChangeProposalGroupLines(data).join('\n'));
+    }),
+  );
+
+const itemsDigestSchema = z.string().regex(/^[0-9a-f]{16}$/, 'Pass the 16-character items digest that "proposals group show" printed');
+
+changeProposalGroups
+  .command('approve <id>')
+  .description('Approve exactly the items "proposals group show" showed, as one unit: all are applied, or none when one no longer gives the effect shown. When the items changed since, nothing is sent and the current items are printed')
+  .requiredOption('--items-digest <digest>', 'the items digest "proposals group show" printed for the items you reviewed')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ itemsDigest: itemsDigestSchema })]), async (ctx, [id, options]) => {
+      const current = await ctx.api.getChangeProposalGroup({ id });
+      if (!current.ok) {
+        emit(current, ctx.json, () => '');
         return;
       }
-      if (!ctx.json) console.log(['approving:', ...changeProposalGroupHeader(shown.value.group), ...changeProposalGroupItemLines(shown.value.group)].join('\n'));
-      const result = await ctx.api.approveChangeProposalGroup({ id, itemIds: shown.value.group.items.map((item) => item.id) });
+      const reviewed = reviewedChangeProposalGroup(ctx, current.value.group);
+      if (reviewed.itemsDigest !== options.itemsDigest) {
+        if (!ctx.json) console.log(['the group now holds:', ...reviewedChangeProposalGroupLines(reviewed)].join('\n'));
+        emit(err(appError('conflict', 'The items of this group differ from the ones you reviewed; nothing was sent. Review the current items and approve them with their digest', {
+          changeProposalGroupItemIds: reviewed.group.items.map((item) => item.id),
+          itemsDigest: reviewed.itemsDigest,
+          approveCommand: reviewed.approveCommand,
+          group: reviewed.group,
+        })), ctx.json, () => '');
+        return;
+      }
+      if (!ctx.json) console.log(['approving:', ...changeProposalGroupHeader(reviewed.group), ...changeProposalGroupItemLines(reviewed.group)].join('\n'));
+      const result = await ctx.api.approveChangeProposalGroup({ id, itemIds: reviewed.group.items.map((item) => item.id) });
       emit(result, ctx.json, (data) => [changeProposalGroupOutcomeLine(data.group), ...changeProposalGroupItemLines(data.group)].join('\n'));
       if (result.ok && result.value.group.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
     }),

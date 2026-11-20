@@ -382,7 +382,11 @@ key's scopes, and no key can approve anything.
 Every transition appends an event (`proposed`, `applied`, `stale`,
 `apply_failed`, `rejected`, `withdrawn`, `expired`) in the transaction that
 changes the status. A read never writes: the `expired` event is recorded when
-an approve, a reject or a withdrawal meets an expired proposal. Revoking or purging a key withdraws its pending,
+an approve, a reject or a withdrawal meets an expired proposal. A reject and a
+withdrawal lock the proposal row first and only then read the clock, exactly
+like an approval: a proposal that expired while they waited for the lock is
+not decided, its expiry is recorded and the answer is `409` with status
+`expired`; otherwise the decision time is the time read after the lock. Revoking or purging a key withdraws its pending,
 unexpired proposals and deletes its empty groups in the same transaction as
 the key change; a proposal already past its expiry stays `expired`. A key that simply expires leaves its
 proposals decidable; the owner view shows the key state.

@@ -362,6 +362,29 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
     if (locked === null) return null;
     return updateProposalStatus(tx, tenantId, id, transition);
   }),
+  decide: async (tenantId, id, guard, decide) => {
+    const outcome = await boundedWrite(db, bounds, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(changeProposals)
+        .where(and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.id, id), ...guardFilter(guard)))
+        .for('update');
+      if (row === undefined) return null;
+      const locked = parseProposal(row);
+      const decision = decide(locked);
+      if (decision.kind === 'refuse') return { decision, proposal: locked };
+      if (decision.kind === 'record_expiry') {
+        await recordProposalExpiry(tx, tenantId, id, decision.event);
+        return { decision, proposal: locked };
+      }
+      if (locked.status !== 'pending') throw new Error(`A decision moved change proposal ${id}, which is no longer pending`);
+      const moved = await updateProposalStatus(tx, tenantId, id, decision.transition);
+      if (moved === null) throw new Error(`Change proposal ${id} vanished while its row was locked`);
+      return { decision, proposal: moved };
+    });
+    if (outcome.kind === 'busy') return outcome;
+    return outcome.value === null ? { kind: 'not_found' } : { kind: 'decided', ...outcome.value };
+  },
   recordExpiry: (tenantId, id, event) => boundedWrite(db, bounds, (tx) => recordProposalExpiry(tx, tenantId, id, event)),
 });
 

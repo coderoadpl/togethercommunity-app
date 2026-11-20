@@ -6,6 +6,7 @@ import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
   appError,
+  changeProposalExpiresAt,
   err,
   ok,
   type ChangeProposalOperation,
@@ -449,6 +450,64 @@ describe('approval races with the other terminal transitions', () => {
     expect(await eventsOf(id)).toEqual(['1:proposed', `2:${status === 'rejected' ? 'rejected' : 'withdrawn'}`]);
     expect((await productRow('mug'))?.title).toBe('Title of mug');
     expect(await productVersionAuthors('mug')).toEqual([]);
+  }, 30_000);
+});
+
+describe('single decisions whose proposal expires during the lock wait', () => {
+  const expiry = changeProposalExpiresAt(NOW);
+  const decisions = [
+    ['reject', (id: string, clock: { nowIso: () => string }) => rejectChangeProposal(ownerSession, { id, note: 'Too late' }, { ...deps(), clock }), OWNER, null],
+    ['withdraw', (id: string, clock: { nowIso: () => string }) => withdrawOwnChangeProposal(keyCtx, { id }, { ...deps(), clock }), null, KEY_ID],
+  ] as const;
+
+  it.each(decisions)('records the expiry instead of the %s', async (_label, decide, actorUserId, apiKeyId) => {
+    const id = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    let current = NOW;
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select id from change_proposals where tenant_id = $1 and id = $2 for update', [TENANT, id]);
+      const decision = decide(id, { nowIso: () => current });
+      await untilLockWaiters(observer, 1);
+      current = expiry;
+      await blocker.query('commit');
+
+      expect(await decision).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, id));
+    expect(row).toMatchObject({ status: 'pending', decidedAt: null, decidedByUserId: null, decisionNote: null });
+    const events = await createChangeProposalEventRepository(database.db).listByProposal(TENANT, id);
+    expect(events.map(({ kind, at, actorUserId: actor, apiKeyId: keyId }) => ({ kind, at, actor, keyId }))).toEqual([
+      { kind: 'proposed', at: NOW, actor: null, keyId: KEY_ID },
+      { kind: 'expired', at: expiry, actor: actorUserId, keyId: apiKeyId },
+    ]);
+  }, 30_000);
+
+  it.each(decisions)('stamps the %s with the time read after the lock', async (_label, decide) => {
+    const id = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    const later = '2026-03-01T10:00:07.000Z';
+    let current = NOW;
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select id from change_proposals where tenant_id = $1 and id = $2 for update', [TENANT, id]);
+      const decision = decide(id, { nowIso: () => current });
+      await untilLockWaiters(observer, 1);
+      current = later;
+      await blocker.query('commit');
+
+      expect(await decision).toMatchObject({ ok: true });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, id));
+    expect(row?.decidedAt).toBe(later);
   }, 30_000);
 });
 

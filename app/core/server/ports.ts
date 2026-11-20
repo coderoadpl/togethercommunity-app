@@ -2922,6 +2922,16 @@ export interface ChangeProposalTransitionGuard {
 /** A write whose lock wait or statement time ran out has rolled back completely and answers busy. */
 export type ChangeProposalWrite<T> = { kind: 'written'; value: T } | { kind: 'busy' };
 
+export type ChangeProposalDecision =
+  | { kind: 'move'; at: string; transition: ChangeProposalTransition }
+  | { kind: 'record_expiry'; at: string; event: ChangeProposalEventDraft }
+  | { kind: 'refuse'; at: string };
+
+type ChangeProposalDecisionOutcome =
+  | { kind: 'decided'; decision: ChangeProposalDecision; proposal: ChangeProposal }
+  | { kind: 'not_found' }
+  | { kind: 'busy' };
+
 /**
  * Proposals are tenant-scoped; key-side reads also take the proposing key, so a key reaches only its own rows.
  * Every status change and its event commit together, and events get the next per-proposal sequence.
@@ -2940,6 +2950,16 @@ export interface ChangeProposalRepository {
     transition: ChangeProposalTransition,
     guard?: ChangeProposalTransitionGuard,
   ): Promise<ChangeProposalWrite<ChangeProposal | null>>;
+  /**
+   * Locks the proposal row whatever its status, then asks `decide` what to do with exactly the locked row, so the
+   * decision and the time it reads come after the lock wait: move a pending row, record its expiry, or change nothing.
+   */
+  decide(
+    tenantId: string,
+    id: string,
+    guard: Pick<ChangeProposalTransitionGuard, 'keyId'>,
+    decide: (locked: ChangeProposal) => ChangeProposalDecision,
+  ): Promise<ChangeProposalDecisionOutcome>;
   recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
 }
 

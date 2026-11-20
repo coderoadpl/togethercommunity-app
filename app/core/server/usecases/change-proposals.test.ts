@@ -25,7 +25,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
+import type { ChangeProposalRepository, ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
@@ -237,6 +237,17 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
 };
 
 const liveState = (state: FakeCatalogState) => structuredClone(state);
+
+const whileWaiting = (h: Harness, meanwhile: () => void): ChangeProposalRepository['decide'] => (tenantId, id, guard, decide) => {
+  meanwhile();
+  return h.store.repository.decide(tenantId, id, guard, decide);
+};
+
+const withdrawSeeded = (h: Harness, id: string): void => {
+  const found = h.store.proposals.find((proposal) => proposal.id === id);
+  if (found === undefined) throw new Error(`No seeded proposal ${id}`);
+  found.status = 'withdrawn';
+};
 
 const OPERATION_INPUTS: Record<ChangeProposalOperation, unknown> = {
   'product.create': { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 },
@@ -735,19 +746,53 @@ describe('owner-side proposal review', () => {
     expect(h.store.proposals.find(({ id }) => id === 'p-stale')?.status).toBe('pending');
   });
 
-  it('answers conflict when the proposal leaves pending between the read and the transition', async () => {
+  it('answers conflict when the proposal leaves pending between the read and the lock', async () => {
     const h = harness(ownerKeys());
     seedForOwner(h);
-    const raced = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => ({ kind: 'written' as const, value: null }) } };
+    const raced = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { withdrawSeeded(h, 'p-active'); }) } };
     expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, raced))
-      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'pending' } } });
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'withdrawn' } } });
     expect(h.store.eventRows).toEqual([]);
+  });
+
+  it('records the expiry instead of rejecting a proposal that expired while the reject waited for its lock', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const expiresAt = h.store.proposals.find(({ id }) => id === 'p-active')?.expiresAt ?? '';
+    const waiting = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { h.clock.now = expiresAt; }) } };
+
+    expect(await rejectChangeProposal(ownerSession, { id: 'p-active', note: 'Too late' }, waiting))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    expect(h.store.proposals.find(({ id }) => id === 'p-active')).toMatchObject({ status: 'pending', decidedAt: null, decisionNote: null });
+    expect(h.store.eventRows).toEqual([expect.objectContaining({ proposalId: 'p-active', kind: 'expired', actorUserId: OWNER, at: expiresAt })]);
+  });
+
+  it('records the expiry instead of withdrawing a proposal that expired while the withdrawal waited for its lock', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const expiresAt = h.store.proposals.find(({ id }) => id === 'p-active')?.expiresAt ?? '';
+    const waiting = { ...h.keyDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { h.clock.now = expiresAt; }) } };
+
+    expect(await withdrawOwnChangeProposal(keyCtx(), { id: 'p-active' }, waiting))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    expect(h.store.proposals.find(({ id }) => id === 'p-active')).toMatchObject({ status: 'pending', decidedAt: null });
+    expect(h.store.eventRows).toEqual([expect.objectContaining({ proposalId: 'p-active', kind: 'expired', apiKeyId: KEY_ID, at: expiresAt })]);
+  });
+
+  it('stamps a reject with the time read after the lock', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const later = '2026-03-01T10:00:07.000Z';
+    const waiting = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { h.clock.now = later; }) } };
+
+    expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, waiting)).toMatchObject({ ok: true, value: { status: 'rejected', decidedAt: later } });
+    expect(h.store.eventRows).toEqual([expect.objectContaining({ kind: 'rejected', at: later })]);
   });
 
   it('answers busy and records nothing when the reject runs out of lock wait', async () => {
     const h = harness(ownerKeys());
     seedForOwner(h);
-    const busy = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => ({ kind: 'busy' as const }) } };
+    const busy = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: async () => ({ kind: 'busy' as const }) } };
     expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, busy))
       .toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
     expect(h.store.eventRows).toEqual([]);

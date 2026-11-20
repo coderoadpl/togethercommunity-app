@@ -372,6 +372,19 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       const found = pendingRow(tenantId, id, guard);
       return { kind: 'written', value: found === null ? null : transitionRow(found, transition) };
     },
+    decide: async (tenantId, id, guard, decide) => {
+      const found = proposals.find((proposal) => proposal.tenantId === tenantId && proposal.id === id
+        && (guard.keyId === undefined || proposal.proposedByKeyId === guard.keyId));
+      if (found === undefined) return { kind: 'not_found' };
+      const decision = decide({ ...found });
+      if (decision.kind === 'refuse') return { kind: 'decided', decision, proposal: { ...found } };
+      if (decision.kind === 'record_expiry') {
+        recordExpiry(tenantId, id, decision.event);
+        return { kind: 'decided', decision, proposal: { ...found } };
+      }
+      if (found.status !== 'pending') throw new Error('A decision moved a proposal that is no longer pending');
+      return { kind: 'decided', decision, proposal: transitionRow(found, decision.transition) };
+    },
     recordExpiry: async (tenantId, id, event) => ({ kind: 'written', value: recordExpiry(tenantId, id, event) }),
   };
   const groupRows: ChangeProposalGroup[] = [];

@@ -44,12 +44,14 @@ import {
 } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
 import type {
+  ChangeProposalDecision,
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
   ChangeProposalGroupRepository,
   ChangeProposalListQuery,
   ChangeProposalRepository,
   ChangeProposalTransaction,
+  ChangeProposalTransition,
   Clock,
   IdGenerator,
   ShopManagementKeyRepository,
@@ -64,7 +66,7 @@ export interface ChangeProposalSubmitDeps extends ChangeProposalRunDeps {
 }
 
 export interface ChangeProposalKeyDeps {
-  changeProposals: Pick<ChangeProposalRepository, 'findByKey' | 'listByKey' | 'transition' | 'recordExpiry'>;
+  changeProposals: Pick<ChangeProposalRepository, 'findByKey' | 'listByKey' | 'decide'>;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -78,7 +80,7 @@ export interface ChangeProposalOwnerReadDeps {
 }
 
 export interface ChangeProposalDecisionDeps {
-  changeProposals: Pick<ChangeProposalRepository, 'findById' | 'transition' | 'recordExpiry'>;
+  changeProposals: Pick<ChangeProposalRepository, 'findById' | 'decide'>;
   shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
   ids: IdGenerator;
   clock: Clock;
@@ -105,6 +107,21 @@ const changeProposalListQuery = (input: ChangeProposalListInput, now: string): R
 interface DryRunOutcome {
   effect: ChangeProposalEffect;
 }
+
+const decideSingleProposal = (
+  locked: ChangeProposal,
+  deps: { ids: IdGenerator; clock: Clock },
+  actor: { actorUserId: string | null; apiKeyId: string | null },
+  transition: (at: string) => ChangeProposalTransition,
+): ChangeProposalDecision => {
+  const at = deps.clock.nowIso();
+  if (locked.status !== 'pending' || locked.groupId !== null) return { kind: 'refuse', at };
+  if (changeProposalExpired(locked, at)) return { kind: 'record_expiry', at, event: { id: deps.ids.nextId(), ...actor, note: null, at } };
+  return { kind: 'move', at, transition: transition(at) };
+};
+
+const refusedDecision = (proposal: ChangeProposal, at: string): AppError =>
+  proposal.groupId === null ? settledConflict(proposal, at) : groupedChangeProposalDecisionRefused(proposal);
 
 export const submitChangeProposal = async (
   ctx: Ctx,
@@ -212,26 +229,23 @@ export const withdrawOwnChangeProposal = async (
   const proposal = await deps.changeProposals.findByKey(tenantId, keyId, id);
   if (proposal === null) return err(missing);
   if (proposal.groupId !== null) return err(groupedChangeProposalDecisionRefused(proposal));
-  const now = deps.clock.nowIso();
-  if (proposal.status !== 'pending') return err(settledConflict(proposal, now));
-  if (changeProposalExpired(proposal, now)) {
-    const recorded = await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now });
-    return err(recorded.kind === 'busy' ? changeProposalsBusy() : settledConflict(proposal, now));
-  }
-  const withdrawn = await deps.changeProposals.transition(tenantId, id, {
-    status: 'withdrawn',
-    decidedByUserId: null,
-    decidedAt: now,
-    decisionNote: null,
-    appliedResourceId: null,
-    failureCode: null,
-    failureMessage: null,
-    event: { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now },
-  }, { keyId, unexpiredAt: now });
-  if (withdrawn.kind === 'busy') return err(changeProposalsBusy());
-  if (withdrawn.value !== null) return ok(toChangeProposalKeyReceipt(withdrawn.value, now));
-  const current = await deps.changeProposals.findByKey(tenantId, keyId, id);
-  return err(current === null ? missing : settledConflict(current, now));
+  const actor = { actorUserId: null, apiKeyId: keyId };
+  const decided = await deps.changeProposals.decide(tenantId, id, { keyId }, (locked) =>
+    decideSingleProposal(locked, deps, actor, (at) => ({
+      status: 'withdrawn',
+      decidedByUserId: null,
+      decidedAt: at,
+      decisionNote: null,
+      appliedResourceId: null,
+      failureCode: null,
+      failureMessage: null,
+      event: { id: deps.ids.nextId(), ...actor, note: null, at },
+    })));
+  if (decided.kind === 'busy') return err(changeProposalsBusy());
+  if (decided.kind === 'not_found') return err(missing);
+  const { decision, proposal: current } = decided;
+  if (decision.kind === 'move') return ok(toChangeProposalKeyReceipt(current, decision.at));
+  return err(refusedDecision(current, decision.at));
 };
 
 export const listChangeProposals = async (
@@ -283,30 +297,24 @@ export const rejectChangeProposal = async (
   const proposal = await deps.changeProposals.findById(tenant.value, id);
   if (proposal === null) return err(missing);
   if (proposal.groupId !== null) return err(groupedChangeProposalDecisionRefused(proposal));
-  const now = deps.clock.nowIso();
   const owner = ctx.identity.userId;
-  if (proposal.status !== 'pending') return err(settledConflict(proposal, now));
-  if (changeProposalExpired(proposal, now)) {
-    const recorded = await deps.changeProposals.recordExpiry(tenant.value, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
-    return err(recorded.kind === 'busy' ? changeProposalsBusy() : settledConflict(proposal, now));
-  }
-  const rejected = await deps.changeProposals.transition(tenant.value, id, {
-    status: 'rejected',
-    decidedByUserId: owner,
-    decidedAt: now,
-    decisionNote: note,
-    appliedResourceId: null,
-    failureCode: null,
-    failureMessage: null,
-    event: { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note, at: now },
-  }, { unexpiredAt: now });
-  if (rejected.kind === 'busy') return err(changeProposalsBusy());
-  if (rejected.value !== null) {
-    const decided = rejected.value;
-    return ok(toChangeProposalOwnerView(decided, (await keyStates(tenant.value, deps, now))(decided), null, now));
-  }
-  const current = await deps.changeProposals.findById(tenant.value, id);
-  return err(current === null ? missing : settledConflict(current, now));
+  const actor = { actorUserId: owner, apiKeyId: null };
+  const decided = await deps.changeProposals.decide(tenant.value, id, {}, (locked) =>
+    decideSingleProposal(locked, deps, actor, (at) => ({
+      status: 'rejected',
+      decidedByUserId: owner,
+      decidedAt: at,
+      decisionNote: note,
+      appliedResourceId: null,
+      failureCode: null,
+      failureMessage: null,
+      event: { id: deps.ids.nextId(), ...actor, note, at },
+    })));
+  if (decided.kind === 'busy') return err(changeProposalsBusy());
+  if (decided.kind === 'not_found') return err(missing);
+  const { decision, proposal: current } = decided;
+  if (decision.kind !== 'move') return err(refusedDecision(current, decision.at));
+  return ok(toChangeProposalOwnerView(current, (await keyStates(tenant.value, deps, decision.at))(current), null, decision.at));
 };
 
 type ApprovalDecision =

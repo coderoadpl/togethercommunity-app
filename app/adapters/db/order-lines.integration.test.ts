@@ -99,6 +99,15 @@ describe('order and checkout snapshots', () => {
     expect(await repository.listPaidWithoutGrant('other', { paidBefore: now, limit: 100 })).toEqual([]);
   });
 
+  it('never reports an order cancelled because it sold out as a paid order missing its grant', async () => {
+    const repository = createOrderRepository(database.db);
+    await repository.create('workspace', orderSchema.parse({ ...order('cancelled-sold-out'), cancelReason: 'out_of_stock' }));
+    await repository.create('workspace', order('fulfilled-missing-grant'));
+    const rows = await repository.listPaidWithoutGrant('workspace', { paidBefore: now, limit: 100 });
+    expect(rows.some((row) => row.orderId === 'fulfilled-missing-grant')).toBe(true);
+    expect(rows.some((row) => row.orderId === 'cancelled-sold-out')).toBe(false);
+  });
+
   it.each([undefined, 'live', 'test'] as const)('reads checkout snapshots only within their workspace and preserves source prices and session correlation in mode %s', async (mode) => {
     const repository = createCheckoutSnapshotRepository(database.db);
     const providerSessionId = mode === undefined ? null : `cs-${mode}`;

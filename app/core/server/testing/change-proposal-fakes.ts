@@ -122,6 +122,7 @@ const stockRepositoryOver = (state: FakeCatalogState): StockRepository => {
     },
     reserve: unavailable('stock.reserve'),
     release: unavailable('stock.release'),
+    lockForCommit: unavailable('stock.lockForCommit'),
     commit: unavailable('stock.commit'),
     markLowStockNotified: unavailable('stock.markLowStockNotified'),
     releaseExpired: unavailable('stock.releaseExpired'),

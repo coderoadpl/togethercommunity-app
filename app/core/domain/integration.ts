@@ -55,7 +55,7 @@ export const stripeProbePermissionsInputSchema = z.object({ mode: stripeModeSche
 export type StripeProbePermissionsInput = z.infer<typeof stripeProbePermissionsInputSchema>;
 
 const stripePermissionCheckSchema = z.object({
-  resource: z.enum(['Webhook Endpoints', 'Subscriptions', 'Coupons', 'Promotion Codes', 'Checkout Sessions']),
+  resource: z.enum(['Webhook Endpoints', 'Subscriptions', 'Coupons', 'Promotion Codes', 'Checkout Sessions', 'Charges and Refunds']),
   permission: z.enum(['write', 'read']),
   status: z.enum(['ok', 'missing', 'error']),
   reason: z.enum(['coupon-probe-failed']).optional(),

@@ -8,6 +8,7 @@ import type {
   ImportAuditResourceType,
   LessonBlockType,
   MemberEventType,
+  OrderRefundJobView,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StripeAdoptionRefusal,
@@ -63,6 +64,7 @@ export interface Messages {
     firstIssued: string;
     staff: string;
     unpaidHelp: string;
+    cancelledHelp: string;
   };
   salesLinks: {
     heading: string;
@@ -1087,9 +1089,21 @@ export interface Messages {
     billingDetails: string;
     issueInvoice: string;
     issuingInvoice: string;
+    invoiceOrderCancelledOutOfStock: string;
     refreshInvoice: string;
     refreshingInvoice: string;
     invoiceStatus: string;
+    cancelledOutOfStock: string;
+    cancelledOutOfStockRefund: (params: { refund: string }) => string;
+    refundJobTitle: string;
+    refundJobStatuses: Record<OrderRefundJobView['status'], string>;
+    refundJobAttempts: string;
+    refundJobNextAttempt: string;
+    refundJobProviderRefund: string;
+    refundJobLastError: string;
+    refundJobBlockedHelp: string;
+    refundJobFailedHelp: string;
+    refundJobUnconfirmedHelp: string;
     invoiceDownload: string;
     ksefNumber: string;
     ksefPdfDownload: string;
@@ -1458,7 +1472,7 @@ export interface Messages {
     stripeProbeWrite: string;
     stripeProbeStatuses: { ok: string; missing: string; error: string };
     stripeProbeReasons: { 'coupon-probe-failed': string };
-    stripeProbeResources: { 'Webhook Endpoints': string; Subscriptions: string; Coupons: string; 'Promotion Codes': string; 'Checkout Sessions': string };
+    stripeProbeResources: { 'Webhook Endpoints': string; Subscriptions: string; Coupons: string; 'Promotion Codes': string; 'Checkout Sessions': string; 'Charges and Refunds': string };
     stripeConfigure: string;
     stripeConfiguring: string;
     stripeConfigured: string;
@@ -2954,6 +2968,10 @@ export interface Messages {
     subscriptionSuccessTitle: string;
     subscriptionSuccessBody: string;
     goToLogin: string;
+    soldOutRefundEyebrow: string;
+    soldOutRefundTitle: string;
+    soldOutRefundBody: string;
+    soldOutNothingChargedBody: string;
     backToShop: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
@@ -3253,6 +3271,9 @@ export interface Messages {
       memberErasureRequest: string;
       reputationAlert: string;
       stockLow: string;
+      orderOutOfStock: string;
+      orderRefundAlert: string;
+      orderSoldOutRefund: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

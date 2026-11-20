@@ -26,6 +26,8 @@ export * from './api-key.js';
 export * from './import-audit.js';
 export * from './shop-management-key.js';
 export * from './shop-management-key-event.js';
+export * from './entitlement-key.js';
+export * from './entitlement-check.js';
 export * from './change-proposal.js';
 export * from './change-proposal-inputs.js';
 export * from './change-proposal-group.js';

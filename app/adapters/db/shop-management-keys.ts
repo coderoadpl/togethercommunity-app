@@ -6,7 +6,7 @@ import type { ShopManagementKeyRateLimitRepository, ShopManagementKeyRepository 
 import { deleteEmptyGroupsOfKey } from './change-proposal-groups.js';
 import { withdrawPendingChangeProposalsOfKey } from './change-proposals.js';
 import type { Db } from './client.js';
-import { shopManagementKeyRateLimitBuckets, shopManagementKeys } from './schema.js';
+import { entitlementKeys, shopManagementKeyRateLimitBuckets, shopManagementKeys } from './schema.js';
 import { insertShopManagementKeyEvent } from './shop-management-key-events.js';
 
 const parseKey = (key: ShopManagementKey): ShopManagementKey => shopManagementKeySchema.parse(key);
@@ -73,8 +73,12 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
       await deleteEmptyGroupsOfKey(tx, tenantId, id);
     }
-    for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
-    return purged.length;
+    const purgedEntitlementKeys = await tx
+      .delete(entitlementKeys)
+      .where(eq(entitlementKeys.tenantId, tenantId))
+      .returning({ id: entitlementKeys.id });
+    for (const { id } of [...purged, ...purgedEntitlementKeys]) await insertShopManagementKeyEvent(tx, tenantId, event(id));
+    return purged.length + purgedEntitlementKeys.length;
   }),
 });
 

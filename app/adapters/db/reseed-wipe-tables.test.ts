@@ -39,6 +39,7 @@ describe('DEMO_TENANT_WIPE_TABLES', () => {
       schema.rateLimit,
       schema.apiKeyRateLimitBuckets,
       schema.shopManagementKeyRateLimitBuckets,
+      schema.entitlementKeyRateLimitBuckets,
       schema.rateLimitBuckets,
       schema.platformAuditEvents,
       schema.orderFeedEpoch,

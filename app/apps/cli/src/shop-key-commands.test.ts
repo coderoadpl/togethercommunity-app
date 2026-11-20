@@ -732,6 +732,31 @@ describe('shop key CLI with a propose-mode key', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it.each([
+    ['settings', ['shop', 'settings', 'set'], { name: 'Proposed shop' }, 'POST /api/m2m/shop/settings'],
+    ['sales-link create', ['shop', 'sales-links', 'create'], salesLinkFields, 'POST /api/m2m/shop/sales-links'],
+    ['sales-link update', ['shop', 'sales-links', 'update', 'link-1'], { ...salesLinkFields, expectedRevision: 1 }, 'POST /api/m2m/shop/sales-links/link-1'],
+  ])('prints the receipt and exits 0 when the %s write answers 202', async (_label, args, fields, request) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-proposal-cli-'));
+    try {
+      const file = join(directory, 'input.json');
+      await writeFile(file, JSON.stringify(fields));
+      await run(...args, '--json-file', file);
+      expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+      expect(process.exitCode ?? 0).toBe(0);
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([request]);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('prints the receipt of a proposed sales-link deletion without sending a body', async () => {
+    await run('shop', 'sales-links', 'delete', 'link-1');
+    expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+    expect(calls).toMatchObject([{ method: 'DELETE', path: '/api/m2m/shop/sales-links/link-1', body: null }]);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
   it('prints a readable receipt without --json', async () => {
     process.argv = ['node', 'together', 'shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery'];
     vi.resetModules();

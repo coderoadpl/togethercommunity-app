@@ -21,7 +21,8 @@ exactly the effect the owner saw, or applies nothing.
 | Typed client outcomes and CLI commands | Available |
 | Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
 | Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
-| Images (product covers, branding), owner panel page | Not yet available |
+| Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
+| Images (product covers, branding) | Not yet available |
 
 ## What a proposal is
 
@@ -318,6 +319,60 @@ transaction: the bell only points at the panel, so a failure to write it is
 logged and never fails the submission, and the insert never waits on a lock
 inside the proposal transaction. No migration is needed: the kind lives in the
 existing text column and the existing unique index carries the de-duplication.
+
+## Owner panel
+
+The workspace owner reviews and decides every proposal on one page,
+`/panel/proposals`, reached from **Proposals** in the Offer group of the panel
+navigation and from the bell notification of kind `change-proposal`. The
+navigation entry is shown only to the owner, and only while the
+[summary](#routes) counts pending proposals or while the page is open; its badge
+shows the number of pending changes. An admin who opens the address sees an
+"owner only" page, and the panel never sends them the owner routes.
+
+**Waiting for you** lists the pending proposals oldest first: one card per
+group and one card per single proposal. A card names the change in plain words
+("New product", "Stock: add or remove pieces", "Shop settings"), the live label
+of what it touches, the proposing key, when it was proposed and when it
+expires, and a warning line when the key is revoked, purged or expired or when
+the account that issued it is no longer a verified owner. A group title is the
+key's text: it is shown as plain text under a line that attributes it to the
+key, never as the card heading.
+
+Every changed field is one row with a readable label and the value now and
+after approval, stacked under the label on narrow screens; the rows share the
+component of the course version preview. Money is formatted with its currency,
+booleans as words, lists as lists, long text is collapsed behind "Show more"
+and an empty value says so. A new record shows only the "after" value, a
+deleted one only the current value. A stock adjustment shows the delta
+("+50 pieces"), its reason and the balance on hand now as context, never a
+final balance. An image address is shown as an image only when it is a
+same-origin public asset path (`/api/public/assets/…`); any other address is
+text. Inside a group, a `$proposal:` reference is shown as "the product from
+step 1" with that step's title. A field the page does not know is shown with
+its raw name and its value as text, and a proposal of an operation the page
+does not know is shown but cannot be approved from the page.
+
+A single proposal has **Approve** and **Reject**; a group has **Approve all N
+changes** and **Reject group**. The group card reads the group itself
+(`GET /api/change-proposals/groups/:id`) and its approval sends exactly the
+item ids it shows; when the server answers that the items changed, the card
+reloads the group and says so, and nothing is applied. Approve asks for one
+confirmation; reject opens a dialog with an optional note that is shown to the
+proposer. While a request runs the buttons are disabled, and a busy answer
+(`503`) tells the owner to try again in a moment without changing anything.
+After a decision a toast reports the outcome and the lists refresh; a `stale`
+or `failed` approval stays on the page as an explained notice until it is
+dismissed, and the proposal moves to **History**.
+
+**History** pages through the other proposals (50 per page) with their status,
+who decided and when, the decision note and, on expand, the same field rows and
+the event timeline. Nothing on the page updates live data optimistically: every
+change on screen comes from a server answer.
+
+The page is in Storybook as `Pages/PanelProposals` (a group of five items, a
+stock delta and a settings change) and `Pages/PanelProposalsHistory`, and its
+field rows as `Panel/ProposalChanges`. These stories have no committed golden.
 
 ## Approval
 
@@ -741,8 +796,6 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 - **Images.** The product cover and branding image routes refuse a
   propose-mode key. Images will be uploaded to a private quarantine and
   published only on approval.
-- **Owner panel page.** The owner decides through the session routes and the
-  CLI; the web page that uses the owner view and the summary is not there yet.
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.
 

@@ -1147,7 +1147,11 @@ short the whole order is cancelled and nothing is decremented:
 
 - the order is recorded as `paid` with `cancel_reason = 'out_of_stock'`
   (the money arrived) and without a fulfilment status, so it never reaches the
-  packing list;
+  packing list or a ShipX shipment;
+- every reservation of the snapshot that is still `active` (a line that fitted
+  while another did not) is released with reason `out_of_stock`, so the public
+  available count shows those pieces again at once instead of after the hold
+  expires;
 - the buyer becomes a member because the order needs one, but no product is
   granted, no purchase or welcome e-mail is queued, no automatic invoice job is
   queued and the order is never eligible for Meta conversions;

@@ -1,4 +1,4 @@
-import { changeProposalDisplayStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalDisplayStatusSchema, deliveryMethodSchema, entitlementKeyScopeSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -72,6 +72,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
+import { registerEntitlementCommands } from './entitlement-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
@@ -797,6 +798,7 @@ registerOrganizationCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
 registerShopKeyCommands(program, cliCtx);
+registerEntitlementCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -4060,6 +4062,60 @@ apiKey
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       emit(await ctx.api.revokeApiKey({ id }), ctx.json, (data) =>
         `revoked API key ${data.apiKey.name} (${data.apiKey.id})`,
+      );
+    }),
+  );
+
+const entitlementKey = apiKey
+  .command('entitlement')
+  .description('Entitlement keys for another application to check who has access (verified owner session only)');
+
+const entitlementKeyCreateOptionsSchema = z.object({
+  scope: z.array(entitlementKeyScopeSchema).min(1).default(['entitlements:check']),
+  expiresAt: z.string().datetime(),
+  product: z.array(z.string().min(1)).min(1).optional(),
+});
+
+entitlementKey
+  .command('create <name...>')
+  .description('Create an entitlement key; the secret is shown once')
+  .option('--scope <scope...>', 'entitlements:check (default) and optionally entitlements:members:read, which adds member ids, member id lookups and lapsed subscriptions')
+  .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 90 days ahead')
+  .option('--product <id...>', 'Products the key may check; without it the key covers every product of the workspace')
+  .action(
+    withInput(z.tuple([z.array(z.string().min(1)).min(1), entitlementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
+      emit(
+        await ctx.api.createEntitlementKey({
+          name: nameWords.join(' '),
+          scopes: options.scope,
+          expiresAt: options.expiresAt,
+          ...(options.product === undefined ? {} : { productIds: options.product }),
+        }),
+        ctx.json,
+        (data) => `created entitlement key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+      );
+    }),
+  );
+
+entitlementKey.command('list').description('List entitlement keys (no secrets)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listEntitlementKeys(), ctx.json, (data) =>
+      data.apiKeys.length === 0
+        ? 'no entitlement keys'
+        : data.apiKeys
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t${k.productIds === null ? 'all products' : k.productIds.join(',')}\t(${k.id})`)
+            .join('\n'),
+    );
+  }),
+);
+
+entitlementKey
+  .command('revoke <id>')
+  .description('Revoke an entitlement key')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.revokeEntitlementKey({ id }), ctx.json, (data) =>
+        `revoked entitlement key ${data.apiKey.name} (${data.apiKey.id})`,
       );
     }),
   );

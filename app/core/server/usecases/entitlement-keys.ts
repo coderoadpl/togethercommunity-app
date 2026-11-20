@@ -11,6 +11,7 @@ import {
   type CreateEntitlementKeyInput,
   type EntitlementKey,
   type EntitlementKeyPublic,
+  type Product,
   type Result,
   type ShopManagementKeyEvent,
   type ShopManagementKeysSwitch,
@@ -19,12 +20,12 @@ import {
 import { authorizeTenant, requireDirectGrant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import { ownerSessionTenant } from '../owner-session.js';
-import type { ApiKeyCrypto, Clock, EntitlementKeyRepository, IdGenerator, ProductRepository } from '../ports.js';
+import type { ApiKeyCrypto, Clock, EntitlementKeyRepository, IdGenerator } from '../ports.js';
 import { entitlementKeyHash } from './entitlement-key-auth.js';
 
 export interface EntitlementKeyDeps {
   entitlementKeys: EntitlementKeyRepository;
-  products: Pick<ProductRepository, 'findById'>;
+  products: { findById(tenantId: string, productId: string): Promise<Pick<Product, 'id' | 'tenantId'> | null> };
   apiKeyCrypto: ApiKeyCrypto;
   ids: IdGenerator;
   clock: Clock;

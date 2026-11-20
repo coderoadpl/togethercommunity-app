@@ -206,7 +206,7 @@ describe('entitlement key issuance', () => {
     ['an admin', { identity: { ...ownerIdentity, staffRole: 'admin' } }],
     ['an owner with an unverified e-mail', { identity: { ...ownerIdentity, emailVerified: false } }],
     ['an owner through an organization', { identity: { ...ownerIdentity, staffGrantSource: 'organization' } }],
-    ['an operator viewing as a member', { ...ownerCtx, impersonation: { id: 'imp-1', actorUserId: 'user-op', actorEmail: 'op@togethercommunity.app' } }],
+    ['an operator viewing as a member', { ...ownerCtx, impersonation: { id: 'imp-1', actorUserId: 'user-op', actorEmail: 'op@togethercommunity.app', actorName: 'Operator', actorStaffRole: 'owner', subjectMemberId: 'm-1', subjectName: 'Member', expiresAt: '2026-11-20T13:00:00.000Z' } }],
   ] satisfies [string, Ctx][])('refuses %s', async (_label, ctx) => {
     const h = issueHarness();
     expect(await createEntitlementKey(ctx, { name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS }, h.deps)).toMatchObject({ ok: false });

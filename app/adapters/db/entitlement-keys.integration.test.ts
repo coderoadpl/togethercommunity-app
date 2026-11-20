@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -66,11 +67,11 @@ describe('migration 0168', () => {
   });
 
   it('refuses a stored scope outside the closed list and a key without the check scope', async () => {
-    const insert = (scopes: unknown) => database.db.$client.query(
-      `insert into entitlement_keys (id, tenant_id, name, key_hash, scopes, issued_by_user_id, created_at, expires_at)
-       values ($1, $2, 'x', $1, $3::jsonb, 'user-owner', $4, $5)`,
-      [`bad-${JSON.stringify(scopes)}`, TENANT, JSON.stringify(scopes), NOW, EXPIRY],
-    );
+    const insert = (scopes: unknown) => {
+      const id = `bad-${JSON.stringify(scopes)}`;
+      return database.db.execute(sql`insert into entitlement_keys (id, tenant_id, name, key_hash, scopes, issued_by_user_id, created_at, expires_at)
+        values (${id}, ${TENANT}, 'x', ${id}, ${JSON.stringify(scopes)}::jsonb, 'user-owner', ${NOW}, ${EXPIRY})`);
+    };
     await expect(insert(['entitlements:members:read'])).rejects.toThrow();
     await expect(insert(['entitlements:check', 'shop:catalog:read'])).rejects.toThrow();
     await expect(insert([])).rejects.toThrow();
@@ -89,7 +90,7 @@ describe('a release without entitlement keys', () => {
     await createShopManagementKeyEventRepository(database.db).record(TENANT, event('ek-1', {
       id: 'event-ek-1-request', kind: 'request', method: 'POST', route: '/api/m2m/entitlements/check',
     }));
-    const { rows } = await database.db.$client.query('select * from shop_management_key_events where api_key_id = $1 order by id', ['ek-1']);
+    const rows = await database.db.select().from(dbSchema.shopManagementKeyEvents).where(eq(dbSchema.shopManagementKeyEvents.apiKeyId, 'ek-1'));
     const page = await createShopManagementKeyEventRepository(database.db).list(TENANT, { limit: 50, apiKeyId: 'ek-1' });
     expect(page.events.map((row) => shopManagementKeyEventSchema.parse(row).kind).sort()).toEqual(['created', 'request']);
     expect(rows).toHaveLength(2);

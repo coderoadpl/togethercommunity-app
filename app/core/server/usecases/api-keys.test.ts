@@ -5,6 +5,7 @@ import {
   capabilitiesForPrincipal,
   type Identity,
   type ImportAuditEvent,
+  type StaffGrantSource,
   type StaffRole,
   type TenantApiKey,
 } from '#core/domain/index.js';
@@ -21,7 +22,11 @@ import {
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
-const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx => {
+const ctx = (
+  staffRole: StaffRole | null,
+  tenantId: string | null = 't1',
+  staffGrantSource: StaffGrantSource = 'direct',
+): Ctx => {
   const identity: Identity = {
     userId: 'u1',
     email: 'owner@together.dev',
@@ -32,6 +37,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     tenantSlug: tenantId ? 'acme' : null,
     tenantName: tenantId ? 'Acme' : null,
     staffRole,
+    ...(staffRole === null ? {} : { staffGrantSource }),
     memberId: null,
   image: null,
   memberDisplayName: null,
@@ -170,6 +176,13 @@ describe('createTenantApiKey', () => {
   it('forbids an admin from creating a key', async () => {
     const h = harness();
     const result = await createTenantApiKey(ctx('admin'), { name: 'CI key' }, h.deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(h.rows).toHaveLength(0);
+  });
+
+  it('refuses an owner whose role comes only from the organization', async () => {
+    const h = harness();
+    const result = await createTenantApiKey(ctx('owner', 't1', 'organization'), { name: 'CI key' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(h.rows).toHaveLength(0);
   });

@@ -10,7 +10,7 @@ describe('tenant team client', () => {
       requests.push({ url: String(url), method: init?.method, body: init?.body });
       return Response.json({ ok: true, data: init?.method === 'GET' ? { members } : String(url).endsWith('/remove') ? { userId: 'admin-1' } : { status: 'invitation_sent' } });
     } });
-    expect(await api.listTenantTeam()).toEqual({ ok: true, value: { members } });
+    expect(await api.listTenantTeam()).toEqual({ ok: true, value: { members, organization: null } });
     expect(await api.addTenantAdmin({ email: 'admin@example.test' })).toEqual({ ok: true, value: { status: 'invitation_sent' } });
     expect(await api.removeTenantAdmin({ userId: 'admin-1' })).toEqual({ ok: true, value: { userId: 'admin-1' } });
     expect(requests).toEqual([

@@ -2,18 +2,21 @@ import {
   appError,
   err,
   forbidden,
+  notFound,
   ok,
   organizationWorkspaceSelectionSchema,
   validation,
+  workspaceConfigSourcesOf,
   type AppError,
   type OrganizationWorkspace,
   type OrganizationWorkspaceSelection,
   type Result,
+  type WorkspaceConfigSource,
 } from '#core/domain/index.js';
 
-import { authorizeOrganization } from '../authorize.js';
-import type { OrganizationCtx } from '../context.js';
-import type { Clock, IdGenerator, OrganizationWorkspaceRepository } from '../ports.js';
+import { authorizeOrganization, authorizeTenant, organizationSuspendedError } from '../authorize.js';
+import type { Ctx, OrganizationCtx } from '../context.js';
+import type { Clock, IdGenerator, OrganizationWorkspaceRepository, TenantConfigSourceRepository } from '../ports.js';
 
 export interface OrganizationWorkspaceDeps {
   organizationWorkspaces: OrganizationWorkspaceRepository;
@@ -25,7 +28,7 @@ type WorkspaceChangeInput = { organizationId: string } & OrganizationWorkspaceSe
 type WorkspaceChangeOutput = { workspace: OrganizationWorkspace; changed: boolean };
 
 const workspaceOwnerRequired = () =>
-  err(forbidden('Linking or unlinking a workspace requires a direct owner grant in that workspace'));
+  err(forbidden('Linking a workspace requires a direct owner grant in that workspace'));
 const linkedElsewhere = () => err(appError('conflict', 'Workspace belongs to another organization'));
 
 const prepareChange = (
@@ -82,8 +85,12 @@ export const linkOrganizationWorkspace = async (
     case 'linked_elsewhere': return linkedElsewhere();
     case 'workspace_quota_exceeded':
       return err(appError('workspace_quota_exceeded', 'The organization already holds its maximum number of workspaces'));
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
 };
+
+const configSourcesPresent = () =>
+  err(appError('conflict', 'Workspace still takes configuration from the organization; switch every group back first'));
 
 export const unlinkOrganizationWorkspace = async (
   octx: OrganizationCtx,
@@ -98,10 +105,59 @@ export const unlinkOrganizationWorkspace = async (
   switch (result.status) {
     case 'unlinked': return ok({ workspace: result.workspace, changed: true });
     case 'not_linked': return ok({ workspace: result.workspace, changed: false });
-    case 'workspace_owner_required': return workspaceOwnerRequired();
     case 'organization_owner_required': return err(forbidden('organization:workspace:link is not permitted'));
     case 'linked_elsewhere': return linkedElsewhere();
-    case 'config_sources_present':
-      return err(appError('conflict', 'Workspace still takes configuration from the organization; switch every group back first'));
+    case 'not_in_organization': return err(notFound('Workspace not found in this organization'));
+    case 'config_sources_present': return configSourcesPresent();
+    case 'organization_suspended': return err(organizationSuspendedError());
   }
+};
+
+const directOwnerRequired = () =>
+  err(forbidden('Unlinking a workspace from its organization requires a direct owner grant in that workspace'));
+
+export const unlinkWorkspaceFromOrganization = async (
+  ctx: Ctx,
+  deps: OrganizationWorkspaceDeps,
+): Promise<Result<WorkspaceChangeOutput, AppError>> => {
+  const tenantId = authorizeTenant(ctx, 'tenant:organization:unlink');
+  if (!tenantId.ok) return tenantId;
+  if (ctx.identity.staffGrantSource !== 'direct' || ctx.machineActor !== undefined) return directOwnerRequired();
+  const at = deps.clock.nowIso();
+  const actor = { actorUserId: ctx.identity.userId, actorEmail: ctx.identity.email };
+  const result = await deps.organizationWorkspaces.unlinkAsWorkspaceOwner(tenantId.value, {
+    actorUserId: ctx.identity.userId,
+    organizationAudit: {
+      ...actor, id: deps.ids.nextId(), kind: 'workspace.unlinked', actorKeyId: null,
+      subjectTenantId: tenantId.value, subjectUserId: null, data: {}, at,
+    },
+    tenantAudit: { ...actor, id: deps.ids.nextId(), kind: 'organization.unlinked', subjectMemberId: null, at },
+  });
+  switch (result.status) {
+    case 'unlinked': return ok({ workspace: result.workspace, changed: true });
+    case 'not_linked': return ok({ workspace: result.workspace, changed: false });
+    case 'workspace_owner_required': return directOwnerRequired();
+    case 'linked_elsewhere': return linkedElsewhere();
+    case 'config_sources_present': return configSourcesPresent();
+  }
+};
+
+export interface WorkspaceConfigSourceDeps {
+  organizationWorkspaces: Pick<OrganizationWorkspaceRepository, 'list'>;
+  tenantConfigSources: TenantConfigSourceRepository;
+}
+
+export const getWorkspaceConfigSources = async (
+  octx: OrganizationCtx,
+  input: { organizationId: string } & OrganizationWorkspaceSelection,
+  deps: WorkspaceConfigSourceDeps,
+): Promise<Result<{ workspace: OrganizationWorkspace; sources: WorkspaceConfigSource[] }, AppError>> => {
+  const access = authorizeOrganization(octx, input.organizationId, 'organization:read');
+  if (!access.ok) return access;
+  const selection = organizationWorkspaceSelectionSchema.safeParse({ tenantId: input.tenantId });
+  if (!selection.success) return err(validation('Invalid workspace selection'));
+  const workspaces = await deps.organizationWorkspaces.list(access.value.organizationId);
+  const workspace = workspaces.find((candidate) => candidate.id === selection.data.tenantId);
+  if (workspace === undefined) return err(notFound('Workspace not found in this organization'));
+  return ok({ workspace, sources: workspaceConfigSourcesOf(await deps.tenantConfigSources.listByTenant(workspace.id)) });
 };

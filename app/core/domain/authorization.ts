@@ -12,6 +12,7 @@ export const CAPABILITIES = [
   'tenant:domain:read',
   'tenant:secret:read',
   'tenant:secret:write',
+  'tenant:organization:unlink',
   'tenant:onboarding:read',
   'tenant:onboarding:write',
   'terms:accept',
@@ -284,6 +285,7 @@ const sharedStaffCapabilities = [
 const ownerOnlyCapabilities = [
   'tenant:settings:write',
   'tenant:secret:write',
+  'tenant:organization:unlink',
   'api-key:write',
   'integration:test',
 ] as const satisfies readonly Capability[];
@@ -405,3 +407,18 @@ const IMPERSONATION_READ_CAPABILITIES: readonly Capability[] = [
 
 export const isImpersonationReadCapability = (capability: Capability): boolean =>
   IMPERSONATION_READ_CAPABILITIES.includes(capability);
+
+/**
+ * Default-deny: a new organization capability stays refused while the
+ * organization is suspended until it is reviewed and listed here.
+ */
+const ORGANIZATION_READ_CAPABILITIES: readonly Capability[] = [
+  'organization:read',
+  'organization:member:read',
+  'organization:secret:read',
+  'organization:api-key:read',
+  'organization:audit:read',
+];
+
+export const isOrganizationReadCapability = (capability: Capability): boolean =>
+  ORGANIZATION_READ_CAPABILITIES.includes(capability);

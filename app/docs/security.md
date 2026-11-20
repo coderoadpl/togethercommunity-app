@@ -102,7 +102,10 @@ and null tenant fields. The web shell presents that tenant’s public visitor
 experience with an account notice, a workspace-picker link, and an account-switch
 action; studio routes redirect to the visitor home. The picker includes both staff
 workspaces and member communities. Tenant membership and staff grants remain
-mandatory for tenant-scoped capabilities. Custom-domain cookies remain host-scoped,
+mandatory for tenant-scoped capabilities; a staff grant is either a direct
+workspace grant or a role derived from the organization the workspace is linked
+to (see [Organization-derived workspace roles](#organization-derived-workspace-roles)).
+Custom-domain cookies remain host-scoped,
 and visiting a tenant never creates a membership.
 
 Magic-link, password-reset, e-mail-verification and marketing-confirmation
@@ -365,6 +368,72 @@ The audit allowlist contains these reviewed advisories:
   new parse of unbounded, unauthenticated input must stay behind a route body
   limit in `body-limits.ts` or check the array length before the schema runs.
 
+## Organization-derived workspace roles
+
+A workspace linked to an organization gives the organization's members a
+workspace role without storing a workspace grant. The staff-grant lookup
+(`TenantAccessReader.findStaffGrant`) is one query that maps an organization
+`owner` to the workspace role `owner` and an organization `admin` to the
+workspace role `admin`, and returns the higher of the direct workspace grant
+and the derived role together with its source: `direct`, or `organization` when
+only the derived role is higher (a tie keeps `direct`). The resolved identity
+carries that source. A role is derived only for the organization the workspace
+is linked to and only while that organization is `active`; the same lookup
+lists linked workspaces among the member's staff workspaces. No workspace role
+holds an `organization:*` capability.
+
+- **Revocation.** Nothing is cached: each request reads the membership, its
+  role, the workspace link and the organization's status again, so removing a
+  member, demoting an owner to admin, unlinking the workspace or suspending the
+  organization takes effect on the next request, for sessions and for shop
+  management keys issued by a derived owner alike.
+- **Suspension.** A `suspended` organization derives no workspace role. Its own
+  session routes (`/api/organizations/:organizationId/...`) keep their reads
+  (the organization, its workspaces and their configuration sources, members,
+  masked secrets and audit) and refuse every write with `forbidden` until it is
+  reactivated. The operator organization routes and the workspace-side unlink
+  by a direct owner do not use the organization context and are unaffected. No
+  route or CLI command changes an organization's status.
+- **Members without an invitation.** Organization owners add members only from
+  existing accounts with a verified e-mail address; no invitation is sent.
+  This is acceptable because a member reaches only workspaces that were linked
+  with a direct owner's consent: linking needs an organization owner who also
+  holds a direct owner grant in the workspace. Any direct owner of a linked
+  workspace can take it out of the organization at any time with
+  `POST /api/tenant/organization/unlink`, organization member or not, and any
+  organization owner can unlink it from the organization side; both are
+  refused with `conflict` only while the workspace takes a configuration group
+  from the organization.
+- **Direct-only readers.** The workspace staff list (`listStaffForTenant`),
+  which supplies staff notification recipients, and the team members of the
+  team list read direct grants only, so neither includes derived staff; the
+  team list shows them in a separate read-only organization section. Removing a user whose only access is derived answers
+  `organization_managed` (HTTP 409, CLI exit 32).
+- **Results that outlive the request.** Creating a tenant API key, adding or
+  removing a team administrator and the workspace-side unlink require the
+  owner role to come from a direct workspace grant; an owner whose role comes
+  from the organization is `forbidden`. Shop management keys stay open to such
+  an owner because the issuer's role is checked again on every request with
+  the key (below).
+- **What remains after a derived role ends or is lowered.** Removal from the
+  organization, unlinking the workspace and suspending the organization end
+  the derived role on the next request. Demoting an organization owner to
+  organization admin does not end it: the derived workspace role becomes
+  `admin` (source `organization`). In every one of these cases the shop
+  management keys the person issued stop on the next request, because a key
+  needs its issuer to hold the workspace owner role; only a direct owner grant
+  in the workspace keeps them working. None of them undoes what the person did
+  with the role. Workspace changes made in the meantime stay in force: the
+  payment account configuration, object storage and other workspace secrets,
+  custom domains, products, coupons, sales links and scheduled marketing
+  sends. Legacy tenant API keys are not affected by organization changes:
+  organization-derived roles and the direct-grant requirement for creating
+  such a key (above) arrive in the same release, so a role that comes only
+  from the organization has never been able to create one, and every key in
+  `tenant_api_keys` was created by a direct owner of the workspace. After
+  removing or demoting an organization member, a direct owner of each linked
+  workspace should review those settings.
+
 ## Tenant API keys
 
 The `report:read` scope grants only the `report:read` capability through the
@@ -374,6 +443,9 @@ access. Import scope combinations and expiry rules remain unchanged.
 
 Report keys may omit expiry, like other non-import keys; no separate maximum
 lifetime is imposed. Owners can revoke them through the existing key controls.
+Creating a tenant API key requires the owner role to come from a direct
+workspace grant, because the key outlives an organization-derived role; an
+owner whose role comes from the organization is `forbidden`.
 Studio supports exclusive report keys and both English and Polish copy.
 
 The [activity reports API](reports-api.md) accepts API-key authentication only.
@@ -404,15 +476,20 @@ database requires an issuer, an expiry and a non-empty array of known shop
 scopes on every shop key.
 
 - **Binding.** A key belongs to one workspace and records the verified owner
-  who created it. Only that kind of owner, in their own session (no member
+  who created it; that owner role may be direct or derived from the
+  organization the workspace is linked to. Only that kind of owner, in their own session (no member
   view, no capability override, no API key), creates, revokes or purges shop
   keys or reads their history. Each request selects the workspace by host or
   `X-Tenant` like the other API-key routes, and the key lookup is scoped to
   that workspace.
 - **Revalidation.** Every request re-reads the key and the issuer: the key must
   be unrevoked and unexpired, and the issuer must still exist, have a verified
-  e-mail address and hold the owner role in that workspace. Nothing is cached between requests, so revocation, expiry,
-  demotion, removal or account deletion takes effect on the next request.
+  e-mail address and hold the owner role in that workspace, read through the
+  same staff-grant lookup as a session. Nothing is cached between requests, so revocation, expiry,
+  demotion, removal or account deletion takes effect on the next request; for
+  an issuer whose owner role is organization-derived, so do leaving the
+  organization, losing its owner role, unlinking the workspace and suspending
+  the organization.
 - **Expiry.** An expiry is mandatory and at most 30 days after creation; there
   is no renewal.
 - **Scopes.** `shop:catalog:read|write`, `shop:orders:read`,
@@ -654,7 +731,7 @@ each value that connection has no row of; a connection row that cannot be
 decrypted never falls back to them, and an order of the other mode never reads
 them. Removing the credentials of that connection deletes the legacy rows as
 well (see
-[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). Each
+[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). None of these ShipX secrets is inherited from an organization: an organization may store ShipX credentials, but a workspace always reads its own, so one connection never combines an organization value with a workspace value. Each
 `order_shipments` row keeps a plain copy of the organization id it was created
 with (an identifier that also appears in every ShipX URL), so later calls for
 that shipment can refuse to run against another organization or another

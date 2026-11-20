@@ -94,12 +94,24 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (declared !== undefined) return declared;
   if (path === '/api/organizations') return 'tenant:list-own';
   if (path === '/api/organizations/:organizationId') return 'organization:read';
-  if (path === '/api/organizations/:organizationId/members') return 'organization:member:read';
+  if (path === '/api/organizations/:organizationId/update') return 'organization:settings:write';
+  if (path === '/api/organizations/:organizationId/secrets') {
+    return method === 'GET' ? 'organization:secret:read' : 'organization:secret:write';
+  }
+  if (path === '/api/organizations/:organizationId/secrets/:key') return 'organization:secret:write';
+  if (path === '/api/organizations/:organizationId/workspaces/:tenantId/sources') return 'organization:read';
+  if (path === '/api/organizations/:organizationId/members') {
+    return method === 'GET' ? 'organization:member:read' : 'organization:member:write';
+  }
+  if (path === '/api/organizations/:organizationId/members/role' || path === '/api/organizations/:organizationId/members/remove') {
+    return 'organization:member:write';
+  }
   if (path === '/api/organizations/:organizationId/audit-events') return 'organization:audit:read';
   if (path === '/api/organizations/:organizationId/workspaces') return 'organization:read';
   if (path === '/api/organizations/:organizationId/workspaces/link' || path === '/api/organizations/:organizationId/workspaces/unlink') {
     return 'organization:workspace:link';
   }
+  if (path === '/api/tenant/organization/unlink') return 'tenant:organization:unlink';
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
@@ -360,6 +372,7 @@ const beforeForRoute = (
   if (path === '/api/integrations/shipx' && method === 'GET') return staff;
   if (path === '/api/tenant/settings' && method === 'GET') return staff;
   if (path.startsWith('/api/tenant/team')) return owner;
+  if (path === '/api/tenant/organization/unlink') return owner;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
   if (path === '/api/support/message') return tenantActors;
@@ -638,6 +651,7 @@ const beforeForUseCase = (
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
   if (file === 'meta-capi.ts') return name === 'listMetaCapiEvents' ? owner : tenantActors;
   if (file === 'tenant-team.ts') return owner;
+  if (file === 'organization-workspaces.ts' && name === 'unlinkWorkspaceFromOrganization') return owner;
   if (file === 'tenant-settings.ts' && name === 'getMemberSettings') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? staff : owner;
   if (file === 'shop-settings.ts') return name === 'getShopSettings' ? staff : owner;
@@ -810,7 +824,10 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
     '',
-    'The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller\'s own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning.',
+    'The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller\'s own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning. `tenant:organization:unlink` is listed for `owner`, and the use-case and the repository additionally require that owner role to come from a direct workspace grant: an owner derived from the organization is refused. The same direct-grant requirement applies to `api-keys.ts#createTenantApiKey`, `tenant-team.ts#addTenantAdmin` and `tenant-team.ts#removeTenantAdmin`, whose results outlive the request; shop management keys stay open to a derived owner because the key issuer\'s grant is re-read on every request.',
+    '',
+    'The workspace `owner` and `admin` principals in the rows below include organization-derived roles. In a workspace linked to an active organization, an organization `owner` holds the workspace `owner` principal and an organization `admin` the workspace `admin` principal; `findStaffGrant` returns the higher of the direct and the derived role with its source (`direct` or `organization`, a tie keeps `direct`), read on every request. A suspended organization derives no workspace role, and `authorizeOrganization` refuses every `organization:*` capability outside the read allow-list in `core/domain/authorization.ts` while the organization is suspended. Staff notification recipients and the team list\'s members come from direct grants only.',
+    '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,

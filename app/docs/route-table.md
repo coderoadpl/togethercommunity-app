@@ -269,11 +269,20 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/orders/:orderId/shipx/label` | authenticated | mutating | shipx label |
 | `GET /api/organizations` | authenticated | read | organizations |
 | `GET /api/organizations/:organizationId` | authenticated | read | organization |
+| `POST /api/organizations/:organizationId/update` | authenticated | mutating | organization update |
+| `GET /api/organizations/:organizationId/secrets` | authenticated | read | organization secrets |
+| `POST /api/organizations/:organizationId/secrets` | authenticated | mutating | organization secret set |
+| `DELETE /api/organizations/:organizationId/secrets/:key` | authenticated | mutating | organization secret delete |
 | `GET /api/organizations/:organizationId/members` | authenticated | read | organization members |
+| `POST /api/organizations/:organizationId/members` | authenticated | mutating | organization member add |
+| `POST /api/organizations/:organizationId/members/role` | authenticated | mutating | organization member role |
+| `POST /api/organizations/:organizationId/members/remove` | authenticated | mutating | organization member remove |
 | `GET /api/organizations/:organizationId/audit-events` | authenticated | read | organization audit events |
 | `GET /api/organizations/:organizationId/workspaces` | authenticated | read | organization workspaces |
 | `POST /api/organizations/:organizationId/workspaces/link` | authenticated | mutating | organization workspace link |
 | `POST /api/organizations/:organizationId/workspaces/unlink` | authenticated | mutating | organization workspace unlink |
+| `POST /api/tenant/organization/unlink` | authenticated | mutating | tenant organization unlink |
+| `GET /api/organizations/:organizationId/workspaces/:tenantId/sources` | authenticated | read | organization workspace sources |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

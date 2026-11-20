@@ -162,7 +162,8 @@
             "status": "active",
             "userId": "fixture-user-f9e5468247b51d08"
           }
-        ]
+        ],
+        "organization": null
       }
     },
     "me:[]": {

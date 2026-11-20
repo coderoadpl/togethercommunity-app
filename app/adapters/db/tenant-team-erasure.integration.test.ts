@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
 
 import { createOrganizationMemberRepository } from './organizations.js';
-import { createMemberErasureRepository } from './repositories.js';
+import { createMemberErasureRepository, createTenantAccessReader } from './repositories.js';
 import { members, organizationMembers, organizations, tenantAdminInvitations, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -119,5 +119,7 @@ describe('auth user retention', () => {
     expect(await database.db.select().from(user).where(eq(user.id, 'org-owner'))).toHaveLength(1);
     expect(await createOrganizationMemberRepository(database.db).find('org-owned', 'org-owner'))
       .toMatchObject({ role: 'owner' });
+    expect(await createTenantAccessReader(database.db).findStaffGrant('org-owner', { tenantId: 'org-workspace' }))
+      .toMatchObject({ staffRole: 'owner', source: 'organization' });
   });
 });

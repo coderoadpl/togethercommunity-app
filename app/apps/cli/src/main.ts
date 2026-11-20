@@ -1139,6 +1139,19 @@ tenant
     }),
   );
 
+tenant
+  .command('organization')
+  .description('Organization of the active tenant')
+  .command('unlink')
+  .description('Take the active tenant out of its organization, ending every organization-derived role in it (direct owners only)')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.unlinkTenantFromOrganization(), ctx.json, (data) =>
+        `${data.changed ? 'unlinked' : 'not linked'}: ${data.workspace.name} (${data.workspace.slug})`,
+      );
+    }),
+  );
+
 const metaCapi = program.command('meta-capi').description('Meta conversion delivery evidence');
 metaCapi.command('events').description('List the latest 100 conversion outcomes in the selected workspace').action(
   withCtx(async (ctx) => {

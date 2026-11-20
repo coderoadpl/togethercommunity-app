@@ -1,4 +1,4 @@
-import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
+import { tenantTeamMemberSchema, tenantTeamOrganizationSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { createShopManagementKeyInputSchema, shopManagementKeyEventSchema, shopManagementKeyPublicSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
@@ -1596,7 +1596,10 @@ export const tenantRoutingOutputSchema = z.object({
   routing: tenantRoutingSchema,
 });
 
-export const tenantTeamOutputSchema = z.object({ members: z.array(tenantTeamMemberSchema) });
+export const tenantTeamOutputSchema = z.object({
+  members: z.array(tenantTeamMemberSchema),
+  organization: tenantTeamOrganizationSchema.nullable().default(null),
+});
 export const tenantTeamAddSchema = addTenantAdminInputSchema;
 export const tenantTeamRemoveSchema = removeTenantAdminInputSchema;
 export const tenantTeamInvitationOutputSchema = z.object({ status: z.literal('invitation_sent') });
@@ -2734,11 +2737,19 @@ export const API_PATHS = {
   operatorOrganizationLimits: API_ROUTES.operatorOrganizationLimits.path,
   organizations: API_ROUTES.organizations.path,
   organization: API_ROUTES.organization.path,
+  organizationUpdate: API_ROUTES.organizationUpdate.path,
   organizationMembers: API_ROUTES.organizationMembers.path,
+  organizationMemberAdd: API_ROUTES.organizationMemberAdd.path,
+  organizationMemberRole: API_ROUTES.organizationMemberRole.path,
+  organizationMemberRemove: API_ROUTES.organizationMemberRemove.path,
   organizationAuditEvents: API_ROUTES.organizationAuditEvents.path,
   organizationWorkspaces: API_ROUTES.organizationWorkspaces.path,
   organizationWorkspaceLink: API_ROUTES.organizationWorkspaceLink.path,
   organizationWorkspaceUnlink: API_ROUTES.organizationWorkspaceUnlink.path,
+  organizationWorkspaceSources: API_ROUTES.organizationWorkspaceSources.path,
+  tenantOrganizationUnlink: API_ROUTES.tenantOrganizationUnlink.path,
+  organizationSecrets: API_ROUTES.organizationSecrets.path,
+  organizationSecretDelete: API_ROUTES.organizationSecretDelete.path,
 } as const;
 
 /**

@@ -60,6 +60,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageInvalidCredentials;
     case 'forbidden':
     case 'workspace_quota_exceeded':
+    case 'organization_managed':
       return t.errors.messageForbidden;
     case 'banned':
       return t.errors.messageBanned;
@@ -149,6 +150,7 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'shipx_rejected':
     case 'feed_cursor_reset':
     case 'workspace_quota_exceeded':
+    case 'organization_managed':
     case 'internal':
       return null;
   }

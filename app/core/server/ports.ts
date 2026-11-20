@@ -3,6 +3,7 @@ import type {
   StorageListPage,
   StorageReferenceInventory,
   TenantTeamMember,
+  TenantTeamOrganization,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
   ActivitySummaryQuery,
@@ -81,7 +82,14 @@ import type {
   OrganizationAuditEvent,
   OrganizationMember,
   OrganizationMemberAccount,
+  OrganizationRole,
+  OrganizationSecret,
+  OrganizationSecretKey,
+  OrganizationSettings,
+  OrganizationUpdate,
   OrganizationWorkspace,
+  ConfigGroup,
+  TenantConfigSource,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -2610,6 +2618,8 @@ interface OrganizationCreationInput {
   audit: ReadonlyArray<Omit<OrganizationAuditEvent, 'organizationId'>>;
 }
 
+type OrganizationSuspended = { status: 'organization_suspended' };
+
 type OrganizationCreationResult =
   | { status: 'created'; organization: Organization }
   | { status: 'existing'; organization: Organization }
@@ -2627,12 +2637,81 @@ export interface OrganizationRepository {
     organizationId: string,
     input: { maxWorkspaces: number; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId'> },
   ): Promise<Organization | null>;
+  findSettings(organizationId: string): Promise<OrganizationSettings | null>;
+  /**
+   * One transaction: fields equal to the stored values are dropped, and only a real change
+   * updates the row and writes its audit row, which names the changed fields.
+   * A suspended organization, read from the locked row, is refused without a write.
+   */
+  updateSettings(
+    organizationId: string,
+    input: { update: OrganizationUpdate; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId' | 'data'> },
+  ): Promise<{ status: 'updated'; organization: Organization; settings: OrganizationSettings; changed: boolean } | OrganizationSuspended | null>;
 }
+
+type OrganizationSecretAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
+
+export interface OrganizationSecretRepository {
+  listByOrganization(organizationId: string): Promise<OrganizationSecret[]>;
+  set(
+    organizationId: string,
+    input: { secret: Omit<OrganizationSecret, 'organizationId'>; group: ConfigGroup; audit: OrganizationSecretAuditInput },
+  ): Promise<{ status: 'set'; secret: OrganizationSecret } | OrganizationSuspended>;
+  /**
+   * Refuses while a workspace of the organization takes the key's group from the organization;
+   * otherwise deletes the secret and writes its secret.deleted audit row in the same transaction.
+   */
+  delete(
+    organizationId: string,
+    input: { key: OrganizationSecretKey; group: ConfigGroup; audit: OrganizationSecretAuditInput },
+  ): Promise<{ status: 'deleted'; secret: OrganizationSecret } | { status: 'not_found' } | { status: 'config_inherited' } | OrganizationSuspended>;
+}
+
+export interface TenantConfigSourceRepository {
+  listByTenant(tenantId: string): Promise<TenantConfigSource[]>;
+}
+
+type InheritedConfig<Value> = { source: 'workspace' } | { source: 'organization'; value: Value | null };
+
+export interface EffectiveTenantConfigReader {
+  findInheritedSecret(tenantId: string, key: OrganizationSecretKey): Promise<InheritedConfig<OrganizationSecret>>;
+  findInheritedSettings(tenantId: string, group: ConfigGroup): Promise<InheritedConfig<OrganizationSettings>>;
+}
+
+type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
+
+type OrganizationMemberChangeResult<Done extends string> =
+  | { status: Done; member: OrganizationMemberAccount }
+  | { status: 'not_member' }
+  | { status: 'last_owner' }
+  | { status: 'organization_owner_required' }
+  | OrganizationSuspended;
 
 export interface OrganizationMemberRepository {
   find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
   listAccounts(organizationId: string): Promise<OrganizationMemberAccount[]>;
   listForUser(userId: string): Promise<OrganizationMember[]>;
+  /**
+   * Member writes serialize on the organization row and re-check, in the same transaction as the change
+   * and its audit row, that the organization is not suspended, that the actor is still an owner and that at least one owner remains.
+   */
+  addAccount(
+    organizationId: string,
+    input: { actorUserId: string; member: Omit<OrganizationMember, 'organizationId'>; audit: OrganizationMemberAuditInput },
+  ): Promise<
+    | { status: 'added' | 'already_member'; member: OrganizationMemberAccount }
+    | { status: 'account_unverified' }
+    | { status: 'organization_owner_required' }
+    | OrganizationSuspended
+  >;
+  changeRole(
+    organizationId: string,
+    input: { actorUserId: string; userId: string; role: OrganizationRole; audit: OrganizationMemberAuditInput },
+  ): Promise<OrganizationMemberChangeResult<'changed' | 'unchanged'>>;
+  remove(
+    organizationId: string,
+    input: { actorUserId: string; userId: string; audit: OrganizationMemberAuditInput },
+  ): Promise<OrganizationMemberChangeResult<'removed'>>;
 }
 
 /** Append-only organization audit trail; entries are never updated or deleted. */
@@ -2647,28 +2726,46 @@ interface OrganizationWorkspaceChange {
   tenantAudit: Omit<TenantAuditEventInput, 'tenantId'>;
 }
 
-type OrganizationWorkspaceRefusal =
-  | { status: 'workspace_owner_required' }
-  | { status: 'organization_owner_required' }
-  | { status: 'linked_elsewhere' };
-
 type OrganizationWorkspaceLinkResult =
   | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
   | { status: 'workspace_quota_exceeded' }
-  | OrganizationWorkspaceRefusal;
+  | { status: 'workspace_owner_required' }
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | OrganizationSuspended;
 
 type OrganizationWorkspaceUnlinkResult =
   | { status: 'unlinked' | 'not_linked'; workspace: OrganizationWorkspace }
   | { status: 'config_sources_present' }
-  | OrganizationWorkspaceRefusal;
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | { status: 'not_in_organization' }
+  | OrganizationSuspended;
+
+interface WorkspaceOwnerUnlink {
+  actorUserId: string;
+  organizationAudit: Omit<OrganizationAuditEvent, 'organizationId'>;
+  tenantAudit: Omit<TenantAuditEventInput, 'tenantId' | 'reason'>;
+}
+
+type WorkspaceOwnerUnlinkResult =
+  | { status: 'unlinked'; workspace: OrganizationWorkspace; organizationId: string }
+  | { status: 'not_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | { status: 'config_sources_present' };
 
 /**
- * Link and unlink re-check, inside one transaction with the change and both audit rows,
- * that the actor holds a direct owner grant in the workspace and is an owner of the organization.
+ * Every change re-checks its authority inside one transaction with the change and both audit rows.
+ * Linking needs a direct workspace owner who owns the organization. Unlinking needs either side:
+ * `unlink` an organization owner, `unlinkAsWorkspaceOwner` a direct owner grant in the workspace.
+ * `link` and `unlink` refuse a suspended organization; `unlinkAsWorkspaceOwner` stays open to the workspace side
+ * and answers `linked_elsewhere` when the workspace moved to another organization while the call waited for its locks.
  */
 export interface OrganizationWorkspaceRepository {
   link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;
   unlink(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceUnlinkResult>;
+  unlinkAsWorkspaceOwner(tenantId: string, input: WorkspaceOwnerUnlink): Promise<WorkspaceOwnerUnlinkResult>;
   list(organizationId: string): Promise<OrganizationWorkspace[]>;
 }
 
@@ -2750,6 +2847,7 @@ export interface LessonEditionTransaction {
 
 export interface TenantTeamRepository {
   list(tenantId: string): Promise<TenantTeamMember[]>;
+  findOrganizationStaff(tenantId: string): Promise<TenantTeamOrganization | null>;
   inviteAdmin(tenantId: string, userId: string, email: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   activateInvitation(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   revokeInvitation(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;

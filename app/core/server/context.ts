@@ -1,4 +1,4 @@
-import type { Capability, Identity, ImpersonationPrincipal, OrganizationRole } from '#core/domain/index.js';
+import type { Capability, Identity, ImpersonationPrincipal, Organization, OrganizationRole } from '#core/domain/index.js';
 
 /** Every tenant-scoped use-case takes this as its first argument. */
 export interface Ctx {
@@ -15,6 +15,6 @@ export interface Ctx {
 export interface OrganizationCtx {
   identity: Pick<Identity, 'userId' | 'email' | 'emailVerified'>;
   /** Read from the store for this request only; never cached across requests. */
-  membership: { organizationId: string; role: OrganizationRole } | null;
+  membership: { organizationId: string; role: OrganizationRole; organizationStatus: Organization['status'] } | null;
   capabilities?: readonly Capability[];
 }

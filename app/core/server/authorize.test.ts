@@ -240,9 +240,13 @@ describe('member self-service authorization matrix', () => {
 });
 
 describe('authorizeOrganization', () => {
-  const octx = (role: 'owner' | 'admin' | null, organizationId = 'org-1'): OrganizationCtx => ({
+  const octx = (
+    role: 'owner' | 'admin' | null,
+    organizationId = 'org-1',
+    organizationStatus: 'active' | 'suspended' = 'active',
+  ): OrganizationCtx => ({
     identity: { userId: 'user-1', email: 'person@example.test', emailVerified: true },
-    membership: role === null ? null : { organizationId, role },
+    membership: role === null ? null : { organizationId, role, organizationStatus },
   });
   const writes = [
     'organization:member:write',
@@ -279,6 +283,21 @@ describe('authorizeOrganization', () => {
       expect(authorizeOrganization(octx('owner'), 'org-1', capability)).toEqual({ ok: true, value: { organizationId: 'org-1', role: 'owner' } });
     }
     expect(authorizeOrganization(octx('owner'), 'org-1', 'tenant:settings:write')).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('keeps only the organization reads open while the organization is suspended', () => {
+    const suspendedReads = ['organization:read', 'organization:member:read', 'organization:secret:read', 'organization:api-key:read', 'organization:audit:read'];
+    for (const capability of [...reads, ...writes]) {
+      const result = authorizeOrganization(octx('owner', 'org-1', 'suspended'), 'org-1', capability);
+      if (suspendedReads.includes(capability)) {
+        expect(result, capability).toEqual({ ok: true, value: { organizationId: 'org-1', role: 'owner' } });
+      } else {
+        expect(result, capability).toEqual({
+          ok: false, error: { code: 'forbidden', message: 'This organization is suspended; only reads are allowed until it is reactivated' },
+        });
+      }
+    }
+    expect(authorizeOrganization(octx(null, 'org-1', 'suspended'), 'org-1', 'organization:read')).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
   it('intersects declared context capabilities with the member role', () => {

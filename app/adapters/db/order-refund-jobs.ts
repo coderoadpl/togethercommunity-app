@@ -89,15 +89,15 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
     const ofOrder = and(eq(orderRefundJobs.tenantId, tenantId), eq(orderRefundJobs.orderId, orderId));
     const [resolved] = await db.update(orderRefundJobs)
       .set({ status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: now })
-      .where(and(ofOrder, or(
-        eq(orderRefundJobs.status, 'failed'),
-        and(eq(orderRefundJobs.status, 'blocked_permission'), isNull(orderRefundJobs.providerRefundId)),
-      )))
+      .where(and(ofOrder, eq(orderRefundJobs.status, 'failed')))
       .returning();
     if (resolved !== undefined) return toJob(resolved);
     const [due] = await db.update(orderRefundJobs)
       .set({ nextAttemptAt: now, updatedAt: now })
-      .where(and(ofOrder, eq(orderRefundJobs.status, 'pending')))
+      .where(and(ofOrder, or(
+        eq(orderRefundJobs.status, 'pending'),
+        and(eq(orderRefundJobs.status, 'blocked_permission'), isNull(orderRefundJobs.providerRefundId)),
+      )))
       .returning();
     return due === undefined ? null : toJob(due);
   },

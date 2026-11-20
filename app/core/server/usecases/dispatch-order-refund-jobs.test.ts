@@ -423,17 +423,119 @@ describe('order refund dispatcher', () => {
     expect(h.alerts).toStrictEqual([]);
   });
 
-  it('resolves a blocked job when charge.refunded reports the order fully refunded and never calls Stripe or alerts staff for it again', async () => {
+  it('makes a blocked job due when charge.refunded reports a pending hand refund, watches it, and refunds the payment exactly once after that hand refund fails', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: permissionMissing() }] });
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+    h.refundByHand(handRefund('re_hand', 4099, 'pending'));
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'blocked_permission', nextAttemptAt: createdAt });
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, permissionBlockedAt: null, nextAttemptAt: at(hours(24)) });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 2, outcomes: { reopened: 1, refunded: 1 } });
+    expect(h.job()).toMatchObject({ status: 'succeeded', providerRefundId: 're_1', permissionBlockedAt: null });
+    expect(h.refundCalls).toStrictEqual([
+      expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1' }),
+      expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1-2' }),
+    ]);
+    expect(await h.tick(at(hours(48)))).toStrictEqual({ processedCount: 1, outcomes: { checked: 1 } });
+    expect(h.created).toStrictEqual([expect.objectContaining({ refundId: 're_1', amountCents: 4099, orderId: 'order-1' })]);
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
+  });
+
+  it('refunds a blocked job whose key could not list refunds once listing is permitted after the hand refund reported by charge.refunded failed', async () => {
+    const h = harness();
+    h.failLists(...Array.from({ length: 4 }, permissionMissing));
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+    h.refundByHand(handRefund('re_hand', 4099, 'pending'));
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'blocked_permission', nextAttemptAt: createdAt });
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+    for (const hour of [1, 2]) expect(await h.tick(at(hours(hour)))).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+
+    expect(await h.tick(at(hours(3)))).toStrictEqual({ processedCount: 1, outcomes: { refunded: 1 } });
+    expect(h.job()).toMatchObject({ status: 'succeeded', providerRefundId: 're_1', permissionBlockedAt: null });
+    expect(h.created).toStrictEqual([expect.objectContaining({ refundId: 're_1', amountCents: 4099 })]);
+    expect(h.refundCalls).toHaveLength(1);
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
+  });
+
+  it('ends a blocked job as unconfirmed with the unconfirmed alert after 72 hours when the order is refunded by hand and the key never may list refunds', async () => {
+    const h = harness();
+    h.failLists(...Array.from({ length: 100 }, permissionMissing));
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
+    h.refundByHand(handRefund('re_hand', 4099, 'pending'));
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'blocked_permission', nextAttemptAt: createdAt });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+
+    const attemptTimes: string[] = [];
+    for (let tick = 0; tick < 100 && ['pending', 'blocked_permission'].includes(h.job().status); tick += 1) {
+      const due = h.job().nextAttemptAt ?? createdAt;
+      attemptTimes.push(due);
+      await h.tick(due);
+    }
+    expect(attemptTimes.at(-1)).toBe(at(hours(72)));
+    expect(h.job()).toMatchObject({
+      status: 'unconfirmed', nextAttemptAt: null,
+      lastError: "The payment shows a full refund made outside the platform that the refund key cannot confirm (The provided key does not have the required permissions); check it in the payment provider's dashboard",
+    });
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission', 'unconfirmed']);
+    expect(h.refundCalls).toStrictEqual([]);
+    expect(await h.tick(at(hours(96)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+  });
+
+  it('skips a blocked job whose key may list but not create refunds once the list shows the hand refund reported by charge.refunded succeeded', async () => {
     const h = harness({ steps: Array.from({ length: 100 }, () => ({ outcome: 'error' as const, error: permissionMissing() })) });
     await h.queue();
 
     expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { blocked_permission: 1 } });
     h.refundByHand(handRefund('re_hand', 4099, 'pending'));
-    expect(await h.chargeRefunded()).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'blocked_permission', nextAttemptAt: createdAt });
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    h.setRefundStatus('re_hand', 'succeeded');
 
-    for (const hour of [1, 24, 73, 200]) expect(await h.tick(at(hours(hour)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
+    expect(h.job()).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null, providerRefundId: null });
+    expect(await h.tick(at(hours(96)))).toStrictEqual({ processedCount: 0, outcomes: {} });
     expect(h.refundCalls).toHaveLength(1);
     expect(h.alertKinds()).toStrictEqual(['blocked_permission']);
+  });
+
+  it('ends a blocked job as unconfirmed after 72 hours when charge.refunded marked the order refunded but the refund list never shows that refund and the key may not create one', async () => {
+    const h = harness({ staleRefundList: true, steps: Array.from({ length: 100 }, () => ({ outcome: 'error' as const, error: permissionMissing() })) });
+    await h.queue();
+
+    await h.tick(createdAt);
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'blocked_permission', nextAttemptAt: createdAt });
+    for (let tick = 0; tick < 100 && ['pending', 'blocked_permission'].includes(h.job().status); tick += 1) await h.tick(h.job().nextAttemptAt ?? createdAt);
+
+    expect(h.job()).toMatchObject({
+      status: 'unconfirmed', nextAttemptAt: null,
+      lastError: "The payment shows a full refund made outside the platform that the refund key cannot confirm (The provided key does not have the required permissions); check it in the payment provider's dashboard",
+    });
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission', 'unconfirmed']);
+    expect(h.created).toStrictEqual([]);
+  });
+
+  it('still tells staff to refund by hand after 72 hours when the key may list refunds and the list shows the hand refund behind charge.refunded failed', async () => {
+    const h = harness({ steps: Array.from({ length: 100 }, () => ({ outcome: 'error' as const, error: permissionMissing() })) });
+    await h.queue();
+
+    await h.tick(createdAt);
+    h.refundByHand(handRefund('re_hand', 4099, 'failed'));
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'blocked_permission', nextAttemptAt: createdAt });
+    for (let tick = 0; tick < 100 && ['pending', 'blocked_permission'].includes(h.job().status); tick += 1) await h.tick(h.job().nextAttemptAt ?? createdAt);
+
+    expect(h.job()).toMatchObject({ status: 'failed', nextAttemptAt: null, lastError: 'The provided key does not have the required permissions' });
+    expect(h.alertKinds()).toStrictEqual(['blocked_permission', 'blocked_permission_failed']);
+    expect(h.created).toStrictEqual([]);
   });
 
   it('fails with a staff alert instead of skipping an order marked refunded when its refunds cannot be listed for good', async () => {

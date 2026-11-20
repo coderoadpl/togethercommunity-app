@@ -529,7 +529,7 @@ const chargeAdjustment = (input: { eventId: string; paymentIntentId: string; amo
 
 const owner = { userId: 'owner', email: 'owner@example.com', staffRole: 'owner' as const, language: 'en' as const };
 
-const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing', staff: Array<typeof owner> = [], listed: ProviderRefund[] = []) => {
+const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing', staff: Array<typeof owner> = [], listed: ProviderRefund[] | 'permission_missing' = []) => {
   const calls: string[] = [];
   const deps = {
     ...h.webhookDeps,
@@ -541,7 +541,7 @@ const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing
         calls.push(`create:${input.idempotencyKey}`);
         return created === 'permission_missing' ? err(refundFailure('permission_missing', 'The key lacks the refund permission')) : ok(created);
       },
-      listRefunds: async () => ok(listed),
+      listRefunds: async () => (listed === 'permission_missing' ? err(refundFailure('permission_missing', 'The key lacks the refund listing permission')) : ok(listed)),
     },
   };
   return { calls, run: () => dispatchOrderRefundJobs(deps) };
@@ -641,23 +641,78 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(dispatcher.calls).toStrictEqual([]);
   });
 
-  it('resolves a blocked refund job when the order is refunded by hand, because the restricted key cannot list the refunds, and never calls Stripe for it again', async () => {
+  it('makes a blocked refund job due at once when the order is refunded by hand, watches the pending hand refund and refunds the payment itself once that refund fails', async () => {
+    const h = harness();
+    const kicks: string[] = [];
+    const cancelled = await cancelBundle(h);
+    const blocked = providerCalls(h, 'permission_missing');
+    expect(await blocked.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { blocked_permission: 1 } }));
+    Object.assign(h.webhookDeps, { dispatchOrderRefunds: () => { kicks.push('kick'); } });
+    h.setNow('2026-11-15T11:00:00.000Z');
+
+    expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
+      .toStrictEqual(ok({ processed: true }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'blocked_permission', nextAttemptAt: '2026-11-15T11:00:00.000Z', providerRefundId: null });
+    expect(kicks).toStrictEqual(['kick']);
+    expect(h.warnings).toContain(`[order-refund] refund list due again after charge.refunded tenant=tenant-a order=${cancelled.id} job=${(await refundJobOf(cancelled.id))?.id ?? ''} event=evt_refund_by_hand`);
+
+    const byHand: ProviderRefund = { refundId: 're_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'pending', failureReason: null, orderId: null, reason: null };
+    const watching = providerCalls(h, 'permission_missing', [], [byHand]);
+    expect(await watching.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { watching: 1 } }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'submitted', providerRefundId: null, permissionBlockedAt: null, nextAttemptAt: '2026-11-16T11:00:00.000Z' });
+
+    h.setNow('2026-11-16T11:00:00.000Z');
+    const paid: ProviderRefund = { refundId: 're_after_hand_failure', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: cancelled.id, reason: 'out_of_stock' };
+    const reopened = providerCalls(h, paid, [], [{ ...byHand, status: 'failed', failureReason: 'expired_or_canceled_card' }]);
+    expect(await reopened.run()).toStrictEqual(ok({ processedCount: 2, outcomes: { reopened: 1, refunded: 1 } }));
+
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'succeeded', providerRefundId: 're_after_hand_failure', keyGeneration: 2 });
+    expect([...blocked.calls, ...watching.calls, ...reopened.calls]).toStrictEqual([`create:oos-refund-${cancelled.id}`, `create:oos-refund-${cancelled.id}-2`]);
+  });
+
+  it('ends a blocked refund job as unconfirmed with the unconfirmed alert after 72 hours when the order is refunded by hand and the key never may list refunds', async () => {
+    const h = harness();
+    const cancelled = await cancelBundle(h);
+    const jobId = (await refundJobOf(cancelled.id))?.id ?? '';
+    const unlisted = providerCalls(h, 'permission_missing', [owner], 'permission_missing');
+    expect(await providerCalls(h, 'permission_missing', [owner]).run()).toStrictEqual(ok({ processedCount: 1, outcomes: { blocked_permission: 1 } }));
+    h.setNow('2026-11-15T11:00:00.000Z');
+    expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
+      .toStrictEqual(ok({ processed: true }));
+
+    for (let run = 0; run < 100; run += 1) {
+      const job = await refundJobOf(cancelled.id);
+      if (job?.status !== 'blocked_permission' || job.nextAttemptAt === null) break;
+      h.setNow(job.nextAttemptAt);
+      await unlisted.run();
+    }
+
+    expect(await refundJobOf(cancelled.id)).toMatchObject({
+      status: 'unconfirmed', nextAttemptAt: null, permissionBlockedAt: '2026-11-15T10:42:00.000Z', updatedAt: '2026-11-18T11:00:00.000Z',
+      lastError: "The payment shows a full refund made outside the platform that the refund key cannot confirm (The key lacks the refund listing permission); check it in the payment provider's dashboard",
+    });
+    const alertIds = (await database.db.select({ id: emailOutbox.id }).from(emailOutbox).where(eq(emailOutbox.tenantId, legacyTenant.id)))
+      .map((row) => row.id).filter((id) => id.startsWith(`order-refund-alert:${jobId}:`)).map((id) => id.split(':')[2]).sort();
+    expect(alertIds).toStrictEqual(['blocked_permission', 'unconfirmed']);
+    expect(unlisted.calls).toStrictEqual([]);
+  });
+
+  it('ends a blocked refund job whose key may list but not create refunds as skipped_refunded when the order is refunded by hand and the list shows that refund succeeded', async () => {
     const h = harness();
     const cancelled = await cancelBundle(h);
     const blocked = providerCalls(h, 'permission_missing');
     await blocked.run();
     h.setNow('2026-11-15T11:00:00.000Z');
-
     expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
       .toStrictEqual(ok({ processed: true }));
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null, providerRefundId: null });
-    expect(h.warnings).toContain(`[order-refund] resolved externally tenant=tenant-a order=${cancelled.id} job=${(await refundJobOf(cancelled.id))?.id ?? ''} event=evt_refund_by_hand`);
 
-    for (const now of ['2026-11-15T11:42:00.000Z', '2026-11-18T12:00:00.000Z']) {
-      h.setNow(now);
-      expect(await blocked.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
-    }
-    expect(blocked.calls).toStrictEqual([`create:oos-refund-${cancelled.id}`]);
+    const byHand: ProviderRefund = { refundId: 're_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: null, reason: null };
+    const listing = providerCalls(h, 'permission_missing', [], [byHand]);
+    expect(await listing.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { skipped_refunded: 1 } }));
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null, providerRefundId: null });
+    h.setNow('2026-11-18T12:00:00.000Z');
+    expect(await listing.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
+    expect([...blocked.calls, ...listing.calls]).toStrictEqual([`create:oos-refund-${cancelled.id}`]);
   });
 
   it('claims a blocked refund again an hour later and sends the next key generation', async () => {

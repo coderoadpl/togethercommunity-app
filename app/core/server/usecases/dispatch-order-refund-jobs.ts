@@ -91,6 +91,13 @@ const settlePermissionMissing = (job: OrderRefundJob, lastError: string, now: st
   };
 };
 
+const handRefundUnconfirmed = (order: OrderListItem, settlement: Settlement): Settlement =>
+  order.status === 'refunded' && settlement.alert === 'blocked_permission_failed'
+    ? unconfirmed({
+      lastError: `The payment shows a full refund made outside the platform that the refund key cannot confirm (${settlement.update.lastError ?? 'permission missing'}); check it in the payment provider's dashboard`,
+    })
+    : settlement;
+
 const skippedRefunded = (): Settlement =>
   ({ update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: null }, outcome: 'skipped_refunded', alert: null });
 
@@ -191,7 +198,7 @@ const attemptRefund = async (job: OrderRefundJob, order: OrderListItem, paymentI
   const { createRefund, listRefunds } = deps.payment;
   if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
   const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId });
-  if (!listed.ok) return settleRefundFailure(job, listed.error, now);
+  if (!listed.ok) return handRefundUnconfirmed(order, settleRefundFailure(job, listed.error, now));
   const refunds = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
     return settleRefundFailure(job, ownRefundNotListed(job.providerRefundId), now);
@@ -222,7 +229,8 @@ const attemptRefund = async (job: OrderRefundJob, order: OrderListItem, paymentI
     const settlement = settleCoverageAfterRefund(created.value, after.awaiting, now);
     return { ...settlement, update: { ...settlement.update, keyGeneration } };
   }
-  const settlement = settleRefundFailure(job, created.error, now);
+  const failure = settleRefundFailure(job, created.error, now);
+  const settlement = refunds.some((refund) => !isCommitted(refund)) ? failure : handRefundUnconfirmed(order, failure);
   return refundFailureOf(created.error)?.outcomeUnknown === true
     ? { ...settlement, update: { ...settlement.update, keyGeneration } }
     : { ...settlement, update: { ...settlement.update, keyGeneration: keyGeneration + 1 } };

@@ -103,7 +103,7 @@ describe('order refund jobs of two workspaces', () => {
     expect(await jobRows()).toStrictEqual(before);
   });
 
-  it('makes a pending job due at once and resolves a failed one or a blocked one without a Stripe refund externally when the charge is refunded, and leaves every other job as it is', async () => {
+  it('makes a pending job and a blocked one without a Stripe refund due at once, resolves a failed one externally when the charge is refunded, and leaves every other job as it is', async () => {
     const repository = createOrderRefundJobRepository(database.db);
     const noted = '2026-11-15T10:02:00.000Z';
     const note = (orderId: string) => repository.noteChargeRefunded('tenant-a', orderId, noted);
@@ -118,13 +118,18 @@ describe('order refund jobs of two workspaces', () => {
     expect(await note('order-attempted')).toMatchObject({ status: 'pending', attempts: 1, nextAttemptAt: noted });
     expect(await note('order-submitted')).toBeNull();
     expect(await note('order-failed')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
-    expect(await note('order-blocked')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
+    expect(await note('order-blocked')).toMatchObject({ status: 'blocked_permission', attempts: 2, nextAttemptAt: noted, providerRefundId: null });
     expect(await note('order-blocked-reopened')).toBeNull();
     expect((await jobRows()).map((row) => [row.orderId, row.status])).toStrictEqual([
-      ['order-a', 'pending'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-blocked', 'resolved_externally'],
+      ['order-a', 'pending'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-blocked', 'blocked_permission'],
       ['order-blocked-reopened', 'blocked_permission'], ['order-failed', 'resolved_externally'], ['order-submitted', 'submitted'],
     ]);
-    expect(await repository.countDue({ now: noted })).toBe(2);
+    expect(await repository.countDue({ now: noted })).toBe(3);
+    const claims: string[][] = [];
+    for (let claim = await repository.claimDue({ now: noted, leaseMs: 600_000 }); claim !== null; claim = await repository.claimDue({ now: noted, leaseMs: 600_000 })) {
+      claims.push([claim.job.orderId, claim.phase, claim.job.status]);
+    }
+    expect(claims).toStrictEqual([['order-a', 'refund', 'running'], ['order-attempted', 'refund', 'running'], ['order-blocked', 'refund', 'running']]);
   });
 
   it('refuses to queue a job for another workspace\'s order', async () => {

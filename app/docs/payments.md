@@ -414,7 +414,9 @@ someone recovers it:
    adoption writes it, both when it adopts a subscription and when it
    reconciles one already adopted; it fills a missing `member_id` of its own
    tenant's row and never replaces another member's. The webhook ownership
-   check reads it first, and so do adoption and the adoption listing. Its rows
+   check reads it first, and so do adoption and the adoption listing. A
+   workspace that stores a subscription keeps receiving its events, and can
+   reconcile it, even when another workspace holds the customer row. Its rows
    go away with their tenant, and member erasure deletes the tenant's rows
    written for the erased member or holding that member's Stripe customer
    identifier; that customer is then unowned.

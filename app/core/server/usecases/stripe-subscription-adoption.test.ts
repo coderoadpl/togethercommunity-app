@@ -301,14 +301,17 @@ describe('Stripe subscriptions in an account shared by two workspaces', () => {
     expect(h.subscriptions).toHaveLength(1); expect(h.events).toHaveLength(1);
   });
 
-  it('refuses reconciling an adopted subscription whose customer another workspace owns', async () => {
+  it('reconciles an adopted subscription whose customer another workspace owns without taking the customer', async () => {
     const h = harness();
     await m2mAdoptStripeSubscription('t1', input, h.deps);
     h.customerOwners.set('cus_existing', tenantB);
     const ownership = { hasForeignOwner: async () => false };
     expect(await m2mAdoptStripeSubscription('t1', input, { ...h.deps, stripeWebhookOwnership: ownership,
       subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
-        operation({ ...h.repositories, stripeWebhookOwnership: ownership }) } })).toMatchObject(conflict);
+        operation({ ...h.repositories, stripeWebhookOwnership: ownership }) } }))
+      .toMatchObject({ ok: true, value: { subscriptionCreated: false } });
+    expect(h.customerOwners).toEqual(new Map([['cus_existing', tenantB]]));
+    expect(h.subscriptions).toHaveLength(1); expect(h.events).toHaveLength(1);
   });
 
   it('refuses a subscription whose customer belongs to another workspace', async () => {

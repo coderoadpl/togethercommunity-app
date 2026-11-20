@@ -2927,6 +2927,8 @@ export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
   '&[aria-expanded="true"] svg': { transform: 'rotate(180deg)' },
 }));
 
+export const CheckoutNoWrap = styled('span')({ whiteSpace: 'nowrap' });
+
 export const CHECKOUT_PAY_BAR_CLASS = 'CheckoutPayBar-root';
 
 export const CheckoutRowGroup = styled(Box)(({ theme }) => ({

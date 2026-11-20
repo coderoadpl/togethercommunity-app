@@ -266,9 +266,9 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
       ) : null}
       {children}
       {row !== null && applied !== undefined ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: '0.75rem' }}>
-          <Typography role="status" data-testid="checkout-coupon-applied">
-            {t.checkout.couponAppliedLine({ code: applied.code, price: formatPrice(applied.discountCents, currency, language) })}
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', columnGap: '0.75rem' }}>
+          <Typography role="status" data-testid="checkout-coupon-applied" sx={{ overflowWrap: 'anywhere' }}>
+            {t.checkout.couponAppliedLine({ code: applied.code })}
           </Typography>
           <Button
             ref={removeRef}
@@ -280,6 +280,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
               focusAfter.current = 'input';
               row.onRemove();
             }}
+            sx={{ px: 0, minWidth: 0, minHeight: '2.75rem' }}
           >
             {t.checkout.couponRemove}
           </Button>

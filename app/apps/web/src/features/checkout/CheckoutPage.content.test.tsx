@@ -103,17 +103,20 @@ describe('checkout content', () => {
     expect(within(screen.getByTestId('checkout-delivery').parentElement ?? document.body).queryByRole('group')).not.toBeInTheDocument();
   });
 
-  it('shows the applied code on one line with its amount, labels the closed row with it and removes it', async () => {
+  it('announces the applied code without its amount, labels the closed row with the code and the amount and removes it', async () => {
     window.history.replaceState(null, '', '/checkout/stand?code=SAVE');
     serve({ couponValid: true });
     renderCheckout();
 
     const applied = await screen.findByTestId('checkout-coupon-applied');
-    expect(applied).toHaveTextContent(exact(en.checkout.couponAppliedLine({ code: 'SAVE', price: pln(980) })));
+    expect(applied).toHaveTextContent(exact(en.checkout.couponAppliedLine({ code: 'SAVE' })));
     expect(applied).toHaveAttribute('role', 'status');
+    expect(applied).not.toHaveTextContent(pln(980));
     expect(screen.queryByLabelText(en.checkout.couponLabel)).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-coupon-apply')).not.toBeInTheDocument();
-    const row = screen.getByRole('button', { name: en.checkout.couponAppliedRow({ code: 'SAVE', price: pln(980) }) });
+    const row = screen.getByRole('button', { name: `${en.checkout.couponAppliedRow({ code: 'SAVE' })} −${pln(980)}` });
+    const amount = within(row).getByText((_, element) => element?.tagName === 'SPAN' && element.textContent === `−${pln(980)}`);
+    expect(amount).toHaveStyle({ whiteSpace: 'nowrap' });
     await userEvent.click(row);
     expect(row).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(row);
@@ -123,6 +126,20 @@ describe('checkout content', () => {
     expect(screen.getByRole('button', { name: en.checkout.couponReveal })).toBeInTheDocument();
     expect(screen.queryByTestId('checkout-coupon-breakdown')).not.toBeInTheDocument();
     expect(screen.getByTestId('checkout-summary-total')).toHaveTextContent(exact(pln(4900)));
+  });
+
+  it('puts the applied code in its own column with Remove at the column edge, still tall enough to tap', async () => {
+    window.history.replaceState(null, '', '/checkout/stand?code=SAVE');
+    serve({ couponValid: true });
+    renderCheckout();
+
+    const applied = await screen.findByTestId('checkout-coupon-applied');
+    const remove = screen.getByTestId('checkout-coupon-remove');
+    const line = applied.parentElement;
+    expect(line).toBe(remove.parentElement);
+    expect(line).toHaveStyle({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto' });
+    expect(applied).toHaveStyle({ overflowWrap: 'anywhere' });
+    expect(remove).toHaveStyle({ paddingLeft: '0px', paddingRight: '0px', minHeight: '2.75rem' });
   });
 
   it('moves focus to Remove after a code is applied by hand and back to the code field after Remove', async () => {

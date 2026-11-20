@@ -82,7 +82,7 @@ export const CheckoutPriceBreakdown = ({ lines, total }: { lines: readonly Check
 );
 
 export const CheckoutDisclosureRow = ({ label, open, onToggle, disabled = false, testId, after, children }: {
-  label: string;
+  label: ReactNode;
   open: boolean;
   onToggle: () => void;
   disabled?: boolean;

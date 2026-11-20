@@ -2760,8 +2760,8 @@ export interface Messages {
     couponFinal: (params: { price: string }) => string;
     couponAfterDiscount: (params: { price: string }) => string;
     couponEmpty: string;
-    couponAppliedRow: (params: { code: string; price: string }) => string;
-    couponAppliedLine: (params: { code: string; price: string }) => string;
+    couponAppliedRow: (params: { code: string }) => string;
+    couponAppliedLine: (params: { code: string }) => string;
     couponRemove: string;
     couponRemoveLabel: (params: { code: string }) => string;
     omnibusLowest: (params: { price: string }) => string;

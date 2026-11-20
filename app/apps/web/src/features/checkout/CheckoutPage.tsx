@@ -43,6 +43,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatOfferPrice, formatPrice } from '../../lib/format.js';
 import {
   CardTitle,
+  CheckoutNoWrap,
   CheckoutPriceOption,
   CheckoutRowGroup,
   CheckoutTitle,
@@ -654,7 +655,12 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             </CheckoutDisclosureRow>
             {couponOffered ? (
               <CheckoutDisclosureRow
-                label={appliedCoupon === undefined ? t.checkout.couponReveal : t.checkout.couponAppliedRow({ code: appliedCoupon.breakdown.code, price: money(appliedCoupon.breakdown.discountCents) })}
+                label={appliedCoupon === undefined ? t.checkout.couponReveal : (
+                  <>
+                    {t.checkout.couponAppliedRow({ code: appliedCoupon.breakdown.code })}{' '}
+                    <CheckoutNoWrap>{`−${money(appliedCoupon.breakdown.discountCents)}`}</CheckoutNoWrap>
+                  </>
+                )}
                 open={couponVisible && !testEnabled}
                 onToggle={() => dispatchCheckout({ type: 'couponVisibilityChanged', visible: !couponVisible })}
                 disabled={testEnabled}

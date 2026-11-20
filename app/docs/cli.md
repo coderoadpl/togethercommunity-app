@@ -122,6 +122,17 @@ workspace, revoked or not, and prints the count; it refuses without `--yes`.
 `api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
 lists the workspace's shop management key history (creation, revocation, purge
 and keyed mutating requests handed to a shop route handler), newest first.
+`api-keys entitlement create <name> --expires-at <ISO> [--scope <scope...>] [--product <id...>]`
+creates an [entitlement key](entitlement-check.md) for another application to
+check who has access; the scope defaults to `entitlements:check`, adding
+`entitlements:members:read` returns member ids and allows member id lookups,
+`--product` limits the key to those products, and the expiry is at most 90 days
+ahead. `api-keys entitlement list` and `api-keys entitlement revoke <id>` list
+and revoke them; the shop management purge also deletes them.
+`entitlement check [--subjects-file <path|->] [--email <address...>] [--member-id <id...>] [--product <id...>]`
+asks with such a key from the environment variable named by `--api-key-env`
+(default `TOGETHER_ENTITLEMENT_KEY`); the subjects file holds one e-mail
+address or `member:<id>` per line and keeps addresses out of shell history.
 The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations|proposals` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list. With a

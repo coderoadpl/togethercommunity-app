@@ -6,11 +6,14 @@ import { z } from 'zod';
 
 import {
   createShopManagementClient,
+  isProposedChange,
   type ShopManagementClient,
   type ShopManagementClientOptions,
 } from '#core/client/index.js';
 import {
+  changeProposalListQuerySchema,
   imageAssetUploadRequestSchema,
+  type ChangeProposalProposedOutput,
   shopAssetsContracts,
   shopCatalogContracts,
   shopIntegrationContracts,
@@ -32,6 +35,7 @@ import {
   stripeModeSchema,
   validation,
   type AppError,
+  type ChangeProposalKeyReceipt,
   type OrderListItem,
   type ProductPrice,
   type ProductStock,
@@ -390,6 +394,20 @@ const describeStock = (stock: ProductStock): string =>
 
 const productLine = (product: { title: string; id: string }): string => `${product.title} (${product.id.slice(0, 8)})`;
 
+const receiptLines = (proposal: ChangeProposalKeyReceipt): string => [
+  `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
+  `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
+  `created: ${proposal.createdAt}`,
+  `expires: ${proposal.expiresAt}`,
+  ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
+  ...(proposal.failureCode === null ? [] : [`failure: ${proposal.failureCode}`]),
+].join('\n');
+
+const receiptLine = (proposal: ChangeProposalKeyReceipt): string =>
+  `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t(${proposal.id})`;
+
+type ProposableResult<A> = ChangeProposalProposedOutput | ({ outcome: 'applied' } & A);
+
 export const registerShopKeyCommands = (
   program: Command,
   context: () => Result<ShopCliContext, AppError>,
@@ -421,6 +439,12 @@ export const registerShopKeyCommands = (
     });
     emit(await action(client, input.data), ctx.value.json, format);
   };
+  const runProposable = <S extends z.ZodTypeAny, A extends object>(
+    schema: S,
+    action: (client: ShopManagementClient, input: z.output<S>) => Promise<Result<ProposableResult<A>, AppError>> | Result<ProposableResult<A>, AppError>,
+    format: (value: A) => string,
+  ) => run(schema, action, (value: ProposableResult<A>) =>
+    isProposedChange(value) ? `proposed, waiting for the owner's decision:\n${receiptLines(value.proposal)}` : format(value));
   const keyed = (command: Command): Command =>
     command.option('--api-key-env <name>', 'Environment variable holding the shop management key', DEFAULT_SHOP_KEY_ENV);
   const withProductFields = (command: Command): Command => command
@@ -455,7 +479,7 @@ export const registerShopKeyCommands = (
     .option('--price <amount>', 'price in currency units, e.g. 199 or 199.99')
     .option('--currency <currency>', '3-letter uppercase currency code')
     .option('--access-items <json>', 'inline JSON access items')))
-    .action(run(z.tuple([productCreateSchema]), async (client, [options]) => {
+    .action(runProposable(z.tuple([productCreateSchema]), async (client, [options]) => {
       const input = await shopProductCreateInput(options);
       return input.ok ? client.createProduct(input.value) : input;
     }, (data) => `created: ${productLine(data.product)}`));
@@ -463,16 +487,16 @@ export const registerShopKeyCommands = (
     .option('--title <title>')
     .option('--clear-cover', 'remove the current cover image')
     .option('--clear-variant', 'remove the variant group and label')))
-    .action(run(z.tuple([idSchema, productUpdateSchema]), async (client, [id, options]) => {
+    .action(runProposable(z.tuple([idSchema, productUpdateSchema]), async (client, [id, options]) => {
       const input = await shopProductUpdateInput(id, options);
       return input.ok ? client.updateProduct(input.value) : input;
     }, (data) => `updated: ${productLine(data.product)}`));
   keyed(products.command('publish <id>').description('Publish a product'))
-    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.publishProduct({ id }), (data) => `published: ${productLine(data.product)}`));
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.publishProduct({ id }), (data) => `published: ${productLine(data.product)}`));
   keyed(products.command('unpublish <id>').description('Return a published product to draft'))
-    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.unpublishProduct({ id }), (data) => `unpublished: ${productLine(data.product)}`));
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.unpublishProduct({ id }), (data) => `unpublished: ${productLine(data.product)}`));
   keyed(products.command('delete <id>').description('Permanently delete an eligible product draft').option('--confirm', 'confirm permanent deletion'))
-    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ confirm: z.boolean().optional() })]), (client, [productId, options]) =>
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema.extend({ confirm: z.boolean().optional() })]), (client, [productId, options]) =>
       options.confirm === true ? client.deleteProductDraft({ productId }) : err(validation('Product deletion requires --confirm')),
     () => 'deleted product draft'));
 
@@ -487,12 +511,12 @@ export const registerShopKeyCommands = (
     .option('--price-cents <cents>', 'amount in integer cents')
     .option('--price <amount>', 'amount in currency units, e.g. 199 or 199.99')
     .option('--currency <currency>', '3-letter uppercase currency code'))
-    .action(run(z.tuple([priceAddSchema]), async (client, [options]) => {
+    .action(runProposable(z.tuple([priceAddSchema]), async (client, [options]) => {
       const input = shopPriceCreateInput(options);
       return input.ok ? client.createProductPrice(input.value) : input;
     }, (data) => `created price: ${formatPrice(data.price)}`));
   keyed(prices.command('deactivate <id>').description('Deactivate a price (existing subscriptions keep renewing)'))
-    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deactivateProductPrice({ id }), (data) => `deactivated price: ${formatPrice(data.price)}`));
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deactivateProductPrice({ id }), (data) => `deactivated price: ${formatPrice(data.price)}`));
 
   const stock = shop.command('stock').description('Stock of a physical product');
   keyed(stock.command('show <productId>').description('Show on hand, reserved and available pieces'))
@@ -501,18 +525,18 @@ export const registerShopKeyCommands = (
   keyed(stock.command('enable <productId>').description('Start tracking stock for a product')
     .requiredOption('--on-hand <count>', 'pieces on hand')
     .option('--threshold <count>', 'low-stock e-mail threshold'))
-    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ onHand: countSchema, threshold: countSchema.optional() })]), (client, [productId, options]) =>
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema.extend({ onHand: countSchema, threshold: countSchema.optional() })]), (client, [productId, options]) =>
       client.enableProductStock({ productId, onHand: options.onHand, lowStockThreshold: options.threshold ?? null }),
     (data) => `stock tracking enabled: ${describeStock(data.stock)}`));
   keyed(stock.command('adjust <productId>').description('Add or remove pieces on hand; use the reason "returned" for goods put back')
     .requiredOption('--delta <count>', 'signed change, e.g. 5 or -1')
     .requiredOption('--reason <text>', 'why the stock changed'))
-    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ delta: deltaSchema, reason: z.string().trim().min(1).max(200) })]), (client, [productId, options]) =>
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema.extend({ delta: deltaSchema, reason: z.string().trim().min(1).max(200) })]), (client, [productId, options]) =>
       client.adjustProductStock({ productId, delta: options.delta, reason: options.reason }),
     (data) => `stock adjusted: ${describeStock(data.stock)}`));
   keyed(stock.command('threshold <productId>').description('Set the low-stock e-mail threshold, or "none" to clear it')
     .requiredOption('--value <count>', 'threshold or none'))
-    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ value: z.union([z.literal('none').transform(() => null), countSchema]) })]), (client, [productId, options]) =>
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema.extend({ value: z.union([z.literal('none').transform(() => null), countSchema]) })]), (client, [productId, options]) =>
       client.setProductStockThreshold({ productId, lowStockThreshold: options.value }),
     (data) => `low-stock threshold updated: ${describeStock(data.stock)}`));
 
@@ -612,7 +636,7 @@ export const registerShopKeyCommands = (
 
   const cover = shop.command('cover').description('Product cover images');
   keyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read), upload a product cover and attach the completed image to the product'))
-    .action(run(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file]) => {
+    .action(runProposable(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file]) => {
       const input = await imageUploadInput('product-cover', file);
       if (!input.ok) return input;
       const product = await client.listProductPrices(id);
@@ -641,6 +665,27 @@ export const registerShopKeyCommands = (
     }, (data) => JSON.stringify(data.salesLink, null, 2)));
   keyed(salesLinks.command('delete <id>').description('Delete a sales link'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deleteSalesLink({ id }), () => 'deleted'));
+
+  const proposals = shop.command('proposals').description('Change proposals made by a propose-mode key: only that key\'s own proposals, never the live values they change');
+  keyed(proposals.command('list').description('List this key\'s proposals, newest first')
+    .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed or expired')
+    .option('--cursor <id>', 'continue after this proposal id')
+    .option('--limit <n>', 'proposals per page (1-100, default 50)'))
+    .action(run(z.tuple([keyOnlySchema.extend({ status: z.string().optional(), cursor: z.string().optional(), limit: z.string().optional() })]), (client, [options]) => {
+      const query = contractInput(changeProposalListQuerySchema, {
+        ...(options.status === undefined ? {} : { status: options.status }),
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+      }, 'Invalid proposal list options');
+      return query.ok ? client.listProposals(query.value) : query;
+    }, (data) => [
+      ...(data.proposals.length === 0 ? ['no proposals'] : data.proposals.map(receiptLine)),
+      ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
+    ].join('\n')));
+  keyed(proposals.command('show <id>').description('Show one of this key\'s proposals'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.getProposal(id), (data) => receiptLines(data.proposal)));
+  keyed(proposals.command('withdraw <id>').description('Withdraw a pending proposal of this key'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.withdrawProposal(id), (data) => `withdrawn:\n${receiptLines(data.proposal)}`));
 
   const integrations = shop.command('integrations').description('Payment, storage, shipping and invoicing integrations; keep a shop:integrations:write key only in a provisioning backend');
   const secrets = integrations.command('secrets').description('Masked integration secrets and the iFirma and KSeF credentials');

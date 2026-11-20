@@ -22,11 +22,11 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-`shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings` instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`.
+`shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings` instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`). The `/api/m2m/shop/proposals` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.
 
-`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` or `proposal:submit:settings`, the family of the proposed operation; the table lists the first. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made.
+`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` or `proposal:submit:settings`, the family of the proposed operation; the table lists the first. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases also refuse an impersonating owner, a key and an unverified e-mail.
 
-Closed capability count: 130. Route rows: 504. Exported `Ctx` use-case rows: 374.
+Closed capability count: 130. Route rows: 510. Exported `Ctx` use-case rows: 374.
 
 ## Human-readable diff
 
@@ -229,6 +229,9 @@ no changes
 | `POST /api/m2m/shop/integrations/storage/configure` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `GET /api/m2m/shop/integrations/shipx` | tenant:secret:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/integrations/shipx/configure` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/proposals` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/proposals/:id` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/proposals/:id/withdraw` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -286,6 +289,9 @@ no changes
 | `GET /api/orders/packing-list` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/ship` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/personalization` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/change-proposals` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/change-proposals/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/change-proposals/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/orders/changes` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/integrations/shipx` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -928,12 +934,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:32` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:215` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1269` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1271` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1293` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1307` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1835` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1835` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1271` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1273` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1295` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1309` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1838` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1838` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -943,8 +949,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:668` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
-| api-key | `apps/server/src/shop-machine-auth.ts:5` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:87` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
+| api-key | `apps/server/src/shop-machine-auth.ts:111` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

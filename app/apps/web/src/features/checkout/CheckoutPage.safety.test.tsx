@@ -170,6 +170,21 @@ describe('checkout product safety information', () => {
     expect(within(section).getByTestId('product-safety-warnings')).toBe(warning);
   });
 
+  it('ends a clamped warning on a line boundary by dropping the gap between its paragraphs until it is expanded', async () => {
+    const paragraphs = ['Keep away from open flame.', `${'Do not leave the stand in direct sunlight for long periods. '.repeat(5)}`, 'Recycle the packaging.'];
+    const longWarning = paragraphs.join('\n\n');
+    serve([product('black', { compliance: { ...compliance, safetyWarnings: longWarning, safetyWarningsHtml: paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join('') } })]);
+    renderCheckout('stand-black');
+    const section = await screen.findByTestId('product-safety-info');
+    const second = within(section).getByText(/^Do not leave the stand/u);
+    expect(second.tagName).toBe('P');
+    expect(second).toHaveStyle({ marginTop: '0px' });
+    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.showMore }));
+    expect(second).toHaveStyle({ marginTop: '0.5em' });
+    await userEvent.click(within(section).getByRole('button', { name: en.productSafety.showLess }));
+    expect(second).toHaveStyle({ marginTop: '0px' });
+  });
+
   it('offers no Details toggle when a product has nothing beyond the visible minimum', async () => {
     serve([product('black', { compliance: { ...compliance, batchIdentifier: null, instructionsUrl: null } })]);
     renderCheckout('stand-black');

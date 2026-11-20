@@ -2971,7 +2971,7 @@ export const CheckoutSafetyWarnings = styled(Box, {
   ...theme.typography.body2,
   overflowWrap: 'anywhere',
   '& p, & ul, & ol': { margin: 0 },
-  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
+  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: clamped ? 0 : '0.5em' },
   ...(clamped ? { maxHeight: `calc(3em * ${String(theme.typography.body2.lineHeight ?? 1.5)})`, overflow: 'hidden' } : {}),
 }));
 

@@ -124,7 +124,7 @@ describe('the owner list identities of a full page', () => {
     const users = Array.from({ length: size * 2 }, (_, index) => person(`${prefix}-user-${String(index)}`));
     await db.insert(schema.user).values(users);
     await db.insert(schema.tenantAdmins).values(users.map((user, index) => ({
-      id: `${prefix}-grant-${String(index)}`, tenantId: PAGE_TENANT, userId: user.id, role: index % 2 === 0 ? 'owner' : 'admin',
+      id: `${prefix}-grant-${String(index)}`, tenantId: PAGE_TENANT, userId: user.id, role: index % 2 === 0 ? 'owner' as const : 'admin' as const,
     })));
     await db.insert(schema.changeProposals).values(Array.from({ length: size }, (_, index) => ({
       id: `${prefix}-proposal-${String(index).padStart(3, '0')}`, tenantId: PAGE_TENANT, operation: 'product.update',

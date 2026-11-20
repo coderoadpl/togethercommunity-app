@@ -41,6 +41,7 @@ import type {
   ChangeProposalPeopleReader,
   ChangeProposalRepositories,
   ChangeProposalRepository,
+  ChangeProposalTargetLabelReader,
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
   ChangeProposalTransitionGuard,
@@ -535,12 +536,14 @@ const priceTermsOf = (price: ProductPrice): ChangeProposalTargetPrice => ({
   kind: price.kind, interval: price.interval, intervalCount: price.intervalCount ?? 1, amountCents: price.amountCents, currency: price.currency,
 });
 
+type FakeTargetLabel = Awaited<ReturnType<ChangeProposalTargetLabelReader['labels']>>[number];
+
 export const changeProposalOwnerViewFakes = (
   state: FakeCatalogState,
   accounts: readonly FakeProposalAccount[] = [],
 ): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & { changeProposalPeople: FakeChangeProposalPeople } => ({
   changeProposalTargetLabels: {
-    labels: async (tenantId, targets) => targets.flatMap((target) => {
+    labels: async (tenantId, targets) => targets.flatMap((target): FakeTargetLabel[] => {
       const titleOf = (productId: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === productId)?.title;
       if (target.kind === 'price') {
         const price = state.prices.find((candidate) => candidate.tenantId === tenantId && candidate.id === target.id);

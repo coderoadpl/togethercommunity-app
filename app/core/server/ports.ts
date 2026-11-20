@@ -3115,7 +3115,7 @@ export interface ChangeProposalTargetLabelReader {
   labels(tenantId: string, targets: readonly ChangeProposalTargetLabelRequest[]): Promise<ChangeProposalTargetLabel[]>;
 }
 
-export interface ChangeProposalPerson {
+interface ChangeProposalPerson {
   userId: string;
   email: string;
   emailVerified: boolean;

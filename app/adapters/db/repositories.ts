@@ -4989,7 +4989,6 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
   }),
 });
 
-/** The one rule for a workspace grant: a direct staff row, or the role derived from the workspace's active organisation. */
 export const effectiveStaffGrantOf = (directRole: string | null, organizationRole: string | null): ReturnType<typeof effectiveStaffGrant> => {
   const organization = organizationRoleSchema.safeParse(organizationRole);
   return effectiveStaffGrant(directRole === null ? null : parseStaffRole(directRole), organization.success ? organization.data : null);

@@ -50,8 +50,7 @@ const distinct = (values: ReadonlyArray<string | null>): string[] =>
 
 const FORMER_OR_UNKNOWN: ChangeProposalPersonFacts = { email: null, verifiedOwner: false, formerTeamMember: true };
 
-/** An e-mail is shown only for an account that still holds a staff grant here; anyone else reads as a former team member. */
-export const changeProposalPeople = async (
+const readChangeProposalPeople = async (
   tenantId: string,
   userIds: ReadonlyArray<string | null>,
   deps: Pick<ChangeProposalOwnerViewDeps, 'changeProposalPeople'>,
@@ -64,18 +63,16 @@ export const changeProposalPeople = async (
   return (userId) => (userId === null ? undefined : people.get(userId)) ?? FORMER_OR_UNKNOWN;
 };
 
-interface OwnerFactsReader {
-  factsOf: (proposal: FactsSubject) => ChangeProposalOwnerFacts;
-  person: (userId: string | null) => ChangeProposalPersonFacts;
-}
-
 export const changeProposalOwnerFacts = async (
   tenantId: string,
   proposals: readonly FactsSubject[],
   deps: ChangeProposalOwnerViewDeps,
   now: string,
   otherPeople: ReadonlyArray<string | null> = [],
-): Promise<OwnerFactsReader> => {
+): Promise<{
+  factsOf: (proposal: FactsSubject) => ChangeProposalOwnerFacts;
+  person: (userId: string | null) => ChangeProposalPersonFacts;
+}> => {
   const keys = await deps.shopManagementKeys.listByTenant(tenantId);
   const groups = await deps.changeProposalGroups.listByIds(tenantId, distinct(proposals.map((proposal) => proposal.groupId)));
   const requests = new Map<string, ChangeProposalTargetLabelRequest>();
@@ -87,7 +84,7 @@ export const changeProposalOwnerFacts = async (
     (requests.size === 0 ? [] : await deps.changeProposalTargetLabels.labels(tenantId, [...requests.values()]))
       .map((entry) => [labelKey(entry), { label: entry.label, price: entry.price }]),
   );
-  const person = await changeProposalPeople(
+  const person = await readChangeProposalPeople(
     tenantId,
     [...proposals.flatMap((proposal) => [proposal.proposedByIssuerUserId, proposal.decidedByUserId]), ...otherPeople],
     deps,

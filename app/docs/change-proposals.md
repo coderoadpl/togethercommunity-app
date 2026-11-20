@@ -333,7 +333,10 @@ proposal while it is unread adds nothing; once the owner read it, the next
 proposal makes it unread again with the new time and a new notification id.
 The new id makes every occurrence its own: a late "mark read" of the earlier
 occurrence (from another tab or device) finds no row and cannot clear the new
-one. The realtime event names the new id and the kind. A group raises it when
+one. The realtime event names the new id and the kind, and the notification
+stream's `notification` frame carries both, live and on a `Last-Event-ID`
+replay (`{"id":"…","kind":"change-proposal"}`), so the page can refresh its
+pending count on that kind alone. A group raises it when
 its first item is stored, never for later items.
 
 It is written right after the proposal committed, not in the proposal

@@ -5603,7 +5603,7 @@ describe('notifications stream route', () => {
     expect(await readChunks(response, 3)).toEqual([
       'retry: 1000\n\n',
       'event: unread\ndata: {"unread":0}\n\n',
-      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed"}\n\n',
+      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed","kind":"thread-reply"}\n\n',
     ]);
     expect(scopes).toEqual([{ tenantId: acme.id, recipientUserId: 'user-1' }]);
   });

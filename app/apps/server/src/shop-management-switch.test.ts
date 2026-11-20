@@ -111,7 +111,7 @@ const stackedMutations = [
   ['POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { supportUrl: null }],
   ['DELETE', SHOP_ASSETS_ROUTES.deleteSalesLink.path.replace(':id', 'link-1'), undefined],
   ['POST', SHOP_INTEGRATION_ROUTES.setSecret.path, { key: 'ifirma.username', value: 'span-login' }],
-  ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { organizationId: '24680', token: 'span-shipx-token' }],
+  ['POST', SHOP_INTEGRATION_ROUTES.shipxConfigure.path, { production: { organizationId: '24680', token: 'span-shipx-token' } }],
 ] as const;
 
 const spanExporter = new InMemorySpanExporter();

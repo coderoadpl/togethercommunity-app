@@ -40,6 +40,7 @@ export const salesLinkSchema = z.object({ ...fields, id: z.string(), tenantId: z
 const salesLinkLineSchema = z.object({
   baseProductId: z.string().optional(), variants: z.array(publicProductVariantSchema).default([]),
   productId: z.string(), name: z.string(), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), compliance: publicProductComplianceSchema.nullable().default(null), personalization: publicProductPersonalizationSchema.nullable().default(null), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
+  maxQuantity: z.number().int().min(0).default(1),
 });
 export const salesLinkOfferSchema = z.object({
   salesLink: z.object({ slug: fields.slug, heading: fields.heading, description: fields.description, validFrom: fields.validFrom, validTo: fields.validTo }),
@@ -48,6 +49,7 @@ export const salesLinkOfferSchema = z.object({
   currency: currencySchema,
   totalCents: z.number().int().nonnegative(),
   soldOut: z.boolean().default(false),
+  available: z.number().int().min(0).nullable().default(null),
 });
 export type SalesLink = z.output<typeof salesLinkSchema>;
 export const salesLinkAvailable = (link: SalesLink, now: string): boolean => link.active

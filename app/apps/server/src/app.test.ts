@@ -11903,6 +11903,32 @@ describe('workspace checkout terms collected by Stripe', () => {
     }));
   });
 
+  it('passes Stripe terms and captures legal URLs for a staff test-mode sales-link checkout', async () => {
+    const h = await directSalesLinkApp();
+    h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
+    h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
+    h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    const enabled = await h.app.request(API_PATHS.stripeTestSession, { method: 'POST',
+      headers: { ...headers, cookie: 'session=staff' }, body: '{"enabled":true}' });
+    expect(enabled.status).toBe(200);
+    const cookie = enabled.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const response = await start(h, { productId: 'print', salesLinkSlug: 'bundle' }, { cookie });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      mode: 'test', salesLinkId: 'bundle-link', customerEmail: 'staff@example.test', stripeTerms,
+      checkoutConsentCaptureId: expect.any(String),
+    }));
+    expect(capture).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+      id: h.create.mock.calls[0]?.[0].checkoutConsentCaptureId,
+      capture: expect.objectContaining({ termsAccepted: false, termsUrl: stripeTerms.termsUrl, privacyUrl: stripeTerms.privacyUrl }),
+    }));
+    expect(h.orders).toMatchObject([{ mode: 'test', status: 'pending', salesLinkId: 'bundle-link' }]);
+  });
+
   it('writes the terms text in the checkout language', async () => {
     const h = await directSalesLinkApp();
     expect((await start(h, { productId: 'print', salesLinkSlug: 'bundle', language: 'pl' })).status).toBe(200);

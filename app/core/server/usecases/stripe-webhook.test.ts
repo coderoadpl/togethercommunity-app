@@ -3383,6 +3383,71 @@ it.each(['not-accepted', 'terms-url', 'privacy-url'] as const)('refuses a worksp
   expect(h.events.size).toBe(0);
 });
 
+const stripeTermsTestPayment = async (salesLink = true) => {
+  const h = await stripeTermsPayment();
+  h.event.mode = 'test';
+  h.event.livemode = false;
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  const lines: OrderLine[] = [{ productId: 'product-1', name: 'Course One', productType: 'course',
+    quantity: 1, grossCents: 4900, netCents: 4900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null }];
+  if (salesLink) {
+    h.event.checkoutSession.metadata.salesLinkId = 'link-1';
+    h.event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    h.deps.checkoutSnapshots = {
+      findByProviderSession: async () => null,
+      create: async () => undefined,
+      attachProviderSession: async () => undefined,
+      findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1'
+        ? { id, tenantId, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now,
+          mode: 'test', providerSessionId: 'cs-1' } : null,
+    };
+  }
+  const member = memberSchema.parse({ id: 'staff-member', tenantId: tenantA.id, userId: 'staff-user',
+    email: 'buyer@example.com', displayName: 'Staff', createdAt: now, tags: [], marketingConsents: {}, externalCustomerIds: {}, deletedAt: null });
+  await h.deps.members.create(tenantA.id, member);
+  h.orders.push({ id: 'staff-test-order', tenantId: tenantA.id, mode: 'test', memberId: member.id,
+    productId: 'product-1', priceId: null, kind: 'one_time', status: 'pending', amountCents: 4900,
+    currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs-1' },
+    couponId: null, discountCents: 0, billing: null, lines,
+    salesLinkId: salesLink ? 'link-1' : null, createdAt: now, verificationToken: 'b'.repeat(64) });
+  return h;
+};
+
+it('records Stripe terms for a staff test-mode sales-link checkout despite unaccepted page terms', async () => {
+  const h = await stripeTermsTestPayment();
+  expect(h.captures.get('capture-page')?.termsAccepted).toBe(false);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', mode: 'test', status: 'paid', salesLinkId: 'link-1' });
+  expect(h.consents).toHaveLength(1);
+  expect(h.consents[0]).toMatchObject({ source: 'checkout', email: 'buyer@example.com',
+    termsUrl: 'https://acme.example/terms-at-stripe', privacyUrl: 'https://acme.example/privacy-at-stripe' });
+});
+
+it('fulfills a staff test-mode checkout with Stripe terms but no sales link without recording consent', async () => {
+  const h = await stripeTermsTestPayment(false);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', mode: 'test', status: 'paid', salesLinkId: null });
+  expect(h.consents).toHaveLength(0);
+});
+
+it.each(['not-accepted', 'terms-url', 'privacy-url'] as const)('refuses a staff test-mode Stripe-terms checkout without evidence: %s', async (missing) => {
+  const h = await stripeTermsTestPayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  if (missing === 'not-accepted') h.event.checkoutSession.termsAccepted = false;
+  if (missing === 'terms-url') h.event.checkoutSession.metadata.termsUrl = null;
+  if (missing === 'privacy-url') delete h.event.checkoutSession.metadata.privacyUrl;
+  const pending = structuredClone(h.orders);
+  const createOrder = vi.spyOn(h.deps.orders, 'create');
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(err(validation('Stripe checkout terms consent evidence is missing')));
+  expect(createOrder).not.toHaveBeenCalled();
+  expect(h.orders).toEqual(pending);
+  expect(h.orders.filter((order) => order.status === 'paid')).toHaveLength(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.consents).toHaveLength(0);
+});
+
 const directTestPayment = async () => {
   const h = await directBundlePayment();
   h.event.mode = 'test';

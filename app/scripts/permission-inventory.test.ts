@@ -16,7 +16,7 @@ describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
     expect(inventory.routes).toHaveLength(504);
-    expect(inventory.useCases).toHaveLength(367);
+    expect(inventory.useCases).toHaveLength(374);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -264,6 +264,19 @@ describe('permission inventory', () => {
       expect(inventory.routes.find((row) => row.subject === subject)?.after, subject)
         .toEqual([SHOP_MANAGEMENT_KEY_PRINCIPAL]);
     }
+  });
+
+  it('gives the change proposal use-cases to the propose-mode key on its side and to the owner on the decision side', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('change-proposals.ts#'));
+    expect(useCases.map(({ subject, capability, after }) => [subject.replace('change-proposals.ts#', ''), capability, after])).toEqual([
+      ['submitChangeProposal', 'proposal:submit:catalog', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['listOwnChangeProposals', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['getOwnChangeProposal', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['withdrawOwnChangeProposal', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['listChangeProposals', 'proposal:read', ['owner']],
+      ['getChangeProposal', 'proposal:read', ['owner']],
+      ['rejectChangeProposal', 'proposal:decide', ['owner']],
+    ]);
   });
 
   it('machine-checks every derivable before and after principal set', () => {

@@ -13,7 +13,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
+import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps, type TenantSettingsWriteDeps } from './tenant-settings.js';
 
 const projectShopSettings = (settings: TenantSettings): ShopSettings => ({
   name: settings.name,
@@ -64,7 +64,7 @@ const shopSettingsUpdateGrant = (patch: ShopSettingsPatch): ShopManagementKeySet
 export const updateShopSettings = async (
   ctx: Ctx,
   input: ShopSettingsPatch,
-  deps: TenantSettingsDeps,
+  deps: TenantSettingsWriteDeps,
 ): Promise<Result<ShopSettings, AppError>> => {
   const parsed = shopSettingsPatchSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid shop settings', parsed.error.flatten()));

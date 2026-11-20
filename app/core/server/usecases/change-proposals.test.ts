@@ -18,8 +18,10 @@ import {
   type ProductDownloadAsset,
   type ProductPrice,
   type Result,
+  type SalesLink,
   type ShopManagementKey,
   type ShopManagementScope,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -71,6 +73,7 @@ const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey 
 });
 
 const CATALOG_PROPOSER: ShopManagementScope[] = ['shop:catalog:read', 'shop:catalog:write'];
+const FULL_PROPOSER: ShopManagementScope[] = [...CATALOG_PROPOSER, 'shop:settings:read', 'shop:settings:write'];
 
 const keyCtx = (
   scopes: ShopManagementScope[] = CATALOG_PROPOSER,
@@ -132,6 +135,19 @@ const downloadAsset = (overrides: Partial<ProductDownloadAsset> = {}): ProductDo
   storageKey: 'downloads/guide.pdf', status: 'ready', createdAt: '2026-01-01T00:00:00.000Z', ...overrides,
 });
 
+const salesLink = (overrides: Partial<SalesLink> = {}): SalesLink & { deleted: boolean } => ({
+  id: 'link-spring', tenantId: TENANT, slug: 'spring', title: 'Spring', heading: 'Spring sale', description: '',
+  productIds: ['product-live'], active: false, listed: false, validFrom: null, validTo: null, cancelReturnUrl: null,
+  revision: 1, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', deleted: false, ...overrides,
+});
+
+const shopSettings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
+  name: 'Acme', socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null, bunnyStreamLibraryId: null,
+  bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null,
+  supportEmail: null, supportUrl: null, termsUrl: null, privacyUrl: null, defaultHomeSpaceId: null,
+  invoiceVatMode: 'rate', invoiceVatRatePercent: 23, shippingRates: [], ...overrides,
+});
+
 const storedProposal = (overrides: Partial<ChangeProposal> = {}): ChangeProposal => {
   const createdAt = overrides.createdAt ?? '2026-02-28T10:00:00.000Z';
   return {
@@ -188,6 +204,8 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   );
   state.stock.push({ tenantId: TENANT, productId: 'product-live', onHand: 10, reserved: 0, lowStockThreshold: 2, lowStockNotifiedAt: null, updatedAt: NOW });
   state.downloadAssets.push(downloadAsset());
+  state.salesLinks.push(salesLink());
+  state.settings.push({ tenantId: TENANT, settings: shopSettings() });
   const store = createChangeProposalStoreFake(keys);
   const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const { storage, calls } = storageSpy();
@@ -230,6 +248,10 @@ const OPERATION_INPUTS: Record<ChangeProposalOperation, unknown> = {
   'stock.enable': { productId: 'product-mug', onHand: 4 },
   'stock.adjust': { productId: 'product-live', delta: 5, reason: 'Delivery' },
   'stock.set-threshold': { productId: 'product-live', lowStockThreshold: 3 },
+  'sales-link.create': { slug: 'summer', title: 'Summer', heading: 'Summer sale', productIds: ['product-mug'] },
+  'sales-link.update': { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['product-live'] },
+  'sales-link.delete': { id: 'link-spring' },
+  'settings.update': { name: 'Acme shop', supportEmail: 'help@acme.example.test' },
 };
 
 describe('submitChangeProposal dry run', () => {
@@ -239,7 +261,7 @@ describe('submitChangeProposal dry run', () => {
   it.each(changeProposalOperationSchema.options)('%s stores a pending proposal and changes no live state', async (operation) => {
     const before = liveState(h.state);
 
-    const result = await submitChangeProposal(keyCtx(), { operation, input: OPERATION_INPUTS[operation] }, h.submitDeps);
+    const result = await submitChangeProposal(keyCtx(FULL_PROPOSER), { operation, input: OPERATION_INPUTS[operation] }, h.submitDeps);
 
     if (!result.ok) throw new Error(`${operation}: ${result.error.message}`);
     expect(changeProposalKeyReceiptSchema.parse(result.value)).toEqual(result.value);
@@ -304,6 +326,34 @@ describe('submitChangeProposal dry run', () => {
     expect(h.transaction.deferredDropped).toBe(1);
     expect(h.storageCalls).toEqual([]);
     expect(h.state.downloadAssets).toHaveLength(1);
+  });
+
+  it('records a sales link update with its revision and a deletion of the whole link', async () => {
+    await submitChangeProposal(keyCtx(), { operation: 'sales-link.update', input: OPERATION_INPUTS['sales-link.update'] }, h.submitDeps);
+    await submitChangeProposal(keyCtx(), { operation: 'sales-link.delete', input: OPERATION_INPUTS['sales-link.delete'] }, h.submitDeps);
+    expect(h.store.proposals.map(({ effect }) => effect)).toEqual([
+      { heading: { before: 'Spring sale', after: 'Spring sale, extended' }, revision: { before: 1, after: 2 } },
+      expect.objectContaining({ exists: { before: true, after: false }, revision: { before: 1, after: null }, slug: { before: 'spring', after: null } }),
+    ]);
+    expect(h.store.proposals.map(({ target }) => target)).toEqual([{ kind: 'sales-link', id: 'link-spring' }, { kind: 'sales-link', id: 'link-spring' }]);
+    expect(h.state.salesLinks).toEqual([salesLink()]);
+  });
+
+  it('records the settings fields the coherence rules rewrite and nothing outside the shop settings', async () => {
+    const result = await submitChangeProposal(keyCtx(FULL_PROPOSER), {
+      operation: 'settings.update',
+      input: { invoiceVatMode: 'exempt', invoiceExemptionBasisKind: 'art_113_1', invoiceExemptionBasis: 'Article 113(1) of the VAT Act' },
+    }, h.submitDeps);
+    expect(result).toMatchObject({ ok: true, value: { target: { kind: 'settings', id: null } } });
+    expect(h.store.proposals[0]?.effect).toEqual({
+      invoiceVatMode: { before: 'rate', after: 'exempt' },
+      invoiceVatRatePercent: { before: 23, after: null },
+      invoiceExemptionBasisKind: { before: null, after: 'art_113_1' },
+      invoiceExemptionBasis: { before: null, after: 'Article 113(1) of the VAT Act' },
+    });
+    expect(await submitChangeProposal(keyCtx(FULL_PROPOSER), { operation: 'settings.update', input: { checkoutReturnOrigins: [] } }, h.submitDeps))
+      .toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid shop settings' } });
+    expect(h.state.settings[0]?.settings).toEqual(shopSettings());
   });
 
   it('returns the live domain error unchanged and stores nothing', async () => {
@@ -388,6 +438,8 @@ describe('submitChangeProposal authorization', () => {
   it.each([
     ['catalogue', 'product.update', ['shop:catalog:write', 'shop:settings:read'], 'product:read is not permitted'],
     ['catalogue', 'stock.adjust', ['shop:catalog:write'], 'product:read is not permitted'],
+    ['sales-link', 'sales-link.delete', ['shop:catalog:write', 'shop:settings:read'], 'product:read is not permitted'],
+    ['settings', 'settings.update', ['shop:settings:write', 'shop:catalog:read'], 'tenant:settings:read is not permitted'],
   ] as const)('refuses a %s proposal from a key row without the family\'s read scope before any dry run', async (_family, operation, scopes, message) => {
     const h = harness([shopKey({ scopes: [...scopes] })]);
     const result = await submitChangeProposal(keyCtx([...scopes]), { operation, input: OPERATION_INPUTS[operation] }, h.submitDeps);

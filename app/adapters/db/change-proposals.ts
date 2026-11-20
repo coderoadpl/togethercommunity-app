@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
@@ -360,9 +360,11 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
         return lockedRowExists(db.select({ id: productPrices.id }).from(productPrices)
           .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, target.id))).for('no key update'));
       case 'sales-link':
+        // Sales-link writes take this workspace lock before their row lock; taking it first here keeps that order.
+        if (!await boundedAdvisoryLock(db, `sales-links:${tenantId}`)) throw new Error('The sales links of this workspace stayed locked');
         if (target.id === null) return true;
         return lockedRowExists(db.select({ id: salesLinks.id }).from(salesLinks)
-          .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id))).for('no key update'));
+          .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id), isNull(salesLinks.deletedAt))).for('no key update'));
     }
   },
 });

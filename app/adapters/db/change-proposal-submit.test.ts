@@ -30,9 +30,12 @@ import {
   productPrices,
   products,
   productStock,
+  salesLinkEvents,
+  salesLinks,
   stockEvents,
   tenants,
 } from './schema.js';
+import { createSalesLinkRepository } from './sales-links.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -50,7 +53,8 @@ const owner: Identity = {
 };
 
 const key: ShopManagementKey = {
-  id: 'key-propose', tenantId: TENANT, name: 'Catalogue agent', keyHash: 'hash-propose', scopes: ['shop:catalog:read', 'shop:catalog:write'],
+  id: 'key-propose', tenantId: TENANT, name: 'Catalogue agent', keyHash: 'hash-propose',
+  scopes: ['shop:catalog:read', 'shop:catalog:write', 'shop:settings:read', 'shop:settings:write'],
   mode: 'propose', issuedByUserId: OWNER, createdAt: '2026-02-25T00:00:00.000Z', expiresAt: '2026-03-20T00:00:00.000Z', revokedAt: null,
 };
 
@@ -94,6 +98,8 @@ const liveTables = async () => ({
   versions: await database.db.select().from(entityVersions),
   outbox: await database.db.select().from(emailOutbox),
   tenant: await database.db.select().from(tenants).where(eq(tenants.id, TENANT)),
+  salesLinks: await database.db.select().from(salesLinks).where(eq(salesLinks.tenantId, TENANT)).orderBy(asc(salesLinks.id)),
+  salesLinkEvents: await database.db.select().from(salesLinkEvents).where(eq(salesLinkEvents.tenantId, TENANT)),
 });
 
 const insertProduct = async (id: string, values: { type: 'physical' | 'digital_download'; published?: boolean }) => {
@@ -127,6 +133,11 @@ beforeAll(async () => {
     id: 'asset-1', tenantId: TENANT, productId: 'draft', lineageId: 'lineage-1', fileName: 'guide.pdf', contentType: 'application/pdf',
     sizeBytes: 10, storageKey: 'downloads/guide.pdf', status: 'ready', createdAt: NOW,
   });
+  const saved = await createSalesLinkRepository(database.db).save(TENANT, {
+    id: 'link-spring', tenantId: TENANT, slug: 'spring', title: 'Spring', heading: 'Spring sale', description: '', productIds: ['live'],
+    active: false, listed: false, validFrom: null, validTo: null, cancelReturnUrl: null, revision: 1, createdAt: NOW, updatedAt: NOW,
+  }, null);
+  if (!saved.ok) throw new Error(saved.error.message);
 });
 
 afterAll(async () => { await database?.close(); });
@@ -142,6 +153,10 @@ const INPUTS: Record<ChangeProposalOperation, unknown> = {
   'stock.enable': { productId: 'mug', onHand: 4, lowStockThreshold: 1 },
   'stock.adjust': { productId: 'live', delta: -3, reason: 'Breakage' },
   'stock.set-threshold': { productId: 'live', lowStockThreshold: 5 },
+  'sales-link.create': { slug: 'summer', title: 'Summer', heading: 'Summer sale', productIds: ['mug'] },
+  'sales-link.update': { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] },
+  'sales-link.delete': { id: 'link-spring' },
+  'settings.update': { name: 'Acme shop', invoiceVatMode: 'rate', invoiceVatRatePercent: 8 },
 };
 
 describe('submitChangeProposal over the database', () => {

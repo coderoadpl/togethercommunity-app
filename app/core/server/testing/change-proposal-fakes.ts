@@ -15,8 +15,10 @@ import {
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
+  type SalesLink,
   type ShopManagementKey,
   type StockLevel,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type {
@@ -29,6 +31,7 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
   ChangeProposalTransitionGuard,
+  SalesLinkRepository,
   TenantSecretResolver,
 } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
@@ -40,8 +43,11 @@ export interface FakeCatalogState {
   stock: Array<StockLevel & { tenantId: string }>;
   stockEvents: number;
   entityVersions: number;
+  entityVersionAuthors: Array<string | null>;
   contentVersionBumps: number;
   downloadAssets: ProductDownloadAsset[];
+  salesLinks: Array<SalesLink & { deleted: boolean }>;
+  settings: Array<{ tenantId: string; settings: TenantSettings }>;
 }
 
 export const emptyCatalogState = (): FakeCatalogState => ({
@@ -51,8 +57,11 @@ export const emptyCatalogState = (): FakeCatalogState => ({
   stock: [],
   stockEvents: 0,
   entityVersions: 0,
+  entityVersionAuthors: [],
   contentVersionBumps: 0,
   downloadAssets: [],
+  salesLinks: [],
+  settings: [],
 });
 
 const unavailable = (name: string) => () => Promise.reject(new Error(`${name} is not part of the change proposal fake`));
@@ -107,6 +116,42 @@ const stockRepositoryOver = (state: FakeCatalogState): StockRepository => {
   };
 };
 
+const salesLinkRepositoryOver = (state: FakeCatalogState): SalesLinkRepository => {
+  const live = (tenantId: string) => state.salesLinks.filter((link) => link.tenantId === tenantId && !link.deleted);
+  const view = (link: SalesLink & { deleted: boolean }): SalesLink => ({
+    id: link.id, tenantId: link.tenantId, slug: link.slug, title: link.title, heading: link.heading, description: link.description,
+    productIds: [...link.productIds], active: link.active, listed: link.listed, validFrom: link.validFrom, validTo: link.validTo,
+    cancelReturnUrl: link.cancelReturnUrl ?? null, revision: link.revision, createdAt: link.createdAt, updatedAt: link.updatedAt,
+  });
+  return {
+    list: async (tenantId) => live(tenantId).map(view),
+    findById: async (tenantId, id) => {
+      const found = live(tenantId).find((link) => link.id === id);
+      return found === undefined ? null : view(found);
+    },
+    findBySlug: async (tenantId, slug) => {
+      const found = live(tenantId).find((link) => link.slug === slug);
+      return found === undefined ? null : view(found);
+    },
+    save: async (tenantId, link, expectedRevision) => {
+      const existing = live(tenantId).find((candidate) => candidate.id === link.id);
+      if (expectedRevision !== null && existing === undefined) return err(notFound('Sales link was not found'));
+      if (expectedRevision !== null && existing?.revision !== expectedRevision) return err(appError('conflict', 'Sales link changed; reload before saving'));
+      if (live(tenantId).some((candidate) => candidate.slug === link.slug && candidate.id !== link.id)) return err(appError('conflict', 'Sales-link slug already exists'));
+      const saved = { ...structuredClone(link), tenantId, deleted: false };
+      state.salesLinks = [...state.salesLinks.filter((candidate) => candidate !== existing), saved];
+      return ok(view(saved));
+    },
+    delete: async (tenantId, id, occurredAt, expectedRevision) => {
+      const existing = live(tenantId).find((link) => link.id === id);
+      if (existing === undefined) return err(notFound('Sales link was not found'));
+      if (expectedRevision !== undefined && existing.revision !== expectedRevision) return err(appError('conflict', 'Sales link changed; reload before deleting'));
+      Object.assign(existing, { deleted: true, active: false, revision: existing.revision + 1, updatedAt: occurredAt });
+      return ok(undefined);
+    },
+  };
+};
+
 const catalogRepositoriesOver = (
   state: FakeCatalogState,
   proposals: ChangeProposalRepository,
@@ -122,18 +167,21 @@ const catalogRepositoriesOver = (
         const found = product(tenantId, id);
         return found === null ? null : { ...found };
       },
+      findByIds: async (tenantId, ids) =>
+        state.products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)).map((found) => ({ ...found })),
       create: async (tenantId, created) => {
         if (state.products.some((candidate) => candidate.tenantId === tenantId && candidate.slug === created.slug)) return 'slug_taken';
         state.products.push({ ...created });
         return 'created';
       },
-      update: async (tenantId, updated) => {
+      update: async (tenantId, updated, version) => {
         const index = state.products.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === updated.id);
         const current = state.products[index];
         if (current === undefined) return null;
         const saved = { ...current, ...updated };
         state.products[index] = saved;
         state.entityVersions += 1;
+        state.entityVersionAuthors.push(version.createdBy);
         return { ...saved };
       },
       updateAccessItems: unavailable('products.updateAccessItems'),
@@ -162,12 +210,26 @@ const catalogRepositoriesOver = (
         return { ...price };
       },
     },
-    tenants: { findSettings: async () => null },
+    tenants: {
+      findSettings: async (tenantId) => {
+        const found = state.settings.find((entry) => entry.tenantId === tenantId);
+        return found === undefined ? null : structuredClone(found.settings);
+      },
+      changeSettings: async (tenantId, change) => {
+        const found = state.settings.find((entry) => entry.tenantId === tenantId);
+        if (found === undefined) return null;
+        const changes = await change(structuredClone(found.settings));
+        if (!changes.ok) return changes;
+        found.settings = { ...found.settings, ...changes.value };
+        state.contentVersionBumps += 1;
+        return ok(structuredClone(found.settings));
+      },
+    },
     downloadAssets: {
       listReadyByProduct: async (tenantId, productId) =>
         state.downloadAssets.filter((asset) => asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready'),
     },
-    spaces: { list: async () => [] },
+    spaces: { list: async () => [], findById: async () => null },
     stock: stockRepositoryOver(state),
     productDrafts: {
       deleteDraft: async (tenantId, productId) => {
@@ -181,6 +243,7 @@ const catalogRepositoriesOver = (
         return { kind: 'deleted', assets };
       },
     },
+    salesLinks: salesLinkRepositoryOver(state),
     changeProposals: proposals,
     changeProposalEvents: events,
     targets: {
@@ -188,6 +251,7 @@ const catalogRepositoriesOver = (
         locks.push(target);
         if (target.id === null) return target.kind !== 'price';
         if (target.kind === 'price') return state.prices.some((price) => price.tenantId === tenantId && price.id === target.id);
+        if (target.kind === 'sales-link') return state.salesLinks.some((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted);
         return product(tenantId, target.id) !== null;
       },
     },
@@ -315,11 +379,23 @@ export const createChangeProposalTransactionFake = (
 ): FakeChangeProposalTransaction => {
   const calls: Array<'run' | 'dryRun'> = [];
   const locks: ChangeProposalTarget[] = [];
+  const dropped = (count: number) => { fake.deferredDropped += count; };
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
     repositories: catalogRepositoriesOver(target, store.repository, store.events, locks),
     secretResolver,
     afterCommit: { defer: (effect) => { effects.push(effect); } },
-    savepoint: (operation) => operation(scopeOver(target, effects)),
+    savepoint: async (operation) => {
+      const nested: Array<() => Promise<void>> = [];
+      const working = structuredClone(target);
+      const result = await operation(scopeOver(working, nested));
+      if (result.ok) {
+        Object.assign(target, working);
+        effects.push(...nested);
+      } else {
+        dropped(nested.length);
+      }
+      return result;
+    },
   });
   const fake: FakeChangeProposalTransaction = {
     calls,
@@ -328,17 +404,21 @@ export const createChangeProposalTransactionFake = (
     run: async (_tenantId, operation) => {
       calls.push('run');
       const effects: Array<() => Promise<void>> = [];
-      const scope = scopeOver(state, effects);
-      const result = await operation(scope);
-      if (result.ok) for (const effect of effects) await effect();
-      else fake.deferredDropped += effects.length;
+      const working = structuredClone(state);
+      const result = await operation(scopeOver(working, effects));
+      if (!result.ok) {
+        dropped(effects.length);
+        return result;
+      }
+      Object.assign(state, working);
+      for (const effect of effects) await effect();
       return result;
     },
     dryRun: async (_tenantId, operation) => {
       calls.push('dryRun');
       const effects: Array<() => Promise<void>> = [];
       const result = await operation(scopeOver(structuredClone(state), effects));
-      fake.deferredDropped += effects.length;
+      dropped(effects.length);
       return result;
     },
   };

@@ -57,10 +57,10 @@ export const updateSalesLink = async (ctx: Ctx, input: unknown, deps: SalesLinkD
   const saved = await deps.salesLinks.save(tenant.value, { ...existing, ...fields, revision: expectedRevision + 1, updatedAt: deps.clock.nowIso() }, expectedRevision);
   return saved.ok ? ok({ salesLink: saved.value }) : saved;
 };
-export const deleteSalesLink = async (ctx: Ctx, input: { id: string }, deps: SalesLinkDeps) => {
+export const deleteSalesLink = async (ctx: Ctx, input: { id: string; expectedRevision?: number | undefined }, deps: SalesLinkDeps) => {
   const tenant = authorizeRequiredTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
-  const deleted = await deps.salesLinks.delete(tenant.value, input.id, deps.clock.nowIso());
+  const deleted = await deps.salesLinks.delete(tenant.value, input.id, deps.clock.nowIso(), input.expectedRevision);
   return deleted.ok ? ok({ deleted: true as const }) : deleted;
 };
 const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps: SalesLinkDeps, selections?: SalesLinkVariantSelection[]) => {

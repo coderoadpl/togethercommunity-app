@@ -387,7 +387,7 @@ describe('change proposal storage checks', () => {
       ${overrides['failureCode'] ?? null})`);
 
   it.each([
-    ['an unknown operation', { operation: 'settings.update' }, /change_proposals_operation_check/u],
+    ['an unknown operation', { operation: 'image.upload' }, /change_proposals_operation_check/u],
     ['an unknown status', { status: 'expired', decidedAt: NOW }, /change_proposals_status_check/u],
     ['a decided proposal without a decision time', { status: 'rejected' }, /change_proposals_decision_shape_check/u],
     ['a failure without a code', { status: 'failed', decidedAt: NOW }, /change_proposals_failure_shape_check/u],

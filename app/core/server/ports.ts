@@ -152,6 +152,7 @@ import type {
   ChangeProposalEvent,
   ChangeProposalTarget,
   ChangeProposalTerminalStatus,
+  SalesLink,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
   ImportAuditEvent,
@@ -2946,14 +2947,23 @@ export interface ChangeProposalTargetLocks {
   lock(tenantId: string, target: ChangeProposalTarget): Promise<boolean>;
 }
 
+export interface SalesLinkRepository {
+  list(tenantId: string): Promise<SalesLink[]>;
+  findById(tenantId: string, id: string): Promise<SalesLink | null>;
+  findBySlug(tenantId: string, slug: string): Promise<SalesLink | null>;
+  save(tenantId: string, link: SalesLink, expectedRevision: number | null): Promise<Result<SalesLink, AppError>>;
+  delete(tenantId: string, id: string, occurredAt: string, expectedRevision?: number): Promise<Result<void, AppError>>;
+}
+
 export interface ChangeProposalRepositories {
-  products: ProductRepository & ProductMetadataRepository;
+  products: ProductRepository & ProductMetadataRepository & ProductBatchReader;
   prices: ProductPriceRepository;
-  tenants: Pick<TenantRepository, 'findSettings'>;
+  tenants: Pick<TenantRepository, 'findSettings' | 'changeSettings'>;
   downloadAssets: Pick<ProductDownloadAssetRepository, 'listReadyByProduct'>;
-  spaces: Pick<SpaceRepository, 'list'>;
+  spaces: Pick<SpaceRepository, 'list' | 'findById'>;
   stock: StockRepository;
   productDrafts: ProductDraftRepository;
+  salesLinks: SalesLinkRepository;
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
   targets: ChangeProposalTargetLocks;

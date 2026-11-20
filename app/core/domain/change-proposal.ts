@@ -27,6 +27,10 @@ const CHANGE_PROPOSAL_OPERATION_DEFINITIONS = [
   { operation: 'stock.enable', family: 'catalog', targetKind: 'product' },
   { operation: 'stock.adjust', family: 'catalog', targetKind: 'product' },
   { operation: 'stock.set-threshold', family: 'catalog', targetKind: 'product' },
+  { operation: 'sales-link.create', family: 'catalog', targetKind: 'sales-link' },
+  { operation: 'sales-link.update', family: 'catalog', targetKind: 'sales-link' },
+  { operation: 'sales-link.delete', family: 'catalog', targetKind: 'sales-link' },
+  { operation: 'settings.update', family: 'settings', targetKind: 'settings' },
 ] as const satisfies readonly ChangeProposalOperationDefinition[];
 
 type ChangeProposalOperationName = (typeof CHANGE_PROPOSAL_OPERATION_DEFINITIONS)[number]['operation'];

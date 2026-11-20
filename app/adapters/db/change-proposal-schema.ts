@@ -65,7 +65,8 @@ export const changeProposals = pgTable('change_proposals', {
   check('change_proposals_group_position_check', sql`${table.groupPosition} >= 1`),
   check('change_proposals_operation_check', sql`${table.operation} IN (
     'product.create', 'product.update', 'product.publish', 'product.unpublish', 'product.delete-draft',
-    'price.create', 'price.deactivate', 'stock.enable', 'stock.adjust', 'stock.set-threshold'
+    'price.create', 'price.deactivate', 'stock.enable', 'stock.adjust', 'stock.set-threshold',
+    'sales-link.create', 'sales-link.update', 'sales-link.delete', 'settings.update'
   )`),
   check('change_proposals_input_check', sql`jsonb_typeof(${table.input}) = 'object'`),
   check('change_proposals_effect_check', sql`jsonb_typeof(${table.effect}) = 'object'`),

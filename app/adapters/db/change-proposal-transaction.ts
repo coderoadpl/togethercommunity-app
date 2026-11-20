@@ -23,6 +23,7 @@ import {
   createSpaceRepository,
   createTenantRepository,
 } from './repositories.js';
+import { createSalesLinkRepository } from './sales-links.js';
 import { createStockRepository } from './stock.js';
 
 type PostCommitEffect = () => Promise<void>;
@@ -36,11 +37,18 @@ const repositoriesOver = (tx: Db): ChangeProposalRepositories => {
   return {
     products: createProductRepository(tx),
     prices: createProductPriceRepository(tx),
-    tenants: { findSettings: (tenantId) => tenants.findSettings(tenantId) },
+    tenants: {
+      findSettings: (tenantId) => tenants.findSettings(tenantId),
+      changeSettings: (tenantId, change) => tenants.changeSettings(tenantId, change),
+    },
     downloadAssets: { listReadyByProduct: (tenantId, productId) => downloadAssets.listReadyByProduct(tenantId, productId) },
-    spaces: { list: (tenantId, options) => spaces.list(tenantId, options) },
+    spaces: {
+      list: (tenantId, options) => spaces.list(tenantId, options),
+      findById: (tenantId, id) => spaces.findById(tenantId, id),
+    },
     stock: createStockRepository(tx),
     productDrafts: createProductDraftRepository(tx),
+    salesLinks: createSalesLinkRepository(tx),
     changeProposals: createChangeProposalRepository(tx),
     changeProposalEvents: createChangeProposalEventRepository(tx),
     targets: createChangeProposalTargetLocks(tx),

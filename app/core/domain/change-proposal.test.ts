@@ -50,7 +50,7 @@ const proposal = (overrides: Partial<ChangeProposal> = {}): ChangeProposal => ch
 });
 
 describe('change proposal operations', () => {
-  it('lists the ten catalogue operations of the first release', () => {
+  it('lists the catalogue, sales-link and settings operations', () => {
     expect(changeProposalOperationSchema.options).toEqual([
       'product.create',
       'product.update',
@@ -62,25 +62,32 @@ describe('change proposal operations', () => {
       'stock.enable',
       'stock.adjust',
       'stock.set-threshold',
+      'sales-link.create',
+      'sales-link.update',
+      'sales-link.delete',
+      'settings.update',
     ]);
   });
 
-  it('submits every catalogue operation under the catalogue proposal capability', () => {
+  it('submits every operation under its family\'s proposal capability', () => {
     for (const operation of changeProposalOperationSchema.options) {
-      expect(changeProposalFamily(operation)).toBe('catalog');
-      expect(changeProposalSubmitCapability(operation)).toBe('proposal:submit:catalog');
+      const family = operation === 'settings.update' ? 'settings' : 'catalog';
+      expect(changeProposalFamily(operation)).toBe(family);
+      expect(changeProposalSubmitCapability(operation)).toBe(`proposal:submit:${family}`);
     }
   });
 
-  it('targets the price only when deactivating it', () => {
+  it('targets the price only when deactivating it, and the sales link or the settings for their operations', () => {
     expect(changeProposalTargetKind('price.deactivate')).toBe('price');
     expect(changeProposalTargetKind('price.create')).toBe('product');
     expect(changeProposalTargetKind('stock.adjust')).toBe('product');
+    expect(changeProposalTargetKind('sales-link.delete')).toBe('sales-link');
+    expect(changeProposalTargetKind('settings.update')).toBe('settings');
   });
 
   it('rejects an operation outside the release', () => {
-    expect(changeProposalOperationSchema.safeParse('settings.update').success).toBe(false);
-    expect(changeProposalOperationSchema.safeParse('sales-link.delete').success).toBe(false);
+    expect(changeProposalOperationSchema.safeParse('settings.secret.update').success).toBe(false);
+    expect(changeProposalOperationSchema.safeParse('image.upload').success).toBe(false);
   });
 });
 

@@ -9,6 +9,11 @@ import {
   newProductPriceSchema,
   newProductSchema,
   ok,
+  salesLinkDeleteInputSchema,
+  salesLinkInputSchema,
+  salesLinkUpdateSchema,
+  shopSettingsPatchSchema,
+  shopSettingsSchema,
   stockThresholdInputSchema,
   updateProductInputSchema,
   validation,
@@ -21,6 +26,7 @@ import {
   type Product,
   type ProductPrice,
   type Result,
+  type SalesLink,
 } from '#core/domain/index.js';
 
 import { storageWithDeletesAfterCommit } from '../change-proposal-effects.js';
@@ -35,6 +41,8 @@ import type {
 import { createProductPrice, deactivateProductPrice } from './product-prices.js';
 import { deleteProductDraft } from './product-drafts.js';
 import { createProduct, publishProduct, unpublishProduct, updateProduct } from './products.js';
+import { createSalesLink, deleteSalesLink, updateSalesLink } from './sales-links.js';
+import { updateShopSettings } from './shop-settings.js';
 import { adjustProductStock, enableProductStock, setProductStockThreshold } from './stock.js';
 
 type ChangeProposalSnapshot = ChangeProposalInput;
@@ -96,6 +104,14 @@ const changeProposalFieldDiff = (before: ChangeProposalSnapshot, after: ChangePr
   }
   return effect;
 };
+
+export const sameChangeProposalEffect = (left: ChangeProposalEffect, right: ChangeProposalEffect): boolean =>
+  canonical(left) === canonical(right);
+
+export const changeProposalTouchedFieldsMoved = (stored: ChangeProposalEffect, before: ChangeProposalSnapshot): boolean =>
+  Object.entries(stored).some(([field, change]) => 'delta' in change
+    ? typeof before[field] !== 'number'
+    : canonical(before[field] ?? null) !== canonical(change.before));
 
 const stockDeltaEffect = (before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect => {
   const { onHand: onHandBefore, ...restBefore } = before;
@@ -173,11 +189,48 @@ const stockSnapshot = async (
     : { tracked: true, onHand: level.onHand, lowStockThreshold: level.lowStockThreshold };
 };
 
+const salesLinkSnapshot = async (
+  repositories: ChangeProposalRepositories,
+  tenantId: string,
+  linkId: string | null,
+): Promise<ChangeProposalSnapshot> => {
+  const link = linkId === null ? null : await repositories.salesLinks.findById(tenantId, linkId);
+  if (link === null) return { exists: false };
+  return toSnapshot({
+    exists: true,
+    slug: link.slug,
+    title: link.title,
+    heading: link.heading,
+    description: link.description,
+    productIds: link.productIds,
+    active: link.active,
+    listed: link.listed,
+    validFrom: link.validFrom,
+    validTo: link.validTo,
+    cancelReturnUrl: link.cancelReturnUrl ?? null,
+    revision: link.revision,
+  });
+};
+
+const SHOP_SETTINGS_FIELDS = shopSettingsSchema.keyof().options;
+
+const settingsSnapshot = async (repositories: ChangeProposalRepositories, tenantId: string): Promise<ChangeProposalSnapshot> => {
+  const settings = await repositories.tenants.findSettings(tenantId);
+  if (settings === null) return { exists: false };
+  return toSnapshot(Object.fromEntries(SHOP_SETTINGS_FIELDS.map((field) => [field, settings[field] ?? null])));
+};
+
 const resourceIdOf = <T extends { id: string }>(result: Result<T, AppError>): Result<string | null, AppError> =>
   result.ok ? ok(result.value.id) : result;
 
-const productIdOf = <T>(productId: string, result: Result<T, AppError>): Result<string | null, AppError> =>
+const idOnSuccess = <T>(productId: string, result: Result<T, AppError>): Result<string | null, AppError> =>
   result.ok ? ok(productId) : result;
+
+const salesLinkIdOf = (result: Result<{ salesLink: SalesLink }, AppError>): Result<string | null, AppError> =>
+  result.ok ? ok(result.value.salesLink.id) : result;
+
+const withoutResourceId = <T>(result: Result<T, AppError>): Result<string | null, AppError> =>
+  result.ok ? ok(null) : result;
 
 const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInput: unknown): Result<PreparedChangeProposalOperation, AppError> => {
   const first = definition.schema.safeParse(rawInput);
@@ -205,6 +258,21 @@ const catalogDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposal
   stock: scope.repositories.stock,
   ids: deps.ids,
   clock: deps.clock,
+});
+
+const salesLinkDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps) => ({
+  salesLinks: scope.repositories.salesLinks,
+  products: scope.repositories.products,
+  prices: scope.repositories.prices,
+  tenants: scope.repositories.tenants,
+  ids: deps.ids,
+  clock: deps.clock,
+});
+
+const settingsDeps = (scope: ChangeProposalTransactionScope) => ({
+  tenants: scope.repositories.tenants,
+  spaces: scope.repositories.spaces,
+  products: scope.repositories.products,
 });
 
 const entry = <I>(operation: ChangeProposalOperation, definition: ChangeProposalOperationDefinition<I>): ChangeProposalOperationEntry => ({
@@ -246,7 +314,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     invalidInputMessage: 'Invalid product deletion payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => productSnapshot(repositories, tenantId, input.productId),
-    run: async (ctx, input, scope, deps) => productIdOf(input.productId, await deleteProductDraft(ctx, input, {
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await deleteProductDraft(ctx, input, {
       productDrafts: scope.repositories.productDrafts,
       storage: storageWithDeletesAfterCommit(deps.storage, scope.afterCommit, deps.logger),
       secretResolver: scope.secretResolver,
@@ -272,7 +340,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     invalidInputMessage: 'Invalid stock tracking payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => stockSnapshot(repositories, tenantId, input.productId),
-    run: async (ctx, input, scope, deps) => productIdOf(input.productId, await enableProductStock(ctx, input, catalogDeps(scope, deps))),
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await enableProductStock(ctx, input, catalogDeps(scope, deps))),
   }),
   'stock.adjust': entry('stock.adjust', {
     schema: adjustStockInputSchema,
@@ -280,13 +348,41 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => stockSnapshot(repositories, tenantId, input.productId),
     effect: stockDeltaEffect,
-    run: async (ctx, input, scope, deps) => productIdOf(input.productId, await adjustProductStock(ctx, input, catalogDeps(scope, deps))),
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await adjustProductStock(ctx, input, catalogDeps(scope, deps))),
   }),
   'stock.set-threshold': entry('stock.set-threshold', {
     schema: stockThresholdInputSchema,
     invalidInputMessage: 'Invalid low-stock threshold payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => stockSnapshot(repositories, tenantId, input.productId),
-    run: async (ctx, input, scope, deps) => productIdOf(input.productId, await setProductStockThreshold(ctx, input, catalogDeps(scope, deps))),
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await setProductStockThreshold(ctx, input, catalogDeps(scope, deps))),
+  }),
+  'sales-link.create': entry('sales-link.create', {
+    schema: salesLinkInputSchema,
+    invalidInputMessage: 'Invalid sales link',
+    target: () => ({ kind: 'sales-link', id: null }),
+    snapshot: (repositories, tenantId, _input, resourceId) => salesLinkSnapshot(repositories, tenantId, resourceId),
+    run: async (ctx, input, scope, deps) => salesLinkIdOf(await createSalesLink(ctx, input, salesLinkDeps(scope, deps))),
+  }),
+  'sales-link.update': entry('sales-link.update', {
+    schema: salesLinkUpdateSchema,
+    invalidInputMessage: 'Invalid sales link',
+    target: (input) => ({ kind: 'sales-link', id: input.id }),
+    snapshot: (repositories, tenantId, input) => salesLinkSnapshot(repositories, tenantId, input.id),
+    run: async (ctx, input, scope, deps) => salesLinkIdOf(await updateSalesLink(ctx, input, salesLinkDeps(scope, deps))),
+  }),
+  'sales-link.delete': entry('sales-link.delete', {
+    schema: salesLinkDeleteInputSchema,
+    invalidInputMessage: 'Invalid sales link deletion payload',
+    target: (input) => ({ kind: 'sales-link', id: input.id }),
+    snapshot: (repositories, tenantId, input) => salesLinkSnapshot(repositories, tenantId, input.id),
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.id, await deleteSalesLink(ctx, input, salesLinkDeps(scope, deps))),
+  }),
+  'settings.update': entry('settings.update', {
+    schema: shopSettingsPatchSchema,
+    invalidInputMessage: 'Invalid shop settings',
+    target: () => ({ kind: 'settings', id: null }),
+    snapshot: (repositories, tenantId) => settingsSnapshot(repositories, tenantId),
+    run: async (ctx, input, scope) => withoutResourceId(await updateShopSettings(ctx, input, settingsDeps(scope))),
   }),
 };

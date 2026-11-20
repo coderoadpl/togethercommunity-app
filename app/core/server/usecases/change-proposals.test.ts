@@ -408,7 +408,7 @@ describe('submitChangeProposal dry run', () => {
   it('keeps live values out of the receipt', async () => {
     const result = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', description: 'Fresh' } }, h.submitDeps);
     if (!result.ok) throw new Error(result.error.message);
-    expect(Object.keys(result.value).sort()).toEqual(['createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target']);
+    expect(Object.keys(result.value).sort()).toEqual(['appliedResourceId', 'createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target']);
     expect(JSON.stringify(result.value)).not.toContain('Mug');
     expect(result.value.input).toEqual({ id: 'product-mug', description: 'Fresh' });
   });

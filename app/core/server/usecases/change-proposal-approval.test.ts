@@ -198,6 +198,49 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
 
 const liveProduct = (h: Harness, id: string) => h.state.products.find((candidate) => candidate.id === id);
 
+const storedProposal = (fields: Pick<ChangeProposal, 'id' | 'operation' | 'input' | 'effect' | 'target'>): ChangeProposal => {
+  const createdAt = '2026-02-28T10:00:00.000Z';
+  return {
+    ...fields, tenantId: TENANT, groupId: null, groupPosition: null, status: 'pending', proposedByKeyId: KEY_ID,
+    proposedByKeyName: 'Catalogue agent', proposedByIssuerUserId: ISSUER, createdAt, expiresAt: changeProposalExpiresAt(createdAt),
+    decidedByUserId: null, decidedAt: null, decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
+  };
+};
+
+const countingSavepoints = (h: Harness): { transaction: ChangeProposalTransaction; count(): number } => {
+  let count = 0;
+  return {
+    transaction: {
+      ...h.transaction,
+      run: (tenantId, operation) => h.transaction.run(tenantId, (scope) => operation({
+        ...scope,
+        savepoint: (nested) => {
+          count += 1;
+          return scope.savepoint(nested);
+        },
+      })),
+    },
+    count: () => count,
+  };
+};
+
+const advancingDuringTargetLock = (h: Harness, to: string): ChangeProposalTransaction => ({
+  ...h.transaction,
+  run: (tenantId, operation) => h.transaction.run(tenantId, (scope) => operation({
+    ...scope,
+    repositories: {
+      ...scope.repositories,
+      targets: {
+        lock: async (lockTenantId, target, purpose) => {
+          const locked = await scope.repositories.targets.lock(lockTenantId, target, purpose);
+          h.clock.now = to;
+          return locked;
+        },
+      },
+    },
+  })),
+});
+
 describe('approveChangeProposal applies exactly what the owner saw', () => {
   it('applies a product update as the approving owner, once', async () => {
     const h = harness();
@@ -279,20 +322,80 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
     expect(h.events(id)).toEqual(['1:proposed', '2:apply_failed']);
   });
 
-  it('marks a proposal stale when its stored input no longer parses', async () => {
+  it('marks a proposal stale without running the live use-case when its stored input carries a retired field', async () => {
     const h = harness();
-    const createdAt = '2026-02-28T10:00:00.000Z';
-    h.store.seed({
-      id: 'proposal-old-shape', tenantId: TENANT, groupId: null, groupPosition: null, operation: 'product.update',
-      input: { id: 'product-mug', retiredField: true }, effect: { title: { before: 'Mug', after: 'Big mug' } },
-      target: { kind: 'product', id: 'product-mug' }, status: 'pending', proposedByKeyId: KEY_ID, proposedByKeyName: 'Catalogue agent',
-      proposedByIssuerUserId: ISSUER, createdAt, expiresAt: changeProposalExpiresAt(createdAt), decidedByUserId: null, decidedAt: null,
-      decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
-    });
+    const savepoints = countingSavepoints(h);
+    h.store.seed(storedProposal({
+      id: 'proposal-old-shape', operation: 'product.update',
+      input: { id: 'product-mug', title: 'Big mug', retiredField: true }, effect: { title: { before: 'Mug', after: 'Big mug' } },
+      target: { kind: 'product', id: 'product-mug' },
+    }));
     const before = structuredClone(h.state);
 
-    expect(await h.approve('proposal-old-shape')).toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(await approveChangeProposal(ownerSession, { id: 'proposal-old-shape' }, { ...h.deps, changeProposalTransaction: savepoints.transaction }))
+      .toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(savepoints.count()).toBe(0);
     expect(h.state).toEqual(before);
+    expect(h.events('proposal-old-shape')).toEqual(['1:stale']);
+  });
+
+  it('marks a proposal stale when an unknown key sits deeper in its stored input', async () => {
+    const h = harness();
+    const savepoints = countingSavepoints(h);
+    h.store.seed(storedProposal({
+      id: 'proposal-nested', operation: 'settings.update',
+      input: { socialLinks: [{ label: 'Blog', url: 'https://blog.example.test', icon: 'rss' }] },
+      effect: { socialLinks: { before: [], after: [{ label: 'Blog', url: 'https://blog.example.test' }] } },
+      target: { kind: 'settings', id: null },
+    }));
+
+    expect(await approveChangeProposal(ownerSession, { id: 'proposal-nested' }, { ...h.deps, changeProposalTransaction: savepoints.transaction }))
+      .toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(savepoints.count()).toBe(0);
+    expect(h.state.settings[0]?.settings.socialLinks).toEqual([]);
+  });
+
+  it.each([
+    ['checkoutReturnOrigins', ['https://shop.example.test']],
+    ['defaultHomeSpaceId', 'space-1'],
+  ] as const)('refuses a settings change carrying %s, which a key may not write, at submit and at approval', async (field, value) => {
+    const h = harness();
+    const input = { name: 'Acme shop', [field]: value };
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'settings.update', input }, { ...h.deps, changeProposals: h.store.repository });
+    expect(submitted).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.transaction.calls).toEqual([]);
+    expect(h.store.proposals).toEqual([]);
+
+    const savepoints = countingSavepoints(h);
+    h.store.seed(storedProposal({
+      id: 'proposal-settings-field', operation: 'settings.update', input,
+      effect: { name: { before: 'Acme', after: 'Acme shop' } }, target: { kind: 'settings', id: null },
+    }));
+    const before = structuredClone(h.state);
+    expect(await approveChangeProposal(ownerSession, { id: 'proposal-settings-field' }, { ...h.deps, changeProposalTransaction: savepoints.transaction }))
+      .toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(savepoints.count()).toBe(0);
+    expect(h.state).toEqual(before);
+  });
+
+  it('marks a proposal of an operation this release does not know stale, says why, and applies nothing', async () => {
+    const h = harness();
+    const savepoints = countingSavepoints(h);
+    h.store.seed(storedProposal({
+      id: 'proposal-later', operation: 'image.attach-cover', input: { productId: 'product-mug', imageId: 'image-1' },
+      effect: { coverUrl: { before: null, after: 'https://cdn.example.test/cover.png' } }, target: { kind: 'product', id: 'product-mug' },
+    }));
+    const before = structuredClone(h.state);
+
+    const approved = await approveChangeProposal(ownerSession, { id: 'proposal-later' }, { ...h.deps, changeProposalTransaction: savepoints.transaction });
+
+    expect(approved).toMatchObject({ ok: true, value: { status: 'stale', operation: 'image.attach-cover', appliedResourceId: null } });
+    expect(savepoints.count()).toBe(0);
+    expect(h.state).toEqual(before);
+    expect(h.transaction.locks).toEqual([]);
+    expect(h.store.eventRows.at(-1)).toMatchObject({
+      kind: 'stale', note: 'This release does not know the operation "image.attach-cover", so the proposal cannot be applied; nothing was changed',
+    });
   });
 
   it('applies a product creation and records the new product as the applied resource', async () => {
@@ -502,6 +605,35 @@ describe('approveChangeProposal decisions and guards', () => {
     expect(await h.approve(id)).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
     expect(h.events(id)).toEqual(['1:proposed', '2:expired']);
     expect(liveProduct(h, 'product-mug')?.title).toBe('Mug');
+  });
+
+  it('records the expiry and applies nothing when the proposal expired while the approval waited for the target lock', async () => {
+    const h = harness();
+    const id = await h.submit('product.update', { id: 'product-mug', title: 'Big mug' });
+    const expiresAt = h.proposal(id)?.expiresAt;
+    if (expiresAt === undefined) throw new Error('proposal missing');
+    h.clock.now = new Date(Date.parse(expiresAt) - 1_000).toISOString();
+    const afterExpiry = new Date(Date.parse(expiresAt) + 1_000).toISOString();
+
+    const approved = await approveChangeProposal(ownerSession, { id }, { ...h.deps, changeProposalTransaction: advancingDuringTargetLock(h, afterExpiry) });
+
+    expect(approved).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    expect(h.events(id)).toEqual(['1:proposed', '2:expired']);
+    expect(h.store.eventRows.at(-1)).toMatchObject({ kind: 'expired', at: afterExpiry, actorUserId: OWNER });
+    expect(h.proposal(id)).toMatchObject({ status: 'pending', decidedAt: null });
+    expect(liveProduct(h, 'product-mug')?.title).toBe('Mug');
+    expect(h.state.entityVersionAuthors).toEqual([]);
+  });
+
+  it('stamps the decision with the time read after the target lock', async () => {
+    const h = harness();
+    const id = await h.submit('product.update', { id: 'product-mug', title: 'Big mug' });
+    const afterWait = '2026-03-01T10:05:00.000Z';
+
+    const approved = await approveChangeProposal(ownerSession, { id }, { ...h.deps, changeProposalTransaction: advancingDuringTargetLock(h, afterWait) });
+
+    expect(approved).toMatchObject({ ok: true, value: { status: 'applied', decidedAt: afterWait } });
+    expect(h.store.eventRows.at(-1)).toMatchObject({ kind: 'applied', at: afterWait });
   });
 
   it('approves the proposal of a key that expired naturally and shows the key state', async () => {

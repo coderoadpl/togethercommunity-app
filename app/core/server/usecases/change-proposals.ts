@@ -11,6 +11,7 @@ import {
   changeProposalsBusy,
   err,
   forbidden,
+  knownChangeProposalOperation,
   notFound,
   ok,
   rejectChangeProposalInputSchema,
@@ -18,6 +19,7 @@ import {
   toChangeProposalKeyReceipt,
   toChangeProposalOwnerDetail,
   toChangeProposalOwnerView,
+  unknownChangeProposalOperationNote,
   validation,
   type AppError,
   type ChangeProposal,
@@ -159,7 +161,7 @@ export const submitChangeProposal = async (
   const ownerEquivalent: Ctx = { identity: ctx.identity };
 
   const dryRun = await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
-    await scope.repositories.targets.lock(tenantId, target);
+    await scope.repositories.targets.lock(tenantId, target, prepared.value.lockPurpose);
     const before = await prepared.value.snapshot(scope.repositories, tenantId, target.id);
     const ran = await prepared.value.run(ownerEquivalent, scope, deps);
     if (!ran.ok) return ran;
@@ -343,11 +345,14 @@ export const rejectChangeProposal = async (
 };
 
 type ApprovalOutcome =
-  | { status: 'applied'; appliedResourceId: string | null }
-  | { status: 'stale' }
-  | { status: 'failed'; error: AppError };
+  | { status: 'applied'; appliedResourceId: string | null; at: string }
+  | { status: 'stale'; note: string | null; at: string }
+  | { status: 'failed'; error: AppError; at: string }
+  | { status: 'expired'; at: string };
 
-const outcomeFields = (outcome: ApprovalOutcome): { status: ChangeProposalTerminalStatus; appliedResourceId: string | null; failureCode: string | null; failureMessage: string | null } => {
+type DecidedOutcome = Exclude<ApprovalOutcome, { status: 'expired' }>;
+
+const outcomeFields = (outcome: DecidedOutcome): { status: ChangeProposalTerminalStatus; appliedResourceId: string | null; failureCode: string | null; failureMessage: string | null } => {
   switch (outcome.status) {
     case 'applied':
       return { status: 'applied', appliedResourceId: outcome.appliedResourceId, failureCode: null, failureMessage: null };
@@ -372,13 +377,19 @@ const applyLockedProposal = async (
   scope: ChangeProposalTransactionScope,
   deps: ChangeProposalRunDeps,
 ): Promise<ApprovalOutcome> => {
-  const prepared = CHANGE_PROPOSAL_OPERATIONS[proposal.operation].prepare(proposal.input);
-  if (!prepared.ok || !sameTarget(prepared.value.target, proposal.target)) return { status: 'stale' };
+  const afterProposalLock = deps.clock.nowIso();
+  if (changeProposalExpired(proposal, afterProposalLock)) return { status: 'expired', at: afterProposalLock };
+  const known = knownChangeProposalOperation(proposal.operation);
+  if (known === null) return { status: 'stale', note: unknownChangeProposalOperationNote(proposal.operation), at: afterProposalLock };
+  const prepared = CHANGE_PROPOSAL_OPERATIONS[known].prepare(proposal.input);
+  if (!prepared.ok || !sameTarget(prepared.value.target, proposal.target)) return { status: 'stale', note: null, at: afterProposalLock };
   const operation = prepared.value;
   const { tenantId } = proposal;
-  await scope.repositories.targets.lock(tenantId, operation.target);
+  await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
+  const at = deps.clock.nowIso();
+  if (changeProposalExpired(proposal, at)) return { status: 'expired', at };
   const before = await operation.snapshot(scope.repositories, tenantId, operation.target.id);
-  if (changeProposalTouchedFieldsMoved(proposal.effect, before)) return { status: 'stale' };
+  if (changeProposalTouchedFieldsMoved(proposal.effect, before)) return { status: 'stale', note: null, at };
   const effectChanged = appError('conflict', 'The live state changed since this change was proposed');
   const applied = await scope.savepoint(async (nested) => {
     const ran = await operation.run(ctx, nested, deps);
@@ -386,9 +397,13 @@ const applyLockedProposal = async (
     const after = await operation.snapshot(nested.repositories, tenantId, ran.value ?? operation.target.id);
     return sameChangeProposalEffect(operation.effect(before, after), proposal.effect) ? ran : err(effectChanged);
   });
-  if (applied.ok) return { status: 'applied', appliedResourceId: applied.value };
-  return applied.error === effectChanged ? { status: 'stale' } : { status: 'failed', error: applied.error };
+  if (applied.ok) return { status: 'applied', appliedResourceId: applied.value, at };
+  return applied.error === effectChanged ? { status: 'stale', note: null, at } : { status: 'failed', error: applied.error, at };
 };
+
+type ApprovalDecision =
+  | { kind: 'decided'; proposal: ChangeProposal; at: string }
+  | { kind: 'expired'; proposal: ChangeProposal; at: string };
 
 export const approveChangeProposal = async (
   ctx: Ctx,
@@ -411,24 +426,30 @@ export const approveChangeProposal = async (
     await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
     return err(settledConflict(proposal, now));
   }
-  const decided = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<ChangeProposal, AppError>> => {
+  const decided = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<ApprovalDecision, AppError>> => {
     const proposals = scope.repositories.changeProposals;
     const locked = await proposals.lockPending(tenantId, id, { unexpiredAt: now });
     if (locked === null) {
       const current = await proposals.findById(tenantId, id);
-      return err(current === null ? missing : settledConflict(current, now));
+      return err(current === null ? missing : settledConflict(current, deps.clock.nowIso()));
     }
     const outcome = await applyLockedProposal(ctx, locked, scope, deps);
+    if (outcome.status === 'expired') {
+      await proposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: outcome.at });
+      return ok({ kind: 'expired', proposal: locked, at: outcome.at });
+    }
     const transitioned = await proposals.transition(tenantId, id, {
       ...outcomeFields(outcome),
       decidedByUserId: owner,
-      decidedAt: now,
+      decidedAt: outcome.at,
       decisionNote: null,
-      event: { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now },
-    }, { unexpiredAt: now });
+      event: { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: outcome.status === 'stale' ? outcome.note : null, at: outcome.at },
+    }, { unexpiredAt: outcome.at });
     if (transitioned === null) throw new Error(`Change proposal ${id} left pending while its row was locked`);
-    return ok(transitioned);
+    return ok({ kind: 'decided', proposal: transitioned, at: outcome.at });
   });
   if (!decided.ok) return decided;
-  return ok(toChangeProposalOwnerView(decided.value, (await keyStates(tenantId, deps, now))(decided.value), now));
+  if (decided.value.kind === 'expired') return err(settledConflict(decided.value.proposal, decided.value.at));
+  const { proposal: decidedProposal, at } = decided.value;
+  return ok(toChangeProposalOwnerView(decidedProposal, (await keyStates(tenantId, deps, at))(decidedProposal), at));
 };

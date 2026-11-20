@@ -1,21 +1,10 @@
 import {
-  adjustStockInputSchema,
-  changeProposalIdInputSchema,
+  CHANGE_PROPOSAL_INPUT_SCHEMAS,
   changeProposalInputSchema,
-  changeProposalProductIdInputSchema,
   changeProposalSubmitCapability,
-  enableStockTrackingInputSchema,
   err,
-  newProductPriceSchema,
-  newProductSchema,
   ok,
-  salesLinkDeleteInputSchema,
-  salesLinkInputSchema,
-  salesLinkUpdateSchema,
-  shopSettingsPatchSchema,
   shopSettingsSchema,
-  stockThresholdInputSchema,
-  updateProductInputSchema,
   validation,
   type AppError,
   type Capability,
@@ -24,6 +13,7 @@ import {
   type ChangeProposalOperation,
   type ChangeProposalTarget,
   type Product,
+  type ProductDownloadAsset,
   type ProductPrice,
   type Result,
   type SalesLink,
@@ -33,6 +23,7 @@ import { storageWithDeletesAfterCommit } from '../change-proposal-effects.js';
 import type { Ctx } from '../context.js';
 import type {
   ChangeProposalRepositories,
+  ChangeProposalTargetLockPurpose,
   ChangeProposalTransactionScope,
   Clock,
   IdGenerator,
@@ -58,6 +49,7 @@ export interface ChangeProposalRunDeps {
 interface PreparedChangeProposalOperation {
   input: ChangeProposalInput;
   target: ChangeProposalTarget;
+  lockPurpose: ChangeProposalTargetLockPurpose;
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
@@ -76,6 +68,7 @@ interface ChangeProposalOperationDefinition<I> {
   schema: InputParser<I>;
   invalidInputMessage: string;
   target(input: I): ChangeProposalTarget;
+  lockPurpose?: ChangeProposalTargetLockPurpose;
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, input: I, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   effect?(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   run(ctx: Ctx, input: I, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
@@ -168,6 +161,37 @@ const productSnapshot = async (
   });
 };
 
+const byId = <T extends { id: string }>(left: T, right: T): number => left.id.localeCompare(right.id);
+
+const downloadFields = (asset: ProductDownloadAsset) => ({
+  id: asset.id,
+  fileName: asset.fileName,
+  sizeBytes: asset.sizeBytes,
+  status: asset.status,
+  versionNumber: asset.versionNumber,
+});
+
+const productDeletionSnapshot = async (
+  repositories: ChangeProposalRepositories,
+  tenantId: string,
+  productId: string,
+): Promise<ChangeProposalSnapshot> => {
+  const product = await repositories.products.findById(tenantId, productId);
+  if (product === null) return { exists: false };
+  const prices = await repositories.prices.listByProduct(tenantId, product.id);
+  const downloads = await repositories.downloadAssets.listByProduct(tenantId, product.id);
+  const stock = await repositories.stock.find(tenantId, product.id);
+  return toSnapshot({
+    exists: true,
+    ...productFields(product),
+    prices: [...prices].sort(byId).map((price) => ({ id: price.id, ...priceFields(price), active: price.active })),
+    downloads: [...downloads].sort(byId).map(downloadFields),
+    stock: stock === null
+      ? { tracked: false, onHand: null, reserved: null, lowStockThreshold: null }
+      : { tracked: true, onHand: stock.onHand, reserved: stock.reserved, lowStockThreshold: stock.lowStockThreshold },
+  });
+};
+
 const priceSnapshot = async (
   repositories: ChangeProposalRepositories,
   tenantId: string,
@@ -243,6 +267,7 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
   return ok({
     input: stored.data,
     target: definition.target(input),
+    lockPurpose: definition.lockPurpose ?? 'change',
     snapshot: (repositories, tenantId, resourceId) => definition.snapshot(repositories, tenantId, input, resourceId),
     effect: definition.effect ?? changeProposalFieldDiff,
     run: (ctx, scope, deps) => definition.run(ctx, input, scope, deps),
@@ -282,38 +307,39 @@ const entry = <I>(operation: ChangeProposalOperation, definition: ChangeProposal
 
 export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation, ChangeProposalOperationEntry>> = {
   'product.create': entry('product.create', {
-    schema: newProductSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.create'],
     invalidInputMessage: 'Invalid product payload',
     target: () => ({ kind: 'product', id: null }),
     snapshot: (repositories, tenantId, _input, resourceId) => productSnapshot(repositories, tenantId, resourceId),
     run: async (ctx, input, scope, deps) => resourceIdOf(await createProduct(ctx, input, catalogDeps(scope, deps))),
   }),
   'product.update': entry('product.update', {
-    schema: updateProductInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.update'],
     invalidInputMessage: 'Invalid product update payload',
     target: (input) => ({ kind: 'product', id: input.id }),
     snapshot: (repositories, tenantId, input) => productSnapshot(repositories, tenantId, input.id),
     run: async (ctx, input, scope, deps) => resourceIdOf(await updateProduct(ctx, input, catalogDeps(scope, deps))),
   }),
   'product.publish': entry('product.publish', {
-    schema: changeProposalIdInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.publish'],
     invalidInputMessage: 'Invalid publish payload',
     target: (input) => ({ kind: 'product', id: input.id }),
     snapshot: (repositories, tenantId, input) => productSnapshot(repositories, tenantId, input.id),
     run: async (ctx, input, scope, deps) => resourceIdOf(await publishProduct(ctx, input, catalogDeps(scope, deps))),
   }),
   'product.unpublish': entry('product.unpublish', {
-    schema: changeProposalIdInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.unpublish'],
     invalidInputMessage: 'Invalid unpublish payload',
     target: (input) => ({ kind: 'product', id: input.id }),
     snapshot: (repositories, tenantId, input) => productSnapshot(repositories, tenantId, input.id),
     run: async (ctx, input, scope, deps) => resourceIdOf(await unpublishProduct(ctx, input, catalogDeps(scope, deps))),
   }),
   'product.delete-draft': entry('product.delete-draft', {
-    schema: changeProposalProductIdInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.delete-draft'],
     invalidInputMessage: 'Invalid product deletion payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
-    snapshot: (repositories, tenantId, input) => productSnapshot(repositories, tenantId, input.productId),
+    lockPurpose: 'delete',
+    snapshot: (repositories, tenantId, input) => productDeletionSnapshot(repositories, tenantId, input.productId),
     run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await deleteProductDraft(ctx, input, {
       productDrafts: scope.repositories.productDrafts,
       storage: storageWithDeletesAfterCommit(deps.storage, scope.afterCommit, deps.logger),
@@ -322,28 +348,28 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     })),
   }),
   'price.create': entry('price.create', {
-    schema: newProductPriceSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['price.create'],
     invalidInputMessage: 'Invalid price payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => productSnapshot(repositories, tenantId, input.productId),
     run: async (ctx, input, scope, deps) => resourceIdOf(await createProductPrice(ctx, input, catalogDeps(scope, deps))),
   }),
   'price.deactivate': entry('price.deactivate', {
-    schema: changeProposalIdInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['price.deactivate'],
     invalidInputMessage: 'Invalid price payload',
     target: (input) => ({ kind: 'price', id: input.id }),
     snapshot: (repositories, tenantId, input) => priceSnapshot(repositories, tenantId, input.id),
     run: async (ctx, input, scope, deps) => resourceIdOf(await deactivateProductPrice(ctx, input, catalogDeps(scope, deps))),
   }),
   'stock.enable': entry('stock.enable', {
-    schema: enableStockTrackingInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['stock.enable'],
     invalidInputMessage: 'Invalid stock tracking payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => stockSnapshot(repositories, tenantId, input.productId),
     run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await enableProductStock(ctx, input, catalogDeps(scope, deps))),
   }),
   'stock.adjust': entry('stock.adjust', {
-    schema: adjustStockInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['stock.adjust'],
     invalidInputMessage: 'Invalid stock adjustment payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => stockSnapshot(repositories, tenantId, input.productId),
@@ -351,35 +377,35 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await adjustProductStock(ctx, input, catalogDeps(scope, deps))),
   }),
   'stock.set-threshold': entry('stock.set-threshold', {
-    schema: stockThresholdInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['stock.set-threshold'],
     invalidInputMessage: 'Invalid low-stock threshold payload',
     target: (input) => ({ kind: 'product', id: input.productId }),
     snapshot: (repositories, tenantId, input) => stockSnapshot(repositories, tenantId, input.productId),
     run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await setProductStockThreshold(ctx, input, catalogDeps(scope, deps))),
   }),
   'sales-link.create': entry('sales-link.create', {
-    schema: salesLinkInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['sales-link.create'],
     invalidInputMessage: 'Invalid sales link',
     target: () => ({ kind: 'sales-link', id: null }),
     snapshot: (repositories, tenantId, _input, resourceId) => salesLinkSnapshot(repositories, tenantId, resourceId),
     run: async (ctx, input, scope, deps) => salesLinkIdOf(await createSalesLink(ctx, input, salesLinkDeps(scope, deps))),
   }),
   'sales-link.update': entry('sales-link.update', {
-    schema: salesLinkUpdateSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['sales-link.update'],
     invalidInputMessage: 'Invalid sales link',
     target: (input) => ({ kind: 'sales-link', id: input.id }),
     snapshot: (repositories, tenantId, input) => salesLinkSnapshot(repositories, tenantId, input.id),
     run: async (ctx, input, scope, deps) => salesLinkIdOf(await updateSalesLink(ctx, input, salesLinkDeps(scope, deps))),
   }),
   'sales-link.delete': entry('sales-link.delete', {
-    schema: salesLinkDeleteInputSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['sales-link.delete'],
     invalidInputMessage: 'Invalid sales link deletion payload',
     target: (input) => ({ kind: 'sales-link', id: input.id }),
     snapshot: (repositories, tenantId, input) => salesLinkSnapshot(repositories, tenantId, input.id),
     run: async (ctx, input, scope, deps) => idOnSuccess(input.id, await deleteSalesLink(ctx, input, salesLinkDeps(scope, deps))),
   }),
   'settings.update': entry('settings.update', {
-    schema: shopSettingsPatchSchema,
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['settings.update'],
     invalidInputMessage: 'Invalid shop settings',
     target: () => ({ kind: 'settings', id: null }),
     snapshot: (repositories, tenantId) => settingsSnapshot(repositories, tenantId),

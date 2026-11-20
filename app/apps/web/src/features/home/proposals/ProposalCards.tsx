@@ -77,7 +77,9 @@ export const TargetLine = ({
   const t = useTranslations().changeProposals;
   const target = proposalTarget(proposal, references);
   const kind = t.targetKind[proposal.target.kind];
-  const text = target.kind === 'reference'
+  const text = proposal.target.kind === 'settings'
+    ? kind
+    : target.kind === 'reference'
     ? `${kind}: ${referenceText(t, target.reference)}`
     : target.kind === 'label'
       ? `${kind}: ${target.label}`

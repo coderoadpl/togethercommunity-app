@@ -342,15 +342,19 @@ export const createChangeProposalEventRepository = (db: Db): ChangeProposalEvent
 const lockedRowExists = async (rows: PromiseLike<readonly unknown[]>): Promise<boolean> => (await rows).length > 0;
 
 const lockProductForDeletion = async (db: Db, tenantId: string, productId: string): Promise<boolean> => {
-  const found = await lockedRowExists(db.select({ id: products.id }).from(products)
-    .where(and(eq(products.tenantId, tenantId), eq(products.id, productId))).for('update'));
+  const product = and(eq(products.tenantId, tenantId), eq(products.id, productId));
+  // Live stock writers lock the stock row before their event's foreign key takes a key-share lock on the product, while
+  // live draft deletion and download writes lock the product first: a key-share-compatible product lock, then the stock
+  // row, then the delete-strength product lock, then the rows those writers lock after the product follows both orders.
+  const found = await lockedRowExists(db.select({ id: products.id }).from(products).where(product).for('no key update'));
   if (!found) return false;
+  await db.select({ productId: productStock.productId }).from(productStock)
+    .where(and(eq(productStock.tenantId, tenantId), eq(productStock.productId, productId))).for('update');
+  await db.select({ id: products.id }).from(products).where(product).for('update');
   await db.select({ id: productPrices.id }).from(productPrices)
     .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId))).for('update');
   await db.select({ id: productDownloadAssets.id }).from(productDownloadAssets)
     .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId))).for('update');
-  await db.select({ productId: productStock.productId }).from(productStock)
-    .where(and(eq(productStock.tenantId, tenantId), eq(productStock.productId, productId))).for('update');
   return true;
 };
 

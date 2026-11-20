@@ -398,7 +398,8 @@ workspace lock of the sales links. A wait that runs out aborts the whole
 transaction; once it has rolled back, the request is answered `503
 unavailable` with `retry-after: 5`, on the keyed write routes and on the owner
 approve route alike. Nothing is stored or applied, and a proposal being
-approved stays `pending`.
+approved stays `pending`. A deadlock that the database detects inside the
+transaction is answered the same way, busy, like a lock wait that ran out.
 
 ## Not yet available
 

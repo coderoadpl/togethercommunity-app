@@ -458,6 +458,67 @@ describe('approving a draft deletion compares everything the deletion destroys',
   });
 });
 
+describe('approving a draft deletion beside live writers of the draft', () => {
+  const draftStockEvents = async () =>
+    (await database.db.select({ quantity: stockEvents.quantity }).from(stockEvents)
+      .where(and(eq(stockEvents.tenantId, TENANT), eq(stockEvents.productId, 'draft')))).map(({ quantity }) => quantity);
+
+  it('ends stale without a deadlock when a live stock adjustment holds the stock row and has not written its event yet', async () => {
+    await database.db.insert(productStock).values({ tenantId: TENANT, productId: 'draft', onHand: 4, reserved: 0, lowStockThreshold: null, updatedAt: NOW });
+    const id = await submit('product.delete-draft', { productId: 'draft' });
+    const live = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await live.query('begin');
+      await live.query('select on_hand from product_stock where tenant_id = $1 and product_id = $2 for update', [TENANT, 'draft']);
+      await live.query('update product_stock set on_hand = on_hand + 1 where tenant_id = $1 and product_id = $2', [TENANT, 'draft']);
+      const approval = approve(id);
+      await untilLockWaiters(observer, 1);
+
+      await live.query(
+        "insert into stock_events (tenant_id, product_id, type, quantity, reference, occurred_at) values ($1, $2, 'adjusted', 1, '{}'::jsonb, $3)",
+        [TENANT, 'draft', NOW],
+      );
+      await live.query('commit');
+
+      expect(await approval).toMatchObject({ ok: true, value: { status: 'stale' } });
+    } finally {
+      await live.end();
+      await observer.end();
+    }
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:stale']);
+    expect(await productRow('draft')).toBeDefined();
+    expect(await onHand('draft')).toBe(5);
+    expect(await draftStockEvents()).toEqual([1]);
+    expect(storageDeletes).toEqual([]);
+  }, 30_000);
+
+  it('ends without a deadlock when a live draft deletion holds the product row and has not deleted the stock yet', async () => {
+    await database.db.insert(productStock).values({ tenantId: TENANT, productId: 'draft', onHand: 4, reserved: 0, lowStockThreshold: null, updatedAt: NOW });
+    const id = await submit('product.delete-draft', { productId: 'draft' });
+    const live = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await live.query('begin');
+      await live.query('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'draft']);
+      const approval = approve(id);
+      await untilLockWaiters(observer, 1);
+
+      await live.query('delete from product_download_assets where tenant_id = $1 and product_id = $2', [TENANT, 'draft']);
+      await live.query('delete from products where tenant_id = $1 and id = $2', [TENANT, 'draft']);
+      await live.query('commit');
+
+      expect(await approval).toMatchObject({ ok: true, value: { status: 'stale' } });
+    } finally {
+      await live.end();
+      await observer.end();
+    }
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:stale']);
+    expect(await productRow('draft')).toBeUndefined();
+    expect(storageDeletes).toEqual([]);
+  }, 30_000);
+});
+
 describe('approval against key revocation and purge', () => {
   const revocation = () => createShopManagementKeyRepository(database.db).revoke(TENANT, KEY_ID, NOW, {
     id: `key-event-${String(++sequence)}`, tenantId: TENANT, apiKeyId: KEY_ID, kind: 'revoked', actorUserId: OWNER,
@@ -557,6 +618,31 @@ describe('lock waits inside a change proposal transaction', () => {
     expect(result).toMatchObject(busy);
     expect(await database.db.select().from(changeProposals)).toEqual([]);
   }, 30_000);
+
+  it('answers busy for a deadlock inside the transaction, applies nothing and leaves the proposal pending', async () => {
+    const id = await submit('product.delete-draft', { productId: 'draft' });
+    const real = deps();
+    const deadlocked: ChangeProposalTransaction = {
+      ...real.changeProposalTransaction,
+      run: (tenantId, operation) => real.changeProposalTransaction.run(tenantId, (scope) => operation({
+        ...scope,
+        repositories: {
+          ...scope.repositories,
+          changeProposals: {
+            ...scope.repositories.changeProposals,
+            transition: () => Promise.reject(Object.assign(new Error('deadlock detected'), { code: '40P01' })),
+          },
+        },
+      })),
+    };
+
+    expect(await approveChangeProposal(ownerSession, { id }, { ...real, changeProposalTransaction: deadlocked })).toMatchObject(busy);
+
+    expect(await statusOf(id)).toBe('pending');
+    expect(await eventsOf(id)).toEqual(['1:proposed']);
+    expect(await productRow('draft')).toBeDefined();
+    expect(storageDeletes).toEqual([]);
+  });
 
   it('answers busy instead of failing when the sales links of the workspace stay locked', async () => {
     const id = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });

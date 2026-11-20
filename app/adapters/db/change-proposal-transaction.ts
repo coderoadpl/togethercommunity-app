@@ -15,7 +15,7 @@ import {
   createChangeProposalTargetLocks,
 } from './change-proposals.js';
 import type { Db } from './client.js';
-import { lockNotAvailable } from './pg-errors.js';
+import { deadlockDetected, lockNotAvailable } from './pg-errors.js';
 import { createProductDraftRepository } from './product-drafts.js';
 import {
   createProductDownloadAssetRepository,
@@ -127,8 +127,8 @@ export const createChangeProposalTransaction = (
       }, rollBackAlways).finally(() => { open = false; });
       return { result, effects: result.ok && !rollBackAlways ? effects : [] };
     } catch (cause) {
-      // A lock wait that ran out aborted the whole transaction, which has rolled back by now, so nothing was applied.
-      if (lockNotAvailable(cause)) return { result: err<AppError>(changeProposalsBusy()), effects: [] };
+      // A lock wait that ran out or ended in a deadlock aborted the whole transaction, which has rolled back by now, so nothing was applied.
+      if (lockNotAvailable(cause) || deadlockDetected(cause)) return { result: err<AppError>(changeProposalsBusy()), effects: [] };
       throw cause;
     }
   };

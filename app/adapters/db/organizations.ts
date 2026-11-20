@@ -141,7 +141,6 @@ export const createOrganizationWorkspaceRepository = (db: Db): OrganizationWorks
     if (checked.status !== 'allowed') return checked;
     if (checked.organizationId === null) return { status: 'not_linked', workspace: checked.workspace } as const;
     if (checked.organizationId !== input.organizationId) return { status: 'linked_elsewhere' } as const;
-    // TODO(O06): return config_sources_present while tenant_config_sources holds a row for this tenant (table arrives in O06).
     await tx.update(tenants).set({ organizationId: null }).where(eq(tenants.id, tenantId));
     await tx.insert(organizationAuditEvents).values({ ...input.organizationAudit, organizationId: input.organizationId });
     await tx.insert(tenantAuditEvents).values({ ...input.tenantAudit, tenantId });

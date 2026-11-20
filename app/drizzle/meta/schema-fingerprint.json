@@ -1,6 +1,6 @@
 {
-  "hash": "47f85f623d88c901b9823d222f0477bc268783a7128c9f773ffe561644481c6d",
-  "shortId": "47f85f623d88",
+  "hash": "d87b2457d8ff13d851a173ff90e4fe94ce387a0e83f21c5992b9ee0aefbec22f",
+  "shortId": "d87b2457d8ff",
   "schema": {
     "constraints": [
       {
@@ -92,6 +92,11 @@
         "definition": "CHECK (((length(display_name) <= 200) AND (length(first_name) <= 200) AND (length(last_name) <= 200) AND ((length(source) >= 1) AND (length(source) <= 120))))",
         "name": "marketing_contacts_names_check",
         "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK (((mode <> 'propose'::text) OR (((NOT (scopes ? 'shop:catalog:write'::text)) OR (scopes ? 'shop:catalog:read'::text)) AND ((NOT (scopes ? 'shop:settings:write'::text)) OR (scopes ? 'shop:settings:read'::text)))))",
+        "name": "shop_management_keys_propose_read_scopes_check",
+        "table": "shop_management_keys"
       },
       {
         "definition": "CHECK (((mode <> 'propose'::text) OR (NOT (scopes ?| ARRAY['shop:fulfilment:write'::text, 'shop:integrations:write'::text]))))",

@@ -173,7 +173,7 @@ describe('change proposal limits', () => {
       pendingPerWorkspace: 1_000,
       createdPerKeyPerWindow: 500,
       creationWindowMs: 86_400_000,
-      effectMaxBytes: 65_536,
+      effectMaxBytes: 1_310_720,
       decisionNoteMaxLength: 500,
       groupTitleMaxLength: 500,
     });

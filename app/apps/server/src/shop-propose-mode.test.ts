@@ -326,14 +326,23 @@ describe('a propose-mode key on every registered shop route', () => {
     expect(await count()).toBe(before);
   });
 
-  it('gives a write-only key a receipt without the effect or any live value', async () => {
-    const writeOnly = await createShopKey(['shop:catalog:write'], 'propose');
-    const response = await keyed(writeOnly.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, description: 'Proposed description' });
+  it('gives the key a receipt without the effect or any live value', async () => {
+    const response = await keyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, description: 'Proposed description' });
     expect(response.status).toBe(202);
     const text = await response.text();
     expect(text).not.toContain('Live handbook');
     expect(text).not.toContain('effect');
-    expect((await keyed(writeOnly.secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).status).toBe(403);
+  });
+
+  it.each([
+    [['shop:catalog:write'], 'shop:catalog:write on a propose-mode key needs shop:catalog:read as well'],
+    [['shop:catalog:read', 'shop:settings:write'], 'shop:settings:write on a propose-mode key needs shop:settings:read as well'],
+  ])('refuses to issue a propose-mode key with %j', async (scopes, message) => {
+    const response = await sessionRequest(ownerToken, API_ROUTES.apiKeysShopManagementCreate.method, API_ROUTES.apiKeysShopManagementCreate.path, {
+      name: 'Blind proposer', scopes, expiresAt, mode: 'propose',
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain(message);
   });
 });
 
@@ -364,7 +373,7 @@ describe('a direct-mode key on every registered shop route', () => {
 
 describe('the key-side proposal routes', () => {
   it('lists, shows and withdraws only the key\'s own proposals', async () => {
-    const other = await createShopKey(['shop:catalog:write'], 'propose');
+    const other = await createShopKey(['shop:catalog:read', 'shop:catalog:write'], 'propose');
     const created = await keyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.adjustProductStock.path, { productId: fixture.published, delta: -1, reason: 'damaged' });
     const { proposal } = envelope(changeProposalProposedOutputSchema).parse(await created.json()).data;
 

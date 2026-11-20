@@ -31,7 +31,6 @@ import type {
   Clock,
   IdGenerator,
   StorageProvider,
-  TenantSecretResolver,
 } from '../ports.js';
 import { createProductPrice, deactivateProductPrice } from './product-prices.js';
 import { deleteProductDraft } from './product-drafts.js';
@@ -40,12 +39,11 @@ import { adjustProductStock, enableProductStock, setProductStockThreshold } from
 
 type ChangeProposalSnapshot = ChangeProposalInput;
 
-// The only deps that escape the transaction: ids and clock are pure, secretResolver only reads, storage deletes wait for COMMIT.
+// The only deps that escape the transaction: ids and clock are pure, storage deletes wait for COMMIT.
 export interface ChangeProposalRunDeps {
   ids: IdGenerator;
   clock: Clock;
   storage: StorageProvider;
-  secretResolver: TenantSecretResolver;
   logger: { error(message: string): void };
 }
 
@@ -251,7 +249,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     run: async (ctx, input, scope, deps) => productIdOf(input.productId, await deleteProductDraft(ctx, input, {
       productDrafts: scope.repositories.productDrafts,
       storage: storageWithDeletesAfterCommit(deps.storage, scope.afterCommit, deps.logger),
-      secretResolver: deps.secretResolver,
+      secretResolver: scope.secretResolver,
       logger: deps.logger,
     })),
   }),

@@ -1,6 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { err, ok, validation, type Identity } from '#core/domain/index.js';
 import {
   adjustProductStock,
@@ -19,7 +22,9 @@ import {
 } from '#core/server/index.js';
 
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
-import { productPrices, products, productStock, tenants } from './schema.js';
+import { closeDb, createDb, type Db } from './client.js';
+import { createTenantSecretRepository } from './repositories.js';
+import { productDownloadAssets, productPrices, products, productStock, stockEvents, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const TENANT = 't-proposal-transaction';
@@ -37,6 +42,32 @@ const owner: Identity = {
 const ownerCtx: Ctx = { identity: owner };
 
 const logger = () => ({ error: vi.fn<(message: string) => void>() });
+
+const secretCrypto = createSecretCrypto(Buffer.alloc(32, 9).toString('base64'));
+
+const realSecretResolverOver = (connection: Db) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto);
+
+const transactionOf = (log = logger(), db: Db = database.db) => createChangeProposalTransaction(db, log, realSecretResolverOver);
+
+const lockWaiters = async (observer: pg.Client): Promise<number> => {
+  const waiting = await observer.query<{ count: number }>(
+    "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+  );
+  return waiting.rows[0]?.count ?? 0;
+};
+
+const untilSomeoneWaitsOnALock = async (observer: pg.Client): Promise<void> => {
+  const deadline = Date.now() + 10_000;
+  while (await lockWaiters(observer) === 0) {
+    if (Date.now() > deadline) throw new Error('No session started waiting on a lock');
+  }
+};
+
+const connectedClient = async (): Promise<pg.Client> => {
+  const client = new pg.Client({ connectionString: database.url });
+  await client.connect();
+  return client;
+};
 
 const unusableStorage = (): StorageProvider => {
   const refuse = () => { throw new Error('Storage must not be reached in this test'); };
@@ -80,7 +111,7 @@ const priceInput = { productId: 'published', kind: 'one_time' as const, amountCe
 describe('change proposal transaction run', () => {
   it('commits an ok result and runs its deferred effects after COMMIT', async () => {
     const seenByEffect: number[] = [];
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
     const versionBefore = await contentVersion();
 
     const result = await transaction.run(TENANT, async ({ repositories, afterCommit }) => {
@@ -98,7 +129,7 @@ describe('change proposal transaction run', () => {
 
   it('rolls back every write of an error result and drops its effects', async () => {
     const effect = vi.fn(async () => undefined);
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
     const versionBefore = await contentVersion();
 
     const result = await transaction.run(TENANT, async ({ repositories, afterCommit }) => {
@@ -116,7 +147,7 @@ describe('change proposal transaction run', () => {
 
   it('rolls back and rethrows an infrastructure failure without running effects', async () => {
     const effect = vi.fn(async () => undefined);
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
 
     await expect(transaction.run(TENANT, async ({ repositories, afterCommit }) => {
       await createProductPrice(ownerCtx, priceInput, { ...repositories, ...deps });
@@ -131,7 +162,7 @@ describe('change proposal transaction run', () => {
   it('logs a failed effect after COMMIT, keeps the result and runs the remaining effects', async () => {
     const log = logger();
     const later = vi.fn(async () => undefined);
-    const transaction = createChangeProposalTransaction(database.db, log);
+    const transaction = transactionOf(log);
 
     const result = await transaction.run(TENANT, async ({ afterCommit }) => {
       afterCommit.defer(async () => { throw new Error('storage unavailable'); });
@@ -145,7 +176,7 @@ describe('change proposal transaction run', () => {
   });
 
   it('refuses an effect deferred after the transaction ended', async () => {
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
     let keep: ((effect: () => Promise<void>) => void) | null = null;
     await transaction.run(TENANT, async ({ afterCommit }) => {
       keep = (effect) => { afterCommit.defer(effect); };
@@ -158,7 +189,7 @@ describe('change proposal transaction run', () => {
 describe('change proposal transaction dry run', () => {
   it('returns the live result and leaves no row, no content-version bump and no effect behind', async () => {
     const effect = vi.fn(async () => undefined);
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
     const versionBefore = await contentVersion();
 
     const result = await transaction.dryRun(TENANT, async ({ repositories, afterCommit }) => {
@@ -176,7 +207,7 @@ describe('change proposal transaction dry run', () => {
 
   it('turns a repository\'s own transaction into a savepoint that the dry run discards', async () => {
     await insertProduct('draft');
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
 
     const result = await transaction.dryRun(TENANT, async ({ repositories }) =>
       ok(await repositories.productDrafts.deleteDraft(TENANT, 'draft')));
@@ -188,10 +219,10 @@ describe('change proposal transaction dry run', () => {
   it('runs all ten catalogue use-cases over transaction-bound repositories and leaves nothing behind', async () => {
     await insertProduct('draft');
     const storage = unusableStorage();
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
     const versionBefore = await contentVersion();
 
-    const result = await transaction.dryRun(TENANT, async ({ repositories, afterCommit }) => {
+    const result = await transaction.dryRun(TENANT, async ({ repositories, afterCommit, secretResolver }) => {
       const scoped = { ...repositories, ...deps };
       const steps: Array<{ ok: boolean }> = [];
       const product = await createProduct(ownerCtx, { title: 'Mug', slug: 'mug', type: 'physical', priceCents: 0 }, scoped);
@@ -210,7 +241,7 @@ describe('change proposal transaction dry run', () => {
         await deleteProductDraft(ownerCtx, { productId: 'draft' }, {
           productDrafts: repositories.productDrafts,
           storage: storageWithDeletesAfterCommit(storage, afterCommit, logger()),
-          secretResolver: { resolve: async () => err(validation('No secrets in this test')) },
+          secretResolver,
           logger: logger(),
         }),
       );
@@ -225,7 +256,7 @@ describe('change proposal transaction dry run', () => {
   });
 
   it('returns a live domain error unchanged', async () => {
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
     const result = await transaction.dryRun(TENANT, async ({ repositories }) =>
       createProductPrice(ownerCtx, { ...priceInput, productId: 'missing' }, { ...repositories, ...deps }));
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
@@ -236,7 +267,7 @@ describe('change proposal transaction savepoints', () => {
   it('rolls back a failed savepoint and its effects while the outer transaction commits', async () => {
     const outerEffect = vi.fn(async () => undefined);
     const innerEffect = vi.fn(async () => undefined);
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
 
     const result = await transaction.run(TENANT, async (scope) => {
       await insertVia(scope, 'outer');
@@ -258,7 +289,7 @@ describe('change proposal transaction savepoints', () => {
 
   it('keeps a successful savepoint\'s writes and runs its effects only after the outer COMMIT', async () => {
     const order: string[] = [];
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
 
     await transaction.run(TENANT, async (scope) => {
       const inner = await scope.savepoint(async (nested) => {
@@ -277,7 +308,7 @@ describe('change proposal transaction savepoints', () => {
 
   it('drops a successful savepoint when the outer transaction rolls back', async () => {
     const innerEffect = vi.fn(async () => undefined);
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
 
     const result = await transaction.run(TENANT, async (scope) => {
       await scope.savepoint(async (nested) => {
@@ -294,7 +325,7 @@ describe('change proposal transaction savepoints', () => {
   });
 
   it('nests savepoints inside savepoints', async () => {
-    const transaction = createChangeProposalTransaction(database.db, logger());
+    const transaction = transactionOf();
 
     await transaction.run(TENANT, async (scope) => scope.savepoint(async (middle) => {
       await insertVia(middle, 'middle');
@@ -319,3 +350,97 @@ const insertVia = async (
     if (product === null) throw new Error(`Product ${id} is not visible inside its transaction`);
   });
 };
+
+describe('change proposal transaction connections and locks', () => {
+  it('dry-runs a draft deletion with the real secret resolver on a one-connection pool', async () => {
+    const configuration = { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'downloads', accessKeyId: 'key-id', secretAccessKey: 'key-secret' };
+    await createTenantSecretRepository(database.db).upsert(TENANT, {
+      id: 'storage-configuration', tenantId: TENANT, key: 's3.configuration', ...secretCrypto.encrypt(JSON.stringify(configuration)),
+      maskedPreview: 'configured', updatedAt: NOW,
+    });
+    await insertProduct('draft-with-file');
+    await database.db.insert(productDownloadAssets).values({
+      id: 'asset-draft', tenantId: TENANT, productId: 'draft-with-file', lineageId: 'lineage-draft', fileName: 'guide.pdf',
+      contentType: 'application/pdf', sizeBytes: 10, storageKey: 'downloads/guide.pdf', status: 'ready', createdAt: NOW,
+    });
+    const deletes: string[] = [];
+    const storage: StorageProvider = {
+      ...unusableStorage(),
+      objectUrl: (stored, key) => new URL(`${stored.endpoint}/${stored.bucket}/${key}`),
+      delete: async (input) => {
+        deletes.push(`${input.accessKeyId} ${input.url}`);
+        return ok({ deleted: true });
+      },
+    };
+    const single = createDb('node-postgres', database.url, { max: 1, connectionTimeoutMillis: 2_000 });
+    const log = logger();
+    try {
+      const transaction = transactionOf(log, single);
+      const run = (operation: 'dryRun' | 'run') => transaction[operation](TENANT, async ({ repositories, afterCommit, secretResolver }) =>
+        deleteProductDraft(ownerCtx, { productId: 'draft-with-file' }, {
+          productDrafts: repositories.productDrafts,
+          storage: storageWithDeletesAfterCommit(storage, afterCommit, log),
+          secretResolver,
+          logger: log,
+        }));
+
+      expect(await run('dryRun')).toEqual({ ok: true, value: { deleted: true } });
+      expect(deletes).toEqual([]);
+      expect(await productIds()).toContain('draft-with-file');
+
+      expect(await run('run')).toEqual({ ok: true, value: { deleted: true } });
+      expect(deletes).toEqual(['key-id https://storage.example.test/downloads/downloads/guide.pdf']);
+      expect(log.error).not.toHaveBeenCalled();
+    } finally {
+      await closeDb(single);
+    }
+  });
+
+  it('completes a dry run beside a live stock adjustment that holds the stock row and has not written its event yet', async () => {
+    await database.db.insert(productStock).values({ tenantId: TENANT, productId: 'published', onHand: 10, reserved: 0, updatedAt: NOW });
+    const live = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await live.query('begin');
+      await live.query('select on_hand from product_stock where tenant_id = $1 and product_id = $2 for update', [TENANT, 'published']);
+      await live.query('update product_stock set on_hand = on_hand + 1 where tenant_id = $1 and product_id = $2', [TENANT, 'published']);
+
+      const dryRun = transactionOf().dryRun(TENANT, async ({ repositories }) =>
+        ok(await repositories.targets.lock(TENANT, { kind: 'product', id: 'published' })));
+      await untilSomeoneWaitsOnALock(observer);
+
+      await live.query(
+        "insert into stock_events (tenant_id, product_id, type, quantity, reference, occurred_at) values ($1, $2, 'adjusted', 1, '{}'::jsonb, $3)",
+        [TENANT, 'published', NOW],
+      );
+      await live.query('commit');
+
+      expect(await dryRun).toEqual({ ok: true, value: true });
+      expect(await database.db.select({ quantity: stockEvents.quantity }).from(stockEvents)
+        .where(and(eq(stockEvents.tenantId, TENANT), eq(stockEvents.productId, 'published')))).toEqual([{ quantity: 1 }]);
+    } finally {
+      await live.end();
+      await observer.end();
+      await database.db.delete(stockEvents).where(eq(stockEvents.tenantId, TENANT));
+      await database.db.delete(productStock).where(eq(productStock.tenantId, TENANT));
+    }
+  }, 30_000);
+
+  it('answers unavailable with a retry-after when the workspace lock stays held', async () => {
+    const holder = await connectedClient();
+    try {
+      await holder.query('begin');
+      await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-transaction:${TENANT}`]);
+      const operation = vi.fn(async () => ok(null));
+
+      const result = await transactionOf().dryRun(TENANT, operation);
+
+      expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'unavailable', details: { retryAfterSeconds: 5 } }) });
+      expect(operation).not.toHaveBeenCalled();
+    } finally {
+      await holder.query('rollback');
+      await holder.end();
+    }
+    expect(await transactionOf().dryRun(TENANT, async () => ok('free'))).toEqual({ ok: true, value: 'free' });
+  }, 30_000);
+});

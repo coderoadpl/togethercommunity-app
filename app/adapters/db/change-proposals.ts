@@ -8,6 +8,7 @@ import {
   changeProposalEventSchema,
   changeProposalSchema,
   type ChangeProposal,
+  type ChangeProposalCountCap,
   type ChangeProposalEvent,
   type ChangeProposalEventKind,
 } from '#core/domain/index.js';
@@ -19,9 +20,10 @@ import type {
   ChangeProposalRepository,
   ChangeProposalTargetLocks,
   ChangeProposalTransitionGuard,
-  ChangeProposalWithdrawalEvent,
+  ChangeProposalWithdrawal,
 } from '#core/server/index.js';
 
+import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
 import type { Db } from './client.js';
 import {
   changeProposalEvents,
@@ -61,9 +63,8 @@ const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeProposal
 
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
 
-const lockWorkspaceProposals = async (executor: Db, tenantId: string): Promise<void> => {
-  await executor.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`change-proposals:${tenantId}`}, 0))`);
-};
+const lockWorkspaceProposals = (executor: Db, tenantId: string): Promise<boolean> =>
+  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`);
 
 const appendEvent = async (
   executor: Db,
@@ -154,6 +155,17 @@ const keyAcceptsProposals = async (executor: Db, tenantId: string, keyId: string
 const creationWindowStart = (now: string): string =>
   new Date(Date.parse(now) - CHANGE_PROPOSAL_LIMITS.creationWindowMs).toISOString();
 
+const countCapReached = async (executor: Db, tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null> => {
+  const workspace = eq(changeProposals.tenantId, tenantId);
+  const byKey = and(workspace, eq(changeProposals.proposedByKeyId, keyId));
+  if (await countProposals(executor, and(byKey, pendingAt(now))) >= CHANGE_PROPOSAL_LIMITS.pendingPerKey) return 'key_pending';
+  if (await countProposals(executor, and(workspace, pendingAt(now))) >= CHANGE_PROPOSAL_LIMITS.pendingPerWorkspace) return 'workspace_pending';
+  if (await countProposals(executor, and(byKey, gt(changeProposals.createdAt, creationWindowStart(now)))) >= CHANGE_PROPOSAL_LIMITS.createdPerKeyPerWindow) {
+    return 'key_daily';
+  }
+  return null;
+};
+
 const lockPendingRow = async (
   executor: Db,
   tenantId: string,
@@ -178,7 +190,7 @@ export const withdrawPendingChangeProposalsOfKey = async (
   tenantId: string,
   keyId: string,
   reason: keyof typeof CHANGE_PROPOSAL_WITHDRAWAL_NOTES,
-  event: ChangeProposalWithdrawalEvent,
+  withdrawal: ChangeProposalWithdrawal,
 ): Promise<void> => {
   const pending = await executor
     .select({ id: changeProposals.id })
@@ -186,22 +198,21 @@ export const withdrawPendingChangeProposalsOfKey = async (
     .where(and(
       eq(changeProposals.tenantId, tenantId),
       eq(changeProposals.proposedByKeyId, keyId),
-      eq(changeProposals.status, 'pending'),
+      pendingAt(withdrawal.at),
     ))
     .orderBy(asc(changeProposals.createdAt), asc(changeProposals.id))
     .for('update');
   for (const { id } of pending) {
-    const draft = event(id);
     await executor
       .update(changeProposals)
-      .set({ status: 'withdrawn', decidedByUserId: draft.actorUserId, decidedAt: draft.at })
+      .set({ status: 'withdrawn', decidedByUserId: withdrawal.actorUserId, decidedAt: withdrawal.at })
       .where(and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.id, id)));
     await appendEvent(executor, tenantId, id, 'withdrawn', {
-      id: draft.id,
-      actorUserId: draft.actorUserId,
+      id: withdrawal.nextEventId(),
+      actorUserId: withdrawal.actorUserId,
       apiKeyId: keyId,
       note: CHANGE_PROPOSAL_WITHDRAWAL_NOTES[reason],
-      at: draft.at,
+      at: withdrawal.at,
     });
   }
 };
@@ -213,19 +224,10 @@ export const createChangeProposalRepository = (db: Db): ChangeProposalRepository
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
     if (!changeProposalEffectWithinLimit(parsed.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
     return db.transaction(async (tx) => {
-      await lockWorkspaceProposals(tx, tenantId);
+      if (!await lockWorkspaceProposals(tx, tenantId)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
-      const workspace = eq(changeProposals.tenantId, tenantId);
-      const byKey = and(workspace, eq(changeProposals.proposedByKeyId, parsed.proposedByKeyId));
-      if (await countProposals(tx, and(byKey, pendingAt(now))) >= CHANGE_PROPOSAL_LIMITS.pendingPerKey) {
-        return { kind: 'cap_exceeded', cap: 'key_pending' };
-      }
-      if (await countProposals(tx, and(workspace, pendingAt(now))) >= CHANGE_PROPOSAL_LIMITS.pendingPerWorkspace) {
-        return { kind: 'cap_exceeded', cap: 'workspace_pending' };
-      }
-      if (await countProposals(tx, and(byKey, gt(changeProposals.createdAt, creationWindowStart(now)))) >= CHANGE_PROPOSAL_LIMITS.createdPerKeyPerWindow) {
-        return { kind: 'cap_exceeded', cap: 'key_daily' };
-      }
+      const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
+      if (cap !== null) return { kind: 'cap_exceeded', cap };
       const [row] = await tx.insert(changeProposals).values({
         id: parsed.id,
         tenantId,
@@ -254,6 +256,7 @@ export const createChangeProposalRepository = (db: Db): ChangeProposalRepository
       return { kind: 'created', proposal: parseProposal(row) };
     });
   },
+  countCapReached: (tenantId, keyId, now) => countCapReached(db, tenantId, keyId, now),
   findById: async (tenantId, id) => {
     const [row] = await db
       .select()
@@ -341,11 +344,11 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
   lock: async (tenantId, target) => {
     switch (target.kind) {
       case 'settings':
-        return lockedRowExists(db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('update'));
+        return lockedRowExists(db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('no key update'));
       case 'product': {
         if (target.id === null) return true;
         const found = await lockedRowExists(db.select({ id: products.id }).from(products)
-          .where(and(eq(products.tenantId, tenantId), eq(products.id, target.id))).for('update'));
+          .where(and(eq(products.tenantId, tenantId), eq(products.id, target.id))).for('no key update'));
         if (found) {
           await db.select({ productId: productStock.productId }).from(productStock)
             .where(and(eq(productStock.tenantId, tenantId), eq(productStock.productId, target.id))).for('update');
@@ -355,11 +358,11 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
       case 'price':
         if (target.id === null) return false;
         return lockedRowExists(db.select({ id: productPrices.id }).from(productPrices)
-          .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, target.id))).for('update'));
+          .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, target.id))).for('no key update'));
       case 'sales-link':
         if (target.id === null) return true;
         return lockedRowExists(db.select({ id: salesLinks.id }).from(salesLinks)
-          .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id))).for('update'));
+          .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id))).for('no key update'));
     }
   },
 });

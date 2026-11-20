@@ -120,7 +120,7 @@ const authenticateShopMachineRequest = async (
 };
 
 const retryAfterHeaders = (error: AppError): HeadersInit => {
-  if (error.code !== 'rate_limited') return {};
+  if (error.code !== 'rate_limited' && error.code !== 'unavailable') return {};
   const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
   return typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {};
 };
@@ -166,7 +166,9 @@ const proposeChange = async (
   const input = await proposeMode.toInput(c);
   if (!input.ok) return respond(input);
   const submitted = await submitChangeProposal(request.ctx, { operation: proposeMode.operation, input: input.value }, deps);
-  return respond(submitted.ok ? ok({ outcome: 'proposed' as const, proposal: submitted.value }) : submitted, { successStatus: 202 });
+  return submitted.ok
+    ? respond(ok({ outcome: 'proposed' as const, proposal: submitted.value }), { successStatus: 202 })
+    : respond(submitted, { headers: retryAfterHeaders(submitted.error) });
 };
 
 const dispatchMutation = (

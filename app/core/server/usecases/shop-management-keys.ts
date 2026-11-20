@@ -22,7 +22,7 @@ import type { Ctx } from '../context.js';
 import { ownerSessionTenant } from '../owner-session.js';
 import type {
   ApiKeyCrypto,
-  ChangeProposalWithdrawalEvent,
+  ChangeProposalWithdrawal,
   Clock,
   IdGenerator,
   ShopManagementKeyEventRepository,
@@ -67,13 +67,14 @@ const lifecycleEvent = (
   at: deps.clock.nowIso(),
 });
 
-const proposalWithdrawalEvent = (
+const proposalWithdrawal = (
   ctx: Ctx,
   deps: Pick<ShopManagementKeyDeps, 'ids' | 'clock'>,
-): ChangeProposalWithdrawalEvent => {
-  const at = deps.clock.nowIso();
-  return () => ({ id: deps.ids.nextId(), actorUserId: ctx.identity.userId, at });
-};
+): ChangeProposalWithdrawal => ({
+  at: deps.clock.nowIso(),
+  actorUserId: ctx.identity.userId,
+  nextEventId: () => deps.ids.nextId(),
+});
 
 export const createShopManagementKey = async (
   ctx: Ctx,
@@ -133,7 +134,7 @@ export const revokeShopManagementKey = async (
     input.id,
     deps.clock.nowIso(),
     lifecycleEvent(ctx, tenant.value, 'revoked', input.id, deps),
-    proposalWithdrawalEvent(ctx, deps),
+    proposalWithdrawal(ctx, deps),
   );
   if (!revoked) return err(notFound(`No active shop management key "${input.id}" in this tenant`));
   return ok(toShopManagementKeyPublic(revoked));
@@ -148,7 +149,7 @@ export const purgeShopManagementKeys = async (
   const purged = await deps.shopManagementKeys.purge(
     tenant.value,
     (apiKeyId) => lifecycleEvent(ctx, tenant.value, 'purged', apiKeyId, deps),
-    proposalWithdrawalEvent(ctx, deps),
+    proposalWithdrawal(ctx, deps),
   );
   return ok({ purged });
 };

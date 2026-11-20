@@ -8,6 +8,7 @@ import {
   ok,
   validation,
   type ChangeProposal,
+  type ChangeProposalCountCap,
   type ChangeProposalEvent,
   type ChangeProposalEventKind,
   type ChangeProposalTarget,
@@ -28,6 +29,7 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
   ChangeProposalTransitionGuard,
+  TenantSecretResolver,
 } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
 
@@ -232,21 +234,27 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       && proposal.status === 'pending'
       && (guard.keyId === undefined || proposal.proposedByKeyId === guard.keyId)
       && (guard.unexpiredAt === undefined || proposal.expiresAt > guard.unexpiredAt)) ?? null;
+  const countCapReached = (tenantId: string, keyId: string, now: string): ChangeProposalCountCap | null => {
+    const workspace = proposals.filter((candidate) => candidate.tenantId === tenantId);
+    const byKey = workspace.filter((candidate) => candidate.proposedByKeyId === keyId);
+    if (byKey.filter((candidate) => pendingAt(candidate, now)).length >= CHANGE_PROPOSAL_LIMITS.pendingPerKey) return 'key_pending';
+    if (workspace.filter((candidate) => pendingAt(candidate, now)).length >= CHANGE_PROPOSAL_LIMITS.pendingPerWorkspace) return 'workspace_pending';
+    const windowStart = new Date(Date.parse(now) - CHANGE_PROPOSAL_LIMITS.creationWindowMs).toISOString();
+    if (byKey.filter((candidate) => candidate.createdAt > windowStart).length >= CHANGE_PROPOSAL_LIMITS.createdPerKeyPerWindow) return 'key_daily';
+    return null;
+  };
   const repository: ChangeProposalRepository = {
     create: async (tenantId, proposal, event, now) => {
       if (!changeProposalEffectWithinLimit(proposal.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
       const key = keys.find((candidate) => candidate.tenantId === tenantId && candidate.id === proposal.proposedByKeyId);
       if (key === undefined || key.mode !== 'propose' || key.revokedAt !== null || key.expiresAt <= now) return { kind: 'key_inactive' };
-      const workspace = proposals.filter((candidate) => candidate.tenantId === tenantId);
-      const byKey = workspace.filter((candidate) => candidate.proposedByKeyId === proposal.proposedByKeyId);
-      if (byKey.filter((candidate) => pendingAt(candidate, now)).length >= CHANGE_PROPOSAL_LIMITS.pendingPerKey) return { kind: 'cap_exceeded', cap: 'key_pending' };
-      if (workspace.filter((candidate) => pendingAt(candidate, now)).length >= CHANGE_PROPOSAL_LIMITS.pendingPerWorkspace) return { kind: 'cap_exceeded', cap: 'workspace_pending' };
-      const windowStart = new Date(Date.parse(now) - CHANGE_PROPOSAL_LIMITS.creationWindowMs).toISOString();
-      if (byKey.filter((candidate) => candidate.createdAt > windowStart).length >= CHANGE_PROPOSAL_LIMITS.createdPerKeyPerWindow) return { kind: 'cap_exceeded', cap: 'key_daily' };
+      const cap = countCapReached(tenantId, proposal.proposedByKeyId, now);
+      if (cap !== null) return { kind: 'cap_exceeded', cap };
       proposals.push({ ...proposal });
       appendEvent(tenantId, proposal.id, 'proposed', event);
       return { kind: 'created', proposal: { ...proposal } };
     },
+    countCapReached: async (tenantId, keyId, now) => countCapReached(tenantId, keyId, now),
     findById: async (tenantId, id) => {
       const found = proposals.find((proposal) => proposal.tenantId === tenantId && proposal.id === id);
       return found === undefined ? null : { ...found };
@@ -298,14 +306,18 @@ export interface FakeChangeProposalTransaction extends ChangeProposalTransaction
   deferredDropped: number;
 }
 
+const noSecrets: TenantSecretResolver = { resolve: async (_tenantId, key) => err(notFound(`No "${key}" secret in the change proposal fake`)) };
+
 export const createChangeProposalTransactionFake = (
   state: FakeCatalogState,
   store: Pick<FakeChangeProposalStore, 'repository' | 'events'>,
+  secretResolver: TenantSecretResolver = noSecrets,
 ): FakeChangeProposalTransaction => {
   const calls: Array<'run' | 'dryRun'> = [];
   const locks: ChangeProposalTarget[] = [];
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
     repositories: catalogRepositoriesOver(target, store.repository, store.events, locks),
+    secretResolver,
     afterCommit: { defer: (effect) => { effects.push(effect); } },
     savepoint: (operation) => operation(scopeOver(target, effects)),
   });

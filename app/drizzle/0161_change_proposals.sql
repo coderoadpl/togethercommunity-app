@@ -7,6 +7,14 @@ ALTER TABLE "shop_management_keys" ADD CONSTRAINT "shop_management_keys_propose_
   OR NOT ("scopes" ?| ARRAY['shop:fulfilment:write', 'shop:integrations:write'])
 );
 --> statement-breakpoint
+ALTER TABLE "shop_management_keys" ADD CONSTRAINT "shop_management_keys_propose_read_scopes_check" CHECK (
+  "mode" <> 'propose'
+  OR (
+    (NOT "scopes" ? 'shop:catalog:write' OR "scopes" ? 'shop:catalog:read')
+    AND (NOT "scopes" ? 'shop:settings:write' OR "scopes" ? 'shop:settings:read')
+  )
+);
+--> statement-breakpoint
 CREATE TABLE "change_proposal_groups" (
   "id" text PRIMARY KEY NOT NULL,
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,

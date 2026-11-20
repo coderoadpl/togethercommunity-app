@@ -134,6 +134,7 @@ import type {
   ShopManagementKeyEventPage,
   ChangeProposal,
   ChangeProposalCap,
+  ChangeProposalCountCap,
   ChangeProposalDisplayStatus,
   ChangeProposalEvent,
   ChangeProposalTarget,
@@ -881,7 +882,11 @@ export interface TenantApiKeyRepository {
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
 }
 
-export type ChangeProposalWithdrawalEvent = (proposalId: string) => { id: string; actorUserId: string; at: string };
+export interface ChangeProposalWithdrawal {
+  at: string;
+  actorUserId: string;
+  nextEventId(): string;
+}
 
 /** Revoking or purging a key withdraws that key's pending change proposals in the same transaction. */
 export interface ShopManagementKeyRepository {
@@ -893,12 +898,12 @@ export interface ShopManagementKeyRepository {
     id: string,
     revokedAt: string,
     event: ShopManagementKeyEvent,
-    withdrawalEvent: ChangeProposalWithdrawalEvent,
+    withdrawal: ChangeProposalWithdrawal,
   ): Promise<ShopManagementKey | null>;
   purge(
     tenantId: string,
     event: (apiKeyId: string) => ShopManagementKeyEvent,
-    withdrawalEvent: ChangeProposalWithdrawalEvent,
+    withdrawal: ChangeProposalWithdrawal,
   ): Promise<number>;
 }
 
@@ -2704,7 +2709,8 @@ export interface ChangeProposalPage {
 type ChangeProposalCreation =
   | { kind: 'created'; proposal: ChangeProposal }
   | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
-  | { kind: 'key_inactive' };
+  | { kind: 'key_inactive' }
+  | { kind: 'busy' };
 
 interface ChangeProposalTransition {
   status: ChangeProposalTerminalStatus;
@@ -2728,6 +2734,7 @@ export interface ChangeProposalTransitionGuard {
  */
 export interface ChangeProposalRepository {
   create(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, now: string): Promise<ChangeProposalCreation>;
+  countCapReached(tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null>;
   findById(tenantId: string, id: string): Promise<ChangeProposal | null>;
   list(tenantId: string, query: ChangeProposalListQuery): Promise<ChangeProposalPage>;
   findByKey(tenantId: string, keyId: string, id: string): Promise<ChangeProposal | null>;
@@ -2771,6 +2778,7 @@ export interface ChangeProposalPostCommitEffects {
 
 export interface ChangeProposalTransactionScope {
   repositories: ChangeProposalRepositories;
+  secretResolver: TenantSecretResolver;
   afterCommit: ChangeProposalPostCommitEffects;
   savepoint<T>(operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }

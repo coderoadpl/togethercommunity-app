@@ -7,6 +7,7 @@ import {
   changeProposalIdInputSchema,
   changeProposalKeyState,
   changeProposalListInputSchema,
+  changeProposalsBusy,
   err,
   forbidden,
   notFound,
@@ -50,7 +51,7 @@ import { CHANGE_PROPOSAL_OPERATIONS, type ChangeProposalRunDeps } from './change
 
 export interface ChangeProposalSubmitDeps extends ChangeProposalRunDeps {
   changeProposalTransaction: ChangeProposalTransaction;
-  changeProposals: Pick<ChangeProposalRepository, 'create'>;
+  changeProposals: Pick<ChangeProposalRepository, 'create' | 'countCapReached'>;
   shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
 }
 
@@ -87,6 +88,9 @@ const proposingKey = (ctx: Ctx, tenant: Result<string, AppError>): Result<Propos
   }
   return ok({ tenantId: tenant.value, keyId: actor.apiKeyId });
 };
+
+const bothAuthorized = (submit: Result<string, AppError>, read: Result<string, AppError>): Result<string, AppError> =>
+  submit.ok ? read : submit;
 
 const ownerSession = (ctx: Ctx, tenant: Result<string, AppError>): Result<string, AppError> =>
   ownerSessionTenant(ctx, tenant, 'Change proposals are decided only by a verified owner in their own session');
@@ -126,8 +130,8 @@ export const submitChangeProposal = async (
   if (!parsedRequest.success) return invalid('Invalid change proposal', parsedRequest.error);
   const operation = CHANGE_PROPOSAL_OPERATIONS[parsedRequest.data.operation];
   const key = proposingKey(ctx, operation.capability === 'proposal:submit:catalog'
-    ? authorizeTenant(ctx, 'proposal:submit:catalog')
-    : authorizeTenant(ctx, 'proposal:submit:settings'));
+    ? bothAuthorized(authorizeTenant(ctx, 'proposal:submit:catalog'), authorizeTenant(ctx, 'product:read'))
+    : bothAuthorized(authorizeTenant(ctx, 'proposal:submit:settings'), authorizeTenant(ctx, 'tenant:settings:read')));
   if (!key.ok) return key;
   const { tenantId, keyId } = key.value;
 
@@ -136,6 +140,8 @@ export const submitChangeProposal = async (
   const { input, target } = prepared.value;
   const proposingKeyRow = keyNamed(await deps.shopManagementKeys.listByTenant(tenantId), keyId);
   if (proposingKeyRow === null) return err(forbidden('This shop management key can no longer propose changes'));
+  const reachedCap = await deps.changeProposals.countCapReached(tenantId, keyId, deps.clock.nowIso());
+  if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
   const ownerEquivalent: Ctx = { identity: ctx.identity };
 
   const dryRun = await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
@@ -175,6 +181,7 @@ export const submitChangeProposal = async (
   const created = await deps.changeProposals.create(tenantId, proposal, event, now);
   if (created.kind === 'cap_exceeded') return err(changeProposalCapExceeded(created.cap));
   if (created.kind === 'key_inactive') return err(forbidden('This shop management key can no longer propose changes'));
+  if (created.kind === 'busy') return err(changeProposalsBusy());
   return ok(toChangeProposalKeyReceipt(created.proposal, now));
 };
 

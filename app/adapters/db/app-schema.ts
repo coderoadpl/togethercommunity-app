@@ -1091,6 +1091,10 @@ export const shopManagementKeys = pgTable(
       'shop_management_keys_propose_scopes_check',
       sql`${table.mode} <> 'propose' OR NOT (${table.scopes} ?| ARRAY['shop:fulfilment:write', 'shop:integrations:write'])`,
     ),
+    check(
+      'shop_management_keys_propose_read_scopes_check',
+      sql`${table.mode} <> 'propose' OR ((NOT ${table.scopes} ? 'shop:catalog:write' OR ${table.scopes} ? 'shop:catalog:read') AND (NOT ${table.scopes} ? 'shop:settings:write' OR ${table.scopes} ? 'shop:settings:read'))`,
+    ),
   ],
 );
 

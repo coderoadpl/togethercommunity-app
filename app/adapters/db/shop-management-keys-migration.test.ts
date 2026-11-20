@@ -39,7 +39,8 @@ const testUrl = (() => {
 })();
 const NOW = '1998-08-03T10:00:00.000Z';
 const EXPIRY = '1998-08-10T10:00:00.000Z';
-const withdrawal = (proposalId: string) => ({ id: `withdrawal-${proposalId}`, actorUserId: 'owner-user', at: NOW });
+let withdrawalSequence = 0;
+const withdrawal = { at: NOW, actorUserId: 'owner-user', nextEventId: () => `withdrawal-${String(++withdrawalSequence)}` };
 const TENANT = 'tenant-shop-keys';
 const AUDIT_TENANT = 'tenant-shop-keys-audit';
 const PURGE_TENANT = 'tenant-shop-keys-purge';

@@ -475,7 +475,7 @@ const capabilityFromBody = (
   };
   visit(body);
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
-  const proposalFamilyChoice = subject === 'change-proposals.ts#submitChangeProposal' && capabilities.join(',') === 'proposal:submit:catalog,proposal:submit:settings';
+  const proposalFamilyChoice = subject === 'change-proposals.ts#submitChangeProposal' && capabilities.join(',') === 'proposal:submit:catalog,product:read,proposal:submit:settings,tenant:settings:read';
   if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,

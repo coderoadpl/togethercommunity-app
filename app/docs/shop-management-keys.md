@@ -158,17 +158,21 @@ pnpm --silent run cli api-key shop-management create Catalogue agent \
 Over HTTP the creation body carries `"mode": "propose"`. On a propose-mode key
 `shop:catalog:write` and `shop:settings:write` grant only
 `proposal:submit:catalog` and `proposal:submit:settings` instead of the live
-write capabilities, and `shop:fulfilment:write` and `shop:integrations:write`
-are refused at creation with `400`. The key lists, reads and withdraws only its
+write capabilities, and each needs its read scope (`shop:catalog:read`,
+`shop:settings:read`): creation without it answers `400` and the database
+refuses such a row. `shop:fulfilment:write` and `shop:integrations:write` are
+refused at creation with `400`. The key lists, reads and withdraws only its
 own proposals under `/api/m2m/shop/proposals` (CLI `shop proposals
 list|show|withdraw`); a direct-mode key is refused there with `403`. The key
-list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`)
-shows each key's mode. Revoking or purging a propose-mode key withdraws its
-pending proposals in the same transaction.
+list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
+in its last column) shows each key's mode. Revoking or purging a propose-mode
+key withdraws its pending, unexpired proposals in the same transaction.
 
 A receipt carries the submitted input, the target id and the status, never the
-effect or any live value, so a write-only propose-mode key reads nothing it
-could not read before. See [Change proposals](change-proposals.md) for the
+effect or any live value. Whether a proposal is accepted or refused depends on
+live state, so a propose-mode key always holds the read scope of the family it
+proposes in and learns nothing from a refused or accepted proposal that it
+could not read with that read scope. See [Change proposals](change-proposals.md) for the
 route classes, statuses, limits and what is not available yet.
 
 ## Authenticating a request

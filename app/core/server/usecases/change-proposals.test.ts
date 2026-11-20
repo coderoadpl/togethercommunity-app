@@ -65,13 +65,15 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
 });
 
 const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey => ({
-  id: KEY_ID, tenantId: TENANT, name: 'Catalogue agent', keyHash: 'hash', scopes: ['shop:catalog:write'], mode: 'propose',
+  id: KEY_ID, tenantId: TENANT, name: 'Catalogue agent', keyHash: 'hash', scopes: ['shop:catalog:read', 'shop:catalog:write'], mode: 'propose',
   issuedByUserId: OWNER, createdAt: '2026-02-25T00:00:00.000Z', expiresAt: '2026-03-20T00:00:00.000Z', revokedAt: null,
   ...overrides,
 });
 
+const CATALOG_PROPOSER: ShopManagementScope[] = ['shop:catalog:read', 'shop:catalog:write'];
+
 const keyCtx = (
-  scopes: ShopManagementScope[] = ['shop:catalog:write'],
+  scopes: ShopManagementScope[] = CATALOG_PROPOSER,
   mode: ShopManagementKey['mode'] = 'propose',
   apiKeyId = KEY_ID,
   tenantId = TENANT,
@@ -154,6 +156,10 @@ const storageSpy = () => {
   return { storage, calls };
 };
 
+const storageSecrets = {
+  resolve: async () => ok(JSON.stringify({ provider: 'aws_s3', endpoint: 'https://storage.example.test', bucket: 'downloads', region: 'auto', accessKeyId: 'a', secretAccessKey: 's' })),
+};
+
 interface Harness {
   state: FakeCatalogState;
   store: FakeChangeProposalStore;
@@ -183,7 +189,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   state.stock.push({ tenantId: TENANT, productId: 'product-live', onHand: 10, reserved: 0, lowStockThreshold: 2, lowStockNotifiedAt: null, updatedAt: NOW });
   state.downloadAssets.push(downloadAsset());
   const store = createChangeProposalStoreFake(keys);
-  const transaction = createChangeProposalTransactionFake(state, store);
+  const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const { storage, calls } = storageSpy();
   let sequence = 0;
   const clock = { now: NOW };
@@ -201,9 +207,6 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
       changeProposals: store.repository,
       shopManagementKeys,
       storage,
-      secretResolver: {
-        resolve: async () => ok(JSON.stringify({ provider: 'aws_s3', endpoint: 'https://storage.example.test', bucket: 'downloads', region: 'auto', accessKeyId: 'a', secretAccessKey: 's' })),
-      },
       logger: { error: vi.fn<(message: string) => void>() },
       ids,
       clock: clockPort,
@@ -317,7 +320,7 @@ describe('submitChangeProposal dry run', () => {
       ['product.create', { title: 'Mug', slug: 'mug', priceCents: 0 }, () => live(({ repositories }) =>
         createProduct(asOwner, { title: 'Mug', slug: 'mug', priceCents: 0 }, { ...repositories, ids: { nextId: () => 'direct-id' }, clock }))],
       ['product.delete-draft', { productId: 'product-live' }, () => live(({ repositories }) =>
-        deleteProductDraft(asOwner, { productId: 'product-live' }, { ...direct.submitDeps, productDrafts: repositories.productDrafts }))],
+        deleteProductDraft(asOwner, { productId: 'product-live' }, { ...direct.submitDeps, secretResolver: storageSecrets, productDrafts: repositories.productDrafts }))],
     ];
     for (const [operation, input, viaLiveRoute] of cases) {
       const result = await submitChangeProposal(keyCtx(), { operation, input }, h.submitDeps);
@@ -351,8 +354,8 @@ describe('submitChangeProposal dry run', () => {
     expect(h.transaction.calls).toEqual([]);
   });
 
-  it('keeps live values out of the receipt of a write-only key', async () => {
-    const result = await submitChangeProposal(keyCtx(['shop:catalog:write']), { operation: 'product.update', input: { id: 'product-mug', description: 'Fresh' } }, h.submitDeps);
+  it('keeps live values out of the receipt', async () => {
+    const result = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', description: 'Fresh' } }, h.submitDeps);
     if (!result.ok) throw new Error(result.error.message);
     expect(Object.keys(result.value).sort()).toEqual(['createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target']);
     expect(JSON.stringify(result.value)).not.toContain('Mug');
@@ -382,6 +385,17 @@ describe('submitChangeProposal authorization', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden', message: 'proposal:submit:catalog is not permitted' } });
   });
 
+  it.each([
+    ['catalogue', 'product.update', ['shop:catalog:write', 'shop:settings:read'], 'product:read is not permitted'],
+    ['catalogue', 'stock.adjust', ['shop:catalog:write'], 'product:read is not permitted'],
+  ] as const)('refuses a %s proposal from a key row without the family\'s read scope before any dry run', async (_family, operation, scopes, message) => {
+    const h = harness([shopKey({ scopes: [...scopes] })]);
+    const result = await submitChangeProposal(keyCtx([...scopes]), { operation, input: OPERATION_INPUTS[operation] }, h.submitDeps);
+    expect(result).toEqual({ ok: false, error: { code: 'forbidden', message } });
+    expect(h.transaction.calls).toEqual([]);
+    expect(h.store.proposals).toEqual([]);
+  });
+
   it('refuses a key that is revoked, expired, purged or in direct mode at insert time', async () => {
     for (const keys of [[shopKey({ revokedAt: NOW })], [shopKey({ expiresAt: NOW })], [shopKey({ mode: 'direct' })]]) {
       const h = harness(keys);
@@ -406,7 +420,8 @@ describe('submitChangeProposal caps', () => {
       h.store.seed(storedProposal({ id: `seeded-${String(index)}`, createdAt: '2026-02-01T00:00:00.000Z' }));
     }
     expect(await submit(h)).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_pending' } } });
-    const other = await submitChangeProposal(keyCtx(['shop:catalog:write'], 'propose', OTHER_KEY_ID), { operation: 'product.update', input: OPERATION_INPUTS['product.update'] }, h.submitDeps);
+    expect(h.transaction.calls).toEqual([]);
+    const other = await submitChangeProposal(keyCtx(CATALOG_PROPOSER, 'propose', OTHER_KEY_ID), { operation: 'product.update', input: OPERATION_INPUTS['product.update'] }, h.submitDeps);
     expect(other.ok).toBe(true);
   });
 
@@ -424,6 +439,7 @@ describe('submitChangeProposal caps', () => {
       h.store.seed(storedProposal({ id: `workspace-${String(index)}`, proposedByKeyId: `key-${String(index % 10)}`, createdAt: '2026-02-01T00:00:00.000Z' }));
     }
     expect(await submit(h)).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'workspace_pending' } } });
+    expect(h.transaction.calls).toEqual([]);
   });
 
   it('refuses the 501st proposal a key created in 24 hours whatever their status', async () => {
@@ -432,14 +448,46 @@ describe('submitChangeProposal caps', () => {
       h.store.seed(storedProposal({ id: `daily-${String(index)}`, status: 'withdrawn', createdAt: '2026-03-01T01:00:00.000Z' }));
     }
     expect(await submit(h)).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_daily' } } });
+    expect(h.transaction.calls).toEqual([]);
   });
 
-  it('refuses an effect larger than the stored-effect cap', async () => {
+  it('re-checks the count caps atomically at insert when the slot fills during the dry run', async () => {
     const h = harness();
-    const description = 'x'.repeat(40_000);
-    h.state.products.push(product({ id: 'product-long', slug: 'long', description: 'y'.repeat(40_000) }));
-    const result = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-long', description } }, h.submitDeps);
+    for (let index = 0; index < CHANGE_PROPOSAL_LIMITS.pendingPerKey - 1; index += 1) {
+      h.store.seed(storedProposal({ id: `racing-${String(index)}`, createdAt: '2026-02-01T00:00:00.000Z' }));
+    }
+    const dryRun = h.transaction.dryRun.bind(h.transaction);
+    h.submitDeps.changeProposalTransaction = {
+      ...h.transaction,
+      dryRun: async (tenantId, operation) => {
+        h.store.seed(storedProposal({ id: 'racing-last', createdAt: '2026-02-01T00:00:00.000Z' }));
+        return dryRun(tenantId, operation);
+      },
+    };
+    expect(await submit(h)).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_pending' } } });
+    expect(h.transaction.calls).toEqual(['dryRun']);
+  });
+
+  it('answers unavailable with a retry-after when the insert cannot take the workspace lock', async () => {
+    const h = harness();
+    h.submitDeps.changeProposals = { ...h.store.repository, create: async () => ({ kind: 'busy' }) };
+    expect(await submit(h)).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
+  });
+
+  it('accepts a 50,000-character description over an existing 50,000-character description', async () => {
+    const h = harness();
+    h.state.products.push(product({ id: 'product-long', slug: 'long', description: 'y'.repeat(50_000) }));
+    const result = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-long', description: 'x'.repeat(50_000) } }, h.submitDeps);
+    expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.store.proposals[0]?.effect).toEqual({ description: { before: 'y'.repeat(50_000), after: 'x'.repeat(50_000) } });
+  });
+
+  it('refuses an effect larger than the stored-effect cap with a conflict the key can read', async () => {
+    const h = harness();
+    h.state.products.push(product({ id: 'product-oversized', slug: 'oversized', description: 'y'.repeat(CHANGE_PROPOSAL_LIMITS.effectMaxBytes) }));
+    const result = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-oversized', description: 'Short' } }, h.submitDeps);
     expect(result).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'effect_size' } } });
+    expect(h.store.proposals).toEqual([]);
   });
 });
 
@@ -501,7 +549,7 @@ describe('key-side proposal management', () => {
     seedOwnAndForeign(h);
     expect(await withdrawOwnChangeProposal(keyCtx(), { id: 'other-key' }, h.keyDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await withdrawOwnChangeProposal(keyCtx(), { id: 'other-workspace' }, h.keyDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await withdrawOwnChangeProposal(keyCtx(['shop:catalog:write'], 'propose', KEY_ID, NEIGHBOUR), { id: 'own-1' }, h.keyDeps))
+    expect(await withdrawOwnChangeProposal(keyCtx(CATALOG_PROPOSER, 'propose', KEY_ID, NEIGHBOUR), { id: 'own-1' }, h.keyDeps))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(h.store.proposals.filter(({ status }) => status !== 'pending').map(({ id }) => id)).toEqual(['own-2']);
   });

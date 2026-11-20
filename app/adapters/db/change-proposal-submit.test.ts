@@ -1,9 +1,10 @@
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
   changeProposalOperationSchema,
-  ok,
   type ChangeProposalOperation,
   type Identity,
   type ShopManagementKey,
@@ -18,6 +19,8 @@ import {
 
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
+import { closeDb, createDb, type Db } from './client.js';
+import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposals,
@@ -47,7 +50,7 @@ const owner: Identity = {
 };
 
 const key: ShopManagementKey = {
-  id: 'key-propose', tenantId: TENANT, name: 'Catalogue agent', keyHash: 'hash-propose', scopes: ['shop:catalog:write'],
+  id: 'key-propose', tenantId: TENANT, name: 'Catalogue agent', keyHash: 'hash-propose', scopes: ['shop:catalog:read', 'shop:catalog:write'],
   mode: 'propose', issuedByUserId: OWNER, createdAt: '2026-02-25T00:00:00.000Z', expiresAt: '2026-03-20T00:00:00.000Z', revokedAt: null,
 };
 
@@ -69,23 +72,18 @@ const storage: StorageProvider = {
   head: refuse('head'), healthcheck: refuse('healthcheck'), test: refuse('test'),
 };
 
-const deps = (): ChangeProposalSubmitDeps => {
-  const logger = { error: vi.fn<(message: string) => void>() };
-  return {
-    changeProposalTransaction: createChangeProposalTransaction(database.db, logger),
-    changeProposals: createChangeProposalRepository(database.db),
-    shopManagementKeys: createShopManagementKeyRepository(database.db),
-    storage,
-    secretResolver: {
-      resolve: async () => ok(JSON.stringify({
-        provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'downloads', accessKeyId: 'a', secretAccessKey: 's',
-      })),
-    },
-    logger,
-    ids: { nextId: () => `submit-${String(++sequence)}` },
-    clock: { nowIso: () => NOW },
-  };
-};
+const secretCrypto = createSecretCrypto(Buffer.alloc(32, 5).toString('base64'));
+
+const deps = (db: Db = database.db, logger = { error: vi.fn<(message: string) => void>() }): ChangeProposalSubmitDeps => ({
+  changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
+    createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
+  changeProposals: createChangeProposalRepository(db),
+  shopManagementKeys: createShopManagementKeyRepository(db),
+  storage,
+  logger,
+  ids: { nextId: () => `submit-${String(++sequence)}` },
+  clock: { nowIso: () => NOW },
+});
 
 const liveTables = async () => ({
   products: await database.db.select().from(products).where(eq(products.tenantId, TENANT)).orderBy(asc(products.id)),
@@ -110,6 +108,12 @@ beforeAll(async () => {
   await database.db.insert(tenants).values({ id: TENANT, slug: 'acme', name: 'Acme', createdAt: NOW });
   await createShopManagementKeyRepository(database.db).create(TENANT, key, {
     id: 'key-event-1', tenantId: TENANT, apiKeyId: key.id, kind: 'created', actorUserId: OWNER, method: null, route: null, resourceId: null, at: key.createdAt,
+  });
+  await createTenantSecretRepository(database.db).upsert(TENANT, {
+    id: 'storage-configuration', tenantId: TENANT, key: 's3.configuration', maskedPreview: 'configured', updatedAt: NOW,
+    ...secretCrypto.encrypt(JSON.stringify({
+      provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'downloads', accessKeyId: 'a', secretAccessKey: 's',
+    })),
   });
   await insertProduct('mug', { type: 'physical' });
   await insertProduct('live', { type: 'physical', published: true });
@@ -168,6 +172,21 @@ describe('submitChangeProposal over the database', () => {
     const [stored] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, result.value.id));
     expect(stored?.effect).toEqual({ description: { before: '', after: 'Fresh' } });
     expect(await database.db.select({ contentVersion: tenants.contentVersion }).from(tenants).where(eq(tenants.id, TENANT))).toEqual([tenantBefore]);
+  });
+
+  it('submits a draft deletion on a one-connection pool with the real secret resolver', async () => {
+    const single = createDb('node-postgres', database.url, { max: 1, connectionTimeoutMillis: 2_000 });
+    const logger = { error: vi.fn<(message: string) => void>() };
+    try {
+      const before = await liveTables();
+      const result = await submitChangeProposal(keyCtx, { operation: 'product.delete-draft', input: INPUTS['product.delete-draft'] }, deps(single, logger));
+      expect(result).toMatchObject({ ok: true, value: { operation: 'product.delete-draft', status: 'pending' } });
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(storageCalls).toEqual([]);
+      expect(await liveTables()).toEqual(before);
+    } finally {
+      await closeDb(single);
+    }
   });
 
   it('returns a live refusal unchanged and stores nothing', async () => {

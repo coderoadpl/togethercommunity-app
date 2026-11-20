@@ -45,7 +45,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     const row = rows[0];
     return row ? parseKey(row) : null;
   },
-  revoke: async (tenantId, id, revokedAt, event, withdrawalEvent) => db.transaction(async (tx) => {
+  revoke: async (tenantId, id, revokedAt, event, withdrawal) => db.transaction(async (tx) => {
     const rows = await tx
       .update(shopManagementKeys)
       .set({ revokedAt })
@@ -58,17 +58,17 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     const row = rows[0];
     if (!row) return null;
     await insertShopManagementKeyEvent(tx, tenantId, event);
-    await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawalEvent);
+    await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawal);
     return parseKey(row);
   }),
-  purge: async (tenantId, event, withdrawalEvent) => db.transaction(async (tx) => {
+  purge: async (tenantId, event, withdrawal) => db.transaction(async (tx) => {
     const purged = await tx
       .delete(shopManagementKeys)
       .where(eq(shopManagementKeys.tenantId, tenantId))
       .returning({ id: shopManagementKeys.id });
     for (const { id } of purged) {
       await insertShopManagementKeyEvent(tx, tenantId, event(id));
-      await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawalEvent);
+      await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
     }
     return purged.length;
   }),

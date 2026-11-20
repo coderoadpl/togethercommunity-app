@@ -1,14 +1,14 @@
-import { sql } from 'drizzle-orm';
-
-import type { AppError, Result } from '#core/domain/index.js';
+import { changeProposalsBusy, err, type AppError, type Result } from '#core/domain/index.js';
 import { serializeErrorChain } from '#core/server/log-safety.js';
 import type {
   ChangeProposalPostCommitEffects,
   ChangeProposalRepositories,
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
+  TenantSecretResolver,
 } from '#core/server/index.js';
 
+import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
 import {
   createChangeProposalEventRepository,
   createChangeProposalRepository,
@@ -76,34 +76,39 @@ const rollingBackErrors = async <T>(
   }
 };
 
-const scopeOver = (tx: Db, effects: PostCommitEffect[], isOpen: () => boolean): ChangeProposalTransactionScope => ({
+type SecretResolverOver = (executor: Db) => TenantSecretResolver;
+
+const scopeOver = (
+  tx: Db,
+  secretResolverOver: SecretResolverOver,
+  effects: PostCommitEffect[],
+  isOpen: () => boolean,
+): ChangeProposalTransactionScope => ({
   repositories: repositoriesOver(tx),
+  secretResolver: secretResolverOver(tx),
   afterCommit: collectorInto(effects, isOpen),
   savepoint: async (operation) => {
     const nested: PostCommitEffect[] = [];
     let savepointOpen = true;
     const result = await rollingBackErrors(tx, (savepointTx) =>
-      operation(scopeOver(savepointTx, nested, () => savepointOpen && isOpen())))
+      operation(scopeOver(savepointTx, secretResolverOver, nested, () => savepointOpen && isOpen())))
       .finally(() => { savepointOpen = false; });
     if (result.ok) effects.push(...nested);
     return result;
   },
 });
 
-const lockWorkspace = async (tx: Db, tenantId: string): Promise<void> => {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`change-proposal-transaction:${tenantId}`}, 0))`);
-};
-
 export const createChangeProposalTransaction = (
   db: Db,
   logger: { error(message: string): void },
+  secretResolverOver: SecretResolverOver,
 ): ChangeProposalTransaction => {
   const runScoped = async <T>(tenantId: string, operation: ScopedOperation<T>, rollBackAlways: boolean) => {
     const effects: PostCommitEffect[] = [];
     let open = true;
-    const result = await rollingBackErrors(db, async (tx) => {
-      await lockWorkspace(tx, tenantId);
-      return operation(scopeOver(tx, effects, () => open));
+    const result = await rollingBackErrors(db, async (tx): Promise<Result<T, AppError>> => {
+      if (!await boundedAdvisoryLock(tx, `change-proposal-transaction:${tenantId}`)) return err(changeProposalsBusy());
+      return operation(scopeOver(tx, secretResolverOver, effects, () => open));
     }, rollBackAlways).finally(() => { open = false; });
     return { result, effects: result.ok && !rollBackAlways ? effects : [] };
   };

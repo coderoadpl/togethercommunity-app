@@ -36,7 +36,7 @@ describe('createShopManagementKeyInputSchema', () => {
     const parsed = createShopManagementKeyInputSchema.parse({ name: 'Shop backend', scopes: ['shop:catalog:write'], expiresAt: EXPIRY });
     expect(parsed.mode).toBe('direct');
     expect(createShopManagementKeyInputSchema.parse({
-      name: 'Shop backend', scopes: ['shop:catalog:write'], expiresAt: EXPIRY, mode: 'propose',
+      name: 'Shop backend', scopes: ['shop:catalog:read', 'shop:catalog:write'], expiresAt: EXPIRY, mode: 'propose',
     }).mode).toBe('propose');
   });
 
@@ -48,10 +48,29 @@ describe('createShopManagementKeyInputSchema', () => {
 
   it.each(SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE)('refuses %s for a propose-mode key', (scope) => {
     const parsed = createShopManagementKeyInputSchema.safeParse({
-      name: 'Shop backend', scopes: ['shop:catalog:write', scope], expiresAt: EXPIRY, mode: 'propose',
+      name: 'Shop backend', scopes: ['shop:catalog:read', scope], expiresAt: EXPIRY, mode: 'propose',
     });
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues.map((issue) => issue.path)).toEqual([['scopes', 1]]);
+  });
+
+  it.each([
+    ['shop:catalog:write', 'shop:catalog:read'],
+    ['shop:settings:write', 'shop:settings:read'],
+  ] as const)('refuses %s on a propose-mode key without %s', (writeScope, readScope) => {
+    const parsed = createShopManagementKeyInputSchema.safeParse({
+      name: 'Shop backend', scopes: ['shop:orders:read', writeScope], expiresAt: EXPIRY, mode: 'propose',
+    });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map(({ path, message }) => [path, message])).toEqual([
+      [['scopes', 1], `${writeScope} on a propose-mode key needs ${readScope} as well`],
+    ]);
+    expect(createShopManagementKeyInputSchema.safeParse({
+      name: 'Shop backend', scopes: [writeScope, readScope], expiresAt: EXPIRY, mode: 'propose',
+    }).success).toBe(true);
+    expect(createShopManagementKeyInputSchema.safeParse({
+      name: 'Shop backend', scopes: [writeScope], expiresAt: EXPIRY, mode: 'direct',
+    }).success).toBe(true);
   });
 
   it.each(SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE)('still grants %s to a direct-mode key', (scope) => {

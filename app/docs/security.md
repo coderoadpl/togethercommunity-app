@@ -449,7 +449,15 @@ scopes on every shop key.
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
   `proposal:submit:settings` in place of the live write capabilities, and
   `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
-  it. Every shop write route declares a propose-mode class in
+  it. A write scope requires its read scope (`shop:catalog:write` needs
+  `shop:catalog:read`, `shop:settings:write` needs `shop:settings:read`): the
+  creation schema, a database check on `shop_management_keys` and the
+  submission use-case, which also authorizes the family's read capability
+  (`product:read`, `tenant:settings:read`), each enforce it. Whether a dry run
+  accepts or refuses a proposal depends on live state (a negative stock
+  adjustment, the effect size), so a write-only key could otherwise probe
+  values it cannot read; with the rule, a propose-mode key learns nothing from
+  a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
   without one: the ten catalogue write routes store a
   [change proposal](change-proposals.md) instead of running their handler,
@@ -462,10 +470,17 @@ scopes on every shop key.
   proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
   impersonating owner, a direct-mode key, a propose-mode key and a legacy key
   are refused. Proposals carry no foreign key to their key, so the history
-  survives a purge, and revoking or purging a key withdraws its pending
-  proposals in the same transaction. Pending proposals are capped at 200 per
-  key and 1,000 per workspace and creation at 500 per key a day; a retention
-  purge of settled proposals is a follow-up. Approval is not available yet.
+  survives a purge, and revoking or purging a key withdraws its pending,
+  unexpired proposals in the same transaction. Pending proposals are capped at
+  200 per key and 1,000 per workspace and creation at 500 per key a day,
+  checked read-only before the dry run and again atomically at insert. A dry
+  run never takes a second database connection (the storage credentials of a
+  draft deletion are read through the transaction), locks its target with
+  `FOR NO KEY UPDATE` so it cannot deadlock with a live stock write, and waits
+  at most 5 seconds for the workspace lock before answering `503` with a
+  `retry-after`, so queued proposals cannot hold pool connections without
+  bound. A retention purge of settled proposals is a follow-up. Approval is
+  not available yet.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs

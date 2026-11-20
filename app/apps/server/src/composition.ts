@@ -1573,7 +1573,7 @@ export const createDeps = (
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     changeProposals: createChangeProposalRepository(db),
     changeProposalEvents: createChangeProposalEventRepository(db),
-    changeProposalTransaction: createChangeProposalTransaction(db, logger),
+    changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,

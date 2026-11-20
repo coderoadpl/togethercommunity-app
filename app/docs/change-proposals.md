@@ -29,7 +29,9 @@ A proposal stores two things:
   request.
 - **The effect**: what the command would change. It is computed by a dry run:
   the live use-case runs inside one database transaction, on the target row
-  locked for update, acting as the owner who issued the key, and the
+  locked against concurrent writes (`FOR NO KEY UPDATE`, so a live stock
+  write that inserts its event still proceeds), acting as the owner who issued
+  the key, and the
   transaction is always rolled back. The effect is the field-level difference
   between the target before and after (`{ "title": { "before": "A", "after":
   "B" } }`), derived fields included, such as the published flag, the active
@@ -39,7 +41,9 @@ A proposal stores two things:
 
 The dry run never leaves a row, an event, an outbox message or a content
 version behind, and object storage deletes that a live operation would make
-are dropped with the rollback. A domain error from the dry run is returned to
+are dropped with the rollback. Everything the dry run reads, the storage
+credentials of a draft deletion included, is read through the transaction's
+own connection; it never takes a second database connection. A domain error from the dry run is returned to
 the key exactly as the live route returns it (`400`, `404`, `409`) and no
 proposal is stored.
 
@@ -71,6 +75,12 @@ The mode is fixed at creation; `direct` is the default and keeps the existing
 behaviour. On a propose-mode key:
 
 - read scopes grant the same reads as on a direct key;
+- a write scope needs its read scope: `shop:catalog:write` needs
+  `shop:catalog:read` and `shop:settings:write` needs `shop:settings:read`.
+  Creation answers `400` without it, the database refuses such a row, and a
+  proposal is refused (`403`, before any dry run) unless the key also holds
+  the read capability of the operation's family (`product:read` for the
+  catalogue, `tenant:settings:read` for the settings);
 - `shop:catalog:write` grants only `proposal:submit:catalog`, never
   `product:write`, `product:price:write` or `product:publish`;
 - `shop:settings:write` grants only `proposal:submit:settings`, never
@@ -132,8 +142,12 @@ key receipt:
 ```
 
 A receipt never contains the effect, a before value, a live label or the
-deciding account, so a key with a write scope and no read scope cannot read
-live state through a proposal. The owner view is separate and complete: it
+deciding account. Whether a proposal is accepted or refused still depends on
+live state (a stock adjustment below zero is refused, a large before value
+can hit the effect limit), which is why a write scope always comes with its
+read scope: a propose-mode key learns nothing from a refused or accepted
+proposal that it could not read with its read scope. The owner view is
+separate and complete: it
 adds the effect, the proposing key's name, id, issuer and state (`active`,
 `expired`, `revoked`, `purged`), the decision and the event history.
 
@@ -185,21 +199,35 @@ named by `--api-key-env` (default `TOGETHER_SHOP_KEY`).
 Every transition appends an event (`proposed`, `rejected`, `withdrawn`,
 `expired`, …) in the transaction that changes the status. A read never
 writes: the `expired` event is recorded when a reject or a withdrawal meets
-an expired proposal. Revoking or purging a key withdraws its pending proposals
-in the same transaction as the key change. A key that simply expires leaves
-its proposals decidable; the owner view shows the key state.
+an expired proposal. Revoking or purging a key withdraws its pending,
+unexpired proposals in the same transaction as the key change; a proposal
+already past its expiry stays `expired`. A key that simply expires leaves its
+proposals decidable; the owner view shows the key state.
 
 ## Limits
 
-Enforced in the transaction that stores the proposal; over a limit the key
-gets `409 conflict` with the limit named in `error.details.changeProposalCap`:
+The three count limits are checked read-only before the dry run, so a key at
+a limit is answered at once, and again in the transaction that stores the
+proposal, so two concurrent proposals cannot both take the last slot. Over a
+limit the key gets `409 conflict` with the limit named in
+`error.details.changeProposalCap`:
 
 | Limit | Value | `changeProposalCap` |
 |---|---|---|
 | Pending, unexpired proposals per key | 200 | `key_pending` |
 | Pending, unexpired proposals per workspace | 1,000 | `workspace_pending` |
 | Proposals created per key in 24 hours, any status | 500 | `key_daily` |
-| Stored effect | 64 KiB | `effect_size` |
+| Stored effect | 1.25 MiB | `effect_size` |
+
+The effect limit is larger than the largest change a valid product input can
+describe (every length-limited text field at its maximum before and after,
+the unlimited URL fields at a whole request body), so it only stops an effect
+over a list that has no length limit, such as the active prices of a deleted
+draft.
+
+Dry runs and inserts of one workspace queue on a workspace lock. A request
+that waits more than 5 seconds for it gets `503 unavailable` with a
+`retry-after` header, and nothing is stored.
 
 A decision note is at most 500 characters. The key's own rate limits (60
 requests a minute, 10,000 a day) apply as on every shop route.

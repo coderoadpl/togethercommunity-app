@@ -100,7 +100,7 @@ export const CHANGE_PROPOSAL_LIMITS = {
   pendingPerWorkspace: 1_000,
   createdPerKeyPerWindow: 500,
   creationWindowMs: 24 * 60 * 60 * 1000,
-  effectMaxBytes: 64 * 1024,
+  effectMaxBytes: 1_280 * 1024,
   decisionNoteMaxLength: 500,
   groupTitleMaxLength: 500,
   eventNoteMaxLength: 500,
@@ -117,6 +117,8 @@ export const CHANGE_PROPOSAL_WITHDRAWAL_NOTES = {
 
 export type ChangeProposalCap = 'key_pending' | 'workspace_pending' | 'key_daily' | 'effect_size';
 
+export type ChangeProposalCountCap = Exclude<ChangeProposalCap, 'effect_size'>;
+
 const capMessages: Record<ChangeProposalCap, string> = {
   key_pending: `This key already has ${String(CHANGE_PROPOSAL_LIMITS.pendingPerKey)} pending proposals`,
   workspace_pending: `This workspace already has ${String(CHANGE_PROPOSAL_LIMITS.pendingPerWorkspace)} pending proposals`,
@@ -126,6 +128,13 @@ const capMessages: Record<ChangeProposalCap, string> = {
 
 export const changeProposalCapExceeded = (cap: ChangeProposalCap): AppError =>
   appError('conflict', capMessages[cap], { changeProposalCap: cap });
+
+const CHANGE_PROPOSALS_BUSY_RETRY_AFTER_SECONDS = 5;
+
+export const changeProposalsBusy = (): AppError =>
+  appError('unavailable', 'Change proposals of this workspace are busy; nothing was changed, retry the request', {
+    retryAfterSeconds: CHANGE_PROPOSALS_BUSY_RETRY_AFTER_SECONDS,
+  });
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 

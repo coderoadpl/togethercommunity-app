@@ -29,6 +29,11 @@ export const SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE = [
 const scopeRefusedInProposeMode = (scope: ShopManagementScope): boolean =>
   SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE.some((refused) => refused === scope);
 
+const readScopeRequiredInProposeMode: Partial<Record<ShopManagementScope, ShopManagementScope>> = {
+  'shop:catalog:write': 'shop:catalog:read',
+  'shop:settings:write': 'shop:settings:read',
+};
+
 export const SHOP_MANAGEMENT_KEY_MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const shopManagementKeysSwitchSchema = z.enum(['enabled', 'disabled']);
@@ -81,6 +86,14 @@ export const createShopManagementKeyInputSchema = z.object({
         message: `${scope} cannot be granted to a propose-mode key`,
       });
     }
+    const readScope = readScopeRequiredInProposeMode[scope];
+    if (readScope !== undefined && !input.scopes.includes(readScope)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scopes', index],
+        message: `${scope} on a propose-mode key needs ${readScope} as well`,
+      });
+    }
   });
 });
 
@@ -113,7 +126,7 @@ const capabilitiesByShopManagementKeyMode: Record<ShopManagementKeyMode, Record<
   propose: proposeModeCapabilitiesByShopManagementScope,
 };
 
-const capabilitiesOfEveryKeyByMode: Record<ShopManagementKeyMode, readonly Capability[]> = {
+const scopeIndependentCapabilitiesByMode: Record<ShopManagementKeyMode, readonly Capability[]> = {
   direct: [],
   propose: ['proposal:own:manage'],
 };
@@ -124,7 +137,7 @@ export const shopManagementCapabilities = (
 ): readonly Capability[] =>
   [...new Set([
     ...scopes.flatMap((scope) => capabilitiesByShopManagementKeyMode[mode][scope]),
-    ...capabilitiesOfEveryKeyByMode[mode],
+    ...scopeIndependentCapabilitiesByMode[mode],
   ])];
 
 export const SHOP_MANAGEMENT_KEY_SECRET_KEYS = [

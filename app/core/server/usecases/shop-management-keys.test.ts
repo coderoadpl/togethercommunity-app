@@ -64,20 +64,20 @@ const harness = (rows: ShopManagementKey[] = [], shopManagementKeysSwitch: ShopM
       events.push(event);
     },
     findByHash: async () => null,
-    revoke: async (tenantId, id, revokedAt, event, withdrawalEvent) => {
+    revoke: async (tenantId, id, revokedAt, event, withdrawal) => {
       const row = store.find((r) => r.tenantId === tenantId && r.id === id && r.revokedAt === null);
       if (!row) return null;
       row.revokedAt = revokedAt;
       events.push(event);
-      if (row.mode === 'propose') withdrawals.push({ proposalId: `proposal-of-${id}`, ...withdrawalEvent(`proposal-of-${id}`) });
+      if (row.mode === 'propose') withdrawals.push({ proposalId: `proposal-of-${id}`, id: withdrawal.nextEventId(), actorUserId: withdrawal.actorUserId, at: withdrawal.at });
       return row;
     },
-    purge: async (tenantId, event, withdrawalEvent) => {
+    purge: async (tenantId, event, withdrawal) => {
       const purged = store.filter((row) => row.tenantId === tenantId);
       for (const row of purged) {
         store.splice(store.indexOf(row), 1);
         events.push(event(row.id));
-        if (row.mode === 'propose') withdrawals.push({ proposalId: `proposal-of-${row.id}`, ...withdrawalEvent(`proposal-of-${row.id}`) });
+        if (row.mode === 'propose') withdrawals.push({ proposalId: `proposal-of-${row.id}`, id: withdrawal.nextEventId(), actorUserId: withdrawal.actorUserId, at: withdrawal.at });
       }
       return purged.length;
     },
@@ -177,7 +177,10 @@ describe('createShopManagementKey', () => {
       .toMatchObject({ ok: true, value: { apiKey: { mode: 'propose' } } });
     expect(h.rows).toEqual([expect.objectContaining({ mode: 'propose' })]);
     expect(await createShopManagementKey(ctx('owner'), {
-      ...shopInput, mode: 'propose', scopes: ['shop:catalog:write', 'shop:integrations:write'],
+      ...shopInput, mode: 'propose', scopes: ['shop:catalog:read', 'shop:catalog:write', 'shop:integrations:write'],
+    }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createShopManagementKey(ctx('owner'), {
+      ...shopInput, mode: 'propose', scopes: ['shop:catalog:write'],
     }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.rows).toHaveLength(1);
   });
@@ -223,7 +226,7 @@ describe('revokeShopManagementKey', () => {
   });
 
   it('hands the repository the revoking owner for withdrawing the key\'s pending proposals', async () => {
-    const h = harness([shopRow({ mode: 'propose', scopes: ['shop:catalog:write'] })]);
+    const h = harness([shopRow({ mode: 'propose', scopes: ['shop:catalog:read', 'shop:catalog:write'] })]);
     expect(await revokeShopManagementKey(ctx('owner'), { id: 'shop-key' }, h.deps)).toMatchObject({ ok: true });
     expect(h.withdrawals).toEqual([{ proposalId: 'proposal-of-shop-key', id: 'key-2', actorUserId: 'u1', at: NOW }]);
   });
@@ -258,8 +261,8 @@ describe('purgeShopManagementKeys', () => {
 
   it('hands the repository the purging owner for withdrawing each propose-mode key\'s pending proposals', async () => {
     const h = harness([
-      shopRow({ id: 'propose-a', mode: 'propose', scopes: ['shop:catalog:write'] }),
-      shopRow({ id: 'propose-b', mode: 'propose', scopes: ['shop:settings:write'] }),
+      shopRow({ id: 'propose-a', mode: 'propose', scopes: ['shop:catalog:read', 'shop:catalog:write'] }),
+      shopRow({ id: 'propose-b', mode: 'propose', scopes: ['shop:settings:read', 'shop:settings:write'] }),
     ]);
     expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 2 } });
     expect(h.withdrawals.map(({ proposalId, actorUserId, at }) => ({ proposalId, actorUserId, at }))).toEqual([

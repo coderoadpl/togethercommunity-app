@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
+import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -73,7 +74,7 @@ const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey 
   tenantId: TENANT,
   name: 'Catalogue agent',
   keyHash: nextId('hash'),
-  scopes: ['shop:catalog:write'],
+  scopes: ['shop:catalog:read', 'shop:catalog:write'],
   mode: 'propose',
   issuedByUserId: OWNER,
   createdAt: CREATED,
@@ -166,6 +167,21 @@ describe('change proposal creation', () => {
     await expect(repo().create(NEIGHBOUR, proposal(), keyEvent(), NOW)).rejects.toThrow(/another tenant/u);
   });
 
+  it('answers busy without writing when the workspace proposal lock stays held', async () => {
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposals:${TENANT}`]);
+      expect(await repo().create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
+    } finally {
+      await holder.query('rollback');
+      await holder.end();
+    }
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
+    expect(await repo().create(TENANT, proposal(), keyEvent(), NOW)).toMatchObject({ kind: 'created' });
+  }, 30_000);
+
   it('refuses an effect over the stored size limit before writing', async () => {
     const effect = { description: { before: '', after: 'x'.repeat(CHANGE_PROPOSAL_LIMITS.effectMaxBytes) } };
     expect(await repo().create(TENANT, proposal({ effect }), keyEvent(), NOW)).toEqual({ kind: 'cap_exceeded', cap: 'effect_size' });
@@ -174,6 +190,14 @@ describe('change proposal creation', () => {
 });
 
 describe('change proposal caps', () => {
+  it('reports a reached count cap read-only, before any insert', async () => {
+    expect(await repo().countCapReached(TENANT, 'key-propose', NOW)).toBeNull();
+    await bulkInsert(CHANGE_PROPOSAL_LIMITS.pendingPerKey);
+    expect(await repo().countCapReached(TENANT, 'key-propose', NOW)).toBe('key_pending');
+    expect(await repo().countCapReached(TENANT, 'key-other', NOW)).toBeNull();
+    expect(await repo().countCapReached(TENANT, 'key-propose', '2026-03-01T00:00:00.000Z')).toBeNull();
+  });
+
   it('caps the pending proposals of one key and ignores expired ones', async () => {
     await bulkInsert(CHANGE_PROPOSAL_LIMITS.pendingPerKey - 1);
     await bulkInsert(5, { createdAt: '2025-11-01T00:00:00.000Z' });
@@ -280,10 +304,7 @@ describe('change proposal transitions', () => {
 });
 
 describe('key revocation and purge', () => {
-  const withdrawalEvent = () => {
-    const at = NOW;
-    return () => ({ id: nextId('withdrawal'), actorUserId: OWNER, at });
-  };
+  const withdrawalEvent = (at = NOW) => ({ at, actorUserId: OWNER, nextEventId: () => nextId('withdrawal') });
 
   beforeEach(async () => {
     await storeKey({ id: 'key-other' });
@@ -294,7 +315,16 @@ describe('key revocation and purge', () => {
       failureCode: null, failureMessage: null, event: { id: nextId('event'), actorUserId: OWNER, apiKeyId: null, note: null, at: NOW },
     });
     await repo().create(TENANT, proposal({ id: 'p-other', proposedByKeyId: 'key-other' }), keyEvent(), NOW);
+    await repo().create(TENANT, proposal({ id: 'p-expired', createdAt: '2025-11-01T00:00:00.000Z' }), keyEvent(), '2025-11-01T00:00:00.000Z');
+    await repo().create(TENANT, proposal({ id: 'p-other-expired', proposedByKeyId: 'key-other', createdAt: '2025-11-01T00:00:00.000Z' }), keyEvent(), '2025-11-01T00:00:00.000Z');
   });
+
+  const expectStillExpired = async (proposalId: string) => {
+    expect(await repo().findById(TENANT, proposalId)).toMatchObject({ status: 'pending', decidedAt: null, decidedByUserId: null });
+    expect((await eventsOf(proposalId)).map(({ kind }) => kind)).toEqual(['proposed']);
+    const expired = await repo().list(TENANT, { limit: 10, now: NOW, status: 'expired' });
+    expect(expired.proposals.map(({ id }) => id)).toContain(proposalId);
+  };
 
   it('withdraws the revoked key\'s pending proposals in the revocation', async () => {
     const key = shopKey();
@@ -310,6 +340,12 @@ describe('key revocation and purge', () => {
     });
   });
 
+  it('leaves the revoked key\'s expired proposals expired', async () => {
+    await createShopManagementKeyRepository(database.db)
+      .revoke(TENANT, 'key-propose', NOW, keyLifecycleEvent(shopKey(), 'revoked'), withdrawalEvent());
+    await expectStillExpired('p-expired');
+  });
+
   it('withdraws nothing when the revocation finds no active key', async () => {
     await database.db.update(shopManagementKeys).set({ revokedAt: CREATED }).where(eq(shopManagementKeys.id, 'key-propose'));
     expect(await createShopManagementKeyRepository(database.db)
@@ -318,7 +354,7 @@ describe('key revocation and purge', () => {
   });
 
   it('rolls the revocation back when withdrawing fails', async () => {
-    const failing = () => { throw new Error('withdrawal failed'); };
+    const failing = { ...withdrawalEvent(), nextEventId: () => { throw new Error('withdrawal failed'); } };
     await expect(createShopManagementKeyRepository(database.db)
       .revoke(TENANT, 'key-propose', NOW, keyLifecycleEvent(shopKey(), 'revoked'), failing)).rejects.toThrow('withdrawal failed');
     const [key] = await database.db.select().from(shopManagementKeys).where(eq(shopManagementKeys.id, 'key-propose'));
@@ -336,6 +372,8 @@ describe('key revocation and purge', () => {
     expect(await repo().findById(TENANT, 'p-other')).toMatchObject({ status: 'withdrawn', proposedByKeyId: 'key-other' });
     expect(await repo().findById(TENANT, 'p-rejected')).toMatchObject({ status: 'rejected' });
     expect((await eventsOf('p-other')).at(-1)).toMatchObject({ kind: 'withdrawn', note: 'key_purged', apiKeyId: 'key-other' });
+    await expectStillExpired('p-expired');
+    await expectStillExpired('p-other-expired');
   });
 });
 
@@ -368,8 +406,17 @@ describe('change proposal storage checks', () => {
 
   it('refuses a propose-mode key with a live-only scope at the database', async () => {
     await expect(database.db.insert(shopManagementKeys).values({
-      ...shopKey({ id: 'key-bad', scopes: ['shop:catalog:write', 'shop:integrations:write'] }),
+      ...shopKey({ id: 'key-bad', scopes: ['shop:catalog:read', 'shop:catalog:write', 'shop:integrations:write'] }),
     })).rejects.toMatchObject({ cause: { message: expect.stringMatching(/shop_management_keys_propose_scopes_check/u) } });
+  });
+
+  it.each([
+    ['shop:catalog:write', ['shop:catalog:write', 'shop:settings:read']],
+    ['shop:settings:write', ['shop:catalog:read', 'shop:settings:write']],
+  ] as const)('refuses a propose-mode key with %s and without its read scope at the database', async (_scope, scopes) => {
+    await expect(database.db.insert(shopManagementKeys).values({ ...shopKey({ id: 'key-blind', scopes: [...scopes] }) }))
+      .rejects.toMatchObject({ cause: { message: expect.stringMatching(/shop_management_keys_propose_read_scopes_check/u) } });
+    await database.db.insert(shopManagementKeys).values({ ...shopKey({ id: 'key-blind-direct', mode: 'direct', scopes: [...scopes] }) });
   });
 
   it('deletes a workspace with its proposals and events', async () => {

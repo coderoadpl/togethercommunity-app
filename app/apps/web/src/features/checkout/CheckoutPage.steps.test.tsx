@@ -257,7 +257,7 @@ describe('checkout step one', () => {
     expect(sessions).toHaveLength(0);
   });
 
-  it('sends no checkout request on Enter in an empty or partial email field of the code row', async () => {
+  it('sends one more coupon request and no checkout request on Enter in an empty or partial email field of the code row', async () => {
     const couponBodies: CouponBody[] = [];
     const sessions: unknown[] = [];
     serve({ sessions, coupon: perPersonCoupon(couponBodies) });
@@ -265,9 +265,12 @@ describe('checkout step one', () => {
 
     const email = await applyTypedCodeUntilEmailIsAsked();
     await userEvent.type(email, '{Enter}');
+    await waitFor(() => expect(couponBodies).toHaveLength(2));
     await userEvent.type(email, 'buyer@{Enter}');
+    await waitFor(() => expect(couponBodies).toHaveLength(3));
     await new Promise((resolve) => { window.setTimeout(resolve, 100); });
     expect(sessions).toHaveLength(0);
+    expect(couponBodies).toHaveLength(3);
     expect(couponBodies.every((body) => body.email === undefined)).toBe(true);
     expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(4900) })));
   });

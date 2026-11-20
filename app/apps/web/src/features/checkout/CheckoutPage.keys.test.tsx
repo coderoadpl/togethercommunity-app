@@ -39,6 +39,8 @@ const product = {
     instructionsUrl: 'https://acme.test/manual.pdf',
   },
 };
+const longWarning = `Keep away from open flame. ${'Do not leave the stand in direct sunlight for long periods. '.repeat(6)}Recycle the packaging.`;
+const longWarningProduct = { ...product, compliance: { ...product.compliance, safetyWarnings: longWarning, safetyWarningsHtml: `<p>${longWarning}</p>` } };
 const shippingRates = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker' },
   { id: 'courier', label: 'Courier', amountCents: 1999, carrier: 'other', pickupPoint: 'none' },
@@ -53,14 +55,14 @@ const couponAnswer = (originalCents: number) => ({
 
 type Calls = { sessions: Record<string, unknown>[]; coupons: Record<string, unknown>[] };
 
-const serve = (input: { pageTerms?: boolean; map?: boolean } = {}): Calls => {
+const serve = (input: { pageTerms?: boolean; map?: boolean; longWarning?: boolean } = {}): Calls => {
   const calls: Calls = { sessions: [], coupons: [] };
   server.use(
     anonymousMe(),
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: {
       tenant: { slug: 'acme', name: 'Acme School', legal: { termsUrl: 'https://acme.test/terms', privacyUrl: input.pageTerms === true ? null : 'https://acme.test/privacy' } },
       contentVersion: 1,
-      products: [product],
+      products: [input.longWarning === true ? longWarningProduct : product],
     } })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
       stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates,
@@ -130,7 +132,7 @@ const notSubmitted = async (calls: Calls) => {
 type EnterCase = {
   control: string;
   state: string;
-  setup?: { pageTerms?: boolean; map?: boolean; url?: string };
+  setup?: { pageTerms?: boolean; map?: boolean; longWarning?: boolean; url?: string };
   arrange: () => Promise<HTMLElement>;
   outcome: 'submits' | 'does not submit';
   after?: (calls: Calls, element: HTMLElement) => Promise<void> | void;
@@ -282,6 +284,14 @@ const enterCases: EnterCase[] = [
     after: (_calls, element) => { expect(element).toHaveAttribute('aria-expanded', 'true'); },
   },
   {
+    control: 'Show more toggle of a long warning', state: 'collapsed, pay enabled', setup: { longWarning: true }, outcome: 'does not submit',
+    arrange: async () => { await chooseCourier(); return screen.getByRole('button', { name: en.productSafety.showMore }); },
+    after: (_calls, element) => {
+      expect(element).toHaveAttribute('aria-expanded', 'true');
+      expect(element).toHaveTextContent(en.productSafety.showLess);
+    },
+  },
+  {
     control: 'invoice row header', state: 'closed, pay enabled', outcome: 'does not submit',
     arrange: async () => { await chooseCourier(); return screen.getByRole('button', { name: en.checkout.invoiceReveal }); },
     after: (_calls, element) => { expect(element).toHaveAttribute('aria-expanded', 'true'); },
@@ -376,6 +386,36 @@ describe('Enter and Escape on the checkout page', () => {
     await userEvent.keyboard('{Escape}');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveFocus();
+  });
+
+  it('collapses an expanded warning on Escape from its Show less toggle and keeps focus on the toggle', async () => {
+    serve({ longWarning: true });
+    renderCheckout();
+    const toggle = await openRow(en.productSafety.showMore);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    toggle.focus();
+    await userEvent.keyboard('{Escape}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveTextContent(en.productSafety.showMore);
+    expect(toggle).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveFocus();
+  });
+
+  it.each([
+    { target: 'the closed safety Details toggle', find: () => screen.getByRole('button', { name: en.productSafety.detailsFor({ name: manufacturer }) }) },
+    { target: 'the manufacturer email link', find: () => screen.getByRole('link', { name: 'safety@example.com' }) },
+  ])('leaves an expanded warning expanded and the focus in place on Escape from $target', async ({ find }) => {
+    serve({ longWarning: true });
+    renderCheckout();
+    const warningToggle = await openRow(en.productSafety.showMore);
+    const target = find();
+    target.focus();
+    await userEvent.keyboard('{Escape}');
+    expect(warningToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: en.productSafety.detailsFor({ name: manufacturer }) })).toHaveAttribute('aria-expanded', 'false');
+    expect(target).toHaveFocus();
   });
 
   it('keeps the invoice row open on Escape, because closing it withdraws the invoice request', async () => {

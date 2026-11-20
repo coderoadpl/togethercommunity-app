@@ -691,6 +691,9 @@ const applyCheckoutCompleted = async (
     deps.logger.warn(`[stripe-webhook] recorded tenant=${tenant.id} event=${event.id} session=${event.objectId} order=${paidOrder.id} coupon=${couponOverRedeemed.id} reason=coupon_over_redeemed`);
   }
   if (outOfStock) {
+    if (snapshot !== null && deps.stock !== undefined) {
+      await deps.stock.release(tenant.id, { checkoutSnapshotId: snapshot.id, reason: 'out_of_stock', now: deps.clock.nowIso() });
+    }
     const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
     const cancelled = await recordOutOfStockCancellation(tenant, persistedOrder ?? paidOrder, { buyerEmail: normalizeEmail(email), buyerLanguage: metadata.language ?? null, shortProductIds }, deps);
     if (!cancelled.ok) return cancelled;

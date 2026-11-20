@@ -2,7 +2,7 @@ import { asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { checkoutSessionInputSchema, err, ok, refundFailure, type CheckoutSessionInput, type ProviderRefund } from '#core/domain/index.js';
+import { checkoutSessionInputSchema, err, ok, publicStockLookup, refundFailure, type CheckoutSessionInput, type ProviderRefund } from '#core/domain/index.js';
 import { dispatchOrderRefundJobs, fulfillStripeWebhook, releaseExpiredStockReservations, simulatePurchase, startCheckoutSession, validateCheckoutSelection, type PaymentProvider, type PaymentWebhookEvent } from '#core/server/index.js';
 import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
 
@@ -273,6 +273,31 @@ describe('payment for goods that sold out after the hold ended', () => {
     expect(rows.levels).toStrictEqual([{ productId: 'printed-1', onHand: 0, reserved: 0 }]);
     expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual(['committed_late']);
     expect(rows.invoiceJobs.map((job) => job.orderId)).toStrictEqual(fulfilled.map((order) => order.id));
+  });
+});
+
+describe('stock left by an order cancelled out of stock', () => {
+  it('releases the hold still active on the line that fitted, so the public count shows every piece again', async () => {
+    const h = harness();
+    await track('poster-1', 2);
+    const snapshotId = await publicCheckout(h, { productId: 'course-1', salesLinkId: 'link-1', email: 'buyer@example.com', termsAccepted: true });
+    await track('course-1', 0);
+    h.setNow('2026-11-15T10:05:00.000Z');
+    expect(publicStockLookup(await createStockRepository(database.db).listByProducts(legacyTenant.id, ['poster-1']))('poster-1')).toMatchObject({ available: 1 });
+
+    expect(await fulfillStripeWebhook(legacyTenant, bundlePaid(snapshotId), h.webhookDeps)).toStrictEqual(ok({ processed: true }));
+
+    const rows = await tenantRows();
+    const orderId = rows.orders[0]?.id ?? '';
+    expect(rows.orders).toStrictEqual([expect.objectContaining({ id: orderId, status: 'paid', cancelReason: 'out_of_stock' })]);
+    expect(rows.refundJobs).toStrictEqual([cancelledJob(orderId, 'pi_oos_bundle', 8400)]);
+    expect(rows.levels).toStrictEqual([{ productId: 'course-1', onHand: 0, reserved: 0 }, { productId: 'poster-1', onHand: 2, reserved: 0 }]);
+    expect(rows.stockEventTypes.filter((type) => type.startsWith('committed') || type === 'oversold')).toStrictEqual([]);
+    expect(await database.db.select({ status: stockReservations.status }).from(stockReservations).where(eq(stockReservations.checkoutSnapshotId, snapshotId)))
+      .toStrictEqual([{ status: 'released' }]);
+    const levels = await createStockRepository(database.db).listByProducts(legacyTenant.id, ['course-1', 'poster-1']);
+    expect(publicStockLookup(levels)('poster-1')).toStrictEqual({ tracked: true, soldOut: false, low: false, available: 2 });
+    expect(publicStockLookup(levels)('course-1')).toStrictEqual({ tracked: true, soldOut: true, low: false, available: 0 });
   });
 });
 

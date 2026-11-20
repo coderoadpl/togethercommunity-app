@@ -256,7 +256,15 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
     onApply();
   };
   return (
-    <Stack useFlexGap spacing="0.5rem">
+    <Stack
+      useFlexGap
+      spacing="0.5rem"
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' || !(event.target instanceof HTMLInputElement)) return;
+        event.preventDefault();
+        if (canApply && !isApplied) apply();
+      }}
+    >
       {applied === undefined ? (
         <FormControl fullWidth>
           <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
@@ -266,11 +274,6 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
             inputProps={{ 'data-testid': 'checkout-coupon-input' }}
             value={code}
             onChange={(event) => onCodeChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
-              event.preventDefault();
-              if (canApply) apply();
-            }}
           />
         </FormControl>
       ) : null}

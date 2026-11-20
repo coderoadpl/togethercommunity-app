@@ -197,6 +197,65 @@ describe('checkout step one', () => {
     expect(sessions[0]).toMatchObject({ email: 'buyer@example.org', couponCode: 'SAVE' });
   });
 
+  const perPersonCoupon = (couponBodies: CouponBody[]) => (body: CouponBody) => {
+    couponBodies.push(body);
+    return body.email === undefined
+      ? HttpResponse.json({ ok: false, error: { code: 'validation', message: 'An email is required to validate this coupon' } }, { status: 400 })
+      : HttpResponse.json(breakdown(3920));
+  };
+
+  const applyTypedCodeUntilEmailIsAsked = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: en.checkout.couponReveal }));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+    expect(await screen.findByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponEmailRequired);
+    return screen.getByLabelText(en.checkout.emailLabel);
+  };
+
+  it('applies a typed code again with the email on Enter in the email field of the code row, without submitting the checkout', async () => {
+    const couponBodies: CouponBody[] = [];
+    const sessions: unknown[] = [];
+    serve({ sessions, coupon: perPersonCoupon(couponBodies) });
+    renderCheckout();
+
+    const email = await applyTypedCodeUntilEmailIsAsked();
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+    await userEvent.type(email, 'buyer@example.org{Enter}');
+
+    await waitFor(() => expect(couponBodies).toHaveLength(2));
+    expect(couponBodies.at(-1)).toEqual({ productId: 'course-1', couponCode: 'SAVE', email: 'buyer@example.org' });
+    const remove = await screen.findByRole('button', { name: en.checkout.couponRemoveLabel({ code: 'SAVE' }) });
+    await waitFor(() => expect(remove).toHaveFocus());
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920) })));
+    expect(sessions).toHaveLength(0);
+  });
+
+  it('sends no checkout request on Enter in an empty or partial email field of the code row', async () => {
+    const couponBodies: CouponBody[] = [];
+    const sessions: unknown[] = [];
+    serve({ sessions, coupon: perPersonCoupon(couponBodies) });
+    renderCheckout();
+
+    const email = await applyTypedCodeUntilEmailIsAsked();
+    await userEvent.type(email, '{Enter}');
+    await userEvent.type(email, 'buyer@{Enter}');
+    await new Promise((resolve) => { window.setTimeout(resolve, 100); });
+    expect(sessions).toHaveLength(0);
+    expect(couponBodies.every((body) => body.email === undefined)).toBe(true);
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(4900) })));
+  });
+
+  it('keeps Enter in the email field of the details placement a submit of the checkout', async () => {
+    const sessions: unknown[] = [];
+    serve({ sessions, tenantLegal: { termsUrl: 'https://acme.test/terms', privacyUrl: null } });
+    renderCheckout();
+
+    await userEvent.click(within(await screen.findByTestId('terms-consent')).getByRole('checkbox'));
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org{Enter}');
+    await waitFor(() => expect(sessions).toHaveLength(1));
+    expect(sessions[0]).toMatchObject({ email: 'buyer@example.org', termsAccepted: true });
+  });
+
   it('applies a coupon without a per-person limit without asking for the email', async () => {
     window.history.replaceState(null, '', '/checkout/course-1?code=SAVE');
     const couponBodies: unknown[] = [];

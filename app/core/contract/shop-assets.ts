@@ -1,4 +1,4 @@
-import type { ShopManagementScope } from '#core/domain/index.js';
+import { strictInput, strictSalesLinkInputSchema, strictSalesLinkUpdateInputSchema, type ShopManagementScope } from '#core/domain/index.js';
 
 import {
   imageAssetCompleteOutputSchema,
@@ -7,7 +7,6 @@ import {
   imageAssetUploadRequestSchema,
 } from './routes.js';
 import { salesLinkContracts } from './sales-links.js';
-import { strictInput } from './strict-input.js';
 
 const READ = 'shop:catalog:read' satisfies ShopManagementScope;
 const WRITE = 'shop:catalog:write' satisfies ShopManagementScope;
@@ -26,8 +25,8 @@ export const shopAssetsContracts = {
   productCoverUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
   productCoverComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
   listSalesLinks: salesLinkContracts.listSalesLinks,
-  createSalesLink: { ...salesLinkContracts.createSalesLink, input: strictInput(salesLinkContracts.createSalesLink.input) },
+  createSalesLink: { ...salesLinkContracts.createSalesLink, input: strictSalesLinkInputSchema },
   getSalesLink: salesLinkContracts.getSalesLink,
-  updateSalesLink: { ...salesLinkContracts.updateSalesLink, input: strictInput(salesLinkContracts.updateSalesLink.input) },
+  updateSalesLink: { ...salesLinkContracts.updateSalesLink, input: strictSalesLinkUpdateInputSchema },
   deleteSalesLink: salesLinkContracts.deleteSalesLink,
 } as const;

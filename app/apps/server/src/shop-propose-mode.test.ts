@@ -23,13 +23,17 @@ import {
   API_PATHS,
   API_ROUTES,
   apiKeysShopManagementCreateOutputSchema,
+  changeProposalApproveOutputSchema,
   changeProposalProposedOutputSchema,
   changeProposalReceiptOutputSchema,
   changeProposalRejectOutputSchema,
   changeProposalShowOutputSchema,
   changeProposalsListOutputSchema,
+  SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
   SHOP_PROPOSAL_ROUTES,
+  SHOP_SETTINGS_ROUTES,
+  shopAssetsContracts,
   shopCatalogContracts,
   shopProposalContracts,
 } from '#core/contract/index.js';
@@ -61,6 +65,7 @@ let app: ReturnType<typeof buildApp>;
 let deps: ReturnType<typeof createDeps>;
 let ownerToken: string;
 let adminToken: string;
+let ownerId: string;
 
 const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal(true), data: schema });
 const errorOf = async (response: Response) =>
@@ -149,6 +154,7 @@ interface Fixture {
   published: string;
   draft: string;
   publishedPrice: string;
+  salesLink: string;
 }
 
 let fixture: Fixture;
@@ -166,7 +172,16 @@ const proposalBodies = (): Record<string, unknown> => ({
   [SHOP_CATALOG_ROUTES.enableProductStock.path]: { productId: fixture.draft, onHand: 4, lowStockThreshold: null },
   [SHOP_CATALOG_ROUTES.adjustProductStock.path]: { productId: fixture.published, delta: 5, reason: 'delivery' },
   [SHOP_CATALOG_ROUTES.setProductStockThreshold.path]: { productId: fixture.published, lowStockThreshold: 2 },
+  [SHOP_ASSETS_ROUTES.createSalesLink.path]: { slug: 'proposed-link', title: 'Proposed link', heading: 'Proposed offer', productIds: [fixture.draft] },
+  [SHOP_ASSETS_ROUTES.updateSalesLink.path]: { ...salesLinkFields(), id: fixture.salesLink, expectedRevision: 1, heading: 'Proposed heading' },
+  [SHOP_SETTINGS_ROUTES.updateSettings.path]: { name: 'Proposed shop name' },
 });
+
+const salesLinkFields = () => ({ slug: 'spring', title: 'Spring', heading: 'Spring offer', productIds: [fixture.published] });
+
+const salesLinkPath = (path: string): string => path.startsWith(SHOP_ASSETS_ROUTES.listSalesLinks.path)
+  ? path.replace(':id', fixture.salesLink)
+  : concretePath(path);
 
 beforeAll(async () => {
   database = await createTestDatabase(
@@ -188,6 +203,7 @@ beforeAll(async () => {
   }
   await database.db.insert(tenantAdmins).values({ id: 'grant-acme-admin', tenantId: 'acme', userId: admin.id, role: 'admin' });
   ownerToken = owner.token;
+  ownerId = owner.id;
   adminToken = admin.token;
 
   direct = await createShopKey(ALL_SCOPES, 'direct');
@@ -204,7 +220,10 @@ beforeAll(async () => {
   expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.createProductPrice.path, { productId: draft, kind: 'one_time', amountCents: 900 })).status).toBe(200);
   expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.enableProductStock.path, { productId: published, onHand: 10, lowStockThreshold: null })).status).toBe(200);
   expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.publishProduct.path, { id: published })).status).toBe(200);
-  fixture = { published, draft, publishedPrice };
+  const linked = await keyed(direct.secret, 'POST', SHOP_ASSETS_ROUTES.createSalesLink.path, { slug: 'spring', title: 'Spring', heading: 'Spring offer', productIds: [published] });
+  expect(linked.status).toBe(201);
+  const salesLink = envelope(shopAssetsContracts.createSalesLink.output).parse(await linked.json()).data.salesLink.id;
+  fixture = { published, draft, publishedPrice, salesLink };
 }, 120_000);
 
 afterAll(async () => { await database?.close(); });
@@ -243,16 +262,16 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/orders/:orderId/shipx/discard': 'refuse side-effect',
       'POST /api/m2m/shop/orders/:orderId/shipx/label': 'refuse side-effect',
       'GET /api/m2m/shop/settings': 'read',
-      'POST /api/m2m/shop/settings': 'refuse not-in-release',
+      'POST /api/m2m/shop/settings': 'proposal settings.update',
       'POST /api/m2m/shop/image-assets/branding/upload': 'refuse not-in-release',
       'POST /api/m2m/shop/image-assets/branding/complete': 'refuse not-in-release',
       'POST /api/m2m/shop/image-assets/product-cover/upload': 'refuse not-in-release',
       'POST /api/m2m/shop/image-assets/product-cover/complete': 'refuse not-in-release',
       'GET /api/m2m/shop/sales-links': 'read',
       'GET /api/m2m/shop/sales-links/:id': 'read',
-      'POST /api/m2m/shop/sales-links': 'refuse not-in-release',
-      'POST /api/m2m/shop/sales-links/:id': 'refuse not-in-release',
-      'DELETE /api/m2m/shop/sales-links/:id': 'refuse not-in-release',
+      'POST /api/m2m/shop/sales-links': 'proposal sales-link.create',
+      'POST /api/m2m/shop/sales-links/:id': 'proposal sales-link.update',
+      'DELETE /api/m2m/shop/sales-links/:id': 'proposal sales-link.delete',
       'GET /api/m2m/shop/integrations/secrets': 'read',
       'POST /api/m2m/shop/integrations/secrets': 'refuse secret',
       'DELETE /api/m2m/shop/integrations/secrets/:key': 'refuse secret',
@@ -283,7 +302,7 @@ describe('a propose-mode key on every registered shop route', () => {
       const mode = route.proposeMode;
       if (mode?.kind === 'proposal-management') continue;
       const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
-      const response = await keyed(proposer.secret, route.method, concretePath(route.path), body);
+      const response = await keyed(proposer.secret, route.method, salesLinkPath(route.path), body);
       if (mode === undefined) {
         expect([401, 403], label).not.toContain(response.status);
         outcomes.push(`${label} read`);
@@ -300,18 +319,18 @@ describe('a propose-mode key on every registered shop route', () => {
       outcomes.push(`${label} refused`);
     }
     expect(await liveState()).toBe(before);
-    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(10);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(20);
+    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(14);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(16);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
-    expect(stored).toHaveLength(10);
+    expect(stored).toHaveLength(14);
   });
 
   it('answers a refused write with the refusal reason and records the request in the key history', async () => {
-    const response = await keyed(proposer.secret, 'POST', '/api/m2m/shop/settings', { supportUrl: null });
+    const response = await keyed(proposer.secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, { kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: 4 });
     expect(response.status).toBe(403);
     expect(await errorOf(response)).toEqual({ code: 'forbidden', message: 'A propose-mode shop management key cannot call this route (not-in-release)' });
     const requests = (await database.db.select().from(shopManagementKeyEvents))
-      .filter((event) => event.apiKeyId === proposer.apiKey.id && event.kind === 'request' && event.route === '/api/m2m/shop/settings');
+      .filter((event) => event.apiKeyId === proposer.apiKey.id && event.kind === 'request' && event.route === SHOP_SETTINGS_ROUTES.brandingAssetUpload.path);
     expect(requests.length).toBeGreaterThan(0);
   });
 
@@ -456,5 +475,118 @@ describe('the owner session proposal routes', () => {
     }
     const events = (await database.db.select().from(changeProposalEvents)).filter((event) => event.proposalId === proposal.id);
     expect(events.map((event) => event.kind)).toEqual(['proposed']);
+  });
+});
+
+describe('the owner approval route', () => {
+  const propose = async (path: string, body: unknown) => {
+    const response = await keyed(proposer.secret, 'POST', path, body);
+    expect(response.status).toBe(202);
+    return envelope(changeProposalProposedOutputSchema).parse(await response.json()).data.proposal;
+  };
+  const approvePath = (id: string) => API_PATHS.changeProposalApprove.replace(':id', id);
+  const approve = (id: string, token = ownerToken, host = acmeHost) => sessionRequest(token, 'POST', approvePath(id), {}, host);
+  const approved = async (id: string) => {
+    const response = await approve(id);
+    expect(response.status).toBe(200);
+    return envelope(changeProposalApproveOutputSchema).parse(await response.json()).data.proposal;
+  };
+  const productTitle = async () => (await database.db.select().from(products)).find((row) => row.id === fixture.published)?.title;
+  const onHand = async () => (await database.db.select().from(productStock)).find((row) => row.productId === fixture.published)?.onHand;
+  const eventKinds = async (id: string) => (await database.db.select().from(changeProposalEvents))
+    .filter((event) => event.proposalId === id)
+    .toSorted((left, right) => left.sequence - right.sequence)
+    .map((event) => event.kind);
+
+  it('refuses an admin, every kind of key, an unverified owner and another workspace, and leaves the proposal pending', async () => {
+    const proposal = await propose(SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Guarded title' });
+    const legacySecret = 'legacy-approve-secret';
+    await database.db.insert(tenantApiKeys).values({
+      id: 'legacy-approve', tenantId: 'acme', name: 'Legacy approve', keyHash: deps.apiKeyCrypto.hash(legacySecret),
+      scopes: null, createdAt: now, expiresAt: null, revokedAt: null,
+    });
+    const before = await liveState();
+    expect((await approve(proposal.id, adminToken)).status).toBe(403);
+    for (const secret of [direct.secret, proposer.secret, legacySecret]) {
+      expect([401, 403]).toContain((await keyed(secret, 'POST', approvePath(proposal.id), {})).status);
+    }
+    expect((await approve(proposal.id, ownerToken, studioHost)).status).toBe(404);
+    expect((await sessionRequest(ownerToken, 'POST', approvePath(proposal.id), { note: 'unexpected' })).status).toBe(400);
+    await database.db.execute(`update "user" set email_verified = false where id = '${ownerId}'`);
+    try {
+      expect((await approve(proposal.id)).status).toBe(403);
+    } finally {
+      await database.db.execute(`update "user" set email_verified = true where id = '${ownerId}'`);
+    }
+    expect(await liveState()).toBe(before);
+    expect(await eventKinds(proposal.id)).toEqual(['proposed']);
+    expect(await productTitle()).toBe('Live handbook');
+    expect((await approved(proposal.id)).status).toBe('applied');
+    expect(await productTitle()).toBe('Guarded title');
+  });
+
+  it('applies the stored change once, tells the key, and answers a repeated approve with 409 and the stored status', async () => {
+    const proposal = await propose(SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Approved title' });
+    const view = await approved(proposal.id);
+    expect(view).toMatchObject({ status: 'applied', appliedResourceId: fixture.published, failureCode: null, decidedAt: now });
+    expect(await productTitle()).toBe('Approved title');
+    expect(await eventKinds(proposal.id)).toEqual(['proposed', 'applied']);
+
+    const again = await approve(proposal.id);
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'applied' } } });
+    expect(await eventKinds(proposal.id)).toEqual(['proposed', 'applied']);
+
+    const receipt = await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.getProposal.path.replace(':id', proposal.id));
+    const text = await receipt.text();
+    expect(envelope(changeProposalReceiptOutputSchema).parse(JSON.parse(text)).data.proposal.status).toBe('applied');
+    expect(text).not.toContain('effect');
+  });
+
+  it('marks a proposal stale when a live writer changed a field it touches, and applies nothing', async () => {
+    const proposal = await propose(SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Late title' });
+    expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Owner typed title' })).status).toBe(200);
+    const before = await liveState();
+    const view = await approved(proposal.id);
+    expect(view).toMatchObject({ status: 'stale', appliedResourceId: null, failureCode: null });
+    expect(await liveState()).toBe(before);
+    expect(await productTitle()).toBe('Owner typed title');
+    expect(await eventKinds(proposal.id)).toEqual(['proposed', 'stale']);
+    expect((await approve(proposal.id)).status).toBe(409);
+  });
+
+  it('marks a proposal failed with the domain error when the stored command is refused at approval, and applies nothing', async () => {
+    const stock = await onHand();
+    if (stock === undefined) throw new Error('stock missing');
+    const proposal = await propose(SHOP_CATALOG_ROUTES.adjustProductStock.path, { productId: fixture.published, delta: -stock, reason: 'sold at a fair' });
+    expect((await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.adjustProductStock.path, { productId: fixture.published, delta: -1, reason: 'damaged' })).status).toBe(200);
+    const before = await liveState();
+    const view = await approved(proposal.id);
+    expect(view.status).toBe('failed');
+    expect(view.failureCode).not.toBeNull();
+    expect(view.failureMessage).not.toBeNull();
+    expect(await liveState()).toBe(before);
+    expect(await onHand()).toBe(stock - 1);
+    expect(await eventKinds(proposal.id)).toEqual(['proposed', 'apply_failed']);
+    const receipt = await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.getProposal.path.replace(':id', proposal.id));
+    expect(envelope(changeProposalReceiptOutputSchema).parse(await receipt.json()).data.proposal).toMatchObject({ status: 'failed', failureCode: view.failureCode });
+  });
+
+  it('applies the newly proposable sales-link and settings operations exactly as shown', async () => {
+    const heading = await propose(SHOP_ASSETS_ROUTES.updateSalesLink.path.replace(':id', fixture.salesLink), {
+      ...salesLinkFields(), id: fixture.salesLink, expectedRevision: 1, heading: 'Approved heading',
+    });
+    const settings = await propose(SHOP_SETTINGS_ROUTES.updateSettings.path, { name: 'Approved shop name' });
+    expect((await approved(heading.id)).status).toBe('applied');
+    expect((await approved(settings.id)).status).toBe('applied');
+    expect((await database.db.select().from(salesLinks)).find((row) => row.id === fixture.salesLink)).toMatchObject({ heading: 'Approved heading', revision: 2 });
+    expect((await database.db.select().from(tenants)).find((row) => row.id === 'acme')?.name).toBe('Approved shop name');
+
+    const removal = await keyed(proposer.secret, 'DELETE', SHOP_ASSETS_ROUTES.deleteSalesLink.path.replace(':id', fixture.salesLink));
+    expect(removal.status).toBe(202);
+    const removalProposal = envelope(changeProposalProposedOutputSchema).parse(await removal.json()).data.proposal;
+    expect(removalProposal.input).toEqual({ id: fixture.salesLink });
+    expect((await approved(removalProposal.id)).status).toBe('applied');
+    expect((await database.db.select().from(salesLinks)).find((row) => row.id === fixture.salesLink)?.deletedAt).not.toBeNull();
   });
 });

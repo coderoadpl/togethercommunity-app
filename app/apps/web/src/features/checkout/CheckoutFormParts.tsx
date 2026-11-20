@@ -250,6 +250,11 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
   useEffect(() => {
     if (validation.error !== null) focusAfter.current = null;
   }, [validation.error]);
+  const canApply = !validation.isPending && code.trim() !== '';
+  const apply = () => {
+    focusAfter.current = row === null ? null : 'remove';
+    onApply();
+  };
   return (
     <Stack useFlexGap spacing="0.5rem">
       {applied === undefined ? (
@@ -261,6 +266,11 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
             inputProps={{ 'data-testid': 'checkout-coupon-input' }}
             value={code}
             onChange={(event) => onCodeChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              if (canApply) apply();
+            }}
           />
         </FormControl>
       ) : null}
@@ -291,12 +301,9 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
             type="button"
             variant="outlined"
             data-testid="checkout-coupon-apply"
-            disabled={validation.isPending || code.trim() === ''}
+            disabled={!canApply}
             aria-describedby={emptyReason ? emptyReasonId : undefined}
-            onClick={() => {
-              focusAfter.current = row === null ? null : 'remove';
-              onApply();
-            }}
+            onClick={apply}
           >
             {validation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
           </Button>

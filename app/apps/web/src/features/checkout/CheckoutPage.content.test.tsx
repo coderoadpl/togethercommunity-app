@@ -52,6 +52,22 @@ const serve = (input: { product?: Record<string, unknown>; couponValid?: boolean
   );
 };
 
+const countCouponAndSessionRequests = () => {
+  const calls = { coupon: 0, session: 0 };
+  serve({ couponValid: true });
+  server.use(
+    http.post('/api/public/checkout/coupon', () => {
+      calls.coupon += 1;
+      return HttpResponse.json(coupon);
+    }),
+    http.post('/api/public/checkout/session', () => {
+      calls.session += 1;
+      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Stop before redirect' } }, { status: 400 });
+    }),
+  );
+  return calls;
+};
+
 const renderCheckout = (page = <CheckoutPage productRef="stand" />) => {
   const root = createRootRoute({ component: () => page });
   const router = createRouter({ routeTree: root, history: createMemoryHistory({ initialEntries: ['/checkout/stand'] }) });
@@ -164,6 +180,35 @@ describe('checkout content', () => {
     await screen.findByTestId('checkout-coupon-breakdown');
     expect(remove).not.toHaveFocus();
     expect(document.activeElement).toBe(document.body);
+  });
+
+  it('applies a typed code on Enter in the code field without submitting the checkout', async () => {
+    const calls = countCouponAndSessionRequests();
+    renderCheckout();
+    await screen.findByTestId('checkout-delivery');
+    await userEvent.click(courier());
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.couponReveal }));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE{Enter}');
+
+    await waitFor(() => expect(calls).toEqual({ coupon: 1, session: 0 }));
+    const remove = await screen.findByRole('button', { name: en.checkout.couponRemoveLabel({ code: 'SAVE' }) });
+    await waitFor(() => expect(remove).toHaveFocus());
+    expect(calls).toEqual({ coupon: 1, session: 0 });
+  });
+
+  it('sends nothing on Enter in an empty code field', async () => {
+    const calls = countCouponAndSessionRequests();
+    renderCheckout();
+    await screen.findByTestId('checkout-delivery');
+    await userEvent.click(courier());
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.couponReveal }));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), '{Enter}');
+
+    await new Promise((resolve) => { window.setTimeout(resolve, 100); });
+    expect(calls).toEqual({ coupon: 0, session: 0 });
+    expect(screen.getByLabelText(en.checkout.couponLabel)).toHaveFocus();
   });
 
   it('gives the empty-field Apply code button a reason next to it', async () => {

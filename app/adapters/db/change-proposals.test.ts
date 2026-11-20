@@ -262,6 +262,21 @@ describe('change proposal reads', () => {
       .toEqual(['p-other', 'p-own-1', 'p-own-2', 'p-own-old']);
   });
 
+  it('reads, lists and locks a row whose operation this release does not know', async () => {
+    await database.db.insert(changeProposals).values({
+      id: 'p-later', tenantId: TENANT, groupId: null, groupPosition: null, operation: 'image.attach-cover',
+      input: { productId: 'product-1', imageId: 'image-1' }, effect: { coverUrl: { before: null, after: 'https://cdn.example.test/c.png' } },
+      targetKind: 'product', targetId: 'product-1', status: 'pending', proposedByKeyId: 'key-propose', proposedByKeyName: 'Catalogue agent',
+      proposedByIssuerUserId: OWNER, createdAt: '2026-01-01T00:00:03.000Z', expiresAt: changeProposalExpiresAt('2026-01-01T00:00:03.000Z'),
+      decidedByUserId: null, decidedAt: null,
+    });
+    expect(await repo().findById(TENANT, 'p-later')).toMatchObject({ operation: 'image.attach-cover', status: 'pending' });
+    expect(await repo().findByKey(TENANT, 'key-propose', 'p-later')).toMatchObject({ operation: 'image.attach-cover' });
+    expect((await repo().list(TENANT, { limit: 10, now: NOW })).proposals.map(({ id }) => id)).toContain('p-later');
+    expect((await repo().listByKey(TENANT, 'key-propose', { limit: 10, now: NOW, status: 'pending' })).proposals.map(({ id }) => id)).toContain('p-later');
+    expect(await repo().lockPending(TENANT, 'p-later')).toMatchObject({ id: 'p-later' });
+  });
+
   it('answers an empty page for a cursor from another workspace or key', async () => {
     expect(await repo().listByKey(TENANT, 'key-propose', { limit: 10, now: NOW, cursor: 'p-other' }))
       .toEqual({ proposals: [], nextCursor: null });
@@ -387,7 +402,9 @@ describe('change proposal storage checks', () => {
       ${overrides['failureCode'] ?? null})`);
 
   it.each([
-    ['an unknown operation', { operation: 'image.upload' }, /change_proposals_operation_check/u],
+    ['an operation that is not a lowercase family and action', { operation: 'Image.Upload' }, /change_proposals_operation_check/u],
+    ['an operation without an action', { operation: 'image' }, /change_proposals_operation_check/u],
+    ['an operation over the length bound', { operation: `image.${'a'.repeat(60)}` }, /change_proposals_operation_check/u],
     ['an unknown status', { status: 'expired', decidedAt: NOW }, /change_proposals_status_check/u],
     ['a decided proposal without a decision time', { status: 'rejected' }, /change_proposals_decision_shape_check/u],
     ['a failure without a code', { status: 'failed', decidedAt: NOW }, /change_proposals_failure_shape_check/u],
@@ -395,6 +412,10 @@ describe('change proposal storage checks', () => {
     ['an unknown target kind', { targetKind: 'order' }, /change_proposals_target_kind_check/u],
   ])('rejects %s at the database', async (_label, overrides, constraint) => {
     await expect(insertRaw(overrides)).rejects.toMatchObject({ cause: { message: expect.stringMatching(constraint) } });
+  });
+
+  it('stores an operation of the right shape that this release does not know', async () => {
+    await expect(insertRaw({ operation: 'image.attach-cover' })).resolves.toMatchObject({ command: 'INSERT' });
   });
 
   it('keeps one event per sequence number', async () => {

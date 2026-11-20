@@ -17,6 +17,7 @@ import {
   changeProposalStatusSchema,
   changeProposalSubmitCapability,
   changeProposalTargetKind,
+  knownChangeProposalOperation,
   toChangeProposalKeyReceipt,
   toChangeProposalOwnerDetail,
   type ChangeProposal,
@@ -159,6 +160,17 @@ describe('change proposal shape', () => {
     }).success).toBe(false);
   });
 
+  it('reads a stored operation this release does not know, of the stored shape, and refuses any other text', () => {
+    const later = changeProposalSchema.parse({ ...proposal(), operation: 'image.attach-cover', target: { kind: 'product', id: 'product-1' } });
+    expect(later.operation).toBe('image.attach-cover');
+    expect(knownChangeProposalOperation(later.operation)).toBeNull();
+    expect(knownChangeProposalOperation('product.update')).toBe('product.update');
+    expect(changeProposalKeyReceiptSchema.safeParse(toChangeProposalKeyReceipt(later, NOW)).success).toBe(true);
+    for (const operation of ['Image.attach', 'image', 'image.attach.cover', 'image.attach-', '-image.attach', `image.${'a'.repeat(60)}`]) {
+      expect(changeProposalSchema.safeParse({ ...proposal(), operation }).success, operation).toBe(false);
+    }
+  });
+
   it('requires an acting account or key on every event', () => {
     const event = { id: 'event-1', tenantId: 'tenant-1', proposalId: 'proposal-1', sequence: 1, kind: 'proposed', note: null, at: NOW };
     expect(changeProposalEventSchema.safeParse({ ...event, actorUserId: null, apiKeyId: null }).success).toBe(false);
@@ -193,7 +205,7 @@ describe('change proposal views', () => {
     const receipt = toChangeProposalKeyReceipt(decided, NOW);
 
     expect(Object.keys(receipt).toSorted()).toEqual([
-      'createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target',
+      'appliedResourceId', 'createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target',
     ]);
     expect(JSON.stringify(receipt)).not.toContain('Before');
     expect(JSON.stringify(receipt)).not.toContain('owner-1');

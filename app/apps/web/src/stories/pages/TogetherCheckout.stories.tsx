@@ -179,16 +179,17 @@ const STUB_MAP_TAG = 'inpost-geowidget';
 const stubPoint = { name: 'WAW01M', location_description: 'Next to the pharmacy entrance', address: { line1: 'Example Street 5', line2: '00-001 Warsaw' } };
 class StubGeowidget extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = 'display:grid;place-items:center;height:100%;border-radius:8px;color:inherit;font:inherit;' +
+    const paper = getComputedStyle(this.closest('.MuiPaper-root') ?? document.body).backgroundColor;
+    this.style.cssText = 'display:grid;place-items:center;height:100%;color:inherit;font:inherit;' +
       'background:repeating-linear-gradient(0deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),' +
-      'repeating-linear-gradient(90deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),color-mix(in srgb,currentColor 4%,transparent);';
+      `repeating-linear-gradient(90deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),color-mix(in srgb,currentColor 4%,${paper});`;
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.textContent = stubPoint.name;
     pin.dataset['testid'] = 'stub-geowidget-pin';
     pin.style.cssText = 'white-space:nowrap;padding:0.4rem 0.75rem;border-radius:999px;border:1px solid currentColor;background:Canvas;color:inherit;font:inherit;cursor:pointer;';
     pin.addEventListener('click', () => {
-      document.dispatchEvent(new CustomEvent(this.getAttribute('onpoint') ?? '', { detail: stubPoint }));
+      this.dispatchEvent(new CustomEvent(this.getAttribute('onpoint') ?? '', { bubbles: true, detail: stubPoint }));
     });
     this.replaceChildren(pin);
   }
@@ -223,13 +224,16 @@ const openSafetyDetails = async (canvasElement: HTMLElement) => {
   const safety = within(await within(canvasElement).findByTestId('product-safety-info'));
   for (const toggle of safety.getAllByRole('button', { name: /Details/u })) await userEvent.click(toggle);
 };
-const chooseLockerOnMap = async (canvasElement: HTMLElement, pick: boolean) => {
+const page = (canvasElement: HTMLElement) => within(canvasElement.ownerDocument.body);
+const openLockerPicker = async (canvasElement: HTMLElement) => {
   await chooseRate(canvasElement, /parcel locker/u);
-  const pin = await within(canvasElement).findByTestId('stub-geowidget-pin');
-  if (pick) {
-    await userEvent.click(pin);
-    await within(canvasElement).findByTestId('checkout-pickup-point-selected');
-  }
+  await userEvent.click(await within(canvasElement).findByTestId('checkout-locker-choose'));
+  await page(canvasElement).findByTestId('stub-geowidget-pin');
+};
+const pickOnStubMap = async (canvasElement: HTMLElement) => {
+  await openLockerPicker(canvasElement);
+  await userEvent.click(await page(canvasElement).findByTestId('stub-geowidget-pin'));
+  await expect(await page(canvasElement).findByTestId('checkout-locker-confirm')).toBeEnabled();
 };
 const settled = async () => {
   const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
@@ -239,11 +243,44 @@ const openSummaryDetails = async (canvasElement: HTMLElement) => {
   await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));
 };
 const mobile375 = { parameters: { viewport: { defaultViewport: 'mobile-375' } }, globals: { viewport: { value: 'mobile-375' } } };
-const lockerMap = (scheme: { colorScheme?: 'dark' }, viewport: typeof mobile375 | null, pick: boolean): Story => ({
-  ...(viewport === null ? {} : { globals: viewport.globals }),
-  parameters: { ...viewport?.parameters, ...scheme, fixture: lockerMapFixture },
+type LockerStep = 'option' | 'chosen' | 'map-failed' | 'picker' | 'picked';
+const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<void>> = {
+  option: async (canvasElement) => {
+    await chooseRate(canvasElement, /parcel locker/u);
+    await within(canvasElement).findByTestId('checkout-locker-choose');
+  },
+  chosen: async (canvasElement) => {
+    await pickOnStubMap(canvasElement);
+    await userEvent.click(page(canvasElement).getByTestId('checkout-locker-confirm'));
+    await within(canvasElement).findByTestId('checkout-locker-change');
+    await settled();
+  },
+  'map-failed': async (canvasElement) => {
+    await openLockerPicker(canvasElement);
+    canvasElement.ownerDocument.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error'));
+    await userEvent.click(await page(canvasElement).findByTestId('checkout-locker-type-code'));
+    await within(canvasElement).findByTestId('checkout-locker-map-failed');
+    await settled();
+  },
+  picker: async (canvasElement) => {
+    await openLockerPicker(canvasElement);
+    await settled();
+  },
+  picked: async (canvasElement) => {
+    await pickOnStubMap(canvasElement);
+    await settled();
+  },
+};
+const lockerStory = (step: LockerStep, options: { viewport?: typeof mobile375; locale?: 'pl'; colorScheme?: 'dark' } = {}): Story => ({
+  ...(options.viewport === undefined ? {} : { globals: options.viewport.globals }),
+  parameters: {
+    ...options.viewport?.parameters,
+    ...(options.locale === undefined ? {} : { locale: options.locale }),
+    ...(options.colorScheme === undefined ? {} : { colorScheme: options.colorScheme }),
+    fixture: lockerMapFixture,
+  },
   beforeEach: stubGeowidget,
-  play: async ({ canvasElement }) => chooseLockerOnMap(canvasElement, pick),
+  play: async ({ canvasElement }) => lockerSteps[step](canvasElement),
 });
 
 const meta = {
@@ -376,14 +413,24 @@ export const CouponCourier: Story = {
     await openSummaryDetails(canvasElement);
   },
 };
-export const LockerMap: Story = lockerMap({}, null, false);
-export const LockerMapMobile: Story = lockerMap({}, mobile375, false);
-export const LockerMapDark: Story = lockerMap({ colorScheme: 'dark' }, null, false);
-export const LockerMapMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, false);
-export const LockerPicked: Story = lockerMap({}, null, true);
-export const LockerPickedMobile: Story = lockerMap({}, mobile375, true);
-export const LockerPickedDark: Story = lockerMap({ colorScheme: 'dark' }, null, true);
-export const LockerPickedMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, true);
+export const LockerOption: Story = lockerStory('option');
+export const LockerOptionMobile: Story = lockerStory('option', { viewport: mobile375 });
+export const LockerOptionChosen: Story = lockerStory('chosen');
+export const LockerOptionChosenMobile: Story = lockerStory('chosen', { viewport: mobile375 });
+export const LockerOptionMapFailed: Story = lockerStory('map-failed');
+export const LockerOptionMapFailedMobile: Story = lockerStory('map-failed', { viewport: mobile375 });
+export const LockerPicker: Story = lockerStory('picker');
+export const LockerPickerMobile: Story = lockerStory('picker', { viewport: mobile375 });
+export const LockerPickerPolish: Story = lockerStory('picker', { locale: 'pl' });
+export const LockerPickerMobilePolish: Story = lockerStory('picker', { viewport: mobile375, locale: 'pl' });
+export const LockerPickerDark: Story = lockerStory('picker', { colorScheme: 'dark' });
+export const LockerPickerMobileDark: Story = lockerStory('picker', { viewport: mobile375, colorScheme: 'dark' });
+export const LockerPickerPicked: Story = lockerStory('picked');
+export const LockerPickerPickedMobile: Story = lockerStory('picked', { viewport: mobile375 });
+export const LockerPickerPickedPolish: Story = lockerStory('picked', { locale: 'pl' });
+export const LockerPickerPickedMobilePolish: Story = lockerStory('picked', { viewport: mobile375, locale: 'pl' });
+export const LockerPickerPickedDark: Story = lockerStory('picked', { colorScheme: 'dark' });
+export const LockerPickerPickedMobileDark: Story = lockerStory('picked', { viewport: mobile375, colorScheme: 'dark' });
 export const TwoManufacturers: Story = { parameters: { fixture: twoManufacturersFixture } };
 export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mobile375.parameters, fixture: twoManufacturersFixture } };
 export const TwoManufacturersDetailsOpen: Story = {

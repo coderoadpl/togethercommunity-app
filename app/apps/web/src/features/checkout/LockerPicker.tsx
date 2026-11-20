@@ -61,11 +61,11 @@ export const LockerPicker = ({ open, token, language, candidate, mapFailed, onPo
     >
       <Stack
         direction="row"
-        alignItems="center"
-        justifyContent="space-between"
         useFlexGap
         spacing="0.5rem"
         sx={{
+          alignItems: 'center',
+          justifyContent: 'space-between',
           flex: 'none',
           pt: fullScreen ? 'max(0.5rem, env(safe-area-inset-top))' : '0.75rem',
           pb: '0.5rem',
@@ -82,12 +82,12 @@ export const LockerPicker = ({ open, token, language, candidate, mapFailed, onPo
       </Stack>
       <Box sx={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflow: 'hidden', bgcolor: 'action.hover' }} data-testid="checkout-locker-map-area">
         {mapFailed ? (
-          <Stack alignItems="center" justifyContent="center" sx={{ position: 'absolute', inset: 0, p: '1rem' }}>
+          <Stack sx={{ position: 'absolute', inset: 0, p: '1rem', alignItems: 'center', justifyContent: 'center' }}>
             <Button variant="outlined" onClick={onCancel} data-testid="checkout-locker-type-code">{t.shipping.lockerTypeCode}</Button>
           </Stack>
         ) : (
           <>
-            <Stack alignItems="center" justifyContent="center" useFlexGap spacing="0.75rem" sx={{ position: 'absolute', inset: 0, color: 'text.secondary' }} aria-hidden="true">
+            <Stack useFlexGap spacing="0.75rem" sx={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', color: 'text.secondary' }} aria-hidden="true">
               <CircularProgress size="2rem" color="inherit" />
               <Typography variant="body2">{t.shipping.lockerMapLoading}</Typography>
             </Stack>
@@ -97,10 +97,10 @@ export const LockerPicker = ({ open, token, language, candidate, mapFailed, onPo
       </Box>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        alignItems={{ xs: 'stretch', sm: 'center' }}
         useFlexGap
         spacing="0.75rem"
         sx={{
+          alignItems: { xs: 'stretch', sm: 'center' },
           flex: 'none',
           pt: '0.75rem',
           pb: fullScreen ? 'max(0.75rem, env(safe-area-inset-bottom))' : '0.75rem',

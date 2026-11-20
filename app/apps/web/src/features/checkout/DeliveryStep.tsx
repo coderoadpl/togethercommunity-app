@@ -96,7 +96,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       {t.shipping.lockerChoose}
     </Button>
   ) : (
-    <Stack direction="row" alignItems="center" justifyContent="space-between" useFlexGap spacing="0.75rem" sx={{ alignSelf: 'stretch', border: 1, borderColor: 'divider', borderRadius: 1, p: '0.5rem 0.5rem 0.5rem 0.875rem' }}>
+    <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch', border: 1, borderColor: 'divider', borderRadius: 1, p: '0.5rem 0.5rem 0.5rem 0.875rem' }}>
       <Box id={`${lockerId}-picked`} data-testid="checkout-pickup-point-selected" sx={{ minWidth: 0 }}>
         <FinePrint variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t.shipping.lockerSelected}</FinePrint>
         <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{pointSummary(picked)}</Typography>
@@ -119,7 +119,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
     <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
       {entry.kind === 'map' ? (
-        <Stack useFlexGap spacing="0.25rem" alignItems="flex-start">
+        <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
           {lockerChoice}
           <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={() => setCodeShown((shown) => !shown)} data-testid="checkout-locker-know-code">
             {t.shipping.lockerKnowCode}

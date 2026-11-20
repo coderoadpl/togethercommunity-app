@@ -987,7 +987,7 @@ export const pl: Messages = {
     refundJobStatuses: {
       pending: 'Oczekuje',
       running: 'W toku',
-      submitted: 'Zlecony, czeka na Stripe',
+      submitted: 'Czeka na potwierdzenie ze Stripe',
       succeeded: 'Zwrócono',
       failed: 'Nieudany, zwróć ręcznie',
       blocked_permission: 'Zablokowany: klucz Stripe nie ma uprawnienia do zwrotów',

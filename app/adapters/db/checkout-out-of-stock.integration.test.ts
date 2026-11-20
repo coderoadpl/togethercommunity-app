@@ -541,10 +541,6 @@ const providerCalls = (h: Harness, created: ProviderRefund | 'permission_missing
         calls.push(`create:${input.idempotencyKey}`);
         return created === 'permission_missing' ? err(refundFailure('permission_missing', 'The key lacks the refund permission')) : ok(created);
       },
-      getRefund: async (input: { refundId: string }) => {
-        calls.push(`get:${input.refundId}`);
-        return ok<ProviderRefund>({ refundId: input.refundId, paymentIntentId: null, amountCents: 0, status: 'pending', failureReason: null, orderId: null, reason: null });
-      },
       listRefunds: async () => ok(listed),
     },
   };
@@ -621,24 +617,27 @@ describe('a refund or dispute of an order cancelled out of stock', () => {
     expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'blocked_permission' });
   });
 
-  it('resolves a refund job that never called Stripe when the cancelled order is refunded by hand and never calls Stripe for it again', async () => {
+  it('makes a refund job that never called Stripe due at once when the cancelled order is refunded by hand, kicks the dispatcher and lets the refund list end it without a refund call', async () => {
     const h = harness();
+    const kicks: string[] = [];
     const cancelled = await cancelBundle(h);
+    Object.assign(h.webhookDeps, { dispatchOrderRefunds: () => { kicks.push('kick'); } });
     expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'pending', attempts: 0 });
     h.setNow('2026-11-15T11:00:00.000Z');
 
     expect(await fulfillStripeWebhook(legacyTenant, chargeAdjustment({ eventId: 'evt_refund_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400 }), h.webhookDeps))
       .toStrictEqual(ok({ processed: true }));
 
-    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: '2026-11-15T11:00:00.000Z' });
+    expect(await refundJobOf(cancelled.id)).toMatchObject({ status: 'pending', attempts: 0, nextAttemptAt: '2026-11-15T11:00:00.000Z', updatedAt: '2026-11-15T11:00:00.000Z' });
+    expect(kicks).toStrictEqual(['kick']);
+    expect(h.warnings).toContain(`[order-refund] refund list due again after charge.refunded tenant=tenant-a order=${cancelled.id} job=${(await refundJobOf(cancelled.id))?.id ?? ''} event=evt_refund_by_hand`);
+    const byHand: ProviderRefund = { refundId: 're_by_hand', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: null, reason: null };
+    const dispatcher = providerCalls(h, byHand, [], [byHand]);
+    expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 1, outcomes: { skipped_refunded: 1 } }));
     expect((await createOrderRepository(database.db).list(legacyTenant.id, { page: 1, pageSize: 20 })).orders)
-      .toStrictEqual([expect.objectContaining({ id: cancelled.id, status: 'refunded', refundJobStatus: 'resolved_externally' })]);
-    expect(h.warnings).toContain(`[order-refund] resolved externally tenant=tenant-a order=${cancelled.id} job=${(await refundJobOf(cancelled.id))?.id ?? ''} event=evt_refund_by_hand`);
-    const dispatcher = providerCalls(h, { refundId: 're_never', paymentIntentId: 'pi_oos_bundle', amountCents: 8400, status: 'succeeded', failureReason: null, orderId: null, reason: null });
-    for (const now of ['2026-11-15T11:01:00.000Z', '2026-11-16T12:00:00.000Z', '2026-11-25T12:00:00.000Z']) {
-      h.setNow(now);
-      expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
-    }
+      .toStrictEqual([expect.objectContaining({ id: cancelled.id, status: 'refunded', refundJobStatus: 'skipped_refunded' })]);
+    h.setNow('2026-11-25T12:00:00.000Z');
+    expect(await dispatcher.run()).toStrictEqual(ok({ processedCount: 0, outcomes: {} }));
     expect(dispatcher.calls).toStrictEqual([]);
   });
 

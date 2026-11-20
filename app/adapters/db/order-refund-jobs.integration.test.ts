@@ -93,34 +93,33 @@ describe('order refund jobs of two workspaces', () => {
     expect(await repository.countDue({ now: '2026-11-15T11:00:00.000Z' })).toBe(1);
   });
 
-  it('resolves a job externally only through the workspace that owns its order', async () => {
+  it('notes a charge refund only through the workspace that owns its order', async () => {
     const repository = createOrderRefundJobRepository(database.db);
     const before = await jobRows();
 
-    expect(await repository.resolveExternally('tenant-b', 'order-a', '2026-11-15T10:02:00.000Z')).toBeNull();
-    expect(await repository.resolveExternally('tenant-a', 'order-b', '2026-11-15T10:02:00.000Z')).toBeNull();
+    expect(await repository.noteChargeRefunded('tenant-b', 'order-a', '2026-11-15T10:02:00.000Z')).toBeNull();
+    expect(await repository.noteChargeRefunded('tenant-a', 'order-b', '2026-11-15T10:02:00.000Z')).toBeNull();
 
     expect(await jobRows()).toStrictEqual(before);
   });
 
-  it('resolves externally only a job that never called Stripe or one that failed for good', async () => {
+  it('makes a pending job due at once and resolves a failed one externally when the charge is refunded, and leaves every other job as it is', async () => {
     const repository = createOrderRefundJobRepository(database.db);
-    const resolve = (orderId: string) => repository.resolveExternally('tenant-a', orderId, '2026-11-15T10:02:00.000Z');
-    await database.db.delete(orderRefundJobs).where(eq(orderRefundJobs.orderId, 'order-a'));
+    const noted = '2026-11-15T10:02:00.000Z';
+    const note = (orderId: string) => repository.noteChargeRefunded('tenant-a', orderId, noted);
     for (const id of ['order-attempted', 'order-submitted', 'order-failed']) await insertOrder('tenant-a', id, 'out_of_stock');
-    await insertJob('tenant-a', 'order-a');
-    await insertJob('tenant-a', 'order-attempted', { attempts: 1, lastError: 'Request aborted due to timeout being reached (5000ms)' });
-    await insertJob('tenant-a', 'order-submitted', { status: 'submitted', attempts: 1, providerRefundId: 're_ours' });
+    await insertJob('tenant-a', 'order-attempted', { attempts: 1, nextAttemptAt: '2026-11-15T12:00:00.000Z', lastError: 'Stripe is unavailable' });
+    await insertJob('tenant-a', 'order-submitted', { status: 'submitted', attempts: 1, providerRefundId: 're_ours', nextAttemptAt: '2026-11-16T10:00:00.000Z' });
     await insertJob('tenant-a', 'order-failed', { status: 'failed', attempts: 19, nextAttemptAt: null });
 
-    expect(await resolve('order-attempted')).toBeNull();
-    expect(await resolve('order-submitted')).toBeNull();
-    expect(await repository.resolveExternally('tenant-b', 'order-b', '2026-11-15T10:02:00.000Z')).toBeNull();
-    expect(await resolve('order-a')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
-    expect(await resolve('order-failed')).toMatchObject({ status: 'resolved_externally' });
+    expect(await note('order-a')).toMatchObject({ status: 'pending', nextAttemptAt: noted });
+    expect(await note('order-attempted')).toMatchObject({ status: 'pending', attempts: 1, nextAttemptAt: noted });
+    expect(await note('order-submitted')).toBeNull();
+    expect(await note('order-failed')).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
     expect((await jobRows()).map((row) => [row.orderId, row.status])).toStrictEqual([
-      ['order-a', 'resolved_externally'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-failed', 'resolved_externally'], ['order-submitted', 'submitted'],
+      ['order-a', 'pending'], ['order-attempted', 'pending'], ['order-b', 'blocked_permission'], ['order-failed', 'resolved_externally'], ['order-submitted', 'submitted'],
     ]);
+    expect(await repository.countDue({ now: noted })).toBe(2);
   });
 
   it('refuses to queue a job for another workspace\'s order', async () => {

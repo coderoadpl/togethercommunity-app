@@ -980,7 +980,7 @@ export const en: Messages = {
     refundJobStatuses: {
       pending: 'Waiting',
       running: 'In progress',
-      submitted: 'Issued, awaiting Stripe',
+      submitted: 'Awaiting confirmation from Stripe',
       succeeded: 'Refunded',
       failed: 'Failed, refund by hand',
       blocked_permission: 'Blocked: Stripe key lacks the refund permission',

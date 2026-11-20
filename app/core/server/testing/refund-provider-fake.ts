@@ -20,15 +20,13 @@ const noResponse = refundFailure('transient', 'Request aborted due to timeout be
 export const createRefundProviderFake = (input: {
   chargeAmountCents: number;
   steps?: RefundProviderStep[];
-  reads?: Array<Result<ProviderRefund, AppError>>;
   refundedByHand?: ProviderRefund[];
 }) => {
   const steps = [...(input.steps ?? [])];
-  const reads = [...(input.reads ?? [])];
+  const listFailures: AppError[] = [];
   const refunds: ProviderRefund[] = [...(input.refundedByHand ?? [])];
   const responses = new Map<string, SavedResponse>();
   const calls: CreateRefundInput[] = [];
-  const readCalls: string[] = [];
   const listCalls: string[] = [];
   const created: ProviderRefund[] = [];
 
@@ -51,7 +49,7 @@ export const createRefundProviderFake = (input: {
   const save = (call: CreateRefundInput, response: Result<ProviderRefund, AppError>) =>
     responses.set(call.idempotencyKey, { paymentIntentId: call.paymentIntentId, amountCents: call.amountCents, response });
 
-  const payment: Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds'> = {
+  const payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds'> = {
     createRefund: async (call) => {
       calls.push(call);
       const saved = responses.get(call.idempotencyKey);
@@ -75,25 +73,26 @@ export const createRefundProviderFake = (input: {
       if (step.createsRefund) save(call, execute(call, 'pending'));
       return err(noResponse);
     },
-    getRefund: async (call) => {
-      readCalls.push(call.refundId);
-      const stored = refunds.find((refund) => refund.refundId === call.refundId);
-      return reads.shift() ?? (stored === undefined ? err(refundFailure('not_found', `No such refund: '${call.refundId}'`, 'resource_missing')) : ok(stored));
-    },
     listRefunds: async (call) => {
       listCalls.push(call.paymentIntentId);
+      const failure = listFailures.shift();
+      if (failure !== undefined) return err(failure);
       return ok(refunds.filter((refund) => refund.paymentIntentId === call.paymentIntentId).toReversed());
     },
   };
 
   const refundByHand = (refund: ProviderRefund) => { refunds.push(refund); };
 
-  const failRefund = (refundId: string, failureReason: string) => {
+  const setRefundStatus = (refundId: string, status: ProviderRefund['status'], failureReason: string | null = null) => {
     const index = refunds.findIndex((refund) => refund.refundId === refundId);
     const refund = refunds[index];
     if (refund === undefined) throw new Error(`No refund ${refundId}`);
-    refunds[index] = { ...refund, status: 'failed', failureReason };
+    refunds[index] = { ...refund, status, failureReason };
   };
 
-  return { payment, calls, readCalls, listCalls, created, refundByHand, failRefund };
+  const failRefund = (refundId: string, failureReason: string) => { setRefundStatus(refundId, 'failed', failureReason); };
+
+  const failLists = (...failures: AppError[]) => { listFailures.push(...failures); };
+
+  return { payment, calls, listCalls, created, refundByHand, failRefund, setRefundStatus, failLists };
 };

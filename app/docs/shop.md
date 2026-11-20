@@ -1187,7 +1187,7 @@ that run first use part of it; a run started any other way (the kick after a
 webhook, the Node ticker) gets 30 seconds from its own start.
 
 The worst case of a job: a job makes at most two Stripe calls (the refund list
-and the create call, or one status read). Every refund call has a 5-second
+and the create call, or one refund list for a status read). Every refund call has a 5-second
 timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
@@ -1220,24 +1220,31 @@ For each claimed job the dispatcher reads the order of that workspace again:
 - it lists the payment intent's refunds (`GET /v1/refunds`, covered by the
   Charges and Refunds permission). A listed refund whose metadata names this
   order (`orderId`) and the job's reason (`reason`) was issued by the job
-  itself, for example by a call whose answer never arrived: the job takes it
-  over, stores its Stripe refund id and status, becomes `submitted` (or
-  `succeeded`) and gets the 24-hour and 7-day status reads, without a new
-  refund call;
-- otherwise it adds up every listed refund that is not `failed` or `canceled`
-  (only refunds made outside the job, such as by hand in the Stripe Dashboard,
-  remain at this point). The refund list decides, not the order status: only
-  when nothing is left to refund does the job end as `skipped_refunded` without
-  a refund call. When staff refunded part of the payment by hand, or a hand
-  refund that marked the order `refunded` failed later, the remainder is
-  refunded under the usual idempotency key rule. A list call that fails is
-  settled like a failed refund call (retried, blocked, or `failed` with a staff
-  alert), also for an order already `refunded`;
-- it then refunds that amount through `POST /v1/refunds` with the payment
-  intent, the workspace's restricted key in the order's mode and the job's
-  current idempotency key, stores the Stripe refund id and status and marks the
-  job `succeeded` (or `submitted` while Stripe reports the refund as pending).
-  The existing `charge.refunded` handler marks the order `refunded`;
+  itself, for example by a call whose answer never arrived; every other listed
+  refund was made outside the job, such as by hand in the Stripe Dashboard;
+- it adds up every listed refund that is not `failed` or `canceled`. The
+  refund list decides, not the order status. When that sum covers the job's
+  amount, no refund call is made: the job ends as `skipped_refunded` only when
+  refunds with the status `succeeded` cover the whole amount and none of them
+  is the job's own; when the job's own refund is among them it takes that
+  refund over (stores its Stripe id and status) and becomes `succeeded`, or
+  `submitted` while any refund it relies on is still `pending` or
+  `requires_action`. A job that relies on such a refund made outside the job
+  becomes `submitted` without a Stripe refund id of its own and is watched by
+  the status reads below like its own refund. A job's own refund that is
+  `failed` or `canceled` ends the job as `failed` with a staff alert;
+- when the sum falls short, it refunds the remainder through `POST /v1/refunds`
+  with the payment intent, the workspace's restricted key in the order's mode
+  and the job's current idempotency key, stores the Stripe refund id and status
+  and marks the job `succeeded` (or `submitted` while Stripe reports that
+  refund, or a refund made outside the job that the job relies on, as pending).
+  When staff refunded part of the payment by hand, or a hand refund failed
+  later, only the remainder is refunded. When the job's own refund is already
+  listed but no longer covers the remainder (a hand refund failed after it was
+  made), the remainder is refunded under the next key generation. A list call
+  that fails is settled like a failed refund call (retried, blocked, or
+  `failed` with a staff alert), also for an order already `refunded`. The
+  existing `charge.refunded` handler marks the order `refunded`;
 - a temporary Stripe failure or a short available balance is retried 1 min,
   5 min, 30 min, 2 h and 6 h later, then every 12 h until seven days after the
   job was queued; the job then ends as `failed`. The delay follows the number
@@ -1245,8 +1252,10 @@ For each claimed job the dispatcher reads the order of that workspace again:
   number of attempts: any other outcome, such as a missing permission, resets
   it, so the first temporary failure after hourly permission refusals is
   retried a minute later;
-- a charge Stripe reports as already refunded ends as `skipped_refunded`; a
-  missing payment intent, a refund Stripe rejects for good or an order that is
+- a charge Stripe reports as already refunded (`charge_already_refunded`) is
+  watched like a job that relies on a refund made outside the job: it becomes
+  `submitted` and the status reads decide from the refund list; a missing
+  payment intent, a refund Stripe rejects for good or an order that is
   not cancelled ends as `failed` at once;
 - a key without the Charges and Refunds (write) permission moves the job to
   `blocked_permission` and retries it every hour for 72 hours from the first
@@ -1268,7 +1277,11 @@ request with that key is still executing. After any other error answer the
 next attempt uses the next generation. A second refund cannot follow: every
 attempt first lists the payment's refunds, takes over one the job issued under
 any key generation and subtracts the others, and Stripe never refunds more than
-the charge (`charge_already_refunded` ends the job as `skipped_refunded`).
+the charge (`charge_already_refunded` makes the job watch the refund list). The
+same key is never sent with a different amount: a refund call that is retried
+with the same key is preceded by a refund list, and when that list shows the
+job's own refund from the unanswered call, or a status read sends the job back
+to refund the remainder, the next key generation is used.
 
 Staff get the `order-refund-alert` e-mail (support address, or every staff
 member in their language) on the first failed attempt, on the first missing
@@ -1288,21 +1301,20 @@ Stripe Dashboard (the order then becomes `refunded`). Requeueing a failed job
 from Studio is not available yet.
 
 When `charge.refunded` reports a full refund of a cancelled order, the same
-payment transaction marks the order `refunded` and moves a job that never
-called Stripe (`pending` with no attempt and no Stripe refund) or a `failed`
-job to `resolved_externally`; the dispatcher never picks that job up again.
-A `failed` job is resolved too because the dispatcher never picks a failed job
-again either, so without this the order page in Studio would keep showing the
-failed refund after staff refunded the payment by hand.
-Every other job is left as it is, because the event may report the job's own
-refund: a `submitted` job keeps its scheduled status reads, a `running` job
-keeps its lease, and a `pending` or `blocked_permission` job that already
-attempted a refund is settled by its next attempt, whose refund list tells the
-job's own refund (taken over and tracked) from one made by hand (no matching
-metadata, subtracted from the amount to refund, so a full hand refund ends the
-job as `skipped_refunded`). A blocked job whose payment staff refund by hand
-therefore heals at its next hourly attempt, and refunds the payment itself
-when that hand refund failed in the meantime. A refund or dispute of a
+payment transaction marks the order `refunded`, moves a `failed` job to
+`resolved_externally` and makes a `pending` job due at once (its next attempt
+time becomes now, it stays `pending`) and starts the dispatcher, whose refund
+list then decides: a hand refund that already `succeeded` ends the job as
+`skipped_refunded`, one still `pending` makes the job watch it, and the job's
+own refund is taken over. The event itself never ends a `pending` job, because
+a hand refund it reports may still fail. A `failed` job is resolved because
+the dispatcher never picks a failed job again either, so without this the
+order page in Studio would keep showing the failed refund after staff refunded
+the payment by hand. Every other job is left as it is: a `submitted` or
+`succeeded` job keeps its scheduled status reads, a `running` job keeps its
+lease, and a `blocked_permission` job is settled by its next hourly attempt,
+whose refund list tells the job's own refund (taken over and tracked) from one
+made by hand (subtracted from the amount to refund). A refund or dispute of a
 cancelled order revokes no access, because the cancelled order granted none.
 
 A cancelled order never counts as a purchase: it keeps no access when another
@@ -1315,14 +1327,26 @@ its physical lines cannot be handed over at pickup (the verification page shows
 the cancellation and no issue button).
 
 Stripe does not send `refund.failed` to the platform (the event is not
-subscribed), so the dispatcher reads the refund back 24 hours and 7 days after
-it was issued. A refund Stripe then reports as `failed` or `canceled` marks the
-job `failed` and alerts staff to return the money another way. A refund still
-`pending` or `requires_action` at the 7-day read, and a refund whose reads keep
-failing (retried hourly) until 8 days after it was issued, end as
-`unconfirmed`: staff get an alert to check the refund in the Stripe Dashboard
-and return the money another way if it failed, and the dispatcher stops
-reading it.
+subscribed), so the dispatcher reads the payment's refunds again 24 hours and
+7 days after the job issued its refund or started relying on a refund made
+outside the job. Each read lists every refund of the payment intent, not only
+the job's own:
+
+- the job's own refund reported as `failed` or `canceled` marks the job
+  `failed` and alerts staff to return the money another way;
+- when a refund made outside the job failed or was canceled and the refunds
+  that are not `failed` or `canceled` no longer cover the job's amount, the
+  job goes back to `pending`, due at once, and refunds the remainder under the
+  next key generation (a new 24-hour and 7-day read schedule follows);
+- when refunds with the status `succeeded` cover the amount, the job is
+  `succeeded` (with its own refund) or ends as `skipped_refunded` (refunds made
+  outside the job only);
+- a refund the job relies on that is still `pending` or `requires_action` at
+  the 7-day read, and refund lists that keep failing (retried hourly) until
+  8 days after the job issued or observed the refund, end the job as
+  `unconfirmed`: staff get an alert to check the refunds in the Stripe
+  Dashboard and return the money another way if one failed, and the
+  dispatcher stops reading them.
 
 #### Buyer communication for a cancelled order
 

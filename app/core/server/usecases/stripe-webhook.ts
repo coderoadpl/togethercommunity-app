@@ -945,11 +945,17 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
+  let refundQueued = false;
   if (order.cancelReason == null) {
     await revokeRefundedAccess(tenant, order, deps);
   } else if (event.type === 'charge.refunded') {
-    const resolved = await deps.orderRefundJobs.resolveExternally(tenant.id, order.id, deps.clock.nowIso());
-    if (resolved !== null) deps.logger.warn(`[order-refund] resolved externally tenant=${tenant.id} order=${order.id} job=${resolved.id} event=${event.id}`);
+    const noted = await deps.orderRefundJobs.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
+    if (noted?.status === 'resolved_externally') {
+      deps.logger.warn(`[order-refund] resolved externally tenant=${tenant.id} order=${order.id} job=${noted.id} event=${event.id}`);
+    } else if (noted !== null) {
+      refundQueued = true;
+      deps.logger.warn(`[order-refund] refund list due again after charge.refunded tenant=${tenant.id} order=${order.id} job=${noted.id} event=${event.id}`);
+    }
   }
 
   if (subscriptionToCancel !== null) {
@@ -959,7 +965,7 @@ const applyPaymentAdjustment = async (
       deps,
     );
   }
-  return ok({ processed: true });
+  return ok({ processed: true, ...(refundQueued ? { refundQueued } : {}) });
 };
 
 const asyncPaymentFailed = (

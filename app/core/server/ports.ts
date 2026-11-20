@@ -1439,7 +1439,7 @@ export interface OrderRefundJobRepository {
     update: OrderRefundJobUpdate & { now: string },
     staffAlerts?: readonly EmailOutboxEnqueueInput[],
   ): Promise<OrderRefundJob | null>;
-  resolveExternally(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
+  noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
 }
 
 export interface KsefCredentials {

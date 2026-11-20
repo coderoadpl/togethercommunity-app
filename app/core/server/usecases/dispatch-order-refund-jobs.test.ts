@@ -6,10 +6,8 @@ import {
   orderListItemSchema,
   outOfStockRefundJob,
   refundFailure,
-  type AppError,
   type OrderListItem,
   type ProviderRefund,
-  type Result,
 } from '#core/domain/index.js';
 
 import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
@@ -31,15 +29,14 @@ const cancelledOrder = (overrides: Partial<OrderListItem> = {}): OrderListItem =
   couponCode: null, mode: 'live', ...overrides,
 });
 
-const providerRefund = (status: ProviderRefund['status'] = 'succeeded'): ProviderRefund =>
-  ({ refundId: 're_1', paymentIntentId: 'pi_1', amountCents: 4099, status, failureReason: status === 'failed' ? 'expired_or_canceled_card' : null, orderId: 'order-1', reason: 'out_of_stock' });
+const handRefund = (refundId: string, amountCents: number, status: ProviderRefund['status']): ProviderRefund =>
+  ({ refundId, paymentIntentId: 'pi_1', amountCents, status, failureReason: null, orderId: null, reason: null });
 
 const permissionMissing = () => refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
 
 const harness = (input: {
   order?: OrderListItem;
   steps?: RefundProviderStep[];
-  reads?: Array<Result<ProviderRefund, AppError>>;
   refundedByHand?: ProviderRefund[];
   staleRefundList?: boolean;
 } = {}) => {
@@ -50,7 +47,6 @@ const harness = (input: {
   const provider = createRefundProviderFake({
     chargeAmountCents: order.amountCents,
     ...(input.steps === undefined ? {} : { steps: input.steps }),
-    ...(input.reads === undefined ? {} : { reads: input.reads }),
     ...(input.refundedByHand === undefined ? {} : { refundedByHand: input.refundedByHand }),
   });
   const alerts = fake.alerts;
@@ -99,11 +95,12 @@ const harness = (input: {
   const failRecipientLookups = (count: number) => { failingRecipientLookups = count; };
   const chargeRefunded = async () => {
     order = { ...order, status: 'refunded' };
-    return fake.repository.resolveExternally(order.tenantId, order.id, now);
+    return fake.repository.noteChargeRefunded(order.tenantId, order.id, now);
   };
   return {
-    deps, queue, tick, job, refundCalls: provider.calls, readCalls: provider.readCalls, created: provider.created, alerts, alertKinds, keys, errors,
+    deps, queue, tick, job, refundCalls: provider.calls, listCalls: provider.listCalls, created: provider.created, alerts, alertKinds, keys, errors,
     failAlertWrites: fake.failAlertWrites, failRecipientLookups, chargeRefunded, refundByHand: provider.refundByHand, failRefund: provider.failRefund,
+    setRefundStatus: provider.setRefundStatus, failLists: provider.failLists,
   };
 };
 
@@ -142,11 +139,10 @@ describe('order refund dispatcher', () => {
   it.each(['live', 'test'] as const)('lists, refunds and re-reads a %s-mode payment with the key of that mode and workspace', async (mode) => {
     const h = harness({ order: cancelledOrder({ mode }) });
     const used: string[] = [];
-    const { createRefund, getRefund, listRefunds } = h.deps.payment;
-    if (createRefund === undefined || getRefund === undefined || listRefunds === undefined) throw new Error('Refund methods missing');
+    const { createRefund, listRefunds } = h.deps.payment;
+    if (createRefund === undefined || listRefunds === undefined) throw new Error('Refund methods missing');
     h.deps.payment = {
       createRefund: async (call) => { used.push(`create ${call.mode} ${call.tenantId}`); return createRefund(call); },
-      getRefund: async (call) => { used.push(`get ${call.mode} ${call.tenantId}`); return getRefund(call); },
       listRefunds: async (call) => { used.push(`list ${call.mode} ${call.tenantId}`); return listRefunds(call); },
     };
     await h.queue();
@@ -154,7 +150,7 @@ describe('order refund dispatcher', () => {
     expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { refunded: 1 } });
     await h.tick(at(hours(24)));
 
-    expect(used).toStrictEqual([`list ${mode} tenant-a`, `create ${mode} tenant-a`, `get ${mode} tenant-a`]);
+    expect(used).toStrictEqual([`list ${mode} tenant-a`, `create ${mode} tenant-a`, `list ${mode} tenant-a`]);
   });
 
   it('pays on the next attempt with a new key once the balance is restored, although Stripe saved the first error under the old key', async () => {
@@ -210,20 +206,20 @@ describe('order refund dispatcher', () => {
     expect(h.alertKinds()).toStrictEqual(['retrying']);
   });
 
-  it("ends as skipped_refunded with exactly one refund when a stale refund list hides the refund a 500 did create (Stripe's refundable cap)", async () => {
+  it("watches the refunds with exactly one refund made when a stale refund list hides the refund a 500 did create (Stripe's refundable cap)", async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('transient', 'Stripe API error', null), createsRefund: true }], staleRefundList: true });
     await h.queue();
 
     await h.tick(createdAt);
-    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
 
-    expect(h.job()).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, submittedAt: at(minutes(1)), nextAttemptAt: at(minutes(1) + hours(24)) });
     expect(h.keys()).toStrictEqual(['oos-refund-order-1', 'oos-refund-order-1-1']);
     expect(h.created).toHaveLength(1);
   });
 
   it('takes over a refund Stripe made although the create call timed out, re-reads it and alerts staff when it fails later', async () => {
-    const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }], reads: [ok(providerRefund('failed'))] });
+    const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
     await h.queue();
 
     expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { retrying: 1 } });
@@ -234,6 +230,7 @@ describe('order refund dispatcher', () => {
     });
     expect(h.refundCalls).toHaveLength(1);
 
+    h.failRefund('re_1', 'expired_or_canceled_card');
     expect(await h.tick(at(minutes(1) + hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { failed: 1 } });
     expect(h.job()).toMatchObject({ status: 'failed', providerRefundStatus: 'failed', lastError: 'expired_or_canceled_card', nextAttemptAt: null });
     expect(h.alertKinds()).toStrictEqual(['retrying', 'failed_after_submission']);
@@ -245,37 +242,58 @@ describe('order refund dispatcher', () => {
     await h.queue();
 
     await h.tick(createdAt);
-    expect(await h.chargeRefunded()).toBeNull();
-    expect(h.job()).toMatchObject({ status: 'pending', attempts: 1 });
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'pending', attempts: 1, nextAttemptAt: createdAt });
 
     expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { submitted: 1 } });
     expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: 're_1', nextAttemptAt: at(minutes(1) + hours(24)) });
     await h.tick(at(minutes(1) + hours(24)));
     expect(h.job()).toMatchObject({ status: 'submitted', statusChecks: 1, nextAttemptAt: at(minutes(1) + hours(24 * 7)) });
-    expect(h.readCalls).toStrictEqual(['re_1']);
+    expect(h.listCalls).toStrictEqual(['pi_1', 'pi_1', 'pi_1']);
     expect(h.refundCalls).toHaveLength(1);
   });
 
-  it('ends as skipped_refunded without a refund call when staff refund by hand after an attempt failed', async () => {
+  it('watches a pending hand refund made after an attempt failed and ends as skipped_refunded without a refund call once it succeeds', async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('transient', 'Stripe is unavailable') }] });
     await h.queue();
 
     await h.tick(createdAt);
     h.refundByHand({ refundId: 're_hand', paymentIntentId: 'pi_1', amountCents: 4099, status: 'pending', failureReason: null, orderId: null, reason: null });
-    expect(await h.chargeRefunded()).toBeNull();
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'pending', nextAttemptAt: createdAt });
 
-    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, submittedAt: at(minutes(1)), nextAttemptAt: at(minutes(1) + hours(24)) });
+    h.setRefundStatus('re_hand', 'succeeded');
+    expect(await h.tick(at(minutes(1) + hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
     expect(h.job()).toMatchObject({ status: 'skipped_refunded', providerRefundId: null, nextAttemptAt: null });
     expect(h.refundCalls).toHaveLength(1);
+    expect(h.alerts.map(({ payload }) => payload.kind)).toStrictEqual(['order-refund-alert']);
   });
 
-  it('resolves a job that never called Stripe when the charge is refunded by hand', async () => {
+  it('makes a job that never called Stripe due at once when the charge is refunded by hand and skips it from the refund list', async () => {
     const h = harness();
     await h.queue();
+    h.refundByHand({ refundId: 're_hand', paymentIntentId: 'pi_1', amountCents: 4099, status: 'succeeded', failureReason: null, orderId: null, reason: null });
 
-    expect(await h.chargeRefunded()).toMatchObject({ status: 'resolved_externally', nextAttemptAt: null });
-    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 0, outcomes: {} });
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'pending', attempts: 0, nextAttemptAt: createdAt });
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
+    expect(h.job()).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null });
     expect(h.refundCalls).toStrictEqual([]);
+  });
+
+  it('refunds the payment itself when a pending hand refund reported by charge.refunded fails before it succeeds', async () => {
+    const h = harness();
+    await h.queue();
+    h.refundByHand({ refundId: 're_hand', paymentIntentId: 'pi_1', amountCents: 4099, status: 'pending', failureReason: null, orderId: null, reason: null });
+
+    expect(await h.chargeRefunded()).toMatchObject({ status: 'pending', nextAttemptAt: createdAt });
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, nextAttemptAt: at(hours(24)) });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 2, outcomes: { reopened: 1, refunded: 1 } });
+    expect(h.job()).toMatchObject({ status: 'succeeded', keyGeneration: 1, providerRefundId: 're_1', submittedAt: at(hours(24)), nextAttemptAt: at(hours(48)) });
+    expect(h.refundCalls).toStrictEqual([expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1-1' })]);
+    expect(h.alerts).toStrictEqual([]);
   });
 
   it('refunds only what is left after staff refunded part of the payment by hand', async () => {
@@ -291,7 +309,7 @@ describe('order refund dispatcher', () => {
     expect(h.alerts).toStrictEqual([]);
   });
 
-  it('skips without a refund call when staff already refunded the whole payment by hand in parts', async () => {
+  it('watches and then skips without a refund call when staff already refunded the whole payment by hand in parts', async () => {
     const h = harness({
       order: cancelledOrder({ status: 'partially_refunded' }),
       refundedByHand: [
@@ -302,8 +320,74 @@ describe('order refund dispatcher', () => {
     });
     await h.queue();
 
-    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, nextAttemptAt: at(hours(24)) });
+    h.setRefundStatus('re_hand_2', 'succeeded');
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { skipped_refunded: 1 } });
     expect(h.refundCalls).toStrictEqual([]);
+  });
+
+  it('keeps watching a pending hand refund that covers the payment, refunds the payment itself once that refund fails, and never ends the job early', async () => {
+    const h = harness({ refundedByHand: [handRefund('re_hand', 4099, 'pending')] });
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, submittedAt: createdAt, statusChecks: 0, nextAttemptAt: at(hours(24)) });
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { checked: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', statusChecks: 1, nextAttemptAt: at(hours(24 * 7)) });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+
+    expect(await h.tick(at(hours(24 * 7)))).toStrictEqual({ processedCount: 2, outcomes: { reopened: 1, refunded: 1 } });
+    expect(h.refundCalls).toStrictEqual([expect.objectContaining({ amountCents: 4099, idempotencyKey: 'oos-refund-order-1-1' })]);
+    expect(h.job()).toMatchObject({ status: 'succeeded', providerRefundId: 're_1', statusChecks: 0, nextAttemptAt: at(hours(24 * 8)) });
+    expect(h.alerts).toStrictEqual([]);
+  });
+
+  it('marks a hand refund still pending at the 7-day read as unconfirmed and alerts staff once', async () => {
+    const h = harness({ refundedByHand: [handRefund('re_hand', 4099, 'requires_action')] });
+    await h.queue();
+
+    await h.tick(createdAt);
+    await h.tick(at(hours(24)));
+    expect(await h.tick(at(hours(24 * 7)))).toStrictEqual({ processedCount: 1, outcomes: { unconfirmed: 1 } });
+    expect(h.job()).toMatchObject({ status: 'unconfirmed', providerRefundId: null, nextAttemptAt: null, lastError: 'Refund still requires_action at the last scheduled status check' });
+    expect(h.alertKinds()).toStrictEqual(['unconfirmed']);
+    expect(h.refundCalls).toStrictEqual([]);
+  });
+
+  it('refunds the part a partial hand refund covered with a new key when that hand refund fails after the job refunded the rest', async () => {
+    const h = harness({ order: cancelledOrder({ status: 'partially_refunded' }), refundedByHand: [handRefund('re_hand', 2000, 'pending')] });
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { submitted: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: 're_1', providerRefundStatus: 'succeeded', nextAttemptAt: at(hours(24)) });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+
+    expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 2, outcomes: { reopened: 1, refunded: 1 } });
+    expect(h.refundCalls).toStrictEqual([
+      expect.objectContaining({ amountCents: 2099, idempotencyKey: 'oos-refund-order-1' }),
+      expect.objectContaining({ amountCents: 2000, idempotencyKey: 'oos-refund-order-1-1' }),
+    ]);
+    expect(h.job()).toMatchObject({ status: 'succeeded', providerRefundId: 're_2', keyGeneration: 1 });
+    expect(await h.tick(at(hours(48)))).toStrictEqual({ processedCount: 1, outcomes: { checked: 1 } });
+    expect(h.refundCalls).toHaveLength(2);
+    expect(h.created.reduce((sum, refund) => sum + refund.amountCents, 0)).toBe(4099);
+  });
+
+  it('refunds the remainder with a new key instead of taking over its own refund again when an unrecorded own refund no longer covers the payment', async () => {
+    const h = harness({ order: cancelledOrder({ status: 'partially_refunded' }), refundedByHand: [handRefund('re_hand', 2000, 'pending')], steps: [{ outcome: 'no_response', createsRefund: true }] });
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { retrying: 1 } });
+    expect(h.job()).toMatchObject({ status: 'pending', keyGeneration: 0, providerRefundId: null });
+    h.failRefund('re_hand', 'expired_or_canceled_card');
+
+    expect(await h.tick(at(minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { submitted: 1 } });
+    expect(h.refundCalls).toStrictEqual([
+      expect.objectContaining({ amountCents: 2099, idempotencyKey: 'oos-refund-order-1' }),
+      expect.objectContaining({ amountCents: 2000, idempotencyKey: 'oos-refund-order-1-1' }),
+    ]);
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: 're_2', keyGeneration: 1 });
   });
 
   it('skips an order that staff already refunded by hand without a refund call', async () => {
@@ -352,12 +436,12 @@ describe('order refund dispatcher', () => {
     expect(h.refundCalls).toStrictEqual([]);
   });
 
-  it('marks a charge Stripe reports as already refunded as skipped', async () => {
+  it('watches the refunds of a charge Stripe reports as already refunded instead of ending the job', async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('already_refunded', 'Charge has already been refunded', 'charge_already_refunded') }] });
     await h.queue();
 
-    await h.tick(createdAt);
-    expect(h.job()).toMatchObject({ status: 'skipped_refunded', nextAttemptAt: null });
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { watching: 1 } });
+    expect(h.job()).toMatchObject({ status: 'submitted', providerRefundId: null, submittedAt: createdAt, nextAttemptAt: at(hours(24)), keyGeneration: 1 });
     expect(h.alerts).toStrictEqual([]);
   });
 
@@ -477,42 +561,45 @@ describe('order refund dispatcher', () => {
   });
 
   it('re-reads a refund at 24 hours and 7 days and stops checking once both confirm it', async () => {
-    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }], reads: [ok(providerRefund('succeeded')), ok(providerRefund('succeeded'))] });
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     await h.queue();
 
     await h.tick(createdAt);
     expect(h.job()).toMatchObject({ status: 'submitted', providerRefundStatus: 'pending', nextAttemptAt: at(hours(24)) });
     expect(await h.tick(at(hours(23)))).toStrictEqual({ processedCount: 0, outcomes: {} });
+    h.setRefundStatus('re_1', 'succeeded');
     await h.tick(at(hours(24)));
     expect(h.job()).toMatchObject({ status: 'succeeded', statusChecks: 1, nextAttemptAt: at(hours(24 * 7)) });
     await h.tick(at(hours(24 * 7)));
     expect(h.job()).toMatchObject({ status: 'succeeded', statusChecks: 2, nextAttemptAt: null });
 
-    expect(h.readCalls).toStrictEqual(['re_1', 're_1']);
+    expect(h.listCalls).toStrictEqual(['pi_1', 'pi_1', 'pi_1']);
     expect(h.refundCalls).toHaveLength(1);
     expect(h.alerts).toStrictEqual([]);
   });
 
   it('marks a refund that failed after it was issued as failed at the 24-hour re-read and alerts staff', async () => {
-    const h = harness({ reads: [ok(providerRefund('failed'))] });
+    const h = harness();
     await h.queue();
 
     await h.tick(createdAt);
     expect(h.job().status).toBe('succeeded');
+    h.failRefund('re_1', 'expired_or_canceled_card');
     await h.tick(at(hours(24)));
 
     expect(h.job()).toMatchObject({ status: 'failed', providerRefundStatus: 'failed', lastError: 'expired_or_canceled_card', nextAttemptAt: null });
     expect(h.alertKinds()).toStrictEqual(['failed_after_submission']);
     await h.tick(at(hours(24 * 7)));
-    expect(h.readCalls).toHaveLength(1);
+    expect(h.listCalls).toHaveLength(2);
     expect(h.refundCalls).toHaveLength(1);
   });
 
   it.each(['pending', 'requires_action'] as const)('marks a refund still %s at the 7-day re-read as unconfirmed and alerts staff once', async (status) => {
-    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }], reads: [ok(providerRefund(status)), ok(providerRefund(status))] });
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     await h.queue();
 
     await h.tick(createdAt);
+    h.setRefundStatus('re_1', status);
     await h.tick(at(hours(24)));
     expect(h.job()).toMatchObject({ status: 'submitted', statusChecks: 1, nextAttemptAt: at(hours(24 * 7)) });
     expect(h.alerts).toStrictEqual([]);
@@ -525,16 +612,17 @@ describe('order refund dispatcher', () => {
     expect(h.alertKinds()).toStrictEqual(['unconfirmed']);
     expect(h.alerts[0]).toMatchObject({ to: 'owner@example.com', payload: { error: `Refund still ${status} at the last scheduled status check` } });
     expect(await h.tick(at(hours(24 * 30)))).toStrictEqual({ processedCount: 0, outcomes: {} });
-    expect(h.readCalls).toHaveLength(2);
+    expect(h.listCalls).toHaveLength(3);
     expect(h.refundCalls).toHaveLength(1);
   });
 
   it('marks a refund whose status reads fail until 8 days after it was issued as unconfirmed and alerts staff once', async () => {
     const readFailure = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
-    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }], reads: Array.from({ length: 300 }, () => err(readFailure)) });
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     await h.queue();
 
     await h.tick(createdAt);
+    h.failLists(...Array.from({ length: 300 }, () => readFailure));
     const readTimes: string[] = [];
     for (let tick = 0; tick < 300 && h.job().status === 'submitted'; tick += 1) {
       const due = h.job().nextAttemptAt ?? createdAt;
@@ -593,10 +681,11 @@ describe('order refund dispatcher', () => {
   });
 
   it('reads a refund that failed after it was issued again a minute later when its staff alert could not be queued', async () => {
-    const h = harness({ reads: [ok(providerRefund('failed')), ok(providerRefund('failed'))] });
+    const h = harness();
     await h.queue();
 
     await h.tick(createdAt);
+    h.failRefund('re_1', 'expired_or_canceled_card');
     h.failAlertWrites(1);
     expect(await h.tick(at(hours(24)))).toStrictEqual({ processedCount: 1, outcomes: { deferred: 1 } });
     expect(h.job()).toMatchObject({ status: 'succeeded', statusChecks: 0, nextAttemptAt: at(hours(24) + minutes(1)), lockedAt: null });
@@ -604,7 +693,7 @@ describe('order refund dispatcher', () => {
     expect(await h.tick(at(hours(24) + minutes(1)))).toStrictEqual({ processedCount: 1, outcomes: { failed: 1 } });
     expect(h.job()).toMatchObject({ status: 'failed', providerRefundStatus: 'failed', nextAttemptAt: null });
     expect(h.alertKinds()).toStrictEqual(['failed_after_submission']);
-    expect(h.readCalls).toHaveLength(2);
+    expect(h.listCalls).toHaveLength(3);
   });
 
   const slowDispatch = async (options: DispatchOrderRefundJobsOptions) => {

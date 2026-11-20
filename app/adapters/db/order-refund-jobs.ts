@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, lt, lte } from 'drizzle-orm';
 
 import { orderRefundJobSchema, type OrderRefundJob } from '#core/domain/index.js';
 import type { OrderRefundJobRepository } from '#core/server/index.js';
@@ -85,18 +85,17 @@ export const createOrderRefundJobRepository = (db: Db): OrderRefundJobRepository
     }
     return toJob(row);
   }),
-  resolveExternally: async (tenantId, orderId, now) => {
-    const [row] = await db.update(orderRefundJobs)
+  noteChargeRefunded: async (tenantId, orderId, now) => {
+    const ofOrder = and(eq(orderRefundJobs.tenantId, tenantId), eq(orderRefundJobs.orderId, orderId));
+    const [resolved] = await db.update(orderRefundJobs)
       .set({ status: 'resolved_externally', nextAttemptAt: null, lockedAt: null, updatedAt: now })
-      .where(and(
-        eq(orderRefundJobs.tenantId, tenantId),
-        eq(orderRefundJobs.orderId, orderId),
-        or(
-          and(eq(orderRefundJobs.status, 'pending'), eq(orderRefundJobs.attempts, 0), isNull(orderRefundJobs.providerRefundId)),
-          eq(orderRefundJobs.status, 'failed'),
-        ),
-      ))
+      .where(and(ofOrder, eq(orderRefundJobs.status, 'failed')))
       .returning();
-    return row === undefined ? null : toJob(row);
+    if (resolved !== undefined) return toJob(resolved);
+    const [due] = await db.update(orderRefundJobs)
+      .set({ nextAttemptAt: now, updatedAt: now })
+      .where(and(ofOrder, eq(orderRefundJobs.status, 'pending')))
+      .returning();
+    return due === undefined ? null : toJob(due);
   },
 });

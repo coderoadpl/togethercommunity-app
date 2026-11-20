@@ -1,6 +1,6 @@
 {
-  "hash": "c37fcc69f569032edf01199c6cfbd8127ae9e259bb7abfeef02806485a39f7c0",
-  "shortId": "c37fcc69f569",
+  "hash": "97d2d06f33d54139be5963f37d653652e39e2054b6ee08bdd375c4d8364607ab",
+  "shortId": "97d2d06f33d5",
   "schema": {
     "constraints": [
       {
@@ -142,6 +142,11 @@
         "definition": "CHECK (((vat_rate IS NULL) OR (vat_rate = ANY (ARRAY['5'::jsonb, '8'::jsonb, '23'::jsonb, '\"exempt\"'::jsonb]))))",
         "name": "products_vat_rate_check",
         "table": "products"
+      },
+      {
+        "definition": "CHECK ((amount_cents > 0))",
+        "name": "order_refund_jobs_amount_check",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
@@ -379,6 +384,11 @@
         "table": "stock_reservations"
       },
       {
+        "definition": "CHECK ((reason = 'out_of_stock'::text))",
+        "name": "order_refund_jobs_reason_check",
+        "table": "order_refund_jobs"
+      },
+      {
         "definition": "CHECK ((reserved >= 0))",
         "name": "product_stock_reserved_check",
         "table": "product_stock"
@@ -462,6 +472,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'applied'::text, 'rejected'::text, 'stale'::text, 'withdrawn'::text, 'failed'::text])))",
         "name": "change_proposals_status_check",
         "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'submitted'::text, 'succeeded'::text, 'failed'::text, 'blocked_permission'::text, 'skipped_refunded'::text, 'resolved_externally'::text, 'unconfirmed'::text])))",
+        "name": "order_refund_jobs_status_check",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text])))",
@@ -1165,6 +1180,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_refund_jobs_tenant_id_fkey",
+        "table": "order_refund_jobs"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "order_shipment_events_tenant_id_fkey",
         "table": "order_shipment_events"
       },
@@ -1569,6 +1589,11 @@
         "table": "order_changes"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id)",
+        "name": "order_refund_jobs_tenant_order_fk",
+        "table": "order_refund_jobs"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1947,6 +1972,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "order_fulfilment_events_pkey",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_refund_jobs_pkey",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2424,6 +2454,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION record_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.id); RETURN NULL; END; $function$",
         "name": "record_order_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION record_refund_job_order_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN INSERT INTO order_changes (tenant_id, order_id) VALUES (NEW.tenant_id, NEW.order_id); RETURN NULL; END; $function$",
+        "name": "record_refund_job_order_change"
       },
       {
         "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
@@ -2931,6 +2966,11 @@
         "definition": "CREATE INDEX order_changes_tenant_order_idx ON order_changes USING btree (tenant_id, order_id)",
         "name": "order_changes_tenant_order_idx",
         "table": "order_changes"
+      },
+      {
+        "definition": "CREATE INDEX order_refund_jobs_due_idx ON order_refund_jobs USING btree (status, next_attempt_at)",
+        "name": "order_refund_jobs_due_idx",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CREATE INDEX order_shipment_events_tenant_order_created_idx ON order_shipment_events USING btree (tenant_id, order_id, created_at)",
@@ -3441,6 +3481,16 @@
         "definition": "CREATE UNIQUE INDEX order_fulfilment_events_tenant_order_type_uidx ON order_fulfilment_events USING btree (tenant_id, order_id, type)",
         "name": "order_fulfilment_events_tenant_order_type_uidx",
         "table": "order_fulfilment_events"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_refund_jobs_idempotency_key_uidx ON order_refund_jobs USING btree (idempotency_key)",
+        "name": "order_refund_jobs_idempotency_key_uidx",
+        "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_refund_jobs_tenant_order_uidx ON order_refund_jobs USING btree (tenant_id, order_id)",
+        "name": "order_refund_jobs_tenant_order_uidx",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CREATE UNIQUE INDEX order_shipments_tenant_order_uidx ON order_shipments USING btree (tenant_id, order_id)",
@@ -4937,6 +4987,14 @@
             "name": "billing",
             "notNull": false,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "cancel_reason",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,
@@ -6448,6 +6506,187 @@
           }
         ],
         "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'pending'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "key_generation",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "status_checks",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "transient_failure_streak",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "idempotency_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payment_intent_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "permission_blocked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_refund_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_refund_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "submitted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "order_refund_jobs"
       },
       {
         "columns": [
@@ -16258,6 +16497,16 @@
         "definition": "CREATE TRIGGER marketing_signup_confirmation_projection AFTER INSERT ON marketing_consents FOR EACH ROW WHEN ((new.status = 'confirmed'::text)) EXECUTE FUNCTION project_marketing_signup_confirmation()",
         "name": "marketing_signup_confirmation_projection",
         "table": "marketing_consents"
+      },
+      {
+        "definition": "CREATE TRIGGER order_refund_jobs_record_insert AFTER INSERT ON order_refund_jobs FOR EACH ROW EXECUTE FUNCTION record_refund_job_order_change()",
+        "name": "order_refund_jobs_record_insert",
+        "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CREATE TRIGGER order_refund_jobs_record_status AFTER UPDATE OF status ON order_refund_jobs FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION record_refund_job_order_change()",
+        "name": "order_refund_jobs_record_status",
+        "table": "order_refund_jobs"
       },
       {
         "definition": "CREATE TRIGGER orders_capture_single_line BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION capture_single_order_line()",

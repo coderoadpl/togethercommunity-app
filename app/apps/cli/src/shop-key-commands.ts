@@ -50,7 +50,7 @@ import {
 } from '#core/domain/index.js';
 
 import { changeProposalAppliedLine } from './change-proposal-output.js';
-import { emit } from './output.js';
+import { emit, orderStatusLabel } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { formatProductStock } from './stock-commands.js';
@@ -242,7 +242,7 @@ const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
 });
 
 const orderLine = (order: OrderListItem): string =>
-  `${order.createdAt}\t${order.status}\t${order.mode ?? 'live'}\t${order.fulfilmentStatus ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
+  `${order.createdAt}\t${orderStatusLabel(order)}\t${order.mode ?? 'live'}\t${order.fulfilmentStatus ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
 
 const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,

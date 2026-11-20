@@ -10,6 +10,7 @@ import { ORDER_CHANGE_ROUTES } from './order-changes.js';
 import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
+import { orderRefundJobViewSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
@@ -483,7 +484,8 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInputSchema;
 
 export const publicCheckoutSessionStatusOutputSchema = z.object({
-  status: z.enum(['pending', 'paid']),
+  status: z.enum(['pending', 'paid', 'cancelled']),
+  charged: z.boolean().optional(),
   clientReference: z.string().optional(),
   returnUrl: z.string().optional(),
   checkoutRef: z.string().optional(),
@@ -809,6 +811,7 @@ export const ordersListOutputSchema = z.object({
 export const orderDetailOutputSchema = z.object({
   order: orderListItemSchema,
   invoice: invoiceSchema.nullable().default(null),
+  refundJob: orderRefundJobViewSchema.nullable().default(null),
 });
 export const invoiceOutputSchema = z.object({ invoice: invoiceSchema });
 

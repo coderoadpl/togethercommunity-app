@@ -194,3 +194,40 @@ it('waits for paid click attribution before initializing Meta', async () => {
   expect(analytics.loadMetaPixel).toHaveBeenCalledExactlyOnceWith(meta, attributed);
   expect(analytics.trackCheckoutPurchase).toHaveBeenCalledExactlyOnceWith(meta, 'cs_live_attributed', attributed);
 });
+
+it.each(['/checkout/course-1', '/offer/bundle'])('shows the sold-out refund message on %s and sends no purchase for an order cancelled because it sold out', async (path) => {
+  let requests = 0;
+  let cancelled = false;
+  server.use(http.get('/api/public/checkout/session-status', () => {
+    requests += 1;
+    return HttpResponse.json({ ok: true, data: { status: cancelled ? 'cancelled' : 'pending' } });
+  }));
+  await renderCheckout(`${path}?status=success&session_id=cs_live_one`);
+  expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+  cancelled = true;
+  await act(() => vi.advanceTimersByTimeAsync(3001));
+
+  expect(screen.getByRole('heading', { name: en.checkout.soldOutRefundTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.soldOutRefundEyebrow)).toBeVisible();
+  expect(screen.getByText(en.checkout.soldOutRefundBody)).toBeVisible();
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByRole('link', { name: en.checkout.goToLogin })).toBeNull();
+  expect(screen.queryByText(en.checkout.successBody)).toBeNull();
+  expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(config);
+  expect(analytics.trackCheckoutPurchase).not.toHaveBeenCalled();
+  const requestsAtCancel = requests;
+  await act(() => vi.advanceTimersByTimeAsync(180_000));
+  expect(requests).toBe(requestsAtCancel);
+  expect(analytics.trackCheckoutPurchase).not.toHaveBeenCalled();
+  expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
+});
+
+it('promises no refund on the sold-out message when nothing was charged', async () => {
+  server.use(http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'cancelled', charged: false } })));
+  await renderCheckout('/checkout/course-1?status=success&session_id=cs_live_one');
+  await act(() => vi.advanceTimersByTimeAsync(0));
+
+  expect(screen.getByRole('heading', { name: en.checkout.soldOutRefundTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.soldOutNothingChargedBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.soldOutRefundBody)).toBeNull();
+});

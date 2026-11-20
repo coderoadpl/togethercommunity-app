@@ -315,6 +315,24 @@ it.each([
   expect(deps.tenants.findSettings).toHaveBeenCalledTimes(2);
 });
 
+it.each(['paid', 'partially_refunded', 'refunded'] as const)('reports a %s order cancelled because it sold out as cancelled without analytics or Meta conversion data', async (status) => {
+  const settings = { ...analyticsSettings, analyticsMetaCapiEnabled: true, analyticsMetaPixelId: '1234567890', privacyUrl: 'https://example.org/privacy' };
+  const deps = harness([{ ...capiPurchase, status, cancelReason: 'out_of_stock' }], settings);
+  const { metaCapi, findOrder } = capiDeps(deps);
+  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', { ...deps, metaCapi }, 'en')).toEqual({
+    ok: true, value: { status: 'cancelled', charged: true },
+  });
+  expect(findOrder).not.toHaveBeenCalled();
+  expect(deps.tenants.findSettings).not.toHaveBeenCalled();
+});
+
+it('reports an order cancelled because it sold out with nothing charged as not charged', async () => {
+  const deps = harness([{ ...capiPurchase, amountCents: 0, cancelReason: 'out_of_stock' }], analyticsSettings);
+  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps, 'en')).toEqual({
+    ok: true, value: { status: 'cancelled', charged: false },
+  });
+});
+
 describe('checkout session shop return address', () => {
   const shopSettings = tenantSettingsSchema.parse({
     name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, checkoutReturnOrigins: ['https://shop.example.test'],

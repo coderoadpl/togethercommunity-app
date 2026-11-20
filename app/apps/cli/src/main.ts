@@ -78,7 +78,7 @@ import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
-import { emit } from './output.js';
+import { emit, orderStatusLabel } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
@@ -2039,7 +2039,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${orderStatusLabel(order)}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),

@@ -126,6 +126,20 @@ describe('listMyProducts', () => {
     expect(products.findByIds).toHaveBeenCalledWith('t-acme', [physical.id]);
   });
 
+  it('does not list the physical lines of an order cancelled because it sold out', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const orders = { listForMember: async () => [{
+      mode: 'live' as const, id: 'order-cancelled', tenantId: 't-acme', memberId: 'm1', productId: physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null, cancelReason: 'out_of_stock' as const,
+      lines: [{ productId: physical.id, name: physical.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 }],
+    }] };
+    expect(await listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock, orders, products: { findByIds: async () => [physical] },
+    })).toStrictEqual({ ok: true, value: [] });
+  });
+
   it('reports the units of a physical line above one and omits them for one unit', async () => {
     const physical: Product = { ...granted, type: 'physical', accessItems: [] };
     const single: Product = { ...physical, id: 'single-item' };

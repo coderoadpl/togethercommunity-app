@@ -38,6 +38,7 @@ const harness = vi.hoisted(() => {
     singleTenantMode: true,
     dispatchEmails: vi.fn(),
     dispatchAutoInvoices: vi.fn(),
+    dispatchOrderRefundJobs: vi.fn(async () => ({ ok: true, value: { processedCount: 0, outcomes: {} } })),
     releaseExpiredStockReservations: vi.fn(),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger', warn: vi.fn() },
@@ -206,6 +207,7 @@ describe('entry.node composition', () => {
       value: { processed: false, processedCount: 0, orderId: null },
     });
     harness.deps.releaseExpiredStockReservations.mockRejectedValueOnce(new Error('stock unavailable'));
+    harness.deps.dispatchOrderRefundJobs.mockRejectedValueOnce(new Error('refund jobs unavailable'));
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
 
@@ -236,6 +238,8 @@ describe('entry.node composition', () => {
     expect(harness.deps.releaseExpiredStockReservations).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(stderr).toHaveBeenCalledWith('[order-refund] ticker dispatch failed: refund jobs unavailable\n');
     expect(send).toHaveBeenCalledOnce();
     expect(events).toMatchObject([{ transactionId: 'purchase', status: 'sent', fbtraceId: 'trace' }]);
     expect(pending).toBe(false);
@@ -250,6 +254,43 @@ describe('entry.node composition', () => {
     expect(stderr).toHaveBeenCalledWith(
       '[email-outbox] ticker dispatch failed: outbox unavailable\n',
     );
+  });
+
+  it('starts order refund dispatch on the minute ticker only after e-mail dispatch has finished and Meta conversions only after the refunds', async () => {
+    vi.useFakeTimers();
+    harness.env.NODE_ENV = 'production';
+    let finishEmails = (): void => undefined;
+    let finishRefunds = (): void => undefined;
+    const listDueTenantIds = vi.fn(async () => []);
+    harness.deps.dispatchEmails.mockImplementationOnce(() => new Promise((resolve) => {
+      finishEmails = () => { resolve({ ok: true, value: undefined }); };
+    }));
+    harness.deps.dispatchOrderRefundJobs.mockImplementationOnce(() => new Promise((resolve) => {
+      finishRefunds = () => { resolve({ ok: true, value: { processedCount: 0, outcomes: {} } }); };
+    }));
+    harness.deps.metaCapi = {
+      clock: { nowIso: () => '2026-11-01T10:00:00.000Z' }, hash: { sha256: () => 'a'.repeat(64) },
+      directory: { listAll: async () => [] }, tenants: { findSettings: async () => null }, secrets: { resolve: async () => ok('test-token') },
+      gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listMemberConsents: async () => [], listDueTenantIds,
+        listEvents: async () => [], processNext: async () => false },
+    };
+    harness.deps.dispatchAutoInvoices.mockResolvedValue({ ok: true, value: undefined });
+    harness.deps.releaseExpiredStockReservations.mockResolvedValue(undefined);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await importEntry();
+    await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
+    expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(harness.deps.dispatchOrderRefundJobs).not.toHaveBeenCalled();
+    expect(listDueTenantIds).not.toHaveBeenCalled();
+    finishEmails();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(listDueTenantIds).not.toHaveBeenCalled();
+    finishRefunds();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listDueTenantIds).toHaveBeenCalledOnce();
   });
 
   it('waits for an in-flight Meta conversion tick when the tickers stop', async () => {

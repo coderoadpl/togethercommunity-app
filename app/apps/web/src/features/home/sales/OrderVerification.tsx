@@ -5,6 +5,7 @@ import { SectionCard } from '../../../components/layout/index.js';
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
+import { OrderCancelledChip } from './OrderCancelledChip.js';
 
 export const OrderVerificationLookup = ({ initialReference = '', onFind }: {
   initialReference?: string;
@@ -33,6 +34,7 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
   const t = useTranslations();
   const { language } = useLanguage();
   const paid = order.status === 'paid';
+  const cancelled = order.cancelReason != null;
   const paidAt = order.paidAt ?? (paid ? order.createdAt : null);
   const lines = order.lines ?? [];
   return <Stack spacing={3} data-testid="order-verification">
@@ -40,6 +42,7 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
       <Stack direction="row" spacing={1}>
         <Chip label={t.sales[order.status]} color={paid ? 'success' : 'warning'} />
         {order.mode === 'test' ? <Chip label={t.sales.testChip} /> : null}
+        <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
       </Stack>
       <Typography>{t.sales.placed}: {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}</Typography>
       <Typography>{t.sales.paid}: {paidAt === null ? '—' : formatDateTime(paidAt, language, SALES_LINK_TIME_ZONE)}</Typography>
@@ -52,11 +55,12 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
       <OfferLines lines={lines} currency={order.currency} lineName={orderLineLabel} />
     </SectionCard>
     {!paid ? <Alert severity="warning">{t.orderVerification.unpaidHelp}</Alert> : null}
+    {paid && cancelled ? <Alert severity="error">{t.orderVerification.cancelledHelp}</Alert> : null}
     {lines.filter((line) => line.productType === 'physical').map((line) => <SectionCard key={line.productId} title={line.name}>
       <Typography variant="h3">{t.orderVerification.issued({ count: line.issuedCount ?? 0, quantity: orderLineQuantity(line) })}</Typography>
       {line.issuedAt == null ? null : <Typography>{t.orderVerification.firstIssued}: {formatDateTime(line.issuedAt, language)}</Typography>}
       {line.issuedByDisplayName == null ? null : <Typography color="text.secondary">{t.orderVerification.staff}: {line.issuedByDisplayName}</Typography>}
-      {canIssue && paid && line.issuedCount !== null && line.issuedCount < orderLineQuantity(line) ? <Button variant="contained" disabled={pending} onClick={() => onIssue(line.productId)}>{pending ? t.orderVerification.issuing : t.orderVerification.markIssued}</Button> : null}
+      {canIssue && paid && !cancelled && line.issuedCount !== null && line.issuedCount < orderLineQuantity(line) ? <Button variant="contained" disabled={pending} onClick={() => onIssue(line.productId)}>{pending ? t.orderVerification.issuing : t.orderVerification.markIssued}</Button> : null}
     </SectionCard>)}
   </Stack>;
 };

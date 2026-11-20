@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 
-import { appError, err, MAX_STOCK_QUANTITY, mergeStockQuantities, notFound, ok, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel, type StockQuantity } from '#core/domain/index.js';
+import { appError, err, MAX_STOCK_QUANTITY, mergeStockQuantities, notFound, ok, shortLateCommitProductIds, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel, type StockQuantity } from '#core/domain/index.js';
 import type { StockRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -141,6 +141,22 @@ export const orderCommitLookup = (executor: Pick<Executor, 'select'>, tenantId: 
 const orderAlreadyCommitted = async (tx: Executor, tenantId: string, productId: string, orderId: string): Promise<boolean> => {
   const [row] = await orderCommitLookup(tx, tenantId, productId, orderId);
   return row !== undefined;
+};
+
+const lockCommitScope = async (tx: Executor, tenantId: string, input: { checkoutSnapshotId: string | null; items: readonly StockQuantity[] }) => {
+  const items = lockOrderedQuantities(input.items);
+  const reservations = input.checkoutSnapshotId === null
+    ? []
+    : await tx.select().from(stockReservations)
+      .where(and(eq(stockReservations.tenantId, tenantId), eq(stockReservations.checkoutSnapshotId, input.checkoutSnapshotId)))
+      .orderBy(asc(stockReservations.productId))
+      .for('update');
+  const levels = new Map<string, StockRow>();
+  for (const productId of sortedUnique([...reservations.map((reservation) => reservation.productId), ...items.map((item) => item.productId)])) {
+    const row = await lockStock(tx, tenantId, productId);
+    if (row !== null) levels.set(productId, row);
+  }
+  return { items, reservations, levels };
 };
 
 const unchanged = async (tx: Executor, tenantId: string, productId: string): Promise<StockCommitEffect | null> => {
@@ -289,19 +305,14 @@ export const createStockRepository = (db: Db): StockRepository => ({
     return released;
   }),
 
+  lockForCommit: async (tenantId, input) => db.transaction(async (tx) => {
+    const { items, reservations, levels } = await lockCommitScope(tx, tenantId, input);
+    return { trackedProductIds: [...levels.keys()], shortProductIds: shortLateCommitProductIds(items, reservations, [...levels.values()]) };
+  }),
+
   commit: async (tenantId, input) => db.transaction(async (tx) => {
     const effects: StockCommitEffect[] = [];
-    const items = lockOrderedQuantities(input.items);
-    const reservations = input.checkoutSnapshotId === null
-      ? []
-      : await tx.select().from(stockReservations)
-        .where(and(eq(stockReservations.tenantId, tenantId), eq(stockReservations.checkoutSnapshotId, input.checkoutSnapshotId)))
-        .orderBy(asc(stockReservations.productId))
-        .for('update');
-    const tracked = new Set<string>();
-    for (const productId of sortedUnique([...reservations.map((reservation) => reservation.productId), ...items.map((item) => item.productId)])) {
-      if (await lockStock(tx, tenantId, productId) !== null) tracked.add(productId);
-    }
+    const { items, reservations, levels: tracked } = await lockCommitScope(tx, tenantId, input);
     const reference = (reservationId?: string): StockEventReference => ({
       ...(input.checkoutSnapshotId === null ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
       orderId: input.orderId,

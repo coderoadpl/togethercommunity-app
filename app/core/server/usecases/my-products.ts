@@ -149,7 +149,7 @@ export const listMyProducts = async (
     const orders = await deps.orders.listForMember(tenantId, memberId);
     const newestOrder = new Map<string, OrderListItem>();
     for (const order of orders) {
-      if (order.mode !== 'live' || (order.status !== 'paid' && order.status !== 'partially_refunded')) continue;
+      if (order.mode !== 'live' || order.cancelReason != null || (order.status !== 'paid' && order.status !== 'partially_refunded')) continue;
       for (const line of order.lines ?? []) {
         if (line.productType !== 'physical') continue;
         const current = newestOrder.get(line.productId);

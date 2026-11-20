@@ -6,6 +6,7 @@ import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
+import type { OrderRefundAlert } from './order-refund-job.js';
 import { currencySchema, productTypeSchema } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
@@ -620,6 +621,97 @@ export const stockLowEmail = (
     oversold: input.oversold,
     studioUrl: input.studioUrl,
     studioUrlHtml: escapeHtml(input.studioUrl),
+  }));
+};
+
+export const orderOutOfStockEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    buyerEmail: string;
+    amountCents: number;
+    currency: string;
+    productTitles: readonly string[];
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const productTitles = input.productTitles.join(', ');
+  return emailMessageSchema.parse(transactionalMessages[resolvedLanguage].orderOutOfStockEmail.render({
+    tenantName: input.tenantName,
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    buyerEmail: input.buyerEmail,
+    buyerEmailHtml: escapeHtml(input.buyerEmail),
+    refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,
+    productTitles,
+    productTitlesHtml: escapeHtml(productTitles),
+    orderUrl: input.orderUrl,
+    orderUrlHtml: escapeHtml(input.orderUrl),
+  }));
+};
+
+export const orderSoldOutRefundEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    productTitles: readonly string[];
+    shopUrl: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const productTitles = input.productTitles.join(', ');
+  return emailMessageSchema.parse(messages.orderSoldOutRefundEmail.render({
+    header: brandHeader(input.branding),
+    socialLinks: brandSocialLinks(input.branding),
+    tenantName: input.tenantName,
+    tenantNameHtml: escapeHtml(input.tenantName),
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    productTitles,
+    productTitlesHtml: escapeHtml(productTitles),
+    refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,
+    shopUrl: input.shopUrl,
+    shopLink: link(input.shopUrl, messages.orderSoldOutRefundEmail.shopLabel),
+  }));
+};
+
+export const orderRefundAlertEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    alert: OrderRefundAlert;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    error: string;
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  return emailMessageSchema.parse(transactionalMessages[resolvedLanguage].orderRefundAlertEmail.render({
+    tenantName: input.tenantName,
+    alert: input.alert,
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    amount,
+    amountHtml: escapeHtml(amount),
+    error: input.error,
+    errorHtml: escapeHtml(input.error),
+    orderUrl: input.orderUrl,
+    orderUrlHtml: escapeHtml(input.orderUrl),
   }));
 };
 

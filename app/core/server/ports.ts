@@ -169,6 +169,9 @@ import type {
   StripeSubscriptionSnapshot,
   StripeMode,
   StripePermissionCheck,
+  ProviderRefund,
+  OrderRefundJob,
+  ClaimedOrderRefundJob,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
@@ -1267,6 +1270,24 @@ export interface PaymentProvider {
     providerSubscriptionId: string;
     idempotencyKey: string;
   }): Promise<Result<{ canceled: true; alreadySettled: boolean }, AppError>>;
+  createRefund?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+    metadata: { orderId: string; reason: 'out_of_stock' };
+  }): Promise<Result<ProviderRefund, AppError>>;
+  getRefund?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    refundId: string;
+  }): Promise<Result<ProviderRefund, AppError>>;
+  listRefunds?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+  }): Promise<Result<ProviderRefund[], AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
     mode: 'live' | 'test';
@@ -1401,6 +1422,24 @@ export interface AutoInvoiceJobRepository {
     input: { nextAttemptAt: string; error: string },
   ): Promise<void>;
   complete(tenantId: string, jobId: string): Promise<void>;
+}
+
+export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
+  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt' | 'transientFailureStreak'>>;
+
+export interface OrderRefundJobRepository {
+  enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
+  findByOrderId(tenantId: string, orderId: string): Promise<OrderRefundJob | null>;
+  claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedOrderRefundJob | null>;
+  countDue(input: { now: string }): Promise<number>;
+  release(
+    tenantId: string,
+    jobId: string,
+    lease: ClaimedOrderRefundJob['lease'],
+    update: OrderRefundJobUpdate & { now: string },
+    staffAlerts?: readonly EmailOutboxEnqueueInput[],
+  ): Promise<OrderRefundJob | null>;
+  noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
 }
 
 export interface KsefCredentials {
@@ -1876,8 +1915,19 @@ export interface EmailOutboxItem {
   tenantTransportRequired: boolean;
 }
 
+export interface EmailOutboxEnqueueInput {
+  id: string;
+  tenantId: string | null;
+  to: string;
+  payload: EmailOutboxPayload;
+  now: string;
+  sourceApp?: string | null;
+  tenantTransportRequired?: boolean;
+  onConflict?: 'keep-existing';
+}
+
 export interface EmailOutboxRepository {
-  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean; onConflict?: 'keep-existing' }): Promise<Result<{ id: string }, AppError>>;
+  enqueue(input: EmailOutboxEnqueueInput): Promise<Result<{ id: string }, AppError>>;
   claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
   markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>>;
   markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>>;
@@ -1937,6 +1987,7 @@ export interface PaymentTransactionPort {
       couponRedemptions: CouponRedemptionRepository;
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
+      orderRefundJobs: OrderRefundJobRepository;
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;

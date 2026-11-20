@@ -271,6 +271,16 @@ describe('checkEntitlements', () => {
     expect((await checkOne(h, { email: ADA.email })).products[0]).toEqual({ productId: 'prod-pro', access: true, source, subscription: null, checkedAt: NOW });
   });
 
+  it('names an open-ended purchase next to an old cancelled subscription a purchase without the subscription', async () => {
+    const h = harness({
+      accounts: [ADA],
+      members: [member('m-ada', ADA.userId)],
+      grants: [grant('m-ada', 'prod-pro', { expiresAt: null })],
+      subscriptions: [subscription('m-ada', 'prod-pro', { status: 'canceled', currentPeriodEnd: '2026-03-01T00:00:00.000Z' })],
+    });
+    expect((await checkOne(h, { email: ADA.email })).products).toEqual([{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: NOW }]);
+  });
+
   it('ignores test-mode grants and subscriptions', async () => {
     const h = harness({
       accounts: [ADA],

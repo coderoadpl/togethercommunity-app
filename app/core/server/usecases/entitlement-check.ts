@@ -84,11 +84,13 @@ const productEntitlement = (
 ): ProductEntitlement => {
   const grant = lookup.grants.find((candidate) => candidate.productId === productId);
   const subscription = newestSubscriptionFor(productId, lookup.subscriptions);
-  const reportsSubscription = subscription !== null && (grant !== undefined || readsMembers);
+  // A subscription keeps its grant window moving, so an open-ended grant next to an old subscription is a one-time purchase.
+  const backedBySubscription = subscription !== null && grant !== undefined && grant.expiresAt !== null;
+  const reportsSubscription = subscription !== null && (backedBySubscription || readsMembers);
   return {
     productId,
     access: grant !== undefined,
-    source: grant === undefined ? null : entitlementSourceOf(grant.source, subscription !== null),
+    source: grant === undefined ? null : entitlementSourceOf(grant.source, backedBySubscription),
     subscription: reportsSubscription
       ? { status: subscription.status, currentPeriodEnd: subscription.currentPeriodEnd, cancelAtPeriodEnd: subscription.cancelAtPeriodEnd }
       : null,

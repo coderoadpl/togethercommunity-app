@@ -109,7 +109,7 @@ export const claimEntitlementKeyRateLimit = async (
   tenantId: string,
   weight: number,
   deps: Pick<EntitlementKeyAuthDeps, 'entitlementKeyRateLimits' | 'clock'>,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<() => Promise<void>, AppError>> => {
   const now = deps.clock.nowIso();
   const [minute, day] = ENTITLEMENT_KEY_RATE_LIMITS;
   const minuteStartedAt = windowStartedAt(now, minute);
@@ -119,7 +119,10 @@ export const claimEntitlementKeyRateLimit = async (
     return err(rateLimited(minute, minuteStartedAt, now));
   }
   if (await limits.claim(tenantId, { apiKeyId, period: day.period, windowStartedAt: dayStartedAt, limit: day.limit, weight })) {
-    return ok(undefined);
+    return ok(async () => {
+      await limits.release(tenantId, { apiKeyId, period: minute.period, windowStartedAt: minuteStartedAt, weight });
+      await limits.release(tenantId, { apiKeyId, period: day.period, windowStartedAt: dayStartedAt, weight });
+    });
   }
   await limits.release(tenantId, { apiKeyId, period: minute.period, windowStartedAt: minuteStartedAt, weight });
   return err(rateLimited(day, dayStartedAt, now));

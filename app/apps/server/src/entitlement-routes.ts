@@ -80,6 +80,7 @@ const checkRoute = async (c: Context<AppVars>, deps: EntitlementRouteDeps): Prom
     return false;
   });
   if (!recorded) {
+    await limited.value();
     return respond(
       err(unavailable('The key history is unavailable; nothing was checked, retry the request')),
       { headers: { 'retry-after': String(HISTORY_RETRY_AFTER_SECONDS) } },

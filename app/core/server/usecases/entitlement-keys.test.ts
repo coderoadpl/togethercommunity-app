@@ -126,6 +126,14 @@ describe('claimEntitlementKeyRateLimit', () => {
     expect(h.rateLimits.count('minute')).toBe(300);
     expect(h.rateLimits.count('day')).toBe(300);
   });
+
+  it('gives back both windows when the claimed request is not answered', async () => {
+    const h = authHarness();
+    const claimed = await claimEntitlementKeyRateLimit('ek-1', TENANT.id, 25, h.deps);
+    if (!claimed.ok) throw new Error(claimed.error.message);
+    await claimed.value();
+    expect([h.rateLimits.count('minute'), h.rateLimits.count('day')]).toEqual([0, 0]);
+  });
 });
 
 const ownerIdentity: Identity = {

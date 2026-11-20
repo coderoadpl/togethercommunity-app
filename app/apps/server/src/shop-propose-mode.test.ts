@@ -70,7 +70,6 @@ let deps: ReturnType<typeof createDeps>;
 let ownerToken: string;
 let ownerId: string;
 let adminToken: string;
-let ownerId: string;
 
 const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal(true), data: schema });
 const errorOf = async (response: Response) =>

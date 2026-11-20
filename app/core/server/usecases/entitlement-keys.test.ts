@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EntitlementKey, Identity, Membership, ShopManagementKeyEvent, StaffRole, Tenant } from '#core/domain/index.js';
+import { createEntitlementKeyInputSchema, type EntitlementKey, type Identity, type Membership, type ShopManagementKeyEvent, type StaffRole, type Tenant } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { AccountIdentity, EntitlementKeyRateLimitRepository } from '../ports.js';
@@ -228,7 +228,8 @@ describe('entitlement key issuance', () => {
     const h = issueHarness();
     const created = await createEntitlementKey(ownerCtx, { name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS, match: 'purchase-email' }, h.deps);
     expect(created).toMatchObject({ ok: true, value: { apiKey: { match: 'purchase-email' } } });
-    expect(await createEntitlementKey(ownerCtx, { name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS, match: 'any' as 'verified' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(createEntitlementKeyInputSchema.safeParse({ name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS, match: 'any' }).success).toBe(false);
+    expect(createEntitlementKeyInputSchema.parse({ name: 'x', scopes: ['entitlements:check'], expiresAt: IN_30_DAYS }).match).toBe('verified');
   });
 
   it('refuses issuance while the deployment switch is off', async () => {

@@ -49,12 +49,11 @@ let directory: string;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'together-entitlement-cli-'));
-  process.env[DEFAULT_ENTITLEMENT_KEY_ENV] = 'entitlement-secret';
+  vi.stubEnv(DEFAULT_ENTITLEMENT_KEY_ENV, 'entitlement-secret');
 });
 
 afterEach(async () => {
-  delete process.env[DEFAULT_ENTITLEMENT_KEY_ENV];
-  delete process.env['OTHER_KEY'];
+  vi.unstubAllEnvs();
   process.exitCode = undefined;
   await rm(directory, { recursive: true, force: true });
 });
@@ -72,9 +71,9 @@ describe('runEntitlementCheck', () => {
   });
 
   it('reads the key from a named environment variable and refuses to run without one', async () => {
-    process.env['OTHER_KEY'] = 'other-secret';
+    vi.stubEnv('OTHER_KEY', 'other-secret');
     expect((await run({ email: ['ada@example.test'], apiKeyEnv: 'OTHER_KEY' })).calls[0]?.options.apiKey).toBe('other-secret');
-    delete process.env[DEFAULT_ENTITLEMENT_KEY_ENV];
+    vi.stubEnv(DEFAULT_ENTITLEMENT_KEY_ENV, '');
     const refused = await run({ email: ['ada@example.test'] });
     expect(refused.calls).toEqual([]);
     expect(refused.printed).toContain(DEFAULT_ENTITLEMENT_KEY_ENV);

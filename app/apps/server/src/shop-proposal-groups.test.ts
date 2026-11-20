@@ -558,7 +558,7 @@ describe('busy answers of the proposal decision routes', () => {
     body: JSON.stringify(body),
   });
 
-  const whileLocked = async (statement: string, work: () => Promise<Response>): Promise<Response> => {
+  const whileLocked = async (statement: string, work: () => Response | Promise<Response>): Promise<Response> => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => { release = resolve; });
     let locked: () => void = () => undefined;

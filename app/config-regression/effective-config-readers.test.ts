@@ -55,7 +55,7 @@ const ALLOWED_DIRECT_READERS: Readonly<Record<string, { calls: number; reason: s
   },
   'core/server/usecases/invoices.ts tenantSecrets.findByKey': { calls: 2, reason: O10 },
   'core/server/usecases/shipx.ts tenantSecrets.findByKey': { calls: 1, reason: O13 },
-  'core/server/usecases/shipx.ts tenantSecrets.listByTenant': { calls: 2, reason: O13 },
+  'core/server/usecases/shipx.ts tenantSecrets.listByTenant': { calls: 1, reason: O13 },
   'core/server/usecases/marketing-management.ts secrets.listByTenant': { calls: 2, reason: O14 },
   'core/server/usecases/deep-health.ts tenantSecrets.listByTenant': {
     calls: 1,
@@ -63,7 +63,6 @@ const ALLOWED_DIRECT_READERS: Readonly<Record<string, { calls: number; reason: s
   },
   'core/server/usecases/invoices.ts tenants.findSettings': { calls: 4, reason: O10 },
   'core/server/usecases/tenant-setup-readiness.ts tenants.findSettings': { calls: 1, reason: O10 },
-  'core/server/usecases/shipx.ts shipxSettings.find': { calls: 1, reason: O13 },
   'core/server/usecases/marketing-email.ts sesSettings.findByTenant': { calls: 5, reason: O14 },
   'core/server/usecases/marketing-management.ts settings.findByTenant': { calls: 2, reason: O14 },
   'core/server/usecases/marketing-ses-onboarding.ts settings.findByTenant': { calls: 3, reason: O14 },

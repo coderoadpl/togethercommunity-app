@@ -211,6 +211,9 @@ export const ORGANIZATION_SECRET_GROUP: Readonly<Record<OrganizationSecretKey, C
 
 export const CONFIG_GROUP_POLICY: Readonly<Record<TenantSecretKey, ConfigGroup | 'workspace'>> = {
   ...ORGANIZATION_SECRET_GROUP,
+  // ShipX credentials are per environment and fall back field by field to the single-connection rows, so an inherited value could share a connection with a workspace value.
+  'shipx.organizationId': 'workspace',
+  'shipx.token': 'workspace',
   analyticsMetaCapiAccessToken: 'workspace',
   'stripe.webhookSecret': 'workspace',
   'stripe.webhookEndpointId': 'workspace',
@@ -222,6 +225,10 @@ export const CONFIG_GROUP_POLICY: Readonly<Record<TenantSecretKey, ConfigGroup |
   's3.accessKeyId': 'workspace',
   's3.secretAccessKey': 'workspace',
   's3.configuration': 'workspace',
+  'shipx.sandbox.organizationId': 'workspace',
+  'shipx.sandbox.token': 'workspace',
+  'shipx.production.organizationId': 'workspace',
+  'shipx.production.token': 'workspace',
 };
 
 export const NEVER_INHERIT_SECRET_KEYS: readonly TenantSecretKey[] = tenantSecretKeySchema.options

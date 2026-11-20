@@ -878,7 +878,8 @@ describe('shop management keys next to an organization of two workspaces', () =>
 
     const shipx = shopIntegrationContracts.shipxSettings.output.parse(z.object({ ok: z.literal(true), data: z.unknown() })
       .parse(JSON.parse(await bodyOf(await keyed(SHOP_INTEGRATION_ROUTES.shipxSettings.path, 'GET'), 200))).data);
-    expect(shipx.token).toBeNull();
+    expect(shipx.sandbox.token).toBeNull();
+    expect(shipx.production.token).toBeNull();
 
     await bodyOf(await keyed(SHOP_INTEGRATION_ROUTES.setSecret.path, 'POST', { key: 'ifirma.invoiceApiKey', value: 'workspace-ifirma-key-mnrt' }), 200);
     expect(await workspaceKeys()).toContain('ifirma.invoiceApiKey');

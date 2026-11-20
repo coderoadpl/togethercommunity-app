@@ -58,6 +58,10 @@ describe('organization secret allow-list', () => {
       's3.accessKeyId',
       's3.configuration',
       's3.secretAccessKey',
+      'shipx.production.organizationId',
+      'shipx.production.token',
+      'shipx.sandbox.organizationId',
+      'shipx.sandbox.token',
       'stripe.testLastEventAt',
       'stripe.testWebhookEndpointId',
       'stripe.testWebhookSecret',
@@ -120,6 +124,10 @@ describe('configuration group policy', () => {
     's3.accessKeyId': 'workspace',
     's3.secretAccessKey': 'workspace',
     's3.configuration': 'workspace',
+    'shipx.sandbox.organizationId': 'workspace',
+    'shipx.sandbox.token': 'workspace',
+    'shipx.production.organizationId': 'workspace',
+    'shipx.production.token': 'workspace',
     'telemetry.mongodb': 'telemetry',
     'ses.accessKeyId': 'email_transport',
     'ses.secretAccessKey': 'email_transport',
@@ -136,8 +144,8 @@ describe('configuration group policy', () => {
     'ksef.contextNip': 'invoicing',
     'ksef.test.token': 'invoicing',
     'ksef.test.contextNip': 'invoicing',
-    'shipx.organizationId': 'shipping_carrier',
-    'shipx.token': 'shipping_carrier',
+    'shipx.organizationId': 'workspace',
+    'shipx.token': 'workspace',
   };
 
   it('classifies every workspace secret key, so a new key fails until it is classified', () => {
@@ -159,12 +167,15 @@ describe('configuration group policy', () => {
     );
   });
 
-  it('inherits exactly the organization allow-list, each key through its group', () => {
+  it('inherits exactly the organization allow-list except the ShipX credentials, each key through its group', () => {
+    const storedOnly: readonly string[] = ['shipx.organizationId', 'shipx.token'];
     const inheritable = tenantSecretKeySchema.options.filter((key) => CONFIG_GROUP_POLICY[key] !== 'workspace');
-    expect(inheritable.toSorted()).toEqual([...organizationSecretKeySchema.options].toSorted());
-    for (const key of organizationSecretKeySchema.options) {
+    expect(inheritable.toSorted()).toEqual(organizationSecretKeySchema.options.filter((key) => !storedOnly.includes(key)).toSorted());
+    expect(tenantSecretKeySchema.options.filter((key) => key.startsWith('shipx.')).map((key) => CONFIG_GROUP_POLICY[key]))
+      .toEqual(tenantSecretKeySchema.options.filter((key) => key.startsWith('shipx.')).map(() => 'workspace'));
+    for (const key of organizationSecretKeySchema.options.filter((candidate) => !storedOnly.includes(candidate))) {
       expect(CONFIG_GROUP_POLICY[key]).toBe(ORGANIZATION_SECRET_GROUP[key]);
     }
-    expect(NEVER_INHERIT_SECRET_KEYS.filter((key) => organizationSecretKeySchema.safeParse(key).success)).toEqual([]);
+    expect(NEVER_INHERIT_SECRET_KEYS.filter((key) => organizationSecretKeySchema.safeParse(key).success)).toEqual(['shipx.organizationId', 'shipx.token']);
   });
 });

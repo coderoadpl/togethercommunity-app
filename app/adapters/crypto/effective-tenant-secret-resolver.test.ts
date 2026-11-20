@@ -50,8 +50,11 @@ describe('createEffectiveTenantSecretResolver', () => {
     const resolver = createEffectiveTenantSecretResolver(
       workspaceSecrets, readerFor(allGroups, new Set(organizationSecretKeySchema.options)), crypto,
     );
-    for (const key of organizationSecretKeySchema.options) {
+    for (const key of organizationSecretKeySchema.options.filter((candidate) => !candidate.startsWith('shipx.'))) {
       expect(await resolver.resolve('acme', key)).toEqual(ok(`decrypted:org:${key}`));
+    }
+    for (const key of organizationSecretKeySchema.options.filter((candidate) => candidate.startsWith('shipx.'))) {
+      expect(await resolver.resolve('acme', key)).toEqual(await workspaceSecrets.resolve('acme', key));
     }
   });
 

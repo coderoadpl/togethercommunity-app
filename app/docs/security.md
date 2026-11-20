@@ -731,7 +731,7 @@ each value that connection has no row of; a connection row that cannot be
 decrypted never falls back to them, and an order of the other mode never reads
 them. Removing the credentials of that connection deletes the legacy rows as
 well (see
-[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). Each
+[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). None of these ShipX secrets is inherited from an organization: an organization may store ShipX credentials, but a workspace always reads its own, so one connection never combines an organization value with a workspace value. Each
 `order_shipments` row keeps a plain copy of the organization id it was created
 with (an identifier that also appears in every ShipX URL), so later calls for
 that shipment can refuse to run against another organization or another

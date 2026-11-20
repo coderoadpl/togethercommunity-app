@@ -178,8 +178,10 @@ list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
 in its last column) shows each key's mode. Revoking or purging a propose-mode
 key withdraws its pending, unexpired proposals in the same transaction.
 
-A receipt carries the submitted input, the target id and the status, never the
-effect or any live value. Whether a proposal is accepted or refused depends on
+A receipt carries the submitted input, the target id and the status, and after
+an approval the id of the applied resource, which the key can already read with
+its read scope; it never carries the effect, a before value or the deciding
+account. Whether a proposal is accepted or refused depends on
 live state, so a propose-mode key always holds the read scope of the family it
 proposes in and learns nothing from a refused or accepted proposal that it
 could not read with that read scope. See [Change proposals](change-proposals.md) for the

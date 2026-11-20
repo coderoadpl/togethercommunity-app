@@ -544,8 +544,10 @@ scopes on every shop key.
   over every registered shop route and asserts that no live row changed. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
-  that never happens. The key's receipt never carries the effect or a live
-  value. Only the verified owner in their own session reads, approves and
+  that never happens. The key's receipt never carries the effect, a before
+  value or the deciding account; after an approval it names only the id of
+  the applied resource, which the key can already read with its read scope.
+  Only the verified owner in their own session reads, approves and
   rejects proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
   impersonating owner, a direct-mode key, a propose-mode key and a legacy key
   are refused. Proposals carry no foreign key to their key, so the history

@@ -2,7 +2,6 @@ import { err, forbidden, type AppError, type Result } from '#core/domain/index.j
 
 import type { Ctx } from './context.js';
 
-/** Passes only a verified owner acting in their own session: no impersonation, no key and no capability subset. */
 export const ownerSessionTenant = (
   ctx: Ctx,
   tenant: Result<string, AppError>,

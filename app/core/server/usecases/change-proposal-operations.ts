@@ -40,7 +40,7 @@ import { adjustProductStock, enableProductStock, setProductStockThreshold } from
 
 type ChangeProposalSnapshot = ChangeProposalInput;
 
-/** What a live use-case may reach besides the transaction-bound repositories; storage deletes wait for COMMIT. */
+// The only deps that escape the transaction: ids and clock are pure, secretResolver only reads, storage deletes wait for COMMIT.
 export interface ChangeProposalRunDeps {
   ids: IdGenerator;
   clock: Clock;
@@ -54,7 +54,6 @@ interface PreparedChangeProposalOperation {
   target: ChangeProposalTarget;
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
-  /** Runs the live use-case and answers the id of the resource it changed or created. */
   run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
 }
 

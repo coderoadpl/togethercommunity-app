@@ -51,6 +51,8 @@ export interface PreparedChangeProposalOperation {
   target: ChangeProposalTarget;
   lockPurpose: ChangeProposalTargetLockPurpose;
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, resourceId: string | null): Promise<ChangeProposalSnapshot>;
+  /** Orders the snapshot's unordered collections by the id each entry finally carries, so it must run after any id replacement. */
+  canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
 }
@@ -70,6 +72,7 @@ interface ChangeProposalOperationDefinition<I> {
   target(input: I): ChangeProposalTarget;
   lockPurpose?: ChangeProposalTargetLockPurpose;
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, input: I, resourceId: string | null): Promise<ChangeProposalSnapshot>;
+  unorderedById?: readonly string[];
   effect?(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   run(ctx: Ctx, input: I, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
 }
@@ -161,7 +164,24 @@ const productSnapshot = async (
   });
 };
 
-const byId = <T extends { id: string }>(left: T, right: T): number => left.id.localeCompare(right.id);
+type SnapshotValue = ChangeProposalSnapshot[string];
+
+const entryId = (entry: SnapshotValue): string => {
+  if (entry !== null && typeof entry === 'object' && !Array.isArray(entry)) {
+    const id = entry['id'];
+    if (typeof id === 'string') return id;
+  }
+  return canonical(entry);
+};
+
+const sortedById = (snapshot: ChangeProposalSnapshot, fields: readonly string[]): ChangeProposalSnapshot => {
+  const sorted: ChangeProposalSnapshot = { ...snapshot };
+  for (const field of fields) {
+    const value = snapshot[field];
+    if (Array.isArray(value)) sorted[field] = value.toSorted((left, right) => entryId(left).localeCompare(entryId(right)));
+  }
+  return sorted;
+};
 
 const downloadFields = (asset: ProductDownloadAsset) => ({
   id: asset.id,
@@ -184,8 +204,8 @@ const productDeletionSnapshot = async (
   return toSnapshot({
     exists: true,
     ...productFields(product),
-    prices: [...prices].sort(byId).map((price) => ({ id: price.id, ...priceFields(price), active: price.active })),
-    downloads: [...downloads].sort(byId).map(downloadFields),
+    prices: prices.map((price) => ({ id: price.id, ...priceFields(price), active: price.active })),
+    downloads: downloads.map(downloadFields),
     stock: stock === null
       ? { tracked: false, onHand: null, reserved: null, lowStockThreshold: null }
       : { tracked: true, onHand: stock.onHand, reserved: stock.reserved, lowStockThreshold: stock.lowStockThreshold },
@@ -269,6 +289,7 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
     target: definition.target(input),
     lockPurpose: definition.lockPurpose ?? 'change',
     snapshot: (repositories, tenantId, resourceId) => definition.snapshot(repositories, tenantId, input, resourceId),
+    canonical: (snapshot) => sortedById(snapshot, definition.unorderedById ?? []),
     effect: definition.effect ?? changeProposalFieldDiff,
     run: (ctx, scope, deps) => definition.run(ctx, input, scope, deps),
   });
@@ -340,6 +361,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     target: (input) => ({ kind: 'product', id: input.productId }),
     lockPurpose: 'delete',
     snapshot: (repositories, tenantId, input) => productDeletionSnapshot(repositories, tenantId, input.productId),
+    unorderedById: ['prices', 'downloads'],
     run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await deleteProductDraft(ctx, input, {
       productDrafts: scope.repositories.productDrafts,
       storage: storageWithDeletesAfterCommit(deps.storage, scope.afterCommit, deps.logger),

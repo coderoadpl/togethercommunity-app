@@ -51,8 +51,11 @@ interface GroupItemContext {
   references: ChangeProposalGroupReferences;
 }
 
-const storedForm = (group: GroupItemContext | null, snapshot: ChangeProposalInput): ChangeProposalInput =>
-  group === null ? snapshot : group.references.referenceForm(snapshot);
+const storedForm = (
+  operation: PreparedChangeProposalOperation,
+  group: GroupItemContext | null,
+  snapshot: ChangeProposalInput,
+): ChangeProposalInput => operation.canonical(group === null ? snapshot : group.references.referenceForm(snapshot));
 
 const recordCreated = (group: GroupItemContext | null, resourceId: string | null): void => {
   if (group === null || resourceId === null || changeProposalCreatedKind(group.operation) === null) return;
@@ -68,11 +71,11 @@ export const previewChangeProposal = async (
   group: GroupItemContext | null,
 ): Promise<Result<ChangeProposalEffect, AppError>> => {
   await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
-  const before = storedForm(group, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
+  const before = storedForm(operation, group, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
   const ran = await operation.run(ctx, scope, deps);
   if (!ran.ok) return ran;
   recordCreated(group, ran.value);
-  const after = storedForm(group, await operation.snapshot(scope.repositories, tenantId, ran.value ?? operation.target.id));
+  const after = storedForm(operation, group, await operation.snapshot(scope.repositories, tenantId, ran.value ?? operation.target.id));
   return ok(operation.effect(before, after));
 };
 
@@ -114,14 +117,14 @@ export const applyLockedProposal = async (
   await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
   const at = deps.clock.nowIso();
   if (changeProposalExpired(proposal, at)) return { status: 'expired', at };
-  const before = storedForm(itemContext, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
+  const before = storedForm(operation, itemContext, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
   if (changeProposalTouchedFieldsMoved(proposal.effect, before)) return { status: 'stale', note: null, at };
   const effectChanged = appError('conflict', 'The live state changed since this change was proposed');
   const applied = await scope.savepoint(async (nested) => {
     const ran = await operation.run(ctx, nested, deps);
     if (!ran.ok) return ran;
     recordCreated(itemContext, ran.value);
-    const after = storedForm(itemContext, await operation.snapshot(nested.repositories, tenantId, ran.value ?? operation.target.id));
+    const after = storedForm(operation, itemContext, await operation.snapshot(nested.repositories, tenantId, ran.value ?? operation.target.id));
     return sameChangeProposalEffect(operation.effect(before, after), proposal.effect) ? ran : err(effectChanged);
   });
   if (applied.ok) return { status: 'applied', appliedResourceId: applied.value, at };

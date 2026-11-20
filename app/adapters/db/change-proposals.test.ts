@@ -146,13 +146,13 @@ describe('change proposal creation', () => {
     expect(await eventsOf('proposal-a')).toEqual([expect.objectContaining({ sequence: 1, kind: 'proposed', apiKeyId: 'key-propose' })]);
   });
 
-  it.each([
+  it.each<[string, Parameters<typeof storeKey>[0]]>([
     ['a direct-mode key', { mode: 'direct', scopes: ['shop:catalog:write'] }],
     ['a revoked key', { revokedAt: CREATED }],
     ['an expired key', { expiresAt: NOW }],
-  ] as const)('refuses a proposal from %s', async (_label, overrides) => {
+  ])('refuses a proposal from %s', async (_label, overrides) => {
     await database.db.delete(shopManagementKeys);
-    await storeKey({ ...overrides });
+    await storeKey(overrides);
     expect(await repo().create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'key_inactive' });
     expect(await database.db.select().from(changeProposals)).toEqual([]);
   });

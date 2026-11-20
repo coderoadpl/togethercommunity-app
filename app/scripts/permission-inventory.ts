@@ -75,6 +75,7 @@ const authenticated = ['authenticated'] as const;
 const platformOwner = ['platform-owner'] as const;
 const shopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] as const;
 const directShopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL] as const;
+const proposeShopManagementKey = [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
@@ -95,8 +96,8 @@ const effectiveAfter = (
 ): readonly InventoryPrincipal[] => {
   const holders: readonly InventoryPrincipal[] = [
     ...principalsForCapability(capability),
-    ...(shopManagementKeyHolds(capability, 'direct') ? [SHOP_MANAGEMENT_KEY_PRINCIPAL] : []),
-    ...(shopManagementKeyHolds(capability, 'propose') ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] : []),
+    ...(shopManagementKeyHolds(capability, 'direct') ? directShopManagementKey : []),
+    ...(shopManagementKeyHolds(capability, 'propose') ? proposeShopManagementKey : []),
   ];
   return before.filter((principal) => holders.includes(principal));
 };

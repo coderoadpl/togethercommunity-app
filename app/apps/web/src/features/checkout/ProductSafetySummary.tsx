@@ -1,12 +1,12 @@
 import { Box, Link, Stack, Typography } from '@mui/material';
-import { useId, useState, type ReactNode } from 'react';
+import { Fragment, useId, useState, type ReactNode } from 'react';
 
 import type { PublicProductCompliance } from '#core/domain/index.js';
 
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { useTranslations } from '../../i18n/index.js';
-import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetyWarnings } from '../../theme.js';
+import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyLastPart, CheckoutSafetyPart, CheckoutSafetySection, CheckoutSafetySeparator, CheckoutSafetyWarnings } from '../../theme.js';
 
 type SafetyEntry = { productId: string; title: string; compliance: PublicProductCompliance };
 
@@ -57,29 +57,34 @@ const ProductDetails = ({ entry, titled }: { entry: SafetyEntry; titled: boolean
   );
 };
 
-const ManufacturerLine = ({ group, countProducts, titled }: { group: SafetyGroup; countProducts: boolean; titled: boolean }) => {
+const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group: SafetyGroup; countProducts: boolean; titled: boolean; emphasised: boolean }) => {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const parts = [
+    <CheckoutSafetyPart key="name" emphasised={emphasised}>{group.manufacturerName}</CheckoutSafetyPart>,
+    <CheckoutSafetyPart key="address">{group.manufacturerAddress}</CheckoutSafetyPart>,
+    <CheckoutSafetyPart key="email"><Link href={`mailto:${group.manufacturerEmail}`} color="inherit">{group.manufacturerEmail}</Link></CheckoutSafetyPart>,
+    ...(countProducts ? [<CheckoutSafetyPart key="count">{t.productSafety.appliesTo({ count: group.entries.length })}</CheckoutSafetyPart>] : []),
+  ];
   return (
     <Box data-testid="product-safety-manufacturer">
       <Typography variant="body2" color="text.secondary">
-        <CheckoutSafetyPart>{group.manufacturerName}</CheckoutSafetyPart>{' · '}
-        <CheckoutSafetyPart>{group.manufacturerAddress}</CheckoutSafetyPart>{' · '}
-        <CheckoutSafetyPart><Link href={`mailto:${group.manufacturerEmail}`} color="inherit">{group.manufacturerEmail}</Link></CheckoutSafetyPart>
-        {countProducts ? <>{' · '}<CheckoutSafetyPart>{t.productSafety.appliesTo({ count: group.entries.length })}</CheckoutSafetyPart></> : null}
-        {' · '}
-        <CheckoutInlineToggle
-          type="button"
-          aria-expanded={open}
-          aria-controls={panelId}
-          aria-label={t.productSafety.detailsFor({ name: group.manufacturerName })}
-          onClick={() => setOpen((current) => !current)}
-          sx={{ minHeight: { xs: '2.75rem', sm: '1.75rem' }, verticalAlign: 'baseline' }}
-        >
-          {t.productSafety.details}
-          <ChevronDownIcon />
-        </CheckoutInlineToggle>
+        {parts.slice(0, -1).map((part) => <Fragment key={part.key}>{part}<CheckoutSafetySeparator>{' · '}</CheckoutSafetySeparator></Fragment>)}
+        <CheckoutSafetyLastPart>
+          {parts.at(-1)}
+          <CheckoutInlineToggle
+            type="button"
+            aria-expanded={open}
+            aria-controls={panelId}
+            aria-label={t.productSafety.detailsFor({ name: group.manufacturerName })}
+            onClick={() => setOpen((current) => !current)}
+            sx={{ minHeight: { xs: '2.75rem', sm: '1.75rem' } }}
+          >
+            {t.productSafety.details}
+            <ChevronDownIcon />
+          </CheckoutInlineToggle>
+        </CheckoutSafetyLastPart>
       </Typography>
       <Box id={panelId} hidden={!open} sx={{ pt: '0.5rem', pb: '0.25rem' }}>
         <Stack useFlexGap spacing="0.75rem">
@@ -98,9 +103,9 @@ export const ProductSafetySummary = ({ entries, multiProduct }: { entries: reado
   return (
     <CheckoutSafetySection aria-labelledby={headingId} data-testid="product-safety-info">
       <CheckoutSafetyHeading id={headingId} component="h2">{t.productSafety.offerHeading}</CheckoutSafetyHeading>
-      <Stack useFlexGap spacing="0.35rem" sx={{ mt: '0.25rem' }}>
+      <Stack useFlexGap spacing={groups.length > 1 ? '0.75rem' : '0.35rem'} sx={{ mt: '0.25rem' }}>
         {groups.map((group) => (
-          <ManufacturerLine key={group.key} group={group} countProducts={multiProduct} titled={multiProduct} />
+          <ManufacturerLine key={group.key} group={group} countProducts={multiProduct} titled={multiProduct} emphasised={groups.length > 1} />
         ))}
       </Stack>
     </CheckoutSafetySection>

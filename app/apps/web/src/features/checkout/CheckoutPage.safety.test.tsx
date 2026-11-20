@@ -72,6 +72,30 @@ describe('checkout product safety information', () => {
     expect(section.compareDocumentPosition(screen.getByTestId('checkout-pay-cta')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('stacks the manufacturer parts without separators on a phone and keeps the Details toggle with the last part', async () => {
+    serve([product('black', { compliance })]);
+    renderCheckout('stand-black');
+    const line = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
+    for (const part of ['Example Workshop', 'Example Street 1, Warsaw']) {
+      expect(within(line).getByText(exactly(part))).toHaveStyle({ display: 'block' });
+    }
+    const separators = within(line).getAllByText('·');
+    expect(separators).toHaveLength(2);
+    for (const separator of separators) expect(separator).toHaveStyle({ display: 'none' });
+    const toggle = within(line).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
+    expect(toggle.previousSibling).toBe(within(line).getByRole('link', { name: 'safety@example.com' }).closest('span'));
+  });
+
+  it('draws the focus ring of an inline toggle inside its own box, clear of the text beside it', async () => {
+    serve([product('black', { compliance })]);
+    renderCheckout('stand-black');
+    const section = await screen.findByTestId('product-safety-info');
+    const toggle = within(section).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
+    expect(toggle).toHaveStyle({ paddingLeft: '0.25rem', paddingRight: '0.25rem', marginLeft: '-0.25rem', marginRight: '-0.25rem' });
+    toggle.classList.add('Mui-focusVisible');
+    expect(toggle).toHaveStyle({ outlineOffset: '-2px' });
+  });
+
   it('shows the same compact line for other product types', async () => {
     serve([product('black', { type: 'digital_download', compliance })]);
     renderCheckout('stand-black');
@@ -157,6 +181,28 @@ describe('sales-link product safety information', () => {
     expect(within(lamp).getByText('LAMP-1')).toBeVisible();
     expect(within(lamp).getByText('shade').tagName).toBe('EM');
     expect(within(single).getByText('BOOK-1')).not.toBeVisible();
+  });
+
+  it('spaces several manufacturers apart and names each one in the primary text colour', async () => {
+    const other = { ...compliance, manufacturerName: 'Other Works', manufacturerEmail: 'hello@other.example' };
+    serveLink([line('black', 'Printed stand', 'physical', compliance), line('book', 'Printed book', 'physical', other)]);
+    renderLink();
+    const [first, second] = within(await screen.findByTestId('product-safety-info')).getAllByTestId('product-safety-manufacturer');
+    if (first === undefined || second === undefined) throw new Error('expected two manufacturer lines');
+    expect(first.parentElement).toBe(second.parentElement);
+    expect(first.parentElement).toHaveStyle({ gap: '0.75rem' });
+    const name = within(first).getByText(exactly('Example Workshop'));
+    const address = within(first).getByText(exactly('Example Street 1, Warsaw'));
+    expect(name).toHaveStyle({ fontWeight: '500' });
+    expect(getComputedStyle(name).color).not.toBe(getComputedStyle(address).color);
+  });
+
+  it('keeps a single manufacturer name in the line colour', async () => {
+    serveLink([line('black', 'Printed stand', 'physical', compliance)]);
+    renderLink();
+    const manufacturer = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
+    const name = within(manufacturer).getByText(exactly('Example Workshop'));
+    expect(getComputedStyle(name).color).toBe(getComputedStyle(within(manufacturer).getByText(exactly('Example Street 1, Warsaw'))).color);
   });
 });
 

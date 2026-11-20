@@ -2915,14 +2915,19 @@ export const CheckoutVariantGroup = styled(Box)(({ theme }) => ({
 export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
   gap: '0.2rem',
   minHeight: '2.75rem',
-  padding: 0,
+  paddingTop: 0,
+  paddingBottom: 0,
+  paddingLeft: '0.25rem',
+  paddingRight: '0.25rem',
+  marginLeft: '-0.25rem',
+  marginRight: '-0.25rem',
   borderRadius: theme.shape.borderRadius,
   fontFamily: theme.typography.fontFamily,
   fontSize: '0.875rem',
   fontWeight: 500,
   color: linkInk(theme),
   '&:hover': { textDecoration: 'underline' },
-  '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: '1px' },
+  '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: '-2px' },
   '& svg': { transition: 'transform 0.15s ease' },
   '&[aria-expanded="true"] svg': { transform: 'rotate(180deg)' },
 }));
@@ -2966,11 +2971,31 @@ export const CheckoutSafetyWarnings = styled(Box)(({ theme }) => ({
   '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
 }));
 
-export const CheckoutSafetyPart = styled('span')({
-  display: 'inline-block',
+export const CheckoutSafetyPart = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'emphasised',
+})<{ emphasised?: boolean }>(({ emphasised = false, theme }) => ({
+  display: 'block',
   maxWidth: '100%',
   overflowWrap: 'anywhere',
-});
+  ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
+  [theme.breakpoints.up('sm')]: { display: 'inline-block' },
+}));
+
+export const CheckoutSafetySeparator = styled('span')(({ theme }) => ({
+  display: 'none',
+  [theme.breakpoints.up('sm')]: { display: 'inline' },
+}));
+
+export const CheckoutSafetyLastPart = styled('span')(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'baseline',
+  columnGap: '0.5rem',
+  maxWidth: '100%',
+  [theme.breakpoints.up('sm')]: { display: 'inline-flex', flexWrap: 'nowrap', verticalAlign: 'baseline' },
+  '& > span': { minWidth: 0 },
+  '& > button': { flexShrink: 0 },
+}));
 
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',

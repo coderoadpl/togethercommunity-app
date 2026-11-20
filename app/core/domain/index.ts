@@ -27,6 +27,8 @@ export * from './import-audit.js';
 export * from './shop-management-key.js';
 export * from './shop-management-key-event.js';
 export * from './change-proposal.js';
+export * from './change-proposal-inputs.js';
+export * from './strict-input.js';
 export * from './import.js';
 export * from './course.js';
 export * from './lesson-links.js';

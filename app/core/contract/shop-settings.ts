@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { shopSettingsPatchSchema, shopSettingsSchema, type ShopManagementScope } from '#core/domain/index.js';
+import { shopSettingsSchema, strictInput, strictShopSettingsPatchInputSchema, type ShopManagementScope } from '#core/domain/index.js';
 
 import {
   imageAssetCompleteOutputSchema,
@@ -8,7 +8,6 @@ import {
   imageAssetUploadOutputSchema,
   imageAssetUploadRequestSchema,
 } from './routes.js';
-import { strictInput } from './strict-input.js';
 
 const READ = 'shop:settings:read' satisfies ShopManagementScope;
 const WRITE = 'shop:settings:write' satisfies ShopManagementScope;
@@ -24,7 +23,7 @@ const shopSettingsOutputSchema = z.object({ settings: shopSettingsSchema });
 
 export const shopSettingsContracts = {
   getSettings: { output: shopSettingsOutputSchema },
-  updateSettings: { input: strictInput(shopSettingsPatchSchema), output: shopSettingsOutputSchema },
+  updateSettings: { input: strictShopSettingsPatchInputSchema, output: shopSettingsOutputSchema },
   brandingAssetUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
   brandingAssetComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
 } as const;

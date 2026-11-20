@@ -17,6 +17,7 @@ import {
   changeProposalStatusSchema,
   changeProposalSubmitCapability,
   changeProposalTargetKind,
+  knownChangeProposalOperation,
   toChangeProposalKeyReceipt,
   toChangeProposalOwnerDetail,
   type ChangeProposal,
@@ -50,7 +51,7 @@ const proposal = (overrides: Partial<ChangeProposal> = {}): ChangeProposal => ch
 });
 
 describe('change proposal operations', () => {
-  it('lists the ten catalogue operations of the first release', () => {
+  it('lists the catalogue, sales-link and settings operations', () => {
     expect(changeProposalOperationSchema.options).toEqual([
       'product.create',
       'product.update',
@@ -62,25 +63,32 @@ describe('change proposal operations', () => {
       'stock.enable',
       'stock.adjust',
       'stock.set-threshold',
+      'sales-link.create',
+      'sales-link.update',
+      'sales-link.delete',
+      'settings.update',
     ]);
   });
 
-  it('submits every catalogue operation under the catalogue proposal capability', () => {
+  it('submits every operation under its family\'s proposal capability', () => {
     for (const operation of changeProposalOperationSchema.options) {
-      expect(changeProposalFamily(operation)).toBe('catalog');
-      expect(changeProposalSubmitCapability(operation)).toBe('proposal:submit:catalog');
+      const family = operation === 'settings.update' ? 'settings' : 'catalog';
+      expect(changeProposalFamily(operation)).toBe(family);
+      expect(changeProposalSubmitCapability(operation)).toBe(`proposal:submit:${family}`);
     }
   });
 
-  it('targets the price only when deactivating it', () => {
+  it('targets the price only when deactivating it, and the sales link or the settings for their operations', () => {
     expect(changeProposalTargetKind('price.deactivate')).toBe('price');
     expect(changeProposalTargetKind('price.create')).toBe('product');
     expect(changeProposalTargetKind('stock.adjust')).toBe('product');
+    expect(changeProposalTargetKind('sales-link.delete')).toBe('sales-link');
+    expect(changeProposalTargetKind('settings.update')).toBe('settings');
   });
 
   it('rejects an operation outside the release', () => {
-    expect(changeProposalOperationSchema.safeParse('settings.update').success).toBe(false);
-    expect(changeProposalOperationSchema.safeParse('sales-link.delete').success).toBe(false);
+    expect(changeProposalOperationSchema.safeParse('settings.secret.update').success).toBe(false);
+    expect(changeProposalOperationSchema.safeParse('image.upload').success).toBe(false);
   });
 });
 
@@ -152,6 +160,17 @@ describe('change proposal shape', () => {
     }).success).toBe(false);
   });
 
+  it('reads a stored operation this release does not know, of the stored shape, and refuses any other text', () => {
+    const later = changeProposalSchema.parse({ ...proposal(), operation: 'image.attach-cover', target: { kind: 'product', id: 'product-1' } });
+    expect(later.operation).toBe('image.attach-cover');
+    expect(knownChangeProposalOperation(later.operation)).toBeNull();
+    expect(knownChangeProposalOperation('product.update')).toBe('product.update');
+    expect(changeProposalKeyReceiptSchema.safeParse(toChangeProposalKeyReceipt(later, NOW)).success).toBe(true);
+    for (const operation of ['Image.attach', 'image', 'image.attach.cover', 'image.attach-', '-image.attach', `image.${'a'.repeat(60)}`]) {
+      expect(changeProposalSchema.safeParse({ ...proposal(), operation }).success, operation).toBe(false);
+    }
+  });
+
   it('requires an acting account or key on every event', () => {
     const event = { id: 'event-1', tenantId: 'tenant-1', proposalId: 'proposal-1', sequence: 1, kind: 'proposed', note: null, at: NOW };
     expect(changeProposalEventSchema.safeParse({ ...event, actorUserId: null, apiKeyId: null }).success).toBe(false);
@@ -186,7 +205,7 @@ describe('change proposal views', () => {
     const receipt = toChangeProposalKeyReceipt(decided, NOW);
 
     expect(Object.keys(receipt).toSorted()).toEqual([
-      'createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target',
+      'appliedResourceId', 'createdAt', 'decisionNote', 'expiresAt', 'failureCode', 'groupId', 'id', 'input', 'operation', 'status', 'target',
     ]);
     expect(JSON.stringify(receipt)).not.toContain('Before');
     expect(JSON.stringify(receipt)).not.toContain('owner-1');

@@ -125,13 +125,22 @@ and keyed mutating requests handed to a shop route handler), newest first.
 The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations|proposals` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list. With a
-propose-mode key the catalogue commands print the proposal receipt and exit
-`0` when the server answers `202`, and `shop proposals list|show|withdraw`
-reach that key's own proposals.
+propose-mode key the catalogue, `shop settings set` and
+`shop sales-links create|update|delete` commands print the proposal receipt and
+exit `0` when the server answers `202`, and `shop proposals list|show|withdraw`
+reach that key's own proposals; the receipt of an applied proposal shows the
+resource it created or changed, to name in a follow-up proposal.
 `proposals list [--status <status>] [--cursor <id>] [--limit <n>]`,
-`proposals show <id>` and `proposals reject <id> [--note <text>]` let the owner,
+`proposals show <id>`, `proposals approve <id>` and
+`proposals reject <id> [--note <text>]` let the owner,
 in their own session, read every change proposal of the workspace with its
-before/after effect and reject one.
+before/after effect, approve it or reject it. `proposals approve` prints the
+outcome first: `applied` exits `0` and names the resource by the operation
+(`applied: price <id>` for a new price, `applied: sales link <id>`,
+`applied: settings`); `stale` (the live state changed since the
+proposal was made) and `failed` (the live use-case refused the stored change,
+with its error code and message) apply nothing and exit `6`, the conflict exit
+code, as does approving a proposal that is no longer pending.
 
 Supply the secret through an environment variable, using the same
 `--api-key-env <name>` mechanism as marketing commands. Reports default to

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
+import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result, type ShipxOrderView } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
@@ -53,6 +54,7 @@ interface Hoisted {
   listChangeProposals: ReturnType<typeof vi.fn>;
   getChangeProposal: ReturnType<typeof vi.fn>;
   rejectChangeProposal: ReturnType<typeof vi.fn>;
+  approveChangeProposal: ReturnType<typeof vi.fn>;
   listSurveys: ReturnType<typeof vi.fn>;
   createSurvey: ReturnType<typeof vi.fn>;
   deleteSurvey: ReturnType<typeof vi.fn>;
@@ -155,6 +157,7 @@ const h = vi.hoisted(
     listChangeProposals: vi.fn(),
     getChangeProposal: vi.fn(),
     rejectChangeProposal: vi.fn(),
+    approveChangeProposal: vi.fn(),
     listSurveys: vi.fn(),
     createSurvey: vi.fn(),
     deleteSurvey: vi.fn(),
@@ -305,6 +308,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listChangeProposals: h.listChangeProposals,
     getChangeProposal: h.getChangeProposal,
     rejectChangeProposal: h.rejectChangeProposal,
+    approveChangeProposal: h.approveChangeProposal,
     listSurveys: h.listSurveys,
     createSurvey: h.createSurvey,
     deleteSurvey: h.deleteSurvey,
@@ -2607,5 +2611,34 @@ describe('owner change proposal commands', () => {
     h.rejectChangeProposal.mockClear();
     await run('--json', 'proposals', 'reject', 'proposal-1');
     expect(h.rejectChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+  });
+  it('approves a proposal and exits 0 when it was applied', async () => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'applied', appliedResourceId: 'product-1' } }));
+    await run('proposals', 'approve', 'proposal-1');
+    expect(h.approveChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed.split('\n')[0]).toBe('applied: product product-1');
+    expect(printed).toContain('  title: "Handbook" -> "Renamed"');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+  it.each([
+    ['stale', { status: 'stale' }, 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.'],
+    ['failed', { status: 'failed', failureCode: 'conflict', failureMessage: 'Stock cannot go below zero' }, 'failed: conflict: Stock cannot go below zero; nothing was applied'],
+  ] as const)('prints a %s approval with its reason and exits with the conflict code', async (_status, fields, line) => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, ...fields } }));
+    await run('proposals', 'approve', 'proposal-1');
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')[0]).toBe(line);
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+    logSpy.mockClear();
+    process.exitCode = 0;
+    await run('--json', 'proposals', 'approve', 'proposal-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { proposal: fields } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+  it('answers a repeated approve with the conflict error and its exit code', async () => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(err(appError('conflict', 'This change proposal is no longer pending', { changeProposalStatus: 'applied' })));
+    await run('--json', 'proposals', 'approve', 'proposal-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'applied' } } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 });

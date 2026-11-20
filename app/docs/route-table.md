@@ -265,6 +265,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/change-proposals` | authenticated | read | change proposals |
 | `GET /api/change-proposals/:id` | authenticated | read | change proposal |
 | `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
+| `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
 | `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |

@@ -15,8 +15,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(528);
-    expect(inventory.useCases).toHaveLength(392);
+    expect(inventory.routes).toHaveLength(529);
+    expect(inventory.useCases).toHaveLength(393);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -262,7 +262,7 @@ describe('permission inventory', () => {
       expect(['product:write', 'product:price:write', 'product:publish', 'order:write', 'tenant:settings:write', 'tenant:secret:write'], row.subject)
         .not.toContain(row.capability);
     }
-    for (const subject of ['POST /api/m2m/shop/products/update', 'POST /api/m2m/shop/settings']) {
+    for (const subject of ['POST /api/m2m/shop/products/update', 'POST /api/m2m/shop/settings', 'POST /api/m2m/shop/sales-links', 'DELETE /api/m2m/shop/sales-links/:id']) {
       expect(inventory.routes.find((row) => row.subject === subject)?.after, subject)
         .toEqual([SHOP_MANAGEMENT_KEY_PRINCIPAL]);
     }
@@ -279,6 +279,7 @@ describe('permission inventory', () => {
       ['GET /api/change-proposals', 'proposal:read'],
       ['GET /api/change-proposals/:id', 'proposal:read'],
       ['POST /api/change-proposals/:id/reject', 'proposal:decide'],
+      ['POST /api/change-proposals/:id/approve', 'proposal:decide'],
     ] as const) {
       expect(inventory.routes.find((row) => row.subject === subject), subject).toMatchObject({ capability, before: ['owner'], after: ['owner'] });
     }
@@ -294,6 +295,7 @@ describe('permission inventory', () => {
       ['listChangeProposals', 'proposal:read', ['owner']],
       ['getChangeProposal', 'proposal:read', ['owner']],
       ['rejectChangeProposal', 'proposal:decide', ['owner']],
+      ['approveChangeProposal', 'proposal:decide', ['owner']],
     ]);
   });
 

@@ -1,6 +1,6 @@
 {
-  "hash": "5d28057594e3bbbd5c3e5aadef5bf17dd023e02d2fc30533a5163207fa5131f6",
-  "shortId": "5d28057594e3",
+  "hash": "c37fcc69f569032edf01199c6cfbd8127ae9e259bb7abfeef02806485a39f7c0",
+  "shortId": "c37fcc69f569",
   "schema": {
     "constraints": [
       {
@@ -46,6 +46,11 @@
       {
         "definition": "CHECK (((char_length(failure_code) >= 1) AND (char_length(failure_code) <= 64)))",
         "name": "change_proposals_failure_code_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(operation) <= 64) AND (operation ~ '^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$'::text)))",
+        "name": "change_proposals_operation_check",
         "table": "change_proposals"
       },
       {
@@ -332,11 +337,6 @@
         "definition": "CHECK ((on_hand >= 0))",
         "name": "product_stock_on_hand_check",
         "table": "product_stock"
-      },
-      {
-        "definition": "CHECK ((operation = ANY (ARRAY['product.create'::text, 'product.update'::text, 'product.publish'::text, 'product.unpublish'::text, 'product.delete-draft'::text, 'price.create'::text, 'price.deactivate'::text, 'stock.enable'::text, 'stock.adjust'::text, 'stock.set-threshold'::text])))",
-        "name": "change_proposals_operation_check",
-        "table": "change_proposals"
       },
       {
         "definition": "CHECK ((parcel_template = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])))",

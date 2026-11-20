@@ -9574,6 +9574,7 @@ describe('impersonation HTTP surface', () => {
       ['GET', API_PATHS.changeProposals],
       ['GET', API_PATHS.changeProposal.replace(':id', 'proposal-1')],
       ['POST', API_PATHS.changeProposalReject.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalApprove.replace(':id', 'proposal-1')],
     ] as const) {
       const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify({}) } : {}) });
       expect(response.status, `${method} ${path}`).toBe(403);

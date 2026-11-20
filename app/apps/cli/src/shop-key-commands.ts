@@ -44,6 +44,7 @@ import {
   type ShipxOrderView,
 } from '#core/domain/index.js';
 
+import { changeProposalAppliedLine } from './change-proposal-output.js';
 import { emit } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
@@ -377,6 +378,7 @@ const receiptLines = (proposal: ChangeProposalKeyReceipt): string => [
   `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
   `created: ${proposal.createdAt}`,
   `expires: ${proposal.expiresAt}`,
+  ...(proposal.status === 'applied' ? [changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId)] : []),
   ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
   ...(proposal.failureCode === null ? [] : [`failure: ${proposal.failureCode}`]),
 ].join('\n');
@@ -600,7 +602,7 @@ export const registerShopKeyCommands = (
     .action(run(z.tuple([keyOnlySchema]), (client) => client.getSettings(), (data) => JSON.stringify(data.settings, null, 2)));
   keyed(settings.command('set').description('Change the shop settings fields given in a JSON object; omitted fields keep their value and null clears a clearable field')
     .requiredOption('--json-file <path>', 'JSON file with the changed fields, or - to read it from stdin'))
-    .action(run(z.tuple([settingsSetSchema]), async (client, [options]) => {
+    .action(runProposable(z.tuple([settingsSetSchema]), async (client, [options]) => {
       const input = await shopSettingsPatchInput(options.jsonFile);
       return input.ok ? client.updateSettings(input.value) : input;
     }, (data) => JSON.stringify(data.settings, null, 2)));
@@ -631,18 +633,18 @@ export const registerShopKeyCommands = (
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.getSalesLink({ id }), (data) => JSON.stringify(data.salesLink, null, 2)));
   keyed(salesLinks.command('create').description('Create a sales link from a JSON object')
     .requiredOption('--json-file <path>', 'JSON file with sales-link fields, or - for stdin'))
-    .action(run(z.tuple([settingsSetSchema]), async (client, [options]) => {
+    .action(runProposable(z.tuple([settingsSetSchema]), async (client, [options]) => {
       const input = await salesLinkFileInput(options.jsonFile, shopAssetsContracts.createSalesLink.input);
       return input.ok ? client.createSalesLink(input.value) : input;
     }, (data) => JSON.stringify(data.salesLink, null, 2)));
   keyed(salesLinks.command('update <id>').description('Replace sales-link fields using expectedRevision from the JSON object')
     .requiredOption('--json-file <path>', 'JSON file with all fields and expectedRevision, or - for stdin'))
-    .action(run(z.tuple([idSchema, settingsSetSchema]), async (client, [id, options]) => {
+    .action(runProposable(z.tuple([idSchema, settingsSetSchema]), async (client, [id, options]) => {
       const input = await salesLinkFileInput(options.jsonFile, shopAssetsContracts.updateSalesLink.input, id);
       return input.ok ? client.updateSalesLink(input.value) : input;
     }, (data) => JSON.stringify(data.salesLink, null, 2)));
   keyed(salesLinks.command('delete <id>').description('Delete a sales link'))
-    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deleteSalesLink({ id }), () => 'deleted'));
+    .action(runProposable(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.deleteSalesLink({ id }), () => 'deleted'));
 
   const proposals = shop.command('proposals').description('Change proposals made by a propose-mode key: only that key\'s own proposals, never the live values they change');
   keyed(proposals.command('list').description('List this key\'s proposals, newest first')

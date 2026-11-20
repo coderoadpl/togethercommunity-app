@@ -4,6 +4,7 @@ import {
   shopIntegrationSecretDeleteInputSchema,
   shopIntegrationSecretInputSchema,
   shopIntegrationSecretKeySchema,
+  strictInput,
   tenantSecretMaskedSchema,
   type ShopManagementScope,
 } from '#core/domain/index.js';
@@ -18,7 +19,6 @@ import {
   tenantSecretsListOutputSchema,
 } from './routes.js';
 import { shipxContracts } from './shipx.js';
-import { strictInput } from './strict-input.js';
 
 const READ = 'shop:integrations:read' satisfies ShopManagementScope;
 const WRITE = 'shop:integrations:write' satisfies ShopManagementScope;

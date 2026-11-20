@@ -27,6 +27,10 @@ const CHANGE_PROPOSAL_OPERATION_DEFINITIONS = [
   { operation: 'stock.enable', family: 'catalog', targetKind: 'product' },
   { operation: 'stock.adjust', family: 'catalog', targetKind: 'product' },
   { operation: 'stock.set-threshold', family: 'catalog', targetKind: 'product' },
+  { operation: 'sales-link.create', family: 'catalog', targetKind: 'sales-link' },
+  { operation: 'sales-link.update', family: 'catalog', targetKind: 'sales-link' },
+  { operation: 'sales-link.delete', family: 'catalog', targetKind: 'sales-link' },
+  { operation: 'settings.update', family: 'settings', targetKind: 'settings' },
 ] as const satisfies readonly ChangeProposalOperationDefinition[];
 
 type ChangeProposalOperationName = (typeof CHANGE_PROPOSAL_OPERATION_DEFINITIONS)[number]['operation'];
@@ -42,6 +46,21 @@ export const changeProposalOperationSchema = z.enum(
 );
 
 export type ChangeProposalOperation = z.output<typeof changeProposalOperationSchema>;
+
+const CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH = 64;
+
+// The database holds any operation of this shape, so a row written by a later release still reads; only the registry decides what applies.
+const changeProposalStoredOperationSchema = z.string()
+  .max(CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH)
+  .regex(/^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$/);
+
+export const knownChangeProposalOperation = (operation: string): ChangeProposalOperation | null => {
+  const known = changeProposalOperationSchema.safeParse(operation);
+  return known.success ? known.data : null;
+};
+
+export const unknownChangeProposalOperationNote = (operation: string): string =>
+  `This release does not know the operation "${operation}", so the proposal cannot be applied; nothing was changed`;
 
 const operationDefinition = (operation: ChangeProposalOperation): ChangeProposalOperationDefinition => {
   const found = CHANGE_PROPOSAL_OPERATION_DEFINITIONS.find((definition) => definition.operation === operation);
@@ -184,7 +203,7 @@ export const changeProposalSchema = z.object({
   tenantId: z.string().min(1),
   groupId: identifierSchema.nullable(),
   groupPosition: z.number().int().min(1).nullable(),
-  operation: changeProposalOperationSchema,
+  operation: changeProposalStoredOperationSchema,
   input: changeProposalInputSchema,
   effect: changeProposalEffectSchema,
   target: changeProposalTargetSchema,
@@ -205,7 +224,7 @@ export const changeProposalSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['groupPosition'], message: 'A group position needs a group and a group needs a position' });
   }
   const expectedKind = CHANGE_PROPOSAL_OPERATION_DEFINITIONS.find((definition) => definition.operation === proposal.operation)?.targetKind;
-  if (proposal.target.kind !== expectedKind) {
+  if (expectedKind !== undefined && proposal.target.kind !== expectedKind) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['target', 'kind'], message: `${proposal.operation} targets a ${String(expectedKind)}` });
   }
 });
@@ -268,7 +287,7 @@ export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),
   groupId: z.string().nullable(),
   groupPosition: z.number().int().nullable(),
-  operation: changeProposalOperationSchema,
+  operation: changeProposalStoredOperationSchema,
   target: changeProposalTargetSchema,
   input: changeProposalInputSchema,
   effect: changeProposalEffectSchema,
@@ -300,13 +319,14 @@ export type ChangeProposalOwnerDetail = z.output<typeof changeProposalOwnerDetai
 export const changeProposalKeyReceiptSchema = z.object({
   id: z.string(),
   status: changeProposalDisplayStatusSchema,
-  operation: changeProposalOperationSchema,
+  operation: changeProposalStoredOperationSchema,
   target: changeProposalTargetSchema,
   groupId: z.string().nullable(),
   createdAt: z.string(),
   expiresAt: z.string(),
   input: changeProposalInputSchema,
   decisionNote: z.string().nullable(),
+  appliedResourceId: z.string().nullable(),
   failureCode: z.string().nullable(),
 }).strict();
 
@@ -415,5 +435,6 @@ export const toChangeProposalKeyReceipt = (proposal: ChangeProposal, now: string
   expiresAt: proposal.expiresAt,
   input: proposal.input,
   decisionNote: proposal.decisionNote,
+  appliedResourceId: proposal.appliedResourceId,
   failureCode: proposal.failureCode,
 });

@@ -152,6 +152,7 @@ import type {
   ChangeProposalEvent,
   ChangeProposalTarget,
   ChangeProposalTerminalStatus,
+  SalesLink,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
   ImportAuditEvent,
@@ -2941,19 +2942,33 @@ export interface ChangeProposalEventRepository {
   listByProposal(tenantId: string, proposalId: string): Promise<ChangeProposalEvent[]>;
 }
 
+export type ChangeProposalTargetLockPurpose = 'change' | 'delete';
+
 export interface ChangeProposalTargetLocks {
-  /** Locks the live row a proposal changes until the surrounding transaction ends; false when it does not exist. */
-  lock(tenantId: string, target: ChangeProposalTarget): Promise<boolean>;
+  /**
+   * Locks the live row a proposal changes until the surrounding transaction ends; false when it does not exist.
+   * `delete` takes the row exclusively and locks what the deletion destroys with it, so nothing referencing it can be added or changed meanwhile.
+   */
+  lock(tenantId: string, target: ChangeProposalTarget, purpose?: ChangeProposalTargetLockPurpose): Promise<boolean>;
+}
+
+export interface SalesLinkRepository {
+  list(tenantId: string): Promise<SalesLink[]>;
+  findById(tenantId: string, id: string): Promise<SalesLink | null>;
+  findBySlug(tenantId: string, slug: string): Promise<SalesLink | null>;
+  save(tenantId: string, link: SalesLink, expectedRevision: number | null): Promise<Result<SalesLink, AppError>>;
+  delete(tenantId: string, id: string, occurredAt: string, expectedRevision?: number): Promise<Result<void, AppError>>;
 }
 
 export interface ChangeProposalRepositories {
-  products: ProductRepository & ProductMetadataRepository;
+  products: ProductRepository & ProductMetadataRepository & ProductBatchReader;
   prices: ProductPriceRepository;
-  tenants: Pick<TenantRepository, 'findSettings'>;
-  downloadAssets: Pick<ProductDownloadAssetRepository, 'listReadyByProduct'>;
-  spaces: Pick<SpaceRepository, 'list'>;
+  tenants: Pick<TenantRepository, 'findSettings' | 'changeSettings'>;
+  downloadAssets: Pick<ProductDownloadAssetRepository, 'listByProduct' | 'listReadyByProduct'>;
+  spaces: Pick<SpaceRepository, 'list' | 'findById'>;
   stock: StockRepository;
   productDrafts: ProductDraftRepository;
+  salesLinks: SalesLinkRepository;
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
   targets: ChangeProposalTargetLocks;

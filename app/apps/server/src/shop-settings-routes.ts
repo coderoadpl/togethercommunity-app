@@ -1,5 +1,8 @@
+import type { Context } from 'hono';
+import type { z } from 'zod';
+
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
-import { err, ok, validation } from '#core/domain/index.js';
+import { err, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
   beginBrandingAssetUpload,
   completeBrandingAssetUpload,
@@ -7,10 +10,16 @@ import {
   updateShopSettings,
 } from '#core/server/index.js';
 
+import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
 import type { ShopMachineRoute } from './shop-machine-auth.js';
+
+const shopSettingsPatchInput = async (c: Context<AppVars>): Promise<Result<z.output<typeof shopSettingsContracts.updateSettings.input>, AppError>> => {
+  const parsed = shopSettingsContracts.updateSettings.input.safeParse(await readJson(c.req.raw));
+  return parsed.success ? ok(parsed.data) : err(validation('Invalid shop settings payload', parsed.error.flatten()));
+};
 
 export const shopSettingsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   {
@@ -22,11 +31,11 @@ export const shopSettingsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
   },
   {
     ...SHOP_SETTINGS_ROUTES.updateSettings,
-    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
+    proposeMode: { kind: 'proposal', operation: 'settings.update', toInput: shopSettingsPatchInput },
     handler: async (c, { ctx }) => {
-      const parsed = shopSettingsContracts.updateSettings.input.safeParse(await readJson(c.req.raw));
-      if (!parsed.success) return respond(err(validation('Invalid shop settings payload', parsed.error.flatten())));
-      const result = await updateShopSettings(ctx, parsed.data, deps);
+      const input = await shopSettingsPatchInput(c);
+      if (!input.ok) return respond(input);
+      const result = await updateShopSettings(ctx, input.value, deps);
       return respond(result.ok ? ok({ settings: result.value }) : result);
     },
   },

@@ -697,7 +697,7 @@ describe('shop integrations CLI', () => {
 const receipt = {
   id: 'proposal-1', status: 'pending', operation: 'stock.adjust', target: { kind: 'product', id: 'product-1' }, groupId: null,
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', input: { productId: 'product-1', delta: 5, reason: 'delivery' },
-  decisionNote: null, failureCode: null,
+  decisionNote: null, appliedResourceId: null, failureCode: null,
 };
 
 const proposalFetch: typeof fetch = async (input, init) => {
@@ -732,6 +732,31 @@ describe('shop key CLI with a propose-mode key', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it.each([
+    ['settings', ['shop', 'settings', 'set'], { name: 'Proposed shop' }, 'POST /api/m2m/shop/settings'],
+    ['sales-link create', ['shop', 'sales-links', 'create'], salesLinkFields, 'POST /api/m2m/shop/sales-links'],
+    ['sales-link update', ['shop', 'sales-links', 'update', 'link-1'], { ...salesLinkFields, expectedRevision: 1 }, 'POST /api/m2m/shop/sales-links/link-1'],
+  ])('prints the receipt and exits 0 when the %s write answers 202', async (_label, args, fields, request) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-proposal-cli-'));
+    try {
+      const file = join(directory, 'input.json');
+      await writeFile(file, JSON.stringify(fields));
+      await run(...args, '--json-file', file);
+      expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+      expect(process.exitCode ?? 0).toBe(0);
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([request]);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('prints the receipt of a proposed sales-link deletion without sending a body', async () => {
+    await run('shop', 'sales-links', 'delete', 'link-1');
+    expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+    expect(calls).toMatchObject([{ method: 'DELETE', path: '/api/m2m/shop/sales-links/link-1', body: null }]);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
   it('prints a readable receipt without --json', async () => {
     process.argv = ['node', 'together', 'shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery'];
     vi.resetModules();
@@ -760,6 +785,24 @@ describe('shop key CLI with a propose-mode key', () => {
       expect(call.headers.has('authorization')).toBe(false);
     }
     expect(JSON.parse(String(logSpy.mock.calls[2]?.[0]))).toMatchObject({ ok: true, data: { proposal: { status: 'withdrawn' } } });
+  });
+
+  it('shows the resource an applied proposal created, so the key can name it in a follow-up proposal', async () => {
+    const applied = {
+      ...receipt, status: 'applied', operation: 'price.create', input: { productId: 'product-1', kind: 'one_time', amountCents: 4900 },
+      appliedResourceId: 'price-9',
+    };
+    h.fetchImpl = async () => Response.json({ ok: true, data: { proposal: applied } });
+    process.argv = ['node', 'together', 'shop', 'proposals', 'show', 'proposal-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith([
+      'proposal proposal-1: price.create [applied]',
+      'target: product product-1',
+      'created: 2026-11-15T10:00:00.000Z',
+      'expires: 2026-12-15T10:00:00.000Z',
+      'applied: price price-9',
+    ].join('\n'));
   });
 
   it('refuses an unknown proposal status before any request', async () => {

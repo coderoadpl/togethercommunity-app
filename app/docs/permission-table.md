@@ -26,11 +26,11 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-`shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings` instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`). The `/api/m2m/shop/proposals` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.
+`shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings` instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`) that only the owner can approve. The `/api/m2m/shop/proposals` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.
 
-`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization.
+`change-proposals.ts#submitChangeProposal` authorizes `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.
 
-Closed capability count: 144. Route rows: 528. Exported `Ctx` use-case rows: 392.
+Closed capability count: 144. Route rows: 529. Exported `Ctx` use-case rows: 393.
 
 ## Human-readable diff
 
@@ -298,6 +298,7 @@ no changes
 | `GET /api/change-proposals` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/change-proposals/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/orders/changes` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/integrations/shipx` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -591,6 +592,7 @@ no changes
 | `change-proposals.ts#listChangeProposals` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#getChangeProposal` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#rejectChangeProposal` | proposal:decide | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#approveChangeProposal` | proposal:decide | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `community-access.ts#lessonContextAccess` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
 | `community-access.ts#accessibleLessonIds` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
 | `community-access.ts#spaceContextAccess` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
@@ -1042,7 +1044,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/shop-machine-auth.ts:121` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:25` | `if (identity === null \|\| identity.staffRole === null \|\| cookie === undefined) return false;` |
-| staff-role | `core/server/usecases/tenant-settings.ts:39` | `if (ctx.identity.staffRole === null) return err(forbidden('Staff role is required'));` |
+| staff-role | `core/server/usecases/tenant-settings.ts:45` | `if (ctx.identity.staffRole === null) return err(forbidden('Staff role is required'));` |
 
 ## Suspicious but preserved
 

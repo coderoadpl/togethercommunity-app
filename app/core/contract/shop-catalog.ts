@@ -1,28 +1,30 @@
-import type { ShopManagementScope } from '#core/domain/index.js';
+import {
+  strictAdjustStockInputSchema,
+  strictEnableStockTrackingInputSchema,
+  strictInput,
+  strictNewProductInputSchema,
+  strictNewProductPriceInputSchema,
+  strictStockThresholdInputSchema,
+  strictUpdateProductInputSchema,
+  type ShopManagementScope,
+} from '#core/domain/index.js';
 
 import { productDeleteInputSchema, productDeleteOutputSchema } from './catalog-cleanup.js';
 import {
-  productPriceCreateInputSchema,
   productPriceCreateOutputSchema,
   productPriceDeactivateInputSchema,
   productPriceDeactivateOutputSchema,
   productPricesListOutputSchema,
-  productsCreateInputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishInputSchema,
   productsPublishOutputSchema,
-  productStockAdjustInputSchema,
-  productStockEnableInputSchema,
   productStockOutputSchema,
-  productStockThresholdInputSchema,
   productStockWriteOutputSchema,
   productsUnpublishInputSchema,
   productsUnpublishOutputSchema,
-  productsUpdateInputSchema,
   productsUpdateOutputSchema,
 } from './routes.js';
-import { strictInput } from './strict-input.js';
 
 const READ = 'shop:catalog:read' satisfies ShopManagementScope;
 const WRITE = 'shop:catalog:write' satisfies ShopManagementScope;
@@ -45,16 +47,16 @@ export const SHOP_CATALOG_ROUTES = {
 
 export const shopCatalogContracts = {
   listProducts: { output: productsListOutputSchema },
-  createProduct: { input: strictInput(productsCreateInputSchema), output: productsCreateOutputSchema },
-  updateProduct: { input: strictInput(productsUpdateInputSchema), output: productsUpdateOutputSchema },
+  createProduct: { input: strictNewProductInputSchema, output: productsCreateOutputSchema },
+  updateProduct: { input: strictUpdateProductInputSchema, output: productsUpdateOutputSchema },
   publishProduct: { input: strictInput(productsPublishInputSchema), output: productsPublishOutputSchema },
   unpublishProduct: { input: strictInput(productsUnpublishInputSchema), output: productsUnpublishOutputSchema },
   deleteProductDraft: { input: strictInput(productDeleteInputSchema), output: productDeleteOutputSchema },
   listProductPrices: { output: productPricesListOutputSchema },
-  createProductPrice: { input: strictInput(productPriceCreateInputSchema), output: productPriceCreateOutputSchema },
+  createProductPrice: { input: strictNewProductPriceInputSchema, output: productPriceCreateOutputSchema },
   deactivateProductPrice: { input: strictInput(productPriceDeactivateInputSchema), output: productPriceDeactivateOutputSchema },
   getProductStock: { output: productStockOutputSchema },
-  enableProductStock: { input: strictInput(productStockEnableInputSchema), output: productStockWriteOutputSchema },
-  adjustProductStock: { input: strictInput(productStockAdjustInputSchema), output: productStockWriteOutputSchema },
-  setProductStockThreshold: { input: strictInput(productStockThresholdInputSchema), output: productStockWriteOutputSchema },
+  enableProductStock: { input: strictEnableStockTrackingInputSchema, output: productStockWriteOutputSchema },
+  adjustProductStock: { input: strictAdjustStockInputSchema, output: productStockWriteOutputSchema },
+  setProductStockThreshold: { input: strictStockThresholdInputSchema, output: productStockWriteOutputSchema },
 } as const;

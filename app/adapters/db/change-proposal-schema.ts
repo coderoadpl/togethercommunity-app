@@ -5,7 +5,6 @@ import type {
   ChangeProposalEffect,
   ChangeProposalEventKind,
   ChangeProposalInput,
-  ChangeProposalOperation,
   ChangeProposalStatus,
   ChangeProposalTargetKind,
 } from '#core/domain/index.js';
@@ -33,7 +32,7 @@ export const changeProposals = pgTable('change_proposals', {
   tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   groupId: text('group_id'),
   groupPosition: integer('group_position'),
-  operation: text('operation').$type<ChangeProposalOperation>().notNull(),
+  operation: text('operation').notNull(),
   input: jsonb('input').$type<ChangeProposalInput>().notNull(),
   effect: jsonb('effect').$type<ChangeProposalEffect>().notNull(),
   targetKind: text('target_kind').$type<ChangeProposalTargetKind>().notNull(),
@@ -63,10 +62,7 @@ export const changeProposals = pgTable('change_proposals', {
     foreignColumns: [changeProposalGroups.tenantId, changeProposalGroups.id],
   }),
   check('change_proposals_group_position_check', sql`${table.groupPosition} >= 1`),
-  check('change_proposals_operation_check', sql`${table.operation} IN (
-    'product.create', 'product.update', 'product.publish', 'product.unpublish', 'product.delete-draft',
-    'price.create', 'price.deactivate', 'stock.enable', 'stock.adjust', 'stock.set-threshold'
-  )`),
+  check('change_proposals_operation_check', sql`char_length(${table.operation}) <= 64 AND ${table.operation} ~ '^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$'`),
   check('change_proposals_input_check', sql`jsonb_typeof(${table.input}) = 'object'`),
   check('change_proposals_effect_check', sql`jsonb_typeof(${table.effect}) = 'object'`),
   check('change_proposals_target_kind_check', sql`${table.targetKind} IN ('product', 'price', 'sales-link', 'settings')`),

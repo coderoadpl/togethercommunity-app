@@ -536,15 +536,19 @@ scopes on every shop key.
   values it cannot read; with the rule, a propose-mode key learns nothing from
   a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
-  without one: the ten catalogue write routes store a
+  without one: the ten catalogue write routes, the three sales-link write
+  routes and the settings update store a
   [change proposal](change-proposals.md) instead of running their handler,
-  every other write route answers `403`, and a test drives a propose-mode key
+  every other write route (images, fulfilment, integrations) answers `403`,
+  and a test drives a propose-mode key
   over every registered shop route and asserts that no live row changed. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
-  that never happens. The key's receipt never carries the effect or a live
-  value. Only the verified owner in their own session reads and rejects
-  proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
+  that never happens. The key's receipt never carries the effect, a before
+  value or the deciding account; after an approval it names only the id of
+  the applied resource, which the key can already read with its read scope.
+  Only the verified owner in their own session reads, approves and
+  rejects proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
   impersonating owner, a direct-mode key, a propose-mode key and a legacy key
   are refused. Proposals carry no foreign key to their key, so the history
   survives a purge, and revoking or purging a key withdraws its pending,
@@ -552,12 +556,38 @@ scopes on every shop key.
   200 per key and 1,000 per workspace and creation at 500 per key a day,
   checked read-only before the dry run and again atomically at insert. A dry
   run never takes a second database connection (the storage credentials of a
-  draft deletion are read through the transaction), locks its target with
-  `FOR NO KEY UPDATE` so it cannot deadlock with a live stock write, and waits
-  at most 5 seconds for the workspace lock before answering `503` with a
-  `retry-after`, so queued proposals cannot hold pool connections without
-  bound. A retention purge of settled proposals is a follow-up. Approval is
-  not available yet.
+  draft deletion are read through the transaction) and locks its target with
+  `FOR NO KEY UPDATE` so it cannot deadlock with a live stock write. Every
+  lock wait of a dry run or an approval transaction, the workspace lock, the
+  proposal row, the target rows, the rows the live use-case locks and the
+  sales-link workspace lock, is bounded by a transaction-local 5-second
+  `lock_timeout`; a wait that runs out rolls the whole transaction back and is
+  answered `503` with a `retry-after` on the keyed routes and on the owner
+  approve route, so queued proposals cannot hold pool connections without
+  bound and nothing is applied. Approval runs in one transaction: it locks the
+  pending, unexpired proposal row, re-reads the clock (a proposal that expired
+  during the wait is recorded as expired and not applied), re-validates the
+  stored input strictly (an unknown operation, or an unknown key at any depth
+  such as a retired field or a settings field outside the key's allow-list,
+  makes it `stale` without running anything), locks the target and re-reads
+  the clock again, runs the live use-case as the approving owner inside a
+  savepoint, recomputes the effect and commits the change only when it equals
+  the stored effect the owner saw; otherwise the savepoint is rolled back and
+  the proposal becomes `stale` (or `failed` with the domain error). A draft
+  deletion's effect lists everything it destroys (every price, every download
+  file, the stock), read under the exclusive locks the deletion takes, so a
+  file uploaded after the proposal makes it `stale`. Settings writes lock the
+  workspace row `FOR NO KEY UPDATE` and key revocation and purge withdraw the
+  key's proposals before writing their key event, so a settings approval and a
+  revocation cannot deadlock. There is no intermediate state, so a
+  repeated or concurrent approve finds no pending row and gets `409`; an
+  infrastructure failure rolls everything back and leaves the proposal
+  pending. Non-database effects of an applied change run only after the
+  commit. The database checks only the shape of a stored operation name; a
+  row whose operation the running release does not know stays readable and is
+  never applied. A writer that read the row before the approval took its lock can
+  still overwrite the applied change afterwards, as between any two writers
+  today. A retention purge of settled proposals is a follow-up.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs
@@ -576,6 +606,11 @@ scopes on every shop key.
   domain, so the plain hash of the presented secret finds no row. Such a key
   never gains live write access, direct-mode keys keep working, and pending
   change proposals stay untouched until the roll forward; no purge is needed.
+  Migration 0164 widens the operation check to a shape check and is not
+  undone by a code rollback: a release with 0163 and only the ten catalogue
+  operations answers `500` on every proposal read that meets a sales-link or
+  settings proposal, and applies nothing; count those rows before such a
+  rollback (the query is in [change proposals](change-proposals.md#rolling-back)).
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
   `PATCH` or `DELETE` to a shop route that passed every check write a row to
   the dedicated `shop_management_key_events` table with the key id, never the

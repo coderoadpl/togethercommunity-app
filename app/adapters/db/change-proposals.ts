@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
@@ -23,11 +23,12 @@ import type {
   ChangeProposalWithdrawal,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
+import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
 import type { Db } from './client.js';
 import {
   changeProposalEvents,
   changeProposals,
+  productDownloadAssets,
   productPrices,
   products,
   productStock,
@@ -63,8 +64,8 @@ const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeProposal
 
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
 
-const lockWorkspaceProposals = (executor: Db, tenantId: string): Promise<boolean> =>
-  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`);
+const lockWorkspaceProposals = (executor: Db, tenantId: string, waitMs: number): Promise<boolean> =>
+  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: waitMs, lockWaitAfterMs: null });
 
 const appendEvent = async (
   executor: Db,
@@ -217,14 +218,14 @@ export const withdrawPendingChangeProposalsOfKey = async (
   }
 };
 
-export const createChangeProposalRepository = (db: Db): ChangeProposalRepository => ({
+const changeProposalRepositoryOver = (db: Db, waitMs: number): ChangeProposalRepository => ({
   create: async (tenantId, proposal, event, now) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
     if (!changeProposalEffectWithinLimit(parsed.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
     return db.transaction(async (tx) => {
-      if (!await lockWorkspaceProposals(tx, tenantId)) return { kind: 'busy' };
+      if (!await lockWorkspaceProposals(tx, tenantId, waitMs)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
@@ -329,6 +330,9 @@ export const createChangeProposalRepository = (db: Db): ChangeProposalRepository
   }),
 });
 
+export const createChangeProposalRepository = (db: Db, options: { lockWaitMs?: number } = {}): ChangeProposalRepository =>
+  changeProposalRepositoryOver(db, lockWaitMs(options.lockWaitMs));
+
 export const createChangeProposalEventRepository = (db: Db): ChangeProposalEventRepository => ({
   listByProposal: async (tenantId, proposalId) =>
     (await db
@@ -340,13 +344,31 @@ export const createChangeProposalEventRepository = (db: Db): ChangeProposalEvent
 
 const lockedRowExists = async (rows: PromiseLike<readonly unknown[]>): Promise<boolean> => (await rows).length > 0;
 
+const lockProductForDeletion = async (db: Db, tenantId: string, productId: string): Promise<boolean> => {
+  const product = and(eq(products.tenantId, tenantId), eq(products.id, productId));
+  // Live stock writers lock the stock row before their event's foreign key takes a key-share lock on the product, while
+  // live draft deletion and download writes lock the product first: a key-share-compatible product lock, then the stock
+  // row, then the delete-strength product lock, then the rows those writers lock after the product follows both orders.
+  const found = await lockedRowExists(db.select({ id: products.id }).from(products).where(product).for('no key update'));
+  if (!found) return false;
+  await db.select({ productId: productStock.productId }).from(productStock)
+    .where(and(eq(productStock.tenantId, tenantId), eq(productStock.productId, productId))).for('update');
+  await db.select({ id: products.id }).from(products).where(product).for('update');
+  await db.select({ id: productPrices.id }).from(productPrices)
+    .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId))).for('update');
+  await db.select({ id: productDownloadAssets.id }).from(productDownloadAssets)
+    .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId))).for('update');
+  return true;
+};
+
 export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLocks => ({
-  lock: async (tenantId, target) => {
+  lock: async (tenantId, target, purpose = 'change') => {
     switch (target.kind) {
       case 'settings':
         return lockedRowExists(db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('no key update'));
       case 'product': {
         if (target.id === null) return true;
+        if (purpose === 'delete') return lockProductForDeletion(db, tenantId, target.id);
         const found = await lockedRowExists(db.select({ id: products.id }).from(products)
           .where(and(eq(products.tenantId, tenantId), eq(products.id, target.id))).for('no key update'));
         if (found) {
@@ -360,9 +382,11 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
         return lockedRowExists(db.select({ id: productPrices.id }).from(productPrices)
           .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, target.id))).for('no key update'));
       case 'sales-link':
+        // Sales-link writes take this workspace lock before their row lock; taking it first here keeps that order.
+        await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`sales-links:${tenantId}`}, 0))`);
         if (target.id === null) return true;
         return lockedRowExists(db.select({ id: salesLinks.id }).from(salesLinks)
-          .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id))).for('no key update'));
+          .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id), isNull(salesLinks.deletedAt))).for('no key update'));
     }
   },
 });

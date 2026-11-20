@@ -342,6 +342,34 @@ describe('lock order of the payment webhook and a simulated sales-link purchase'
   });
 });
 
+describe('lock order of a cancellation and refund against the workspace settings lock', () => {
+  it('cancels, queues and refunds an order while a change proposal holds the settings row of the workspace', async () => {
+    const h = harness();
+    await track('printed-1', 1);
+    const snapshotId = await publicCheckout(h, printedRequest);
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('printed-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT 1 FROM tenants WHERE id = $1 FOR NO KEY UPDATE', [legacyTenant.id]);
+      expect(await fulfillStripeWebhook(legacyTenant, printedPaid({ eventId: 'evt_oos_settings', session: 'cs_live_golden1', snapshotId, paymentIntentId: 'pi_oos_settings' }), h.webhookDeps))
+        .toStrictEqual(ok({ processed: true }));
+      expect(await refundDispatcher(h).run()).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+      await holder.query('COMMIT');
+    } finally {
+      await holder.end();
+    }
+
+    const rows = await tenantRows();
+    expect(rows.orders).toStrictEqual([expect.objectContaining({ status: 'paid', cancelReason: 'out_of_stock' })]);
+    expect(rows.refundJobs).toStrictEqual([expect.objectContaining({ status: 'succeeded', attempts: 1 })]);
+  });
+});
+
 type RefundInput = Parameters<NonNullable<PaymentProvider['createRefund']>>[0];
 
 const refundDispatcher = (h: Harness, release: Promise<void> = Promise.resolve()) => {

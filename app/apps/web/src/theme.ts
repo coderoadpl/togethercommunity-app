@@ -2785,6 +2785,47 @@ export const CheckoutPriceOption = styled(Paper, {
     : {}),
 }));
 
+export const CheckoutDeliveryCard = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'selected',
+})<{ selected: boolean }>(({ selected, theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  '& > .MuiFormControlLabel-root': {
+    display: 'flex',
+    width: '100%',
+    margin: 0,
+    padding: '0.625rem 0.875rem 0.625rem 0.375rem',
+    gap: '0.25rem',
+  },
+  ...(selected
+    ? {
+        borderColor: theme.palette.text.primary,
+        boxShadow: `inset 0 0 0 1px ${theme.palette.text.primary}`,
+      }
+    : {}),
+}));
+
+export const CheckoutDeliveryLabel = styled('span')({
+  flex: 1,
+  minWidth: 0,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  gridTemplateAreas: '"name price" "estimate price"',
+  columnGap: '1rem',
+  alignItems: 'baseline',
+});
+
+export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
+  ...theme.typography.body1,
+  gridArea: 'price',
+  alignSelf: 'start',
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 600,
+}));
+
 export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8rem)';
 
 export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });

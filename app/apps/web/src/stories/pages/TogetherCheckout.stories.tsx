@@ -56,6 +56,7 @@ const fixtureFor = (scenario: string, product: Record<string, unknown>, payment:
 });
 
 const deliveryFixture = fixtureFor('together-checkout-delivery', stand, { shippingRates });
+const lockerMapFixture = fixtureFor('together-checkout-locker-map', stand, { shippingRates, inpostGeowidgetToken: 'story-geowidget-token', inpostGeowidgetWithheld: false, canTest: false, testEnabled: false });
 const variantsFixture = fixtureFor('together-checkout-variants', { ...stand, variants: standVariants }, { shippingRates });
 const freeFixture = fixtureFor('together-checkout-free', { priceCents: 0, prices: [price(0)] }, {});
 const signedInFixture = fixtureFor('together-checkout-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'] } });
@@ -127,6 +128,33 @@ const bundleFixture = {
   },
 };
 
+const STUB_MAP_TAG = 'inpost-geowidget';
+const stubPoint = { name: 'WAW01M', location_description: 'Next to the pharmacy entrance', address: { line1: 'Example Street 5', line2: '00-001 Warsaw' } };
+class StubGeowidget extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'display:grid;place-items:center;height:100%;border-radius:8px;color:inherit;font:inherit;' +
+      'background:repeating-linear-gradient(0deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),' +
+      'repeating-linear-gradient(90deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),color-mix(in srgb,currentColor 4%,transparent);';
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.textContent = stubPoint.name;
+    pin.dataset['testid'] = 'stub-geowidget-pin';
+    pin.style.cssText = 'white-space:nowrap;padding:0.4rem 0.75rem;border-radius:999px;border:1px solid currentColor;background:Canvas;color:inherit;font:inherit;cursor:pointer;';
+    pin.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent(this.getAttribute('onpoint') ?? '', { detail: stubPoint }));
+    });
+    this.replaceChildren(pin);
+  }
+}
+const stubGeowidget = () => {
+  if (customElements.get(STUB_MAP_TAG) === undefined) customElements.define(STUB_MAP_TAG, StubGeowidget);
+  const placeholders = [document.createElement('script'), document.createElement('link')];
+  placeholders[0]?.setAttribute('id', 'inpost-geowidget-script');
+  placeholders[1]?.setAttribute('id', 'inpost-geowidget-style');
+  document.head.append(...placeholders);
+  return () => { for (const element of placeholders) element.remove(); };
+};
+
 const chooseRate = async (canvasElement: HTMLElement, name: RegExp) => {
   await userEvent.click(await within(canvasElement).findByRole('radio', { name }));
 };
@@ -148,6 +176,14 @@ const openSafetyDetails = async (canvasElement: HTMLElement) => {
   const safety = within(await within(canvasElement).findByTestId('product-safety-info'));
   for (const toggle of safety.getAllByRole('button', { name: /Details/u })) await userEvent.click(toggle);
 };
+const chooseLockerOnMap = async (canvasElement: HTMLElement, pick: boolean) => {
+  await chooseRate(canvasElement, /parcel locker/u);
+  const pin = await within(canvasElement).findByTestId('stub-geowidget-pin');
+  if (pick) {
+    await userEvent.click(pin);
+    await within(canvasElement).findByTestId('checkout-pickup-point-selected');
+  }
+};
 const settled = async () => {
   const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
   await Promise.all(finite.map((animation) => animation.finished));
@@ -156,6 +192,12 @@ const openSummaryDetails = async (canvasElement: HTMLElement) => {
   await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));
 };
 const mobile375 = { parameters: { viewport: { defaultViewport: 'mobile-375' } }, globals: { viewport: { value: 'mobile-375' } } };
+const lockerMap = (scheme: { colorScheme?: 'dark' }, viewport: typeof mobile375 | null, pick: boolean): Story => ({
+  ...(viewport === null ? {} : { globals: viewport.globals }),
+  parameters: { ...viewport?.parameters, ...scheme, fixture: lockerMapFixture },
+  beforeEach: stubGeowidget,
+  play: async ({ canvasElement }) => chooseLockerOnMap(canvasElement, pick),
+});
 
 const meta = {
   title: 'Pages/Together checkout', render: () => <></>, decorators: [withPage],
@@ -243,3 +285,11 @@ export const CouponCourier: Story = {
     await openSummaryDetails(canvasElement);
   },
 };
+export const LockerMap: Story = lockerMap({}, null, false);
+export const LockerMapMobile: Story = lockerMap({}, mobile375, false);
+export const LockerMapDark: Story = lockerMap({ colorScheme: 'dark' }, null, false);
+export const LockerMapMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, false);
+export const LockerPicked: Story = lockerMap({}, null, true);
+export const LockerPickedMobile: Story = lockerMap({}, mobile375, true);
+export const LockerPickedDark: Story = lockerMap({ colorScheme: 'dark' }, null, true);
+export const LockerPickedMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, true);

@@ -625,8 +625,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 testMode: testEnabled,
               })}
               disabled={pending}
-              lockerPlacement="under-option"
-              chooseHint={false}
+              layout="cards"
             />
           ) : null}
           <PersonalizationField state={personalization} disabled={pending} />

@@ -645,6 +645,7 @@ export interface Messages {
     deliveryEstimate: (params: { min: number; max: number }) => string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
+    lockerCodeMapHint: string;
     lockerCodeInvalid: string;
     lockerSelected: string;
     lockerMapStaffHint: string;

@@ -185,6 +185,16 @@ describe('checkout content', () => {
     expect(en.checkout.summaryDetailsShort.length).toBeLessThan(en.checkout.summaryDetails.length);
   });
 
+  it('keeps the amount of a free delivery option in its price column', async () => {
+    server.use(
+      anonymousMe(),
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme School', legal }, contentVersion: 1, products: [product()] } })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates: [{ ...shippingRates[0], amountCents: 0 }] } })),
+    );
+    renderCheckout();
+    expect(await screen.findByTestId('checkout-delivery-price-locker')).toHaveTextContent(exact(pln(0)));
+  });
+
   it('replaces the floating language switcher with one in the card header', async () => {
     serve();
     renderCheckout(<AppChromeProvider><LanguageSwitcher /><CheckoutPage productRef="stand" /></AppChromeProvider>);

@@ -176,6 +176,41 @@ describe('checkout delivery step', () => {
     expect(document.getElementById('inpost-geowidget-style')).toBeNull();
   });
 
+  it('names the map in the locker code hint only when the map is shown', async () => {
+    serve({ token: 'public-map-token' });
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    expect(await screen.findByTestId('checkout-inpost-geowidget')).toBeInTheDocument();
+    expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAccessibleDescription(en.shipping.lockerCodeMapHint);
+  });
+
+  it.each([
+    { viewer: 'a workspace without a map token', token: null, canTest: false },
+    { viewer: 'a staff session', token: 'public-map-token', canTest: true },
+  ])('asks only for the locker code for $viewer', async ({ token, canTest }) => {
+    serve({ token, canTest });
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const code = await screen.findByLabelText(en.shipping.lockerCodeLabel);
+    expect(code).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
+    expect(en.shipping.lockerCodeHint).not.toMatch(/map/u);
+  });
+
+  it('shows the delivery price in its own column and gives the locker picker the full width under the chosen option', async () => {
+    serve({ token: null });
+    renderCheckout();
+    const locker = await screen.findByRole('radio', { name: lockerOption });
+    expect(screen.getByTestId('checkout-delivery-price-courier')).toHaveTextContent(exact(pln(1999)));
+    expect(screen.getByTestId('checkout-delivery-option-courier')).toHaveTextContent(exact(`Courier — ${pln(1999)}`));
+    expect(screen.getByRole('radio', { name: exact(`Courier — ${pln(1999)}`) })).toBeInTheDocument();
+    await userEvent.click(locker);
+    const picker = await screen.findByTestId('checkout-locker-picker');
+    const lockerCard = screen.getByTestId('checkout-delivery-option-locker');
+    expect(lockerCard).not.toContainElement(picker);
+    expect(lockerCard.nextElementSibling).toBe(picker);
+    expect(within(picker).getByLabelText(en.shipping.lockerCodeLabel)).toBeInTheDocument();
+  });
+
   it('never loads the parcel locker map without a workspace token', async () => {
     serve({ token: null });
     renderCheckout();

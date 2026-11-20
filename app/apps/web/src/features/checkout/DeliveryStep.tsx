@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   FormControl,
   FormControlLabel,
@@ -15,11 +15,11 @@ import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/inde
 
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CheckoutPriceOption, FinePrint } from '../../theme.js';
+import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
 import type { CheckoutEvent, CheckoutState, GeowidgetAccess } from './index.web.js';
 
-export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, lockerPlacement = 'after-options', chooseHint = true }: {
+export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, layout = 'list' }: {
   rates: PublicShippingRate[];
   state: CheckoutState;
   dispatch: (event: CheckoutEvent) => void;
@@ -27,15 +27,15 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   language: 'pl' | 'en';
   geowidget: GeowidgetAccess;
   disabled: boolean;
-  lockerPlacement?: 'under-option' | 'after-options';
-  chooseHint?: boolean;
+  layout?: 'list' | 'cards';
 }) => {
   const t = useTranslations();
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
+  const lockerHint = layout === 'list' || geowidget.status === 'map' ? t.shipping.lockerCodeMapHint : t.shipping.lockerCodeHint;
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
-    <Stack useFlexGap spacing="0.75rem" sx={lockerPlacement === 'under-option' ? { pt: '0.25rem', pb: '0.875rem' } : { mt: '0.5rem' }}>
+    <Stack useFlexGap spacing="0.75rem" sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker">
       {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
       {geowidget.status === 'withheld_for_staff' ? (
         <Typography variant="body2" color="text.secondary" data-testid="checkout-locker-map-staff-hint">{t.shipping.lockerMapStaffHint}</Typography>
@@ -51,7 +51,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
           onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
           onBlur={() => setCodeBlurred(true)}
         />
-        <FormHelperText id="checkout-pickup-point-hint">{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
+        <FormHelperText id="checkout-pickup-point-hint">{codeInvalid ? t.shipping.lockerCodeInvalid : lockerHint}</FormHelperText>
       </FormControl>
       {state.pickupPoint === null ? null : (
         <Typography variant="body2" data-testid="checkout-pickup-point-selected">
@@ -68,10 +68,37 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       ) : (
         <RadioGroup
           aria-labelledby="checkout-delivery-label"
+          sx={layout === 'cards' ? { gap: '0.5rem', mt: '0.25rem' } : undefined}
           value={state.shippingRateId ?? ''}
           onChange={(event) => dispatch({ type: 'shippingRateSelected', rateId: event.target.value })}
         >
-          {rates.map((rate) => (
+          {rates.map((rate) => layout === 'cards' ? (
+            <Fragment key={rate.id}>
+              <CheckoutDeliveryCard variant="outlined" selected={rate.id === state.shippingRateId} data-testid={`checkout-delivery-option-${rate.id}`}>
+                <FormControlLabel
+                  value={rate.id}
+                  disabled={disabled}
+                  control={<Radio />}
+                  data-testid={`checkout-delivery-${rate.id}`}
+                  disableTypography
+                  label={(
+                    <CheckoutDeliveryLabel>
+                      <Typography component="span" sx={{ gridArea: 'name', overflowWrap: 'anywhere' }}>{rate.label}</Typography>
+                      {' '}<VisuallyHidden>—</VisuallyHidden>{' '}
+                      <CheckoutDeliveryPrice data-testid={`checkout-delivery-price-${rate.id}`}>{formatPrice(rate.amountCents, currency, language)}</CheckoutDeliveryPrice>
+                      {rate.deliveryEstimateDays === undefined ? null : (
+                        <FinePrint component="span" variant="caption" color="text.secondary" sx={{ gridArea: 'estimate' }}>
+                          <VisuallyHidden>,</VisuallyHidden>{' '}
+                          {t.shipping.deliveryEstimate(rate.deliveryEstimateDays)}
+                        </FinePrint>
+                      )}
+                    </CheckoutDeliveryLabel>
+                  )}
+                />
+              </CheckoutDeliveryCard>
+              {rate.id === selected?.id ? lockerPicker : null}
+            </Fragment>
+          ) : (
             <CheckoutPriceOption key={rate.id} variant="outlined" selected={rate.id === state.shippingRateId} sx={{ px: '0.75rem', my: '0.3rem' }}>
               <FormControlLabel
                 value={rate.id}
@@ -87,13 +114,12 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
                   </Stack>
                 )}
               />
-              {lockerPlacement === 'under-option' && rate.id === selected?.id ? lockerPicker : null}
             </CheckoutPriceOption>
           ))}
         </RadioGroup>
       )}
-      {lockerPlacement === 'after-options' ? lockerPicker : null}
-      {chooseHint && selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
+      {layout === 'list' ? lockerPicker : null}
+      {layout === 'list' && selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
     </FormControl>
   );
 };

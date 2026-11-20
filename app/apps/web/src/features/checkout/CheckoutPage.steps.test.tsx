@@ -302,7 +302,7 @@ describe('checkout step one', () => {
     await userEvent.click(locker);
     expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(exact(en.checkout.payBlockedLocker));
     const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
-    expect(locker.closest('.MuiPaper-root')?.contains(code)).toBe(true);
+    expect(locker.closest('.MuiPaper-root')?.nextElementSibling?.contains(code)).toBe(true);
     expect(following(code, screen.getByRole('radio', { name: new RegExp(`^Courier — ${pln(1999).replace('.', '\\.')}`, 'u') }))).toBe(true);
     await userEvent.type(code, 'waw01m');
     expect(pay).toBeEnabled();

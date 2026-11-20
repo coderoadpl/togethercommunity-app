@@ -162,7 +162,35 @@ describe('the owner panel summary', () => {
     expect(await summary()).toEqual({ status: 200, body: { pending: pendingBefore + 3, pendingGroups: groupsBefore + 1 } });
     expect(await summary(ownerToken, studioHost)).toEqual({ status: 200, body: { pending: 0, pendingGroups: 0 } });
     expect((await summary(adminToken)).status).toBe(403);
-    expect((await keyed(proposer.secret, 'GET', API_PATHS.changeProposalSummary)).status).toBeGreaterThanOrEqual(401);
+    const keyedSummary = await keyed(proposer.secret, 'GET', API_PATHS.changeProposalSummary);
+    expect(keyedSummary.status).toBe(401);
+    expect(await keyedSummary.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+});
+
+describe('the owner panel history filter', () => {
+  it('pages through decided proposals only and says whether more pages exist', async () => {
+    const proposer = await createShopKey('propose');
+    const pending = await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Still pending' });
+    const first = await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Rejected one' });
+    const second = await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Rejected two' });
+    for (const id of [first.id, second.id]) {
+      expect((await sessionRequest(ownerToken, 'POST', API_PATHS.changeProposalReject.replace(':id', id), {})).status).toBe(200);
+    }
+    const page = async (query: string) => {
+      const response = await sessionRequest(ownerToken, 'GET', `${API_PATHS.changeProposals}?${query}`);
+      expect(response.status).toBe(200);
+      return envelope(changeProposalsListOutputSchema).parse(await response.json()).data;
+    };
+
+    const all = await page('status=decided&limit=100');
+    expect(all.proposals.map((card) => card.id)).toEqual(expect.arrayContaining([first.id, second.id]));
+    expect(all.proposals.map((card) => card.id)).not.toContain(pending.id);
+    expect(all.proposals.every((card) => card.status !== 'pending')).toBe(true);
+    expect(all.hasMore).toBe(false);
+    const one = await page('status=decided&limit=1');
+    expect(one).toMatchObject({ hasMore: true, nextCursor: one.proposals[0]?.id });
+    expect((await sessionRequest(ownerToken, 'GET', `${API_PATHS.changeProposals}?status=undecided`)).status).toBe(400);
   });
 });
 
@@ -231,7 +259,13 @@ describe('the owner bell for change proposals', () => {
     const read = await sessionRequest(ownerToken, 'POST', API_PATHS.notificationRead, { id: rung[0]?.id });
     expect(read.status).toBe(200);
     await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Bell three' });
-    expect((await bell()).map((entry) => [entry.id, entry.readAt])).toEqual([[rung[0]?.id, null]]);
+    const rearmed = await bell();
+    expect(rearmed.map((entry) => entry.readAt)).toEqual([null]);
+    expect(rearmed[0]?.id).not.toBe(rung[0]?.id);
+
+    const lateRead = await sessionRequest(ownerToken, 'POST', API_PATHS.notificationRead, { id: rung[0]?.id });
+    expect(lateRead.status).toBe(400);
+    expect((await bell()).map((entry) => [entry.id, entry.readAt])).toEqual([[rearmed[0]?.id, null]]);
   });
 });
 

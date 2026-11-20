@@ -148,10 +148,11 @@ import type {
   ChangeProposal,
   ChangeProposalCap,
   ChangeProposalCountCap,
-  ChangeProposalDisplayStatus,
+  ChangeProposalListStatus,
   ChangeProposalEvent,
   ChangeProposalGroup,
   ChangeProposalTarget,
+  ChangeProposalTargetPrice,
   ChangeProposalTerminalStatus,
   SalesLink,
   TenantAuditEventListQuery,
@@ -617,13 +618,6 @@ export interface DmReportRepository {
   ): Promise<DmReport | null>;
 }
 
-export interface UnreadNotificationRaiser {
-  /**
-   * Inserts the notification, or makes the read one with the same recipient and source key unread again with the new
-   * kind, payload and time; null, changing nothing, while that one is still unread. The unique source key makes it atomic.
-   */
-  raiseUnread(tenantId: string, notification: Notification): Promise<Notification | null>;
-}
 
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
@@ -2944,7 +2938,7 @@ export interface ChangeProposalEventDraft {
 }
 
 export interface ChangeProposalListQuery {
-  status?: ChangeProposalDisplayStatus;
+  status?: ChangeProposalListStatus;
   cursor?: string;
   groupId?: string;
   limit: number;
@@ -3110,11 +3104,38 @@ export interface ChangeProposalTargetLabelRequest {
 
 interface ChangeProposalTargetLabel extends ChangeProposalTargetLabelRequest {
   label: string;
+  price: ChangeProposalTargetPrice | null;
 }
 
 export interface ChangeProposalTargetLabelReader {
-  /** The live title of each existing target (a price answers its product's title); a missing or deleted target has no entry. */
+  /**
+   * The live title of each existing target; a price answers its product's title and its own terms. A missing or deleted
+   * target has no entry.
+   */
   labels(tenantId: string, targets: readonly ChangeProposalTargetLabelRequest[]): Promise<ChangeProposalTargetLabel[]>;
+}
+
+export interface ChangeProposalPerson {
+  userId: string;
+  email: string;
+  emailVerified: boolean;
+  /** The effective grant in the workspace: a direct staff row or one derived from the owning organisation. */
+  staffRole: StaffRole | null;
+}
+
+export interface ChangeProposalPeopleReader {
+  /** Every existing account among `userIds`, read in a fixed number of queries whatever their count. */
+  read(tenantId: string, userIds: readonly string[]): Promise<ChangeProposalPerson[]>;
+}
+
+export interface ChangeProposalOwnerNotifier {
+  /**
+   * In one short transaction of its own, bounded in lock wait and statement time: finds every effective owner of the
+   * workspace (direct or organisation-derived) and, per owner, inserts `build(owner)` or makes the read notification with
+   * the same source key unread again under the new id, kind, payload and time; an unread one is left alone. Answers the
+   * notifications it wrote, or busy, having written nothing, when a bound ran out.
+   */
+  raiseForOwners(tenantId: string, build: (recipientUserId: string) => Notification): Promise<ChangeProposalWrite<Notification[]>>;
 }
 
 export type ChangeProposalTargetLockPurpose = 'change' | 'delete';

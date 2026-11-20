@@ -1,12 +1,14 @@
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import {
+  CHANGE_PROPOSAL_DECIDED_FILTER,
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
   CHANGE_PROPOSAL_LIMITS,
   CHANGE_PROPOSAL_WITHDRAWAL_NOTES,
   changeProposalEffectWithinLimit,
   changeProposalEventSchema,
   changeProposalSchema,
+  changeProposalTargetPriceSchema,
   type ChangeProposal,
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
@@ -110,6 +112,7 @@ const pendingAt = (now: string): SQL | undefined =>
 const statusFilter = (query: ChangeProposalListQuery): SQL | undefined => {
   if (query.status === undefined) return undefined;
   if (query.status === 'pending') return pendingAt(query.now);
+  if (query.status === CHANGE_PROPOSAL_DECIDED_FILTER) return or(ne(changeProposals.status, 'pending'), lte(changeProposals.expiresAt, query.now));
   if (query.status === 'expired') return and(eq(changeProposals.status, 'pending'), lte(changeProposals.expiresAt, query.now));
   return eq(changeProposals.status, query.status);
 };
@@ -425,7 +428,15 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
       .from(products)
       .where(and(eq(products.tenantId, tenantId), inArray(products.id, productIds)));
     const priceRows = priceIds.length === 0 ? [] : await db
-      .select({ id: productPrices.id, label: products.title })
+      .select({
+        id: productPrices.id,
+        label: products.title,
+        kind: productPrices.kind,
+        interval: productPrices.interval,
+        intervalCount: productPrices.intervalCount,
+        amountCents: productPrices.amountCents,
+        currency: productPrices.currency,
+      })
       .from(productPrices)
       .innerJoin(products, and(eq(products.tenantId, productPrices.tenantId), eq(products.id, productPrices.productId)))
       .where(and(eq(productPrices.tenantId, tenantId), inArray(productPrices.id, priceIds)));
@@ -434,9 +445,9 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
       .from(salesLinks)
       .where(and(eq(salesLinks.tenantId, tenantId), inArray(salesLinks.id, salesLinkIds), isNull(salesLinks.deletedAt)));
     return [
-      ...productRows.map((row) => ({ kind: 'product' as const, ...row })),
-      ...priceRows.map((row) => ({ kind: 'price' as const, ...row })),
-      ...salesLinkRows.map((row) => ({ kind: 'sales-link' as const, ...row })),
+      ...productRows.map((row) => ({ kind: 'product' as const, ...row, price: null })),
+      ...priceRows.map(({ id, label, ...price }) => ({ kind: 'price' as const, id, label, price: changeProposalTargetPriceSchema.parse(price) })),
+      ...salesLinkRows.map((row) => ({ kind: 'sales-link' as const, ...row, price: null })),
     ];
   },
 });

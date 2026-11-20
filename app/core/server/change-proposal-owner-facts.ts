@@ -1,32 +1,31 @@
 import {
-  CHANGE_PROPOSAL_SETTINGS_LABEL,
   changeProposalKeyState,
   isChangeProposalReference,
   type ChangeProposal,
   type ChangeProposalOwnerFacts,
+  type ChangeProposalTargetPrice,
 } from '#core/domain/index.js';
 
 import { keyNamed } from './change-proposal-access.js';
 import type {
-  AccountIdentityReader,
   ChangeProposalGroupRepository,
+  ChangeProposalPeopleReader,
   ChangeProposalTargetLabelReader,
   ChangeProposalTargetLabelRequest,
   ShopManagementKeyRepository,
-  TenantAccessReader,
 } from './ports.js';
 
 export interface ChangeProposalOwnerViewDeps {
   shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'listByIds'>;
   changeProposalTargetLabels: ChangeProposalTargetLabelReader;
-  accountIdentities: Pick<AccountIdentityReader, 'findById'>;
-  tenantAccess: Pick<TenantAccessReader, 'findStaffGrant'>;
+  changeProposalPeople: ChangeProposalPeopleReader;
 }
 
-export interface ChangeProposalPerson {
+export interface ChangeProposalPersonFacts {
   email: string | null;
   verifiedOwner: boolean;
+  formerTeamMember: boolean;
 }
 
 type FactsSubject = Pick<
@@ -37,10 +36,11 @@ type FactsSubject = Pick<
 const labelRequest = (proposal: FactsSubject): ChangeProposalTargetLabelRequest | null => {
   const { kind, id } = proposal.target;
   if (kind === 'settings') return null;
+  const applied = proposal.status === 'applied' ? proposal.appliedResourceId : null;
+  if (proposal.operation === 'price.create' && applied !== null) return { kind: 'price', id: applied };
   if (id !== null && !isChangeProposalReference(id)) return { kind, id };
-  const appliedIsTheTarget = proposal.operation !== 'price.create';
-  if (proposal.status !== 'applied' || proposal.appliedResourceId === null || !appliedIsTheTarget) return null;
-  return { kind, id: proposal.appliedResourceId };
+  if (proposal.operation === 'price.create' || applied === null) return null;
+  return { kind, id: applied };
 };
 
 const labelKey = ({ kind, id }: ChangeProposalTargetLabelRequest): string => `${kind}:${id}`;
@@ -48,33 +48,34 @@ const labelKey = ({ kind, id }: ChangeProposalTargetLabelRequest): string => `${
 const distinct = (values: ReadonlyArray<string | null>): string[] =>
   [...new Set(values.filter((value): value is string => value !== null))];
 
+const FORMER_OR_UNKNOWN: ChangeProposalPersonFacts = { email: null, verifiedOwner: false, formerTeamMember: true };
+
+/** An e-mail is shown only for an account that still holds a staff grant here; anyone else reads as a former team member. */
 export const changeProposalPeople = async (
   tenantId: string,
-  issuers: ReadonlyArray<string | null>,
-  deciders: ReadonlyArray<string | null>,
-  deps: Pick<ChangeProposalOwnerViewDeps, 'accountIdentities' | 'tenantAccess'>,
-): Promise<(userId: string | null) => ChangeProposalPerson> => {
-  const issuerIds = new Set(distinct(issuers));
-  const people = new Map<string, ChangeProposalPerson>();
-  await Promise.all(distinct([...issuers, ...deciders]).map(async (userId) => {
-    const account = await deps.accountIdentities.findById(userId);
-    const grant = issuerIds.has(userId) && account?.emailVerified === true
-      ? await deps.tenantAccess.findStaffGrant(userId, { tenantId })
-      : null;
-    people.set(userId, {
-      email: account?.email ?? null,
-      verifiedOwner: grant?.staffRole === 'owner' && grant.tenant.id === tenantId,
-    });
-  }));
-  return (userId) => (userId === null ? undefined : people.get(userId)) ?? { email: null, verifiedOwner: false };
+  userIds: ReadonlyArray<string | null>,
+  deps: Pick<ChangeProposalOwnerViewDeps, 'changeProposalPeople'>,
+): Promise<(userId: string | null) => ChangeProposalPersonFacts> => {
+  const ids = distinct(userIds);
+  const records = ids.length === 0 ? [] : await deps.changeProposalPeople.read(tenantId, ids);
+  const people = new Map(records.map((person): [string, ChangeProposalPersonFacts] => [person.userId, person.staffRole === null
+    ? FORMER_OR_UNKNOWN
+    : { email: person.email, verifiedOwner: person.staffRole === 'owner' && person.emailVerified, formerTeamMember: false }]));
+  return (userId) => (userId === null ? undefined : people.get(userId)) ?? FORMER_OR_UNKNOWN;
 };
+
+interface OwnerFactsReader {
+  factsOf: (proposal: FactsSubject) => ChangeProposalOwnerFacts;
+  person: (userId: string | null) => ChangeProposalPersonFacts;
+}
 
 export const changeProposalOwnerFacts = async (
   tenantId: string,
   proposals: readonly FactsSubject[],
   deps: ChangeProposalOwnerViewDeps,
   now: string,
-): Promise<(proposal: FactsSubject) => ChangeProposalOwnerFacts> => {
+  otherPeople: ReadonlyArray<string | null> = [],
+): Promise<OwnerFactsReader> => {
   const keys = await deps.shopManagementKeys.listByTenant(tenantId);
   const groups = await deps.changeProposalGroups.listByIds(tenantId, distinct(proposals.map((proposal) => proposal.groupId)));
   const requests = new Map<string, ChangeProposalTargetLabelRequest>();
@@ -82,25 +83,28 @@ export const changeProposalOwnerFacts = async (
     const request = labelRequest(proposal);
     if (request !== null) requests.set(labelKey(request), request);
   }
-  const labels = new Map((requests.size === 0 ? [] : await deps.changeProposalTargetLabels.labels(tenantId, [...requests.values()]))
-    .map((entry) => [labelKey(entry), entry.label]));
+  const labels = new Map<string, { label: string; price: ChangeProposalTargetPrice | null }>(
+    (requests.size === 0 ? [] : await deps.changeProposalTargetLabels.labels(tenantId, [...requests.values()]))
+      .map((entry) => [labelKey(entry), { label: entry.label, price: entry.price }]),
+  );
   const person = await changeProposalPeople(
     tenantId,
-    proposals.map((proposal) => proposal.proposedByIssuerUserId),
-    proposals.map((proposal) => proposal.decidedByUserId),
+    [...proposals.flatMap((proposal) => [proposal.proposedByIssuerUserId, proposal.decidedByUserId]), ...otherPeople],
     deps,
   );
-  return (proposal) => {
+  const factsOf = (proposal: FactsSubject): ChangeProposalOwnerFacts => {
     const request = labelRequest(proposal);
+    const label = request === null ? undefined : labels.get(labelKey(request));
     const issuer = person(proposal.proposedByIssuerUserId);
+    const decider = person(proposal.decidedByUserId);
     return {
       keyState: changeProposalKeyState(keyNamed(keys, proposal.proposedByKeyId), now),
       groupTitle: groups.find((group) => group.id === proposal.groupId)?.title ?? null,
-      issuer: { issuerEmail: issuer.email, issuerIsVerifiedOwner: issuer.verifiedOwner },
-      decidedByEmail: person(proposal.decidedByUserId).email,
-      targetLabel: proposal.target.kind === 'settings'
-        ? CHANGE_PROPOSAL_SETTINGS_LABEL
-        : request === null ? null : labels.get(labelKey(request)) ?? null,
+      issuer: { issuerEmail: issuer.email, issuerIsVerifiedOwner: issuer.verifiedOwner, issuerIsFormerTeamMember: issuer.formerTeamMember },
+      decidedBy: { email: decider.email, formerTeamMember: decider.formerTeamMember },
+      targetLabel: label?.label ?? null,
+      targetPrice: label?.price ?? null,
     };
   };
+  return { factsOf, person };
 };

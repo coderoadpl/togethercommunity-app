@@ -30,10 +30,12 @@ const receipt = {
 };
 const ownerView = {
   id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
-  targetLabel: 'Handbook',
+  targetLabel: 'Handbook', targetPrice: null,
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' } }, status: 'pending',
-  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', keyState: 'active', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true },
-  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedByEmail: null, decidedAt: null,
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', keyState: 'active', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true,
+    issuerIsFormerTeamMember: false },
+  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedByEmail: null,
+  decidedByIsFormerTeamMember: false, decidedAt: null,
   decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
 };
 const product = {
@@ -210,7 +212,7 @@ describe('shop management client with a proposal group', () => {
 
 const ownerGroup = {
   id: 'group-1', title: 'Spring launch', status: 'open',
-  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true, keyState: 'active' },
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true, issuerIsFormerTeamMember: false, keyState: 'active' },
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z',
   items: [{ ...ownerView, groupId: 'group-1', groupTitle: 'Spring launch', groupPosition: 1, events: [] }],
 };
@@ -256,7 +258,7 @@ describe('owner change proposal client', () => {
       requests.push({ url: String(url), method: init?.method, body: init?.body });
       const path = new URL(String(url)).pathname;
       return Response.json({ ok: true, data: path === '/api/change-proposals'
-        ? { proposals: [ownerView], nextCursor: null }
+        ? { proposals: [ownerView], nextCursor: null, hasMore: false }
         : path.endsWith('/reject') ? { proposal: { ...ownerView, status: 'rejected' } }
           : path.endsWith('/approve') ? { proposal: { ...ownerView, status: 'applied', appliedResourceId: 'product-1' } }
             : { proposal: { ...ownerView, events: [] } } });
@@ -275,9 +277,23 @@ describe('owner change proposal client', () => {
     ]);
   });
 
+  it('asks for the decided proposals by status, keeps that page apart in the cache and reads whether more pages exist', async () => {
+    const requested: string[] = [];
+    const decided = { ...ownerView, status: 'expired' };
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url) => {
+      requested.push(String(url));
+      return Response.json({ ok: true, data: { proposals: [decided], nextCursor: 'proposal-1', hasMore: true } });
+    } });
+    expect(await api.listChangeProposals({ status: 'decided', limit: 50, cursor: 'proposal-0' }))
+      .toEqual({ ok: true, value: { proposals: [decided], nextCursor: 'proposal-1', hasMore: true } });
+    expect(requested).toEqual(['http://localhost:48730/api/change-proposals?status=decided&limit=50&cursor=proposal-0']);
+    expect(changeProposalsQuery(api, { status: 'decided', limit: 50 }).queryKey)
+      .not.toEqual(changeProposalsQuery(api, { limit: 50 }).queryKey);
+  });
+
   it('describes the owner queries and the reject mutation under one invalidation prefix', async () => {
     const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url) => Response.json({ ok: true, data: new URL(String(url)).pathname === '/api/change-proposals'
-      ? { proposals: [], nextCursor: null }
+      ? { proposals: [], nextCursor: null, hasMore: false }
       : { proposal: { ...ownerView, status: 'rejected' } } }) });
     const list = changeProposalsQuery(api, { status: 'pending' });
     const detail = changeProposalQuery(api, 'proposal-1');

@@ -36,15 +36,11 @@ import {
 
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import {
-  createAccountIdentityReader,
-  createTenantAccessReader,
-  createTenantSecretRepository,
-  createUnreadNotificationRaiser,
-} from './repositories.js';
+import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposalGroups,
@@ -129,9 +125,8 @@ const deps = (db: Db = database.db, bounds: ChangeProposalBoundOptions = {}) => 
     changeProposalEvents: createChangeProposalEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
-    accountIdentities: createAccountIdentityReader(db),
-    tenantAccess: createTenantAccessReader(db),
-    unreadNotifications: createUnreadNotificationRaiser(db),
+    changeProposalPeople: createChangeProposalPeopleReader(db),
+    changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
     realtimeBus: { publish: () => undefined },
     storage,
     logger,

@@ -219,7 +219,7 @@ describe('notification event stream', () => {
     });
 
     expect(await readChunk(reader)).toBe(
-      'id: 2026-07-15T10:00:05.000Z|n-visible\nevent: notification\ndata: {"id":"n-visible"}\n\n',
+      'id: 2026-07-15T10:00:05.000Z|n-visible\nevent: notification\ndata: {"id":"n-visible","kind":"space-post"}\n\n',
     );
 
     await reader.cancel();
@@ -465,6 +465,7 @@ describe('last-event-id replay', () => {
         tenantId: 't1',
         recipientUserId: 'u1',
         notificationId: 'n2',
+        notificationKind: 'thread-reply',
         createdAt: '2026-07-15T10:00:05.000Z',
       },
     ]);

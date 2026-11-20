@@ -295,6 +295,7 @@ const groupProposerSchema = z.object({
   issuerUserId: z.string().nullable(),
   issuerEmail: z.string().nullable(),
   issuerIsVerifiedOwner: z.boolean(),
+  issuerIsFormerTeamMember: z.boolean(),
   keyState: changeProposalKeyStateSchema,
 }).strict();
 

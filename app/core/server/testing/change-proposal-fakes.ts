@@ -1,12 +1,12 @@
 import {
   appError,
+  CHANGE_PROPOSAL_DECIDED_FILTER,
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
   CHANGE_PROPOSAL_GROUP_LIMITS,
   CHANGE_PROPOSAL_LIMITS,
   changeProposalEffectWithinLimit,
   changeProposalGroupOpen,
   err,
-  membershipSchema,
   notFound,
   ok,
   validation,
@@ -17,12 +17,14 @@ import {
   type ChangeProposalEventKind,
   type ChangeProposalGroup,
   type ChangeProposalTarget,
+  type ChangeProposalTargetPrice,
   type Notification,
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
   type SalesLink,
   type ShopManagementKey,
+  type StaffRole,
   type StockLevel,
   type TenantSettings,
 } from '#core/domain/index.js';
@@ -34,7 +36,9 @@ import type {
   ChangeProposalGroupRepository,
   ChangeProposalGroupWithItems,
   ChangeProposalListQuery,
+  ChangeProposalOwnerNotifier,
   ChangeProposalPage,
+  ChangeProposalPeopleReader,
   ChangeProposalRepositories,
   ChangeProposalRepository,
   ChangeProposalTransaction,
@@ -42,9 +46,7 @@ import type {
   ChangeProposalTransitionGuard,
   RealtimeEvent,
   SalesLinkRepository,
-  TenantAccessReader,
   TenantSecretResolver,
-  UnreadNotificationRaiser,
 } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
 
@@ -295,6 +297,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     if (query.groupId !== undefined && proposal.groupId !== query.groupId) return false;
     if (query.status === undefined) return true;
     if (query.status === 'pending') return pendingAt(proposal, query.now);
+    if (query.status === CHANGE_PROPOSAL_DECIDED_FILTER) return !pendingAt(proposal, query.now);
     if (query.status === 'expired') return proposal.status === 'pending' && proposal.expiresAt <= query.now;
     return proposal.status === query.status;
   };
@@ -500,73 +503,91 @@ export interface FakeProposalAccount {
   email: string;
   emailVerified?: boolean;
   ownerOf?: string[];
+  adminOf?: string[];
 }
+
+const fakeStaffRole = (account: FakeProposalAccount, tenantId: string): StaffRole | null => {
+  if ((account.ownerOf ?? []).includes(tenantId)) return 'owner';
+  return (account.adminOf ?? []).includes(tenantId) ? 'admin' : null;
+};
+
+export interface FakeChangeProposalPeople extends ChangeProposalPeopleReader {
+  reads: Array<readonly string[]>;
+}
+
+const createChangeProposalPeopleFake = (accounts: readonly FakeProposalAccount[]): FakeChangeProposalPeople => {
+  const reads: Array<readonly string[]> = [];
+  return {
+    reads,
+    read: async (tenantId, userIds) => {
+      reads.push([...userIds]);
+      return accounts.filter((account) => userIds.includes(account.userId)).map((account) => ({
+        userId: account.userId,
+        email: account.email,
+        emailVerified: account.emailVerified ?? true,
+        staffRole: fakeStaffRole(account, tenantId),
+      }));
+    },
+  };
+};
+
+const priceTermsOf = (price: ProductPrice): ChangeProposalTargetPrice => ({
+  kind: price.kind, interval: price.interval, intervalCount: price.intervalCount ?? 1, amountCents: price.amountCents, currency: price.currency,
+});
 
 export const changeProposalOwnerViewFakes = (
   state: FakeCatalogState,
   accounts: readonly FakeProposalAccount[] = [],
-): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels' | 'accountIdentities'> & {
-  tenantAccess: Pick<TenantAccessReader, 'findStaffGrant' | 'listStaffForTenant'>;
-} => ({
+): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & { changeProposalPeople: FakeChangeProposalPeople } => ({
   changeProposalTargetLabels: {
     labels: async (tenantId, targets) => targets.flatMap((target) => {
       const titleOf = (productId: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === productId)?.title;
+      if (target.kind === 'price') {
+        const price = state.prices.find((candidate) => candidate.tenantId === tenantId && candidate.id === target.id);
+        const label = price === undefined ? undefined : titleOf(price.productId);
+        return price === undefined || label === undefined ? [] : [{ ...target, label, price: priceTermsOf(price) }];
+      }
       const label = target.kind === 'product'
         ? titleOf(target.id)
-        : target.kind === 'price'
-          ? titleOf(state.prices.find((candidate) => candidate.tenantId === tenantId && candidate.id === target.id)?.productId ?? '')
-          : state.salesLinks.find((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted)?.title;
-      return label === undefined ? [] : [{ ...target, label }];
+        : state.salesLinks.find((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted)?.title;
+      return label === undefined ? [] : [{ ...target, label, price: null }];
     }),
   },
-  accountIdentities: {
-    findById: async (userId) => {
-      const account = accounts.find((candidate) => candidate.userId === userId);
-      return account === undefined ? null : { userId, email: account.email, name: account.email, emailVerified: account.emailVerified ?? true };
-    },
-  },
-  tenantAccess: {
-    listStaffForTenant: async (tenantId) => accounts
-      .filter((account) => (account.ownerOf ?? []).includes(tenantId))
-      .map((account) => ({ userId: account.userId, email: account.email, staffRole: 'owner' as const, language: null })),
-    findStaffGrant: async (userId, lookup) => {
-      const tenantId = 'tenantId' in lookup ? lookup.tenantId : lookup.tenantSlug;
-      const owner = accounts.some((candidate) => candidate.userId === userId && (candidate.ownerOf ?? []).includes(tenantId));
-      return owner
-        ? membershipSchema.parse({ tenant: { id: tenantId, slug: tenantId, name: 'Workspace', status: 'active', plan: 'hosted', contentVersion: 1 }, staffRole: 'owner' })
-        : null;
-    },
-  },
+  changeProposalPeople: createChangeProposalPeopleFake(accounts),
 });
 
 export interface FakeUnreadNotifications {
-  unreadNotifications: UnreadNotificationRaiser;
+  changeProposalOwnerNotifier: ChangeProposalOwnerNotifier;
   realtimeBus: { publish(event: RealtimeEvent): void };
   rows: Notification[];
   published: RealtimeEvent[];
 }
 
-export const createUnreadNotificationsFake = (): FakeUnreadNotifications => {
+export const createUnreadNotificationsFake = (accounts: readonly FakeProposalAccount[] = []): FakeUnreadNotifications => {
   const rows: Notification[] = [];
   const published: RealtimeEvent[] = [];
+  const raiseUnread = (tenantId: string, notification: Notification): Notification | null => {
+    const existing = rows.find((row) => row.tenantId === tenantId && row.recipientUserId === notification.recipientUserId
+      && row.sourceKey === notification.sourceKey);
+    if (existing === undefined) {
+      rows.push({ ...notification, tenantId });
+      return { ...notification, tenantId };
+    }
+    if (existing.readAt === null) return null;
+    Object.assign(existing, { id: notification.id, kind: notification.kind, payload: notification.payload, readAt: null, createdAt: notification.createdAt });
+    return { ...existing };
+  };
   return {
     rows,
     published,
     realtimeBus: { publish: (event) => { published.push(event); } },
-    unreadNotifications: {
-      raiseUnread: async (tenantId, notification) => {
-        const existing = rows.find((row) => row.tenantId === tenantId && row.recipientUserId === notification.recipientUserId
-          && row.sourceKey === notification.sourceKey);
-        if (existing === undefined) {
-          rows.push({ ...notification, tenantId });
-          return { ...notification, tenantId };
-        }
-        if (existing.readAt !== null) {
-          Object.assign(existing, { kind: notification.kind, payload: notification.payload, readAt: null, createdAt: notification.createdAt });
-          return { ...existing };
-        }
-        return null;
-      },
+    changeProposalOwnerNotifier: {
+      raiseForOwners: async (tenantId, build) => ({
+        kind: 'written',
+        value: accounts
+          .filter((account) => fakeStaffRole(account, tenantId) === 'owner')
+          .flatMap((account) => raiseUnread(tenantId, build(account.userId)) ?? []),
+      }),
     },
   };
 };

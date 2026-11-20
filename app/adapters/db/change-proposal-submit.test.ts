@@ -18,10 +18,12 @@ import {
   type StorageProvider,
 } from '#core/server/index.js';
 
+import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import { createChangeProposalOwnerNotifier } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import { createTenantAccessReader, createTenantSecretRepository, createUnreadNotificationRaiser } from './repositories.js';
+import { createNotificationRepository, createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposals,
@@ -83,13 +85,16 @@ const storage: StorageProvider = {
 
 const secretCrypto = createSecretCrypto(Buffer.alloc(32, 5).toString('base64'));
 
-const deps = (db: Db = database.db, logger = { error: vi.fn<(message: string) => void>() }): ChangeProposalSubmitDeps => ({
+const deps = (
+  db: Db = database.db,
+  logger = { error: vi.fn<(message: string) => void>() },
+  bounds: ChangeProposalBoundOptions = {},
+): ChangeProposalSubmitDeps => ({
   changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
     createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
   changeProposals: createChangeProposalRepository(db),
   shopManagementKeys: createShopManagementKeyRepository(db),
-  unreadNotifications: createUnreadNotificationRaiser(db),
-  tenantAccess: createTenantAccessReader(db),
+  changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
   realtimeBus: { publish: (event) => { published.push(event); } },
   storage,
   logger,
@@ -263,8 +268,54 @@ describe('the owner notification of a submitted proposal over the database', () 
     const after = await ownerNotifications();
     expect(after).toHaveLength(2);
     expect(after.every((row) => row.readAt === null)).toBe(true);
-    expect(after.find((row) => row.recipientUserId === OWNER)?.id).toBe(unread.find((row) => row.recipientUserId === OWNER)?.id);
+    const rearmed = after.find((row) => row.recipientUserId === OWNER);
+    expect(rearmed?.id).not.toBe(unread.find((row) => row.recipientUserId === OWNER)?.id);
+    expect(after.find((row) => row.recipientUserId === OTHER_OWNER)?.id).toBe(unread.find((row) => row.recipientUserId === OTHER_OWNER)?.id);
     expect(published).toHaveLength(3);
+    expect(published.at(-1)).toMatchObject({ kind: 'notification', recipientUserId: OWNER, notificationId: rearmed?.id, notificationKind: 'change-proposal' });
+  });
+
+  it('never lets a late mark-read of an earlier occurrence clear the re-armed one', async () => {
+    await database.db.delete(notifications);
+    await propose('Occurrence one');
+    const [earlier] = (await ownerNotifications()).filter((row) => row.recipientUserId === OWNER);
+    if (earlier === undefined) throw new Error('The first occurrence is missing');
+    const repository = createNotificationRepository(database.db);
+    expect(await repository.markRead(TENANT, { id: earlier.id, recipientUserId: OWNER, readAt: NOW })).toMatchObject({ id: earlier.id });
+    await propose('Occurrence two');
+
+    expect(await repository.markRead(TENANT, { id: earlier.id, recipientUserId: OWNER, readAt: NOW })).toBeNull();
+
+    const [current] = (await ownerNotifications()).filter((row) => row.recipientUserId === OWNER);
+    expect(current).toMatchObject({ readAt: null, sourceKey: `change-proposal:${key.id}` });
+    expect(current?.id).not.toBe(earlier.id);
+  });
+
+  it('answers the receipt within the notification bound while another transaction holds the notification row', async () => {
+    await database.db.delete(notifications);
+    await propose('Before the lock');
+    await database.db.update(notifications).set({ readAt: NOW }).where(eq(notifications.recipientUserId, OWNER));
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const holder = createDb('node-postgres', database.url, { max: 1, connectionTimeoutMillis: 2_000 });
+    try {
+      const { result, elapsedMs } = await holder.transaction(async (tx) => {
+        await tx.select({ id: notifications.id }).from(notifications).where(eq(notifications.recipientUserId, OWNER)).for('update');
+        const started = performance.now();
+        const submitted = await submitChangeProposal(
+          keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'While locked' } }, deps(database.db, logger, { notificationMs: 300 }),
+        );
+        return { result: submitted, elapsedMs: performance.now() - started };
+      });
+
+      expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });
+      expect(elapsedMs).toBeLessThan(2_000);
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification timed out'));
+      if (!result.ok) return;
+      expect(await database.db.select().from(changeProposals).where(eq(changeProposals.id, result.value.id))).toHaveLength(1);
+      expect((await ownerNotifications()).find((row) => row.recipientUserId === OWNER)?.readAt).toBe(NOW);
+    } finally {
+      await closeDb(holder);
+    }
   });
 
   it('keeps one notification per owner and key under concurrent submissions', async () => {
@@ -275,7 +326,7 @@ describe('the owner notification of a submitted proposal over the database', () 
 
   it('never fails the submission when the notification cannot be written, and logs it', async () => {
     const logger = { error: vi.fn<(message: string) => void>() };
-    const failing = { ...deps(database.db, logger), unreadNotifications: { raiseUnread: () => Promise.reject(new Error('notifications table locked')) } };
+    const failing = { ...deps(database.db, logger), changeProposalOwnerNotifier: { raiseForOwners: () => Promise.reject(new Error('notifications table locked')) } };
     const result = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Logged rename' } }, failing);
 
     expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });

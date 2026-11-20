@@ -5,11 +5,13 @@ const proposer = {
   issuerUserId: 'fixture-user-studio-owner',
   issuerEmail: 'creator@together.dev',
   issuerIsVerifiedOwner: true,
+  issuerIsFormerTeamMember: false,
 } as const;
 
 const undecided = {
   decidedByUserId: null,
   decidedByEmail: null,
+  decidedByIsFormerTeamMember: false,
   decidedAt: null,
   decisionNote: null,
   appliedResourceId: null,
@@ -43,6 +45,7 @@ const groupItemViews = [
     operation: 'product.create',
     target: { kind: 'product' as const, id: null },
     targetLabel: null,
+    targetPrice: null,
     input: { title: 'Field Guide (print)', slug: 'field-guide-print', type: 'physical', priceCents: 3900, currency: 'PLN' },
     effect: {
       exists: { before: false, after: true },
@@ -65,6 +68,7 @@ const groupItemViews = [
     operation: 'price.create',
     target: { kind: 'product' as const, id: productReference },
     targetLabel: null,
+    targetPrice: null,
     input: { productId: productReference, kind: 'one_time', amountCents: 3900, currency: 'PLN' },
     effect: {
       activePrices: { before: [], after: [{ kind: 'one_time', interval: null, amountCents: 3900, currency: 'PLN' }] },
@@ -74,6 +78,7 @@ const groupItemViews = [
     operation: 'stock.enable',
     target: { kind: 'product' as const, id: productReference },
     targetLabel: null,
+    targetPrice: null,
     input: { productId: productReference, onHand: 40, lowStockThreshold: 5 },
     effect: {
       tracked: { before: false, after: true },
@@ -85,6 +90,7 @@ const groupItemViews = [
     operation: 'product.publish',
     target: { kind: 'product' as const, id: productReference },
     targetLabel: null,
+    targetPrice: null,
     input: { id: productReference },
     effect: { published: { before: false, after: true } },
   }),
@@ -92,6 +98,7 @@ const groupItemViews = [
     operation: 'sales-link.create',
     target: { kind: 'sales-link' as const, id: null },
     targetLabel: null,
+    targetPrice: null,
     input: { slug: 'field-guide-offer', title: 'Field guide offer', heading: 'The printed field guide', productIds: [productReference] },
     effect: {
       exists: { before: false, after: true },
@@ -130,6 +137,7 @@ export const stockAdjustmentProposal = {
   operation: 'stock.adjust',
   target: { kind: 'product' as const, id: STOCK_PRODUCT_ID },
   targetLabel: 'Creator Workbook (print)',
+  targetPrice: null,
   input: { productId: STOCK_PRODUCT_ID, delta: 50, reason: 'New delivery from the printer' },
   effect: { onHand: { delta: 50 } },
   ...pendingBase,
@@ -144,7 +152,8 @@ export const settingsProposal = {
   groupPosition: null,
   operation: 'settings.update',
   target: { kind: 'settings' as const, id: null },
-  targetLabel: 'Shop settings',
+  targetLabel: null,
+  targetPrice: null,
   input: { supportEmail: 'help@studio.example.org', autoIssueInvoices: true },
   effect: {
     supportEmail: { before: null, after: 'help@studio.example.org' },
@@ -165,6 +174,7 @@ export const pendingChangeProposals = [
 const decided = {
   decidedByUserId: 'fixture-user-studio-owner',
   decidedByEmail: 'creator@together.dev',
+  decidedByIsFormerTeamMember: false,
   appliedResourceId: null,
   failureCode: null,
   failureMessage: null,
@@ -180,6 +190,7 @@ export const historyChangeProposals = [
     operation: 'product.update',
     target: { kind: 'product' as const, id: 'product-studio-workshop' },
     targetLabel: 'Scenario Workshop',
+    targetPrice: null,
     input: { id: 'product-studio-workshop', title: 'Scenario Workshop', priceCents: 52900 },
     effect: { title: { before: 'Scenario workshop', after: 'Scenario Workshop' }, priceCents: { before: 49900, after: 52900 } },
     status: 'applied' as const,
@@ -198,6 +209,7 @@ export const historyChangeProposals = [
     operation: 'price.create',
     target: { kind: 'product' as const, id: 'product-club' },
     targetLabel: 'Studio Club - subscription',
+    targetPrice: null,
     input: { productId: 'product-club', kind: 'recurring', interval: 'year', amountCents: 49000, currency: 'PLN' },
     effect: {
       activePrices: {
@@ -224,6 +236,7 @@ export const historyChangeProposals = [
     operation: 'stock.adjust',
     target: { kind: 'product' as const, id: STOCK_PRODUCT_ID },
     targetLabel: 'Creator Workbook (print)',
+    targetPrice: null,
     input: { productId: STOCK_PRODUCT_ID, delta: -3, reason: 'Damaged copies' },
     effect: { onHand: { delta: -3 } },
     status: 'failed' as const,
@@ -243,6 +256,7 @@ export const historyChangeProposals = [
     operation: 'product.unpublish',
     target: { kind: 'product' as const, id: 'product-free-preview' },
     targetLabel: 'Free preview',
+    targetPrice: null,
     input: { id: 'product-free-preview' },
     effect: { published: { before: true, after: false } },
     status: 'stale' as const,

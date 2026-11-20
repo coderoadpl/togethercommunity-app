@@ -117,7 +117,7 @@ const decideSingleProposal = (
 };
 
 const ownerViewOf = async (tenantId: string, proposal: ChangeProposal, deps: ChangeProposalOwnerViewDeps, now: string): Promise<ChangeProposalOwnerView> =>
-  toChangeProposalOwnerView(proposal, (await changeProposalOwnerFacts(tenantId, [proposal], deps, now))(proposal), now);
+  toChangeProposalOwnerView(proposal, (await changeProposalOwnerFacts(tenantId, [proposal], deps, now)).factsOf(proposal), now);
 
 const refusedDecision = (proposal: ChangeProposal, at: string): AppError =>
   proposal.groupId === null ? settledConflict(proposal, at) : groupedChangeProposalDecisionRefused(proposal);
@@ -259,9 +259,9 @@ export const listChangeProposals = async (
   const query = changeProposalListQuery(input, now);
   if (!query.ok) return query;
   const page = await deps.changeProposals.list(tenant.value, query.value);
-  const factsOf = await changeProposalOwnerFacts(tenant.value, page.proposals, deps, now);
+  const { factsOf } = await changeProposalOwnerFacts(tenant.value, page.proposals, deps, now);
   const proposals: ChangeProposalOwnerView[] = page.proposals.map((proposal) => toChangeProposalOwnerView(proposal, factsOf(proposal), now));
-  return ok({ proposals, nextCursor: page.nextCursor });
+  return ok({ proposals, nextCursor: page.nextCursor, hasMore: page.nextCursor !== null });
 };
 
 export interface ChangeProposalSummaryDeps {
@@ -291,7 +291,7 @@ export const getChangeProposal = async (
   const proposal = await deps.changeProposals.findById(tenant.value, parsed.data.id);
   if (proposal === null) return err(notFound(`No change proposal "${parsed.data.id}" in this workspace`));
   const now = deps.clock.nowIso();
-  const factsOf = await changeProposalOwnerFacts(tenant.value, [proposal], deps, now);
+  const { factsOf } = await changeProposalOwnerFacts(tenant.value, [proposal], deps, now);
   const events = await deps.changeProposalEvents.listByProposal(tenant.value, proposal.id);
   return ok(toChangeProposalOwnerDetail(proposal, factsOf(proposal), events, now));
 };

@@ -2,7 +2,8 @@ import { ensureTransactionalSesConfiguration } from '#core/server/usecases/trans
 import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
 import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
-import { createTenantTeamRepository, createUnreadNotificationRaiser } from '#adapters/db/repositories.js';
+import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from '#adapters/db/change-proposal-people.js';
 import {
   createOrganizationAuditRepository,
   createOrganizationMemberRepository,
@@ -68,7 +69,8 @@ import type {
   ChangeProposalRepository,
   ChangeProposalTargetLabelReader,
   ChangeProposalTransaction,
-  UnreadNotificationRaiser,
+  ChangeProposalOwnerNotifier,
+  ChangeProposalPeopleReader,
 } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
@@ -581,7 +583,8 @@ export interface AppDeps {
   changeProposalEvents: ChangeProposalEventRepository;
   changeProposalGroups: ChangeProposalGroupRepository;
   changeProposalTargetLabels: ChangeProposalTargetLabelReader;
-  unreadNotifications: UnreadNotificationRaiser;
+  changeProposalOwnerNotifier: ChangeProposalOwnerNotifier;
+  changeProposalPeople: ChangeProposalPeopleReader;
   changeProposalTransaction: ChangeProposalTransaction;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
@@ -1652,7 +1655,8 @@ export const createDeps = (
     changeProposalEvents: createChangeProposalEventRepository(db),
     changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
-    unreadNotifications: createUnreadNotificationRaiser(db),
+    changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, options.changeProposalBounds),
+    changeProposalPeople: createChangeProposalPeopleReader(db),
     changeProposalTransaction: createChangeProposalTransaction(
       db,
       logger,

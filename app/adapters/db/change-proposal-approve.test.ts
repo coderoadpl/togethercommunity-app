@@ -32,15 +32,11 @@ import {
 } from '#core/server/index.js';
 
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import {
-  createAccountIdentityReader,
-  createTenantAccessReader,
-  createTenantSecretRepository,
-  createUnreadNotificationRaiser,
-} from './repositories.js';
+import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposalGroups,
@@ -117,9 +113,8 @@ const deps = (db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) => {
     changeProposalGroups: createChangeProposalGroupRepository(db, lockWait),
     shopManagementKeys: createShopManagementKeyRepository(db),
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
-    accountIdentities: createAccountIdentityReader(db),
-    tenantAccess: createTenantAccessReader(db),
-    unreadNotifications: createUnreadNotificationRaiser(db),
+    changeProposalPeople: createChangeProposalPeopleReader(db),
+    changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, lockWait),
     realtimeBus: { publish: () => undefined },
     storage,
     logger,
@@ -876,27 +871,40 @@ describe('the owner view and summary over the database', () => {
     const link = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
     const settings = await submit('settings.update', { name: 'Acme shop' });
     const created = await submit('product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 });
+    const yearly = await submit('price.create', { productId: 'draft', kind: 'recurring', interval: 'year', amountCents: 9900, currency: 'EUR' });
     expect(await rejectChangeProposal(ownerSession, { id: settings, note: 'Not now' }, deps())).toMatchObject({ ok: true });
     expect(await approve(created)).toMatchObject({ ok: true, value: { status: 'applied', targetLabel: 'Teapot' } });
+    expect(await approve(yearly)).toMatchObject({ ok: true, value: { status: 'applied' } });
     await database.db.update(products).set({ title: 'Mug, renamed live' }).where(eq(products.id, 'mug'));
 
     const cards = await ownerList();
 
-    expect([product, price, link, settings, created].map((id) => cards[id]?.targetLabel)).toEqual(['Mug, renamed live', 'Title of live', 'Spring', 'Shop settings', 'Teapot']);
+    expect([product, price, link, settings, created, yearly].map((id) => cards[id]?.targetLabel))
+      .toEqual(['Mug, renamed live', 'Title of live', 'Spring', null, 'Teapot', 'Title of draft']);
+    expect([product, price, link, settings, created, yearly].map((id) => cards[id]?.targetPrice)).toEqual([
+      null, { kind: 'one_time', interval: null, intervalCount: 1, amountCents: 1500, currency: 'EUR' }, null, null, null,
+      { kind: 'recurring', interval: 'year', intervalCount: 1, amountCents: 9900, currency: 'EUR' },
+    ]);
     expect(cards[product]?.proposedBy).toEqual({
       keyId: KEY_ID, keyName: 'Catalogue agent', keyState: 'active', issuerUserId: ISSUER, issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: true,
+      issuerIsFormerTeamMember: false,
     });
-    expect(cards[settings]).toMatchObject({ status: 'rejected', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decisionNote: 'Not now', decidedAt: NOW });
+    expect(cards[settings]).toMatchObject({
+      status: 'rejected', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decidedByIsFormerTeamMember: false, decisionNote: 'Not now', decidedAt: NOW,
+    });
     expect(cards[product]).toMatchObject({ decidedByEmail: null, failureCode: null, failureMessage: null });
 
     await database.db.update(tenantAdmins).set({ role: 'admin' }).where(eq(tenantAdmins.id, 'grant-issuer'));
     try {
-      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: false });
-      await database.db.update(tenantAdmins).set({ role: 'owner' }).where(eq(tenantAdmins.id, 'grant-issuer'));
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false });
+      await database.db.delete(tenantAdmins).where(eq(tenantAdmins.id, 'grant-issuer'));
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true });
+      await database.db.insert(tenantAdmins).values({ id: 'grant-issuer', tenantId: TENANT, userId: ISSUER, role: 'owner' });
       await database.db.update(user).set({ emailVerified: false }).where(eq(user.id, ISSUER));
       expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerIsVerifiedOwner: false });
     } finally {
-      await database.db.update(tenantAdmins).set({ role: 'owner' }).where(eq(tenantAdmins.id, 'grant-issuer'));
+      await database.db.insert(tenantAdmins).values({ id: 'grant-issuer', tenantId: TENANT, userId: ISSUER, role: 'owner' })
+        .onConflictDoUpdate({ target: tenantAdmins.id, set: { role: 'owner' } });
       await database.db.update(user).set({ emailVerified: true }).where(eq(user.id, ISSUER));
     }
 

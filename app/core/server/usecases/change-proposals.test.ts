@@ -31,6 +31,7 @@ import {
   changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
   createUnreadNotificationsFake,
+  type FakeChangeProposalPeople,
   emptyCatalogState,
   type FakeCatalogState,
   type FakeChangeProposalStore,
@@ -189,7 +190,7 @@ interface Harness {
   storageCalls: string[];
   submitDeps: ChangeProposalSubmitDeps;
   keyDeps: ChangeProposalKeyDeps;
-  ownerDeps: ChangeProposalOwnerReadDeps;
+  ownerDeps: ChangeProposalOwnerReadDeps & { changeProposalPeople: FakeChangeProposalPeople };
   decisionDeps: ChangeProposalDecisionDeps;
   clock: { now: string };
   notifications: FakeUnreadNotifications;
@@ -222,7 +223,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   const clockPort = { nowIso: () => clock.now };
   const shopManagementKeys = { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) };
   const ownerViews = changeProposalOwnerViewFakes(state, accounts);
-  const notifications = createUnreadNotificationsFake();
+  const notifications = createUnreadNotificationsFake(accounts);
   return {
     notifications,
     state,
@@ -234,8 +235,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
       changeProposalTransaction: transaction,
       changeProposals: store.repository,
       shopManagementKeys,
-      tenantAccess: ownerViews.tenantAccess,
-      unreadNotifications: notifications.unreadNotifications,
+      changeProposalOwnerNotifier: notifications.changeProposalOwnerNotifier,
       realtimeBus: notifications.realtimeBus,
       storage,
       logger: { error: vi.fn<(message: string) => void>() },
@@ -692,6 +692,12 @@ describe('owner-side proposal review', () => {
     expect(next).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-active' }], nextCursor: null } });
     const expired = await listChangeProposals(ownerSession, { status: 'expired' }, h.ownerDeps);
     expect(expired).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-stale', status: 'expired' }] } });
+    expect(pending).toMatchObject({ value: { hasMore: true } });
+    expect(next).toMatchObject({ value: { hasMore: false } });
+    const decided = await listChangeProposals(ownerSession, { status: 'decided', limit: 1 }, h.ownerDeps);
+    expect(decided).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-expired-key', status: 'withdrawn' }], nextCursor: 'p-expired-key', hasMore: true } });
+    const decidedRest = await listChangeProposals(ownerSession, { status: 'decided', limit: 1, cursor: 'p-expired-key' }, h.ownerDeps);
+    expect(decidedRest).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-stale', status: 'expired' }], nextCursor: null, hasMore: false } });
     expect(await listChangeProposals(ownerSession, { limit: 0 }, h.ownerDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
@@ -713,7 +719,8 @@ describe('owner-side proposal review', () => {
   it('gives every listed card the live target label, the issuer state and the deciding account without changing the stored proposal', async () => {
     const h = harness(ownerKeys(), [
       { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
-      { userId: 'user-former', email: 'former@example.test', ownerOf: [] },
+      { userId: 'user-former', email: 'former@example.test', ownerOf: [NEIGHBOUR] },
+      { userId: 'user-demoted', email: 'demoted@example.test', adminOf: [TENANT] },
       { userId: 'user-unverified', email: 'unverified@example.test', emailVerified: false, ownerOf: [TENANT] },
     ]);
     h.store.seed(storedProposal({ id: 'p-product', createdAt: '2026-02-28T09:00:00.000Z' }));
@@ -727,6 +734,11 @@ describe('owner-side proposal review', () => {
     }));
     h.store.seed(storedProposal({ id: 'p-gone', createdAt: '2026-02-28T09:06:00.000Z', target: { kind: 'product', id: 'product-deleted' }, input: { id: 'product-deleted', title: 'Gone' }, proposedByIssuerUserId: 'user-deleted' }));
     h.store.seed(storedProposal({ id: 'p-neighbour-target', createdAt: '2026-02-28T09:07:00.000Z', target: { kind: 'product', id: 'product-neighbour' }, input: { id: 'product-neighbour', title: 'Other' } }));
+    h.store.seed(storedProposal({
+      id: 'p-applied-price', createdAt: '2026-02-28T09:08:00.000Z', operation: 'price.create', input: { productId: '$proposal:p-earlier', kind: 'one_time', amountCents: 2500, currency: 'EUR' },
+      target: { kind: 'product', id: '$proposal:p-earlier' }, effect: {}, status: 'applied', appliedResourceId: 'price-live', decidedByUserId: 'user-former', decidedAt: NOW,
+      proposedByIssuerUserId: 'user-demoted',
+    }));
     const liveProduct = h.state.products.find(({ id }) => id === 'product-mug');
     if (liveProduct === undefined) throw new Error('product missing');
     liveProduct.title = 'Mug, renamed live';
@@ -738,17 +750,29 @@ describe('owner-side proposal review', () => {
     expect(changeProposalOwnerPageSchema.parse(listed.value)).toEqual(listed.value);
     const cards = Object.fromEntries(listed.value.proposals.map((card) => [card.id, card]));
     expect(Object.fromEntries(Object.entries(cards).map(([id, card]) => [id, card.targetLabel]))).toEqual({
-      'p-product': 'Mug, renamed live', 'p-price': 'Live mug', 'p-link': 'Spring', 'p-settings': 'Shop settings',
-      'p-create': null, 'p-applied-create': 'Draft guide', 'p-gone': null, 'p-neighbour-target': null,
+      'p-product': 'Mug, renamed live', 'p-price': 'Live mug', 'p-link': 'Spring', 'p-settings': null,
+      'p-create': null, 'p-applied-create': 'Draft guide', 'p-gone': null, 'p-neighbour-target': null, 'p-applied-price': 'Live mug',
+    });
+    const livePrice = { kind: 'one_time', interval: null, intervalCount: 1, amountCents: 1500, currency: 'EUR' };
+    expect(Object.fromEntries(Object.entries(cards).map(([id, card]) => [id, card.targetPrice]))).toEqual({
+      'p-product': null, 'p-price': livePrice, 'p-link': null, 'p-settings': null,
+      'p-create': null, 'p-applied-create': null, 'p-gone': null, 'p-neighbour-target': null, 'p-applied-price': livePrice,
     });
     expect(cards['p-product']?.proposedBy).toEqual({
       keyId: KEY_ID, keyName: 'Catalogue agent', keyState: 'active', issuerUserId: OWNER, issuerEmail: 'owner@example.test', issuerIsVerifiedOwner: true,
+      issuerIsFormerTeamMember: false,
     });
-    expect(cards['p-settings']?.proposedBy).toMatchObject({ issuerUserId: 'user-former', issuerEmail: 'former@example.test', issuerIsVerifiedOwner: false });
-    expect(cards['p-create']?.proposedBy).toMatchObject({ issuerEmail: 'unverified@example.test', issuerIsVerifiedOwner: false });
-    expect(cards['p-gone']?.proposedBy).toMatchObject({ issuerEmail: null, issuerIsVerifiedOwner: false });
-    expect(cards['p-applied-create']).toMatchObject({ status: 'applied', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decidedAt: NOW });
-    expect(cards['p-product']).toMatchObject({ decidedByEmail: null, createdAt: '2026-02-28T09:00:00.000Z', groupId: null, groupTitle: null, groupPosition: null });
+    expect(cards['p-settings']?.proposedBy).toMatchObject({ issuerUserId: 'user-former', issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true });
+    expect(cards['p-applied-price']?.proposedBy).toMatchObject({ issuerEmail: 'demoted@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false });
+    expect(cards['p-create']?.proposedBy).toMatchObject({ issuerEmail: 'unverified@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false });
+    expect(cards['p-gone']?.proposedBy).toMatchObject({ issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true });
+    expect(cards['p-applied-create']).toMatchObject({
+      status: 'applied', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decidedByIsFormerTeamMember: false, decidedAt: NOW,
+    });
+    expect(cards['p-applied-price']).toMatchObject({ decidedByUserId: 'user-former', decidedByEmail: null, decidedByIsFormerTeamMember: true });
+    expect(cards['p-product']).toMatchObject({
+      decidedByEmail: null, decidedByIsFormerTeamMember: false, createdAt: '2026-02-28T09:00:00.000Z', groupId: null, groupTitle: null, groupPosition: null,
+    });
     expect(h.store.proposals).toEqual(stored);
   });
 
@@ -898,14 +922,16 @@ describe('the owner notification of a submitted proposal', () => {
     expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
     expect(h.notifications.published).toHaveLength(2);
 
-    const first = h.notifications.rows[0];
-    if (first === undefined) throw new Error('notification missing');
-    first.readAt = NOW;
+    const unread = h.notifications.rows[0];
+    if (unread === undefined) throw new Error('notification missing');
+    const first = { ...unread };
+    unread.readAt = NOW;
     h.clock.now = '2026-03-01T11:00:00.000Z';
     expect((await submit(h, 'Third')).ok).toBe(true);
 
     expect(h.notifications.rows).toHaveLength(2);
     expect(h.notifications.rows[0]).toMatchObject({ readAt: null, createdAt: '2026-03-01T11:00:00.000Z' });
+    expect(h.notifications.rows[0]?.id).not.toBe(first.id);
     expect(h.notifications.published.map((event) => event.recipientUserId)).toEqual([OWNER, 'user-second-owner', OWNER]);
   });
 
@@ -918,12 +944,49 @@ describe('the owner notification of a submitted proposal', () => {
   it('stores the proposal and logs when the notification cannot be written', async () => {
     const h = harness([shopKey()], twoOwners);
     const logger = { error: vi.fn<(message: string) => void>() };
-    const failing = { ...h.submitDeps, logger, unreadNotifications: { raiseUnread: () => Promise.reject(new Error('lock timeout')) } };
+    const failing = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { raiseForOwners: () => Promise.reject(new Error('lock timeout')) } };
 
     const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Logged' } }, failing);
 
     expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
     expect(h.store.proposals).toHaveLength(1);
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification failed tenant=tenant-acme'));
+  });
+
+  it('stores the proposal, publishes nothing and logs when the notification runs out of time', async () => {
+    const h = harness([shopKey()], twoOwners);
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const timedOut = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { raiseForOwners: async () => ({ kind: 'busy' as const }) } };
+
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Timed out' } }, timedOut);
+
+    expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.notifications.published).toEqual([]);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification timed out tenant=tenant-acme'));
+  });
+});
+
+describe('the owner identities of a proposal page', () => {
+  it('reads every distinct issuer and decider of a 100-item page in one call of the people reader', async () => {
+    const people: FakeProposalAccount[] = Array.from({ length: 200 }, (_, index) => ({
+      userId: `user-${String(index)}`, email: `person-${String(index)}@example.test`, ownerOf: index % 2 === 0 ? [TENANT] : [], adminOf: [TENANT],
+    }));
+    const h = harness([shopKey()], people);
+    for (let index = 0; index < 100; index += 1) {
+      h.store.seed(storedProposal({
+        id: `p-${String(index).padStart(3, '0')}`, createdAt: `2026-02-28T09:${String(index % 60).padStart(2, '0')}:00.000Z`,
+        proposedByIssuerUserId: `user-${String(index * 2)}`, status: 'rejected', decidedByUserId: `user-${String(index * 2 + 1)}`, decidedAt: NOW,
+      }));
+    }
+    const reads = h.ownerDeps.changeProposalPeople.reads;
+    reads.length = 0;
+
+    const listed = await listChangeProposals(ownerSession, { limit: 100 }, h.ownerDeps);
+
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value.proposals).toHaveLength(100);
+    expect(reads).toHaveLength(1);
+    expect(new Set(reads[0])).toEqual(new Set(people.map((person) => person.userId)));
+    expect(listed.value.proposals.every((card) => card.proposedBy.issuerIsVerifiedOwner && card.decidedByEmail !== null)).toBe(true);
   });
 });

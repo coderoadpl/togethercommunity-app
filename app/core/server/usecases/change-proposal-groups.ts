@@ -51,7 +51,7 @@ import {
   type DecidedOutcome,
 } from '../change-proposal-access.js';
 import { notifyOwnersOfProposal, type ChangeProposalNotifyDeps } from '../change-proposal-notifications.js';
-import { changeProposalOwnerFacts, changeProposalPeople, type ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
+import { changeProposalOwnerFacts, type ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type { Ctx } from '../context.js';
 import type {
   ChangeProposalEventDraft,
@@ -122,8 +122,8 @@ const ownerView = async (
   const key = keyNamed(await deps.shopManagementKeys.listByTenant(group.tenantId), group.proposedByKeyId);
   const first = items[0];
   const issuerUserId = key?.issuedByUserId ?? first?.proposedByIssuerUserId ?? null;
-  const factsOf = await changeProposalOwnerFacts(group.tenantId, items, deps, now);
-  const issuer = (await changeProposalPeople(group.tenantId, [issuerUserId], [], deps))(issuerUserId);
+  const { factsOf, person } = await changeProposalOwnerFacts(group.tenantId, items, deps, now, [issuerUserId]);
+  const issuer = person(issuerUserId);
   const details = [];
   for (const item of items) {
     const events = await deps.changeProposalEvents.listByProposal(group.tenantId, item.id);
@@ -134,6 +134,7 @@ const ownerView = async (
     issuerUserId,
     issuerEmail: issuer.email,
     issuerIsVerifiedOwner: issuer.verifiedOwner,
+    issuerIsFormerTeamMember: issuer.formerTeamMember,
     keyState: changeProposalKeyState(key, now),
   }, details, now);
 };

@@ -265,15 +265,20 @@ as a member, not an admin, never with an API key):
 
 | Route | Answer |
 |---|---|
-| `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor }`, newest first |
+| `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor, hasMore }`, newest first |
 | `GET /api/change-proposals/summary` | `{ pending, pendingGroups }`: the pending, unexpired proposals of the workspace (grouped items included) and the groups they belong to |
 | `GET /api/change-proposals/:id` | `{ proposal: ownerView + events }` |
 | `POST /api/change-proposals/:id/approve` with `{}` | `{ proposal: ownerView }` with status `applied`, `stale` or `failed`; a settled or expired proposal is `409` |
 | `POST /api/change-proposals/:id/reject` with `{ "note"?: string }` | `{ proposal: ownerView }` with status `rejected`; a settled proposal is `409` |
 
-`status` is one of the statuses below, `groupId` keeps only the items of one
+`status` is one of the statuses below or `decided`, which keeps every
+proposal that is no longer waiting for the owner (any status but `pending`,
+an expired one included); `groupId` keeps only the items of one
 [group](#groups), `limit` is 1–100 (default 50) and `cursor` is the id of the
-last proposal of the previous page. A proposal of another workspace is `404`.
+last proposal of the previous page. `hasMore` says whether a next page exists
+(`nextCursor` is then its cursor); the server reads one row past the page to
+know it. The key-side list takes the same `status` values. A proposal of
+another workspace is `404`.
 The group routes are listed under [Groups](#groups).
 
 CLI: the owner runs `proposals list [--status] [--group] [--cursor] [--limit]`,
@@ -292,33 +297,56 @@ the panel reads one page and makes no further call per item:
 | Field | Meaning |
 |---|---|
 | `operation`, `target` | what the proposal changes, with the target kind and id (a `$proposal:` reference inside a group) |
-| `targetLabel` | the target's title read from live state at read time: the product title, the product title of a price, the sales link title, `Shop settings`; for a creation, the created resource once applied; `null` when the target does not exist (yet) |
+| `targetLabel` | the target's title read from live state at read time: the product title, the product title of a price, the sales link title; for a creation, the created resource once applied (for an applied `price.create`, the product of the created price, also when the product was a `$proposal:` reference in a group); `null` when the target does not exist (yet) and always `null` for a settings change, which the page names in the viewer's language |
+| `targetPrice` | for a price target, and for an applied `price.create`, the live terms of that price as data: `kind`, `interval`, `intervalCount`, `amountCents`, `currency`, so a card tells a monthly from a yearly price of the same product; `null` otherwise |
 | `effect`, `input` | the stored before/after and command |
 | `groupId`, `groupTitle`, `groupPosition` | the group, when the proposal belongs to one |
-| `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail` (the issuing account's e-mail, `null` once the account is gone) and `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) |
+| `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail`, `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) and `issuerIsFormerTeamMember` |
 | `createdAt`, `expiresAt`, `status` | the times and the derived status |
-| `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
+| `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decidedByIsFormerTeamMember`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
 
-The group owner view carries the same `issuerEmail` and
-`issuerIsVerifiedOwner` on its `proposedBy`. The label is for display only:
-approval never reads it, and it can differ from the effect's "before" when
-the live state moved, which is exactly what a stale approval reports. None of
-these fields is ever part of a key receipt.
+An e-mail (`issuerEmail`, `decidedByEmail`) is returned only for an account
+that still holds a staff grant in this workspace, direct or derived from the
+organisation that manages it. For any other account, a removed team member or
+a deleted account, the e-mail is `null` and `issuerIsFormerTeamMember` or
+`decidedByIsFormerTeamMember` is `true`, so the page can say "former team
+member" without disclosing the address. Ownership follows the same effective
+grant as the owner session: an owner derived from the organisation counts as
+an owner. The accounts and grants of every person on a page are read in one
+query, whatever the page size.
+
+The group owner view carries the same `issuerEmail`, `issuerIsVerifiedOwner`
+and `issuerIsFormerTeamMember` on its `proposedBy`. The label and the price
+are for display only: approval never reads them, and they can differ from the
+effect's "before" when the live state moved, which is exactly what a stale
+approval reports. None of these fields is ever part of a key receipt.
 
 **Owner notification.** When a propose-mode key submits a proposal, every
-owner of the workspace (the direct owners the team list shows) gets an in-app
-notification of kind `change-proposal`: `authorDisplay` holds the key name,
-and for a group `contextId` holds the group id and `snippet` its title. There
-is at most one unread notification per owner and key: the notification's
-source key is `change-proposal:<key id>`, and the unique source key per
-recipient makes the insert atomic, so a second proposal while it is unread adds
-nothing; once the owner read it, the next proposal makes it unread again with
-the new time. A group raises it when its first item is stored, never for later
-items. It is written right after the proposal committed, not in the proposal
-transaction: the bell only points at the panel, so a failure to write it is
-logged and never fails the submission, and the insert never waits on a lock
-inside the proposal transaction. No migration is needed: the kind lives in the
-existing text column and the existing unique index carries the de-duplication.
+owner of the workspace gets an in-app notification of kind `change-proposal`:
+the direct owners and the owners derived from the active organisation that
+manages the workspace, by the same effective grant the owner session checks.
+`authorDisplay` holds the key name, and for a group `contextId` holds the
+group id and `snippet` its title. There is at most one unread notification per
+owner and key: the notification's source key is `change-proposal:<key id>`,
+and the unique source key per recipient makes the insert atomic, so a second
+proposal while it is unread adds nothing; once the owner read it, the next
+proposal makes it unread again with the new time and a new notification id.
+The new id makes every occurrence its own: a late "mark read" of the earlier
+occurrence (from another tab or device) finds no row and cannot clear the new
+one. The realtime event names the new id and the kind. A group raises it when
+its first item is stored, never for later items.
+
+It is written right after the proposal committed, not in the proposal
+transaction, in one short transaction of its own that looks up the owners and
+writes their notifications. That transaction keeps a transaction-local
+`lock_timeout` and `statement_timeout` of 500 ms (the `notificationMs` bound,
+injectable like the other proposal bounds): its statements take milliseconds,
+and the key's `202` waits for it, so a notification row held by another
+transaction delays the answer by at most that bound. A bound that runs out
+rolls the notification back and is logged; a failure to write it is logged
+too. Neither ever fails or changes the submission, which always answers its
+committed receipt. No migration is needed: the kind lives in the existing text
+column and the existing unique index carries the de-duplication.
 
 ## Owner panel
 
@@ -527,6 +555,11 @@ routes and on the owner approve and reject routes alike. Nothing is stored or
 applied, and a proposal being decided stays `pending`. A deadlock that the
 database detects inside the transaction is answered the same way, busy, like a
 lock wait that ran out.
+
+The owner notification that follows a stored proposal has its own, shorter
+bound (500 ms for each lock wait and statement, see
+[Owner view](#owner-view)); running out of it never answers busy, because the
+proposal is already stored.
 
 **Statement time.** A dry run and an approval also bound the time of each
 statement with a transaction-local `statement_timeout`: 2 seconds in a dry run

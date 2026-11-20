@@ -174,7 +174,11 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   const store = createChangeProposalStoreFake(keys);
   const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const deletes: string[] = [];
-  const notificationFakes = createUnreadNotificationsFake();
+  const accounts = [
+    { userId: ISSUER, email: 'issuer@example.test', ownerOf: [TENANT] },
+    { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+  ];
+  const notificationFakes = createUnreadNotificationsFake(accounts);
   let sequence = 0;
   const clock = { now: NOW };
   const deps: HarnessDeps = {
@@ -183,10 +187,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
     changeProposalGroups: store.groups,
     shopManagementKeys: { listByTenant: async (tenantId) => keys.filter((key) => key.tenantId === tenantId) },
     ...notificationFakes,
-    ...changeProposalOwnerViewFakes(state, [
-      { userId: ISSUER, email: 'issuer@example.test', ownerOf: [TENANT] },
-      { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
-    ]),
+    ...changeProposalOwnerViewFakes(state, accounts),
     storage: recordingStorage(deletes),
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },

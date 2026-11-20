@@ -65,7 +65,7 @@ const usePending = (proposals: ChangeProposalOwnerView[], group: ChangeProposalG
   server.use(
     http.get('/api/change-proposals', ({ request }) => {
       const status = new URL(request.url).searchParams.get('status');
-      return HttpResponse.json({ ok: true, data: { proposals: status === 'pending' ? proposals : [], nextCursor: null } });
+      return HttpResponse.json({ ok: true, data: { proposals: status === 'pending' ? proposals : [], nextCursor: null, hasMore: false } });
     }),
     http.get('/api/change-proposals/groups/:id', () => HttpResponse.json({ ok: true, data: { group } })),
     http.get('/api/products/:productId/stock', () => HttpResponse.json({ ok: true, data: { stock: stockLevel } })),
@@ -85,7 +85,7 @@ describe('ProposalsPanel', () => {
     let listed = false;
     server.use(http.get('/api/change-proposals', () => {
       listed = true;
-      return HttpResponse.json({ ok: true, data: { proposals: [], nextCursor: null } });
+      return HttpResponse.json({ ok: true, data: { proposals: [], nextCursor: null, hasMore: false } });
     }));
 
     renderPanel('admin');
@@ -275,6 +275,7 @@ describe('ProposalsPanel', () => {
         data: {
           proposals: status === 'pending' ? [] : [settledView(settingsProposal, { status: 'rejected', decisionNote: 'Keep the old address' })],
           nextCursor: null,
+          hasMore: false,
         },
       });
     }));

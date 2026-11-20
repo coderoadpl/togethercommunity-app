@@ -600,11 +600,17 @@ scopes on every shop key.
   today. A retention purge of settled proposals is a follow-up. The owner
   panel's pending count (`GET /api/change-proposals/summary`) is owner-only
   like the list and returns only two numbers. A submitted proposal raises an
-  in-app notification for the workspace owners, at most one unread per owner
+  in-app notification for the workspace owners (direct and organisation-derived,
+  the same effective grant as the owner session), at most one unread per owner
   and key (the notification's unique source key makes it atomic) and one per
   group; it names only the key and the group title, carries no effect, and
-  is written after the proposal committed, so a failure to write it is logged
-  and never fails or changes the submission.
+  is written after the proposal committed, in its own transaction bounded to
+  500 ms per lock wait and statement, so a held or failing notification is
+  logged and never fails, changes or holds up the submission. Each re-armed
+  notification gets a new id, so a late "mark read" of an earlier one cannot
+  clear it. The owner view shows an account's e-mail only while that account
+  holds a staff grant in the workspace; a former team member or a deleted
+  account is shown as such, without its address.
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the
   key that created a group joins, reads or withdraws it: the

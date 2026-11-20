@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { Capability } from './authorization.js';
+import { priceIntervalSchema, priceKindSchema } from './commerce.js';
 import { appError, type AppError } from './errors.js';
 import type { ShopManagementKey } from './shop-management-key.js';
 
@@ -91,6 +92,12 @@ export type ChangeProposalTerminalStatus = Exclude<ChangeProposalStatus, 'pendin
 export const changeProposalDisplayStatusSchema = z.enum([...changeProposalStatusSchema.options, 'expired']);
 
 export type ChangeProposalDisplayStatus = z.output<typeof changeProposalDisplayStatusSchema>;
+
+export const CHANGE_PROPOSAL_DECIDED_FILTER = 'decided';
+
+export const changeProposalListStatusSchema = z.enum([...changeProposalDisplayStatusSchema.options, CHANGE_PROPOSAL_DECIDED_FILTER]);
+
+export type ChangeProposalListStatus = z.output<typeof changeProposalListStatusSchema>;
 
 const changeProposalEventKindSchema = z.enum([
   'proposed',
@@ -286,13 +293,22 @@ const changeProposalEventViewSchema = z.object({
 
 export type ChangeProposalEventView = z.output<typeof changeProposalEventViewSchema>;
 
-export const CHANGE_PROPOSAL_SETTINGS_LABEL = 'Shop settings';
-
 const changeProposalIssuerSchema = z.object({
   issuerUserId: z.string(),
   issuerEmail: z.string().nullable(),
   issuerIsVerifiedOwner: z.boolean(),
+  issuerIsFormerTeamMember: z.boolean(),
 }).strict();
+
+export const changeProposalTargetPriceSchema = z.object({
+  kind: priceKindSchema,
+  interval: priceIntervalSchema.nullable(),
+  intervalCount: z.number().int().min(1),
+  amountCents: z.number().int().min(0),
+  currency: z.string(),
+}).strict();
+
+export type ChangeProposalTargetPrice = z.output<typeof changeProposalTargetPriceSchema>;
 
 type ChangeProposalIssuer = z.output<typeof changeProposalIssuerSchema>;
 
@@ -304,6 +320,7 @@ export const changeProposalOwnerViewSchema = z.object({
   operation: changeProposalStoredOperationSchema,
   target: changeProposalTargetSchema,
   targetLabel: z.string().nullable(),
+  targetPrice: changeProposalTargetPriceSchema.nullable(),
   input: changeProposalInputSchema,
   effect: changeProposalEffectSchema,
   status: changeProposalDisplayStatusSchema,
@@ -316,6 +333,7 @@ export const changeProposalOwnerViewSchema = z.object({
   expiresAt: z.string(),
   decidedByUserId: z.string().nullable(),
   decidedByEmail: z.string().nullable(),
+  decidedByIsFormerTeamMember: z.boolean(),
   decidedAt: z.string().nullable(),
   decisionNote: z.string().nullable(),
   appliedResourceId: z.string().nullable(),
@@ -350,6 +368,7 @@ export type ChangeProposalKeyReceipt = z.output<typeof changeProposalKeyReceiptS
 export const changeProposalOwnerPageSchema = z.object({
   proposals: z.array(changeProposalOwnerViewSchema),
   nextCursor: z.string().nullable(),
+  hasMore: z.boolean(),
 }).strict();
 
 export type ChangeProposalOwnerPage = z.output<typeof changeProposalOwnerPageSchema>;
@@ -371,7 +390,7 @@ export type ChangeProposalKeyReceiptPage = z.output<typeof changeProposalKeyRece
 const CHANGE_PROPOSAL_PAGE_SIZE = { default: 50, max: 100 } as const;
 
 export const changeProposalListInputSchema = z.object({
-  status: changeProposalDisplayStatusSchema.optional(),
+  status: changeProposalListStatusSchema.optional(),
   cursor: changeProposalIdentifierSchema.optional(),
   groupId: changeProposalIdentifierSchema.optional(),
   limit: z.number().int().min(1).max(CHANGE_PROPOSAL_PAGE_SIZE.max).default(CHANGE_PROPOSAL_PAGE_SIZE.default),
@@ -409,13 +428,14 @@ const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEv
   at: event.at,
 });
 
-/** Read at view time: the live label is for display only and never takes part in a decision. */
+/** Read at view time: the live label and price are for display only and never take part in a decision. */
 export interface ChangeProposalOwnerFacts {
   keyState: ChangeProposalKeyState;
   groupTitle: string | null;
   issuer: Omit<ChangeProposalIssuer, 'issuerUserId'>;
-  decidedByEmail: string | null;
+  decidedBy: { email: string | null; formerTeamMember: boolean };
   targetLabel: string | null;
+  targetPrice: ChangeProposalTargetPrice | null;
 }
 
 export const toChangeProposalOwnerView = (
@@ -430,6 +450,7 @@ export const toChangeProposalOwnerView = (
   operation: proposal.operation,
   target: proposal.target,
   targetLabel: facts.targetLabel,
+  targetPrice: facts.targetPrice,
   input: proposal.input,
   effect: proposal.effect,
   status: changeProposalDisplayStatus(proposal, now),
@@ -443,7 +464,8 @@ export const toChangeProposalOwnerView = (
   createdAt: proposal.createdAt,
   expiresAt: proposal.expiresAt,
   decidedByUserId: proposal.decidedByUserId,
-  decidedByEmail: proposal.decidedByUserId === null ? null : facts.decidedByEmail,
+  decidedByEmail: proposal.decidedByUserId === null ? null : facts.decidedBy.email,
+  decidedByIsFormerTeamMember: proposal.decidedByUserId !== null && facts.decidedBy.formerTeamMember,
   decidedAt: proposal.decidedAt,
   decisionNote: proposal.decisionNote,
   appliedResourceId: proposal.appliedResourceId,

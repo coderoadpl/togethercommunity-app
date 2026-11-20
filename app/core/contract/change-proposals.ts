@@ -3,11 +3,11 @@ import { z } from 'zod';
 import {
   CHANGE_PROPOSAL_GROUP_LIMITS,
   CHANGE_PROPOSAL_LIMITS,
-  changeProposalDisplayStatusSchema,
   changeProposalGroupKeyReceiptSchema,
   changeProposalGroupOwnerViewSchema,
   changeProposalKeyReceiptPageSchema,
   changeProposalKeyReceiptSchema,
+  changeProposalListStatusSchema,
   changeProposalOwnerDetailSchema,
   changeProposalOwnerPageSchema,
   changeProposalOwnerViewSchema,
@@ -32,7 +32,7 @@ export const SHOP_PROPOSAL_ROUTES = {
 } as const;
 
 export const changeProposalListQuerySchema = z.object({
-  status: changeProposalDisplayStatusSchema.optional(),
+  status: changeProposalListStatusSchema.optional(),
   cursor: z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.identifierMaxLength).optional(),
   groupId: changeProposalGroupIdSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),

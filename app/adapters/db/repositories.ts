@@ -126,7 +126,6 @@ import type {
   MemberCourseProgressRepository,
   MemberSubscriptionRepository,
   NotificationRepository,
-  UnreadNotificationRaiser,
   OrderRepository,
   OrderDetailRepository,
   MemberOrderListReader,
@@ -2636,29 +2635,6 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
   },
 });
 
-export const createUnreadNotificationRaiser = (db: Db): UnreadNotificationRaiser => ({
-  raiseUnread: async (tenantId, notification) => {
-    if (notification.sourceKey === null) throw new Error('An unread notification is raised only under a source key');
-    const rows = await db
-      .insert(notifications)
-      .values({ ...notification, tenantId })
-      .onConflictDoUpdate({
-        target: [notifications.tenantId, notifications.recipientUserId, notifications.sourceKey],
-        targetWhere: sql`${notifications.sourceKey} is not null`,
-        set: {
-          kind: notification.kind,
-          payload: notification.payload,
-          readAt: null,
-          createdAt: notification.createdAt,
-        },
-        setWhere: sql`${notifications.readAt} is not null`,
-      })
-      .returning();
-    const row = rows[0];
-    return row === undefined ? null : parseNotification(row);
-  },
-});
-
 export const createMemberRepository = (db: Db): MemberRepository => ({
   findById: async (tenantId, memberId) => {
     const rows = await db
@@ -5013,6 +4989,12 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
   }),
 });
 
+/** The one rule for a workspace grant: a direct staff row, or the role derived from the workspace's active organisation. */
+export const effectiveStaffGrantOf = (directRole: string | null, organizationRole: string | null): ReturnType<typeof effectiveStaffGrant> => {
+  const organization = organizationRoleSchema.safeParse(organizationRole);
+  return effectiveStaffGrant(directRole === null ? null : parseStaffRole(directRole), organization.success ? organization.data : null);
+};
+
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {
   const grantQuery = (userId: string) =>
     db
@@ -5039,11 +5021,7 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
   const toMembership = (
     row: Tenant & { directRole: string | null; organizationRole: string | null },
   ): Membership | null => {
-    const organizationRole = organizationRoleSchema.safeParse(row.organizationRole);
-    const grant = effectiveStaffGrant(
-      row.directRole === null ? null : parseStaffRole(row.directRole),
-      organizationRole.success ? organizationRole.data : null,
-    );
+    const grant = effectiveStaffGrantOf(row.directRole, row.organizationRole);
     return grant
       ? {
           tenant: {

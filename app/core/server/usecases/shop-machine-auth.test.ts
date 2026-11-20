@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  CAPABILITIES,
   capabilitiesForPrincipal,
+  shopManagementCapabilities,
   shopManagementScopeSchema,
   type Member,
   type Membership,
@@ -11,10 +13,13 @@ import {
   type Tenant,
 } from '#core/domain/index.js';
 
+import { authorize } from '../authorize.js';
+import type { Ctx } from '../context.js';
 import type { AccountIdentity, ShopManagementKeyRateLimitRepository } from '../ports.js';
 import {
   authenticateShopManagementKey,
   recordShopManagementKeyRequest,
+  shopManagementKeyCapabilities,
   type ShopMachineAuthDeps,
 } from './shop-machine-auth.js';
 
@@ -30,6 +35,7 @@ const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey 
   name: 'Shop backend',
   keyHash: `hash:${SECRET}`,
   scopes: ['shop:catalog:read'],
+  mode: 'direct',
   issuedByUserId: OWNER_ID,
   createdAt: '1998-08-01T10:00:00.000Z',
   expiresAt: '1998-08-10T10:00:00.000Z',
@@ -152,7 +158,7 @@ describe('authenticateShopManagementKey', () => {
       memberVideoAutoplay: true,
     });
     expect(result.value.ctx.identity.userId).not.toBe('api-key');
-    expect(result.value.ctx.machineActor).toEqual({ kind: 'shop_management_key', apiKeyId: 'shop-key-1' });
+    expect(result.value.ctx.machineActor).toEqual({ kind: 'shop_management_key', apiKeyId: 'shop-key-1', mode: 'direct' });
     expect(result.value.ctx.impersonation).toBeUndefined();
     expect([...(result.value.ctx.capabilities ?? [])].sort()).toEqual(
       ['order:export', 'order:read', 'product:price:read', 'product:read'],
@@ -285,6 +291,62 @@ describe('authenticateShopManagementKey', () => {
       error: { code: 'rate_limited', details: { period: 'day', retryAfterSeconds: 50_370 } },
     });
     expect(h.rateLimits.count('shop-key-1', 'minute')).toBe(0);
+  });
+});
+
+describe('propose-mode shop management keys', () => {
+  const writeScopes = shopManagementScopeSchema.options.filter((scope) => scope.endsWith(':write'));
+  const liveWriteCapabilities = shopManagementCapabilities(writeScopes, 'direct');
+  const grantedTo = (ctx: Ctx) => CAPABILITIES.filter((capability) => authorize(ctx, capability) === null);
+
+  it.each([
+    ['catalogue writes only', ['shop:catalog:write'], 'shop:catalog:write', ['proposal:submit:catalog']],
+    ['settings writes only', ['shop:settings:write'], 'shop:settings:write', ['proposal:submit:settings']],
+    ['catalogue reads and writes', ['shop:catalog:read', 'shop:catalog:write'], 'shop:catalog:write',
+      ['product:price:read', 'product:read', 'proposal:submit:catalog']],
+    ['reads only', ['shop:orders:read'], 'shop:orders:read', ['order:export', 'order:read']],
+  ] as const)('builds a propose-mode context for a key with %s', async (_label, scopes, scope, expected) => {
+    const h = harness({ keys: [shopKey({ mode: 'propose', scopes: [...scopes] })] });
+    const result = await authenticate(h, scope);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.ctx.machineActor).toEqual({ kind: 'shop_management_key', apiKeyId: 'shop-key-1', mode: 'propose' });
+    expect(Array.isArray(result.value.ctx.capabilities)).toBe(true);
+    expect([...(result.value.ctx.capabilities ?? [])].sort()).toEqual(expected);
+    expect(grantedTo(result.value.ctx).sort()).toEqual(expected);
+  });
+
+  it('denies every live write capability to a propose-mode key, including one with no read scope', async () => {
+    expect(liveWriteCapabilities).toEqual(expect.arrayContaining(['product:write', 'product:publish', 'tenant:settings:write']));
+    for (const scopes of [['shop:catalog:write'], ['shop:settings:write'], ['shop:catalog:write', 'shop:settings:write'],
+      ['shop:catalog:read', 'shop:catalog:write', 'shop:orders:read', 'shop:settings:read', 'shop:settings:write', 'shop:integrations:read']] as const) {
+      const h = harness({ keys: [shopKey({ mode: 'propose', scopes: [...scopes] })] });
+      const result = await authenticate(h, scopes[0]);
+      if (!result.ok) throw new Error(result.error.message);
+      for (const capability of liveWriteCapabilities) {
+        expect(authorize(result.value.ctx, capability)).toMatchObject({ code: 'forbidden' });
+      }
+    }
+  });
+
+  it('keeps a defined empty capability list, so an owner issuer never lends the key its own capabilities', async () => {
+    const h = harness({ keys: [shopKey({ mode: 'propose', scopes: ['shop:catalog:write'] })] });
+    const result = await authenticate(h, 'shop:catalog:write');
+    if (!result.ok) throw new Error(result.error.message);
+    const capabilities = shopManagementKeyCapabilities({ mode: 'propose', scopes: ['shop:fulfilment:write', 'shop:integrations:write'] });
+    expect(capabilities).toEqual([]);
+    const ctx: Ctx = { ...result.value.ctx, capabilities };
+    expect(ctx.identity.staffRole).toBe('owner');
+    expect(grantedTo(ctx)).toEqual([]);
+  });
+
+  it('never lets a propose-mode key read or decide proposals', async () => {
+    const h = harness({ keys: [shopKey({ mode: 'propose', scopes: [...shopManagementScopeSchema.options].filter((scope) =>
+      scope !== 'shop:fulfilment:write' && scope !== 'shop:integrations:write') })] });
+    const result = await authenticate(h);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(authorize(result.value.ctx, 'proposal:read')).toMatchObject({ code: 'forbidden' });
+    expect(authorize(result.value.ctx, 'proposal:decide')).toMatchObject({ code: 'forbidden' });
+    expect(authorize(result.value.ctx, 'api-key:write')).toMatchObject({ code: 'forbidden' });
   });
 });
 

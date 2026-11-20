@@ -218,7 +218,7 @@ describe('shop management key authentication over HTTP', () => {
       staffRole: 'owner',
       tenantId: 'acme',
       capabilities: ['product:read', 'product:price:read'],
-      machineActor: { kind: 'shop_management_key', apiKeyId: 'shop-read' },
+      machineActor: { kind: 'shop_management_key', apiKeyId: 'shop-read', mode: 'direct' },
     });
   });
 

@@ -50,9 +50,9 @@ const ownerCapabilities = capabilitiesForPrincipal('owner');
 
 const keyCtx: Ctx = {
   identity: owner,
-  capabilities: shopManagementCapabilities(['shop:integrations:read', 'shop:integrations:write'])
+  capabilities: shopManagementCapabilities(['shop:integrations:read', 'shop:integrations:write'], 'direct')
     .filter((capability) => ownerCapabilities.includes(capability)),
-  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' },
+  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' },
 };
 
 const sessionCtx: Ctx = { identity: owner };

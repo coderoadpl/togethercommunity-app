@@ -17,6 +17,18 @@ export const shopManagementScopeSchema = z.enum([
 
 export type ShopManagementScope = z.output<typeof shopManagementScopeSchema>;
 
+export const shopManagementKeyModeSchema = z.enum(['direct', 'propose']);
+
+export type ShopManagementKeyMode = z.output<typeof shopManagementKeyModeSchema>;
+
+export const SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE = [
+  'shop:fulfilment:write',
+  'shop:integrations:write',
+] as const satisfies readonly ShopManagementScope[];
+
+const scopeRefusedInProposeMode = (scope: ShopManagementScope): boolean =>
+  SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE.some((refused) => refused === scope);
+
 export const SHOP_MANAGEMENT_KEY_MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const shopManagementKeysSwitchSchema = z.enum(['enabled', 'disabled']);
@@ -29,6 +41,7 @@ export const shopManagementKeySchema = z.object({
   name: z.string(),
   keyHash: z.string().min(1),
   scopes: z.array(shopManagementScopeSchema).min(1),
+  mode: shopManagementKeyModeSchema,
   issuedByUserId: z.string().min(1),
   createdAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -46,6 +59,7 @@ export const toShopManagementKeyPublic = (key: ShopManagementKey): ShopManagemen
   tenantId: key.tenantId,
   name: key.name,
   scopes: key.scopes,
+  mode: key.mode,
   issuedByUserId: key.issuedByUserId,
   createdAt: key.createdAt,
   expiresAt: key.expiresAt,
@@ -56,7 +70,19 @@ export const createShopManagementKeyInputSchema = z.object({
   name: z.string().trim().min(1).max(120),
   scopes: z.array(shopManagementScopeSchema).min(1),
   expiresAt: z.string().datetime(),
-}).strict();
+  mode: shopManagementKeyModeSchema.default('direct'),
+}).strict().superRefine((input, context) => {
+  if (input.mode !== 'propose') return;
+  input.scopes.forEach((scope, index) => {
+    if (scopeRefusedInProposeMode(scope)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scopes', index],
+        message: `${scope} cannot be granted to a propose-mode key`,
+      });
+    }
+  });
+});
 
 export type CreateShopManagementKeyInput = z.input<typeof createShopManagementKeyInputSchema>;
 
@@ -71,8 +97,27 @@ const capabilitiesByShopManagementScope: Record<ShopManagementScope, readonly Ca
   'shop:integrations:write': ['tenant:secret:write'],
 };
 
-export const shopManagementCapabilities = (scopes: readonly ShopManagementScope[]): readonly Capability[] =>
-  [...new Set(scopes.flatMap((scope) => capabilitiesByShopManagementScope[scope]))];
+const proposeModeCapabilitiesByShopManagementScope: Record<ShopManagementScope, readonly Capability[]> = {
+  'shop:catalog:read': ['product:read', 'product:price:read'],
+  'shop:catalog:write': ['proposal:submit:catalog'],
+  'shop:orders:read': ['order:read', 'order:export'],
+  'shop:fulfilment:write': [],
+  'shop:settings:read': ['tenant:settings:read'],
+  'shop:settings:write': ['proposal:submit:settings'],
+  'shop:integrations:read': ['tenant:secret:read'],
+  'shop:integrations:write': [],
+};
+
+const capabilitiesByShopManagementKeyMode: Record<ShopManagementKeyMode, Record<ShopManagementScope, readonly Capability[]>> = {
+  direct: capabilitiesByShopManagementScope,
+  propose: proposeModeCapabilitiesByShopManagementScope,
+};
+
+export const shopManagementCapabilities = (
+  scopes: readonly ShopManagementScope[],
+  mode: ShopManagementKeyMode,
+): readonly Capability[] =>
+  [...new Set(scopes.flatMap((scope) => capabilitiesByShopManagementKeyMode[mode][scope]))];
 
 export const SHOP_MANAGEMENT_KEY_SECRET_KEYS = [
   'ifirma.invoiceApiKey',

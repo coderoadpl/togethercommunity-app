@@ -9,10 +9,13 @@ import {
   ROLE_CAPABILITIES,
 } from '#core/contract/index.js';
 import {
+  SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE,
   shopManagementCapabilities,
   shopManagementScopeSchema,
   type Capability,
   type Principal,
+  type ShopManagementKeyMode,
+  type ShopManagementScope,
 } from '#core/domain/index.js';
 
 import { publicRouteManifestEntry } from '../apps/server/src/public-route-manifest.js';
@@ -21,7 +24,9 @@ import { collectRuntimeRoutes } from './generate-route-table.mjs';
 
 export const SHOP_MANAGEMENT_KEY_PRINCIPAL = 'shop-management-key (scope intersect issuing owner)';
 
-type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL;
+export const SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL = 'shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)';
+
+type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL | typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL;
 
 export interface PermissionRow {
   subject: string;
@@ -68,13 +73,19 @@ const webhook = ['webhook'] as const;
 const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
 const platformOwner = ['platform-owner'] as const;
-const shopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL] as const;
+const shopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
 
-const shopManagementKeyHolds = (capability: Capability): boolean =>
-  shopManagementCapabilities(shopManagementScopeSchema.options).includes(capability)
+const grantableShopManagementScopes = (mode: ShopManagementKeyMode): readonly ShopManagementScope[] =>
+  mode === 'direct'
+    ? shopManagementScopeSchema.options
+    : shopManagementScopeSchema.options.filter((scope) =>
+      !SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE.some((refused) => refused === scope));
+
+const shopManagementKeyHolds = (capability: Capability, mode: ShopManagementKeyMode): boolean =>
+  shopManagementCapabilities(grantableShopManagementScopes(mode), mode).includes(capability)
   && ROLE_CAPABILITIES.owner.includes(capability);
 
 const effectiveAfter = (
@@ -83,7 +94,8 @@ const effectiveAfter = (
 ): readonly InventoryPrincipal[] => {
   const holders: readonly InventoryPrincipal[] = [
     ...principalsForCapability(capability),
-    ...(shopManagementKeyHolds(capability) ? shopManagementKey : []),
+    ...(shopManagementKeyHolds(capability, 'direct') ? [SHOP_MANAGEMENT_KEY_PRINCIPAL] : []),
+    ...(shopManagementKeyHolds(capability, 'propose') ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] : []),
   ];
   return before.filter((principal) => holders.includes(principal));
 };
@@ -765,6 +777,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
+    '',
+    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. It reaches the same \`/api/m2m/shop\` routes, but its read scopes grant only their read capabilities and its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\` instead of the live write capabilities; \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. Its AFTER column therefore never lists a live write such as \`product:write\` or \`tenant:settings:write\`.`,
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

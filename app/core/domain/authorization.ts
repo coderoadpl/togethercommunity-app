@@ -123,6 +123,11 @@ export const CAPABILITIES = [
   'offer:read',
   'legal:read',
   'webhook:process',
+  'proposal:submit:catalog',
+  'proposal:submit:settings',
+  'proposal:asset:upload',
+  'proposal:read',
+  'proposal:decide',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -153,6 +158,7 @@ export type CapabilityMatrix = Record<Principal, readonly Capability[]>;
 const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = [
   'tenant:create',
   'platform:data:reset',
+  'proposal:decide',
 ];
 
 export const requiresVerifiedEmail = (capability: Capability): boolean =>
@@ -271,10 +277,19 @@ const ownerOnlyCapabilities = [
   'tenant:secret:write',
   'api-key:write',
   'integration:test',
+  'proposal:read',
+  'proposal:decide',
+] as const satisfies readonly Capability[];
+
+// Only a propose-mode shop management key exercises these; the owner holds them so the key's owner intersection keeps them.
+const ownerDelegatedProposalCapabilities = [
+  'proposal:submit:catalog',
+  'proposal:submit:settings',
+  'proposal:asset:upload',
 ] as const satisfies readonly Capability[];
 
 export const ROLE_CAPABILITIES: CapabilityMatrix = {
-  owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities],
+  owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities, ...ownerDelegatedProposalCapabilities],
   admin: sharedStaffCapabilities,
   member: memberSelfCapabilities,
   authenticated: [

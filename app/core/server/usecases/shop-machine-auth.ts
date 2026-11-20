@@ -7,6 +7,7 @@ import {
   shopManagementCapabilities,
   unauthorized,
   type AppError,
+  type Capability,
   type Identity,
   type Result,
   type ShopManagementKey,
@@ -145,9 +146,9 @@ const claimShopKeyRateLimit = async (
   return err(rateLimited(day, dayStartedAt, now));
 };
 
-const shopManagementKeyCapabilities = (apiKey: ShopManagementKey) => {
+export const shopManagementKeyCapabilities = (apiKey: Pick<ShopManagementKey, 'scopes' | 'mode'>): Capability[] => {
   const ownerCapabilities = capabilitiesForPrincipal('owner');
-  return shopManagementCapabilities(apiKey.scopes).filter((capability) => ownerCapabilities.includes(capability));
+  return shopManagementCapabilities(apiKey.scopes, apiKey.mode).filter((capability) => ownerCapabilities.includes(capability));
 };
 
 const authenticateStoredKey = async (
@@ -170,7 +171,7 @@ const authenticateStoredKey = async (
     ctx: {
       identity: identity.value,
       capabilities: shopManagementKeyCapabilities(apiKey.value),
-      machineActor: { kind: 'shop_management_key', apiKeyId: apiKey.value.id },
+      machineActor: { kind: 'shop_management_key', apiKeyId: apiKey.value.id, mode: apiKey.value.mode },
     },
   });
 };

@@ -65,7 +65,7 @@ const tenantApiKeysShape = async () => ({
 
 const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey => ({
   id: 'shop-key', tenantId: TENANT, name: 'Shop backend', keyHash: 'hash-shop',
-  scopes: ['shop:catalog:read'], issuedByUserId: 'user-owner', createdAt: NOW, expiresAt: EXPIRY, revokedAt: null,
+  scopes: ['shop:catalog:read'], mode: 'direct', issuedByUserId: 'user-owner', createdAt: NOW, expiresAt: EXPIRY, revokedAt: null,
   ...overrides,
 });
 

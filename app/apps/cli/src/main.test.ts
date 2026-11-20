@@ -1485,7 +1485,7 @@ describe('activity report CLI parsing', () => {
   });
   it('lists and revokes shop management keys through the shop-management group', async () => {
     h.listShopManagementKeys.mockReset().mockResolvedValue(ok({ apiKeys: [{
-      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], issuedByUserId: 'owner-1',
+      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], mode: 'direct', issuedByUserId: 'owner-1',
       createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-08T00:00:00.000Z', revokedAt: null,
     }] }));
     await run('api-key', 'shop-management', 'list');

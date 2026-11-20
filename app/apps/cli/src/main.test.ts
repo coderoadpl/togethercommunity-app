@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -6,8 +6,8 @@ import type * as ClientModule from '#core/client/index.js';
 import { REDACTED_OPERATOR_SECRET, REDACTED_SECRET_FINGERPRINT_READ_SECRET } from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { SECRET_FINGERPRINT_READ_SECRET_HEADER } from '#core/contract/index.js';
-import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result } from '#core/domain/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, SECRET_FINGERPRINT_READ_SECRET_HEADER } from '#core/contract/index.js';
+import { appError, changeProposalGroupItemsDigest, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result, type ShipxOrderView } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -33,6 +33,7 @@ interface Hoisted {
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
   shipOrder: ReturnType<typeof vi.fn>;
+  correctOrderPersonalization: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
   shipxRefresh: ReturnType<typeof vi.fn>;
@@ -52,6 +53,13 @@ interface Hoisted {
   revokeShopManagementKey: ReturnType<typeof vi.fn>;
   purgeShopManagementKeys: ReturnType<typeof vi.fn>;
   listShopManagementKeyEvents: ReturnType<typeof vi.fn>;
+  listChangeProposals: ReturnType<typeof vi.fn>;
+  getChangeProposal: ReturnType<typeof vi.fn>;
+  rejectChangeProposal: ReturnType<typeof vi.fn>;
+  approveChangeProposal: ReturnType<typeof vi.fn>;
+  getChangeProposalGroup: ReturnType<typeof vi.fn>;
+  approveChangeProposalGroup: ReturnType<typeof vi.fn>;
+  rejectChangeProposalGroup: ReturnType<typeof vi.fn>;
   listSurveys: ReturnType<typeof vi.fn>;
   createSurvey: ReturnType<typeof vi.fn>;
   deleteSurvey: ReturnType<typeof vi.fn>;
@@ -69,6 +77,7 @@ interface Hoisted {
   deleteProductDraft: ReturnType<typeof vi.fn>;
   listProducts: ReturnType<typeof vi.fn>;
   getProductStock: ReturnType<typeof vi.fn>;
+  publicOffer: ReturnType<typeof vi.fn>;
   enableProductStock: ReturnType<typeof vi.fn>;
   adjustProductStock: ReturnType<typeof vi.fn>;
   setProductStockThreshold: ReturnType<typeof vi.fn>;
@@ -92,6 +101,17 @@ interface Hoisted {
   listTenantTeam: ReturnType<typeof vi.fn>;
   addTenantAdmin: ReturnType<typeof vi.fn>;
   removeTenantAdmin: ReturnType<typeof vi.fn>;
+  listOrganizations: ReturnType<typeof vi.fn>;
+  addOrganizationMember: ReturnType<typeof vi.fn>;
+  setOrganizationMemberRole: ReturnType<typeof vi.fn>;
+  removeOrganizationMember: ReturnType<typeof vi.fn>;
+  updateOrganization: ReturnType<typeof vi.fn>;
+  listOrganizationSecrets: ReturnType<typeof vi.fn>;
+  setOrganizationSecret: ReturnType<typeof vi.fn>;
+  deleteOrganizationSecret: ReturnType<typeof vi.fn>;
+  listOrganizationWorkspaces: ReturnType<typeof vi.fn>;
+  getWorkspaceConfigSources: ReturnType<typeof vi.fn>;
+  unlinkTenantFromOrganization: ReturnType<typeof vi.fn>;
   getTenantSettings: ReturnType<typeof vi.fn>;
   updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
@@ -120,6 +140,7 @@ const h = vi.hoisted(
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
     shipOrder: vi.fn(),
+    correctOrderPersonalization: vi.fn(),
     ordersPackingList: vi.fn(),
     shipxShipment: vi.fn(),
     shipxRefresh: vi.fn(),
@@ -139,6 +160,13 @@ const h = vi.hoisted(
     revokeShopManagementKey: vi.fn(),
     purgeShopManagementKeys: vi.fn(),
     listShopManagementKeyEvents: vi.fn(),
+    listChangeProposals: vi.fn(),
+    getChangeProposal: vi.fn(),
+    rejectChangeProposal: vi.fn(),
+    approveChangeProposal: vi.fn(),
+    getChangeProposalGroup: vi.fn(),
+    approveChangeProposalGroup: vi.fn(),
+    rejectChangeProposalGroup: vi.fn(),
     listSurveys: vi.fn(),
     createSurvey: vi.fn(),
     deleteSurvey: vi.fn(),
@@ -163,6 +191,7 @@ const h = vi.hoisted(
     deleteProductDraft: vi.fn(),
     listProducts: vi.fn(),
     getProductStock: vi.fn(),
+    publicOffer: vi.fn(),
     enableProductStock: vi.fn(),
     adjustProductStock: vi.fn(),
     setProductStockThreshold: vi.fn(),
@@ -186,6 +215,17 @@ const h = vi.hoisted(
     listTenantTeam: vi.fn(),
     addTenantAdmin: vi.fn(),
     removeTenantAdmin: vi.fn(),
+    listOrganizations: vi.fn(),
+    addOrganizationMember: vi.fn(),
+    setOrganizationMemberRole: vi.fn(),
+    removeOrganizationMember: vi.fn(),
+    updateOrganization: vi.fn(),
+    listOrganizationSecrets: vi.fn(),
+    setOrganizationSecret: vi.fn(),
+    deleteOrganizationSecret: vi.fn(),
+    listOrganizationWorkspaces: vi.fn(),
+    getWorkspaceConfigSources: vi.fn(),
+    unlinkTenantFromOrganization: vi.fn(),
     getTenantSettings: vi.fn(),
     updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
@@ -255,6 +295,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
     shipOrder: h.shipOrder,
+    correctOrderPersonalization: h.correctOrderPersonalization,
     ordersPackingList: h.ordersPackingList,
     shipxShipment: h.shipxShipment,
     shipxRefresh: h.shipxRefresh,
@@ -274,6 +315,13 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     revokeShopManagementKey: h.revokeShopManagementKey,
     purgeShopManagementKeys: h.purgeShopManagementKeys,
     listShopManagementKeyEvents: h.listShopManagementKeyEvents,
+    listChangeProposals: h.listChangeProposals,
+    getChangeProposal: h.getChangeProposal,
+    rejectChangeProposal: h.rejectChangeProposal,
+    approveChangeProposal: h.approveChangeProposal,
+    getChangeProposalGroup: h.getChangeProposalGroup,
+    approveChangeProposalGroup: h.approveChangeProposalGroup,
+    rejectChangeProposalGroup: h.rejectChangeProposalGroup,
     listSurveys: h.listSurveys,
     createSurvey: h.createSurvey,
     deleteSurvey: h.deleteSurvey,
@@ -288,6 +336,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     deleteProductDraft: h.deleteProductDraft,
     listProducts: h.listProducts,
     getProductStock: h.getProductStock,
+    publicOffer: h.publicOffer,
     enableProductStock: h.enableProductStock,
     adjustProductStock: h.adjustProductStock,
     setProductStockThreshold: h.setProductStockThreshold,
@@ -298,6 +347,17 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listTenantTeam: h.listTenantTeam,
     addTenantAdmin: h.addTenantAdmin,
     removeTenantAdmin: h.removeTenantAdmin,
+    listOrganizations: h.listOrganizations,
+    addOrganizationMember: h.addOrganizationMember,
+    setOrganizationMemberRole: h.setOrganizationMemberRole,
+    removeOrganizationMember: h.removeOrganizationMember,
+    updateOrganization: h.updateOrganization,
+    listOrganizationSecrets: h.listOrganizationSecrets,
+    setOrganizationSecret: h.setOrganizationSecret,
+    deleteOrganizationSecret: h.deleteOrganizationSecret,
+    listOrganizationWorkspaces: h.listOrganizationWorkspaces,
+    getWorkspaceConfigSources: h.getWorkspaceConfigSources,
+    unlinkTenantFromOrganization: h.unlinkTenantFromOrganization,
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
@@ -342,6 +402,10 @@ const redirectFixture = {
   createdAt: '1998-08-14T10:00:00.000Z',
 };
 
+const shipxOrderView: ShipxOrderView = {
+  available: true, reason: null, environment: 'sandbox', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null,
+};
+
 const originalArgv = process.argv;
 let logSpy: MockInstance<typeof console.log>;
 let errorSpy: MockInstance<typeof console.error>;
@@ -380,14 +444,20 @@ beforeEach(() => {
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
+  h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
-  h.shipxShipment.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
-  h.shipxRefresh.mockReset().mockResolvedValue(ok({ available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null }));
+  h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
+  h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
-  h.shipxSettings.mockReset().mockResolvedValue(ok({ environment: 'sandbox', sender: null, organizationId: null, token: null, configured: false }));
-  h.shipxConfigure.mockReset().mockResolvedValue(ok({ environment: 'production', sender: null, organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: false }));
+  const unconnected = { organizationId: null, token: null, configured: false };
+  h.shipxSettings.mockReset().mockResolvedValue(ok({ sender: null, sandbox: unconnected, production: unconnected }));
+  h.shipxConfigure.mockReset().mockResolvedValue(ok({
+    sender: null,
+    sandbox: unconnected,
+    production: { organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: true },
+  }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -1346,6 +1416,24 @@ describe('lesson preview commands', () => {
   });
 });
 
+describe('tenant organization unlink', () => {
+  it('unlinks the active tenant', async () => {
+    h.unlinkTenantFromOrganization.mockReset().mockResolvedValue(ok({
+      workspace: { id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' }, changed: true,
+    }));
+    await run('tenant', 'organization', 'unlink');
+    expect(h.unlinkTenantFromOrganization).toHaveBeenCalledExactlyOnceWith();
+    expect(logSpy).toHaveBeenCalledWith('unlinked: Acme (acme)');
+  });
+
+  it('reports a refusal with the forbidden exit code', async () => {
+    h.unlinkTenantFromOrganization.mockReset().mockResolvedValue(err(appError('forbidden', 'Direct owner required')));
+    await run('--json', 'tenant', 'organization', 'unlink');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+});
+
 describe('tenant accent settings', () => {
   it('returns the forbidden exit code when a member reads staff settings', async () => {
     h.getTenantSettings.mockResolvedValue(err(appError('forbidden', 'Staff role is required')));
@@ -1486,11 +1574,11 @@ describe('activity report CLI parsing', () => {
   });
   it('lists and revokes shop management keys through the shop-management group', async () => {
     h.listShopManagementKeys.mockReset().mockResolvedValue(ok({ apiKeys: [{
-      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], issuedByUserId: 'owner-1',
+      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], mode: 'direct', issuedByUserId: 'owner-1',
       createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-08T00:00:00.000Z', revokedAt: null,
     }] }));
     await run('api-key', 'shop-management', 'list');
-    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)');
+    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)\tdirect');
     h.revokeShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'shop-key', name: 'Shop' } }));
     await run('--json', 'api-key', 'shop-management', 'revoke', 'shop-key');
     expect(h.revokeShopManagementKey).toHaveBeenCalledWith({ id: 'shop-key' });
@@ -1525,6 +1613,25 @@ describe('activity report CLI parsing', () => {
     await run('--json', 'api-key', 'shop-management', 'events');
     expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({});
     expect(soleJson()).toEqual({ ok: true, data: { events: [], nextCursor: null } });
+  });
+  it('creates a propose-mode shop management key with --mode propose and refuses an unknown mode', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Agent', mode: 'propose' }, secret: 'shop-secret' }));
+    await run('api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:read', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'propose');
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({
+      name: 'Agent', scopes: ['shop:catalog:read', 'shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z', mode: 'propose',
+    });
+    expect(logSpy).toHaveBeenCalledWith('created propose-mode shop management key Agent (key)\nsecret (shown once): shop-secret');
+    h.createShopManagementKey.mockReset();
+    logSpy.mockClear();
+    await run('--json', 'api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'draft');
+    expect(h.createShopManagementKey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('keeps the direct-mode create confirmation line unchanged', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Backend', mode: 'direct' }, secret: 'shop-secret' }));
+    await run('api-key', 'shop-management', 'create', 'Backend', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z');
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({ name: 'Backend', scopes: ['shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z' });
+    expect(logSpy).toHaveBeenCalledWith('created shop management key Backend (key)\nsecret (shown once): shop-secret');
   });
   it('keeps the legacy api-key create free of shop options', async () => {
     h.createApiKey.mockReset();
@@ -1904,6 +2011,18 @@ it.each(['live', 'test'] as const)('emits the %s Stripe permission check envelop
   expect(soleJson()).toEqual({ ok: true, data: result });
 });
 
+it('prints a missing refund permission with its detail and exits successfully', async () => {
+  h.probeStripePermissions.mockReset();
+  const detail = 'This key needs more permissions';
+  h.probeStripePermissions.mockResolvedValue(ok({ mode: 'live', allOk: false, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
+    { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
+    { resource: 'Charges and Refunds', permission: 'write', status: 'missing', detail },
+  ] }));
+  await run('stripe', 'probe-permissions', '--mode', 'live');
+  expect(logSpy).toHaveBeenCalledExactlyOnceWith(`Checkout Sessions (write): ok\nCharges and Refunds (write): missing — ${detail}`);
+  expect(process.exitCode).toBe(0);
+});
+
 
 describe('KSeF controlled submission', () => {
   it('submits an invoice by order ID and prints one result envelope', async () => {
@@ -2035,6 +2154,38 @@ describe('product stock CLI', () => {
   });
 });
 
+describe('public offer CLI', () => {
+  const offerProduct = (id: string, title: string, stock: { tracked: boolean; soldOut: boolean; low: boolean; available: number | null }, maxQuantity: number) => ({
+    id, title, priceCents: 4900, currency: 'PLN', stock, maxQuantity,
+  });
+  const offer = {
+    tenant: { slug: 'acme', name: 'Acme' },
+    products: [
+      offerProduct('poster', 'Poster', { tracked: true, soldOut: false, low: true, available: 3 }, 3),
+      offerProduct('mug', 'Mug', { tracked: true, soldOut: true, low: false, available: 0 }, 0),
+      offerProduct('course', 'Course', { tracked: false, soldOut: false, low: false, available: null }, 1),
+    ],
+  };
+
+  beforeEach(() => {
+    h.publicOffer.mockReset().mockResolvedValue(ok(offer));
+  });
+
+  it('appends how many units of a tracked product are left', async () => {
+    await run('public', 'offer');
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')).toEqual([
+      '- Poster  4900 PLN  (poster)  3 left',
+      '- Mug  4900 PLN  (mug)  sold out',
+      '- Course  4900 PLN  (course)',
+    ]);
+  });
+
+  it('passes the counts through the JSON envelope unchanged', async () => {
+    await run('--json', 'public', 'offer');
+    expect(soleJson()).toEqual({ ok: true, data: offer });
+  });
+});
+
 describe('team CLI', () => {
   beforeEach(() => {
     h.listTenantTeam.mockReset().mockResolvedValue(ok({
@@ -2068,12 +2219,131 @@ describe('team CLI', () => {
     expect(process.exitCode).toBe(5);
   });
 
+  it('sends an organization-only address to the server, which answers organization_managed', async () => {
+    h.listTenantTeam.mockResolvedValue(ok({
+      members: [],
+      organization: { id: 'org-1', slug: 'holding', name: 'Holding', members: [{ userId: 'org-user', email: 'org@example.test', name: null, role: 'owner', source: 'organization' }] },
+    }));
+    h.removeTenantAdmin.mockResolvedValue(err(appError('organization_managed', 'This access comes from the organization')));
+    await run('--json', 'team', 'remove', 'org@example.test');
+    expect(h.removeTenantAdmin).toHaveBeenCalledWith({ userId: 'org-user' });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'organization_managed' } });
+    expect(process.exitCode).toBe(32);
+  });
+
   it('propagates owner-only authorization failures without attempting a removal', async () => {
     h.listTenantTeam.mockResolvedValue(err(appError('forbidden', 'Owner role required')));
     await run('--json', 'team', 'remove', 'admin@example.test');
     expect(h.removeTenantAdmin).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(process.exitCode).toBe(4);
+  });
+});
+
+describe('organization member CLI', () => {
+  const member = { userId: 'member-user', email: 'member@example.test', role: 'owner', createdAt: '2026-11-15T12:00:00.000Z' };
+  beforeEach(() => {
+    h.listOrganizations.mockReset().mockResolvedValue(ok({
+      organizations: [{ id: 'org-1', slug: 'holding', name: 'Holding', status: 'active', role: 'owner' }],
+    }));
+    h.addOrganizationMember.mockReset().mockResolvedValue(ok({ member, changed: true }));
+    h.setOrganizationMemberRole.mockReset().mockResolvedValue(ok({ member, changed: false }));
+    h.removeOrganizationMember.mockReset().mockResolvedValue(ok({ member, changed: true }));
+  });
+
+  it('adds a member with a normalised address and role in the selected organization', async () => {
+    await run('--json', 'org', 'member', 'add', ' Member@Example.test ', '--role', 'owner', '--org', 'holding');
+    expect(h.addOrganizationMember).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', email: 'member@example.test', role: 'owner' });
+    expect(soleJson()).toEqual({ ok: true, data: { member, changed: true } });
+  });
+
+  it('changes a role and removes a member by address', async () => {
+    await run('--json', 'org', 'member', 'role', 'member@example.test', '--role', 'admin', '--org', 'org-1');
+    expect(h.setOrganizationMemberRole).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', email: 'member@example.test', role: 'admin' });
+    logSpy.mockClear();
+    await run('--json', 'org', 'member', 'remove', 'member@example.test', '--org', 'holding');
+    expect(h.removeOrganizationMember).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', email: 'member@example.test' });
+    expect(soleJson()).toEqual({ ok: true, data: { member, changed: true } });
+  });
+
+  it.each([
+    ['add', 'member@example.test', '--org', 'holding'],
+    ['role', 'member@example.test', '--role', 'member', '--org', 'holding'],
+    ['remove', 'not-an-email', '--org', 'holding'],
+  ])('refuses %s with a missing role, an unknown role or a malformed address before calling the API', async (...args) => {
+    await run('--json', 'org', 'member', ...args);
+    expect(h.addOrganizationMember).not.toHaveBeenCalled();
+    expect(h.setOrganizationMemberRole).not.toHaveBeenCalled();
+    expect(h.removeOrganizationMember).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('propagates the last-owner conflict with its exit code', async () => {
+    h.removeOrganizationMember.mockResolvedValue(err(appError('conflict', 'The last owner of an organization cannot be demoted or removed')));
+    await run('--json', 'org', 'member', 'remove', 'member@example.test', '--org', 'holding');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(process.exitCode).toBe(6);
+  });
+});
+
+describe('organization settings, secrets and sources CLI', () => {
+  const secret = { key: 'smtp.password', maskedPreview: '••••1234', updatedAt: '2026-11-15T12:00:00.000Z' };
+  beforeEach(() => {
+    h.listOrganizations.mockReset().mockResolvedValue(ok({
+      organizations: [{ id: 'org-1', slug: 'holding', name: 'Holding', status: 'active', role: 'owner' }],
+    }));
+    h.updateOrganization.mockReset().mockResolvedValue(ok({ organization: { id: 'org-1' }, settings: {}, changed: true }));
+    h.listOrganizationSecrets.mockReset().mockResolvedValue(ok({ secrets: [secret] }));
+    h.setOrganizationSecret.mockReset().mockResolvedValue(ok({ secret }));
+    h.deleteOrganizationSecret.mockReset().mockResolvedValue(ok({ key: 'smtp.password' }));
+    h.listOrganizationWorkspaces.mockReset().mockResolvedValue(ok({ workspaces: [{ id: 'tenant-acme', slug: 'acme', name: 'Acme', status: 'active' }] }));
+    h.getWorkspaceConfigSources.mockReset().mockResolvedValue(ok({ workspace: { id: 'tenant-acme' }, sources: [] }));
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('reads a secret value from the named environment variable and never takes it from arguments', async () => {
+    vi.stubEnv('ORG_SMTP_PASSWORD', ' smtp-secret-1234 ');
+    await run('--json', 'org', 'secret', 'set', 'smtp.password', '--value-env', 'ORG_SMTP_PASSWORD', '--org', 'holding');
+    expect(h.setOrganizationSecret).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', key: 'smtp.password', value: 'smtp-secret-1234' });
+    expect(soleJson()).toEqual({ ok: true, data: { secret } });
+  });
+
+  it.each([
+    ['stripe.restrictedKey', '--value-env', 'ORG_SMTP_PASSWORD'],
+    ['s3.accessKeyId', '--value-env', 'ORG_SMTP_PASSWORD'],
+    ['smtp.password', '--value-env', 'ORG_UNSET_VARIABLE'],
+  ])('refuses secret set %s with %s before calling the API', async (...args) => {
+    vi.stubEnv('ORG_SMTP_PASSWORD', 'smtp-secret-1234');
+    await run('--json', 'org', 'secret', 'set', ...args, '--org', 'holding');
+    expect(h.setOrganizationSecret).not.toHaveBeenCalled();
+    const output = soleJson();
+    expect(output).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(JSON.stringify(output)).not.toContain('smtp-secret-1234');
+  });
+
+  it('lists and deletes secrets, updates settings and shows workspace sources', async () => {
+    await run('--json', 'org', 'secret', 'list', '--org', 'holding');
+    expect(soleJson()).toEqual({ ok: true, data: { secrets: [secret] } });
+    logSpy.mockClear();
+    await run('--json', 'org', 'secret', 'delete', 'smtp.password', '--org', 'holding');
+    expect(h.deleteOrganizationSecret).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', key: 'smtp.password' });
+    logSpy.mockClear();
+    await run('--json', 'org', 'update', '--org', 'holding', '--legal-name', 'Holding Ltd', '--legal-address', '', '--invoicing-provider', 'none', '--shipx-environment', 'production');
+    expect(h.updateOrganization).toHaveBeenCalledExactlyOnceWith({
+      organizationId: 'org-1', update: { legalName: 'Holding Ltd', legalAddress: null, invoicingProvider: null, shipxEnvironment: 'production' },
+    });
+    logSpy.mockClear();
+    await run('--json', 'org', 'workspace', 'sources', 'ACME', '--org', 'holding');
+    expect(h.getWorkspaceConfigSources).toHaveBeenCalledExactlyOnceWith({ organizationId: 'org-1', tenantId: 'tenant-acme' });
+  });
+
+  it('refuses an update without settings or with an invalid sender before calling the API', async () => {
+    await run('--json', 'org', 'update', '--org', 'holding');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    logSpy.mockClear();
+    await run('--json', 'org', 'update', '--org', 'holding', '--shipx-sender', '{not json');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.updateOrganization).not.toHaveBeenCalled();
   });
 });
 
@@ -2312,7 +2582,85 @@ describe('fulfilment CLI', () => {
   });
 });
 
+describe('personalisation CLI', () => {
+  const engraving = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+  const settingFile = async (content: unknown): Promise<string> => {
+    const directory = await mkdtemp(join(tmpdir(), 'personalization-'));
+    const path = join(directory, 'personalization.json');
+    await writeFile(path, JSON.stringify(content));
+    return path;
+  };
+
+  it('sends the personalisation file with product create and update, null for --no-personalization and nothing when neither is given', async () => {
+    const path = await settingFile(engraving);
+    await run('--json', 'product', 'create', '--title', 'Printed book', '--type', 'physical', '--price-cents', '4900', '--personalization-file', path);
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      personalization: { ...engraving, description: '', maxLength: 200 },
+    }));
+    await run('--json', 'product', 'update', 'product-1', '--personalization-file', path);
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', personalization: { ...engraving, description: '', maxLength: 200 } });
+    await run('--json', 'product', 'update', 'product-1', '--no-personalization');
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', personalization: null });
+    await run('--json', 'product', 'update', 'product-1', '--title', 'Renamed');
+    expect(h.updateProduct).toHaveBeenLastCalledWith({ id: 'product-1', title: 'Renamed' });
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('refuses an invalid personalisation file and both personalisation flags before calling the server', async () => {
+    const invalid = await settingFile({ ...engraving, surchargeCents: 500 });
+    await run('--json', 'product', 'create', '--title', 'Printed book', '--price-cents', '4900', '--personalization-file', invalid);
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+    await run('--json', 'product', 'update', 'product-1', '--personalization-file', invalid, '--no-personalization');
+    expect(h.updateProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    await rm(join(invalid, '..'), { recursive: true, force: true });
+  });
+
+  it('corrects the personalisation text of an order line through the order alias', async () => {
+    await run('order', 'personalization', 'order-number', 'product-1', '--text', 'For Ann: with love');
+    expect(h.correctOrderPersonalization).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'product-1', text: 'For Ann: with love' });
+    expect(logSpy).toHaveBeenCalledWith('corrected personalisation: order-number (product-1)');
+    h.correctOrderPersonalization.mockResolvedValue(err(appError('validation', 'This order line has no personalisation')));
+    await run('--json', 'orders', 'personalization', 'order-number', 'product-2', '--text', 'For Bo');
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends the requested personalisations with a checkout session and a simulated purchase', async () => {
+    await run('--json', 'checkout', 'session', '--sales-link', 'link-1', '--product', 'product-1',
+      '--personalization', 'product-1:For Ann: with love', '--personalization', 'product-2:For Bo', '--accept-condition');
+    expect(h.createCheckoutSession).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      salesLinkId: 'link-1',
+      personalizations: [
+        { productId: 'product-1', text: 'For Ann: with love', conditionAccepted: true },
+        { productId: 'product-2', text: 'For Bo', conditionAccepted: true },
+      ],
+    });
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--personalization', 'product-1:For Ann');
+    expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({
+      productId: 'product-1',
+      email: 'buyer@example.test',
+      personalizations: [{ productId: 'product-1', text: 'For Ann', conditionAccepted: false }],
+    });
+  });
+
+  it('refuses a malformed personalisation, a condition acceptance without one and a personalised cart before calling the server', async () => {
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--personalization', 'product-1');
+    await run('--json', 'checkout', 'session', '--product', 'product-1', '--accept-condition');
+    await run('--json', 'checkout', 'session', '--line', 'product-1:1', '--personalization', 'product-1:For Ann');
+    await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test', '--accept-condition');
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect(h.createCartCheckoutSession).not.toHaveBeenCalled();
+    expect(h.simulatePurchase).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+});
+
 describe('InPost ShipX CLI', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
     expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
@@ -2368,14 +2716,41 @@ describe('InPost ShipX CLI', () => {
   it('shows the order readiness and configures the integration with a parsed sender', async () => {
     await run('orders', 'shipx', 'show', 'order-number');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('available: true'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('environment: sandbox'));
     const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
-    await run('--json', 'tenant', 'shipx-set', '--environment', 'production', '--organization-id', '1234', '--token', 'token-5678', '--sender', JSON.stringify(sender));
+    vi.stubEnv('SHIPX_PRODUCTION_TOKEN', 'token-5678');
+    await run('--json', 'tenant', 'shipx-set', '--slot', 'production', '--organization-id', '1234', '--token-env', 'SHIPX_PRODUCTION_TOKEN', '--sender', JSON.stringify(sender));
     expect(h.shipxConfigure).toHaveBeenCalledExactlyOnceWith({
-      environment: 'production', organizationId: '1234', token: 'token-5678', sender: { ...sender, company: null },
+      production: { organizationId: '1234', token: 'token-5678' }, sender: { ...sender, company: null },
     });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('token-5678');
     await run('--json', 'tenant', 'shipx-set', '--sender', '{"name":"Only a name"}');
     expect(h.shipxConfigure).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(2);
+  });
+
+  it('changes one ShipX connection named by --slot and the sender without a slot', async () => {
+    await run('--json', 'tenant', 'shipx-set', '--slot', 'sandbox', '--clear-credentials');
+    expect(h.shipxConfigure).toHaveBeenLastCalledWith({ sandbox: { clearCredentials: true } });
+    await run('--json', 'tenant', 'shipx-set', '--sender', 'null');
+    expect(h.shipxConfigure).toHaveBeenLastCalledWith({ sender: null });
+    await run('tenant', 'shipx');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('production: not connected, organization id (not set), token (not set)'));
+    expect(h.shipxConfigure).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [['--organization-id', '1234']],
+    [['--clear-credentials']],
+    [['--slot', 'production']],
+    [['--slot', 'staging', '--organization-id', '1234']],
+    [['--environment', 'production', '--organization-id', '1234']],
+    [['--slot', 'production', '--token', 'token-5678']],
+    [['--slot', 'production', '--token-env', 'SHIPX_TOKEN', '--token-stdin']],
+  ])('refuses tenant shipx-set %j without calling the API', async (args) => {
+    await run('--json', 'tenant', 'shipx-set', ...args);
+    expect(h.shipxConfigure).not.toHaveBeenCalled();
+    expect(process.exitCode).not.toBe(0);
   });
 
   it('passes the parcel template to product create and update', async () => {
@@ -2386,5 +2761,231 @@ describe('InPost ShipX CLI', () => {
     await run('--json', 'product', 'update', 'product-1', '--parcel-template', 'huge');
     expect(h.updateProduct).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(2);
+  });
+});
+
+const ownerProposal = {
+  id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' }, onHand: { delta: 5 } }, status: 'pending',
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedAt: null,
+  decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
+};
+
+describe('owner change proposal commands', () => {
+  it('lists the workspace proposals with status and paging options', async () => {
+    h.listChangeProposals.mockReset().mockResolvedValue(ok({ proposals: [ownerProposal], nextCursor: 'proposal-1' }));
+    await run('proposals', 'list', '--status', 'pending', '--limit', '10', '--cursor', 'proposal-0');
+    expect(h.listChangeProposals).toHaveBeenCalledWith({ status: 'pending', cursor: 'proposal-0', limit: 10 });
+    expect(logSpy).toHaveBeenCalledWith(
+      '1998-08-01T00:00:00.000Z\tpending\tproduct.update\tproduct:product-1\tCatalogue agent\t-\t(proposal-1)\nnext: --cursor proposal-1',
+    );
+  });
+  it('shows the group of each listed item and filters by group', async () => {
+    h.listChangeProposals.mockReset().mockResolvedValue(ok({ proposals: [{ ...ownerProposal, groupId: 'group-1', groupTitle: 'Spring launch', groupPosition: 2 }], nextCursor: null }));
+    await run('proposals', 'list', '--group', 'group-1');
+    expect(h.listChangeProposals).toHaveBeenCalledWith({ groupId: 'group-1' });
+    expect(logSpy).toHaveBeenCalledWith(
+      '1998-08-01T00:00:00.000Z\tpending\tproduct.update\tproduct:product-1\tCatalogue agent\tgroup Spring launch #2 (group-1)\t(proposal-1)',
+    );
+  });
+  it('refuses an unknown status before calling the API', async () => {
+    h.listChangeProposals.mockReset();
+    await run('--json', 'proposals', 'list', '--status', 'approved');
+    expect(h.listChangeProposals).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('shows one proposal with its before/after effect and history', async () => {
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, events: [
+      { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'shop-key', note: null, at: '1998-08-01T00:00:00.000Z' },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    expect(h.getChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('  title: "Handbook" -> "Renamed"');
+    expect(printed).toContain('  onHand: +5');
+    expect(printed).toContain('proposed by key: Catalogue agent (shop-key, active), issued by owner-1');
+    expect(printed).toContain('  1998-08-01T00:00:00.000Z\tproposed\tshop-key');
+  });
+  it('rejects a proposal with an optional note', async () => {
+    h.rejectChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'rejected', decisionNote: 'Not now' } }));
+    await run('--json', 'proposals', 'reject', 'proposal-1', '--note', 'Not now');
+    expect(h.rejectChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1', note: 'Not now' });
+    expect(soleJson()).toMatchObject({ ok: true, data: { proposal: { status: 'rejected', decisionNote: 'Not now' } } });
+    h.rejectChangeProposal.mockClear();
+    await run('--json', 'proposals', 'reject', 'proposal-1');
+    expect(h.rejectChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+  });
+  it('approves a proposal and exits 0 when it was applied', async () => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'applied', appliedResourceId: 'product-1' } }));
+    await run('proposals', 'approve', 'proposal-1');
+    expect(h.approveChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed.split('\n')[0]).toBe('applied: product product-1');
+    expect(printed).toContain('  title: "Handbook" -> "Renamed"');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+  it.each([
+    ['stale', { status: 'stale' }, 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.'],
+    ['failed', { status: 'failed', failureCode: 'conflict', failureMessage: 'Stock cannot go below zero' }, 'failed: conflict: Stock cannot go below zero; nothing was applied'],
+  ] as const)('prints a %s approval with its reason and exits with the conflict code', async (_status, fields, line) => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, ...fields } }));
+    await run('proposals', 'approve', 'proposal-1');
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')[0]).toBe(line);
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+    logSpy.mockClear();
+    process.exitCode = 0;
+    await run('--json', 'proposals', 'approve', 'proposal-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { proposal: fields } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+  it('answers a repeated approve with the conflict error and its exit code', async () => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(err(appError('conflict', 'This change proposal is no longer pending', { changeProposalStatus: 'applied' })));
+    await run('--json', 'proposals', 'approve', 'proposal-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'applied' } } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+});
+
+const groupItem = (position: number, fields: Record<string, unknown> = {}) => ({
+  ...ownerProposal, id: `proposal-${String(position)}`, groupId: 'group-1', groupTitle: 'Spring launch', groupPosition: position, events: [], ...fields,
+});
+
+const ownerGroup = (status: string, items: ReturnType<typeof groupItem>[]) => ({
+  id: 'group-1', title: 'Spring launch', status,
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', items,
+});
+
+describe('owner change proposal group commands', () => {
+  const pending = ownerGroup('open', [
+    groupItem(1, { operation: 'product.create', target: { kind: 'product', id: null }, effect: { title: { before: null, after: 'Handbook' } } }),
+    groupItem(2, { operation: 'price.create', input: { productId: '$proposal:proposal-1', kind: 'one_time', amountCents: 4900 }, effect: { activePrices: { before: [], after: [{ amountCents: 4900 }] } } }),
+  ]);
+
+  const shownDigest = changeProposalGroupItemsDigest(['proposal-1', 'proposal-2']);
+
+  it('shows a group with its items in order, each effect, the items digest and the command that approves exactly them', async () => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: pending }));
+    await run('proposals', 'group', 'show', 'group-1');
+    expect(h.getChangeProposalGroup).toHaveBeenCalledWith({ id: 'group-1' });
+    const printed = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(shownDigest).toMatch(/^[0-9a-f]{16}$/u);
+    expect(printed.slice(-2)).toEqual([
+      `items digest: ${shownDigest}`,
+      `approve exactly these items with: together --tenant one proposals group approve group-1 --items-digest ${shownDigest}`,
+    ]);
+    expect(printed.slice(0, 6)).toEqual([
+      'group group-1: Spring launch [open]',
+      'proposed by key: Catalogue agent (shop-key, active), issued by owner-1',
+      'created: 1998-08-01T00:00:00.000Z',
+      'expires: 1998-08-31T00:00:00.000Z',
+      'items: 2',
+      'item 1: product.create [pending] product (new) (proposal-1)',
+    ]);
+    expect(printed.indexOf('item 2: price.create [pending] product product-1 (proposal-2)')).toBeGreaterThan(printed.indexOf('  title: null -> "Handbook"'));
+
+    logSpy.mockClear();
+    await run('--json', 'proposals', 'group', 'show', 'group-1');
+    expect(soleJson()).toMatchObject({
+      ok: true,
+      data: { group: { id: 'group-1' }, itemsDigest: shownDigest, approveCommand: `together --tenant one proposals group approve group-1 --items-digest ${shownDigest}` },
+    });
+  });
+
+  it.each([[[]], [['--json']]])('sends nothing when the group grew between show and approve (%j)', async (flags) => {
+    const grown = ownerGroup('open', [...pending.items, groupItem(3, { operation: 'product.publish', input: { id: '$proposal:proposal-1' } })]);
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: grown }));
+    h.approveChangeProposalGroup.mockReset();
+    await run(...flags, 'proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    expect(h.approveChangeProposalGroup).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+    const grownDigest = changeProposalGroupItemsDigest(['proposal-1', 'proposal-2', 'proposal-3']);
+    if (flags.length === 0) {
+      const printed = String(logSpy.mock.calls[0]?.[0]);
+      expect(printed.split('\n')[0]).toBe('the group now holds:');
+      expect(printed).toContain('item 3: product.publish [pending]');
+      expect(printed).toContain(`--items-digest ${grownDigest}`);
+    } else {
+      expect(soleJson()).toMatchObject({
+        ok: false,
+        error: { code: 'conflict', details: { changeProposalGroupItemIds: ['proposal-1', 'proposal-2', 'proposal-3'], itemsDigest: grownDigest } },
+      });
+    }
+  });
+
+  it('refuses an approval without a well-formed items digest before reading the group', async () => {
+    h.getChangeProposalGroup.mockReset();
+    h.approveChangeProposalGroup.mockReset();
+    await run('--json', 'proposals', 'group', 'approve', 'group-1', '--items-digest', 'not-a-digest');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.getChangeProposalGroup).not.toHaveBeenCalled();
+    expect(h.approveChangeProposalGroup).not.toHaveBeenCalled();
+  });
+
+  it('approves exactly the items it read and shown, in order, and exits 0 when the group was applied', async () => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: pending }));
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup('applied', [
+      groupItem(1, { status: 'applied', operation: 'product.create', appliedResourceId: 'product-9' }),
+      groupItem(2, { status: 'applied', operation: 'price.create', appliedResourceId: 'price-9' }),
+    ]) }));
+    await run('proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    expect(h.approveChangeProposalGroup).toHaveBeenCalledWith({ id: 'group-1', itemIds: ['proposal-1', 'proposal-2'] });
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')[0]).toBe('approving:');
+    const outcome = String(logSpy.mock.calls[1]?.[0]);
+    expect(outcome.split('\n')[0]).toBe('applied: all 2 items of the group');
+    expect(outcome).toContain('  applied: product product-9');
+    expect(outcome).toContain('  applied: price price-9');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it.each([
+    ['stale', 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.'],
+    ['failed', 'failed: an item was refused by the live rules; nothing in the group was applied'],
+  ] as const)('prints a %s group approval and exits with the conflict code', async (status, line) => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: pending }));
+    const note = 'Not applied: item 2 (proposal-2) of this group could not be applied, so nothing in the group was changed';
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup(status, [
+      groupItem(1, { status: 'stale', events: [{ sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note, at: '1998-08-02T00:00:00.000Z' }] }),
+      groupItem(2, status === 'failed' ? { status: 'failed', failureCode: 'conflict', failureMessage: 'Stock cannot go below zero' } : { status: 'stale' }),
+    ]) }));
+    await run('proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    const outcome = String(logSpy.mock.calls[1]?.[0]);
+    expect(outcome.split('\n')[0]).toBe(line);
+    expect(outcome).toContain(`  stale: ${note}`);
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+    logSpy.mockClear();
+    process.exitCode = 0;
+    await run('--json', 'proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    expect(soleJson()).toMatchObject({ ok: true, data: { group: { status } } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('sends nothing when the group cannot be read', async () => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(err(appError('not_found', 'No change proposal group "group-1" in this workspace')));
+    h.approveChangeProposalGroup.mockReset();
+    await run('--json', 'proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    expect(h.approveChangeProposalGroup).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.not_found);
+  });
+
+  it('answers an approval of items that changed since they were read with the conflict error', async () => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: pending }));
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(err(appError('conflict', 'The items of this group differ from the ones you were shown', { changeProposalGroupItemIds: ['proposal-1', 'proposal-2', 'proposal-3'] })));
+    await run('--json', 'proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    expect(h.approveChangeProposalGroup).toHaveBeenCalledWith({ id: 'group-1', itemIds: ['proposal-1', 'proposal-2'] });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalGroupItemIds: ['proposal-1', 'proposal-2', 'proposal-3'] } } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('rejects a whole group with an optional note', async () => {
+    h.rejectChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup('rejected', [groupItem(1, { status: 'rejected', decisionNote: 'Not now' })]) }));
+    await run('--json', 'proposals', 'group', 'reject', 'group-1', '--note', 'Not now');
+    expect(h.rejectChangeProposalGroup).toHaveBeenCalledWith({ id: 'group-1', note: 'Not now' });
+    expect(soleJson()).toMatchObject({ ok: true, data: { group: { status: 'rejected' } } });
+    h.rejectChangeProposalGroup.mockClear();
+    await run('--json', 'proposals', 'group', 'reject', 'group-1');
+    expect(h.rejectChangeProposalGroup).toHaveBeenCalledWith({ id: 'group-1' });
   });
 });

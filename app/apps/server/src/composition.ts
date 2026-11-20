@@ -3,18 +3,35 @@ import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
 import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import {
+  createOrganizationAuditRepository,
+  createOrganizationMemberRepository,
+  createEffectiveTenantConfigReader,
+  createOrganizationRepository,
+  createOrganizationSecretRepository,
+  createOrganizationWorkspaceRepository,
+  createTenantConfigSourceRepository,
+} from '#adapters/db/organizations.js';
+import type {
+  OrganizationAuditRepository,
+  OrganizationMemberRepository,
+  OrganizationRepository,
+  OrganizationSecretRepository,
+  OrganizationWorkspaceRepository,
+  TenantConfigSourceRepository,
+} from '#core/server/index.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
 import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
-import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
+import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
 import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
 import { createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -37,6 +54,16 @@ import { createDownloadPersonaliser } from '#adapters/personalisation/index.js';
 import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypto, DownloadPersonaliser, PersonalisationSlots } from '#core/server/index.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
+import type { ChangeProposalBoundOptions } from '#adapters/db/change-proposal-bounds.js';
+import { createChangeProposalEventRepository, createChangeProposalRepository } from '#adapters/db/change-proposals.js';
+import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
+import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
+import type {
+  ChangeProposalEventRepository,
+  ChangeProposalGroupRepository,
+  ChangeProposalRepository,
+  ChangeProposalTransaction,
+} from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
@@ -56,6 +83,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
+import { createOrderRefundJobRepository } from '#adapters/db/order-refund-jobs.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
@@ -178,6 +206,7 @@ import { databaseHostFingerprint, databaseIdentityFingerprint } from '#adapters/
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
+import { createEffectiveTenantSecretResolver } from '#adapters/crypto/effective-tenant-secret-resolver.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '#adapters/payment/fake.js';
@@ -306,6 +335,7 @@ import type {
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
+  OrderRefundJobRepository,
   PaymentRefundRepository,
   StripeWebhookOwnershipReader,
   PostRepository,
@@ -359,7 +389,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchOrderRefundJobs, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type DispatchOrderRefundJobsOptions, type DispatchOrderRefundJobsResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import { safeLogMessage } from '#core/server/log-safety.js';
 import {
   DEMO_SEED_PASSWORD,
@@ -516,8 +546,10 @@ export interface AppDeps {
   prices: ProductPriceRepository;
   orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
+  orderRefundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'>;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
+  orderPersonalizations?: OrderPersonalizationRepository;
   orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
   paymentRefunds: PaymentRefundRepository;
@@ -528,6 +560,12 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
   auditEvents: TenantAuditEventRepository;
+  organizations: OrganizationRepository;
+  organizationMembers: OrganizationMemberRepository;
+  organizationAudit: OrganizationAuditRepository;
+  organizationWorkspaces: OrganizationWorkspaceRepository;
+  organizationSecrets: OrganizationSecretRepository;
+  tenantConfigSources: TenantConfigSourceRepository;
   team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
@@ -535,6 +573,10 @@ export interface AppDeps {
   shopManagementKeyEvents: ShopManagementKeyEventRepository;
   shopManagementKeys: ShopManagementKeyRepository;
   shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
+  changeProposals: ChangeProposalRepository;
+  changeProposalEvents: ChangeProposalEventRepository;
+  changeProposalGroups: ChangeProposalGroupRepository;
+  changeProposalTransaction: ChangeProposalTransaction;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -576,6 +618,8 @@ export interface AppDeps {
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   drainNotificationFanout(): Promise<Result<NotificationFanoutDrainResult, AppError>>;
   dispatchAutoInvoices(): Promise<Result<DispatchAutoInvoiceJobsResult, AppError>>;
+  dispatchOrderRefundJobs(options?: DispatchOrderRefundJobsOptions): Promise<Result<DispatchOrderRefundJobsResult, AppError>>;
+  dispatchOrderRefunds(): void;
   dispatchEmail(): void;
   emailDispatchSecret: string;
   emailDispatchCronSecret: string;
@@ -924,6 +968,7 @@ export const createDeps = (
     db?: Db;
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
+    changeProposalBounds?: ChangeProposalBoundOptions;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
@@ -957,7 +1002,9 @@ export const createDeps = (
     egress: createTelemetryEgressProbe({ declaredIp: env.PLATFORM_EGRESS_IP, endpoint: env.PLATFORM_EGRESS_ECHO_URL }),
     hidesStatistics: env.TELEMETRY_FREE_PLAN_HIDES_STATS,
   };
-  const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  const secretResolver = createEffectiveTenantSecretResolver(
+    createTenantSecretResolver(tenantSecrets, secretCrypto), createEffectiveTenantConfigReader(db), secretCrypto,
+  );
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
   const stock = createStockRepository(db);
@@ -1055,7 +1102,11 @@ export const createDeps = (
     const connectionTenants = createTenantRepository(connection, tenantRepositoryOptions);
     return {
       tenants: connectionTenants,
-      secrets: createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      secrets: createEffectiveTenantSecretResolver(
+        createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+        createEffectiveTenantConfigReader(connection),
+        secretCrypto,
+      ),
       resolveOrigin: createTenantOriginResolver({
         tenants: connectionTenants, tenantDomains: createTenantDomainRepository(connection), appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
       }),
@@ -1177,6 +1228,24 @@ export const createDeps = (
   const dispatchEmail = createCoalescedRunner(async () => {
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
+  }, options.keepAlive);
+  const runOrderRefundDispatch = (dispatchOptions: DispatchOrderRefundJobsOptions = {}) => dispatchOrderRefundJobs({
+    refundJobs: createOrderRefundJobRepository(db),
+    orderDetails: orderRepository,
+    payment,
+    tenants,
+    tenantAccess,
+    tenantDomains,
+    clock,
+    logger,
+    dispatchEmail,
+    appBaseUrl: env.APP_BASE_URL,
+    baseDomain,
+    singleTenantMode,
+  }, dispatchOptions);
+  const dispatchOrderRefunds = createDeferredCoalescedRunner(async () => {
+    const result = await runOrderRefundDispatch();
+    if (!result.ok) process.stderr.write(`[order-refund] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
   const dispatchNotificationFanout: AppDeps['dispatchNotificationFanout'] = createDeferredCoalescedRunner(async () => {
     const result = await drainNotificationFanoutJobs(deps);
@@ -1541,10 +1610,12 @@ export const createDeps = (
     orders: orderRepository,
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
+    orderRefundJobs: createOrderRefundJobRepository(db),
     orderVerification: createOrderVerificationRepository(db),
     metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
+    orderPersonalizations: createOrderPersonalizationRepository(db),
     orderChangeFeed: { changes: createOrderChangeRepository(db), orders: orderRepository },
     shipxIntegration: {
       shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
@@ -1560,6 +1631,12 @@ export const createDeps = (
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,
     auditEvents,
+    organizations: createOrganizationRepository(db),
+    organizationMembers: createOrganizationMemberRepository(db),
+    organizationAudit: createOrganizationAuditRepository(db),
+    organizationWorkspaces: createOrganizationWorkspaceRepository(db),
+    organizationSecrets: createOrganizationSecretRepository(db),
+    tenantConfigSources: createTenantConfigSourceRepository(db),
     team,
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
@@ -1567,6 +1644,15 @@ export const createDeps = (
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
+    changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
+    changeProposalEvents: createChangeProposalEventRepository(db),
+    changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),
+    changeProposalTransaction: createChangeProposalTransaction(
+      db,
+      logger,
+      (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+      options.changeProposalBounds,
+    ),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1625,6 +1711,8 @@ export const createDeps = (
     dispatchEmails,
     drainNotificationFanout: async () => drainNotificationFanoutJobs(deps),
     dispatchAutoInvoices,
+    dispatchOrderRefundJobs: runOrderRefundDispatch,
+    dispatchOrderRefunds,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,

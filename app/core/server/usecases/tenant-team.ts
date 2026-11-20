@@ -1,5 +1,6 @@
 import {
   addTenantAdminInputSchema,
+  appError,
   emailBrandingFrom,
   err,
   forbidden,
@@ -12,9 +13,10 @@ import {
   type AppError,
   type Result,
   type TenantTeamMember,
+  type TenantTeamOrganization,
 } from '#core/domain/index.js';
 
-import { authorizeTenant } from '../authorize.js';
+import { authorizeTenant, requireDirectGrant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type {
   AuthPort,
@@ -33,13 +35,19 @@ export interface TenantTeamDeps extends TenantOriginDeps {
   clock: Clock;
 }
 
+const directTeamGrantRequired = 'Changing the workspace team requires a direct owner grant in this workspace';
+
 export const listTenantTeam = async (
   ctx: Ctx,
   deps: TenantTeamDeps,
-): Promise<Result<{ members: TenantTeamMember[] }, AppError>> => {
+): Promise<Result<{ members: TenantTeamMember[]; organization: TenantTeamOrganization | null }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
-  return ok({ members: await deps.team.list(tenant.value) });
+  const [members, organization] = await Promise.all([
+    deps.team.list(tenant.value),
+    deps.team.findOrganizationStaff(tenant.value),
+  ]);
+  return ok({ members, organization });
 };
 
 export const addTenantAdmin = async (
@@ -47,7 +55,7 @@ export const addTenantAdmin = async (
   input: AddTenantAdminInput,
   deps: TenantTeamDeps,
 ): Promise<Result<{ status: 'invitation_sent' }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = requireDirectGrant(ctx, authorizeTenant(ctx, 'tenant:settings:write'), directTeamGrantRequired);
   if (!tenant.ok) return tenant;
   const parsed = addTenantAdminInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid administrator email', parsed.error.flatten()));
@@ -81,7 +89,7 @@ export const removeTenantAdmin = async (
   input: { userId: string },
   deps: TenantTeamDeps,
 ): Promise<Result<{ userId: string }, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = requireDirectGrant(ctx, authorizeTenant(ctx, 'tenant:settings:write'), directTeamGrantRequired);
   if (!tenant.ok) return tenant;
   const parsed = removeTenantAdminInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid administrator', parsed.error.flatten()));
@@ -89,7 +97,12 @@ export const removeTenantAdmin = async (
     return err(forbidden('You cannot remove yourself from the team'));
   }
   const member = (await deps.team.list(tenant.value)).find((row) => row.userId === parsed.data.userId);
-  if (member === undefined) return err(notFound('Team member not found'));
+  if (member === undefined) {
+    const organization = await deps.team.findOrganizationStaff(tenant.value);
+    return organization?.members.some((row) => row.userId === parsed.data.userId) === true
+      ? err(appError('organization_managed', 'This access comes from the organization; change it in the organization members'))
+      : err(notFound('Team member not found'));
+  }
   if (member.role === 'owner') return err(forbidden('An owner cannot be removed from the team'));
   const remove = member.status === 'invited' ? deps.team.revokeInvitation : deps.team.removeAdmin;
   const removed = await remove(tenant.value, parsed.data.userId, {

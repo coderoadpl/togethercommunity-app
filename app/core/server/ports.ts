@@ -3,6 +3,7 @@ import type {
   StorageListPage,
   StorageReferenceInventory,
   TenantTeamMember,
+  TenantTeamOrganization,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
   ActivitySummaryQuery,
@@ -77,6 +78,18 @@ import type {
   StorageConfiguration,
   StorageCorsCacheEntry,
   StorageCorsProbeResult,
+  Organization,
+  OrganizationAuditEvent,
+  OrganizationMember,
+  OrganizationMemberAccount,
+  OrganizationRole,
+  OrganizationSecret,
+  OrganizationSecretKey,
+  OrganizationSettings,
+  OrganizationUpdate,
+  OrganizationWorkspace,
+  ConfigGroup,
+  TenantConfigSource,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -132,6 +145,15 @@ import type {
   ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
+  ChangeProposal,
+  ChangeProposalCap,
+  ChangeProposalCountCap,
+  ChangeProposalDisplayStatus,
+  ChangeProposalEvent,
+  ChangeProposalGroup,
+  ChangeProposalTarget,
+  ChangeProposalTerminalStatus,
+  SalesLink,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
   ImportAuditEvent,
@@ -143,13 +165,18 @@ import type {
   ListStripeSubscriptionsInput,
   MemberActivity,
   MemberActivityQuery,
+  StripeSubscriptionListEntry,
   StripeSubscriptionSnapshot,
   StripeMode,
   StripePermissionCheck,
+  ProviderRefund,
+  OrderRefundJob,
+  ClaimedOrderRefundJob,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
 } from '#core/domain/index.js';
+import type { ProductDraftRepository } from './product-draft-ports.js';
 import type { StockRepository } from './stock-ports.js';
 
 /**
@@ -874,6 +901,13 @@ export interface TenantApiKeyRepository {
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
 }
 
+export interface ChangeProposalWithdrawal {
+  at: string;
+  actorUserId: string;
+  nextEventId(): string;
+}
+
+/** Revoking or purging a key withdraws that key's pending change proposals and deletes its empty groups in the same transaction. */
 export interface ShopManagementKeyRepository {
   listByTenant(tenantId: string): Promise<ShopManagementKey[]>;
   create(tenantId: string, key: ShopManagementKey, event: ShopManagementKeyEvent): Promise<void>;
@@ -883,8 +917,13 @@ export interface ShopManagementKeyRepository {
     id: string,
     revokedAt: string,
     event: ShopManagementKeyEvent,
+    withdrawal: ChangeProposalWithdrawal,
   ): Promise<ShopManagementKey | null>;
-  purge(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+  purge(
+    tenantId: string,
+    event: (apiKeyId: string) => ShopManagementKeyEvent,
+    withdrawal: ChangeProposalWithdrawal,
+  ): Promise<number>;
 }
 
 export interface ShopManagementKeyRateLimitRepository {
@@ -1165,7 +1204,7 @@ export interface PaymentProvider {
     checkoutBranding?: CheckoutBranding;
   }): Promise<Result<StripePermissionCheck[], AppError>>;
   retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
-  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
+  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: StripeSubscriptionListEntry[]; nextCursor: string | null }, AppError>>;
   configureWebhook?(input: {
     tenantId: string;
     restrictedKey: string;
@@ -1231,6 +1270,24 @@ export interface PaymentProvider {
     providerSubscriptionId: string;
     idempotencyKey: string;
   }): Promise<Result<{ canceled: true; alreadySettled: boolean }, AppError>>;
+  createRefund?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+    metadata: { orderId: string; reason: 'out_of_stock' };
+  }): Promise<Result<ProviderRefund, AppError>>;
+  getRefund?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    refundId: string;
+  }): Promise<Result<ProviderRefund, AppError>>;
+  listRefunds?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+  }): Promise<Result<ProviderRefund[], AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
     mode: 'live' | 'test';
@@ -1365,6 +1422,24 @@ export interface AutoInvoiceJobRepository {
     input: { nextAttemptAt: string; error: string },
   ): Promise<void>;
   complete(tenantId: string, jobId: string): Promise<void>;
+}
+
+export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
+  'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt' | 'transientFailureStreak'>>;
+
+export interface OrderRefundJobRepository {
+  enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
+  findByOrderId(tenantId: string, orderId: string): Promise<OrderRefundJob | null>;
+  claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedOrderRefundJob | null>;
+  countDue(input: { now: string }): Promise<number>;
+  release(
+    tenantId: string,
+    jobId: string,
+    lease: ClaimedOrderRefundJob['lease'],
+    update: OrderRefundJobUpdate & { now: string },
+    staffAlerts?: readonly EmailOutboxEnqueueInput[],
+  ): Promise<OrderRefundJob | null>;
+  noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
 }
 
 export interface KsefCredentials {
@@ -1840,8 +1915,19 @@ export interface EmailOutboxItem {
   tenantTransportRequired: boolean;
 }
 
+export interface EmailOutboxEnqueueInput {
+  id: string;
+  tenantId: string | null;
+  to: string;
+  payload: EmailOutboxPayload;
+  now: string;
+  sourceApp?: string | null;
+  tenantTransportRequired?: boolean;
+  onConflict?: 'keep-existing';
+}
+
 export interface EmailOutboxRepository {
-  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean; onConflict?: 'keep-existing' }): Promise<Result<{ id: string }, AppError>>;
+  enqueue(input: EmailOutboxEnqueueInput): Promise<Result<{ id: string }, AppError>>;
   claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
   markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>>;
   markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>>;
@@ -1901,6 +1987,7 @@ export interface PaymentTransactionPort {
       couponRedemptions: CouponRedemptionRepository;
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
+      orderRefundJobs: OrderRefundJobRepository;
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;
@@ -2052,7 +2139,11 @@ export interface TenantRepository {
   findBySlug(slug: string): Promise<Tenant | null>;
   findSole(): Promise<Tenant | null>;
   findSettings(tenantId: string): Promise<TenantSettings | null>;
-  updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
+  /** `change` sees the row-locked settings and returns only the fields to write, so a concurrent write is never overwritten with stale values. */
+  changeSettings(
+    tenantId: string,
+    change: (current: TenantSettings) => Promise<Result<Partial<TenantSettings>, AppError>>,
+  ): Promise<Result<TenantSettings, AppError> | null>;
   createTenantWithOwnerGrant(
     input: {
       tenant: { id: string; slug: string; name: string; createdAt: string; defaultLanguage?: Language };
@@ -2594,6 +2685,163 @@ export interface TenantAuditEventRepository {
   record(tenantId: string, event: TenantAuditEventInput): Promise<void>;
 }
 
+interface OrganizationCreationInput {
+  organization: Organization;
+  owner: Omit<OrganizationMember, 'organizationId'>;
+  audit: ReadonlyArray<Omit<OrganizationAuditEvent, 'organizationId'>>;
+}
+
+type OrganizationSuspended = { status: 'organization_suspended' };
+
+type OrganizationCreationResult =
+  | { status: 'created'; organization: Organization }
+  | { status: 'existing'; organization: Organization }
+  | { status: 'conflict' }
+  | { status: 'owner_unverified' };
+
+export interface OrganizationRepository {
+  /**
+   * One transaction: the organization, its owner membership and the audit rows.
+   * A slug that already exists returns it when the owner is one of its owners.
+   */
+  createWithOwner(input: OrganizationCreationInput): Promise<OrganizationCreationResult>;
+  findById(organizationId: string): Promise<Organization | null>;
+  setMaxWorkspaces(
+    organizationId: string,
+    input: { maxWorkspaces: number; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId'> },
+  ): Promise<Organization | null>;
+  findSettings(organizationId: string): Promise<OrganizationSettings | null>;
+  /**
+   * One transaction: fields equal to the stored values are dropped, and only a real change
+   * updates the row and writes its audit row, which names the changed fields.
+   * A suspended organization, read from the locked row, is refused without a write.
+   */
+  updateSettings(
+    organizationId: string,
+    input: { update: OrganizationUpdate; updatedAt: string; audit: Omit<OrganizationAuditEvent, 'organizationId' | 'data'> },
+  ): Promise<{ status: 'updated'; organization: Organization; settings: OrganizationSettings; changed: boolean } | OrganizationSuspended | null>;
+}
+
+type OrganizationSecretAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
+
+export interface OrganizationSecretRepository {
+  listByOrganization(organizationId: string): Promise<OrganizationSecret[]>;
+  set(
+    organizationId: string,
+    input: { secret: Omit<OrganizationSecret, 'organizationId'>; group: ConfigGroup; audit: OrganizationSecretAuditInput },
+  ): Promise<{ status: 'set'; secret: OrganizationSecret } | OrganizationSuspended>;
+  /**
+   * Refuses while a workspace of the organization takes the key's group from the organization;
+   * otherwise deletes the secret and writes its secret.deleted audit row in the same transaction.
+   */
+  delete(
+    organizationId: string,
+    input: { key: OrganizationSecretKey; group: ConfigGroup; audit: OrganizationSecretAuditInput },
+  ): Promise<{ status: 'deleted'; secret: OrganizationSecret } | { status: 'not_found' } | { status: 'config_inherited' } | OrganizationSuspended>;
+}
+
+export interface TenantConfigSourceRepository {
+  listByTenant(tenantId: string): Promise<TenantConfigSource[]>;
+}
+
+type InheritedConfig<Value> = { source: 'workspace' } | { source: 'organization'; value: Value | null };
+
+export interface EffectiveTenantConfigReader {
+  findInheritedSecret(tenantId: string, key: OrganizationSecretKey): Promise<InheritedConfig<OrganizationSecret>>;
+  findInheritedSettings(tenantId: string, group: ConfigGroup): Promise<InheritedConfig<OrganizationSettings>>;
+}
+
+type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;
+
+type OrganizationMemberChangeResult<Done extends string> =
+  | { status: Done; member: OrganizationMemberAccount }
+  | { status: 'not_member' }
+  | { status: 'last_owner' }
+  | { status: 'organization_owner_required' }
+  | OrganizationSuspended;
+
+export interface OrganizationMemberRepository {
+  find(organizationId: string, userId: string): Promise<OrganizationMember | null>;
+  listAccounts(organizationId: string): Promise<OrganizationMemberAccount[]>;
+  listForUser(userId: string): Promise<OrganizationMember[]>;
+  /**
+   * Member writes serialize on the organization row and re-check, in the same transaction as the change
+   * and its audit row, that the organization is not suspended, that the actor is still an owner and that at least one owner remains.
+   */
+  addAccount(
+    organizationId: string,
+    input: { actorUserId: string; member: Omit<OrganizationMember, 'organizationId'>; audit: OrganizationMemberAuditInput },
+  ): Promise<
+    | { status: 'added' | 'already_member'; member: OrganizationMemberAccount }
+    | { status: 'account_unverified' }
+    | { status: 'organization_owner_required' }
+    | OrganizationSuspended
+  >;
+  changeRole(
+    organizationId: string,
+    input: { actorUserId: string; userId: string; role: OrganizationRole; audit: OrganizationMemberAuditInput },
+  ): Promise<OrganizationMemberChangeResult<'changed' | 'unchanged'>>;
+  remove(
+    organizationId: string,
+    input: { actorUserId: string; userId: string; audit: OrganizationMemberAuditInput },
+  ): Promise<OrganizationMemberChangeResult<'removed'>>;
+}
+
+/** Append-only organization audit trail; entries are never updated or deleted. */
+export interface OrganizationAuditRepository {
+  list(organizationId: string, query: { limit: number }): Promise<OrganizationAuditEvent[]>;
+}
+
+interface OrganizationWorkspaceChange {
+  organizationId: string;
+  actorUserId: string;
+  organizationAudit: Omit<OrganizationAuditEvent, 'organizationId'>;
+  tenantAudit: Omit<TenantAuditEventInput, 'tenantId'>;
+}
+
+type OrganizationWorkspaceLinkResult =
+  | { status: 'linked' | 'already_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_quota_exceeded' }
+  | { status: 'workspace_owner_required' }
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | OrganizationSuspended;
+
+type OrganizationWorkspaceUnlinkResult =
+  | { status: 'unlinked' | 'not_linked'; workspace: OrganizationWorkspace }
+  | { status: 'config_sources_present' }
+  | { status: 'organization_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | { status: 'not_in_organization' }
+  | OrganizationSuspended;
+
+interface WorkspaceOwnerUnlink {
+  actorUserId: string;
+  organizationAudit: Omit<OrganizationAuditEvent, 'organizationId'>;
+  tenantAudit: Omit<TenantAuditEventInput, 'tenantId' | 'reason'>;
+}
+
+type WorkspaceOwnerUnlinkResult =
+  | { status: 'unlinked'; workspace: OrganizationWorkspace; organizationId: string }
+  | { status: 'not_linked'; workspace: OrganizationWorkspace }
+  | { status: 'workspace_owner_required' }
+  | { status: 'linked_elsewhere' }
+  | { status: 'config_sources_present' };
+
+/**
+ * Every change re-checks its authority inside one transaction with the change and both audit rows.
+ * Linking needs a direct workspace owner who owns the organization. Unlinking needs either side:
+ * `unlink` an organization owner, `unlinkAsWorkspaceOwner` a direct owner grant in the workspace.
+ * `link` and `unlink` refuse a suspended organization; `unlinkAsWorkspaceOwner` stays open to the workspace side
+ * and answers `linked_elsewhere` when the workspace moved to another organization while the call waited for its locks.
+ */
+export interface OrganizationWorkspaceRepository {
+  link(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceLinkResult>;
+  unlink(tenantId: string, input: OrganizationWorkspaceChange): Promise<OrganizationWorkspaceUnlinkResult>;
+  unlinkAsWorkspaceOwner(tenantId: string, input: WorkspaceOwnerUnlink): Promise<WorkspaceOwnerUnlinkResult>;
+  list(organizationId: string): Promise<OrganizationWorkspace[]>;
+}
+
 export interface ImpersonationTokenCodec {
   issue(sessionId: string): { token: string; tokenHash: string };
   verify(token: string): { sessionId: string; tokenHash: string } | null;
@@ -2624,17 +2872,33 @@ export interface ActivityReportRepository {
   memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }
 
+export interface ProviderCustomerOwnerRepository {
+  claimStripeCustomer(
+    tenantId: string, claim: { customerId: string; memberId: string; claimedAt: string },
+  ): Promise<'this-workspace' | 'another-workspace'>;
+}
+
+interface SubscriptionAdoptionMemberLock {
+  findByIdForShare(tenantId: string, memberId: string): Promise<Member | null>;
+}
+
 export interface SubscriptionAdoptionRepositories {
-  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  members: Pick<MemberRepository, 'findByEmail'> & SubscriptionAdoptionMemberLock;
+  customerOwners: ProviderCustomerOwnerRepository;
   products: Pick<ProductRepository, 'findById'>;
   prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
   subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;
   grants: Pick<ProductGrantRepository, 'findGrant' | 'createGrant' | 'setGrantWindow'>;
   memberEvents: Pick<MemberEventRepository, 'append'>;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
 }
 
 export interface SubscriptionAdoptionTransaction {
-  run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  run<T>(
+    tenantId: string,
+    stripe: { subscriptionId: string; customerId: string },
+    operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>,
+  ): Promise<Result<T, AppError>>;
 }
 
 export interface LessonEditionRepository {
@@ -2656,8 +2920,214 @@ export interface LessonEditionTransaction {
 
 export interface TenantTeamRepository {
   list(tenantId: string): Promise<TenantTeamMember[]>;
+  findOrganizationStaff(tenantId: string): Promise<TenantTeamOrganization | null>;
   inviteAdmin(tenantId: string, userId: string, email: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   activateInvitation(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   revokeInvitation(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
   removeAdmin(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
+}
+
+export interface ChangeProposalEventDraft {
+  id: string;
+  actorUserId: string | null;
+  apiKeyId: string | null;
+  note: string | null;
+  at: string;
+}
+
+export interface ChangeProposalListQuery {
+  status?: ChangeProposalDisplayStatus;
+  cursor?: string;
+  groupId?: string;
+  limit: number;
+  now: string;
+}
+
+export interface ChangeProposalPage {
+  proposals: ChangeProposal[];
+  nextCursor: string | null;
+}
+
+export type ChangeProposalCreation =
+  | { kind: 'created'; proposal: ChangeProposal }
+  | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
+  | { kind: 'key_inactive' }
+  | { kind: 'busy' };
+
+export interface ChangeProposalTransition {
+  status: ChangeProposalTerminalStatus;
+  decidedByUserId: string | null;
+  decidedAt: string;
+  decisionNote: string | null;
+  appliedResourceId: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+  event: ChangeProposalEventDraft;
+}
+
+export interface ChangeProposalTransitionGuard {
+  keyId?: string;
+  unexpiredAt?: string;
+}
+
+/** A write whose lock wait or statement time ran out has rolled back completely and answers busy. */
+export type ChangeProposalWrite<T> = { kind: 'written'; value: T } | { kind: 'busy' };
+
+/**
+ * Proposals are tenant-scoped; key-side reads also take the proposing key, so a key reaches only its own rows.
+ * Every status change and its event commit together, and events get the next per-proposal sequence.
+ */
+export interface ChangeProposalRepository {
+  create(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, now: string): Promise<ChangeProposalCreation>;
+  countCapReached(tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null>;
+  findById(tenantId: string, id: string): Promise<ChangeProposal | null>;
+  list(tenantId: string, query: ChangeProposalListQuery): Promise<ChangeProposalPage>;
+  findByKey(tenantId: string, keyId: string, id: string): Promise<ChangeProposal | null>;
+  listByKey(tenantId: string, keyId: string, query: ChangeProposalListQuery): Promise<ChangeProposalPage>;
+  lockPending(tenantId: string, id: string, guard?: ChangeProposalTransitionGuard): Promise<ChangeProposal | null>;
+  transition(
+    tenantId: string,
+    id: string,
+    transition: ChangeProposalTransition,
+    guard?: ChangeProposalTransitionGuard,
+  ): Promise<ChangeProposalWrite<ChangeProposal | null>>;
+  recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
+}
+
+export interface ChangeProposalEventRepository {
+  listByProposal(tenantId: string, proposalId: string): Promise<ChangeProposalEvent[]>;
+}
+
+export interface ChangeProposalGroupWithItems {
+  group: ChangeProposalGroup;
+  items: ChangeProposal[];
+}
+
+export type ChangeProposalGroupCreation =
+  | { kind: 'created'; group: ChangeProposalGroup }
+  | { kind: 'cap_exceeded' }
+  | { kind: 'key_inactive' }
+  | { kind: 'busy' };
+
+export type ChangeProposalGroupItemAddition =
+  | ChangeProposalCreation
+  | { kind: 'not_found' }
+  | { kind: 'group_closed'; current: ChangeProposalGroupWithItems; at: string }
+  | { kind: 'group_full' }
+  | { kind: 'group_changed' };
+
+export interface ChangeProposalGroupItemTransition {
+  id: string;
+  transition: ChangeProposalTransition;
+}
+
+export type ChangeProposalGroupDecision =
+  | { kind: 'move'; at: string; transitions: readonly ChangeProposalGroupItemTransition[] }
+  | { kind: 'record_expiry'; at: string; event: (proposalId: string) => ChangeProposalEventDraft }
+  | { kind: 'refuse'; at: string };
+
+type ChangeProposalGroupDecisionOutcome =
+  | { kind: 'decided'; decision: ChangeProposalGroupDecision; group: ChangeProposalGroup; items: ChangeProposal[] }
+  | { kind: 'not_found' }
+  | { kind: 'busy' };
+
+/**
+ * Groups are tenant-scoped and belong to the key that created them; key-side reads take that key, so another key's
+ * group reads as missing. Items keep their position order, and a group-wide transition changes every item of the
+ * group or none of them, with each item's event in position order.
+ */
+export interface ChangeProposalGroupRepository {
+  create(tenantId: string, group: ChangeProposalGroup, now: string): Promise<ChangeProposalGroupCreation>;
+  findById(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
+  findByKey(tenantId: string, keyId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
+  listByIds(tenantId: string, ids: readonly string[]): Promise<ChangeProposalGroup[]>;
+  /**
+   * Stores `proposal` at its `groupPosition`, which must be the next free position of an open group of the same key;
+   * whether the group is still open is judged at the clock's time once the group and its items are locked.
+   */
+  addItem(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, clock: Clock): Promise<ChangeProposalGroupItemAddition>;
+  /** Locks the group row, then its item rows in the order key revocation takes them, until the surrounding transaction ends. */
+  lock(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
+  /**
+   * Locks the group and its items, then asks `decide` what to do with exactly the locked items, so the decision and the
+   * time it reads come after every lock wait: move every item, record the expiry on every item, or change nothing.
+   */
+  decide(
+    tenantId: string,
+    id: string,
+    guard: Pick<ChangeProposalTransitionGuard, 'keyId'>,
+    decide: (locked: ChangeProposalGroupWithItems) => ChangeProposalGroupDecision,
+  ): Promise<ChangeProposalGroupDecisionOutcome>;
+  /**
+   * Inside a change proposal transaction only: moves every item of the group at once; null, changing nothing, unless
+   * `transitions` names exactly the group's items in position order and each is pending.
+   */
+  transition(
+    tenantId: string,
+    id: string,
+    transitions: readonly ChangeProposalGroupItemTransition[],
+    guard?: ChangeProposalTransitionGuard,
+  ): Promise<ChangeProposal[] | null>;
+  recordExpiry(tenantId: string, id: string, event: (proposalId: string) => ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
+  /** Deletes a group of the key that never received an item; false when it has items or is not the key's. */
+  deleteEmpty(tenantId: string, keyId: string, id: string): Promise<ChangeProposalWrite<boolean>>;
+}
+
+export type ChangeProposalTargetLockPurpose = 'change' | 'delete';
+
+export interface ChangeProposalTargetLocks {
+  /**
+   * Locks the live row a proposal changes until the surrounding transaction ends; false when it does not exist.
+   * `delete` takes the row exclusively and locks what the deletion destroys with it, so nothing referencing it can be added or changed meanwhile.
+   */
+  lock(tenantId: string, target: ChangeProposalTarget, purpose?: ChangeProposalTargetLockPurpose): Promise<boolean>;
+}
+
+export interface SalesLinkRepository {
+  list(tenantId: string): Promise<SalesLink[]>;
+  findById(tenantId: string, id: string): Promise<SalesLink | null>;
+  findBySlug(tenantId: string, slug: string): Promise<SalesLink | null>;
+  save(tenantId: string, link: SalesLink, expectedRevision: number | null): Promise<Result<SalesLink, AppError>>;
+  delete(tenantId: string, id: string, occurredAt: string, expectedRevision?: number): Promise<Result<void, AppError>>;
+}
+
+export interface ChangeProposalRepositories {
+  products: ProductRepository & ProductMetadataRepository & ProductBatchReader;
+  prices: ProductPriceRepository;
+  tenants: Pick<TenantRepository, 'findSettings' | 'changeSettings'>;
+  downloadAssets: Pick<ProductDownloadAssetRepository, 'listByProduct' | 'listReadyByProduct'>;
+  spaces: Pick<SpaceRepository, 'list' | 'findById'>;
+  stock: StockRepository;
+  productDrafts: ProductDraftRepository;
+  salesLinks: SalesLinkRepository;
+  changeProposals: ChangeProposalRepository;
+  changeProposalEvents: ChangeProposalEventRepository;
+  changeProposalGroups: ChangeProposalGroupRepository;
+  targets: ChangeProposalTargetLocks;
+}
+
+export interface ChangeProposalPostCommitEffects {
+  /** Runs after COMMIT; dropped when the transaction or the savepoint that deferred it rolls back. */
+  defer(effect: () => Promise<void>): void;
+}
+
+export interface ChangeProposalTransactionScope {
+  repositories: ChangeProposalRepositories;
+  secretResolver: TenantSecretResolver;
+  afterCommit: ChangeProposalPostCommitEffects;
+  savepoint<T>(operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+/**
+ * One database transaction over every repository a proposal operation reaches. `run` commits an ok result and
+ * rolls back an error; `dryRun` always rolls back. Non-database effects go through `afterCommit`.
+ */
+export interface ChangeProposalTransaction {
+  run<T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  /** With `groupId`, at most one dry run of that group runs at a time; a second one answers busy. */
+  dryRun<T>(
+    tenantId: string,
+    operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>,
+    options?: { groupId?: string },
+  ): Promise<Result<T, AppError>>;
 }

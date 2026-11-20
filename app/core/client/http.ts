@@ -7,12 +7,52 @@ import { consumerSalesSummarySchema } from '#core/contract/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, secretFingerprintsOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
+import {
+  operatorCreateOrganizationOutputSchema,
+  operatorOrganizationLimitsOutputSchema,
+  organizationAuditEventsOutputSchema,
+  organizationListOutputSchema,
+  organizationMemberChangeOutputSchema,
+  organizationMembersOutputSchema,
+  organizationOutputSchema,
+  organizationSecretDeleteOutputSchema,
+  organizationSecretSetOutputSchema,
+  organizationSecretsOutputSchema,
+  organizationUpdateOutputSchema,
+  organizationWorkspaceChangeOutputSchema,
+  organizationWorkspaceSourcesOutputSchema,
+  organizationWorkspacesOutputSchema,
+  type CreateOrganizationInput,
+  type OrganizationLimits,
+  type OrganizationMemberInput,
+  type OrganizationMemberSelection,
+  type OrganizationSecretKey,
+  type OrganizationWorkspaceSelection,
+  type SetOrganizationSecretInput,
+  type UpdateOrganizationInput,
+} from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
 import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
 import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
+import {
+  changeProposalApproveOutputSchema,
+  changeProposalGroupOutputSchema,
+  changeProposalRejectOutputSchema,
+  changeProposalShowOutputSchema,
+  changeProposalsListOutputSchema,
+  PROPOSAL_GROUP_HEADER,
+  proposableOutputSchema,
+  SHOP_PROPOSAL_ROUTES,
+  shopProposalContracts,
+  type ChangeProposalGroupApproveInput,
+  type ChangeProposalGroupCreateInput,
+  type ChangeProposalListQueryInput,
+  type ChangeProposalProposedOutput,
+  type ChangeProposalRejectInput,
+} from '#core/contract/index.js';
 import type { ShopSettingsPatch } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
@@ -645,6 +685,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   shipxSettings: (signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxSettings.path, shipxContracts.shipxSettings.output, undefined, signal),
   shipxConfigure: (input: z.input<typeof shipxContracts.shipxConfigure.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxConfigure.path, shipxContracts.shipxConfigure.output, input, signal),
   shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
+  correctOrderPersonalization: (input: z.input<typeof orderFulfilmentContracts.correctOrderPersonalization.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.correctOrderPersonalization.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.correctOrderPersonalization.output, input, signal),
   ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
   orderChanges: async (input: z.input<typeof orderChangeContracts.orderChanges.input> = {}, signal?: AbortSignal): Promise<ReadResult<OrderChangeFeed>> => {
     const query = directoryQuery(input, []);
@@ -663,6 +704,81 @@ export const createApiClient = (options: ApiClientOptions) => ({
   getSecretFingerprints: (secret: string) =>
     request(options, API_ROUTES.secretFingerprints.method, API_ROUTES.secretFingerprints.path,
       secretFingerprintsOutputSchema, undefined, undefined, { headers: { [SECRET_FINGERPRINT_READ_SECRET_HEADER]: secret }, redactErrors: true }),
+  operatorCreateOrganization: (input: CreateOrganizationInput, secret: string) =>
+    request(options, API_ROUTES.operatorOrganizationCreate.method, API_ROUTES.operatorOrganizationCreate.path,
+      operatorCreateOrganizationOutputSchema, input, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  operatorSetOrganizationLimits: (input: { organizationId: string } & OrganizationLimits, secret: string) =>
+    request(options, API_ROUTES.operatorOrganizationLimits.method,
+      API_ROUTES.operatorOrganizationLimits.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      operatorOrganizationLimitsOutputSchema, { maxWorkspaces: input.maxWorkspaces }, undefined,
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  listOrganizations: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizations.method, API_ROUTES.organizations.path, organizationListOutputSchema, undefined, signal),
+  getOrganization: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organization.method,
+      API_ROUTES.organization.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationOutputSchema, undefined, signal),
+  updateOrganization: (input: { organizationId: string; update: UpdateOrganizationInput }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationUpdate.method,
+      API_ROUTES.organizationUpdate.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationUpdateOutputSchema, input.update, signal),
+  listOrganizationSecrets: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationSecrets.method,
+      API_ROUTES.organizationSecrets.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationSecretsOutputSchema, undefined, signal),
+  setOrganizationSecret: (input: { organizationId: string } & SetOrganizationSecretInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationSecretSet.method,
+      API_ROUTES.organizationSecretSet.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationSecretSetOutputSchema, { key: input.key, value: input.value }, signal),
+  deleteOrganizationSecret: (input: { organizationId: string; key: OrganizationSecretKey }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationSecretDelete.method,
+      API_ROUTES.organizationSecretDelete.path
+        .replace(':organizationId', encodeURIComponent(input.organizationId))
+        .replace(':key', encodeURIComponent(input.key)),
+      organizationSecretDeleteOutputSchema, undefined, signal),
+  getWorkspaceConfigSources: (input: { organizationId: string } & OrganizationWorkspaceSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaceSources.method,
+      API_ROUTES.organizationWorkspaceSources.path
+        .replace(':organizationId', encodeURIComponent(input.organizationId))
+        .replace(':tenantId', encodeURIComponent(input.tenantId)),
+      organizationWorkspaceSourcesOutputSchema, undefined, signal),
+  listOrganizationMembers: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMembers.method,
+      API_ROUTES.organizationMembers.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMembersOutputSchema, undefined, signal),
+  addOrganizationMember: (input: { organizationId: string } & OrganizationMemberInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMemberAdd.method,
+      API_ROUTES.organizationMemberAdd.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMemberChangeOutputSchema, { email: input.email, role: input.role }, signal),
+  setOrganizationMemberRole: (input: { organizationId: string } & OrganizationMemberInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMemberRole.method,
+      API_ROUTES.organizationMemberRole.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMemberChangeOutputSchema, { email: input.email, role: input.role }, signal),
+  removeOrganizationMember: (input: { organizationId: string } & OrganizationMemberSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationMemberRemove.method,
+      API_ROUTES.organizationMemberRemove.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationMemberChangeOutputSchema, { email: input.email }, signal),
+  listOrganizationAuditEvents: (input: { organizationId: string; limit?: number }, signal?: AbortSignal) => {
+    const path = API_ROUTES.organizationAuditEvents.path.replace(':organizationId', encodeURIComponent(input.organizationId));
+    return request(options, API_ROUTES.organizationAuditEvents.method,
+      input.limit === undefined ? path : `${path}?${new URLSearchParams({ limit: String(input.limit) }).toString()}`,
+      organizationAuditEventsOutputSchema, undefined, signal);
+  },
+  listOrganizationWorkspaces: (input: { organizationId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaces.method,
+      API_ROUTES.organizationWorkspaces.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationWorkspacesOutputSchema, undefined, signal),
+  linkOrganizationWorkspace: (input: { organizationId: string } & OrganizationWorkspaceSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaceLink.method,
+      API_ROUTES.organizationWorkspaceLink.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationWorkspaceChangeOutputSchema, { tenantId: input.tenantId }, signal),
+  unlinkOrganizationWorkspace: (input: { organizationId: string } & OrganizationWorkspaceSelection, signal?: AbortSignal) =>
+    request(options, API_ROUTES.organizationWorkspaceUnlink.method,
+      API_ROUTES.organizationWorkspaceUnlink.path.replace(':organizationId', encodeURIComponent(input.organizationId)),
+      organizationWorkspaceChangeOutputSchema, { tenantId: input.tenantId }, signal),
+  unlinkTenantFromOrganization: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.tenantOrganizationUnlink.method, API_ROUTES.tenantOrganizationUnlink.path,
+      organizationWorkspaceChangeOutputSchema, {}, signal),
 
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
@@ -2618,6 +2734,69 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listChangeProposals: (input: ChangeProposalListQueryInput = {}, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposals.method,
+      withQuery(API_ROUTES.changeProposals.path, input),
+      changeProposalsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  getChangeProposal: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposal.method,
+      API_ROUTES.changeProposal.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalShowOutputSchema,
+      undefined,
+      signal,
+    ),
+  rejectChangeProposal: (input: { id: string } & ChangeProposalRejectInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalReject.method,
+      API_ROUTES.changeProposalReject.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalRejectOutputSchema,
+      input.note === undefined ? {} : { note: input.note },
+      signal,
+    ),
+  approveChangeProposal: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalApprove.method,
+      API_ROUTES.changeProposalApprove.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalApproveOutputSchema,
+      {},
+      signal,
+    ),
+  getChangeProposalGroup: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalGroup.method,
+      API_ROUTES.changeProposalGroup.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalGroupOutputSchema,
+      undefined,
+      signal,
+    ),
+  approveChangeProposalGroup: (input: { id: string } & ChangeProposalGroupApproveInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalGroupApprove.method,
+      API_ROUTES.changeProposalGroupApprove.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalGroupOutputSchema,
+      { itemIds: input.itemIds },
+      signal,
+    ),
+  rejectChangeProposalGroup: (input: { id: string } & ChangeProposalRejectInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalGroupReject.method,
+      API_ROUTES.changeProposalGroupReject.path.replace(':id', encodeURIComponent(input.id)),
+      changeProposalGroupOutputSchema,
+      input.note === undefined ? {} : { note: input.note },
+      signal,
+    ),
   listTenantSecrets: (signal?: AbortSignal) =>
     request(
       options,
@@ -3044,34 +3223,82 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
   return {
     listProducts: (signal?: AbortSignal) =>
       request(options, routes.listProducts.method, routes.listProducts.path, contracts.listProducts.output, undefined, signal),
-    createProduct: (input: ShopCatalogInput<'createProduct'>, signal?: AbortSignal) =>
-      request(options, routes.createProduct.method, routes.createProduct.path, contracts.createProduct.output, input, signal),
-    updateProduct: (input: ShopCatalogInput<'updateProduct'>, signal?: AbortSignal) =>
-      request(options, routes.updateProduct.method, routes.updateProduct.path, contracts.updateProduct.output, input, signal),
-    publishProduct: (input: ShopCatalogInput<'publishProduct'>, signal?: AbortSignal) =>
-      request(options, routes.publishProduct.method, routes.publishProduct.path, contracts.publishProduct.output, input, signal),
-    unpublishProduct: (input: ShopCatalogInput<'unpublishProduct'>, signal?: AbortSignal) =>
-      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, contracts.unpublishProduct.output, input, signal),
-    deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal) =>
-      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, contracts.deleteProductDraft.output, input, signal),
+    createProduct: (input: ShopCatalogInput<'createProduct'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.createProduct.method, routes.createProduct.path, proposable.createProduct, input, signal, proposalHeaders(proposal)),
+    updateProduct: (input: ShopCatalogInput<'updateProduct'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.updateProduct.method, routes.updateProduct.path, proposable.updateProduct, input, signal, proposalHeaders(proposal)),
+    publishProduct: (input: ShopCatalogInput<'publishProduct'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.publishProduct.method, routes.publishProduct.path, proposable.publishProduct, input, signal, proposalHeaders(proposal)),
+    unpublishProduct: (input: ShopCatalogInput<'unpublishProduct'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, proposable.unpublishProduct, input, signal, proposalHeaders(proposal)),
+    deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, proposable.deleteProductDraft, input, signal, proposalHeaders(proposal)),
     listProductPrices: (productId: string, signal?: AbortSignal) =>
       request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
-    createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal) =>
-      request(options, routes.createProductPrice.method, routes.createProductPrice.path, contracts.createProductPrice.output, input, signal),
-    deactivateProductPrice: (input: ShopCatalogInput<'deactivateProductPrice'>, signal?: AbortSignal) =>
-      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, contracts.deactivateProductPrice.output, input, signal),
+    createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.createProductPrice.method, routes.createProductPrice.path, proposable.createProductPrice, input, signal, proposalHeaders(proposal)),
+    deactivateProductPrice: (input: ShopCatalogInput<'deactivateProductPrice'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.deactivateProductPrice.method, routes.deactivateProductPrice.path, proposable.deactivateProductPrice, input, signal, proposalHeaders(proposal)),
     getProductStock: (productId: string, signal?: AbortSignal) =>
       request(options, routes.getProductStock.method, productPath(routes.getProductStock.path, productId), contracts.getProductStock.output, undefined, signal),
-    enableProductStock: (input: ShopCatalogInput<'enableProductStock'>, signal?: AbortSignal) =>
-      request(options, routes.enableProductStock.method, routes.enableProductStock.path, contracts.enableProductStock.output, input, signal),
-    adjustProductStock: (input: ShopCatalogInput<'adjustProductStock'>, signal?: AbortSignal) =>
-      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, contracts.adjustProductStock.output, input, signal),
-    setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal) =>
-      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, contracts.setProductStockThreshold.output, input, signal),
+    enableProductStock: (input: ShopCatalogInput<'enableProductStock'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.enableProductStock.method, routes.enableProductStock.path, proposable.enableProductStock, input, signal, proposalHeaders(proposal)),
+    adjustProductStock: (input: ShopCatalogInput<'adjustProductStock'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, proposable.adjustProductStock, input, signal, proposalHeaders(proposal)),
+    setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, proposable.setProductStockThreshold, input, signal, proposalHeaders(proposal)),
     ...shopOrderMethods(options),
     ...shopSettingsMethods(options),
     ...shopAssetsMethods(options),
     ...shopIntegrationMethods(options),
+    ...shopProposalMethods(options),
+  };
+};
+
+export const isProposedChange = (value: { outcome: string }): value is ChangeProposalProposedOutput =>
+  value.outcome === 'proposed';
+
+export interface ProposalRequestOptions {
+  groupId?: string;
+}
+
+const proposalHeaders = (proposal: ProposalRequestOptions | undefined): { headers: Record<string, string> } | undefined =>
+  proposal?.groupId === undefined ? undefined : { headers: { [PROPOSAL_GROUP_HEADER]: proposal.groupId } };
+
+const proposable = {
+  createProduct: proposableOutputSchema(shopCatalogContracts.createProduct.output),
+  updateProduct: proposableOutputSchema(shopCatalogContracts.updateProduct.output),
+  publishProduct: proposableOutputSchema(shopCatalogContracts.publishProduct.output),
+  unpublishProduct: proposableOutputSchema(shopCatalogContracts.unpublishProduct.output),
+  deleteProductDraft: proposableOutputSchema(shopCatalogContracts.deleteProductDraft.output),
+  createProductPrice: proposableOutputSchema(shopCatalogContracts.createProductPrice.output),
+  deactivateProductPrice: proposableOutputSchema(shopCatalogContracts.deactivateProductPrice.output),
+  enableProductStock: proposableOutputSchema(shopCatalogContracts.enableProductStock.output),
+  adjustProductStock: proposableOutputSchema(shopCatalogContracts.adjustProductStock.output),
+  setProductStockThreshold: proposableOutputSchema(shopCatalogContracts.setProductStockThreshold.output),
+  updateSettings: proposableOutputSchema(shopSettingsContracts.updateSettings.output),
+  createSalesLink: proposableOutputSchema(shopAssetsContracts.createSalesLink.output),
+  updateSalesLink: proposableOutputSchema(shopAssetsContracts.updateSalesLink.output),
+  deleteSalesLink: proposableOutputSchema(shopAssetsContracts.deleteSalesLink.output),
+};
+
+const shopProposalMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_PROPOSAL_ROUTES;
+  const contracts = shopProposalContracts;
+  const proposalPath = (path: string, id: string): string => path.replace(':id', encodeURIComponent(id));
+  return {
+    listProposals: (input: ChangeProposalListQueryInput = {}, signal?: AbortSignal) =>
+      request(options, routes.listProposals.method, withQuery(routes.listProposals.path, input), contracts.listProposals.output, undefined, signal),
+    getProposal: (id: string, signal?: AbortSignal) =>
+      request(options, routes.getProposal.method, proposalPath(routes.getProposal.path, id), contracts.getProposal.output, undefined, signal),
+    withdrawProposal: (id: string, signal?: AbortSignal) =>
+      request(options, routes.withdrawProposal.method, proposalPath(routes.withdrawProposal.path, id), contracts.withdrawProposal.output, {}, signal),
+    createProposalGroup: (input: ChangeProposalGroupCreateInput, signal?: AbortSignal) =>
+      request(options, routes.createGroup.method, routes.createGroup.path, contracts.createGroup.output, input, signal),
+    getProposalGroup: (id: string, signal?: AbortSignal) =>
+      request(options, routes.getGroup.method, proposalPath(routes.getGroup.path, id), contracts.getGroup.output, undefined, signal),
+    withdrawProposalGroup: (id: string, signal?: AbortSignal) =>
+      request(options, routes.withdrawGroup.method, proposalPath(routes.withdrawGroup.path, id), contracts.withdrawGroup.output, {}, signal),
   };
 };
 
@@ -3113,8 +3340,8 @@ const shopSettingsMethods = (options: ApiClientOptions) => {
   return {
     getSettings: (signal?: AbortSignal) =>
       request(options, routes.getSettings.method, routes.getSettings.path, contracts.getSettings.output, undefined, signal),
-    updateSettings: (input: ShopSettingsPatch, signal?: AbortSignal) =>
-      request(options, routes.updateSettings.method, routes.updateSettings.path, contracts.updateSettings.output, input, signal),
+    updateSettings: (input: ShopSettingsPatch, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.updateSettings.method, routes.updateSettings.path, proposable.updateSettings, input, signal, proposalHeaders(proposal)),
     uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
       uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, input, signal),
   };
@@ -3133,12 +3360,12 @@ const shopAssetsMethods = (options: ApiClientOptions) => {
       request(options, routes.listSalesLinks.method, routes.listSalesLinks.path, contracts.listSalesLinks.output, undefined, signal),
     getSalesLink: (input: ShopAssetsInput<'getSalesLink'>, signal?: AbortSignal) =>
       request(options, routes.getSalesLink.method, linkPath(routes.getSalesLink.path, input.id), contracts.getSalesLink.output, undefined, signal),
-    createSalesLink: (input: ShopAssetsInput<'createSalesLink'>, signal?: AbortSignal) =>
-      request(options, routes.createSalesLink.method, routes.createSalesLink.path, contracts.createSalesLink.output, input, signal),
-    updateSalesLink: (input: ShopAssetsInput<'updateSalesLink'>, signal?: AbortSignal) =>
-      request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), contracts.updateSalesLink.output, input, signal),
-    deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal) =>
-      request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), contracts.deleteSalesLink.output, undefined, signal),
+    createSalesLink: (input: ShopAssetsInput<'createSalesLink'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.createSalesLink.method, routes.createSalesLink.path, proposable.createSalesLink, input, signal, proposalHeaders(proposal)),
+    updateSalesLink: (input: ShopAssetsInput<'updateSalesLink'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), proposable.updateSalesLink, input, signal, proposalHeaders(proposal)),
+    deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), proposable.deleteSalesLink, undefined, signal, proposalHeaders(proposal)),
   };
 };
 

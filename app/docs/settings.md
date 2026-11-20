@@ -37,6 +37,22 @@ activation and revocation events are recorded in the tenant audit history.
 The owner-only CLI commands are `team list`, `team add <email>` and
 `team remove <email>`. Team changes are recorded in the tenant audit history.
 
+A workspace linked to an active organization also has organization-derived
+staff: organization owners act as workspace owners and organization admins as
+workspace admins, without a row in the team. The team list keeps the direct
+team and adds a read-only `organization` section with the organization's
+members, their derived role and `source: "organization"`; the Studio team panel
+shows the direct team only. Adding or removing an administrator needs an owner
+role from a direct workspace grant, so an owner whose role comes from the
+organization can read the team but is `forbidden` to change it. Removing a user
+whose only access comes from the organization answers `organization_managed`
+(HTTP 409, CLI exit 32): the organization's owners change it in the
+organization members. Removing the direct administrator grant of a user who
+also holds a derived role removes only the direct grant. Staff notification
+recipients come from the direct team only. See
+[Organizations](cli.md#organizations) and
+[Organization-derived workspace roles](security.md#organization-derived-workspace-roles).
+
 ## Meta server-side conversions
 
 The owner configures Meta CAPI beside the checkout analytics pixel settings.

@@ -30,6 +30,8 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   shipx_unavailable: 503,
   shipx_rejected: 422,
   feed_cursor_reset: 409,
+  workspace_quota_exceeded: 409,
+  organization_managed: 409,
   internal: 500,
 };
 
@@ -63,5 +65,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   shipx_unavailable: 28,
   shipx_rejected: 29,
   feed_cursor_reset: 30,
+  workspace_quota_exceeded: 31,
+  organization_managed: 32,
   internal: 10,
 };

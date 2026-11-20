@@ -95,6 +95,8 @@ Manual requests create a `requested` invoice with KSeF state `held`, shown as **
 
 Sending locks the order and, within one database transaction, allocates the number from the frozen environment’s series, renders and validates the XML with the current Warsaw issue date, freezes the artifact, appends the existing `frozen` invoice event with the acting user ID and timestamp, and queues the durable job. Validation failure rolls back the allocation. Concurrent or repeated send requests return the same invoice and never allocate another number. Switching back to automatic mode leaves the held backlog untouched; those invoices still require an explicit send. The dispatcher ignores held invoices, even if a stale job refers to one.
 
+An order cancelled because its goods sold out before the payment arrived (see the [shop guide](shop.md)) gets no invoice: requesting one or sending a held KSeF invoice for it, from Studio or the CLI, is refused with a `conflict` error (details `invoiceRefusal: order_cancelled_out_of_stock`) that says the order was cancelled for lack of stock and is being refunded, and nothing is recorded or allocated.
+
 Buyers receive no invoice link while an invoice is held. Their PDF link becomes available only when issuance has completed. Purchase confirmation email behavior is unchanged. Staff downloads also reject held invoices.
 
 CLI parity:

@@ -33,6 +33,7 @@ const membership: Membership = {
     contentVersion: 1,
   },
   staffRole: 'owner',
+  source: 'direct',
 };
 
 const deps = (hasAny: boolean, tenantCreationMode: TenantCreationMode) => ({

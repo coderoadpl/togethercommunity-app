@@ -6,10 +6,12 @@ import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, 
 import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 
 import { user } from './auth-schema.js';
+import { organizations } from './organization-schema.js';
 
 import type {
   OrderShipment,
   ProductCompliance,
+  ProductPersonalization,
   OrderShipping,
   ShippingRate,
   ShipxSender,
@@ -114,9 +116,11 @@ export const tenants = pgTable(
     ksefSubmissionMode: text('ksef_submission_mode', { enum: ['automatic', 'manual'] }).notNull().default('automatic'),
     invoiceSellerName: text('invoice_seller_name'),
     invoiceSellerAddress: text('invoice_seller_address'),
+    organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'restrict' }),
   },
   (table) => [
     uniqueIndex('tenants_slug_uidx').on(table.slug),
+    index('tenants_organization_idx').on(table.organizationId),
     check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
     check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
     check('tenants_default_language_check', sql`${table.defaultLanguage} IN ('pl', 'en')`),
@@ -384,6 +388,7 @@ export const products = pgTable(
     deliveryMethod: text('delivery_method', { enum: ['pickup', 'shipping'] }).notNull().default('pickup'),
     parcelTemplate: text('parcel_template', { enum: ['small', 'medium', 'large'] }).notNull().default('medium'),
     compliance: jsonb('compliance').$type<ProductCompliance>(),
+    personalization: jsonb('personalization').$type<ProductPersonalization>(),
     variantGroup: text('variant_group'),
     variantLabel: text('variant_label'),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
@@ -568,6 +573,7 @@ export const orders = pgTable(
     shipping: jsonb('shipping').$type<OrderShipping>(),
     fulfilmentStatus: text('fulfilment_status', { enum: ['to_pack', 'shipped'] }),
     shipment: jsonb('shipment').$type<OrderShipment>(),
+    cancelReason: text('cancel_reason', { enum: ['out_of_stock'] }),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
     createdAt: text('created_at').notNull(),
@@ -990,6 +996,29 @@ export const memberSubscriptions = pgTable(
   ],
 );
 
+export const providerCustomerOwners = pgTable(
+  'provider_customer_owners',
+  {
+    provider: text('provider', { enum: ['stripe'] }).notNull(),
+    customerId: text('customer_id').notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ name: 'provider_customer_owners_pkey', columns: [table.provider, table.customerId] }),
+    foreignKey({
+      name: 'provider_customer_owners_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('no action'),
+    index('provider_customer_owners_tenant_idx').on(table.tenantId),
+    check('provider_customer_owners_provider_check', sql`${table.provider} IN ('stripe')`),
+  ],
+);
+
 export const productGrants = pgTable(
   'product_grants',
   {
@@ -1071,6 +1100,7 @@ export const shopManagementKeys = pgTable(
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
     scopes: jsonb('scopes').$type<ShopManagementScope[]>().notNull(),
+    mode: text('mode', { enum: ['direct', 'propose'] }).notNull().default('direct'),
     issuedByUserId: text('issued_by_user_id').notNull(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at').notNull(),
@@ -1082,6 +1112,15 @@ export const shopManagementKeys = pgTable(
     check(
       'shop_management_keys_scopes_check',
       sql`jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb AND ${table.scopes} <@ '["shop:catalog:read", "shop:catalog:write", "shop:orders:read", "shop:fulfilment:write", "shop:settings:read", "shop:settings:write", "shop:integrations:read", "shop:integrations:write"]'::jsonb`,
+    ),
+    check('shop_management_keys_mode_check', sql`${table.mode} IN ('direct', 'propose')`),
+    check(
+      'shop_management_keys_propose_scopes_check',
+      sql`${table.mode} <> 'propose' OR NOT (${table.scopes} ?| ARRAY['shop:fulfilment:write', 'shop:integrations:write'])`,
+    ),
+    check(
+      'shop_management_keys_propose_read_scopes_check',
+      sql`${table.mode} <> 'propose' OR ((NOT ${table.scopes} ? 'shop:catalog:write' OR ${table.scopes} ? 'shop:catalog:read') AND (NOT ${table.scopes} ? 'shop:settings:write' OR ${table.scopes} ? 'shop:settings:read'))`,
     ),
   ],
 );
@@ -1182,6 +1221,29 @@ export const tenantSecrets = pgTable(
   (table) => [
     index('tenant_secrets_tenantId_idx').on(table.tenantId),
     uniqueIndex('tenant_secrets_tenant_key_uidx').on(table.tenantId, table.key),
+  ],
+);
+
+export const tenantConfigSources = pgTable(
+  'tenant_config_sources',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    configGroup: text('config_group', {
+      enum: ['payments_live', 'payments_test', 'invoicing', 'email_transport', 'telemetry', 'shipping_carrier'],
+    }).notNull(),
+    source: text('source', { enum: ['organization'] }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+    updatedByUserId: text('updated_by_user_id').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.configGroup] }),
+    check(
+      'tenant_config_sources_config_group_check',
+      sql`${table.configGroup} IN ('payments_live', 'payments_test', 'invoicing', 'email_transport', 'telemetry', 'shipping_carrier')`,
+    ),
+    check('tenant_config_sources_source_check', sql`${table.source} = 'organization'`),
   ],
 );
 
@@ -2420,6 +2482,9 @@ export const tenantAuditEvents = pgTable(
         'team.admin_activated',
         'team.invitation_revoked',
         'team.admin_removed',
+        'organization.linked',
+        'organization.unlinked',
+        'config_source.changed',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

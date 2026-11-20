@@ -80,6 +80,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
 | `POST /api/internal/tenants/provision` | self-authenticating | mutating | operator tenant provision |
 | `GET /api/internal/tenants/:slug/readiness` | self-authenticating | read | operator tenant readiness |
+| `POST /api/internal/organizations` | self-authenticating | mutating | operator organization create |
+| `POST /api/internal/organizations/:organizationId/limits` | self-authenticating | mutating | operator organization limits |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
@@ -201,6 +203,12 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/integrations/storage/configure` | self-authenticating | mutating | api m2m shop integrations storage configure |
 | `GET /api/m2m/shop/integrations/shipx` | self-authenticating | read | api m2m shop integrations shipx |
 | `POST /api/m2m/shop/integrations/shipx/configure` | self-authenticating | mutating | api m2m shop integrations shipx configure |
+| `GET /api/m2m/shop/proposals` | self-authenticating | read | api m2m shop proposals |
+| `GET /api/m2m/shop/proposals/:id` | self-authenticating | read | api m2m shop proposals id |
+| `POST /api/m2m/shop/proposals/:id/withdraw` | self-authenticating | mutating | api m2m shop proposals id withdraw |
+| `POST /api/m2m/shop/proposals/groups` | self-authenticating | mutating | api m2m shop proposals groups |
+| `GET /api/m2m/shop/proposals/groups/:id` | self-authenticating | read | api m2m shop proposals groups id |
+| `POST /api/m2m/shop/proposals/groups/:id/withdraw` | self-authenticating | mutating | api m2m shop proposals groups id withdraw |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -257,6 +265,14 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/me/meta-capi/withdraw` | authenticated | mutating | withdraw meta capi consent |
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
+| `POST /api/orders/:orderId/personalization` | authenticated | mutating | correct order personalization |
+| `GET /api/change-proposals` | authenticated | read | change proposals |
+| `GET /api/change-proposals/:id` | authenticated | read | change proposal |
+| `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
+| `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
+| `GET /api/change-proposals/groups/:id` | authenticated | read | change proposal group |
+| `POST /api/change-proposals/groups/:id/reject` | authenticated | mutating | change proposal group reject |
+| `POST /api/change-proposals/groups/:id/approve` | authenticated | mutating | change proposal group approve |
 | `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |
@@ -265,6 +281,22 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/orders/:orderId/shipx` | authenticated | mutating | shipx create |
 | `POST /api/orders/:orderId/shipx/discard` | authenticated | mutating | shipx discard |
 | `POST /api/orders/:orderId/shipx/label` | authenticated | mutating | shipx label |
+| `GET /api/organizations` | authenticated | read | organizations |
+| `GET /api/organizations/:organizationId` | authenticated | read | organization |
+| `POST /api/organizations/:organizationId/update` | authenticated | mutating | organization update |
+| `GET /api/organizations/:organizationId/secrets` | authenticated | read | organization secrets |
+| `POST /api/organizations/:organizationId/secrets` | authenticated | mutating | organization secret set |
+| `DELETE /api/organizations/:organizationId/secrets/:key` | authenticated | mutating | organization secret delete |
+| `GET /api/organizations/:organizationId/members` | authenticated | read | organization members |
+| `POST /api/organizations/:organizationId/members` | authenticated | mutating | organization member add |
+| `POST /api/organizations/:organizationId/members/role` | authenticated | mutating | organization member role |
+| `POST /api/organizations/:organizationId/members/remove` | authenticated | mutating | organization member remove |
+| `GET /api/organizations/:organizationId/audit-events` | authenticated | read | organization audit events |
+| `GET /api/organizations/:organizationId/workspaces` | authenticated | read | organization workspaces |
+| `POST /api/organizations/:organizationId/workspaces/link` | authenticated | mutating | organization workspace link |
+| `POST /api/organizations/:organizationId/workspaces/unlink` | authenticated | mutating | organization workspace unlink |
+| `POST /api/tenant/organization/unlink` | authenticated | mutating | tenant organization unlink |
+| `GET /api/organizations/:organizationId/workspaces/:tenantId/sources` | authenticated | read | organization workspace sources |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

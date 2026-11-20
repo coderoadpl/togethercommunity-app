@@ -52,6 +52,7 @@ export const publicProductStockSchema = z.object({
   tracked: z.boolean(),
   soldOut: z.boolean(),
   low: z.boolean(),
+  available: z.number().int().min(0).nullable().default(null),
 });
 
 export type PublicProductStock = z.output<typeof publicProductStockSchema>;
@@ -85,17 +86,30 @@ export const productStockView = (level: StockLevel): ProductStock => ({
 
 export const publicProductStock = (level: StockLevel | null): PublicProductStock =>
   level === null
-    ? { tracked: false, soldOut: false, low: false }
-    : { tracked: true, soldOut: availableStock(level) < 1, low: stockIsLow(level) };
+    ? { tracked: false, soldOut: false, low: false, available: null }
+    : { tracked: true, soldOut: availableStock(level) < 1, low: stockIsLow(level), available: availableStock(level) };
+
+export const publicStockLookup = (levels: readonly StockLevel[]): ((productId: string) => PublicProductStock) => {
+  const byProduct = new Map(levels.map((level) => [level.productId, level]));
+  return (productId) => publicProductStock(byProduct.get(productId) ?? null);
+};
 
 export const publicStockVersion = (levels: readonly StockLevel[]): string =>
   levels
     .map((level) => {
-      const flags = publicProductStock(level);
-      return `${level.productId}:${flags.soldOut ? 'sold-out' : 'available'}:${flags.low ? 'low' : 'normal'}`;
+      const stock = publicProductStock(level);
+      return `${level.productId}:${String(stock.available)}:${stock.low ? 'low' : 'normal'}`;
     })
     .sort()
     .join('|');
+
+export const purchasableLineQuantity = (
+  ruleBound: number,
+  stock: Pick<PublicProductStock, 'soldOut' | 'available'>,
+): number => {
+  if (stock.soldOut) return 0;
+  return stock.available === null ? ruleBound : Math.min(ruleBound, stock.available);
+};
 
 export interface StockQuantity {
   productId: string;
@@ -119,8 +133,28 @@ export const firstShortStockProductId = (items: readonly StockQuantity[], levels
     return level !== undefined && availableStock(level) < item.quantity;
   })?.productId ?? null;
 
-export const firstSoldOutProductId = (productIds: readonly string[], levels: readonly StockLevel[]): string | null =>
-  firstShortStockProductId(productIds.map((productId) => ({ productId, quantity: 1 })), levels);
+export const shortLateCommitProductIds = (
+  items: readonly StockQuantity[],
+  ownReservations: readonly { productId: string; quantity: number; status: StockReservationStatus }[],
+  levels: readonly Pick<StockLevel, 'productId' | 'onHand' | 'reserved'>[],
+): string[] => {
+  const needed = new Map(mergeStockQuantities(items).map((item) => [item.productId, item.quantity]));
+  for (const reservation of ownReservations) {
+    needed.set(reservation.productId, reservation.status === 'released' ? reservation.quantity : 0);
+  }
+  return levels
+    .filter((level) => (needed.get(level.productId) ?? 0) > availableStock(level))
+    .map((level) => level.productId)
+    .sort();
+};
+
+export const purchasableSets = (items: readonly StockQuantity[], levels: readonly StockLevel[]): number | null => {
+  const counts = mergeStockQuantities(items).flatMap((item) => {
+    const level = levels.find((candidate) => candidate.productId === item.productId);
+    return level === undefined || item.quantity < 1 ? [] : [Math.floor(availableStock(level) / item.quantity)];
+  });
+  return counts.length === 0 ? null : Math.min(...counts);
+};
 
 export const stockCheckoutExpiry = (nowIso: string): { sessionExpiresAt: string; reservationExpiresAt: string } => {
   const now = Date.parse(nowIso);

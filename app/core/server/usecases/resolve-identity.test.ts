@@ -13,6 +13,7 @@ const acme: Membership = {
     id: 't-acme', slug: 'acme', name: 'Acme Inc', status: 'active', plan: 'hosted', contentVersion: 1,
   },
   staffRole: 'owner',
+  source: 'direct',
 };
 
 const member: Member = {
@@ -65,7 +66,7 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
     privacyUrl: null,
     defaultHomeSpaceId: null,
   }),
-  updateSettings: async (_tenantId, settings) => settings,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async (input) => ({
     id: input.tenant.id,
     slug: input.tenant.slug,
@@ -163,6 +164,14 @@ describe('resolveIdentity', () => {
       ok: true,
       value: { tenantId: 't-acme', tenantSlug: 'acme', staffRole: 'owner' },
     });
+  });
+
+  it.each(['direct', 'organization'] as const)('carries the %s source of the staff grant and none without a grant', async (source) => {
+    const staff = await resolveIdentity(user, { host: 'acme.localhost:4711', tenantHeader: null }, deps([{ ...acme, source }]));
+    expect(staff).toMatchObject({ ok: true, value: { staffRole: 'owner', staffGrantSource: source } });
+    const visitor = await resolveIdentity(user, { host: 'acme.localhost:4711', tenantHeader: null }, deps([], [], [member]));
+    expect(visitor).toMatchObject({ ok: true, value: { tenantAccess: 'member', staffRole: null } });
+    expect(visitor.ok && 'staffGrantSource' in visitor.value).toBe(false);
   });
 
   it('rejects anonymous requests', async () => {

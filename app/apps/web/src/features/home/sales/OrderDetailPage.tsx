@@ -3,16 +3,19 @@ import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
-import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel, type ParcelTemplate } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel, type OrderLine, type ParcelTemplate } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { OrderShipment } from './OrderShipment.js';
+import { OrderRefundJob } from './OrderRefundJob.js';
+import { OrderCancelledChip } from './OrderCancelledChip.js';
 import { OrderShipx } from './OrderShipx.js';
+import { OrderPersonalization } from './OrderPersonalization.js';
 
 const saveLabel = (file: { filename: string; contentType: string; bytes: Uint8Array }) => {
   const url = URL.createObjectURL(new Blob([Uint8Array.from(file.bytes)], { type: file.contentType }));
@@ -49,6 +52,12 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     },
   });
   const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
+  const correctPersonalization = useMutation({
+    ...actions.correctOrderPersonalization,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
   const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
   const shipx = useQuery({ ...actions[canShip ? 'shipxRefreshedShipment' : 'shipxShipment'](orderId), enabled: inpostOrder });
   const createShipment = useMutation({
@@ -124,6 +133,17 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     [t.sales.provider, order.provider],
   ];
 
+  const linePersonalization = (line: OrderLine) => line.personalization === undefined ? null : (
+    <OrderPersonalization
+      personalization={line.personalization}
+      testId={`order-personalization-${line.productId}`}
+      canCorrect={canShip}
+      pending={correctPersonalization.isPending && correctPersonalization.variables.productId === line.productId}
+      error={correctPersonalization.isError && correctPersonalization.variables.productId === line.productId ? localizePanelError(correctPersonalization.error, t) : null}
+      onCorrect={(text, done) => correctPersonalization.mutate({ orderId: order.id, productId: line.productId, text }, { onSuccess: done })}
+    />
+  );
+
   return (
     <PanelPage
       title={t.sales.orderTitle({ id: order.id })}
@@ -148,6 +168,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+            <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={detail.data.refundJob?.status} />
             {order.fulfilmentStatus == null ? null : (
               <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
                 label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
@@ -155,7 +176,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </Stack>
       </SectionCard>
-      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} lineName={orderLineLabel} /></SectionCard>}
+      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} lineName={orderLineLabel} afterName={linePersonalization} /></SectionCard>}
       {order.shipping == null ? null : (
         <SectionCard title={t.shipping.orderDeliveryHeading} data-testid="order-delivery">
           <Stack useFlexGap spacing="0.75rem">
@@ -238,6 +259,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </SectionCard>
       )}
+      {detail.data.refundJob === null ? null : <OrderRefundJob job={detail.data.refundJob} />}
       <SectionCard title={t.sales.invoiceStatus}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
@@ -330,8 +352,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             </Button>
           ) : null}
         </Stack>
-        {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
-        {issueInvoice.isError ? <Alert severity="error">{localizePanelError(issueInvoice.error, t)}</Alert> : null}
+        {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
+        {issueInvoice.isError ? <Alert severity="error">{localizeInvoiceError(issueInvoice.error, t)}</Alert> : null}
         {refreshInvoice.isError ? <Alert severity="error">{localizePanelError(refreshInvoice.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>

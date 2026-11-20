@@ -23,7 +23,7 @@ const harness = (limited = false) => {
     providerObjectIds: { checkoutSession: 'cs_live_purchase' }, couponId: null, discountCents: 0, paidAt: now, createdAt: now }),
     consent: { consent: 'undecided', withdrawnAt: null }, consentAt: null, memberDeleted: false, email: 'buyer@example.org', sourceUrl: 'https://workspace.example.org/offer/book' };
   const tenants: TenantRepository = { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
-    findSettings: async () => settings, updateSettings: async (_tenantId, next) => next, createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true };
+    findSettings: async () => settings, changeSettings: async () => null, createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true };
   const secrets = { resolve: async () => ok('never-returned-token') };
   const decide = vi.fn<MetaCapiRepository['decide']>(async (_tenantId, _access, action) => {
     const result = await action(current, { tenants, secrets });

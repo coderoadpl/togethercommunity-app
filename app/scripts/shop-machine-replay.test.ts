@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { emailOutbox, orders, shopManagementKeyEvents, shopManagementKeys, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { createShopManagementClient, type ShopManagementClient } from '#core/client/index.js';
+import { createShopManagementClient, isProposedChange, type ShopManagementClient } from '#core/client/index.js';
 import {
   API_PATHS,
   API_ROUTES,
@@ -17,6 +17,7 @@ import {
   SHOP_INTEGRATION_ROUTES,
   SHOP_ORDER_ROUTES,
   SHOP_SETTINGS_ROUTES,
+  type ChangeProposalProposedOutput,
 } from '#core/contract/index.js';
 import { err, notFound, ok, type AppError, type Result } from '#core/domain/index.js';
 
@@ -57,6 +58,12 @@ const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal
 const unwrapped = <T>(result: Result<T, AppError>): T => {
   if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
   return result.value;
+};
+
+const appliedChange = <A extends object>(result: Result<ChangeProposalProposedOutput | ({ outcome: 'applied' } & A), AppError>): A => {
+  const value = unwrapped(result);
+  if (isProposedChange(value)) throw new Error(`Expected a live change, got proposal ${value.proposal.id}`);
+  return value;
 };
 
 const unsignedUrl = (url: string): string => {
@@ -163,7 +170,7 @@ describe('shop management key replay on a clean workspace', () => {
     const catalog = shopClient(catalogKey.secret);
     const warehouse = shopClient(warehouseKey.secret);
 
-    const settings = unwrapped(await provisioning.updateSettings({
+    const settings = appliedChange(await provisioning.updateSettings({
       termsUrl: 'https://brand.example.test/terms',
       privacyUrl: 'https://brand.example.test/privacy',
       supportEmail: 'support@example.test',
@@ -177,23 +184,23 @@ describe('shop management key replay on a clean workspace', () => {
     expect(unwrapped(await provisioning.configureStripe({ mode: 'live', restrictedKey: 'rk_live_replay_fixture' })))
       .toEqual({ mode: 'live', webhookUrl: 'http://acme.localhost:48730/api/webhooks/stripe/acme' });
     unwrapped(await provisioning.configureStorage(storage));
-    expect(unwrapped(await provisioning.configureShipx({ environment: 'sandbox', sender, organizationId: '12345', token: 'shipx-token-abcd' })))
-      .toMatchObject({ environment: 'sandbox', configured: true });
+    expect(unwrapped(await provisioning.configureShipx({ sender, sandbox: { organizationId: '12345', token: 'shipx-token-abcd' } })))
+      .toMatchObject({ sandbox: { configured: true }, production: { configured: false } });
     const masked = JSON.stringify(unwrapped(await provisioning.listIntegrationSecrets()));
     for (const secret of ['rk_test_replay_fixture', 'rk_live_replay_fixture', 'secret-access-key', 'shipx-token-abcd']) expect(masked).not.toContain(secret);
     expect(await provisioning.listProducts()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
 
-    const draft = unwrapped(await catalog.createProduct({
+    const draft = appliedChange(await catalog.createProduct({
       title: 'Printed handbook', slug: 'printed-handbook', type: 'physical', priceCents: 4900, currency: 'PLN',
       deliveryMethod: 'shipping', vatRate: 5,
     })).product;
     const cover = unwrapped(await catalog.uploadProductCover({
       kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: png.byteLength, body: png,
     }));
-    unwrapped(await catalog.updateProduct({ id: draft.id, coverUrl: cover.url }));
-    const price = unwrapped(await catalog.createProductPrice({ productId: draft.id, kind: 'one_time', amountCents: 4900, currency: 'PLN' })).price;
-    unwrapped(await catalog.enableProductStock({ productId: draft.id, onHand: 20, lowStockThreshold: null }));
-    expect(unwrapped(await catalog.publishProduct({ id: draft.id })).product).toMatchObject({ published: true, coverUrl: cover.url });
+    appliedChange(await catalog.updateProduct({ id: draft.id, coverUrl: cover.url }));
+    const price = appliedChange(await catalog.createProductPrice({ productId: draft.id, kind: 'one_time', amountCents: 4900, currency: 'PLN' })).price;
+    appliedChange(await catalog.enableProductStock({ productId: draft.id, onHand: 20, lowStockThreshold: null }));
+    expect(appliedChange(await catalog.publishProduct({ id: draft.id })).product).toMatchObject({ published: true, coverUrl: cover.url });
     expect(await catalog.listOrders()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
 
     const browserPreflight = await app.request(`${baseUrl}${SHOP_CATALOG_ROUTES.listProducts.path}`, {

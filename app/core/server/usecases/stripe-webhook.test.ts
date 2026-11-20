@@ -28,6 +28,7 @@ import {
 
 import { InMemoryConsentDefinitionRepository, InMemoryMarketingConsentRepository, InMemoryConsentConfirmationTokenRepository } from '../testing/marketing-fakes.js';
 import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
 
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
@@ -203,6 +204,7 @@ const harness = (
   const enrollmentEmails: { to: string; payload: EmailOutboxPayload }[] = [];
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const autoInvoiceJobs: AutoInvoiceJob[] = [];
+  const refundJobs = createOrderRefundJobFake();
   const consents: TermsConsent[] = [];
   const consentJobs: CheckoutConsentJob[] = [];
   const marketingConsents = new InMemoryMarketingConsentRepository();
@@ -238,7 +240,7 @@ const harness = (
       findSole: async () => null,
       hasAny: async () => false,
       findSettings: async () => null,
-      updateSettings: async (_tenantId, next) => next,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => {
         throw new Error('not used');
       },
@@ -320,7 +322,8 @@ const harness = (
             order.tenantId === tenantId &&
             order.memberId === memberId &&
             order.productId === productId &&
-            ACCESS_RETAINING_ORDER_STATUSES.includes(order.status),
+            ACCESS_RETAINING_ORDER_STATUSES.includes(order.status) &&
+            order.cancelReason == null,
         ),
       markOrderRefunded: async (tenantId, orderId) => {
         const index = orders.findIndex(
@@ -460,6 +463,7 @@ const harness = (
         const enrollmentEmailSnapshot = [...enrollmentEmails];
         const queuedSnapshot = [...queued];
         const autoInvoiceJobsSnapshot = [...autoInvoiceJobs];
+        const refundJobsSnapshot = structuredClone(refundJobs.jobs);
         const refundSnapshot = refundTransitions;
         const consentSnapshot = [...consents];
         const marketingSnapshot = marketingConsents.snapshot();
@@ -488,6 +492,7 @@ const harness = (
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          orderRefundJobs: refundJobs.repository,
           consents: {
             record: async (_tenantId, consent) => { consents.push(consent); },
             listByEmail: async (tenantId, email) => consents.filter((row) => row.tenantId === tenantId && row.email === email),
@@ -524,6 +529,7 @@ const harness = (
         enrollmentEmails.splice(0, enrollmentEmails.length, ...enrollmentEmailSnapshot);
         queued.splice(0, queued.length, ...queuedSnapshot);
         autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
+        refundJobs.jobs.splice(0, refundJobs.jobs.length, ...refundJobsSnapshot);
         refundTransitions = refundSnapshot;
         consents.splice(0, consents.length, ...consentSnapshot);
         marketingConsents.restore(marketingSnapshot);
@@ -591,6 +597,7 @@ const harness = (
     enrollmentEmails,
     queued,
     autoInvoiceJobs,
+    refundJobs: refundJobs.jobs,
     providerCancellations,
     warnings,
     refundTransitions: () => refundTransitions,
@@ -2759,6 +2766,64 @@ describe('checkout stock commit in the payment webhook', () => {
     expect(stock.events).toEqual([]);
   });
 
+  it('cancels a delayed payment that succeeds after the stock ran out and queues one refund instead of fulfilling it', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    h.deps.tenantAccess = { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.com', staffRole: 'owner', language: 'en' }] };
+    const event = completedEvent({ id: 'evt-async', type: 'checkout.session.async_payment_succeeded', paymentIntentId: 'pi-async', amountTotalCents: 4900 });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+
+    expect(h.orders).toEqual([expect.objectContaining({ status: 'paid', cancelReason: 'out_of_stock', amountCents: 4900 })]);
+    expect(h.orders[0]).not.toHaveProperty('fulfilmentStatus');
+    const orderId = h.orders[0]?.id ?? '';
+    expect(h.refundJobs).toEqual([expect.objectContaining({ orderId, paymentIntentId: 'pi-async', amountCents: 4900, idempotencyKey: `oos-refund-${orderId}`, status: 'pending' })]);
+    expect(h.autoInvoiceJobs).toEqual([]);
+    expect([...h.grants.values()]).toEqual([]);
+    expect(h.enrollmentEmails).toEqual([]);
+    expect(h.queued).toEqual([
+      { to: 'buyer@example.com', payload: expect.objectContaining({ kind: 'order-sold-out-refund', orderId, amountCents: 4900, currency: 'PLN', productTitles: [expect.any(String)] }) },
+      { to: 'owner@example.com', payload: expect.objectContaining({ kind: 'order-out-of-stock', orderId, amountCents: 4900, productTitles: [expect.any(String)] }) },
+    ]);
+    expect(stock.events).toEqual([]);
+    expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 0, reserved: 0 });
+  });
+
+  it('queues one sold-out refund e-mail for the buyer under an order-scoped id that a repeated enqueue keeps', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    const enqueued: Parameters<typeof h.deps.emailOutbox.enqueue>[0][] = [];
+    const enqueue = h.deps.emailOutbox.enqueue;
+    h.deps.emailOutbox = { ...h.deps.emailOutbox, enqueue: async (message) => { enqueued.push(message); return enqueue(message); } };
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent({ amountTotalCents: 4900 }), h.deps)).toEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(tenantA, completedEvent({ id: 'evt-redelivered', amountTotalCents: 4900 }), h.deps)).toEqual(ok({ processed: false }));
+
+    const orderId = h.orders[0]?.id ?? '';
+    const buyerEmails = enqueued.filter((message) => message.payload.kind === 'order-sold-out-refund');
+    expect(buyerEmails).toEqual([expect.objectContaining({
+      id: `order-sold-out-refund:${tenantA.id}:${orderId}`, tenantId: tenantA.id, to: 'buyer@example.com', onConflict: 'keep-existing',
+      payload: expect.objectContaining({ language: 'pl', tenantName: tenantA.name, shopUrl: expect.stringMatching(/^https?:\/\/.+\/$/) }),
+    })]);
+    expect(h.refundJobs).toHaveLength(1);
+  });
+
+  it('records a cancelled order paid with zero without a refund job', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, completedEvent({ amountTotalCents: 0 }), h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toEqual([expect.objectContaining({ cancelReason: 'out_of_stock', amountCents: 0 })]);
+    expect(h.refundJobs).toEqual([]);
+    expect(stock.events).toEqual([]);
+  });
+
   it('never touches live stock for a test-mode order', async () => {
     const { h, event } = await testCheckout();
     const stock = createStockRepositoryFake();
@@ -2766,6 +2831,19 @@ describe('checkout stock commit in the payment webhook', () => {
     h.deps.stock = stock.repository;
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
     expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 2, reserved: 0 });
+    expect(stock.events).toEqual([]);
+  });
+
+  it('completes a test-mode order whose product is sold out in live stock without cancelling or refunding it', async () => {
+    const { h, event } = await testCheckout();
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders.find((order) => order.id === 'test-order')).toMatchObject({ mode: 'test', status: 'paid' });
+    expect(h.orders.find((order) => order.id === 'test-order')?.cancelReason ?? null).toBeNull();
+    expect(h.refundJobs).toEqual([]);
+    expect(h.queued.map((message) => message.payload.kind)).not.toContain('order-sold-out-refund');
     expect(stock.events).toEqual([]);
   });
 });
@@ -2961,13 +3039,15 @@ it('renews and cancels an adopted subscription without Together checkout metadat
   const h = harness({ prices: [price] });
   const member = memberSchema.parse({ id: 'member-adopted', tenantId: tenantA.id, userId: 'user-adopted',
     email: 'buyer@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: now, deletedAt: null });
-  h.members.set(member.id, member);
+  h.members.set(`${member.tenantId}:${member.id}`, member);
   const adopted = await m2mAdoptStripeSubscription(tenantA.id, { subscriptionId: 'sub_existing', email: member.email, productId: price.productId }, {
-    clock: h.deps.clock, ids: h.deps.ids,
+    clock: h.deps.clock, ids: h.deps.ids, stripeWebhookOwnership: h.deps.stripeWebhookOwnership,
     payment: { retrieveStripeSubscription: async () => ok({ id: 'sub_existing', status: 'active',
-      customerEmail: member.email, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
+      customerId: 'cus_existing', customerEmail: member.email, metadataTenantId: null, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
       price: { id: 'price_existing', amountCents: price.amountCents, currency: price.currency, interval: 'month', intervalCount: 1 } }) },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation({ ...h.deps, memberEvents: { append: async () => undefined } }) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) => operation({ ...h.deps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
+      members: { ...h.deps.members, findByIdForShare: (tenantId, memberId) => h.deps.members.findById(tenantId, memberId) },
+      memberEvents: { append: async () => undefined } }) },
   });
   expect(adopted.ok).toBe(true);
   if (!adopted.ok) throw new Error('Adoption failed');
@@ -3604,4 +3684,30 @@ describe('shipped checkout fulfilment', () => {
     }, h.deps)).ok).toBe(true);
     expect(lookups.mock.calls.map(([, , productId]) => productId).sort()).toEqual(['product-1', 'product-2']);
   });
+});
+
+it('copies the personalisation of a snapshot line onto the paid order and its purchase confirmation, never into logs', async () => {
+  const h = bundlePayment();
+  const personalization = {
+    text: 'For Alex <3', label: 'Add an engraving', description: '', inputLabel: 'Engraving text',
+    condition: 'I understand a personalised item is made to my order.', maxLength: 200,
+    requestedAt: now, conditionAcceptedAt: now,
+  };
+  const printed = h.lines[2];
+  if (printed === undefined) throw new Error('Missing printed line');
+  h.lines[2] = { ...printed, personalization };
+  const logged: string[] = [];
+  h.deps.logger = { warn: (message) => { logged.push(message); }, error: (message) => { logged.push(message); } };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.lines?.[2]).toEqual({ ...printed, personalization });
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({
+    purchase: { personalizations: [{ name: 'Printed item', text: 'For Alex <3', condition: personalization.condition }] },
+  });
+  expect(logged.join('\n')).not.toContain('For Alex');
+});
+
+it('sends no personalisation block when no line is personalised', async () => {
+  const h = bundlePayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).not.toHaveProperty('purchase.personalizations');
 });

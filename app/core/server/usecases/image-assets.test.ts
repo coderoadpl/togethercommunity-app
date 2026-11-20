@@ -294,9 +294,9 @@ describe('image assets', () => {
     const { deps, signed } = testDeps();
     const keyCtx: Ctx = {
       identity: identity('owner', null),
-      capabilities: shopManagementCapabilities(['shop:settings:write'])
+      capabilities: shopManagementCapabilities(['shop:settings:write'], 'direct')
         .filter((capability) => capabilitiesForPrincipal('owner').includes(capability)),
-      machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' },
+      machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' },
     };
     expect(await beginBrandingAssetUpload(keyCtx, {
       kind: 'logo',

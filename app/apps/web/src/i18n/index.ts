@@ -5,6 +5,7 @@ export {
   localizeError,
   localizeErrorCode,
   localizeErrorCodeForPanel,
+  localizeInvoiceError,
   localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,

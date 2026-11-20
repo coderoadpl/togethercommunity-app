@@ -1,8 +1,10 @@
-import { and, asc, eq, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, or, sql, type SQL } from 'drizzle-orm';
 
 import { shopManagementKeySchema, type ShopManagementKey } from '#core/domain/index.js';
 import type { ShopManagementKeyRateLimitRepository, ShopManagementKeyRepository } from '#core/server/index.js';
 
+import { deleteEmptyGroupsOfKey } from './change-proposal-groups.js';
+import { withdrawPendingChangeProposalsOfKey } from './change-proposals.js';
 import type { Db } from './client.js';
 import { shopManagementKeyRateLimitBuckets, shopManagementKeys } from './schema.js';
 import { insertShopManagementKeyEvent } from './shop-management-key-events.js';
@@ -44,7 +46,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     const row = rows[0];
     return row ? parseKey(row) : null;
   },
-  revoke: async (tenantId, id, revokedAt, event) => db.transaction(async (tx) => {
+  revoke: async (tenantId, id, revokedAt, event, withdrawal) => db.transaction(async (tx) => {
     const rows = await tx
       .update(shopManagementKeys)
       .set({ revokedAt })
@@ -56,14 +58,21 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       .returning();
     const row = rows[0];
     if (!row) return null;
+    // Proposal rows before the tenant row, the order an approval takes them in; the key event's foreign key share-locks the tenant row.
+    await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawal);
+    await deleteEmptyGroupsOfKey(tx, tenantId, row.id);
     await insertShopManagementKeyEvent(tx, tenantId, event);
     return parseKey(row);
   }),
-  purge: async (tenantId, event) => db.transaction(async (tx) => {
+  purge: async (tenantId, event, withdrawal) => db.transaction(async (tx) => {
     const purged = await tx
       .delete(shopManagementKeys)
       .where(eq(shopManagementKeys.tenantId, tenantId))
       .returning({ id: shopManagementKeys.id });
+    for (const { id } of purged) {
+      await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
+      await deleteEmptyGroupsOfKey(tx, tenantId, id);
+    }
     for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
     return purged.length;
   }),
@@ -78,6 +87,10 @@ const ownsKey = async (db: Db, tenantId: string, apiKeyId: string): Promise<bool
   return owned !== undefined;
 };
 
+// A late request of an earlier window counts against the stored newer window, so the newest window keeps its limit and a boundary race never rewinds it.
+const storedWindowIsOlder = (windowStartedAt: string): SQL =>
+  sql`${shopManagementKeyRateLimitBuckets.windowStartedAt} < ${windowStartedAt}::timestamptz`;
+
 export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManagementKeyRateLimitRepository => ({
   claim: async (tenantId, input) => {
     if (input.limit < 1 || !await ownsKey(db, tenantId, input.apiKeyId)) return false;
@@ -89,11 +102,11 @@ export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManageme
     }).onConflictDoUpdate({
       target: [shopManagementKeyRateLimitBuckets.apiKeyId, shopManagementKeyRateLimitBuckets.period],
       set: {
-        windowStartedAt: input.windowStartedAt,
-        count: sql`case when ${shopManagementKeyRateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${shopManagementKeyRateLimitBuckets.count} + 1 else 1 end`,
+        windowStartedAt: sql`greatest(${shopManagementKeyRateLimitBuckets.windowStartedAt}, ${input.windowStartedAt}::timestamptz)`,
+        count: sql`case when ${storedWindowIsOlder(input.windowStartedAt)} then 1 else ${shopManagementKeyRateLimitBuckets.count} + 1 end`,
       },
       setWhere: or(
-        ne(shopManagementKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
+        storedWindowIsOlder(input.windowStartedAt),
         sql`${shopManagementKeyRateLimitBuckets.count} + 1 <= ${input.limit}`,
       ) ?? sql`false`,
     }).returning({ count: shopManagementKeyRateLimitBuckets.count });

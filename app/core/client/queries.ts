@@ -132,6 +132,9 @@ import type {
   TenantRedirectDeleteBody,
   TenantRedirectUpdateBody,
   TenantSettingsUpdateInput,
+  ChangeProposalGroupApproveInput,
+  ChangeProposalListQueryInput,
+  ChangeProposalRejectInput,
 } from '#core/contract/index.js';
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
 
@@ -145,6 +148,7 @@ import {
   type WriteResult,
 } from './http.js';
 import type { LessonAttachmentFileUpload } from './http.js';
+import { salesLinkScopes } from './sales-links.js';
 
 /**
  * Identity helpers that type descriptors against `@tanstack/query-core` option
@@ -1707,6 +1711,66 @@ export const revokeApiKeyMutation = (api: ApiClient) =>
   });
 
 export const apiKeysInvalidates = () => ({ queryKey: apiKeyScopes.all() });
+
+const changeProposalScopes = {
+  all: () => ['change-proposals'] as const,
+  lists: (input: ChangeProposalListQueryInput) => ['change-proposals', 'list', input] as const,
+  detail: (id: string) => ['change-proposals', 'detail', id] as const,
+  group: (id: string) => ['change-proposals', 'group', id] as const,
+};
+
+export const changeProposalsQuery = (api: ApiClient, input: ChangeProposalListQueryInput = {}) =>
+  defineQuery({
+    queryKey: changeProposalScopes.lists(input),
+    call: ({ signal }) => api.listChangeProposals(input, signal),
+  });
+
+export const changeProposalQuery = (api: ApiClient, id: string) =>
+  defineQuery({
+    queryKey: changeProposalScopes.detail(id),
+    call: ({ signal }) => api.getChangeProposal({ id }, signal),
+  });
+
+export const rejectChangeProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...changeProposalScopes.all(), 'reject'],
+    call: (input: { id: string } & ChangeProposalRejectInput) => api.rejectChangeProposal(input),
+  });
+
+export const approveChangeProposalMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...changeProposalScopes.all(), 'approve'],
+    call: (input: { id: string }) => api.approveChangeProposal(input),
+  });
+
+export const changeProposalGroupQuery = (api: ApiClient, id: string) =>
+  defineQuery({
+    queryKey: changeProposalScopes.group(id),
+    call: ({ signal }) => api.getChangeProposalGroup({ id }, signal),
+  });
+
+export const rejectChangeProposalGroupMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...changeProposalScopes.all(), 'group', 'reject'],
+    call: (input: { id: string } & ChangeProposalRejectInput) => api.rejectChangeProposalGroup(input),
+  });
+
+export const approveChangeProposalGroupMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...changeProposalScopes.all(), 'group', 'approve'],
+    call: (input: { id: string } & ChangeProposalGroupApproveInput) => api.approveChangeProposalGroup(input),
+  });
+
+export const changeProposalsInvalidates = () => ({ queryKey: changeProposalScopes.all() });
+
+export const approveChangeProposalInvalidates = () => [
+  changeProposalsInvalidates(),
+  { queryKey: productsScopes.all() },
+  { queryKey: productPricesScopes.all() },
+  { queryKey: productStockScopes.all() },
+  { queryKey: salesLinkScopes.all() },
+  { queryKey: tenantSettingsScopes.all() },
+];
 
 export const setTenantSecretMutation = (api: ApiClient) =>
   defineMutation({

@@ -4,10 +4,13 @@ import {
   exportOrdersQuerySchema,
   listOrdersQuerySchema,
   notFound,
+  orderPersonalizationSummary,
   ok,
+  orderRefundJobView,
   validation,
   type AppError,
   type OrderListItem,
+  type OrderRefundJobView,
   type OrderExportFile,
   type Result,
   type SalesSummary,
@@ -19,6 +22,7 @@ import type {
   Clock,
   MemberSubscriptionRepository,
   OrderDetailRepository,
+  OrderRefundJobRepository,
   OrderRepository,
   InvoiceRepository,
 } from '../ports.js';
@@ -67,8 +71,12 @@ export const listOrders = async (
 export const getOrder = async (
   ctx: Ctx,
   id: string,
-  deps: { orders: OrderDetailRepository; invoices?: InvoiceRepository },
-): Promise<Result<{ order: OrderListItem; invoice: Awaited<ReturnType<InvoiceRepository['findCurrentByOrder']>> }, AppError>> => {
+  deps: { orders: OrderDetailRepository; invoices?: InvoiceRepository; refundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'> },
+): Promise<Result<{
+  order: OrderListItem;
+  invoice: Awaited<ReturnType<InvoiceRepository['findCurrentByOrder']>>;
+  refundJob: OrderRefundJobView | null;
+}, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
   const order = await deps.orders.findById(tenant.value, id);
@@ -76,7 +84,8 @@ export const getOrder = async (
   const invoice = deps.invoices === undefined
     ? null
     : await deps.invoices.findCurrentByOrder(tenant.value, order.id);
-  return ok({ order, invoice });
+  const refundJob = await deps.refundJobs?.findByOrderId(tenant.value, order.id) ?? null;
+  return ok({ order, invoice, refundJob: refundJob === null ? null : orderRefundJobView(refundJob) });
 };
 
 const neutralizeFormula = (value: string): string =>
@@ -150,6 +159,8 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'gclid',
       ...SHIPPING_COLUMN_NAMES,
       'client_reference',
+      'personalization',
+      'cancel_reason',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -172,6 +183,8 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         ...Object.values(attributionColumns(order)),
         ...Object.values(shippingColumns(order)),
         order.clientReference ?? '',
+        orderPersonalizationSummary(order.lines ?? []),
+        order.cancelReason ?? '',
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -227,7 +240,7 @@ export const exportOrders = async (
   return ok(
     parsed.data.format === 'csv'
       ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order) }))) },
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []) }))) },
   );
 };
 

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type * as ClientModule from '#core/client/index.js';
 import type { ShopManagementClientOptions } from '#core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
+import type { ShipxOrderView, ShipxShipment } from '#core/domain/index.js';
 
 import type { CliConfig, ResolveCliConfigInput } from './config.js';
 import { DEFAULT_SHOP_KEY_ENV } from './shop-key-commands.js';
@@ -67,10 +68,12 @@ const order = {
   shipment: { carrier: 'other', trackingNumber: 'MANUAL0001', shippedAt: '2026-11-15T10:00:00.000Z', shippedBy: 'owner' },
   createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
 };
-const shipment = {
+const shipment: ShipxShipment = {
   shipxShipmentId: '1', status: 'confirmed', environment: 'production', trackingNumber: 'T1', createAttemptedAt: null, boughtAt: null,
   labelFetchedAt: null, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: '2026-11-15T10:00:00.000Z',
 };
+
+const shipxOrder: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
 
 const shopSettings = {
   name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null,
@@ -86,14 +89,15 @@ const orderData = (pathname: string, method: string): unknown => {
   if (pathname.endsWith('/export') || pathname.endsWith('/packing-list')) return { filename: 'orders.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number\norder-1' };
   if (pathname.endsWith('/discard')) return { discarded: true };
   if (method === 'POST' && pathname.endsWith('/shipx')) return { order, shipment };
-  if (pathname.includes('/shipx')) return { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
+  if (pathname.includes('/shipx')) return shipxOrder;
   if (pathname === '/api/m2m/shop/orders/order-1') return { order, invoice: null };
   return { order };
 };
 
 const maskedCredential = { maskedPreview: '••••2345', updatedAt: '2026-11-15T10:00:00.000Z' };
 const shipxView = {
-  environment: 'sandbox', configured: true, organizationId: maskedCredential, token: maskedCredential,
+  sandbox: { configured: true, organizationId: maskedCredential, token: maskedCredential },
+  production: { configured: false, organizationId: null, token: null },
   sender: { name: 'Warehouse', company: null, email: 'warehouse@example.test', phone: '600700800', street: 'Garden Street', buildingNumber: '5', city: 'Warsaw', postCode: '00-950' },
 };
 
@@ -238,6 +242,28 @@ describe('shop key CLI', () => {
     expect(calls).toEqual([]);
   });
 
+  it('sends the personalisation file on product create and update, null for --no-personalization, and refuses both flags before any request', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-personalization-'));
+    const path = join(directory, 'personalization.json');
+    const engraving = { label: 'Add an engraving', inputLabel: 'Engraving text', condition: 'I understand a personalised item is made to my order.' };
+    await writeFile(path, JSON.stringify(engraving));
+    await run('shop', 'products', 'create', '--title', 'Printed book', '--price', '49', '--type', 'physical', '--personalization-file', path);
+    await run('shop', 'products', 'update', 'product-1', '--no-personalization');
+    await run('shop', 'products', 'update', 'product-1', '--title', 'Second edition');
+    expect(calls.map(({ path: route, body }) => ({ route, body }))).toEqual([
+      { route: '/api/m2m/shop/products', body: expect.objectContaining({ personalization: { ...engraving, description: '', maxLength: 200 } }) },
+      { route: '/api/m2m/shop/products/update', body: { id: 'product-1', personalization: null } },
+      { route: '/api/m2m/shop/products/update', body: { id: 'product-1', title: 'Second edition' } },
+    ]);
+
+    calls.length = 0;
+    logSpy.mockClear();
+    await run('shop', 'products', 'update', 'product-1', '--personalization-file', path, '--no-personalization');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Provide only one of --personalization-file and --no-personalization' } });
+    expect(calls).toEqual([]);
+    await rm(directory, { recursive: true, force: true });
+  });
+
   it.each([
     [['shop', 'products', 'create', '--title', 'Both', '--price', '1', '--price-cents', '100'], 'Provide only one of --price and --price-cents'],
     [['shop', 'products', 'create', '--title', 'None'], 'Provide a price with --price (currency units) or --price-cents (integer cents)'],
@@ -304,6 +330,13 @@ describe('shop orders CLI', () => {
     expect(calls[0]).toMatchObject({ method, path, search, body });
     expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
     expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('names the connection of the order in the plain ShipX view', async () => {
+    process.argv = ['node', 'together', 'shop', 'orders', 'shipx', 'show', 'order-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('environment: production'));
   });
 
   it('writes the label and the packing list to the --out paths', async () => {
@@ -570,15 +603,23 @@ describe('shop integrations CLI', () => {
     [['shop', 'integrations', 'secrets', 'set', 'stripe.restrictedKey', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 's3.configuration', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 'shipx.token', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'shipx.production.token', '--value-env', 'RAW_VALUE']],
+    [['shop', 'integrations', 'secrets', 'set', 'shipx.sandbox.organizationId', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 'ksef.contextNip', '--value-env', 'RAW_VALUE']],
     [['shop', 'integrations', 'secrets', 'set', 'ifirma.username', '--value-env', 'EMPTY_VALUE']],
     [['shop', 'integrations', 'secrets', 'delete', 'stripe.webhookSecret']],
     [['shop', 'integrations', 'stripe', 'configure', '--mode', 'test', '--restricted-key-env', 'EMPTY_VALUE']],
     [['shop', 'integrations', 'stripe', 'probe', '--mode', 'staging']],
     [['shop', 'integrations', 'storage', 'configure', '--provider', 'minio', '--endpoint', 'ftp://storage.example.test', '--region', 'eu', '--bucket', 'assets', '--access-key-id', 'id', '--secret-access-key-env', 'RAW_VALUE']],
-    [['shop', 'integrations', 'shipx', 'configure', '--organization-id', 'not-a-number']],
-    [['shop', 'integrations', 'shipx', 'configure', '--token-env', 'RAW_VALUE', '--token-stdin']],
-    [['shop', 'integrations', 'shipx', 'configure', '--sender-json-file', '-', '--token-stdin']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--organization-id', 'not-a-number']],
+    [['shop', 'integrations', 'shipx', 'configure', '--organization-id', '12345']],
+    [['shop', 'integrations', 'shipx', 'configure', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'staging', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--environment', 'production', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--organization-id', '12345', '--clear-credentials']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--token-env', 'RAW_VALUE', '--token-stdin']],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--sender-json-file', '-', '--token-stdin']],
   ])('rejects %j before any request', async (args) => {
     vi.stubEnv('RAW_VALUE', 'raw-value');
     vi.stubEnv('EMPTY_VALUE', '');
@@ -592,7 +633,9 @@ describe('shop integrations CLI', () => {
     [['shop', 'integrations', 'secrets', 'delete', 'ifirma.username'], 'DELETE', '/api/m2m/shop/integrations/secrets/ifirma.username', null],
     [['shop', 'integrations', 'stripe', 'probe', '--mode', 'test'], 'POST', '/api/m2m/shop/integrations/stripe/probe', { mode: 'test' }],
     [['shop', 'integrations', 'shipx', 'show'], 'GET', '/api/m2m/shop/integrations/shipx', null],
-    [['shop', 'integrations', 'shipx', 'configure', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { clearCredentials: true }],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { production: { clearCredentials: true } }],
+    [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sandbox: { clearCredentials: true } }],
+    [['shop', 'integrations', 'shipx', 'configure', '--clear-sender'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sender: null }],
   ])('sends %j to the integration route', async (args, method, path, body) => {
     await run(...args);
     expect(soleJson()).toMatchObject({ ok: true });
@@ -632,14 +675,283 @@ describe('shop integrations CLI', () => {
       const file = join(directory, 'sender.json');
       await writeFile(file, JSON.stringify(shipxView.sender));
       vi.stubEnv('SHIPX_TOKEN', 'shipx-token-from-env');
-      await run('shop', 'integrations', 'shipx', 'configure', '--environment', 'sandbox', '--sender-json-file', file, '--organization-id', '12345', '--token-env', 'SHIPX_TOKEN');
-      expect(soleJson()).toMatchObject({ ok: true, data: { configured: true } });
+      await run('shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--sender-json-file', file, '--organization-id', '12345', '--token-env', 'SHIPX_TOKEN');
+      expect(soleJson()).toMatchObject({ ok: true, data: { sandbox: { configured: true } } });
       expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/m2m/shop/integrations/shipx/configure', body: {
-        environment: 'sandbox', sender: shipxView.sender, organizationId: '12345', token: 'shipx-token-from-env',
+        sender: shipxView.sender, sandbox: { organizationId: '12345', token: 'shipx-token-from-env' },
       } });
       expect(printedOutput()).not.toContain('shipx-token-from-env');
+
+      logSpy.mockClear();
+      stdinOf('shipx-token-from-stdin\n');
+      await run('shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--token-stdin');
+      expect(soleJson()).toMatchObject({ ok: true });
+      expect(calls[1]?.body).toEqual({ production: { token: 'shipx-token-from-stdin' } });
+      expect(printedOutput()).not.toContain('shipx-token-from-stdin');
     } finally {
       await rm(directory, { recursive: true });
     }
+  });
+});
+
+const receipt = {
+  id: 'proposal-1', status: 'pending', operation: 'stock.adjust', target: { kind: 'product', id: 'product-1' }, groupId: null,
+  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', input: { productId: 'product-1', delta: 5, reason: 'delivery' },
+  decisionNote: null, appliedResourceId: null, failureCode: null,
+};
+
+const proposalFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const method = init?.method ?? 'GET';
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+  if (url.pathname === '/api/m2m/shop/proposals') return Response.json({ ok: true, data: { proposals: [receipt], nextCursor: 'proposal-1' } });
+  if (url.pathname.startsWith('/api/m2m/shop/proposals/')) {
+    return Response.json({ ok: true, data: { proposal: url.pathname.endsWith('/withdraw') ? { ...receipt, status: 'withdrawn' } : receipt } });
+  }
+  return Response.json({ ok: true, data: { outcome: 'proposed', proposal: receipt } }, { status: 202 });
+};
+
+describe('shop key CLI with a propose-mode key', () => {
+  beforeEach(() => { h.fetchImpl = proposalFetch; });
+
+  it.each([
+    [['shop', 'products', 'create', '--title', 'Printed handbook', '--price', '49']],
+    [['shop', 'products', 'update', 'product-1', '--title', 'Renamed']],
+    [['shop', 'products', 'publish', 'product-1']],
+    [['shop', 'products', 'unpublish', 'product-1']],
+    [['shop', 'products', 'delete', 'product-1', '--confirm']],
+    [['shop', 'prices', 'add', '--product', 'product-1', '--kind', 'one_time', '--price-cents', '4900']],
+    [['shop', 'prices', 'deactivate', 'price-1']],
+    [['shop', 'stock', 'enable', 'product-1', '--on-hand', '3']],
+    [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
+    [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
+  ])('prints the receipt and exits 0 when %j answers 202', async (args) => {
+    await run(...args);
+    expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each([
+    ['settings', ['shop', 'settings', 'set'], { name: 'Proposed shop' }, 'POST /api/m2m/shop/settings'],
+    ['sales-link create', ['shop', 'sales-links', 'create'], salesLinkFields, 'POST /api/m2m/shop/sales-links'],
+    ['sales-link update', ['shop', 'sales-links', 'update', 'link-1'], { ...salesLinkFields, expectedRevision: 1 }, 'POST /api/m2m/shop/sales-links/link-1'],
+  ])('prints the receipt and exits 0 when the %s write answers 202', async (_label, args, fields, request) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-proposal-cli-'));
+    try {
+      const file = join(directory, 'input.json');
+      await writeFile(file, JSON.stringify(fields));
+      await run(...args, '--json-file', file);
+      expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+      expect(process.exitCode ?? 0).toBe(0);
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([request]);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('prints the receipt of a proposed sales-link deletion without sending a body', async () => {
+    await run('shop', 'sales-links', 'delete', 'link-1');
+    expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
+    expect(calls).toMatchObject([{ method: 'DELETE', path: '/api/m2m/shop/sales-links/link-1', body: null }]);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('prints a readable receipt without --json', async () => {
+    process.argv = ['node', 'together', 'shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith([
+      'proposed, waiting for the owner\'s decision:',
+      'proposal proposal-1: stock.adjust [pending]',
+      'target: product product-1',
+      'created: 2026-11-15T10:00:00.000Z',
+      'expires: 2026-12-15T10:00:00.000Z',
+    ].join('\n'));
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('lists, shows and withdraws the key\'s own proposals with the env key', async () => {
+    await run('shop', 'proposals', 'list', '--status', 'pending', '--limit', '5');
+    await run('shop', 'proposals', 'show', 'proposal-1');
+    await run('shop', 'proposals', 'withdraw', 'proposal-1');
+    expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
+      'GET /api/m2m/shop/proposals?status=pending&limit=5',
+      'GET /api/m2m/shop/proposals/proposal-1',
+      'POST /api/m2m/shop/proposals/proposal-1/withdraw',
+    ]);
+    for (const call of calls) {
+      expect(call.headers.get('x-api-key')).toBe('shop-secret-from-env');
+      expect(call.headers.has('authorization')).toBe(false);
+    }
+    expect(JSON.parse(String(logSpy.mock.calls[2]?.[0]))).toMatchObject({ ok: true, data: { proposal: { status: 'withdrawn' } } });
+  });
+
+  it('shows the resource an applied proposal created, so the key can name it in a follow-up proposal', async () => {
+    const applied = {
+      ...receipt, status: 'applied', operation: 'price.create', input: { productId: 'product-1', kind: 'one_time', amountCents: 4900 },
+      appliedResourceId: 'price-9',
+    };
+    h.fetchImpl = async () => Response.json({ ok: true, data: { proposal: applied } });
+    process.argv = ['node', 'together', 'shop', 'proposals', 'show', 'proposal-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith([
+      'proposal proposal-1: price.create [applied]',
+      'target: product product-1',
+      'created: 2026-11-15T10:00:00.000Z',
+      'expires: 2026-12-15T10:00:00.000Z',
+      'applied: price price-9',
+    ].join('\n'));
+  });
+
+  it('refuses an unknown proposal status before any request', async () => {
+    await run('shop', 'proposals', 'list', '--status', 'approved');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('prints the proposal group column and filters the list by group', async () => {
+    h.fetchImpl = async (input, init) => {
+      await proposalFetch(input, init);
+      return Response.json({ ok: true, data: { proposals: [{ ...receipt, groupId: 'group-1' }], nextCursor: null } });
+    };
+    process.argv = ['node', 'together', 'shop', 'proposals', 'list', '--group', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual(['GET /api/m2m/shop/proposals?groupId=group-1']);
+    expect(logSpy).toHaveBeenCalledWith('2026-11-15T10:00:00.000Z\tpending\tstock.adjust\tproduct:product-1\tgroup:group-1\t(proposal-1)');
+  });
+});
+
+const groupReceipt = (items: unknown[]) => ({
+  id: 'group-1', title: 'Spring launch', status: 'open', createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', items,
+});
+
+const groupFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const method = init?.method ?? 'GET';
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+  if (url.pathname.startsWith('/api/m2m/shop/proposals/groups')) {
+    const items = url.pathname === '/api/m2m/shop/proposals/groups' ? [] : [receipt];
+    return Response.json({ ok: true, data: { group: { ...groupReceipt(items), status: url.pathname.endsWith('/withdraw') ? 'withdrawn' : 'open' } } }, { status: method === 'POST' && items.length === 0 ? 201 : 200 });
+  }
+  const proposal = { ...receipt, groupId: 'group-1' };
+  return Response.json({ ok: true, data: { outcome: 'proposed', proposal, group: groupReceipt([proposal]) } }, { status: 202 });
+};
+
+describe('shop key CLI with a proposal group', () => {
+  beforeEach(() => { h.fetchImpl = groupFetch; });
+
+  it('creates, shows and withdraws a group of the key', async () => {
+    await run('shop', 'proposals', 'group', 'create', '--title', 'Spring launch');
+    await run('shop', 'proposals', 'group', 'show', 'group-1');
+    await run('shop', 'proposals', 'group', 'withdraw', 'group-1');
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'POST /api/m2m/shop/proposals/groups',
+      'GET /api/m2m/shop/proposals/groups/group-1',
+      'POST /api/m2m/shop/proposals/groups/group-1/withdraw',
+    ]);
+    expect(calls[0]?.body).toEqual({ title: 'Spring launch' });
+    for (const call of calls) expect(call.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    expect(JSON.parse(String(logSpy.mock.calls[2]?.[0]))).toMatchObject({ ok: true, data: { group: { status: 'withdrawn' } } });
+  });
+
+  it('refuses an empty group title before any request', async () => {
+    await run('shop', 'proposals', 'group', 'create', '--title', '   ');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    [['shop', 'products', 'create', '--title', 'Printed handbook', '--price', '49']],
+    [['shop', 'products', 'update', 'product-1', '--title', 'Renamed']],
+    [['shop', 'products', 'publish', 'product-1']],
+    [['shop', 'products', 'unpublish', 'product-1']],
+    [['shop', 'products', 'delete', 'product-1', '--confirm']],
+    [['shop', 'prices', 'add', '--product', 'product-1', '--kind', 'one_time', '--price-cents', '4900']],
+    [['shop', 'prices', 'deactivate', 'price-1']],
+    [['shop', 'stock', 'enable', 'product-1', '--on-hand', '3']],
+    [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
+    [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
+    [['shop', 'sales-links', 'delete', 'link-1']],
+  ])('sends the group header once for %j with --group', async (args) => {
+    await run(...args, '--group', 'group-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { groupId: 'group-1' }, group: { id: 'group-1' } } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.headers.get('x-proposal-group')).toBe('group-1');
+  });
+
+  it.each([
+    ['settings', ['shop', 'settings', 'set'], { name: 'Proposed shop' }],
+    ['sales-link create', ['shop', 'sales-links', 'create'], { ...salesLinkFields, productIds: ['$proposal:proposal-1'] }],
+    ['sales-link update', ['shop', 'sales-links', 'update', 'link-1'], { ...salesLinkFields, expectedRevision: 1 }],
+  ])('sends the group header for the %s write with --group', async (_label, args, fields) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-group-cli-'));
+    try {
+      const file = join(directory, 'input.json');
+      await writeFile(file, JSON.stringify(fields));
+      await run(...args, '--json-file', file, '--group', 'group-1');
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.headers.get('x-proposal-group')).toBe('group-1');
+      expect(calls[0]?.body).toMatchObject(fields);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it('passes a proposal reference in an id argument through unchanged', async () => {
+    await run('shop', 'prices', 'add', '--product', '$proposal:proposal-1', '--kind', 'one_time', '--price-cents', '4900', '--group', 'group-1');
+    expect(calls[0]?.body).toMatchObject({ productId: '$proposal:proposal-1' });
+    await run('shop', 'products', 'publish', '$proposal:proposal-1', '--group', 'group-1');
+    expect(calls[1]?.body).toEqual({ id: '$proposal:proposal-1' });
+  });
+
+  it('sends no group header without --group', async () => {
+    await run('shop', 'products', 'publish', 'product-1');
+    expect(calls[0]?.headers.has('x-proposal-group')).toBe(false);
+  });
+
+  it('refuses a malformed group id before any request', async () => {
+    await run('shop', 'products', 'publish', 'product-1', '--group', 'not a group');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('prints the group of a grouped proposal without --json, and its reference only when the item creates something', async () => {
+    process.argv = ['node', 'together', 'shop', 'products', 'publish', 'product-1', '--group', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('group: Spring launch (group-1), item 1');
+    expect(printed).not.toContain('$proposal:');
+
+    logSpy.mockClear();
+    const created = { ...receipt, groupId: 'group-1', operation: 'product.create', target: { kind: 'product', id: null } };
+    h.fetchImpl = async (input, init) => {
+      await groupFetch(input, init);
+      return Response.json({ ok: true, data: { outcome: 'proposed', proposal: created, group: groupReceipt([created]) } }, { status: 202 });
+    };
+    process.argv = ['node', 'together', 'shop', 'products', 'create', '--title', 'Printed handbook', '--price', '49', '--group', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('refer to what this item creates as $proposal:proposal-1');
+  });
+
+  it('shows a reference in the group listing only next to the items that create something', async () => {
+    const items = [
+      { ...receipt, id: 'proposal-1', groupId: 'group-1', operation: 'product.create', target: { kind: 'product', id: null } },
+      { ...receipt, id: 'proposal-2', groupId: 'group-1', operation: 'price.create' },
+      { ...receipt, id: 'proposal-3', groupId: 'group-1', operation: 'sales-link.create', target: { kind: 'sales-link', id: null } },
+      { ...receipt, id: 'proposal-4', groupId: 'group-1', operation: 'stock.adjust' },
+      { ...receipt, id: 'proposal-5', groupId: 'group-1', operation: 'product.publish' },
+    ];
+    h.fetchImpl = async () => Response.json({ ok: true, data: { group: groupReceipt(items) } });
+    process.argv = ['node', 'together', 'shop', 'proposals', 'group', 'show', 'group-1'];
+    vi.resetModules();
+    await import('./main.js');
+    const lines = String(logSpy.mock.calls[0]?.[0]).split('\n').filter((line) => line.startsWith('  '));
+    expect(lines.map((line) => line.includes('refer to what it creates as $proposal:'))).toEqual([true, true, true, false, false]);
+    expect(lines[0]).toContain('$proposal:proposal-1');
   });
 });

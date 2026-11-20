@@ -161,7 +161,7 @@ describe('member erasure requests', () => {
         findSole: async () => null,
         hasAny: async () => false,
         findSettings: async () => null,
-        updateSettings: async (_tenantId, settings) => settings,
+        changeSettings: async () => null,
         createTenantWithOwnerGrant: async () => {
           throw new Error('not used');
         },
@@ -235,7 +235,7 @@ describe('member erasure requests', () => {
         findSole: async () => null,
         hasAny: async () => false,
         findSettings: async () => null,
-        updateSettings: async (_tenantId, settings) => settings,
+        changeSettings: async () => null,
         createTenantWithOwnerGrant: async () => {
           throw new Error('not used');
         },

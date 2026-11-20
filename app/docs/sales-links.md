@@ -104,6 +104,27 @@ fields reset. Cancellation and Retry retain variant parameters. The direct
 handoff POST does not accept selections and continues to sell the saved products;
 public listing cards also retain saved-product totals. See [Product variants](shop.md#product-variants).
 
+## Public offer
+
+`GET /api/public/sales-links/<slug>` answers anonymously and without caching
+(`cache-control: no-store`, no ETag), so its counts are current on every read.
+Besides the lines, the total and the workspace context it carries:
+
+- `soldOut`: `true` when any selected product is tracked and has no piece left.
+- `available`: how many whole sets a buyer can take now, the smallest available
+  count over the tracked selected products; `null` when no selected product is
+  tracked. It is `0` exactly when `soldOut` is `true`.
+- `lines[].maxQuantity`: the quantity of that product one checkout accepts, `1`,
+  or `0` when the product is sold out.
+- `lines[].variants[].available`: the available count of each eligible variant,
+  `null` for an untracked one, next to its `soldOut` flag.
+
+A checkout buys exactly one set, so a storefront shows `available` as a "sets
+left" line rather than a quantity picker; buying several sets means several
+checkouts. Counts follow the selected variants when the request carries
+`variant` parameters. See [Public offer](shop.md#public-offer) for the
+catalogue counterpart.
+
 ## Product VAT and physical items
 
 Products support 5%, 8%, 23%, or VAT exemption with a legal basis. New products
@@ -124,11 +145,24 @@ Q is the line quantity (1 for every line without a stored quantity).
 Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
 page: the buyer picks a workspace delivery option, and a parcel locker when the
 option needs one, before Stripe collects the address and phone number. A link
-with a shipped product, or with any product that carries product safety
-information, never hands off to Stripe automatically; it keeps the Together
-page at `?checkout=together`, like a link with purchase consent checkboxes. The
+with a shipped product, with any product that carries product safety
+information, or with any product that offers a personalisation, never hands off
+to Stripe automatically; it keeps the Together page at `?checkout=together`,
+like a link with purchase consent checkboxes, and
+`POST /api/public/sales-links/<slug>/checkout` refuses it. The
 delivery fee is a separate shipping line after the product lines. See
 [Shop](shop.md) for delivery options, the order data and the CLI.
+
+A product of the link may offer a personalisation: an optional request with
+text the buyer types, such as a dedication in a printed book, with an optional
+condition the buyer must accept. Each offer line carries
+`personalization: { label, description, inputLabel, maxLength, condition } | null`
+and the Together page shows the option under the line. The checkout request's
+`personalizations` entry names the chosen product when the line has variant
+choices. The text and the wording the buyer saw are stored on the checkout
+snapshot line and copied onto the order line. See
+[Personalisation](shop.md#personalisation) for validation, the order data,
+staff correction and erasure.
 
 ## Checkout and accounting
 

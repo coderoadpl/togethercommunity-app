@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { createFakeShipxClient, fakeShipxShipmentId, fakeShipxTrackingNumber } from '#adapters/shipx/fake.js';
 import { ok, orderListItemSchema, shipxOrderViewSchema, shipxSettingsViewSchema, type Identity, type OrderListItem, type Tenant } from '#core/domain/index.js';
-import type { OrderFulfilmentRepository, ShipxClient } from '#core/server/index.js';
+import type { OrderFulfilmentRepository } from '#core/server/index.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
 import { createTenantSecretRepositoryFake } from '#core/server/testing/tenant-secret-fake.js';
 import { createShipxSettingsRepositoryFake, createShipxShipmentRepositoryFake, shipmentRecord } from '#core/server/testing/shipx-fakes.js';
@@ -50,7 +50,7 @@ const originGuard = () => requestOriginGuard({
     findBySlug: async (slug) => (slug === workspace.slug ? workspace : null),
     findSole: async () => workspace,
     findSettings: async () => null,
-    updateSettings: async (_id, settings) => settings,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
     hasAny: async () => true,
   },
@@ -58,22 +58,22 @@ const originGuard = () => requestOriginGuard({
   authPort: { getAuthenticatedUser: async (headers) => (headers.get('cookie')?.includes('session=valid') === true ? { sessionId: 'session', userId: 'staff', email: 'staff@example.org', name: 'Staff', emailVerified: true, image: null } : null) },
 });
 
-const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' | 'test'; guarded?: boolean } = {}) => {
+const spiedClient = () => {
+  const client = createFakeShipxClient();
+  const spies = {
+    createShipment: vi.spyOn(client, 'createShipment'),
+    getShipment: vi.spyOn(client, 'getShipment'),
+    fetchLabel: vi.spyOn(client, 'fetchLabel'),
+  };
+  return { client, spies };
+};
+
+const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' | 'test'; guarded?: boolean; deployment?: 'fake' | 'real' } = {}) => {
   const secrets = createTenantSecretRepositoryFake();
   const stored = order(options.mode ?? 'test');
-  const live: ShipxClient = {
-    createShipment: vi.fn(),
-    getShipment: vi.fn(),
-    findShipmentByReference: vi.fn(),
-    buyOffer: vi.fn(),
-    fetchLabel: vi.fn(),
-  };
-  const fake = createFakeShipxClient();
-  const carrier = {
-    createShipment: vi.spyOn(fake, 'createShipment'),
-    getShipment: vi.spyOn(fake, 'getShipment'),
-    fetchLabel: vi.spyOn(fake, 'fetchLabel'),
-  };
+  const real = spiedClient();
+  const fake = spiedClient();
+  const carrier = fake.spies;
   const shipments = createShipxShipmentRepositoryFake();
   const writes = {
     refreshUnclaimed: vi.spyOn(shipments.repository, 'refreshUnclaimed'),
@@ -96,7 +96,7 @@ const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' 
       },
     },
     shipxIntegration: {
-      shipx: { real: live, fake },
+      shipx: { real: options.deployment === 'real' ? real.client : null, fake: fake.client },
       shipxShipments: shipments.repository,
       shipxSettings: createShipxSettingsRepositoryFake().repository,
       wait: async () => undefined,
@@ -111,49 +111,73 @@ const harness = (options: { staffRole?: 'owner' | 'admin' | null; mode?: 'live' 
     baseDomain: 'together.test',
     singleTenantMode: false,
   });
-  const seed = () => shipments.rows.set(shipments.key('workspace', 'order-1'), shipmentRecord({ shipxShipmentId: '1001', status: 'offer_selected', environment: 'production' }));
+  const seed = () => shipments.rows.set(shipments.key('workspace', 'order-1'), shipmentRecord({ shipxShipmentId: '1001', status: 'offer_selected', environment: 'sandbox', organizationId: '5678' }));
   const events = async () => shipments.repository.listEvents('workspace', 'order-1');
-  return { app, live, ship, carrier, writes, seed, events, shipments };
+  return { app, real: real.spies, ship, carrier, writes, seed, events, shipments };
 };
 
 const envelope = <S extends z.ZodTypeAny>(data: S) => z.object({ ok: z.literal(true), data });
 
-const configure = (app: Hono<AppVars>, environment: 'sandbox' | 'production' = 'sandbox') => app.request('/api/integrations/shipx/configure', {
+const SLOT_CREDENTIALS = {
+  sandbox: { organizationId: '5678', token: 'sandbox-token-5678' },
+  production: { organizationId: '1234', token: 'production-token-1234' },
+} as const;
+
+const sender = { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' };
+
+const post = (app: Hono<AppVars>, body: unknown) => app.request('/api/integrations/shipx/configure', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    environment,
-    organizationId: '1234',
-    token: 'sandbox-token-5678',
-    sender: { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' },
-  }),
+  body: JSON.stringify(body),
 });
 
+const configure = (app: Hono<AppVars>, slots: ReadonlyArray<'sandbox' | 'production'> = ['sandbox']) =>
+  post(app, { sender, ...Object.fromEntries(slots.map((slot) => [slot, SLOT_CREDENTIALS[slot]])) });
+
 describe('InPost ShipX HTTP routes', () => {
-  it('configures the integration and never returns the token', async () => {
+  it('configures one slot and never returns the token', async () => {
     const h = harness();
     const saved = await configure(h.app);
     expect(saved.status).toBe(200);
     const text = await saved.text();
     expect(text).not.toContain('sandbox-token-5678');
     expect(envelope(shipxSettingsViewSchema).parse(JSON.parse(text)).data).toMatchObject({
-      environment: 'sandbox', configured: true, token: { maskedPreview: '••••5678' },
+      sandbox: { configured: true, organizationId: { maskedPreview: '••••5678' }, token: { maskedPreview: '••••5678' } },
+      production: { configured: false, organizationId: null, token: null },
     });
     const view = await h.app.request('/api/integrations/shipx');
     expect(await view.text()).not.toContain('sandbox-token-5678');
   });
 
-  it('creates the shipment of a test order with the fake client in production, then serves the label as an attachment', async () => {
+  it.each([
+    ['environment', { environment: 'production', organizationId: '1234', token: 'production-token-1234', sender }],
+    ['credentials', { organizationId: '1234', token: 'production-token-1234' }],
+    ['clear', { clearCredentials: true }],
+  ])('refuses the previous top-level %s shape with validation and stores nothing', async (_shape, body) => {
     const h = harness();
-    await configure(h.app, 'production');
+    const refused = await post(h.app, body);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    const view = await h.app.request('/api/integrations/shipx');
+    expect(envelope(shipxSettingsViewSchema).parse(await view.json()).data).toEqual({
+      sender: null,
+      sandbox: { organizationId: null, token: null, configured: false },
+      production: { organizationId: null, token: null, configured: false },
+    });
+  });
+
+  it('creates the shipment of a test order with the fake client in a deployment without the real client, then serves the label as an attachment', async () => {
+    const h = harness();
+    await configure(h.app);
     const before = await h.app.request('/api/orders/order-1/shipx');
-    expect(envelope(shipxOrderViewSchema).parse(await before.json()).data).toMatchObject({ available: true, service: 'inpost_locker_standard' });
+    expect(envelope(shipxOrderViewSchema).parse(await before.json()).data).toMatchObject({ available: true, environment: 'sandbox', service: 'inpost_locker_standard' });
 
     const created = await h.app.request('/api/orders/order-1/shipx', { method: 'POST' });
     expect(created.status).toBe(200);
     const tracking = fakeShipxTrackingNumber(fakeShipxShipmentId('order-1'));
     expect(h.ship.mock.calls[0]?.[1].shipment).toMatchObject({ carrier: 'inpost', trackingNumber: tracking });
-    expect(h.live.createShipment).not.toHaveBeenCalled();
+    expect(h.carrier.createShipment.mock.calls[0]?.[0]).toEqual({ environment: 'sandbox', ...SLOT_CREDENTIALS.sandbox });
+    expect(h.real.createShipment).not.toHaveBeenCalled();
 
     const label = await h.app.request('/api/orders/order-1/shipx/label', { method: 'POST' });
     expect(label.status).toBe(200);
@@ -166,7 +190,7 @@ describe('InPost ShipX HTTP routes', () => {
   it('passes the parcel template staff chose to ShipX and keeps the product template without one', async () => {
     const createWith = async (init: RequestInit) => {
       const h = harness();
-      await configure(h.app, 'production');
+      await configure(h.app);
       const response = await h.app.request('/api/orders/order-1/shipx', { method: 'POST', ...init });
       const body: unknown = await response.json();
       return { status: response.status, body, templates: h.carrier.createShipment.mock.calls.map((call) => call[1].parcelTemplate) };
@@ -180,15 +204,35 @@ describe('InPost ShipX HTTP routes', () => {
     expect(await createWith({ headers: { 'content-type': 'application/json' }, body: '{' })).toMatchObject({ status: 400, body: { ok: false, error: { code: 'validation' } }, templates: [] });
   });
 
-  it('refuses a paid order while ShipX is set to the sandbox, without calling ShipX', async () => {
-    const h = harness({ mode: 'live' });
-    await configure(h.app);
+  it.each([
+    ['test', 'sandbox'],
+    ['live', 'production'],
+  ] as const)('sends a %s order to the %s slot through the real client in a deployment that has one', async (mode, slot) => {
+    const h = harness({ mode, deployment: 'real' });
+    await configure(h.app, ['sandbox', 'production']);
+    const created = await h.app.request('/api/orders/order-1/shipx', { method: 'POST' });
+    expect(created.status).toBe(200);
+    expect(h.real.createShipment.mock.calls.map((call) => call[0])).toEqual([{ environment: slot, ...SLOT_CREDENTIALS[slot] }]);
+    expect(h.carrier.createShipment).not.toHaveBeenCalled();
+    expect(h.shipments.rows.get(h.shipments.key('workspace', 'order-1'))).toMatchObject({ environment: slot, organizationId: SLOT_CREDENTIALS[slot].organizationId });
+  });
+
+  it.each([
+    ['live', ['sandbox'], 'production'],
+    ['test', ['production'], 'sandbox'],
+  ] as const)('refuses a %s order whose slot is missing with HTTP 412 naming the slot, without calling ShipX', async (mode, slots, missing) => {
+    const h = harness({ mode, deployment: 'real' });
+    await configure(h.app, slots);
     const view = await h.app.request('/api/orders/order-1/shipx');
-    expect(envelope(shipxOrderViewSchema).parse(await view.json()).data).toMatchObject({ available: false, reason: 'sandbox_environment' });
+    expect(envelope(shipxOrderViewSchema).parse(await view.json()).data).toMatchObject({ available: false, reason: 'credentials_missing', environment: missing });
     const refused = await h.app.request('/api/orders/order-1/shipx', { method: 'POST' });
-    expect(refused.status).toBe(400);
-    expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'ShipX is configured for the sandbox; switch to production before shipping paid orders' } });
-    expect(h.live.createShipment).not.toHaveBeenCalled();
+    expect(refused.status).toBe(412);
+    expect(await refused.json()).toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured', details: { state: 'setup_missing', reason: 'credentials_missing', environment: missing } },
+    });
+    expect(h.real.createShipment).not.toHaveBeenCalled();
+    expect(h.carrier.createShipment).not.toHaveBeenCalled();
     expect(h.ship).not.toHaveBeenCalled();
   });
 
@@ -241,7 +285,7 @@ describe('InPost ShipX side effects stay behind POST and the request origin', ()
 
   it('serves the stored view of a shipment waiting for payment on GET without calling ShipX or writing', async () => {
     const h = harness();
-    await configure(h.app, 'production');
+    await configure(h.app);
     h.seed();
     const view = await h.app.request('/api/orders/order-1/shipx');
     expect(view.status).toBe(200);
@@ -251,7 +295,7 @@ describe('InPost ShipX side effects stay behind POST and the request origin', ()
 
   it('lets a cross-site cookie GET through the guard but reaches neither ShipX nor a write, and has no GET label route', async () => {
     const h = harness({ guarded: true });
-    await configure(h.app, 'production');
+    await configure(h.app);
     h.seed();
     expect((await h.app.request(at(''), { headers: crossSite })).status).toBe(200);
     expect((await h.app.request(at('/label'), { headers: crossSite })).status).toBe(404);
@@ -260,7 +304,7 @@ describe('InPost ShipX side effects stay behind POST and the request origin', ()
 
   it.each(['/refresh', '/label'])('rejects a cross-site cookie POST to %s before ShipX or the repository is reached', async (path) => {
     const h = harness({ guarded: true });
-    await configure(h.app, 'production');
+    await configure(h.app);
     h.seed();
     const response = await h.app.request(at(path), { method: 'POST', headers: crossSite });
     expect(response.status).toBe(403);
@@ -270,7 +314,7 @@ describe('InPost ShipX side effects stay behind POST and the request origin', ()
 
   it('refreshes the shipment and serves the label for a cookie POST from the workspace origin', async () => {
     const h = harness({ guarded: true });
-    await configure(h.app, 'production');
+    await configure(h.app);
     h.seed();
     const tracking = fakeShipxTrackingNumber('1001');
     const refreshed = await h.app.request(at('/refresh'), { method: 'POST', headers: sameOrigin });

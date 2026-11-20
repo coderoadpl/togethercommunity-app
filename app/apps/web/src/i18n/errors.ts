@@ -59,6 +59,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'invalid_credentials':
       return t.errors.messageInvalidCredentials;
     case 'forbidden':
+    case 'workspace_quota_exceeded':
+    case 'organization_managed':
       return t.errors.messageForbidden;
     case 'banned':
       return t.errors.messageBanned;
@@ -147,6 +149,8 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'shipx_unavailable':
     case 'shipx_rejected':
     case 'feed_cursor_reset':
+    case 'workspace_quota_exceeded':
+    case 'organization_managed':
     case 'internal':
       return null;
   }
@@ -167,3 +171,8 @@ export const localizePanelError = (error: unknown, t: Messages): string => {
   const code = errorCodeOf(error);
   return code === null ? t.errors.messageUnknown : localizeErrorCodeForPanel(code, t);
 };
+
+export const localizeInvoiceError = (error: unknown, t: Messages): string =>
+  stringDetailOf(error, 'invoiceRefusal') === 'order_cancelled_out_of_stock'
+    ? t.sales.invoiceOrderCancelledOutOfStock
+    : localizePanelError(error, t);

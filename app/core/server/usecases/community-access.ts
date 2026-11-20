@@ -198,17 +198,20 @@ export interface NotificationRecipient {
   memberId: string | null;
 }
 
-/** Staff keep their fan-out; a ban, deletion or lost membership takes it away, mirroring the write gate in `requireUnbannedMember`. */
+/**
+ * Direct staff keep their fan-out; a ban, deletion or lost membership takes it away, mirroring the write gate in
+ * `requireUnbannedMember`. Organization-derived roles do not count, matching `listAccessForUsers`.
+ */
 export const notificationRecipient = async (
   tenantId: string,
   userId: string,
   deps: Pick<SpaceNotificationRecipientDeps, 'tenantAccess'>,
 ): Promise<NotificationRecipient | null> => {
-  const [staffGrant, member] = await Promise.all([
-    deps.tenantAccess.findStaffGrant(userId, { tenantId }),
+  const [directStaff, member] = await Promise.all([
+    deps.tenantAccess.listStaffForTenant(tenantId),
     deps.tenantAccess.findMember(tenantId, userId),
   ]);
-  if (staffGrant !== null) {
+  if (directStaff.some((staff) => staff.userId === userId)) {
     return {
       email: member?.email ?? null,
       language: member?.language ?? null,

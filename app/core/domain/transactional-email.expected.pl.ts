@@ -66,6 +66,41 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>Produkt Printed &lt;poster&gt; został sprzedany po wyczerpaniu zapasu.</p><p>Dostępne: 0<br>Próg niskiego stanu: nie ustawiono</p><p>Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.</p><p><a href="https://acme.example.com/panel/products/product-1">Otwórz produkt</a></p>',
     text: 'Produkt Printed <poster> został sprzedany po wyczerpaniu zapasu.\nDostępne: 0\nPróg niskiego stanu: nie ustawiono\nOpłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.\nhttps://acme.example.com/panel/products/product-1',
   },
+  orderOutOfStockEmail: {
+    subject: '[Acme] Zamówienie anulowane z braku towaru: order-<1>',
+    html: '<p>Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty 40,99\u00a0zł jest w toku.</p><p>Zamówienie: order-&lt;1&gt;<br>Kupujący: buyer@example.com<br>Brak towaru: Printed &lt;poster&gt;, Mug</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty 40,99\u00a0zł jest w toku.\nZamówienie: order-<1>\nKupujący: buyer@example.com\nBrak towaru: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  orderOutOfStockNothingChargedEmail: {
+    subject: '[Acme] Zamówienie anulowane z braku towaru: order-<1>',
+    html: '<p>Zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.</p><p>Zamówienie: order-&lt;1&gt;<br>Kupujący: buyer@example.com<br>Brak towaru: Printed &lt;poster&gt;, Mug</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.\nZamówienie: order-<1>\nKupujący: buyer@example.com\nBrak towaru: Printed <poster>, Mug\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  orderRefundAlertEmail: {
+    subject: '[Acme] Automatyczny zwrot nie powiódł się, zwróć ręcznie: order-<1>',
+    html: '<p>Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  orderRefundBlockedAlertEmail: {
+    subject: '[Acme] Automatyczny zwrot zablokowany przez brak uprawnienia w Stripe: order-<1>',
+    html: '<p>Zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  orderRefundBlockedFailedAlertEmail: {
+    subject: '[Acme] Automatyczny zwrot nadal zablokowany po 72 godzinach, zwróć ręcznie: order-<1>',
+    html: '<p>Zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  orderRefundUnconfirmedAlertEmail: {
+    subject: '[Acme] Stripe nie potwierdził zwrotu, sprawdź go ręcznie: order-<1>',
+    html: '<p>Stripe nie potwierdził zwrotu 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt;, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.</p><p>Ostatni błąd: Refund still pending at the last scheduled status check</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Stripe nie potwierdził zwrotu 40,99\u00a0zł za anulowane zamówienie order-<1>, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.\nOstatni błąd: Refund still pending at the last scheduled status check\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  orderSoldOutRefundEmail: {
+    subject: 'Zamówienie order-<1> anulowane: towar wyprzedany, zwracamy całą kwotę',
+    html: '<p>Cześć!</p><p>Płatność za zamówienie order-&lt;1&gt; na platformie Acme &lt;Shop&gt; wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Wyprzedane: Printed &lt;poster&gt;, Mug</p><p>Automatycznie zleciliśmy zwrot całej kwoty 40,99\u00a0zł na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul><li>Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.</li><li>BLIK: zwrot trwa około 120 minut.</li><li>Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.</li><li>Inne metody płatności: czas zależy od operatora płatności.</li></ul><p>Przepraszamy za kłopot.</p><p><a href="https://acme.example.com/">Przejdź do sklepu</a></p>',
+    text: 'Cześć!\n\nPłatność za zamówienie order-<1> na platformie Acme <Shop> wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nWyprzedane: Printed <poster>, Mug\n\nAutomatycznie zleciliśmy zwrot całej kwoty 40,99\u00a0zł na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n- Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.\n- BLIK: zwrot trwa około 120 minut.\n- Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.\n- Inne metody płatności: czas zależy od operatora płatności.\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: https://acme.example.com/',
+  },
   emailTransportTest: {
     subject: 'Together — wiadomość testowa (resend)',
     html: '<p>Transport resend jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>',
@@ -86,4 +121,11 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>Cześć!</p><p>Alex wysłał(a) Ci wiadomość na platformie Acme Courses:</p><blockquote>Hello!</blockquote><p><a href="https://acme.test/messages/dc1">Otwórz rozmowę</a></p><p style="font-size:12px;color:#64646b"><a href="https://acme.test/messages/dc1">Zarządzaj powiadomieniami</a> (w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników)</p>',
     text: 'Cześć!\n\nAlex wysłał(a) Ci wiadomość na platformie Acme Courses:\n\nHello!\n\nOtwórz rozmowę: https://acme.test/messages/dc1\n\nZarządzaj powiadomieniami (w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników): https://acme.test/messages/dc1',
   },
+};
+
+export const expectedPurchasePersonalizationPl = {
+  conditionHtml: '<p><strong>Personalizacja: Printed &lt;book&gt;</strong><br>For &quot;Alex&quot; &amp; Sam<br>Zaakceptowany warunek: I understand a personalised item is made to my order.</p>',
+  plainHtml: '<p><strong>Personalizacja: Card</strong><br>Hi</p>',
+  conditionText: '\n\nPersonalizacja: Printed <book>\nFor "Alex" & Sam\nZaakceptowany warunek: I understand a personalised item is made to my order.',
+  plainText: '\n\nPersonalizacja: Card\nHi',
 };

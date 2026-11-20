@@ -162,7 +162,12 @@ list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
 `shipping_country` and `fulfilment_status`, followed by `client_reference`
-(the storefront's `clientReference`, empty when the checkout had none).
+(the storefront's `clientReference`, empty when the checkout had none),
+`personalization` (see [Personalisation](#personalisation)) and `cancel_reason`:
+`out_of_stock` for an order cancelled because its goods sold out before the
+payment arrived, empty otherwise. `cancel_reason` is the last column so the
+earlier column positions stay unchanged, and `status` keeps the payment status.
+The JSON export carries the same value as `cancelReason`.
 
 ## Fulfilment
 
@@ -224,8 +229,9 @@ orders page; with the **All** payment-mode filter it sends `live` and shows
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
 (`name × <units>; name × <units>`, product lines only), an empty `notes` column
-and `quantity`, the total units of the product lines. `quantity` is the last
-column so the earlier column positions stay unchanged. Every
+`quantity`, the total units of the product lines, and `personalization`
+(see [Personalisation](#personalisation)). New columns are added at the end so
+the earlier column positions stay unchanged. Every
 cell is quoted and cells starting with `=`, `+`, `-`, `@`, a tab or a carriage
 return are prefixed with an apostrophe so spreadsheets do not run them as
 formulas; a phone number such as `+48…` therefore appears as `'+48…`.
@@ -262,31 +268,62 @@ works as before.
    at `https://sandbox-manager.paczkomaty.pl`; sandbox credentials do not work in
    production and the other way round. Locker shipments need funds on the
    account; the sandbox account is topped up virtually under **Payments**.
-2. In **Studio → Settings → Shipping → InPost ShipX** the owner chooses the
-   environment (`sandbox` by default, or `production`), enters the organization
-   id and the token and fills in the sender block: name, optional company,
-   e-mail, phone (a Polish 9-digit number, `+48` accepted), street, building
-   number, city and post code (`00-000`). The sender country is always `PL`.
-3. The card says **Ready** once the organization id, the token and the sender
-   are saved.
+2. In **Studio → Settings → Shipping → InPost ShipX** the owner fills in two
+   connections, each with its own organization id and token: **Production**
+   serves paid orders, **Sandbox** serves test-mode orders, the way Stripe keeps
+   a live and a test key. Each connection shows **Connected** once its
+   organization id and token are saved, and has its own **Remove credentials**
+   action. A workspace may connect one of them, both or none.
+3. The sender block below the connections is shared by both and optional:
+   name, optional company, e-mail, phone (a Polish 9-digit number, `+48`
+   accepted), street, building number, city and post code (`00-000`). The
+   sender country is always `PL`.
 
-The environment selects the API base URL: `https://api-shipx-pl.easypack24.net/v1`
+Each connection selects its API base URL: `https://api-shipx-pl.easypack24.net/v1`
 for production and `https://sandbox-api-shipx-pl.easypack24.net/v1` for the
 sandbox (both from the authorization page of the ShipX API documentation).
 Only the ShipX HTTP adapter (`adapters/shipx/http.ts`) knows these
 URLs.
 
-The organization id and the token are stored like the Stripe keys: encrypted
-tenant secrets (`shipx.organizationId`, `shipx.token`) that are write-only in
+The organization ids and the tokens are stored like the Stripe keys: encrypted
+tenant secrets (`shipx.production.organizationId`, `shipx.production.token`,
+`shipx.sandbox.organizationId`, `shipx.sandbox.token`) that are write-only in
 Studio and the CLI, which only show a masked preview. They never appear in the
 public payment configuration or in tenant settings, and the server decrypts
-them only for the ShipX call. The environment and the sender block are stored
-on the workspace (`tenants.shipx_environment`, `tenants.shipx_sender`) and are
-read through `GET /api/integrations/shipx`, never through the tenant settings
-that members can read. Reading needs `tenant:secret:read` (owners and admins);
-saving with `POST /api/integrations/shipx/configure` needs `tenant:secret:write`
-(owners). `clearCredentials: true` removes the organization id and the token
-and keeps the sender.
+them only for the ShipX call. The sender block is stored on the workspace
+(`tenants.shipx_sender`). Both are read through `GET /api/integrations/shipx`,
+never through the tenant settings that members can read: the answer carries the
+sender and, per connection, the masked organization id, the masked token and
+`configured` (both stored). Reading needs `tenant:secret:read` (owners and
+admins); saving with `POST /api/integrations/shipx/configure` needs
+`tenant:secret:write` (owners). The body is strict:
+
+```json
+{
+  "sender": { "name": "Anna Sender", "email": "shop@example.com", "phone": "500600700", "street": "Example Street", "buildingNumber": "7", "city": "Warsaw", "postCode": "00-001" },
+  "production": { "organizationId": "1234", "token": "<ShipX token>" },
+  "sandbox": { "clearCredentials": true }
+}
+```
+
+Every part is optional and a part left out changes nothing: `sender: null`
+removes the sender, `production` and `sandbox` each take `organizationId`,
+`token` or `clearCredentials: true` (not together with new credentials).
+Saving or clearing one connection never reads, writes or deletes the other
+connection's secrets. The single-connection fields of the earlier body
+(`environment`, top-level `organizationId`, `token` and `clearCredentials`) are
+refused with `validation`.
+
+The sender is optional because InPost does not require it: the ShipX
+documentation of the `sender` attribute on shipment creation says that when no
+sender data are given, the data of the organization the shipment is created in
+are used
+([ShipX documentation: creating a shipment](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/11731061)).
+Without a saved sender the request leaves `sender` out entirely. A saved sender
+is sent as it is, and since InPost validates a sender object with its e-mail
+and a 9-digit phone
+([ShipX documentation: sender form](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/11731043)),
+Studio, the CLI and the API refuse a sender without them.
 
 ### Parcel size
 
@@ -308,32 +345,95 @@ current size.
 
 ### Which ShipX client answers
 
-The workspace's ShipX environment decides which client serves an order, so the
-whole flow can be tried against the sandbox with test orders before any paid
-order reaches InPost:
+The order's payment mode picks the connection, so the whole flow can be tried
+against the sandbox with test orders while paid orders ship through
+production:
 
-| Deployment | Environment | Test-mode order | Live (paid) order |
-|---|---|---|---|
-| `PAYMENT_PROVIDER=stripe` | `sandbox` | the real client against the ShipX sandbox | refused with `validation`: "ShipX is configured for the sandbox; switch to production before shipping paid orders" |
-| `PAYMENT_PROVIDER=stripe` | `production` | the deterministic fake client | the real client against ShipX production |
-| `PAYMENT_PROVIDER=fake` | either | the fake client | the fake client |
+| Deployment | Order mode | Connection | Client | Connection not saved |
+|---|---|---|---|---|
+| `PAYMENT_PROVIDER=stripe` | test | `sandbox` | the real client against the ShipX sandbox | `credentials_missing` for `sandbox` |
+| `PAYMENT_PROVIDER=stripe` | live | `production` | the real client against ShipX production | `credentials_missing` for `production` |
+| `PAYMENT_PROVIDER=fake` | test | `sandbox` | the deterministic fake client | `credentials_missing` for `sandbox` |
+| `PAYMENT_PROVIDER=fake` | live | `production` | the deterministic fake client | `credentials_missing` for `production` |
 
-The rule is `shipxClientKind` in `core/domain/shipx.ts`; `composition.ts` passes
-no real client in deployments with `PAYMENT_PROVIDER=fake` (local development,
-the smoke gate and the end-to-end scripts), so they never contact InPost. The
-order page hides **Create InPost shipment** for a live order while the
-environment is the sandbox and says why (`reason: 'sandbox_environment'`).
+The rule is `shipxEnvironmentForMode` in `core/domain/shipx.ts` (live →
+`production`, test → `sandbox`), and every ShipX use case (view, create,
+refresh, discard, label) resolves the organization id and the token of that
+connection only. A test-mode order never reaches production credentials or the
+production URL, and a paid order never reaches the sandbox ones. A missing
+connection affects only the orders of its mode: the order view answers
+`available: false` with `reason: 'credentials_missing'` and
+`environment` naming the connection, and create answers
+`integration_not_configured` with `details.state: 'setup_missing'` and the same
+`environment`. The order page then says which connection to save, for a
+test-mode order: connect the sandbox in **Settings → Shipping**.
 
-The fake client (`adapters/shipx/fake.ts`) answers with an id and a 24-digit
-tracking number derived from the order id and a one-page PDF, charges nothing
-and, like every test-mode shipment, sends no e-mail.
+`composition.ts` passes no real client in deployments with
+`PAYMENT_PROVIDER=fake` (local development, the smoke gate and the end-to-end
+scripts), so they never contact InPost; they still need the connection of the
+order's mode to be saved, with any placeholder values. The fake client
+(`adapters/shipx/fake.ts`) answers with an id and a 24-digit tracking number
+derived from the order id and a one-page PDF, charges nothing and, like every
+test-mode shipment, sends no e-mail. A deployment with a real client never uses
+the fake client.
 
 Every `order_shipments` row stores the environment and the organization id it
-was created with. Reads, purchases and label downloads for that shipment use
-the stored environment and organization with the current token. When the
-current settings name another environment or organization, the request answers
-`conflict` and calls nothing: switch the settings back, or finish the shipment
-in Manager Paczek. Opening the order then shows the stored status.
+was created with. Reads, purchases and label downloads for a stored shipment use
+the connection of the order's mode. When the row's environment is not that
+connection (for example a test-mode shipment that the fake client created
+before the two connections existed, while the workspace was set to
+production), the request answers `conflict` with
+`details.state: 'environment_mismatch'` and calls nothing; when the row's
+organization id differs from the connection's current one, it answers
+`conflict` with `details.state: 'organization_mismatch'`. Restore the
+organization id of that connection, or finish the shipment in Manager Paczek.
+Opening the order still shows the stored status.
+
+### Upgrade from the single connection
+
+Before the two connections, a workspace had one organization id and token
+(`shipx.organizationId`, `shipx.token`) and a switch
+(`tenants.shipx_environment`) that named their environment. There is no data
+migration: the stored single connection keeps serving the connection that the
+stored switch names until that connection is saved or cleared. Each of the two
+values is read from the connection's own row and, only when that row does not
+exist and the stored switch names the same connection, from the legacy row.
+This applies to resolving the credentials of an order, to the readiness of the
+order view and to the masked previews and the `configured` flag of the settings, so
+Studio shows the stored values under that connection and the other connection as
+not connected. A connection row that exists but cannot be decrypted never falls
+back to the legacy row. A test-mode order of a workspace whose switch names
+production never reads a legacy row, and the reverse.
+
+Saving a value writes only the connection's own row, which then wins over the
+legacy row for that value; the other value keeps coming from the legacy row
+until it is saved too. Removing the credentials of the connection that the
+stored switch names also deletes the legacy rows, so nothing resolves
+afterwards. The previous release keeps reading its own rows, the switch and the
+sender (which it still requires). Removing the legacy rows, their key names and
+the column is a later change.
+
+Rollback: the previous release cannot list a workspace's secrets while rows
+named `shipx.sandbox.*` or `shipx.production.*` exist, because it parses every
+secret key against a fixed list; such rows exist only after an owner saved a
+connection under this release. Before rolling back, check what is stored, by key
+name and count only, never values:
+
+```sql
+SELECT key, count(*) FROM tenant_secrets WHERE key LIKE 'shipx.%' GROUP BY key;
+```
+
+and remove the connection rows:
+
+```sql
+DELETE FROM tenant_secrets WHERE key LIKE 'shipx.sandbox.%' OR key LIKE 'shipx.production.%';
+```
+
+The legacy rows then serve the previous release with the values stored before
+this release. Values saved since then and a connection removed since then (the
+one the switch named, whose legacy rows were deleted with it) are not restored,
+and a sender removed since then stops the previous release with
+`sender_missing`.
 
 ### Creating the shipment
 
@@ -532,13 +632,12 @@ paid yet.
 
 | Situation | Result |
 |---|---|
-| credentials or sender missing | `integration_not_configured` (HTTP 412, CLI exit 8) |
-| live order while the environment is the sandbox | `validation` (HTTP 400, CLI exit 2) |
+| the connection of the order's mode is not saved | `integration_not_configured` (HTTP 412, CLI exit 8) naming the connection |
 | order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
 | delivery option not InPost, phone not a Polish number, building number missing | `validation` |
 | another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
 | the order was marked as shipped by hand while the shipment was bought | `fulfilment_conflict` with the tracking number |
-| the stored shipment belongs to another environment or organization | `conflict` (HTTP 409, CLI exit 6) |
+| the stored shipment belongs to another connection than the order's mode uses, or to another organization | `conflict` (HTTP 409, CLI exit 6) |
 | an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
 | ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |
 | ShipX does not answer within 5 seconds (body included), answers 5xx, or the shipment is not bought before the 20-second deadline | `shipx_unavailable` (HTTP 503, CLI exit 28) |
@@ -555,7 +654,7 @@ reason under the button; the order stays to pack.
 
 These details are taken from the ShipX documentation and are not yet confirmed
 against the sandbox. The owner checks them on the first run with the sandbox
-account, with a test-mode order and the environment set to `sandbox`:
+connection and a test-mode order:
 
 - the label request with `format: "Pdf"` and numeric `shipment_ids` returns a
   PDF (`application/pdf`);
@@ -626,15 +725,15 @@ products of one workspace; `variantLabel` (1–60 characters, for example
 editor of physical products; the API, the CLI and the import API accept them on
 every product.
 
-The public offer returns `variants: [{ productId, slug, label, soldOut }]` for a
+The public offer returns `variants: [{ productId, slug, label, soldOut, available }]` for a
 product whose group has at least two published products, including the product
 itself, in creation order; otherwise the list is empty. A variant without a
 label uses its title. The checkout page renders the variants as chips above the
 price: the current product is selected, the others link to their own checkout
 page (campaign parameters are kept), and a sold-out variant is disabled with
-"Sold out". The sold-out flag is the public stock flag of the sibling: a
-tracked variant without an available piece is sold out, an untracked one never
-is. The offer reads the stock of the offered products and of every published
+"Sold out". The sold-out flag and the `available` count are the public stock
+of the sibling: a tracked variant without an available piece is sold out, an
+untracked one never is and has `available: null`. The offer reads the stock of the offered products and of every published
 sibling in their groups in one query.
 
 A sibling sold only through sales links (sales channel `sales_links_only`) is
@@ -658,6 +757,154 @@ checkout, even when its saved base product is sold out. Choices survive Stripe
 cancellation and Retry. Chip navigation reloads the form; typed details and
 consent ticks are not preserved. See [Sales links](sales-links.md) for request
 validation and checkout behaviour.
+
+## Personalisation
+
+A product may offer one optional request the buyer can add at checkout, with
+text the buyer types, such as a dedication in a printed book or an engraving.
+The seller decides whether asking for it carries a condition the buyer must
+accept before paying. There is no surcharge, no stock effect and one request
+per order line, not one per unit.
+
+### Setting
+
+`products.personalization` (migration 0160, nullable `jsonb`) holds
+`{ label, description, inputLabel, maxLength, condition }` or `null`
+(`productPersonalizationSchema` in `core/domain/personalization.ts`):
+
+| Field | Rule |
+|---|---|
+| `label` | 1–80 characters, trimmed; the text next to the buyer's checkbox, for example "Add an engraving" |
+| `description` | 0–1000 characters of plain text, default empty |
+| `inputLabel` | 1–80 characters, trimmed; the label of the text field, for example "Engraving text" |
+| `maxLength` | whole number 1–500, default 200; the longest text the buyer may type |
+| `condition` | 1–1000 characters, trimmed, or `null` (default); when set, the buyer must tick it, for example "I understand a personalised item is made to my order." |
+
+Unknown fields are refused. The seller's texts are stored as entered, in one
+language, as plain text: never Markdown or HTML. A membership cannot offer a
+personalisation (`validation` on every editing surface). `POST /api/products`
+and `POST /api/products/update`, the keyed `/api/m2m/shop/products` routes,
+the [import API](import-api.md#product) and the
+[shop manifest](shop-manifest.md) accept `personalization`; an update without
+the field keeps the stored value and `null` removes it. Studio shows the
+section **Personalisation** in the product editor (not for memberships) and
+sends the field only after the seller has edited the section.
+
+The setting is checkout configuration, not product content: like stock it is
+not part of the product snapshot (`core/domain/snapshots/product`), so
+restoring a product version never changes or removes it.
+
+The public offer and the sales-link offer expose it per product (per line) as
+`personalization: { label, description, inputLabel, maxLength, condition } | null`.
+
+### The Together checkout page is required
+
+`requiresWorkspaceCheckout` (`core/domain/shipping.ts`) is true for a product
+with a personalisation, as it is for shipped products, products with safety
+information and products with purchase consents. A sales link with such a
+product keeps `/offer/<slug>?checkout=together` instead of the automatic Stripe
+handoff, and `POST /api/public/sales-links/<slug>/checkout` refuses it with
+`validation` ("This sales link requires the workspace checkout page"). On the
+Together page each line that offers a personalisation shows one checkbox with
+the seller's label and description; ticking it reveals the text field with the
+seller's input label, a character counter and, when a condition is set, a
+second checkbox with the condition text.
+
+### Checkout request
+
+`POST /api/public/checkout/session` takes optional
+`personalizations: [{ productId, text, conditionAccepted }]`, at most 20
+entries, each strict. One entry means the buyer ticked the option for that
+product; for a sales link with variant choices `productId` is the chosen
+product. The single-product, sales-link and simulated checkouts validate it
+with the current product setting before any checkout snapshot, consent capture,
+coupon session, stock reservation or Stripe session is written:
+
+| Request | Result |
+|---|---|
+| no `personalizations`, or an empty array | the checkout of today, unchanged |
+| entry for a product outside the selection | `validation` |
+| two entries for the same product | `validation` |
+| entry for a product without a current setting | `validation` |
+| trimmed text empty or longer than the current `maxLength` | `validation` |
+| condition set and `conditionAccepted` not `true` | `validation` |
+| `personalizations` on a cart request (`lines`) | `validation` |
+| `personalizations` with a recurring (subscription) price | `validation`; the checkout page does not offer the option while a recurring price is selected |
+
+The cart is out of scope: a cart with a personalisable product checks out as
+before, without the option. The text never goes to Stripe (neither line items
+nor metadata), application logs, telemetry attributes or analytics events.
+
+### Proof on the snapshot and the order
+
+The checkout snapshot line (`checkout_snapshots.lines`, `OrderLine`) receives
+`personalization`:
+
+| Field | Value |
+|---|---|
+| `text` | the trimmed buyer text |
+| `label`, `description`, `inputLabel`, `condition`, `maxLength` | the wording of the product setting at that moment |
+| `requestedAt` | server time of the request |
+| `conditionAcceptedAt` | server time when a condition existed and was accepted, otherwise `null` |
+| `originalText`, `editedAt`, `editedBy` | set only after a staff correction |
+
+A later edit of the product setting does not change a captured line. The
+consent capture row of the same request already holds the buyer's IP address
+and user agent; the personalisation adds no consent definition. Every path that
+creates an order from a checkout copies the snapshot line onto the order line:
+the Stripe webhook, free and coupon-claimed orders, staff test-mode purchases
+and the simulated purchase.
+
+### Orders
+
+Order list and detail answers, the keyed shop order routes and the
+[order change feed](shop-integration.md#follow-order-changes) return
+`lines[].personalization`. The orders list in Studio marks such orders with a
+**Personalised** chip (derived from the lines; the list adds no separate
+field), and the order detail shows a **Personalisation** block under the line
+with the seller label, the text, the accepted condition and its time
+(Europe/Warsaw) and, after a correction, the original text, the correction time
+and the staff user id.
+
+The packing list ends with a `personalization` column, the CSV export carries it just before `cancel_reason`, and
+the JSON export adds a `personalization` field: one `<line name>: <text>` per
+personalised line, joined with `; `, empty otherwise. CSV cells go through the
+same formula guard as every other cell.
+
+### Staff correction
+
+`POST /api/orders/<orderId>/personalization` with `{ productId, text }` needs
+`order:write`, the capability of marking an order as shipped. The text is
+trimmed and must have 1 to the stored `maxLength` characters. In one
+transaction the order row is locked, `originalText` is set on the first
+correction only and never overwritten, and `text`, `editedAt` and `editedBy`
+(the staff user id) are set. A line without a personalisation is `validation`,
+an unknown order `not_found`. The update of the order row produces an order
+change feed entry through the existing trigger. The condition and its
+acceptance cannot be edited.
+
+### Purchase confirmation
+
+The purchase block of the `welcome-sign-in` e-mail shows, after the items, one
+paragraph per personalised line with the heading "Personalisation: <line
+name>", the text and, when a condition existed, "Condition you accepted:
+<condition>"; the Polish labels are the `purchase.personalization` and
+`purchase.personalizationCondition` keys of the Polish e-mail dictionary. All values are
+escaped like the other e-mail values.
+
+### Erasure
+
+[Member erasure](member-erasure.md) replaces `text` and `originalText` with the
+deleted-member label on the member's order lines, on the checkout snapshots
+bound to those orders' checkout sessions, and in the purchase confirmation
+payloads of queued and sent e-mails to the member, like the delivery name. An
+abandoned checkout snapshot is bound to no member and keeps its text.
+
+### Wording
+
+Platform wording around the option gives instructions and data labels only. It
+never states a legal rule, such as a return or withdrawal right: such wording
+belongs in the seller's `condition`.
 
 ## Content security policy for the parcel locker map
 
@@ -729,9 +976,13 @@ pnpm --silent run cli --tenant acme orders packing-list --format csv --out packi
 pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
-pnpm --silent run cli --tenant acme tenant shipx-set --environment sandbox \
-  --organization-id 1234 --token '<ShipX token>' \
+pnpm --silent run cli --tenant acme tenant shipx-set --slot sandbox \
+  --organization-id 1234 --token-env SHIPX_SANDBOX_TOKEN
+pnpm --silent run cli --tenant acme tenant shipx-set --slot production \
+  --organization-id 5678 --token-stdin < shipx-production-token.txt
+pnpm --silent run cli --tenant acme tenant shipx-set \
   --sender '{"name":"Anna Sender","email":"shop@example.com","phone":"500600700","street":"Example Street","buildingNumber":"7","city":"Warsaw","postCode":"00-001"}'
+pnpm --silent run cli --tenant acme tenant shipx-set --slot sandbox --clear-credentials
 pnpm --silent run cli --tenant acme tenant shipx
 pnpm --silent run cli --tenant acme product update <id> --parcel-template large
 pnpm --silent run cli --tenant acme --json order shipx show <orderId>
@@ -742,6 +993,11 @@ pnpm --silent run cli --tenant acme order shipx discard <orderId>
 pnpm --silent run cli --tenant acme product update <id> \
   --compliance '{"manufacturerName":"Example Workshop","manufacturerAddress":"Example Street 1, 00-001 Warsaw","manufacturerEmail":"safety@example.com","modelIdentifier":"STAND-1"}' \
   --variant-group printed-stand --variant-label 'Black · ASA'
+pnpm --silent run cli --tenant acme product update <id> --personalization-file engraving.json
+pnpm --silent run cli --tenant acme product update <id> --no-personalization
+pnpm --silent run cli --tenant acme checkout session --sales-link <link-id> --product <id> \
+  --personalization '<id>:For Ann' --accept-condition
+pnpm --silent run cli --tenant acme orders personalization <orderId> <productId> --text 'For Anna'
 ```
 
 `--shipping-rates` replaces the whole list; an empty string for
@@ -757,10 +1013,24 @@ as `2 × Title; Title`; other orders keep the product title. `--compliance null`
 `--clear-variant` removes the variant group and label. `product create|update
 --sales-channel sales_links_only` limits a product to sales links (see
 [Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));
-`--sales-channel any` lifts the limit. `order` is an alias of
-`orders`. `tenant shipx-set --clear-credentials` removes the ShipX organization
-id and token; `--sender null` removes the sender. Passing the token as a flag
-puts it in the shell history: prefer entering it in Studio.
+`--sales-channel any` lifts the limit. `product create|update
+--personalization-file <path>` sets the [personalisation](#personalisation)
+from a JSON file (`{ "label", "description", "inputLabel", "maxLength",
+"condition" }`, validated before the request) and `--no-personalization`
+removes it; the two flags exclude each other. `checkout session` and
+`simulate-purchase` take a repeatable `--personalization <product-id>:<text>`
+(the text is everything after the first colon) and `--accept-condition`, which
+accepts the condition of every entry; `checkout session --line` refuses
+`--personalization`. `orders personalization <orderId> <productId> --text
+<text>` corrects the text of an order line. `order` is an alias of
+`orders`. `tenant shipx-set --slot <sandbox|production>` names the connection
+that `--organization-id`, `--token-env`, `--token-stdin` and
+`--clear-credentials` change, and is required with them; the other connection
+stays as it is. The token is read from the named environment variable or from
+stdin, never from a flag, so it does not reach the shell history.
+`--sender` needs no slot, and `--sender null` removes the sender so InPost uses
+the organization data. `tenant shipx` prints both connections with masked
+credentials and the sender.
 
 ## Stock
 
@@ -773,7 +1043,9 @@ API accepts tracking for any product type; Studio shows the section only for
 physical products. Tracking cannot be switched off once enabled; the count is
 corrected with an adjustment. Counts are capped at 1,000,000 pieces. An
 adjustment may lower `on_hand` below the pieces reserved by open checkouts (for
-example damaged goods); a later commit then records `oversold` and alerts.
+example damaged goods); a later commit of a live hold then records `oversold`
+and alerts, while a late payment that no longer fits cancels the order (see
+Payment and expiry).
 
 ### Model
 
@@ -855,9 +1127,269 @@ transaction that records the order:
   recorded as a `committed` reservation of that quantity;
 - an order without a checkout snapshot is committed late once: a retry finds
   the earlier commit event of that order and changes nothing;
-- when `on_hand` would go below zero it is clamped at zero, an `oversold` event
-  is appended, a warning is logged and the low-stock e-mail carries the
-  oversold flag.
+- when `on_hand` would go below zero for a line held by the snapshot's own
+  `active` reservation it is clamped at zero, an `oversold` event is appended,
+  a warning is logged and the low-stock e-mail carries the oversold flag.
+
+Before any of this, still inside the payment transaction and before the buyer
+is enrolled, `StockRepository.lockForCommit` locks the snapshot's reservations
+and the stock rows in product-id order and checks every tracked line that is
+not covered by the snapshot's own `active` or `committed` reservation (a
+`released` reservation, a line without one, an order without a snapshot)
+against `on_hand - reserved`. The locks stay held until the payment transaction
+ends, so two payments for the last piece are serialized. When any line is
+short the whole order is cancelled and nothing is decremented:
+
+- the order is recorded as `paid` with `cancel_reason = 'out_of_stock'`
+  (the money arrived) and without a fulfilment status, so it never reaches the
+  packing list or a ShipX shipment;
+- every reservation of the snapshot that is still `active` (a line that fitted
+  while another did not) is released with reason `out_of_stock`, so the public
+  available count shows those pieces again at once instead of after the hold
+  expires;
+- the buyer becomes a member because the order needs one, but no product is
+  granted, no purchase or welcome e-mail is queued, no automatic invoice job is
+  queued and the order is never eligible for Meta conversions;
+- one `order_refund_jobs` row is inserted in the same transaction (`pending`,
+  the full paid amount, base idempotency key `oos-refund-<orderId>`, unique per
+  order); an order paid with zero gets no job;
+- staff get the `order-out-of-stock` e-mail (support address, or every staff
+  member in their language) with the short products, the amount being refunded
+  (or that nothing was charged, for an order paid with zero) and a Studio link
+  to the order;
+- the buyer gets the `order-sold-out-refund` e-mail (see Buyer communication
+  below), queued in the same transaction.
+
+A later event for a checkout session whose order is already cancelled changes
+nothing. Recurring prices keep the commit above.
+
+#### Automatic refund of a cancelled order
+
+`dispatchOrderRefundJobs` runs on the existing minute tick (the
+`/api/internal/dispatch-email` cron route and the Node ticker) after e-mail
+dispatch has finished and before the Meta CAPI dispatch, so a slow or failing
+refund run never holds e-mail back, and is also started right after a webhook
+queues a refund job; a failing kick or tick is logged and never fails the
+webhook response, the e-mail dispatch or the Meta CAPI dispatch. It handles at
+most 25 due jobs per run (one on the cron tick, see below) and claims a job only
+when the worst case of that job still ends before the run's deadline; jobs it
+did not claim stay due for the next tick. When a run stops with due jobs left,
+whether the job cap or the deadline stopped it, it logs one warning naming the
+reason and their number (`[order-refund] run stopped by <cap|deadline>, <n> due
+refund jobs left for the next run`); a run that leaves no due job logs nothing. The minute tick sets the deadline 45 seconds after the tick request
+started, so the notification fan-out, the stock sweep and the e-mail dispatch
+that run first use part of it; a run started any other way (the kick after a
+webhook, the Node ticker) gets 30 seconds from its own start.
+
+The worst case of a job: a job makes at most two Stripe calls (the refund list
+and the create call, or one refund list for a status read). Every refund call has a 5-second
+timeout and no network retry (the SDK's per-request `timeout` and
+`maxNetworkRetries: 0`). stripe-node still repeats a request once when its
+connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
+call takes at most 2 × 5 s + 0.5 s = 10.5 s and a job at most 2 × 10.5 s =
+21 s. The Meta CAPI dispatch that follows on the cron tick has its own
+20-second budget (it starts a Meta request only while its 5-second timeout fits
+in it). Two refund jobs (2 × 21 s = 42 s) plus that budget would already
+outlast the 60-second function limit, and a refund backlog that kept every tick
+busy until the 45-second deadline would leave Meta CAPI no time on any tick, so
+the cron tick claims at most one refund job: with the fan-out, the stock sweep
+and the e-mail dispatch taking t seconds, the refunds end by t + 21 s and Meta
+CAPI by t + 41 s, inside the 60 seconds while t stays under 19 seconds. A job
+is still claimed only when its worst case ends by the 45-second deadline (at
+most 24 seconds after the tick started); when the work before the refunds
+takes longer, the tick claims no refund job. Further due jobs wait for the next
+minute or are taken by the kick after a webhook (up to 25 jobs in 30 seconds).
+The Node ticker has no function limit and keeps the 25-job cap. Network retries
+stay at 0 because any further SDK retry may wait for a `Retry-After` of up to
+60 seconds. On Node the SDK's timeout restarts at each
+stage of a request (connecting, sending, waiting for the answer), so a call
+that is slow at every stage can outlast its 5 seconds; the arithmetic counts
+one timeout per request. A refund request that gets no answer has an unknown
+outcome and is retried with the same key. Each job is claimed with `FOR UPDATE SKIP LOCKED`
+and a conditional update (`pending` becomes `running` with a 10-minute lease and
+one more attempt), so two runs never work on the same job; a `running` job
+whose lease expired goes back to `pending` and is retried with the same key.
+
+For each claimed job the dispatcher reads the order of that workspace again:
+
+- it lists the payment intent's refunds (`GET /v1/refunds`, covered by the
+  Charges and Refunds permission). A listed refund whose metadata names this
+  order (`orderId`) and the job's reason (`reason`) was issued by the job
+  itself, for example by a call whose answer never arrived; every other listed
+  refund was made outside the job, such as by hand in the Stripe Dashboard;
+- it adds up every listed refund that is not `failed` or `canceled`. The
+  refund list decides, not the order status. When that sum covers the job's
+  amount, no refund call is made: the job ends as `skipped_refunded` only when
+  refunds with the status `succeeded` cover the whole amount and none of them
+  is the job's own; when the job's own refund is among them it takes that
+  refund over (stores its Stripe id and status) and becomes `succeeded`, or
+  `submitted` while any refund it relies on is still `pending` or
+  `requires_action`. A job that relies on such a refund made outside the job
+  becomes `submitted` without a Stripe refund id of its own and is watched by
+  the status reads below like its own refund. A job's own refund that is
+  `failed` or `canceled` ends the job as `failed` with a staff alert;
+- when the sum falls short, it refunds the remainder through `POST /v1/refunds`
+  with the payment intent, the workspace's restricted key in the order's mode
+  and the job's current idempotency key, stores the Stripe refund id and status
+  and marks the job `succeeded` (or `submitted` while Stripe reports that
+  refund, or a refund made outside the job that the job relies on, as pending).
+  When staff refunded part of the payment by hand, or a hand refund failed
+  later, only the remainder is refunded. When the job's own refund is already
+  listed but no longer covers the remainder (a hand refund failed after it was
+  made), the remainder is refunded under the next key generation. A list call
+  that fails is settled like a failed refund call (retried, blocked, or
+  `failed` with a staff alert), also for an order already `refunded`. The
+  existing `charge.refunded` handler marks the order `refunded`;
+- a temporary Stripe failure or a short available balance is retried 1 min,
+  5 min, 30 min, 2 h and 6 h later, then every 12 h until seven days after the
+  job was queued; the job then ends as `failed`. The delay follows the number
+  of consecutive temporary failures (`transient_failure_streak`), not the
+  number of attempts: any other outcome, such as a missing permission, resets
+  it, so the first temporary failure after hourly permission refusals is
+  retried a minute later;
+- a charge Stripe reports as already refunded (`charge_already_refunded`) is
+  watched like a job that relies on a refund made outside the job: it becomes
+  `submitted` and the status reads decide from the refund list; a missing
+  payment intent, a refund Stripe rejects for good or an order that is
+  not cancelled ends as `failed` at once;
+- a key without the Charges and Refunds (write) permission moves the job to
+  `blocked_permission` and retries it every hour for 72 hours from the first
+  refusal; adding the permission in the Stripe Dashboard lets the next hourly
+  attempt pay the refund. After 72 hours the job ends as `failed`, except when
+  the order is already `refunded` (a `charge.refunded` reported a full refund
+  made outside the platform) and the key either may not list the payment's
+  refunds or the list shows no failed or canceled refund that would explain
+  the shortfall: the job then ends as `unconfirmed` with the `unconfirmed`
+  alert, because the platform cannot tell whether that refund succeeded and
+  staff check it in the Stripe Dashboard. When the list shows that the hand
+  refund failed, the job ends as `failed` as usual. The time of the first refusal
+  (`permission_blocked_at`) is kept until a refund is issued, so a refusal
+  after a temporary failure neither restarts the 72 hours nor sends a second
+  alert.
+
+Idempotency keys: the job keeps a key generation, starting at 0. Generation 0
+sends `oos-refund-<orderId>`, generation n sends `oos-refund-<orderId>-<n>`.
+Stripe saves the first response under a key once the endpoint starts executing,
+errors included, and keeps keys for at least 24 hours, so resending a key after
+an error answer only replays that error. The dispatcher therefore keeps the
+same key only when the outcome of the last call is unknown: no HTTP answer
+(timeout, connection error, an aborted request or a lease that expired while a
+call was running) or a `409 idempotency_key_in_use`, which means the first
+request with that key is still executing. After any other error answer the
+next attempt uses the next generation. A second refund cannot follow: every
+attempt first lists the payment's refunds, takes over one the job issued under
+any key generation and subtracts the others, and Stripe never refunds more than
+the charge (`charge_already_refunded` makes the job watch the refund list). The
+same key is never sent with a different amount: a refund call that is retried
+with the same key is preceded by a refund list, and when that list shows the
+job's own refund from the unanswered call, or a status read sends the job back
+to refund the remainder, the next key generation is used. Should Stripe still
+answer an `idempotency_error` (the key was sent before with other parameters,
+for example after a crash between the refund call and saving its result while
+a hand refund changed the remainder), the job is not failed: it stays
+`pending`, moves to the next key generation and tries again at once, after a
+fresh refund list.
+
+Staff get the `order-refund-alert` e-mail (support address, or every staff
+member in their language) on the first failed attempt, on the first missing
+permission (add the permission; waiting refunds are paid by the next hourly
+attempt), when a job ends as `failed` (a separate message when the permission
+was still missing after 72 hours), when a refund fails after it was issued and
+when a refund ends `unconfirmed`. The alert rows are written to the e-mail
+outbox in the same database transaction that saves the job's new state, under
+the outbox id `order-refund-alert:<jobId>:<alert>:<attempt>:<recipient index>`.
+When the staff lookup or the outbox write fails, nothing of that settlement is
+saved: the job keeps its previous state, is due again a minute later and the
+Stripe call or status read is repeated with the same idempotency key, so the
+state change and its alert are saved together on a later tick. Studio shows
+the job state, attempts, next attempt, Stripe refund and last error on the
+order page. A `failed` job is resolved by refunding the payment by hand in the
+Stripe Dashboard (the order then becomes `refunded`). Requeueing a failed job
+from Studio is not available yet.
+
+When `charge.refunded` reports a full refund of a cancelled order, the same
+payment transaction marks the order `refunded`, moves a `failed` job to
+`resolved_externally`, and makes a `pending` job and a `blocked_permission` job
+without a Stripe refund of its own due at once (their next attempt time
+becomes now, their status stays) and starts the dispatcher, whose refund list
+then decides: a hand refund that already `succeeded` ends the job as
+`skipped_refunded`, one still `pending` makes the job watch it (and reopen it
+should that refund fail), and the job's own refund is taken over. The event
+itself never ends a `pending` or `blocked_permission` job, because a hand
+refund it reports may still be pending when the event fires and fail later; a
+key that may list refunds but not create them still settles the job from the
+list. A `failed` job is resolved because the dispatcher never picks a failed
+job again either, so without this the order page in Studio would keep showing
+the failed refund after staff refunded the payment by hand. Every other job is
+left as it is: a `submitted` or `succeeded` job keeps its scheduled status
+reads, a `running` job keeps its lease, and a `blocked_permission` job that
+already holds a Stripe refund of its own is settled by its next hourly
+attempt, whose refund list tells the job's own refund (taken over and tracked)
+from one made by hand (subtracted from the amount to refund). A refund or
+dispute of a cancelled order revokes no access, because the cancelled order
+granted none.
+
+A cancelled order never counts as a purchase: it keeps no access when another
+order for the same product is refunded, is not listed under My products, is
+not reported by order reconciliation as a paid order missing its grant, is
+never the order a download copy is attributed to, is left out of the Studio
+30-day revenue summary from the moment it is cancelled, cannot be invoiced by
+hand (requesting or sending an invoice is refused with a `conflict` error), and
+its physical lines cannot be handed over at pickup (the verification page shows
+the cancellation and no issue button).
+
+Stripe does not send `refund.failed` to the platform (the event is not
+subscribed), so the dispatcher reads the payment's refunds again 24 hours and
+7 days after the job issued its refund or started relying on a refund made
+outside the job. Each read lists every refund of the payment intent, not only
+the job's own:
+
+- the job's own refund reported as `failed` or `canceled` marks the job
+  `failed` and alerts staff to return the money another way;
+- when a refund made outside the job failed or was canceled and the refunds
+  that are not `failed` or `canceled` no longer cover the job's amount, the
+  job goes back to `pending`, due at once, and refunds the remainder under the
+  next key generation (a new 24-hour and 7-day read schedule follows);
+- when refunds with the status `succeeded` cover the amount, the job is
+  `succeeded` (with its own refund) or ends as `skipped_refunded` (refunds made
+  outside the job only);
+- a refund the job relies on that is still `pending` or `requires_action` at
+  the 7-day read, and refund lists that keep failing (retried hourly) until
+  8 days after the job issued or observed the refund, end the job as
+  `unconfirmed`: staff get an alert to check the refunds in the Stripe
+  Dashboard and return the money another way if one failed, and the
+  dispatcher stops reading them.
+
+#### Buyer communication for a cancelled order
+
+The buyer's `order-sold-out-refund` e-mail is queued with the order in the
+payment transaction under the outbox id
+`order-sold-out-refund:<workspaceId>:<orderId>`, so it is sent once per
+cancelled order: a repeated or later event for the same session queues nothing
+new. It goes to the member's address in the member's language, then the
+checkout language, then the workspace default (English or Polish), with the
+workspace branding. It says the whole order was cancelled because the goods
+sold out before the payment completed, lists the sold-out products and says a
+full refund of the paid amount was started automatically, with the usual
+timing by payment method from Stripe's documentation: a card refund made soon
+after the payment usually shows as a reversal, otherwise as a separate credit
+after about 5-10 business days; BLIK about 120 minutes; Przelewy24 a separate
+transfer within 3 business days; other methods depend on the provider. An order
+paid with zero says nothing was charged instead.
+
+`GET /api/public/checkout/session-status` returns
+`{ "status": "cancelled", "charged": true }` for such an order, whether it is
+still `paid` or already `refunded`, without the purchase analytics payload and
+without the Meta conversion consent payload; `charged` is `false` for an order
+paid with zero. The hosted success page (`status=success`) then stops polling
+and shows the sold-out message without the sign-in button, saying that the
+refund was started, or that nothing was charged when `charged` is `false`; it
+sends no purchase event. The
+document keeps its script policy: the analytics libraries may still load as on
+any success return, and the full-navigation exit rule is unchanged.
+
+Studio shows a "Cancelled: sold out" badge, with the state of the automatic
+refund job, in the order list (status column) and on the order page.
 
 `checkout.session.expired` is not handled. The expiry sweep
 `releaseExpiredStockReservations` runs on the existing minute tick (the
@@ -893,14 +1425,27 @@ The e-mail is queued in the payment transaction.
 
 ### Public offer
 
-The public offer exposes per product `stock: { tracked, soldOut, low }` and never
-the exact count. `low` means a threshold is set and availability reached it. The
-offer ETag includes a hash of these flags, so a product selling out or running
-low revalidates cached offers while count changes alone do not. A sales link is
-sold out when any of its products is: the direct handoff page shows the
-"checkout unavailable" state (HTTP 409) instead of posting to Stripe, while
-crawlers still receive the preview metadata, and the Together checkout page
-disables the pay button with a "Sold out" label.
+The public offer exposes per product `stock: { tracked, soldOut, low, available }`.
+`available` is the number of pieces a buyer can take now (on hand minus the
+pieces held by open checkouts, never below zero) for a tracked product and
+`null` for an untracked one; the stored on-hand and reserved counts are never
+public. `low` means a threshold is set and availability reached it. Each product
+also carries `maxQuantity`, the largest quantity one checkout line accepts right
+now: `0` when sold out, otherwise the rule bound of its checkout path (10 for a
+physical product in the cart, 1 for every other type) capped by `available`. A
+membership is never a cart line: its `maxQuantity` of 1 is the single-product
+checkout at `/checkout/<product-id>`. The offer ETag
+includes a hash of the available count and the low flag of every tracked
+product the standalone offer can show: published products with `salesChannel: 'any'`.
+A sale, reservation, release or adjustment that changes one of those counts
+revalidates cached offers.
+
+A sales link is sold out when any of its products is: the direct handoff page
+shows the "checkout unavailable" state (HTTP 409) instead of posting to Stripe,
+while crawlers still receive the preview metadata, and the Together checkout
+page disables the pay button with a "Sold out" label. The public sales-link
+offer carries the number of whole sets left and a `maxQuantity` per line; see
+[Public offer](sales-links.md#public-offer).
 
 ### Studio and CLI
 

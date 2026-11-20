@@ -258,8 +258,32 @@ Checkout atomically reserves available tracked stock. On-hand stock is deducted
 when paid checkout is fulfilled, **not** when staff marks a shipment. A cancelled
 or abandoned browser flow does not immediately release the hold; the expiry
 sweep releases expired reservations. Verify the sweep runs on the deployment.
-Late payments can produce an oversold event, so retain an operational response
-rather than promising that overselling is impossible.
+A late payment for goods that are gone is recorded as a paid order with
+`cancelReason: "out_of_stock"`, is never fulfilled and is queued for a full
+refund. Skip such orders when you ship, and do not promise that a paid order is
+always delivered.
+
+The whole order is cancelled when any tracked line no longer fits at payment,
+even if other lines are still available; nothing is taken from stock. Together
+then refunds the full amount automatically through Stripe, once per order, and
+sends the buyer one "sold out, refund" e-mail (English or Polish) in the
+member's saved language, otherwise the checkout language, otherwise the
+workspace default language. The e-mail says the order was cancelled because the
+goods sold out before the payment completed, that the full refund was started
+and how long it usually takes: a card refund made soon after the payment often shows as a
+reversal, otherwise as a credit after about 5-10 business days; a BLIK refund
+takes about 120 minutes; a Przelewy24 refund arrives as a separate transfer
+within 3 business days. The public session-status route reports such an order
+as `cancelled` (section 6), the hosted success page shows a sold-out message
+instead of the purchase confirmation and no purchase analytics event is sent.
+Studio marks the order "Cancelled: sold out" in the order list and on the order
+page, together with the state of its automatic refund.
+
+The automatic refund needs the Charges and Refunds (write) permission
+(`charge_write`) on the workspace's Stripe restricted key, in each mode you use.
+Without it staff get an alert e-mail and the refund is attempted again every
+hour for 72 hours, so adding the permission lets the next attempt pay it; after
+72 hours the refund has to be made by hand in the Stripe Dashboard.
 
 ## 6. Connect an anonymous storefront from another origin
 
@@ -273,13 +297,32 @@ allow open CORS without credentialed requests:
 | `/api/public/sales-links/<slug>` | `GET`, `OPTIONS` | Active fixed bundle, VAT lines, total and public workspace context |
 | `/api/public/checkout/coupon` | `POST`, `OPTIONS` | Server-side coupon validation |
 | `/api/public/checkout/session` | `POST`, `OPTIONS` | Create the checkout handoff |
-| `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending` or `paid` status, not buyer/address details |
+| `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending`, `paid` or `cancelled` status, not buyer/address details |
 
 The allowed request headers are `x-tenant, content-type, if-none-match`, not
 Authorization or API-key headers. Never widen authenticated-origin rules or send
 a staff token to the storefront. The separate
 `POST /api/public/sales-links/<slug>/checkout` direct-checkout route is **not**
 opened cross-origin by the sales-link read CORS registration.
+
+Every offer product carries its public stock and the quantity a buyer can order:
+
+| Field | Meaning |
+| --- | --- |
+| `stock.tracked` | Stock tracking is enabled for the product |
+| `stock.available` | Pieces a buyer can take now (on hand minus pieces held by open checkouts); `null` when not tracked |
+| `stock.soldOut` | A tracked product with no available piece |
+| `stock.low` | A low-stock threshold is set and availability reached it |
+| `maxQuantity` | The largest quantity one checkout line accepts now: `0` when sold out, otherwise 10 for a physical product and 1 for any other type, capped by `stock.available`; a membership's 1 is its single-product checkout, never a cart line |
+| `variants[].available` | The same count for each variant, next to its `soldOut` flag |
+
+Use `maxQuantity` as the upper bound of a quantity picker and `stock.available`
+for an "N left" line. The offer ETag changes whenever a count changes, so a
+storefront that revalidates with `If-None-Match` never keeps a stale count, but
+a count can still drop between reading the offer and starting checkout: the
+session route then answers `sold_out` (409). The sales-link offer carries
+`available` (whole sets left) and `lines[].maxQuantity` and buys one set per
+checkout; see [Sales links: public offer](sales-links.md#public-offer).
 
 For the smallest custom UI, read the public offer, render its cover and active
 prices, then navigate the browser to the workspace's `/checkout/<product-id>`.
@@ -390,6 +433,16 @@ in the session-status answer of a paid session. It is not sent to Stripe, it
 need not be unique, and it must not carry personal data. A request without it
 behaves as before, and its order has no `clientReference`.
 
+Optional `personalizations` carries the buyer's request for a product that
+offers a personalisation (`personalization` in the offer):
+`[{ productId, text, conditionAccepted }]`, at most one entry per product. The
+text is trimmed and must fit the product's `maxLength`, and a product with a
+`condition` needs `conditionAccepted: true`; otherwise the request is a
+`validation` error (400). Show the seller's `label`, `description`,
+`inputLabel` and `condition` as plain text. A cart request refuses the field.
+The order lines then carry `personalization`. See
+[Personalisation](shop.md#personalisation).
+
 For bundles the same session route takes `productId` equal to the bundle's first
 base product and `salesLinkSlug` (or `salesLinkId`, not both), without `priceId`.
 The server derives the product selection and amounts from the stored sales link.
@@ -433,7 +486,7 @@ one-time price of that product; without it the product needs exactly one).
 `email`, `language`, `termsAccepted`, `marketingConsentDefinitionIds`,
 `couponCode`, `billing`, `shipping`, `attribution` and `clientReference` work
 as in the single-product request. A cart request must not contain `productId`, `priceId`,
-`salesLinkId`, `salesLinkSlug` or `variantSelections`, and the cart schema is
+`salesLinkId`, `salesLinkSlug`, `variantSelections` or `personalizations`, and the cart schema is
 strict: an unknown field in the body or in a line, such as a price or an amount,
 is rejected, not ignored. The client sends product IDs and quantities only; the
 server sets every price from the stored prices. Stripe shows one line item per
@@ -456,6 +509,25 @@ The cart answers with the same error envelope as the other routes:
 | an unknown or unpublished product, a product sold only through sales links, an unknown or inactive `priceId` | `not_found` (404) |
 | a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
 | a shipped product without `shipping` | `shipping_required` (400) |
+
+A custom cart form bounds each quantity picker by `maxQuantity` and shows the
+remaining count from `stock.available`. Membership products cannot join a cart
+(`validation`, 400); send the buyer to `/checkout/<product-id>` for them. With a
+product read from the offer as above:
+
+```js
+const quantityPicker = (product) => {
+  const picker = document.createElement('select');
+  for (let quantity = 1; quantity <= product.maxQuantity; quantity += 1) {
+    picker.append(new Option(String(quantity), String(quantity)));
+  }
+  picker.disabled = product.maxQuantity === 0;
+  const stockLine = document.createElement('p');
+  if (product.stock.soldOut) stockLine.textContent = 'Sold out';
+  else if (product.stock.available !== null) stockLine.textContent = `${product.stock.available} left`;
+  return { elements: [picker, stockLine], quantity: () => Number(picker.value) };
+};
+```
 
 A storefront without its own form can send the buyer to the hosted cart page
 instead: `/checkout/cart/pay?lines=<product-id>.2~<product-id>.1`, one
@@ -553,9 +625,13 @@ it does not provide an external success return for shipped books. This guide
 does not change which documents load vendor scripts.
 
 A browser success URL is not proof of payment. The public session-status route
-returns `data.status` (`pending` or `paid`), for a paid session the
-`clientReference` sent with it, and may include optional analytics fields; use
-it for buyer display only. Fulfil from the authenticated paid-order
+returns `data.status` (`pending`, `paid` or `cancelled`), for a paid session the
+`clientReference` sent with it, and may include optional analytics fields with
+`paid` only; use it for buyer display only. `cancelled` means the payment
+arrived after the goods sold out: the order is cancelled and refunded
+automatically (section 5), and the response carries no analytics, Meta
+conversion data or shop return address. With `cancelled`, `data.charged` is
+`false` when the order was paid with zero, so there is nothing to refund. Fulfil from the authenticated paid-order
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ### Back to shop
@@ -661,7 +737,8 @@ Each `order` has the shape of an entry in `data.orders` of the order list, in
 its state at the time of the read, not at the time of the change. An order
 changed several times within one page appears once, at its latest cursor.
 Payment, refunds, collection, shipping and issuing or changing the invoice all
-produce a change. The member name and e-mail address, the product title and the
+produce a change, and so does every change of `refundJobStatus` on an order
+cancelled out of stock (`cancelReason: "out_of_stock"`). The member name and e-mail address, the product title and the
 sales link title (`memberName`, `memberEmail`, `productTitle`,
 `salesLinkTitle`) are read at fetch time, and editing them produces no entry.
 `limit` is 1–200 (default 100). `mode` behaves as in the list: `live` or `test`
@@ -761,9 +838,14 @@ return `validation` (HTTP 400) and issue nothing. Each order line in
 only when the goods actually change hands; neither verification nor the buyer's
 QR image alone records collection.
 
-Configured ShipX operations are a separate option. Creating/paying a real ShipX
-shipment is an external financial action requiring operational approval; a token
-or a test fixture is not that approval. Manual fulfilment needs no such purchase.
+Configured ShipX operations are a separate option. A workspace keeps two ShipX
+connections, `production` for live orders and `sandbox` for test-mode orders;
+the order's mode picks the connection, and an order whose connection is not
+saved answers `integration_not_configured` naming it (see
+[InPost ShipX](shop.md#inpost-shipx)). Creating/paying a real ShipX shipment for
+a live order is an external financial action requiring operational approval; a
+token or a test fixture is not that approval. Manual fulfilment needs no such
+purchase.
 
 ## 9. What the buyer receives
 

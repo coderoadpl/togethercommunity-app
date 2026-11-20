@@ -23,6 +23,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     qrAlt: 'Kod QR zamówienia',
     delivery: 'Dostawa',
     pickupPoint: 'Paczkomat',
+    personalization: 'Personalizacja',
+    personalizationCondition: 'Zaakceptowany warunek',
   },
   orderShipped: {
     items: 'Wysłane produkty',
@@ -159,6 +161,72 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       html: `<p>Reputacja nadawcy e-mail platformy ${tenantNameHtml}: <strong>${status}</strong>.</p><p>Odsetek twardych odbić (hard bounce): ${hardBounceRate}<br>Odsetek zgłoszeń spamu: ${complaintRate}<br>Okres: ${windowStartHtml} – ${windowEndHtml}</p><p><a href="${dashboardUrlHtml}">Sprawdź reputację</a></p>`,
       text: `Reputacja nadawcy e-mail platformy ${tenantName}: ${status}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRate}\nOdsetek zgłoszeń spamu: ${complaintRate}\nOkres: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
     }),
+  },
+  orderOutOfStockEmail: {
+    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, refund, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => {
+      const summary = (amount: string | null) => amount === null
+        ? 'Zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a ponieważ nie pobrano żadnej opłaty, nie ma czego zwracać.'
+        : `Opłacone zamówienie wpłynęło po wyczerpaniu towaru, więc zostało anulowane. Stan magazynowy nie został zmniejszony, a zwrot całej kwoty ${amount} jest w toku.`;
+      return {
+        subject: `[${tenantName}] Zamówienie anulowane z braku towaru: ${orderId}`,
+        html: `<p>${summary(refund?.amountHtml ?? null)}</p><p>Zamówienie: ${orderIdHtml}<br>Kupujący: ${buyerEmailHtml}<br>Brak towaru: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Otwórz zamówienie</a></p>`,
+        text: `${summary(refund?.amount ?? null)}\nZamówienie: ${orderId}\nKupujący: ${buyerEmail}\nBrak towaru: ${productTitles}\n${orderUrl}`,
+      };
+    },
+  },
+  orderSoldOutRefundEmail: {
+    shopLabel: 'Przejdź do sklepu',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+      const timing = [
+        'Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.',
+        'BLIK: zwrot trwa około 120 minut.',
+        'Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.',
+        'Inne metody płatności: czas zależy od operatora płatności.',
+      ];
+      const refundText = refund === null
+        ? 'Nie pobraliśmy żadnej opłaty, więc nie ma czego zwracać.'
+        : `Automatycznie zleciliśmy zwrot całej kwoty ${refund.amount} na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n${timing.map((line) => `- ${line}`).join('\n')}`;
+      const refundHtml = refund === null
+        ? '<p>Nie pobraliśmy żadnej opłaty, więc nie ma czego zwracać.</p>'
+        : `<p>Automatycznie zleciliśmy zwrot całej kwoty ${refund.amountHtml} na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
+      return {
+        subject: `Zamówienie ${orderId} anulowane: towar wyprzedany, ${refund === null ? 'bez opłaty' : 'zwracamy całą kwotę'}`,
+        html: `${header}<p>Cześć!</p><p>Płatność za zamówienie ${orderIdHtml} na platformie ${tenantNameHtml} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Wyprzedane: ${productTitlesHtml}</p>${refundHtml}<p>Przepraszamy za kłopot.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Cześć!\n\nPłatność za zamówienie ${orderId} na platformie ${tenantName} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nWyprzedane: ${productTitles}\n\n${refundText}\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
+  orderRefundAlertEmail: {
+    render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
+      const subjects = {
+        retrying: 'Automatyczny zwrot nie powiódł się, ponawiamy',
+        blocked_permission: 'Automatyczny zwrot zablokowany przez brak uprawnienia w Stripe',
+        blocked_permission_failed: 'Automatyczny zwrot nadal zablokowany po 72 godzinach, zwróć ręcznie',
+        failed: 'Automatyczny zwrot nie powiódł się, zwróć ręcznie',
+        failed_after_submission: 'Zwrot nie powiódł się po zleceniu, zwróć ręcznie',
+        unconfirmed: 'Stripe nie potwierdził zwrotu, sprawdź go ręcznie',
+      } as const;
+      const bodies = {
+        retrying: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`,
+          `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie powiódł się. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.`],
+        blocked_permission: [`Zwrot ${amount} za anulowane zamówienie ${orderId} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.`,
+          `Zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.`],
+        blocked_permission_failed: [`Zwrot ${amount} za anulowane zamówienie ${orderId} był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`,
+          `Zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`],
+        failed: [`Automatyczny zwrot ${amount} za anulowane zamówienie ${orderId} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`,
+          `Automatyczny zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.`],
+        failed_after_submission: [`Stripe zgłasza, że zwrot ${amount} za anulowane zamówienie ${orderId} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`,
+          `Stripe zgłasza, że zwrot ${amountHtml} za anulowane zamówienie ${orderIdHtml} nie powiódł się po zleceniu. Zwróć pieniądze kupującemu w inny sposób.`],
+        unconfirmed: [`Stripe nie potwierdził zwrotu ${amount} za anulowane zamówienie ${orderId}, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.`,
+          `Stripe nie potwierdził zwrotu ${amountHtml} za anulowane zamówienie ${orderIdHtml}, a zwrot nie jest już sprawdzany automatycznie. Sprawdź go w panelu Stripe; jeśli się nie powiódł lub został anulowany, zwróć pieniądze kupującemu w inny sposób.`],
+      } as const;
+      const [text, html] = bodies[alert];
+      return {
+        subject: `[${tenantName}] ${subjects[alert]}: ${orderId}`,
+        html: `<p>${html}</p><p>Ostatni błąd: ${errorHtml}</p><p><a href="${orderUrlHtml}">Otwórz zamówienie</a></p>`,
+        text: `${text}\nOstatni błąd: ${error}\n${orderUrl}`,
+      };
+    },
   },
   stockLowEmail: {
     noThreshold: 'nie ustawiono',

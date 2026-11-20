@@ -18,7 +18,7 @@ const application = (scope: TenantApiKeyScope = 'marketing', impersonation?: Imp
   const deps: Parameters<typeof createMarketingContactTestApp>[0] = {
     marketingContacts: fixture.deps, baseDomain: 'example.org', platformHost: null, singleTenantMode: true,
     clock: fixture.deps.clock, ids: fixture.deps.ids, marketingImportCronSecret: 'test-worker-secret', marketingDirectoryJobs: { tenantIds: async () => ['directory-a'] },
-    tenants: { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant, findSettings: unexpected, updateSettings: unexpected, createTenantWithOwnerGrant: unexpected, hasAny: async () => true },
+    tenants: { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant, findSettings: unexpected, changeSettings: unexpected, createTenantWithOwnerGrant: unexpected, hasAny: async () => true },
     tenantDomains: tenantDomainRepositoryStub({}), apiKeyCrypto: { hash: (value) => value, generateSecret: unexpected },
     tenantApiKeys: { findActiveByHash: async (_tenantId, key) => key !== 'secret' ? null : { id: 'key-real-id', tenantId: tenant.id, name: 'Test key', scopes: [scope], keyHash: key, createdAt: tenant.createdAt, revokedAt: null, expiresAt: null }, listByTenant: unexpected, create: unexpected, revoke: unexpected },
   };

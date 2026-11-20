@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { shopSettingsSchema, type Identity, type TenantSettings } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { inMemoryChangeSettings } from '../testing/tenant-settings-fake.js';
 
 import { getShopSettings, updateShopSettings } from './shop-settings.js';
 import type { TenantSettingsDeps } from './tenant-settings.js';
@@ -55,7 +56,7 @@ const owner: Identity = {
 const keyCtx = (capabilities: Ctx['capabilities']): Ctx => ({
   identity: owner,
   ...(capabilities === undefined ? {} : { capabilities }),
-  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' },
+  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' },
 });
 
 const harness = () => {
@@ -68,11 +69,10 @@ const harness = () => {
       findSole: async () => null,
       hasAny: async () => false,
       findSettings: async () => current,
-      updateSettings: async (_tenantId, next) => {
+      changeSettings: inMemoryChangeSettings(() => current, (next) => {
         writes.push(next);
         current = next;
-        return next;
-      },
+      }),
       createTenantWithOwnerGrant: async () => {
         throw new Error('not used');
       },

@@ -193,7 +193,7 @@ const harness = (options: {
         invoiceSellerName: 'Together sp. z o.o.',
         invoiceSellerAddress: 'Prosta 1, 00-001 Warszawa',
       }),
-      updateSettings: async (_tenantId, settings) => settings,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => {
         throw new Error('unused');
       },
@@ -1062,6 +1062,35 @@ describe('KSeF artifact downloads', () => {
   });
 });
 
+
+describe('an order cancelled out of stock', () => {
+  const refusal = {
+    ok: false,
+    error: {
+      code: 'conflict',
+      message: 'This order was cancelled because its goods sold out before the payment arrived and is being refunded, so it gets no invoice',
+      details: { invoiceRefusal: 'order_cancelled_out_of_stock' },
+    },
+  };
+
+  it.each(['ifirma', 'ksef'] as const)('refuses a %s invoice request and records nothing', async (provider) => {
+    const h = harness({ provider });
+    h.deps.orderDetails.findById = async () => ({ ...order(), cancelReason: 'out_of_stock' });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toEqual(refusal);
+    expect(h.invoices).toEqual([]);
+    expect(h.events).toEqual([]);
+    expect(h.allocationCount()).toBe(0);
+  });
+
+  it('refuses to send a held KSeF invoice once the order is cancelled', async () => {
+    const h = harness({ provider: 'ksef', submissionMode: 'manual' });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true, value: { ksef: { state: 'held' } } });
+    h.deps.orderDetails.findById = async () => ({ ...order(), cancelReason: 'out_of_stock' });
+    expect(await sendInvoice(ctx, 'order-1', h.deps)).toEqual(refusal);
+    expect(h.invoices).toMatchObject([{ status: 'requested', ksef: { state: 'held' } }]);
+    expect(h.allocationCount()).toBe(0);
+  });
+});
 
 describe('controlled KSeF submission', () => {
   it.each([

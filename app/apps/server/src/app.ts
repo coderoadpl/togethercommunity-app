@@ -146,6 +146,8 @@ export const buildApp = (deps: AppDeps) => {
   app.use(API_PATHS.operatorTenantProvision, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.operatorTenantReadiness, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.secretFingerprints, secretFingerprintsGuard(deps));
+  app.use(API_PATHS.operatorOrganizationCreate, operatorTenantSecretGuard(deps.operatorSecret));
+  app.use(API_PATHS.operatorOrganizationLimits, operatorTenantSecretGuard(deps.operatorSecret));
   app.use('*', impersonationGuard(deps));
   app.onError((error) => {
     if (error instanceof HTTPException) return error.getResponse();

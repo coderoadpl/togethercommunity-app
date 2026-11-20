@@ -65,7 +65,7 @@ const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
         privacyUrl: null,
         defaultHomeSpaceId: null,
       }),
-      updateSettings: async (_tenantId, settings) => settings,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => {
         throw new Error('not used');
       },

@@ -1,14 +1,16 @@
-import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
+import { tenantTeamMemberSchema, tenantTeamOrganizationSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { createShopManagementKeyInputSchema, shopManagementKeyEventSchema, shopManagementKeyPublicSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
+import { ORGANIZATION_ROUTES } from './organizations.js';
 import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
 import { ORDER_CHANGE_ROUTES } from './order-changes.js';
 import { SHIPX_ROUTES } from './shipx.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
+import { orderRefundJobViewSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
@@ -31,6 +33,7 @@ import {
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutCartInputSchema,
+  checkoutPersonalizationsSchema,
   checkoutSessionInputSchema,
   salesLinkVariantSelectionSchema,
   checkoutSessionStatusInputSchema,
@@ -192,6 +195,7 @@ import {
   deliveryMethodSchema,
   memberFulfilmentSchema,
   publicProductComplianceSchema,
+  publicProductPersonalizationSchema,
   publicProductVariantSchema,
   checkoutShippingInputSchema,
   publicShippingRateSchema,
@@ -441,6 +445,7 @@ export const publicOfferOutputSchema = z.object({
       type: productTypeSchema,
       deliveryMethod: deliveryMethodSchema.default('pickup'),
       compliance: publicProductComplianceSchema.nullable().default(null),
+      personalization: publicProductPersonalizationSchema.nullable().default(null),
       variants: z.array(publicProductVariantSchema).default([]),
       slug: productSlugSchema,
       title: z.string(),
@@ -451,7 +456,8 @@ export const publicOfferOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
-      stock: publicProductStockSchema.default({ tracked: false, soldOut: false, low: false }),
+      stock: publicProductStockSchema.default({ tracked: false, soldOut: false, low: false, available: null }),
+      maxQuantity: z.number().int().min(0).default(1),
       marketingConsents: z.array(z.object({
         definitionId: z.string().min(1),
         label: z.string().min(1),
@@ -478,7 +484,8 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInputSchema;
 
 export const publicCheckoutSessionStatusOutputSchema = z.object({
-  status: z.enum(['pending', 'paid']),
+  status: z.enum(['pending', 'paid', 'cancelled']),
+  charged: z.boolean().optional(),
   clientReference: z.string().optional(),
   returnUrl: z.string().optional(),
   checkoutRef: z.string().optional(),
@@ -739,6 +746,7 @@ export const simulatePurchaseInputSchema = z.object({
   couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
   shipping: checkoutShippingInputSchema.optional(),
+  personalizations: checkoutPersonalizationsSchema.optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -803,6 +811,7 @@ export const ordersListOutputSchema = z.object({
 export const orderDetailOutputSchema = z.object({
   order: orderListItemSchema,
   invoice: invoiceSchema.nullable().default(null),
+  refundJob: orderRefundJobViewSchema.nullable().default(null),
 });
 export const invoiceOutputSchema = z.object({ invoice: invoiceSchema });
 
@@ -1590,7 +1599,10 @@ export const tenantRoutingOutputSchema = z.object({
   routing: tenantRoutingSchema,
 });
 
-export const tenantTeamOutputSchema = z.object({ members: z.array(tenantTeamMemberSchema) });
+export const tenantTeamOutputSchema = z.object({
+  members: z.array(tenantTeamMemberSchema),
+  organization: tenantTeamOrganizationSchema.nullable().default(null),
+});
 export const tenantTeamAddSchema = addTenantAdminInputSchema;
 export const tenantTeamRemoveSchema = removeTenantAdminInputSchema;
 export const tenantTeamInvitationOutputSchema = z.object({ status: z.literal('invitation_sent') });
@@ -1999,6 +2011,7 @@ export const API_ROUTES = {
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
   secretFingerprints: { method: 'GET', path: '/api/internal/secret-fingerprints' },
+  ...ORGANIZATION_ROUTES,
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
@@ -2219,6 +2232,13 @@ export const API_ROUTES = {
   apiKeysShopManagementRevoke: { method: 'DELETE', path: '/api/api-keys/shop-management/:id' },
   apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
   apiKeysShopManagementEvents: { method: 'GET', path: '/api/api-keys/shop-management/events' },
+  changeProposals: { method: 'GET', path: '/api/change-proposals' },
+  changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
+  changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
+  changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
+  changeProposalGroup: { method: 'GET', path: '/api/change-proposals/groups/:id' },
+  changeProposalGroupApprove: { method: 'POST', path: '/api/change-proposals/groups/:id/approve' },
+  changeProposalGroupReject: { method: 'POST', path: '/api/change-proposals/groups/:id/reject' },
   apiKeyImportAudit: { method: 'GET', path: '/api/api-keys/:id/import-audit' },
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
@@ -2339,6 +2359,7 @@ export const API_PATHS = {
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
+  correctOrderPersonalization: API_ROUTES.correctOrderPersonalization.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
   orderChanges: API_ROUTES.orderChanges.path,
   shipxShipment: API_ROUTES.shipxShipment.path,
@@ -2627,6 +2648,13 @@ export const API_PATHS = {
   apiKeysShopManagementRevoke: API_ROUTES.apiKeysShopManagementRevoke.path,
   apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
   apiKeysShopManagementEvents: API_ROUTES.apiKeysShopManagementEvents.path,
+  changeProposals: API_ROUTES.changeProposals.path,
+  changeProposal: API_ROUTES.changeProposal.path,
+  changeProposalReject: API_ROUTES.changeProposalReject.path,
+  changeProposalApprove: API_ROUTES.changeProposalApprove.path,
+  changeProposalGroup: API_ROUTES.changeProposalGroup.path,
+  changeProposalGroupApprove: API_ROUTES.changeProposalGroupApprove.path,
+  changeProposalGroupReject: API_ROUTES.changeProposalGroupReject.path,
   apiKeyImportAudit: API_ROUTES.apiKeyImportAudit.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
@@ -2724,6 +2752,23 @@ export const API_PATHS = {
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,
+  operatorOrganizationCreate: API_ROUTES.operatorOrganizationCreate.path,
+  operatorOrganizationLimits: API_ROUTES.operatorOrganizationLimits.path,
+  organizations: API_ROUTES.organizations.path,
+  organization: API_ROUTES.organization.path,
+  organizationUpdate: API_ROUTES.organizationUpdate.path,
+  organizationMembers: API_ROUTES.organizationMembers.path,
+  organizationMemberAdd: API_ROUTES.organizationMemberAdd.path,
+  organizationMemberRole: API_ROUTES.organizationMemberRole.path,
+  organizationMemberRemove: API_ROUTES.organizationMemberRemove.path,
+  organizationAuditEvents: API_ROUTES.organizationAuditEvents.path,
+  organizationWorkspaces: API_ROUTES.organizationWorkspaces.path,
+  organizationWorkspaceLink: API_ROUTES.organizationWorkspaceLink.path,
+  organizationWorkspaceUnlink: API_ROUTES.organizationWorkspaceUnlink.path,
+  organizationWorkspaceSources: API_ROUTES.organizationWorkspaceSources.path,
+  tenantOrganizationUnlink: API_ROUTES.tenantOrganizationUnlink.path,
+  organizationSecrets: API_ROUTES.organizationSecrets.path,
+  organizationSecretDelete: API_ROUTES.organizationSecretDelete.path,
 } as const;
 
 /**

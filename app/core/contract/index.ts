@@ -22,6 +22,7 @@ export * from './marketing-signup-forms.js';
 
 export * from './operator-tenant.js';
 export * from './secret-fingerprints.js';
+export * from './organizations.js';
 export * from './surveys.js';
 export * from './sales-links.js';
 export * from './order-verification.js';
@@ -37,3 +38,4 @@ export * from './shop-orders.js';
 export * from './shop-settings.js';
 export * from './shop-integrations.js';
 export * from './shop-assets.js';
+export * from './change-proposals.js';

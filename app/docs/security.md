@@ -102,7 +102,10 @@ and null tenant fields. The web shell presents that tenant’s public visitor
 experience with an account notice, a workspace-picker link, and an account-switch
 action; studio routes redirect to the visitor home. The picker includes both staff
 workspaces and member communities. Tenant membership and staff grants remain
-mandatory for tenant-scoped capabilities. Custom-domain cookies remain host-scoped,
+mandatory for tenant-scoped capabilities; a staff grant is either a direct
+workspace grant or a role derived from the organization the workspace is linked
+to (see [Organization-derived workspace roles](#organization-derived-workspace-roles)).
+Custom-domain cookies remain host-scoped,
 and visiting a tenant never creates a membership.
 
 Magic-link, password-reset, e-mail-verification and marketing-confirmation
@@ -365,6 +368,72 @@ The audit allowlist contains these reviewed advisories:
   new parse of unbounded, unauthenticated input must stay behind a route body
   limit in `body-limits.ts` or check the array length before the schema runs.
 
+## Organization-derived workspace roles
+
+A workspace linked to an organization gives the organization's members a
+workspace role without storing a workspace grant. The staff-grant lookup
+(`TenantAccessReader.findStaffGrant`) is one query that maps an organization
+`owner` to the workspace role `owner` and an organization `admin` to the
+workspace role `admin`, and returns the higher of the direct workspace grant
+and the derived role together with its source: `direct`, or `organization` when
+only the derived role is higher (a tie keeps `direct`). The resolved identity
+carries that source. A role is derived only for the organization the workspace
+is linked to and only while that organization is `active`; the same lookup
+lists linked workspaces among the member's staff workspaces. No workspace role
+holds an `organization:*` capability.
+
+- **Revocation.** Nothing is cached: each request reads the membership, its
+  role, the workspace link and the organization's status again, so removing a
+  member, demoting an owner to admin, unlinking the workspace or suspending the
+  organization takes effect on the next request, for sessions and for shop
+  management keys issued by a derived owner alike.
+- **Suspension.** A `suspended` organization derives no workspace role. Its own
+  session routes (`/api/organizations/:organizationId/...`) keep their reads
+  (the organization, its workspaces and their configuration sources, members,
+  masked secrets and audit) and refuse every write with `forbidden` until it is
+  reactivated. The operator organization routes and the workspace-side unlink
+  by a direct owner do not use the organization context and are unaffected. No
+  route or CLI command changes an organization's status.
+- **Members without an invitation.** Organization owners add members only from
+  existing accounts with a verified e-mail address; no invitation is sent.
+  This is acceptable because a member reaches only workspaces that were linked
+  with a direct owner's consent: linking needs an organization owner who also
+  holds a direct owner grant in the workspace. Any direct owner of a linked
+  workspace can take it out of the organization at any time with
+  `POST /api/tenant/organization/unlink`, organization member or not, and any
+  organization owner can unlink it from the organization side; both are
+  refused with `conflict` only while the workspace takes a configuration group
+  from the organization.
+- **Direct-only readers.** The workspace staff list (`listStaffForTenant`),
+  which supplies staff notification recipients, and the team members of the
+  team list read direct grants only, so neither includes derived staff; the
+  team list shows them in a separate read-only organization section. Removing a user whose only access is derived answers
+  `organization_managed` (HTTP 409, CLI exit 32).
+- **Results that outlive the request.** Creating a tenant API key, adding or
+  removing a team administrator and the workspace-side unlink require the
+  owner role to come from a direct workspace grant; an owner whose role comes
+  from the organization is `forbidden`. Shop management keys stay open to such
+  an owner because the issuer's role is checked again on every request with
+  the key (below).
+- **What remains after a derived role ends or is lowered.** Removal from the
+  organization, unlinking the workspace and suspending the organization end
+  the derived role on the next request. Demoting an organization owner to
+  organization admin does not end it: the derived workspace role becomes
+  `admin` (source `organization`). In every one of these cases the shop
+  management keys the person issued stop on the next request, because a key
+  needs its issuer to hold the workspace owner role; only a direct owner grant
+  in the workspace keeps them working. None of them undoes what the person did
+  with the role. Workspace changes made in the meantime stay in force: the
+  payment account configuration, object storage and other workspace secrets,
+  custom domains, products, coupons, sales links and scheduled marketing
+  sends. Legacy tenant API keys are not affected by organization changes:
+  organization-derived roles and the direct-grant requirement for creating
+  such a key (above) arrive in the same release, so a role that comes only
+  from the organization has never been able to create one, and every key in
+  `tenant_api_keys` was created by a direct owner of the workspace. After
+  removing or demoting an organization member, a direct owner of each linked
+  workspace should review those settings.
+
 ## Tenant API keys
 
 The `report:read` scope grants only the `report:read` capability through the
@@ -374,6 +443,9 @@ access. Import scope combinations and expiry rules remain unchanged.
 
 Report keys may omit expiry, like other non-import keys; no separate maximum
 lifetime is imposed. Owners can revoke them through the existing key controls.
+Creating a tenant API key requires the owner role to come from a direct
+workspace grant, because the key outlives an organization-derived role; an
+owner whose role comes from the organization is `forbidden`.
 Studio supports exclusive report keys and both English and Polish copy.
 
 The [activity reports API](reports-api.md) accepts API-key authentication only.
@@ -404,15 +476,20 @@ database requires an issuer, an expiry and a non-empty array of known shop
 scopes on every shop key.
 
 - **Binding.** A key belongs to one workspace and records the verified owner
-  who created it. Only that kind of owner, in their own session (no member
+  who created it; that owner role may be direct or derived from the
+  organization the workspace is linked to. Only that kind of owner, in their own session (no member
   view, no capability override, no API key), creates, revokes or purges shop
   keys or reads their history. Each request selects the workspace by host or
   `X-Tenant` like the other API-key routes, and the key lookup is scoped to
   that workspace.
 - **Revalidation.** Every request re-reads the key and the issuer: the key must
   be unrevoked and unexpired, and the issuer must still exist, have a verified
-  e-mail address and hold the owner role in that workspace. Nothing is cached between requests, so revocation, expiry,
-  demotion, removal or account deletion takes effect on the next request.
+  e-mail address and hold the owner role in that workspace, read through the
+  same staff-grant lookup as a session. Nothing is cached between requests, so revocation, expiry,
+  demotion, removal or account deletion takes effect on the next request; for
+  an issuer whose owner role is organization-derived, so do leaving the
+  organization, losing its owner role, unlinking the workspace and suspending
+  the organization.
 - **Expiry.** An expiry is mandatory and at most 30 days after creation; there
   is no renewal.
 - **Scopes.** `shop:catalog:read|write`, `shop:orders:read`,
@@ -445,6 +522,103 @@ scopes on every shop key.
   `shop_management_key_rate_limit_buckets` whose rows go with their key. A request refused by the minute
   bucket does not consume the day bucket, and a day refusal returns its minute
   unit.
+- **Propose mode.** A key created with `mode: "propose"` (immutable) never
+  changes live state. Its write scopes grant only `proposal:submit:catalog` and
+  `proposal:submit:settings` in place of the live write capabilities, and
+  `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
+  it. A write scope requires its read scope (`shop:catalog:write` needs
+  `shop:catalog:read`, `shop:settings:write` needs `shop:settings:read`): the
+  creation schema, a database check on `shop_management_keys` and the
+  submission use-case, which also authorizes the family's read capability
+  (`product:read`, `tenant:settings:read`), each enforce it. Whether a dry run
+  accepts or refuses a proposal depends on live state (a negative stock
+  adjustment, the effect size), so a write-only key could otherwise probe
+  values it cannot read; with the rule, a propose-mode key learns nothing from
+  a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
+  `apps/server/src/shop-machine-auth.ts` and the server refuses to start
+  without one: the ten catalogue write routes, the three sales-link write
+  routes and the settings update store a
+  [change proposal](change-proposals.md) instead of running their handler,
+  every other write route (images, fulfilment, integrations) answers `403`,
+  and a test drives a propose-mode key
+  over every registered shop route and asserts that no live row changed. A
+  proposal's effect comes from a dry run of the live use-case in a transaction
+  that is always rolled back, with non-database effects deferred to a commit
+  that never happens. The key's receipt never carries the effect, a before
+  value or the deciding account; after an approval it names only the id of
+  the applied resource, which the key can already read with its read scope.
+  Only the verified owner in their own session reads, approves and
+  rejects proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
+  impersonating owner, a direct-mode key, a propose-mode key and a legacy key
+  are refused. Proposals carry no foreign key to their key, so the history
+  survives a purge, and revoking or purging a key withdraws its pending,
+  unexpired proposals in the same transaction. Pending proposals are capped at
+  200 per key and 1,000 per workspace and creation at 500 per key a day,
+  checked read-only before the dry run and again atomically at insert. A dry
+  run never takes a second database connection (the storage credentials of a
+  draft deletion are read through the transaction) and locks its target with
+  `FOR NO KEY UPDATE` so it cannot deadlock with a live stock write. Every
+  lock wait of a dry run or an approval transaction, the workspace lock, the
+  proposal row, the target rows, the rows the live use-case locks and the
+  sales-link workspace lock, is bounded by a transaction-local 5-second
+  `lock_timeout`; a wait that runs out rolls the whole transaction back and is
+  answered `503` with a `retry-after` on the keyed routes and on the owner
+  approve route, so queued proposals cannot hold pool connections without
+  bound and nothing is applied. Approval runs in one transaction: it locks the
+  pending, unexpired proposal row, re-reads the clock (a proposal that expired
+  during the wait is recorded as expired and not applied), re-validates the
+  stored input strictly (an unknown operation, or an unknown key at any depth
+  such as a retired field or a settings field outside the key's allow-list,
+  makes it `stale` without running anything), locks the target and re-reads
+  the clock again, runs the live use-case as the approving owner inside a
+  savepoint, recomputes the effect and commits the change only when it equals
+  the stored effect the owner saw; otherwise the savepoint is rolled back and
+  the proposal becomes `stale` (or `failed` with the domain error). A draft
+  deletion's effect lists everything it destroys (every price, every download
+  file, the stock), read under the exclusive locks the deletion takes, so a
+  file uploaded after the proposal makes it `stale`. Settings writes lock the
+  workspace row `FOR NO KEY UPDATE` and key revocation and purge withdraw the
+  key's proposals before writing their key event, so a settings approval and a
+  revocation cannot deadlock. There is no intermediate state, so a
+  repeated or concurrent approve finds no pending row and gets `409`; an
+  infrastructure failure rolls everything back and leaves the proposal
+  pending. Non-database effects of an applied change run only after the
+  commit. The database checks only the shape of a stored operation name; a
+  row whose operation the running release does not know stays readable and is
+  never applied. A writer that read the row before the approval took its lock can
+  still overwrite the applied change afterwards, as between any two writers
+  today. A retention purge of settled proposals is a follow-up.
+- **Proposal groups.** A propose-mode key may group proposals that depend on
+  each other; the owner approves or rejects the group as one unit. Only the
+  key that created a group joins, reads or withdraws it: the
+  `x-proposal-group` header is read once by the shared shop dispatch,
+  validated as an identifier, ignored for a direct-mode key, and the group is
+  looked up by workspace and key, so another key's or another workspace's
+  group answers `404` like an unknown id. A later item names what an earlier
+  item of its group creates only as `$proposal:<proposal id>` and only in the
+  id positions of its operation; such a reference resolves only to an earlier
+  item of the same group, key and workspace that creates that kind of
+  resource, never to a live id, and anything else is refused with `400`.
+  Submitting an item replays the group's earlier items and the new item in
+  one transaction that always rolls back and keeps only the new item's
+  effect, so it leaves nothing behind; an earlier item that no longer applies
+  answers `409` and stores nothing. Created ids appear in stored effects only
+  in their reference form, which names the creating item, so swapping
+  references between items changes the effect. The owner's approval names
+  the ordered item ids they were shown; any other list answers `409`, so an
+  item added after the owner looked is never applied, and the owner CLI
+  approves only with the digest of the item ids that `proposals group show`
+  printed, sending nothing when the group changed since. One transaction locks
+  the group and its items, applies each item with every check of a single
+  approval and commits only when every item matches; otherwise all live work
+  is rolled back and every item is recorded `stale` or `failed`. Targets are
+  locked in item order; two groups locking the same rows in opposite orders
+  end on the bounded lock wait or the database's deadlock detection and are
+  answered busy with nothing applied. A grouped item cannot be decided on its
+  own. A group holds at most 50 items and a key at most 20 open groups; with
+  the key's rate limit, one dry run per group at a time and the per-statement
+  time bounds of dry runs and approvals, that bounds the cost of the
+  replaying dry runs.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
   answers every request under `/api/m2m/shop` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs
@@ -457,7 +631,17 @@ scopes on every shop key.
 - **Rollback.** Migration 0159 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
-  owner controls, not rollback steps.
+  owner controls, not rollback steps. A release that predates migration 0163
+  reads shop keys but not their mode, and refuses a propose-mode key with
+  `401`: the key's stored hash is taken in a separate propose-mode hash
+  domain, so the plain hash of the presented secret finds no row. Such a key
+  never gains live write access, direct-mode keys keep working, and pending
+  change proposals stay untouched until the roll forward; no purge is needed.
+  Migration 0164 widens the operation check to a shape check and is not
+  undone by a code rollback: a release with 0163 and only the ten catalogue
+  operations answers `500` on every proposal read that meets a sales-link or
+  settings proposal, and applies nothing; count those rows before such a
+  rollback (the query is in [change proposals](change-proposals.md#rolling-back)).
 - **Attribution.** Creation, revocation, purge and every keyed `POST`, `PUT`,
   `PATCH` or `DELETE` to a shop route that passed every check write a row to
   the dedicated `shop_management_key_events` table with the key id, never the
@@ -500,7 +684,8 @@ scopes on every shop key.
   `core/server/authorize.ts` below every route: the Stripe configure and
   permission probe use-cases (the payment account, including the live slot;
   configuring creates the webhook signing secret and endpoint id), the ShipX
-  configure use-case (carrier credentials and sender), the storage configure
+  configure use-case (the credentials of both carrier connections and the
+  sender), the storage configure
   use-case (the object storage connection) and the generic secret write or
   delete of the invoicing credentials (`ifirma.invoiceApiKey`,
   `ifirma.username`, `ksef.token`, `ksef.contextNip`, `ksef.test.token`,
@@ -783,22 +968,39 @@ Member erasure removes registry rows; see [copy identifiers](storage.md#copy-ide
 
 ## InPost ShipX credentials
 
-The ShipX organization id and API token are encrypted tenant secrets
-(`shipx.organizationId`, `shipx.token`), written only through the owner-only
+Each workspace keeps two ShipX connections, `production` for live orders and
+`sandbox` for test-mode orders. Their organization ids and API tokens are
+encrypted tenant secrets (`shipx.production.organizationId`,
+`shipx.production.token`, `shipx.sandbox.organizationId`,
+`shipx.sandbox.token`), written only through the owner-only
 session route `POST /api/integrations/shipx/configure` (or the owner-only
 generic tenant-secret route) and through the keyed
 `POST /api/m2m/shop/integrations/shipx/configure` with a
 [shop management key](#shop-management-keys) holding
 `shop:integrations:write`. A shop management key may write them only through
 the ShipX configure use-case, never through the generic tenant-secret write;
-the keyed generic secret route refuses both names. They are returned only as
+the keyed generic secret route refuses all four names, which stay off the
+shop-key secret allow-list, and the configure route writes no other secret
+name. Saving or clearing one connection never touches the other's rows. They
+are returned only as
 masked previews. They are not part of tenant
 settings, the public offer or the public payment configuration. The server
-decrypts them only for a ShipX call; the readiness check on the order page asks
-the secret repository whether both secrets exist without decrypting them. Each
+decrypts them only for a ShipX call, and only the connection of the order's
+mode: a test-mode order never resolves the production credentials or the
+production URL, and a live order never the sandbox ones. The readiness check on
+the order page asks the secret repository whether both secrets of that
+connection exist without decrypting them. There is no data migration: the
+legacy single-connection rows (`shipx.organizationId`, `shipx.token`) keep
+serving only the connection that the workspace's stored environment names, for
+each value that connection has no row of; a connection row that cannot be
+decrypted never falls back to them, and an order of the other mode never reads
+them. Removing the credentials of that connection deletes the legacy rows as
+well (see
+[Upgrade from the single connection](shop.md#upgrade-from-the-single-connection)). None of these ShipX secrets is inherited from an organization: an organization may store ShipX credentials, but a workspace always reads its own, so one connection never combines an organization value with a workspace value. Each
 `order_shipments` row keeps a plain copy of the organization id it was created
 with (an identifier that also appears in every ShipX URL), so later calls for
-that shipment can refuse to run against another organization; the shipment
+that shipment can refuse to run against another organization or another
+connection than the order's mode; the shipment
 view returned to staff omits it, and the token is never copied. Error envelopes carry
 only the ShipX error key, a description cut to 300 characters with control
 characters removed and the field keys of the validation details, never the raw
@@ -843,9 +1045,9 @@ Labels are proxied: `POST /api/orders/<orderId>/shipx/label` returns the PDF wit
 ShipX origin is added to any content security policy and the browser never
 contacts ShipX. Deployments with `PAYMENT_PROVIDER=fake` use the in-process
 fake client for every order and never call InPost; with `PAYMENT_PROVIDER=stripe`
-the workspace's ShipX environment decides: the sandbox serves test-mode orders
-only and refuses paid orders, production serves paid orders and leaves test-mode
-orders to the fake client. See [Which ShipX client answers](shop.md#which-shipx-client-answers).
+the real client serves every order, against the sandbox for test-mode orders and
+against production for paid orders, and a missing connection refuses the
+order. See [Which ShipX client answers](shop.md#which-shipx-client-answers).
 
 ## Meta conversions credentials
 

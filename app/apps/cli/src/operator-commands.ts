@@ -2,14 +2,14 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import type { ApiClient } from '#core/client/index.js';
-import { operatorTenantSlugSchema, provisionTenantInputSchema, type OperatorTenantReadiness, type SecretFingerprints } from '#core/contract/index.js';
+import { createOrganizationInputSchema, operatorTenantSlugSchema, organizationLimitsSchema, provisionTenantInputSchema, type OperatorTenantReadiness, type SecretFingerprints } from '#core/contract/index.js';
 import { err, internal, validation, type AppError, type Result } from '#core/domain/index.js';
 import { secureApiBaseUrl } from '#core/domain/network.js';
 
 import { emit } from './output.js';
 
 type OperatorCliContext = {
-  api: Pick<ApiClient, 'provisionOperatorTenant' | 'getOperatorTenantReadiness' | 'getSecretFingerprints'>;
+  api: Pick<ApiClient, 'provisionOperatorTenant' | 'getOperatorTenantReadiness' | 'getSecretFingerprints' | 'operatorCreateOrganization' | 'operatorSetOrganizationLimits'>;
   apiUrl: string;
   json: boolean;
 };
@@ -17,6 +17,11 @@ type OperatorCliContext = {
 const provisionOptionsSchema = z.object({
   slug: z.string(), name: z.string(), ownerEmail: z.string(), language: z.enum(['en', 'pl']).optional(),
 });
+
+const organizationCreateOptionsSchema = z.object({
+  slug: z.string(), name: z.string(), ownerEmail: z.string(), maxWorkspaces: z.coerce.number().optional(),
+});
+const organizationLimitsOptionsSchema = z.object({ maxWorkspaces: z.coerce.number() });
 
 const checklist = (readiness: OperatorTenantReadiness): string => [
   `tenantExists=${readiness.tenantExists}`,
@@ -97,4 +102,59 @@ export const registerOperatorCommands = (
     .command('fingerprints')
     .description('Print the HMAC fingerprint of every server secret, never a value; reads SECRET_FINGERPRINT_READ_SECRET, not OPERATOR_SECRET')
     .action(fingerprints);
+
+  const operatorSecret = (json: boolean): string | null => {
+    const secret = process.env['OPERATOR_SECRET'];
+    if (secret) return secret;
+    emit(err(validation('OPERATOR_SECRET is required')), json, () => '');
+    return null;
+  };
+  const org = operator.command('org').description('Operator organization creation and limits');
+  org.command('create').description('Create an organization owned by an existing verified account')
+    .requiredOption('--slug <slug>', 'Organization slug')
+    .requiredOption('--name <name>', 'Organization name')
+    .requiredOption('--owner-email <email>', 'Verified owner email')
+    .option('--max-workspaces <n>', 'Maximum number of workspaces (default 0)')
+    .action(async (raw: unknown) => {
+      const ctx = context();
+      if (!ctx.ok) { emit(ctx, program.opts()['json'] === true, () => ''); return; }
+      const secret = operatorSecret(ctx.value.json);
+      if (secret === null) return;
+      const options = organizationCreateOptionsSchema.safeParse(raw);
+      const parsed = options.success ? createOrganizationInputSchema.safeParse({
+        slug: options.data.slug, name: options.data.name, ownerEmail: options.data.ownerEmail,
+        ...(options.data.maxWorkspaces === undefined ? {} : { maxWorkspaces: options.data.maxWorkspaces }),
+      }) : options;
+      if (!parsed.success) {
+        emit(err(validation('Invalid organization payload')), ctx.value.json, () => '');
+        return;
+      }
+      try {
+        emit(await ctx.value.api.operatorCreateOrganization(parsed.data, secret), ctx.value.json, (value) =>
+          `${value.organization.slug}: created=${value.created}\nid=${value.organization.id}\nmaxWorkspaces=${value.organization.maxWorkspaces}`);
+      } catch {
+        emit(err(internal('Operator request failed')), ctx.value.json, () => '');
+      }
+    });
+  org.command('limits <organizationId>').description('Set the workspace limit of an organization')
+    .requiredOption('--max-workspaces <n>', 'Maximum number of workspaces')
+    .action(async (organizationId: unknown, raw: unknown) => {
+      const ctx = context();
+      if (!ctx.ok) { emit(ctx, program.opts()['json'] === true, () => ''); return; }
+      const secret = operatorSecret(ctx.value.json);
+      if (secret === null) return;
+      const id = z.string().trim().min(1).safeParse(organizationId);
+      const options = organizationLimitsOptionsSchema.safeParse(raw);
+      const limits = options.success ? organizationLimitsSchema.safeParse(options.data) : options;
+      if (!id.success || !limits.success) {
+        emit(err(validation('Invalid organization limits')), ctx.value.json, () => '');
+        return;
+      }
+      try {
+        emit(await ctx.value.api.operatorSetOrganizationLimits({ organizationId: id.data, ...limits.data }, secret), ctx.value.json,
+          (value) => `${value.organization.slug}: maxWorkspaces=${value.organization.maxWorkspaces}`);
+      } catch {
+        emit(err(internal('Operator request failed')), ctx.value.json, () => '');
+      }
+    });
 };

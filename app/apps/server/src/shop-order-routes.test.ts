@@ -355,8 +355,35 @@ describe('shop order routes with a shop management key', () => {
 
     const packing = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.ordersPackingList.path}?format=csv`);
     const rows = envelope(shopOrderContracts.ordersPackingList.output).parse(await packing.json()).data.content.split('\n');
-    expect(rows[0]).toMatch(/,quantity$/);
-    expect(rows.find((row) => row.startsWith(`"${orderId}"`))).toMatch(/"Printed handbook × 2",.*,"2"$/);
+    expect(rows[0]).toMatch(/,quantity,personalization$/);
+    expect(rows.find((row) => row.startsWith(`"${orderId}"`))).toMatch(/"Printed handbook × 2",.*,"2",""$/);
+  });
+
+  it('serves the line personalisation on the keyed list, detail, export and packing list', async () => {
+    const orderId = 'acme-live-personalised';
+    const personalization = {
+      text: 'For Alex', label: 'Add an engraving', description: '', inputLabel: 'Engraving text',
+      condition: 'I understand a personalised item is made to my order.', maxLength: 200, requestedAt: now, conditionAcceptedAt: now,
+    };
+    const base = order('acme', orderId, { shipping: courierShipping });
+    await createOrderRepository(database.db).create('acme', { ...base, lines: base.lines?.map((line) => line.productId === 'book-acme' ? { ...line, personalization } : line) });
+    const secret = await createShopKey([READ]);
+    const personalizationOf = (lines: { productId: string; personalization?: { text: string } | undefined }[] | undefined) =>
+      lines?.find((line) => line.productId === 'book-acme')?.personalization;
+
+    const listed = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.listOrders.path}?mode=live&fulfilmentStatus=to_pack`);
+    expect(personalizationOf(envelope(shopOrderContracts.listOrders.output).parse(await listed.json()).data.orders.find((entry) => entry.id === orderId)?.lines))
+      .toEqual(personalization);
+    const detail = await keyed(secret, 'GET', orderPath(SHOP_ORDER_ROUTES.getOrder.path, orderId));
+    expect(personalizationOf(envelope(shopOrderContracts.getOrder.output).parse(await detail.json()).data.order.lines)).toEqual(personalization);
+    const exported = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.exportOrders.path}?format=csv&fulfilmentStatus=to_pack`);
+    const exportRows = envelope(shopOrderContracts.exportOrders.output).parse(await exported.json()).data.content.split('\n');
+    expect(exportRows[0]).toMatch(/,personalization,cancel_reason$/);
+    expect(exportRows.filter((row) => row.endsWith(',"Printed handbook: For Alex",""'))).toHaveLength(1);
+    expect(exportRows.slice(1).every((row) => row.endsWith(',"",""') || row.endsWith(',"Printed handbook: For Alex",""'))).toBe(true);
+    const packing = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.ordersPackingList.path}?format=csv`);
+    const packingRows = envelope(shopOrderContracts.ordersPackingList.output).parse(await packing.json()).data.content.split('\n');
+    expect(packingRows.find((row) => row.startsWith(`"${orderId}"`))).toMatch(/,"1","Printed handbook: For Alex"$/);
   });
 
   it('treats an order of another workspace as not found on every route and leaves it untouched', async () => {
@@ -385,9 +412,7 @@ describe('shop order routes with a shop management key', () => {
 
   it('creates, refreshes and labels an InPost shipment through the fake ShipX client and keeps the lease rules', async () => {
     const configured = await ownerRequest(API_ROUTES.shipxConfigure.method, API_ROUTES.shipxConfigure.path, {
-      environment: 'production',
-      organizationId: '1234',
-      token: 'shipx-token-5678',
+      production: { organizationId: '1234', token: 'shipx-token-5678' },
       sender: { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' },
     }, akademiaHost);
     expect(configured.status).toBe(200);
@@ -395,7 +420,7 @@ describe('shop order routes with a shop management key', () => {
     const at = (path: string, orderId = 'akademia-live-locker') => orderPath(path, orderId);
 
     const before = await keyed(secret, 'GET', at(SHOP_ORDER_ROUTES.shipxShipment.path), undefined, akademiaHost);
-    expect(envelope(shopOrderContracts.shipxShipment.output).parse(await before.json()).data).toMatchObject({ available: true, service: 'inpost_locker_standard', shipment: null });
+    expect(envelope(shopOrderContracts.shipxShipment.output).parse(await before.json()).data).toMatchObject({ available: true, environment: 'production', service: 'inpost_locker_standard', shipment: null });
 
     const created = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path), undefined, akademiaHost);
     expect(created.status).toBe(200);
@@ -449,9 +474,7 @@ describe('shop order routes with a shop management key', () => {
 
   it('passes the parcel template from the keyed create body to ShipX, keeps the product template without one and refuses an unknown template', async () => {
     const configured = await ownerRequest(API_ROUTES.shipxConfigure.method, API_ROUTES.shipxConfigure.path, {
-      environment: 'production',
-      organizationId: '1234',
-      token: 'shipx-token-5678',
+      production: { organizationId: '1234', token: 'shipx-token-5678' },
       sender: { name: 'Anna Sender', email: 'shop@example.org', phone: '500600700', street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' },
     }, akademiaHost);
     expect(configured.status).toBe(200);

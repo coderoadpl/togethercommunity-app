@@ -162,4 +162,12 @@ describe('order verification storage', () => {
     expect(await database.db.select().from(orderIssueEvents).where(eq(orderIssueEvents.orderId, input.orderId))).toEqual([]);
     expect(await repo.findByReference('workspace', input.orderId)).toMatchObject({ lines: [{ issuedCount: 0 }, { issuedCount: null }] });
   });
+  it('refuses to hand over a paid order cancelled because it sold out', async () => {
+    await createOrderRepository(database.db).create('workspace', { ...order('cancelled-order'), cancelReason: 'out_of_stock' });
+    const repo = createOrderVerificationRepository(database.db);
+    const input = { orderId: 'cancelled-order', productId: 'physical', count: 1, staffUserId: 'named-staff', occurredAt: now };
+    expect(await repo.issueLine('workspace', input)).toEqual({ ok: false, error: { code: 'conflict', message: 'A cancelled order cannot be issued' } });
+    expect(await database.db.select().from(orderIssueEvents).where(eq(orderIssueEvents.orderId, input.orderId))).toEqual([]);
+    expect(await repo.findByReference('workspace', input.orderId)).toMatchObject({ status: 'paid', cancelReason: 'out_of_stock', lines: [{ issuedCount: 0 }, { issuedCount: null }] });
+  });
 });

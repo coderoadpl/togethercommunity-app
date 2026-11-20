@@ -77,6 +77,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   },
   {
     ...SHOP_ORDER_ROUTES.shipOrder,
+    proposeMode: { kind: 'refuse', reason: 'side-effect' },
     handler: async (c, { ctx }) => {
       if (deps.orderFulfilment === undefined || deps.orderDetails === undefined) return unavailable('Order fulfilment is unavailable');
       const body = shipBodySchema.safeParse(await readJson(c.req.raw));
@@ -91,6 +92,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   },
   {
     ...SHOP_ORDER_ROUTES.issueOrderLine,
+    proposeMode: { kind: 'refuse', reason: 'side-effect' },
     handler: async (c, { ctx }) => {
       if (deps.orderVerification === undefined) return unavailable('Order verification is unavailable');
       const count = await issueCountOf(c.req.raw);
@@ -112,6 +114,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   },
   {
     ...SHOP_ORDER_ROUTES.shipxCreate,
+    proposeMode: { kind: 'refuse', reason: 'side-effect' },
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null || deps.orderFulfilment === undefined || deps.shipxIntegration === undefined) return unavailable('InPost ShipX is unavailable');
@@ -129,6 +132,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   },
   {
     ...SHOP_ORDER_ROUTES.shipxRefresh,
+    proposeMode: { kind: 'refuse', reason: 'side-effect' },
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null) return unavailable('InPost ShipX is unavailable');
@@ -137,6 +141,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   },
   {
     ...SHOP_ORDER_ROUTES.shipxDiscard,
+    proposeMode: { kind: 'refuse', reason: 'side-effect' },
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null) return unavailable('InPost ShipX is unavailable');
@@ -145,6 +150,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   },
   {
     ...SHOP_ORDER_ROUTES.shipxLabel,
+    proposeMode: { kind: 'refuse', reason: 'side-effect' },
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null) return unavailable('InPost ShipX is unavailable');

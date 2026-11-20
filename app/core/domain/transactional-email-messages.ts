@@ -1,3 +1,5 @@
+import type { OrderRefundAlert } from './order-refund-job.js';
+
 interface TransactionalEmailMessageContent {
   subject: string;
   html: string;
@@ -38,6 +40,8 @@ export interface TransactionalEmailMessages {
     qrAlt: string;
     delivery: string;
     pickupPoint: string;
+    personalization: string;
+    personalizationCondition: string;
   };
   orderShipped: {
     items: string;
@@ -232,6 +236,48 @@ export interface TransactionalEmailMessages {
       windowEndHtml: string;
       dashboardUrl: string;
       dashboardUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
+  orderOutOfStockEmail: {
+    render: (input: {
+      tenantName: string;
+      orderId: string;
+      orderIdHtml: string;
+      buyerEmail: string;
+      buyerEmailHtml: string;
+      refund: { amount: string; amountHtml: string } | null;
+      productTitles: string;
+      productTitlesHtml: string;
+      orderUrl: string;
+      orderUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
+  orderSoldOutRefundEmail: {
+    shopLabel: string;
+    render: (input: BrandedInput & {
+      tenantName: string;
+      tenantNameHtml: string;
+      orderId: string;
+      orderIdHtml: string;
+      productTitles: string;
+      productTitlesHtml: string;
+      refund: { amount: string; amountHtml: string } | null;
+      shopUrl: string;
+      shopLink: string;
+    }) => TransactionalEmailMessageContent;
+  };
+  orderRefundAlertEmail: {
+    render: (input: {
+      tenantName: string;
+      alert: OrderRefundAlert;
+      orderId: string;
+      orderIdHtml: string;
+      amount: string;
+      amountHtml: string;
+      error: string;
+      errorHtml: string;
+      orderUrl: string;
+      orderUrlHtml: string;
     }) => TransactionalEmailMessageContent;
   };
   stockLowEmail: {

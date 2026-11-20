@@ -23,6 +23,7 @@ export const createOrderVerificationRepository = (db: Db): OrderVerificationRepo
         const [row] = await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId))).for('update');
         if (row === undefined) return err(notFound('Order was not found'));
         if (row.status !== 'paid') return err(validation('Only paid orders can be issued'));
+        if (row.cancelReason !== null) return err(appError('conflict', 'A cancelled order cannot be issued'));
         const order = orderSchema.parse(normalizeOrderDates(row));
         const line = order.lines?.find((item) => item.productId === input.productId);
         if (line === undefined) return err(notFound('Order line was not found'));

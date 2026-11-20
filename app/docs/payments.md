@@ -2,7 +2,7 @@
 
 ## Purchase confirmation and purchased files
 
-The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending` or `paid` in the API envelope with `Cache-Control: no-store`. The request accepts an optional `locale`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a GA4 measurement ID or Meta Pixel ID. When the tenant has enabled Meta conversions and configured a Meta Pixel ID, paid sessions also include `metaCapi`: the order's consent state and withdrawal time, the consent copy resolved for the requested locale, the privacy-policy URL and the copy's text version, described in [the Meta Conversions API guide](integrations/meta-capi.md). Buyer identity (name, email or address) is never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. Polling stops after payment confirmation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
+The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending`, `paid` or `cancelled` in the API envelope with `Cache-Control: no-store`. The request accepts an optional `locale`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a GA4 measurement ID or Meta Pixel ID. When the tenant has enabled Meta conversions and configured a Meta Pixel ID, paid sessions also include `metaCapi`: the order's consent state and withdrawal time, the consent copy resolved for the requested locale, the privacy-policy URL and the copy's text version, described in [the Meta Conversions API guide](integrations/meta-capi.md). Buyer identity (name, email or address) is never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. An order cancelled because its goods sold out before the payment arrived returns `cancelled` with `charged` (`false` when the order was paid with zero) and without analytics or `metaCapi`, and the page shows a sold-out message with the automatic refund, or that nothing was charged, instead of the confirmation (see [the shop guide](shop.md)). Polling stops after payment confirmation, a cancellation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
 
 ## Checkout analytics
 
@@ -406,10 +406,23 @@ someone recovers it:
 1. Set a log-drain alert on
    `[stripe-webhook] ignored tenant=<id> event=<id> reason=ownership conflict`.
 2. Find which other tenant holds the conflicting local record. Search by the
-   Stripe IDs of the logged event: `member_subscriptions.provider_subscription_id`,
+   Stripe IDs of the logged event: `provider_customer_owners.customer_id`
+   (provider `stripe`), `member_subscriptions.provider_subscription_id`,
    `orders.provider_object_ids` and `members.external_customer_ids ->> 'stripe'`.
+   `provider_customer_owners` holds one owning tenant per Stripe customer and
+   the member it was written for (`member_id`). Only Stripe subscription
+   adoption writes it, both when it adopts a subscription and when it
+   reconciles one already adopted; it fills a missing `member_id` of its own
+   tenant's row and never replaces another member's. The webhook ownership
+   check reads it first, and so do adoption and the adoption listing. A
+   workspace that stores a subscription keeps receiving its events, and can
+   reconcile it, even when another workspace holds the customer row. Its rows
+   go away with their tenant, and member erasure deletes the tenant's rows
+   written for the erased member or holding that member's Stripe customer
+   identifier; that customer is then unowned.
 3. Remove or re-assign the wrong record so the Stripe ID belongs to one tenant
-   only.
+   only. For a customer recorded in `provider_customer_owners`, that means
+   updating or deleting its row by hand; no route does it.
 4. Resend the logged event from the Stripe Dashboard to this tenant's webhook
    endpoint. The endpoint is idempotent. Then check the renewal order, the
    subscription period and the member's access. A resend before step 3 is
@@ -471,6 +484,19 @@ reason `coupon-probe-failed` and no detail; Studio translates the reason, and th
 checkout probe still runs. The checkout is a PLN 1.00
 payment session with return URLs on the tenant's canonical origin, a 30-minute
 expiry and immediate expiration in cleanup. No purchase is completed.
+The last check, Charges and Refunds (write), asks Stripe to update the metadata
+of a refund that does not exist (`POST /v1/refunds/re_togetherprobe<24
+alphanumeric characters>` with `togetherProbe=1` and `tenantId`); no refund is
+created or changed. The answer is mapped as follows:
+
+| Stripe answer | Row status |
+| --- | --- |
+| 403 `more_permissions_required`, or another permission refusal (see below) | `missing` |
+| 404 `resource_missing` | `ok`: the permission is present and nothing was touched |
+| anything else: another 4xx or 5xx, a network failure, or an unexpected success | `error`, with the detail |
+
+An `error` row never guesses either way; run the check again or confirm the
+permission in the Stripe Dashboard.
 
 Stripe cannot delete promotion codes. Each successful check leaves one deactivated
 `TOGETHER-PROBE-<8 uppercase alphanumeric characters>` code. Probe objects carry

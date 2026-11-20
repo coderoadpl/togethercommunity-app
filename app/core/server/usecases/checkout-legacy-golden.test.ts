@@ -354,7 +354,7 @@ describe('legacy stock effects at payment', () => {
     expect(h.warnings).toStrictEqual(['[stock] released 1 expired checkout reservation(s)']);
   });
 
-  it('clamps a late commit at zero and records the oversold piece', async () => {
+  it('cancels a late payment for goods that ran out and queues one refund instead of clamping at zero', async () => {
     const h = createLegacyCheckoutHarness();
     h.stockFake.track(legacyTenant.id, 'printed-1', 1);
     await publicCheckout(h, printedRequest);
@@ -377,23 +377,13 @@ describe('legacy stock effects at payment', () => {
         reference: { checkoutSnapshotId: 'checkout-id-1', reservationId: 'reservation-1', reason: 'expired' },
       },
       { tenantId: 'tenant-a', productId: 'printed-1', type: 'adjusted', quantity: -1, reference: { reason: 'damaged' } },
-      {
-        tenantId: 'tenant-a',
-        productId: 'printed-1',
-        type: 'committed_late',
-        quantity: 0,
-        reference: { checkoutSnapshotId: 'checkout-id-1', orderId: 'webhook-id-3', reservationId: 'reservation-1' },
-      },
-      {
-        tenantId: 'tenant-a',
-        productId: 'printed-1',
-        type: 'oversold',
-        quantity: -1,
-        reference: { checkoutSnapshotId: 'checkout-id-1', orderId: 'webhook-id-3', reservationId: 'reservation-1' },
-      },
     ]);
-    expect(h.stockFake.levels.get(legacyTenant.id, 'printed-1')).toStrictEqual(stockLevel('printed-1', 0, 0, '2026-11-15T10:40:00.000Z'));
-    expect(h.warnings).toStrictEqual(['[stock] released 1 expired checkout reservation(s)', '[stock] oversold tenant=tenant-a product=printed-1 order=webhook-id-3']);
+    expect(h.stockFake.levels.get(legacyTenant.id, 'printed-1')).toStrictEqual(stockLevel('printed-1', 0, 0, '2026-11-15T10:41:00.000Z'));
+    expect(h.orders).toStrictEqual([expect.objectContaining({ id: 'webhook-id-3', status: 'paid', cancelReason: 'out_of_stock', amountCents: 4099 })]);
+    expect(h.orders[0]).not.toHaveProperty('fulfilmentStatus');
+    expect(h.refundJobs).toStrictEqual([expect.objectContaining({ orderId: 'webhook-id-3', paymentIntentId: 'pi_golden1', amountCents: 4099, idempotencyKey: 'oos-refund-webhook-id-3', status: 'pending' })]);
+    expect(h.autoInvoiceJobs).toStrictEqual([]);
+    expect(h.warnings).toStrictEqual(['[stock] released 1 expired checkout reservation(s)', '[stock] out of stock tenant=tenant-a order=webhook-id-3 products=printed-1 refund=oos-refund-webhook-id-3']);
   });
 
   it('records a committed one-piece reservation when the snapshot never held stock', async () => {

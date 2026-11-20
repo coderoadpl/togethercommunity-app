@@ -8,7 +8,10 @@ import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
+import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '#core/server/testing/change-proposal-fakes.js';
+import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
@@ -44,6 +47,7 @@ import {
 } from '#adapters/auth/create-auth.js';
 import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
+import { inMemoryChangeSettings } from '#core/server/testing/tenant-settings-fake.js';
 import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
@@ -201,6 +205,7 @@ const deps = (input: {
   migrationCounts?: Awaited<ReturnType<AppDeps['health']['migrationCounts']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
+  dispatchOrderRefundJobs?: AppDeps['dispatchOrderRefundJobs'];
   checkTenantDomains?: AppDeps['checkTenantDomains'];
   sanitizeStagingSecrets?: AppDeps['sanitizeStagingSecrets'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
@@ -211,6 +216,18 @@ const deps = (input: {
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
+  const findSettings: AppDeps['tenants']['findSettings'] = async (tenantId) =>
+    tenants.some((tenant) => tenant.id === tenantId) ? {
+      name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+      socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
+      billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
+      accentColor: null,
+      accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+      ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+      privacyUrl: null,
+      defaultHomeSpaceId: null,
+    } : null;
   const domains = input.domains ?? [];
   const products = input.products ?? [
     product({ id: 'acme-published', tenantId: 't-acme', title: 'Acme Published', published: true }),
@@ -221,6 +238,7 @@ const deps = (input: {
   const members: Member[] = input.members ?? [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
+  const changeProposalStore = createChangeProposalStoreFake();
   const appDeps: AppDeps = {
     telemetry: { recordAppError: vi.fn() },
     auth: {
@@ -364,6 +382,10 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    changeProposals: changeProposalStore.repository,
+    changeProposalEvents: changeProposalStore.events,
+    changeProposalGroups: changeProposalStore.groups,
+    changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     importContent: {
       commit: async () => 'saved',
     },
@@ -417,11 +439,12 @@ const deps = (input: {
       endLapsed: async () => 0,
       listLapsedTenantIds: async () => [],
     },
-    team: { list: async () => [], inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
+    team: { list: async () => [], findOrganizationStaff: async () => null, inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
     auditEvents: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
     },
+    ...createOrganizationFakes().repositories,
     impersonationTokens: {
       issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
       verify: (token) => token.startsWith('token:')
@@ -588,7 +611,9 @@ const deps = (input: {
         },
       }),
     },
-    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation(appDeps) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, _stripe, operation) =>
+      operation({ ...appDeps, customerOwners: { claimStripeCustomer: async () => 'this-workspace' },
+        members: { ...appDeps.members, findByIdForShare: (tenantId, memberId) => appDeps.members.findById(tenantId, memberId) } }) },
     paymentTransaction: {
       run: async (operation) =>
         operation({
@@ -608,6 +633,7 @@ const deps = (input: {
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          orderRefundJobs: createOrderRefundJobFake().repository,
           checkoutConsentJobs: {
             enqueue: async () => undefined,
             lockPending: async () => null,
@@ -631,6 +657,8 @@ const deps = (input: {
       processedCount: 0,
       orderId: null,
     })),
+    dispatchOrderRefundJobs: input.dispatchOrderRefundJobs ?? (async () => ok({ processedCount: 0, outcomes: {} })),
+    dispatchOrderRefunds: () => undefined,
     dispatchEmail: () => undefined,
     emailDispatchSecret: 'test-email-dispatch-secret',
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
@@ -909,19 +937,8 @@ const deps = (input: {
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
       hasAny: async () => tenants.length > 0,
-      findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? {
-          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
-          socialLinks: [],
-          signInNotice: { enabled: false, text: '' },
-          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-          accentColor: null,
-          accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
-          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
-          privacyUrl: null,
-          defaultHomeSpaceId: null,
-        } : null,
-      updateSettings: async (_tenantId, settings) => settings,
+      findSettings,
+      changeSettings: inMemoryChangeSettings(findSettings),
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,
@@ -1060,7 +1077,7 @@ const scopedApp = (
     bannedByUserId: null,
     dmOptOutAt: null,
   };
-  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin' };
+  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin', source: 'direct' };
   const post: Post = {
     id: 'post-1',
     tenantId: acme.id,
@@ -3409,6 +3426,71 @@ describe('email dispatch route', () => {
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledTimes(2);
     expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
+  });
+
+  it('dispatches due order refund jobs on the same tick with a deadline 45 seconds after the tick started and keeps dispatching e-mail when that fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>()
+      .mockResolvedValueOnce(ok({ processedCount: 1, outcomes: { refunded: 1 } }))
+      .mockRejectedValueOnce(new Error('database unavailable'));
+    const app = buildApp(deps({ dispatchEmails, dispatchOrderRefundJobs, logger }));
+    expect((await app.request(API_PATHS.emailDispatch)).status).toBe(401);
+    expect(dispatchOrderRefundJobs).not.toHaveBeenCalled();
+    const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect([cron.status, manual.status]).toEqual([200, 200]);
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 45_000;
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1 }], [{ deadlineAt }]]);
+    expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
+    expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
+  });
+
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('dispatches e-mail on the %s tick before order refunds, so a refund dispatch that hangs cannot hold e-mail back', async (trigger, init) => {
+    const calls: string[] = [];
+    let finishRefunds: () => void = () => undefined;
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async (dispatchTrigger) => {
+      calls.push(`email:${dispatchTrigger}`);
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(() => {
+      calls.push('refunds');
+      return new Promise((resolve) => { finishRefunds = () => { resolve(ok({ processedCount: 0, outcomes: {} })); }; });
+    });
+    const app = buildApp(deps({ dispatchEmails, dispatchOrderRefundJobs }));
+    const response = app.request(API_PATHS.emailDispatch, init);
+    await vi.waitFor(() => { expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce(); });
+    expect(calls).toStrictEqual([`email:${trigger}`, 'refunds']);
+    finishRefunds();
+    expect((await response).status).toBe(200);
+  });
+
+  it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
+    const calls: string[] = [];
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
+      calls.push('email');
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      calls.push('refunds');
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchEmails, dispatchOrderRefundJobs });
+    base.metaCapi = {
+      tenants: base.tenants, clock: base.clock, hash: base.contentHash,
+      directory: { listAll: async () => [] },
+      secrets: { resolve: async () => ok('test-token') }, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
+      repository: { findOrder: async () => null, decide: async () => err(notFound()), listDueTenantIds: async () => { calls.push('meta-capi'); return []; },
+        processNext: async () => false, listEvents: async () => [], listMemberConsents: async () => [] },
+    };
+
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+
+    expect(response.status).toBe(200);
+    expect(calls).toStrictEqual(['email', 'refunds', 'meta-capi']);
   });
 
   it('preserves the email result when the Meta tenant directory fails', async () => {
@@ -6462,7 +6544,7 @@ describe('single-tenant mode', () => {
       },
       tenantAccess: {
         ...base.tenantAccess,
-        findStaffGrant: async () => ({ tenant, staffRole: 'owner' }),
+        findStaffGrant: async () => ({ tenant, staffRole: 'owner', source: 'direct' }),
       },
     });
   };
@@ -6755,7 +6837,7 @@ describe('public offer route', () => {
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
   });
 
-  it('revalidates the offer when a tracked product sells out and exposes only stock flags', async () => {
+  it('revalidates the offer when a tracked product sells out and exposes the public stock without stored levels', async () => {
     const base = deps();
     const stock = createStockRepositoryFake();
     stock.track(acme.id, 'acme-published', 1);
@@ -6764,15 +6846,55 @@ describe('public offer route', () => {
     const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
     const etag = first.headers.get('etag') ?? '';
     expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
-    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false, available: 1 }, maxQuantity: 1 }] } });
     expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
     await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 1 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
     const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
     expect(soldOut.status).toBe(200);
     expect(soldOut.headers.get('etag')).not.toBe(etag);
     const body = await soldOut.json();
-    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true } }] } });
+    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true, available: 0 }, maxQuantity: 0 }] } });
     expect(JSON.stringify(body)).not.toContain('onHand');
+  });
+
+  it('revalidates the offer when only the available count of a tracked product changes', async () => {
+    const base = deps();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-published', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const fewer = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(fewer.status).toBe(200);
+    expect(fewer.headers.get('etag')).not.toBe(etag);
+    expect(await fewer.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { soldOut: false, low: false, available: 3 } }] } });
+  });
+
+  it.each([
+    { published: false, salesChannel: 'any' },
+    { published: true, salesChannel: 'sales_links_only' },
+  ] as const)('keeps the offer ETag when only hidden stock changes (published: $published, salesChannel: $salesChannel)', async ({ published, salesChannel }) => {
+    const base = deps({ products: [
+      product({ id: 'acme-published', tenantId: acme.id, title: 'Acme Published', published: true }),
+      { ...product({ id: 'acme-hidden', tenantId: acme.id, title: 'Acme Hidden', published }), salesChannel },
+    ] });
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 5);
+    stock.track(acme.id, 'acme-hidden', 5);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(first.status).toBe(200);
+    expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { available: 5 } }] } });
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', items: [{ productId: 'acme-hidden', quantity: 2 }], expiresAt: '2026-11-05T10:35:00.000Z', now: '2026-11-05T10:00:00.000Z' });
+    const unchanged = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get('etag')).toBe(etag);
   });
 
   it('changes the offer ETag after adding a price to a published product', async () => {
@@ -9514,6 +9636,40 @@ describe('impersonation HTTP surface', () => {
     });
   });
 
+  it('refuses the owner change proposal routes while the owner views as a member', async () => {
+    const store = createChangeProposalStoreFake();
+    const list = vi.spyOn(store.repository, 'list');
+    const findById = vi.spyOn(store.repository, 'findById');
+    const transition = vi.spyOn(store.repository, 'transition');
+    const findGroup = vi.spyOn(store.groups, 'findById');
+    const transitionGroup = vi.spyOn(store.groups, 'transition');
+    const { app } = impersonatingApp({ changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    for (const [method, path] of [
+      ['GET', API_PATHS.changeProposals],
+      ['GET', API_PATHS.changeProposal.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalReject.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalApprove.replace(':id', 'proposal-1')],
+      ['GET', API_PATHS.changeProposalGroup.replace(':id', 'group-1')],
+      ['POST', API_PATHS.changeProposalGroupApprove.replace(':id', 'group-1')],
+      ['POST', API_PATHS.changeProposalGroupReject.replace(':id', 'group-1')],
+    ] as const) {
+      const body = path.endsWith('/groups/group-1/approve') ? { itemIds: ['proposal-1'] } : {};
+      const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json(), `${method} ${path}`).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(findById).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+    expect(findGroup).not.toHaveBeenCalled();
+    expect(transitionGroup).not.toHaveBeenCalled();
+  });
+
   it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {
     const base = deps();
     const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async (tenantId) => {
@@ -9633,7 +9789,7 @@ describe('impersonation HTTP surface', () => {
     expect(mutations.length).toBeGreaterThan(100);
     for (const route of mutations) {
       const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
-      const requestHeaders = route.path === API_PATHS.operatorTenantProvision
+      const requestHeaders = [API_PATHS.operatorTenantProvision, API_PATHS.operatorOrganizationCreate, API_PATHS.operatorOrganizationLimits].some((operatorPath) => operatorPath === route.path)
         ? { ...impersonated, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }
         : impersonated;
       const response = await app.request(path, { method: route.method, headers: requestHeaders });
@@ -9844,7 +10000,7 @@ describe('staff member self-service routes', () => {
       authPort: { ...base.authPort, getAuthenticatedUser: async () => user, ensureUser: async () => ({ userId: user.userId, created: false }) },
       tenantAccess: {
         ...base.tenantAccess,
-        findStaffGrant: async () => ({ tenant: acme, staffRole }),
+        findStaffGrant: async () => ({ tenant: acme, staffRole, source: 'direct' }),
         findMember: async (tenantId, userId) => rows.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null,
       },
       members: {
@@ -10285,12 +10441,12 @@ describe('Stripe subscription adoption authorization', () => {
       });
       const retrieve = vi.fn(async () => ok({
         id: payload.subscriptionId, status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
-        cancelAtPeriodEnd: false, customerEmail: 'buyer@example.com',
+        cancelAtPeriodEnd: false, customerId: 'cus_existing', customerEmail: 'buyer@example.com', metadataTenantId: null,
         price: { id: 'price_existing', amountCents: 3500, currency: 'EUR' as const, interval: 'month' as const, intervalCount: 1 },
       }));
       const list = vi.fn(async () => ok({ subscriptions: [
-        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing' },
-        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other' },
+        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing', customerId: 'cus_existing', metadataTenantId: null },
+        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other', customerId: 'cus_other', metadataTenantId: acme.id },
       ], nextCursor: null }));
       base.payment.retrieveStripeSubscription = retrieve;
       base.payment.listStripeSubscriptions = list;
@@ -10746,6 +10902,8 @@ it('exposes only public sales-link fields and accepts its slug for checkout', as
   const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
   if (!body.ok) throw new Error(body.error.message);
   expect(body.data.salesLink).toEqual({ slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
+  expect(response.headers.has('etag')).toBe(false);
+  expect(response.headers.get('cache-control')).toBe('no-store');
   const raw = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
   expect((await raw.json()).data.salesLink).toEqual(body.data.salesLink);
   const purchaseResponse = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });
@@ -11671,7 +11829,7 @@ describe('direct public sales-link checkout', () => {
     const h = await directSalesLinkApp();
     const authenticated = vi.fn(async () => actor === 'anonymous' ? null : ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null }));
     h.base.authPort.getAuthenticatedUser = authenticated;
-    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const }));
+    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const, source: 'direct' as const }));
     h.base.tenantAccess.findStaffGrant = staffGrant;
     const decrypt = vi.fn((stored: { ciphertext: string }) => ok(stored.ciphertext));
     h.base.secretCrypto.decrypt = decrypt;
@@ -11792,6 +11950,20 @@ describe('direct public sales-link checkout', () => {
     expect(h.create).not.toHaveBeenCalled();
   });
 
+  it('keeps offers with a personalisation on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[0];
+    if (item === undefined) throw new Error('Missing test product');
+    item.personalization = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null };
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it('omits a rejected return address from the consent fallback redirect', async () => {
     const h = await directSalesLinkApp('https://sales.example/offer');
     const item = h.products[1];
@@ -11865,7 +12037,7 @@ describe('direct public sales-link checkout', () => {
   it.each([false, true])('never provisions the supplied third-party identity with the staff test switch enabled: %s', async (enabled) => {
     const h = await directSalesLinkApp();
     h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
-    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin', source: 'direct' });
     h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
     h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
     h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
@@ -12315,4 +12487,65 @@ it.each([false, true])('routes a variant offer to Together even when its saved f
   expect(crawler.status).toBe(200);
   expect(crawler.headers.get('location')).toBeNull();
   expect(h.create).not.toHaveBeenCalled();
+});
+
+describe('checkout personalisation through the public routes', () => {
+  const setting = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 20, condition: 'I understand a personalised item is made to my order.' };
+  const personalizedApp = () => {
+    const h = simulatedBundleApp();
+    const print = h.products[0];
+    if (print === undefined) throw new Error('Missing test product');
+    print.personalization = setting;
+    const captures = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    return { ...h, captures };
+  };
+  const checkout = (app: ReturnType<typeof buildApp>, body: Record<string, unknown>) => app.request(API_PATHS.checkoutSession, {
+    method: 'POST', headers: { 'content-type': 'application/json', host: 'acme.localhost' }, body: JSON.stringify(body),
+  });
+
+  it.each([
+    ['a product without a setting', [{ productId: 'digital', text: 'Hi', conditionAccepted: true }]],
+    ['an unaccepted condition', [{ productId: 'print', text: 'Hi', conditionAccepted: false }]],
+    ['an overlong text', [{ productId: 'print', text: 'x'.repeat(21), conditionAccepted: true }]],
+  ])('refuses %s with 400 before capturing consent or a snapshot', async (_case, personalizations) => {
+    const h = personalizedApp();
+    const response = await checkout(h.app, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true, personalizations });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.captures).not.toHaveBeenCalled();
+    expect(h.snapshots.size).toBe(0);
+  });
+
+  it('refuses a cart request that carries personalisations', async () => {
+    const h = personalizedApp();
+    const response = await checkout(h.app, { lines: [{ productId: 'print', quantity: 1 }], email: 'buyer@example.test', termsAccepted: true, personalizations: [{ productId: 'print', text: 'Hi', conditionAccepted: true }] });
+    expect(response.status).toBe(400);
+    expect(h.captures).not.toHaveBeenCalled();
+  });
+
+  it('records the personalisation on the order of a free checkout', async () => {
+    const h = await directSalesLinkApp();
+    for (const item of h.products) item.priceCents = 0;
+    const print = h.products[0];
+    if (print === undefined) throw new Error('Missing test product');
+    print.personalization = { ...setting, condition: null };
+    const response = await checkout(h.app, {
+      productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true,
+      personalizations: [{ productId: 'print', text: 'For Alex', conditionAccepted: false }],
+    });
+    expect(await response.json()).toMatchObject({ ok: true, data: { free: true } });
+    expect(h.orders[0]?.lines?.[0]).toMatchObject({ productId: 'print', personalization: { text: 'For Alex', condition: null, conditionAcceptedAt: null } });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('records the personalisation on the order of a simulated purchase', async () => {
+    const h = personalizedApp();
+    const response = await purchase(h.app, { host: 'acme.localhost' }, {
+      productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
+      personalizations: [{ productId: 'print', text: ' For Alex ', conditionAccepted: true }],
+    });
+    expect(response.status).toBe(200);
+    expect(h.orders[0]?.lines?.[0]).toMatchObject({ productId: 'print', personalization: { ...setting, text: 'For Alex', requestedAt: h.base.clock.nowIso(), conditionAcceptedAt: h.base.clock.nowIso() } });
+    expect(h.orders[0]?.lines?.[1]).not.toHaveProperty('personalization');
+  });
 });

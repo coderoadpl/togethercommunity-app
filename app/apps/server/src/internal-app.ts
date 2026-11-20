@@ -15,6 +15,7 @@ import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/t
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
 import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
 import { registerSecretFingerprintsRoute } from './secret-fingerprints.js';
+import { registerOperatorOrganizationRoutes, registerOrganizationRoutes } from './organization-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema, SIMULATED_SHIPPING_DETAILS } from '#core/domain/index.js';
@@ -472,6 +473,8 @@ import {
   validateCheckoutSelection,
   validateCouponForCheckout,
   validateTermsConsent,
+  ORDER_REFUND_CRON_TICK_MAX_JOBS,
+  ORDER_REFUND_TICK_BUDGET_MS,
   type AuthenticatedUser,
   type Ctx,
   type PaymentWebhookEvent,
@@ -493,6 +496,8 @@ import { shopOrderRoutes } from './shop-order-routes.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
+import { shopProposalRoutes } from './shop-proposal-routes.js';
+import { registerChangeProposalRoutes } from './change-proposal-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -817,29 +822,48 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
+const dispatchDueOrderRefunds = async (
+  deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>,
+  tickStartedAt: number,
+  limits: { maxJobs?: number } = {},
+): Promise<void> => {
+  try {
+    const result = await deps.dispatchOrderRefundJobs({ deadlineAt: tickStartedAt + ORDER_REFUND_TICK_BUDGET_MS, ...limits });
+    if (!result.ok) deps.logger.error(`[order-refund] tick dispatch failed: ${result.error.message}`);
+  } catch (error) {
+    deps.logger.error(`[order-refund] tick dispatch failed: ${safeErrorMessage(error)}`);
+  }
+};
+
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   registerOperatorTenantRoutes(app, deps);
+  registerOperatorOrganizationRoutes(app, deps);
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
     routing: deps,
   });
   app.post(API_PATHS.emailDispatch, async (c) => {
+    const tickStartedAt = Date.parse(deps.clock.nowIso());
     if (!secretEquals(c.req.header(EMAIL_DISPATCH_SECRET_HEADER), deps.emailDispatchSecret)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    return respond(await deps.dispatchEmails('manual'));
+    const emails = await deps.dispatchEmails('manual');
+    await dispatchDueOrderRefunds(deps, tickStartedAt);
+    return respond(emails);
   });
 
   app.get(API_PATHS.emailDispatch, async (c) => {
+    const tickStartedAt = Date.parse(deps.clock.nowIso());
     if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.emailDispatchCronSecret}`)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('cron');
+    await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
     return respond(emails);
   });
@@ -1017,6 +1041,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
             ...(parsed.data.shipping === undefined ? {} : { shipping: parsed.data.shipping }),
+            ...(parsed.data.personalizations === undefined ? {} : { personalizations: parsed.data.personalizations }),
           },
           deps,
         );
@@ -1320,7 +1345,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps)]);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -1387,8 +1412,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerChangeProposalRoutes(app, deps);
   registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
+  registerOrganizationRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
@@ -2945,7 +2972,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       await getOrder(
         ctxOf(c),
         c.req.param('orderId'),
-        { orders: deps.orderDetails, invoices: deps.invoices },
+        { orders: deps.orderDetails, invoices: deps.invoices, ...(deps.orderRefundJobs === undefined ? {} : { refundJobs: deps.orderRefundJobs }) },
       ),
     );
   });

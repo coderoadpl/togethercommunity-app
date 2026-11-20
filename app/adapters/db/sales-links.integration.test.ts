@@ -54,6 +54,16 @@ describe('sales-link persistence', () => {
     expect(await db.select().from(salesLinkEvents).where(eq(salesLinkEvents.salesLinkId, draft.id))).toHaveLength(2);
     expect(await repo.save('workspace', { ...draft, id: 'replacement' }, null)).toMatchObject({ ok: true });
   });
+  it('deletes with an expected revision only while the link still has it', async () => {
+    const repo = createSalesLinkRepository(db);
+    const edited = { ...link, id: 'edited', slug: 'edited' };
+    expect(await repo.save('workspace', edited, null)).toMatchObject({ ok: true });
+    expect(await repo.save('workspace', { ...edited, heading: 'Edited heading', revision: 2 }, 1)).toMatchObject({ ok: true });
+    expect(await repo.delete('workspace', edited.id, now, 1)).toEqual({ ok: false, error: expect.objectContaining({ code: 'conflict' }) });
+    expect(await repo.findById('workspace', edited.id)).toMatchObject({ revision: 2 });
+    expect(await repo.delete('workspace', edited.id, now, 2)).toEqual({ ok: true, value: undefined });
+    expect(await repo.findById('workspace', edited.id)).toBeNull();
+  });
   it('requires deactivation once any completed payment references the link', async () => {
     const repo = createSalesLinkRepository(db);
     await db.insert(orders).values({ id: 'paid', tenantId: 'workspace', memberId: 'member', productId: 'product', kind: 'one_time', status: 'paid', amountCents: 1050, currency: 'PLN', provider: 'simulated', salesLinkId: link.id, createdAt: now });

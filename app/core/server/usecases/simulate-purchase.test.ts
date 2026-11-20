@@ -124,7 +124,7 @@ const fakeTenants = (): TenantRepository => ({
   findBySlug: async () => null,
   findSole: async () => null,
   findSettings: async () => null,
-  updateSettings: async (_tenantId, settings) => settings,
+  changeSettings: async () => null,
   createTenantWithOwnerGrant: async () => null,
   hasAny: async () => true,
 });
@@ -394,7 +394,7 @@ it('alerts staff about low stock from a simulated purchase like the paid webhook
   expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'committed']);
 });
 
-it('records the order before locking stock, in the same order as the paid webhook', async () => {
+it('locks stock before recording the order and taking the sales-link lock, in the same order as the paid webhook', async () => {
   const h = bundleHarness();
   const stock = createStockRepositoryFake();
   stock.track('workspace', 'print', 1);
@@ -407,7 +407,7 @@ it('records the order before locking stock, in the same order as the paid webhoo
     commit: async (tenantId, input) => { steps.push('commit'); return stock.repository.commit(tenantId, input); },
   };
   expect(await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print', salesLinkId: 'link' }, h.deps)).toMatchObject({ ok: true });
-  expect(steps).toEqual(['order', 'reserve', 'commit']);
+  expect(steps).toEqual(['reserve', 'order', 'commit']);
   expect(stock.levels.get('workspace', 'print')).toMatchObject({ onHand: 0, reserved: 0 });
 });
 
@@ -420,7 +420,7 @@ describe('simulated shipped purchase', () => {
       findSettings: async () => tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
         { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
       ] }),
-      updateSettings: async (_tenantId, value) => value, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
+      changeSettings: async () => null, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
     };
     h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants, emailOutbox: { enqueue: async (message) => ok({ id: message.id }) } }) };
     return h;

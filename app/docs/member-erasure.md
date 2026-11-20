@@ -69,10 +69,23 @@ follow the same member-erasure selection as live orders.
   payload carries no phone number, and a parcel locker delivery stores no
   postal address there; the shipment e-mail payload
   (`payload.shipment.delivery.address`) receives the same replacement;
+- replaces the personalisation `text` and `originalText` with
+  `deletedMemberDisplay()` on the member's order lines, on the lines of checkout
+  snapshots bound to those orders' checkout sessions, and in the purchase
+  confirmation payload (`payload.purchase.personalizations`) of every
+  tenant-scoped `email_outbox` row addressed to the member's e-mail; the seller
+  wording, the condition and its acceptance time stay (see
+  [Personalisation](shop.md#personalisation)); an abandoned checkout snapshot
+  is bound to no order and keeps its text;
 - scrubs related marketing and transactional e-mail event metadata and rewrites
   matching SNS notification receipts to `together-scrubbed:v1:` without changing
   their status, so pending feedback remains processable; late feedback for erased
   recipients is scrubbed before persistence as well;
+- deletes the current tenant's `provider_customer_owners` rows written for the
+  member (`member_id`) or holding the member's Stripe customer identifier from
+  `external_customer_ids`, so that Stripe customer is unowned again and a later
+  subscription adoption follows the normal ownership rules; rows of other
+  tenants stay;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state
@@ -82,8 +95,12 @@ follow the same member-erasure selection as live orders.
 The erasure response reports `deletedTeamInvitations`, the number of pending
 invitations deleted in the current tenant only. Invitations in other tenants
 remain unchanged and are never included in that count. Other memberships,
-staff grants, or pending administrator invitations retain the auth user; the
-transaction deletes the auth user only when none of these links remain.
+staff grants, pending administrator invitations, or organization memberships
+(`organization_members`, owner or admin) retain the auth user; the transaction
+deletes the auth user only when none of these links remain. An organization
+owner or admin who was also a buyer in a workspace therefore keeps the account
+and the organization membership, and keeps the workspace roles derived from the
+organization.
 Erasing a member therefore cannot silently revoke another tenant's pending
 administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign
@@ -106,6 +123,12 @@ the `reason` inside a `member_events.payload` and `post_reports.note` keep
 their original values.
 Pseudonymization changes the member projection and reporter display, but it
 does not minimize these event and report fields.
+
+Staff notifications queued in `email_outbox` keep the member's e-mail address
+in their payload after erasure. The scrub above matches rows addressed to the
+member, and these rows are addressed to staff: the support message
+(`payload.memberEmail`) and the staff e-mail about an order cancelled out of
+stock (`payload.buyerEmail`).
 
 The staff member-detail surface preserves learning, grant, and e-mail history.
 It hides granting and renewal controls for a tombstoned member, while keeping

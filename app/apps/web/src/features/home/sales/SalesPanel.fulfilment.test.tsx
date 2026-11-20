@@ -149,11 +149,11 @@ describe('order detail shipment', () => {
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'shipped'), invoice: null } })),
       http.get('/api/orders/o1/shipx', () => {
         views.push('stored');
-        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
       }),
       http.post('/api/orders/o1/shipx/refresh', () => {
         views.push('refreshed');
-        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+        return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
       }),
       http.post('/api/orders/o1/shipx/label', () => labelAnswer === 'error'
         ? HttpResponse.json({ ok: false, error: { code: 'shipx_rejected', message: 'InPost could not generate the label', details: { status: 400, error: 'label_generation_failed', description: 'Template error', fields: {} } } }, { status: 422 })
@@ -187,7 +187,7 @@ describe('order detail shipment', () => {
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'to_pack'), invoice: null } })),
       http.get('/api/orders/o1/shipx', () => {
         views.push('stored');
-        return HttpResponse.json({ ok: true, data: { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
+        return HttpResponse.json({ ok: true, data: { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
       }),
       http.post('/api/orders/o1/shipx/refresh', () => {
         views.push('refreshed');
@@ -209,7 +209,7 @@ describe('order detail shipment', () => {
       http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
         ok: true,
         data: {
-          available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium',
+          available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium',
           shipment: calls.includes('discard') ? null : {
             shipxShipmentId: null, status: 'unknown', trackingNumber: null, environment: 'production', createAttemptedAt: '2026-11-08T09:55:00.000Z',
             boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-08T09:55:00.000Z', updatedAt: '2026-11-08T09:55:00.000Z',
@@ -245,7 +245,7 @@ describe('order detail shipment', () => {
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), memberEmail: 'buyer@example.org' }, invoice: null } })),
       http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({
         ok: true,
-        data: { available: true, reason: null, service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null },
+        data: { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null },
       })),
       http.post('/api/orders/o1/shipx', async ({ request }) => {
         createBodies.push(await request.json());
@@ -281,5 +281,45 @@ describe('order detail shipment', () => {
     await userEvent.click(within(delivery).getByRole('button', { name: en.shipping.markShipped }));
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.shipping.shipConfirm }));
     expect(await within(delivery).findByText(en.errors.messageFulfilmentConflict, { exact: false })).toBeInTheDocument();
+  });
+});
+
+describe('orders cancelled because they sold out', () => {
+  const cancelled = (refundJobStatus: OrderListItem['refundJobStatus']): OrderListItem => ({
+    ...order('o1', null), cancelReason: 'out_of_stock', ...(refundJobStatus === undefined ? {} : { refundJobStatus }),
+  });
+
+  it('shows the sold-out badge with the refund state in the order list and leaves other orders without it', async () => {
+    server.use(http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
+      orders: [cancelled('blocked_permission'), order('o2', 'to_pack')], total: 2, page: 1, pageSize: 25, sources: [],
+    } })));
+    await renderAt('/panel/sales', SalesPanel);
+
+    const badge = await screen.findByTestId('order-cancelled-out-of-stock');
+    expect(badge).toHaveTextContent(en.sales.cancelledOutOfStockRefund({ refund: en.sales.refundJobStatuses.blocked_permission }));
+    expect(screen.getAllByTestId('order-cancelled-out-of-stock')).toHaveLength(1);
+    expect(within(screen.getAllByTestId('sales-row')[1] ?? document.body).queryByTestId('order-cancelled-out-of-stock')).toBeNull();
+  });
+
+  it('shows the sold-out badge without a refund state when no refund job exists', async () => {
+    server.use(http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
+      orders: [cancelled(null)], total: 1, page: 1, pageSize: 25, sources: [],
+    } })));
+    await renderAt('/panel/sales', SalesPanel);
+
+    expect(await screen.findByTestId('order-cancelled-out-of-stock')).toHaveTextContent(en.sales.cancelledOutOfStock);
+  });
+
+  it('shows the sold-out badge with the refund job state on the order detail', async () => {
+    const refundJob = {
+      status: 'succeeded', attempts: 1, nextAttemptAt: null, lastError: null, amountCents: 4099, currency: 'PLN',
+      idempotencyKey: 'oos-refund-o1', providerRefundId: 're_123', providerRefundStatus: 'succeeded',
+      submittedAt: '2026-11-15T10:43:00.000Z', createdAt: '2026-11-15T10:42:00.000Z', updatedAt: '2026-11-15T10:43:00.000Z',
+    };
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: cancelled(undefined), invoice: null, refundJob } })));
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+
+    expect(await screen.findByTestId('order-cancelled-out-of-stock')).toHaveTextContent(en.sales.cancelledOutOfStockRefund({ refund: en.sales.refundJobStatuses.succeeded }));
+    expect(screen.getByTestId('order-refund-job')).toBeInTheDocument();
   });
 });

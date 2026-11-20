@@ -1,4 +1,5 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
+import { OrderCancelledChip } from './OrderCancelledChip.js';
 import { useState } from 'react';
 import {
   Alert,
@@ -28,7 +29,7 @@ import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 
@@ -404,13 +405,14 @@ export const SalesPanel = () => {
                         {order.memberName ?? order.memberEmail}
                       </MuiLink>
                     </TableCell>
-                    <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
+                    <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}{order.lines?.some((line) => line.personalization !== undefined) === true ? <Chip size="small" variant="outlined" color="info" label={t.personalization.marker} data-testid="sales-personalization-chip" sx={{ ml: '0.25rem' }} /> : null}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
                     <TableCell>{order.couponCode ?? '—'}</TableCell>
                     <TableCell>{[order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ') || '—'}</TableCell>
                     <TableCell>
                       <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
+                      <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
                     </TableCell>
                     <TableCell>
                       {order.fulfilmentStatus == null ? '—' : (
@@ -438,7 +440,7 @@ export const SalesPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
-      {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
+      {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
       {exportError === null ? null : <Alert severity="error">{exportError}</Alert>}
     </PanelPage>
   );

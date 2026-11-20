@@ -1146,11 +1146,49 @@ it('reads adoption state using the tenant key without mutating Stripe', async ()
   });
   const result = await adoptionProvider.retrieveStripeSubscription?.('tenant-1', 'sub_existing');
   expect(result).toMatchObject({ ok: true, value: { id: 'sub_existing', status: 'past_due', cancelAtPeriodEnd: true,
+    customerId: 'cus_existing', metadataTenantId: null,
     price: { id: 'price_existing', amountCents: 3500, currency: 'EUR', interval: 'week', intervalCount: 2 } } });
   expect(resolved).toEqual(['tenant-1']);
   expect(requests.map((request) => request.method)).toEqual(['GET']);
   expect(requests[0]?.headers.get('authorization')).toBe('Bearer rk_live_tenant');
   expect(requests[0]?.url).toContain('/v1/subscriptions/sub_existing');
+});
+
+it('reads the subscription metadata tenant for adoption', async () => {
+  const httpClient = Stripe.createFetchHttpClient(async () => stripeJson({ id: 'sub_owned', status: 'active',
+    cancel_at_period_end: false, metadata: { tenantId: 'tenant-2' },
+    customer: { id: 'cus_owned', email: 'buyer@example.com' },
+    items: { data: [{ current_period_end: 904608000, price: { id: 'price_owned', unit_amount: 3500,
+      currency: 'eur', recurring: { interval: 'month', interval_count: 1 } } }] } }));
+  const adoptionProvider = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_tenant') },
+    clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
+  });
+  expect(await adoptionProvider.retrieveStripeSubscription?.('tenant-1', 'sub_owned'))
+    .toMatchObject({ ok: true, value: { customerId: 'cus_owned', metadataTenantId: 'tenant-2' } });
+});
+
+it('lists subscriptions with their customer and metadata tenant and the raw page cursor', async () => {
+  const requests: Request[] = [];
+  const httpClient = Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push(new Request(input, init));
+    return stripeJson({ object: 'list', has_more: true, url: '/v1/subscriptions', data: [
+      { id: 'sub_owned', object: 'subscription', status: 'active', customer: 'cus_owned', metadata: { tenantId: 'tenant-1' },
+        items: { object: 'list', data: [{ price: { id: 'price_owned' } }] } },
+      { id: 'sub_legacy', object: 'subscription', status: 'past_due', customer: { id: 'cus_legacy', object: 'customer' }, metadata: {},
+        items: { object: 'list', data: [] } },
+    ] });
+  });
+  const listingProvider = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_tenant') },
+    clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
+  });
+  expect(await listingProvider.listStripeSubscriptions?.('tenant-1', { startingAfter: 'sub_previous' })).toEqual(ok({ subscriptions: [
+    { id: 'sub_owned', status: 'active', providerPriceId: 'price_owned', customerId: 'cus_owned', metadataTenantId: 'tenant-1' },
+    { id: 'sub_legacy', status: 'past_due', providerPriceId: null, customerId: 'cus_legacy', metadataTenantId: null },
+  ], nextCursor: 'sub_legacy' }));
+  expect(requests.map((request) => request.method)).toEqual(['GET']);
+  expect(requests[0]?.url).toContain('starting_after=sub_previous');
 });
 
 it('reports a permission failure as an integration diagnostic instead of throwing', async () => {
@@ -1218,6 +1256,7 @@ const permissionProbeHarness = (failures: Record<string, { status: number; messa
         if (path === '/v1/coupons') return stripeJson({ id: 'coupon_probe', object: 'coupon' });
         if (path === '/v1/promotion_codes') return stripeJson({ id: 'promo_probe', object: 'promotion_code' });
         if (path === '/v1/checkout/sessions') return stripeJson({ id: 'cs_probe', object: 'checkout.session' });
+        if (path.startsWith('/v1/refunds/')) return stripeJson({ error: { type: 'invalid_request_error', code: 'resource_missing', message: 'No such refund' } }, 404);
         return stripeJson({ id: 'probe_cleanup' });
       }),
     }),
@@ -1270,11 +1309,13 @@ describe('probeStripePermissions with an injected Stripe client', () => {
       { resource: 'Coupons', permission: 'write', status: 'ok' },
       { resource: 'Promotion Codes', permission: 'write', status: 'ok' },
       { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
+      { resource: 'Charges and Refunds', permission: 'write', status: 'ok' },
     ] } });
     expect(h.operations()).toEqual([
       'GET /v1/webhook_endpoints', 'GET /v1/subscriptions', 'POST /v1/coupons',
       'POST /v1/promotion_codes', 'POST /v1/promotion_codes/promo_probe',
       'DELETE /v1/coupons/coupon_probe', 'POST /v1/checkout/sessions', 'POST /v1/checkout/sessions/cs_probe/expire',
+      expect.stringMatching(/^POST \/v1\/refunds\/re_togetherprobe[A-Za-z0-9]{24}$/),
     ]);
     expect(h.requests.every((request) => request.headers.get('authorization') === `Bearer rk_${mode}_probe`)).toBe(true);
     expect(new URL(h.requests[0]?.url ?? '').searchParams.get('limit')).toBe('1');
@@ -1310,7 +1351,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const result = await h.run();
     expect(result).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { resource: 'Coupons', status: 'missing', detail: 'Coupon write denied' },
-      { resource: 'Promotion Codes', status: 'error', reason: 'coupon-probe-failed' }, { status: 'ok' },
+      { resource: 'Promotion Codes', status: 'error', reason: 'coupon-probe-failed' }, { status: 'ok' }, { resource: 'Charges and Refunds', status: 'ok' },
     ] } });
     if (!result.ok) throw new Error('Probe failed');
     expect(result.value.checks.find((check) => check.resource === 'Promotion Codes')).not.toHaveProperty('detail');
@@ -1327,7 +1368,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const h = permissionProbeHarness({ 'POST /v1/checkout/sessions': { status, message, ...(code === undefined ? {} : { code }) } });
     expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
-      { resource: 'Checkout Sessions', status: expected, detail: message },
+      { resource: 'Checkout Sessions', status: expected, detail: message }, { resource: 'Charges and Refunds', status: 'ok' },
     ] } });
     expect(h.operations()).toContain('DELETE /v1/coupons/coupon_probe');
     expect(h.operations()).not.toContain('POST /v1/checkout/sessions/cs_probe/expire');
@@ -1337,7 +1378,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     const h = permissionProbeHarness({ [operation]: { status: 400, message: 'Promotion failed' } });
     expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
-      { status: 'error', detail: 'Promotion failed' }, { status: 'ok' },
+      { status: 'error', detail: 'Promotion failed' }, { status: 'ok' }, { resource: 'Charges and Refunds', status: 'ok' },
     ] } });
     expect(h.operations()).toContain('DELETE /v1/coupons/coupon_probe');
     expect(h.operations()).toContain('POST /v1/checkout/sessions/cs_probe/expire');

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import { en } from './en.js';
-import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizePanelError } from './errors.js';
+import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError } from './errors.js';
 import { pl } from './pl.js';
 
 describe('localizeError', () => {
@@ -105,6 +105,13 @@ describe('localizeError', () => {
     expect(localizeErrorCodeForPanel('invoice_exemption_basis_missing', en)).toContain(
       'Settings → Company → Automatic invoices',
     );
+  });
+
+  it('explains an invoice refused for an order cancelled out of stock and keeps other invoice errors generic', () => {
+    const refused = { appError: { code: 'conflict', message: 'raw backend string', details: { invoiceRefusal: 'order_cancelled_out_of_stock' } } };
+    expect(localizeInvoiceError(refused, en)).toBe(en.sales.invoiceOrderCancelledOutOfStock);
+    expect(localizeInvoiceError(refused, pl)).toBe(pl.sales.invoiceOrderCancelledOutOfStock);
+    expect(localizeInvoiceError({ appError: { code: 'conflict' } }, en)).toBe(localizePanelError({ appError: { code: 'conflict' } }, en));
   });
 
   it('leaves codes without a panel hint identical to the base message', () => {

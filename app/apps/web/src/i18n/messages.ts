@@ -3,6 +3,7 @@ import type {
   ImportAuditResourceType,
   LessonBlockType,
   MemberEventType,
+  OrderRefundJobView,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StripeAdoptionRefusal,
@@ -58,6 +59,7 @@ export interface Messages {
     firstIssued: string;
     staff: string;
     unpaidHelp: string;
+    cancelledHelp: string;
   };
   salesLinks: {
     heading: string;
@@ -714,14 +716,17 @@ export interface Messages {
     settingsHeading: string;
     settingsIntro: string;
     save: string;
-    environment: string;
     environments: { sandbox: string; production: string };
+    slotHeadings: { sandbox: string; production: string };
+    slotConnected: string;
+    slotNotConnected: string;
     organizationId: string;
     token: string;
     credentialSaved: (params: { preview: string }) => string;
     credentialMissing: string;
     clearCredentials: string;
     senderHeading: string;
+    senderHint: string;
     senderName: string;
     senderCompany: string;
     senderEmail: string;
@@ -730,8 +735,6 @@ export interface Messages {
     senderBuildingNumber: string;
     senderCity: string;
     senderPostCode: string;
-    configured: string;
-    notConfigured: string;
     parcelTemplateLabel: string;
     parcelTemplateHint: string;
     parcelTemplates: { small: string; medium: string; large: string };
@@ -755,7 +758,7 @@ export interface Messages {
     discardClaimConfirmTitle: string;
     discardClaimConfirmBody: string;
     discardConfirm: string;
-    unavailableReasons: { credentials_missing: string; sender_missing: string; sandbox_environment: string };
+    unavailableReasons: { credentials_missing: { sandbox: string; production: string } };
     errorDetail: (params: { detail: string }) => string;
     failures: {
       slow: string;
@@ -791,6 +794,36 @@ export interface Messages {
     model: string;
     batch: string;
     instructions: string;
+  };
+  personalization: {
+    forLine: (params: { name: string }) => string;
+    characterCount: (params: { count: number; max: number }) => string;
+    textRequired: string;
+    conditionRequired: string;
+    heading: string;
+    hint: string;
+    enable: string;
+    label: string;
+    labelHint: string;
+    description: string;
+    descriptionHint: string;
+    inputLabel: string;
+    maxLength: string;
+    maxLengthHint: string;
+    requireCondition: string;
+    condition: string;
+    conditionHint: string;
+    incomplete: string;
+    marker: string;
+    text: string;
+    originalText: string;
+    correctedAt: string;
+    correctedBy: string;
+    acceptedCondition: string;
+    acceptedAt: string;
+    correct: string;
+    saveCorrection: string;
+    savingCorrection: string;
   };
   productVariants: {
     offerLabelFor: (params: { title: string }) => string;
@@ -887,9 +920,21 @@ export interface Messages {
     billingDetails: string;
     issueInvoice: string;
     issuingInvoice: string;
+    invoiceOrderCancelledOutOfStock: string;
     refreshInvoice: string;
     refreshingInvoice: string;
     invoiceStatus: string;
+    cancelledOutOfStock: string;
+    cancelledOutOfStockRefund: (params: { refund: string }) => string;
+    refundJobTitle: string;
+    refundJobStatuses: Record<OrderRefundJobView['status'], string>;
+    refundJobAttempts: string;
+    refundJobNextAttempt: string;
+    refundJobProviderRefund: string;
+    refundJobLastError: string;
+    refundJobBlockedHelp: string;
+    refundJobFailedHelp: string;
+    refundJobUnconfirmedHelp: string;
     invoiceDownload: string;
     ksefNumber: string;
     ksefPdfDownload: string;
@@ -1256,7 +1301,7 @@ export interface Messages {
     stripeProbeWrite: string;
     stripeProbeStatuses: { ok: string; missing: string; error: string };
     stripeProbeReasons: { 'coupon-probe-failed': string };
-    stripeProbeResources: { 'Webhook Endpoints': string; Subscriptions: string; Coupons: string; 'Promotion Codes': string; 'Checkout Sessions': string };
+    stripeProbeResources: { 'Webhook Endpoints': string; Subscriptions: string; Coupons: string; 'Promotion Codes': string; 'Checkout Sessions': string; 'Charges and Refunds': string };
     stripeConfigure: string;
     stripeConfiguring: string;
     stripeConfigured: string;
@@ -2752,6 +2797,10 @@ export interface Messages {
     subscriptionSuccessTitle: string;
     subscriptionSuccessBody: string;
     goToLogin: string;
+    soldOutRefundEyebrow: string;
+    soldOutRefundTitle: string;
+    soldOutRefundBody: string;
+    soldOutNothingChargedBody: string;
     backToShop: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
@@ -3051,6 +3100,9 @@ export interface Messages {
       memberErasureRequest: string;
       reputationAlert: string;
       stockLow: string;
+      orderOutOfStock: string;
+      orderRefundAlert: string;
+      orderSoldOutRefund: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

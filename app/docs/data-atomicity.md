@@ -122,6 +122,11 @@ at all.
 - Surveys: `SurveyRepository.save` writes the current survey and its append-only
   lifecycle event together. `SurveyRepository.submit` validates the locked
   survey and upserts a member's current response in one transaction.
+- Tenant settings: `TenantRepository.changeSettings` locks the tenant row with
+  `FOR UPDATE`, re-reads the settings for the update to validate its patch
+  against, and writes only the patched columns and the VAT fields the
+  coherence rule clears, so an owner session and a shop management key never
+  write back stale values of each other's fields.
 - Download copies: `DownloadCopyRepository.create` locks the member row with
   `FOR UPDATE`, checks that the member is not erased, and inserts the registry
   row in one transaction to serialize issuance with member erasure.
@@ -213,10 +218,21 @@ nothing when it finds one, so webhook retries of such an order decrement once;
 the partial index `stock_events_tenant_product_order_commit_idx` on
 `(tenant_id, product_id, reference->>'orderId')` for those two event types keeps
 that lookup off the product's full event history.
-The simulated purchase records its order (taking the sales-link lock) before it
-reserves and commits stock, the same lock order as the payment webhook. `on_hand` and
+The payment webhook locks the `product_stock` rows through `lockForCommit`
+before it records its order, which takes the sales-link lock. The simulated
+purchase therefore reserves stock before it records its order and commits the
+stock afterwards, so both purchase paths take the stock rows first and the
+sales-link lock second and never deadlock on each other. `on_hand` and
 `reserved` carry `CHECK (>= 0)`; the commit clamps `on_hand` at zero and records
-the shortfall as an `oversold` event. Stock events are never updated or deleted
+the shortfall as an `oversold` event. The payment webhook first calls
+`lockForCommit` in the payment transaction, which takes the same locks in the
+same order and keeps them until that transaction ends; a late line that no
+longer fits cancels the whole order instead of committing, and the
+`order_refund_jobs` row of that order is inserted in the same transaction. Its
+unique `(tenant_id, order_id)` and `idempotency_key` indexes keep one refund job
+per order. The refund dispatcher saves a job's new state and the staff alert
+rows for that state in the e-mail outbox in one transaction, so a failed alert
+write leaves the job unsettled and it is retried. Stock events are never updated or deleted
 except through the product foreign-key cascade when a draft product is deleted.
 
 ## Sales links and order lines
@@ -274,7 +290,12 @@ is not logged.
 which logs the invoice's order in the invoice's workspace, so issuing an invoice
 or changing it produces an entry. It logs only an order of that same workspace,
 so an invoice row whose workspace disagrees with its order's is still written
-and appears in no feed. The feed entry (the order list entry) also
+and appears in no feed. `order_refund_jobs` logs its order through
+`record_refund_job_order_change()` when a job is created and whenever its
+`status` changes (migration `0167_order_refund_job_changes`), because the feed
+entry of an order cancelled out of stock carries `refundJobStatus`; a job write
+that leaves the status unchanged, such as a scheduled status read, is not
+logged. The feed entry (the order list entry) also
 carries values from `members` (the buyer's e-mail address and name), `products`
 (the title) and `sales_links` (the title); they are read at fetch time, and a
 write to those tables alone is not logged. `coupons` adds the coupon code,

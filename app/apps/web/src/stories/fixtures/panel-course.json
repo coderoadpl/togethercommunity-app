@@ -708,6 +708,8 @@
             "description": "",
             "id": "product-studio-course-101",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 19900,
             "prices": [
               {
@@ -720,6 +722,7 @@
             ],
             "slug": "course-together-101",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false
@@ -738,6 +741,8 @@
             "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 39900,
             "prices": [
               {
@@ -750,6 +755,7 @@
             ],
             "slug": "js-full",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false
@@ -768,6 +774,8 @@
             "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 49900,
             "prices": [
               {
@@ -780,6 +788,7 @@
             ],
             "slug": "react-full",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false
@@ -798,6 +807,8 @@
             "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 9900,
             "prices": [
               {
@@ -810,6 +821,7 @@
             ],
             "slug": "js-dom-module",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false
@@ -828,6 +840,8 @@
             "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 0,
             "prices": [
               {
@@ -840,6 +854,7 @@
             ],
             "slug": "free-preview",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false
@@ -858,6 +873,8 @@
             "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 4900,
             "prices": [
               {
@@ -877,6 +894,7 @@
             ],
             "slug": "club",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false
@@ -895,6 +913,8 @@
             "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
+            "maxQuantity": 1,
+            "personalization": null,
             "priceCents": 7900,
             "prices": [
               {
@@ -907,6 +927,7 @@
             ],
             "slug": "download-workbook",
             "stock": {
+              "available": null,
               "low": false,
               "soldOut": false,
               "tracked": false

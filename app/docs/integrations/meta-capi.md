@@ -28,8 +28,9 @@ and hashes that exact copy and privacy URL. Switching locale fetches a distinct
 status query, and a stale text version is rejected before the first decision. The default describes purchase
 value, ad click and browser identifiers, hashed email, IP, user agent and country;
 Meta Platforms Ireland; measurement, optimization, matching and personalization;
-voluntary consent; and withdrawal without promising deletion of already delivered
-events. The checkout response supplies the privacy-policy URL separately. The
+voluntary consent; and withdrawal on the purchase confirmation page or in the
+account settings' Notifications tab, without promising deletion of already
+delivered events. The checkout response supplies the privacy-policy URL separately. The
 workspace must identify the controller and publish its applicable privacy notice
 before enabling the feature.
 
@@ -133,7 +134,8 @@ through the public endpoint. Withdrawal does not claim to recall data from Meta.
 ## Delivery and fields
 
 The existing authenticated per-minute `GET /api/internal/dispatch-email` tick
-also drains CAPI after email dispatch. It retains the existing bearer cron-secret
+also drains CAPI after email dispatch and the order refund dispatch (see
+[the shop guide](../shop.md)). It retains the existing bearer cron-secret
 check. Self-hosted Node servers also invoke the same isolated runner from the
 email ticker; CAPI cycles for the same runtime dependencies cannot overlap in
 one process, including a concurrent cron request. A tick handles at most 20 jobs

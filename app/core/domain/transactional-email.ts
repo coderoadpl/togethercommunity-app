@@ -6,6 +6,7 @@ import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
+import type { OrderRefundAlert } from './order-refund-job.js';
 import { currencySchema, productTypeSchema } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
@@ -45,6 +46,12 @@ const purchaseDeliverySchema = z.object({
   }).nullable(),
 });
 
+const purchasePersonalizationSchema = z.object({
+  name: z.string().min(1),
+  text: z.string(),
+  condition: z.string().nullable(),
+});
+
 export const purchaseEmailDetailsSchema = z.object({
   orderNumber: z.string().min(1),
   verificationUrl: z.string().url(),
@@ -53,6 +60,7 @@ export const purchaseEmailDetailsSchema = z.object({
   currency: currencySchema.optional(),
   totalCents: z.number().int().nonnegative().optional(),
   delivery: purchaseDeliverySchema.optional(),
+  personalizations: z.array(purchasePersonalizationSchema).optional(),
 }).refine((purchase) => (purchase.currency === undefined) === (purchase.totalCents === undefined), {
   message: 'Currency and total must both be present or both be absent',
 });
@@ -210,6 +218,17 @@ const purchaseDelivery = (
   };
 };
 
+const purchasePersonalizations = (
+  personalizations: z.output<typeof purchasePersonalizationSchema>[] | undefined,
+  labels: TransactionalEmailMessages['purchase'],
+): { html: string; text: string } => {
+  const entries = personalizations ?? [];
+  return {
+    html: entries.map((entry) => `<p><strong>${escapeHtml(labels.personalization)}: ${escapeHtml(entry.name)}</strong><br>${escapeHtml(entry.text)}${entry.condition === null ? '' : `<br>${escapeHtml(labels.personalizationCondition)}: ${escapeHtml(entry.condition)}`}</p>`).join(''),
+    text: entries.map((entry) => `\n\n${labels.personalization}: ${entry.name}\n${entry.text}${entry.condition === null ? '' : `\n${labels.personalizationCondition}: ${entry.condition}`}`).join(''),
+  };
+};
+
 export const welcomeSignIn = (
   language: string,
   input: { tenantName: string; actionUrl: string; branding?: EmailBranding; productType?: WelcomeSignInProductType; purchase?: z.output<typeof purchaseEmailDetailsSchema> },
@@ -235,11 +254,12 @@ export const welcomeSignIn = (
   const labels = messages.purchase;
   const items = purchaseItems(language, purchase, labels);
   const delivery = purchaseDelivery(purchase.delivery, labels);
+  const personalizations = purchasePersonalizations(purchase.personalizations, labels);
   return emailMessageSchema.parse({
     ...rendered,
     subject: labels.subject(purchase.orderNumber, input.tenantName),
-    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}${delivery.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
-    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${delivery.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
+    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}${personalizations.html}${delivery.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
+    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${personalizations.text}${delivery.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
   });
 };
 
@@ -601,6 +621,97 @@ export const stockLowEmail = (
     oversold: input.oversold,
     studioUrl: input.studioUrl,
     studioUrlHtml: escapeHtml(input.studioUrl),
+  }));
+};
+
+export const orderOutOfStockEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    buyerEmail: string;
+    amountCents: number;
+    currency: string;
+    productTitles: readonly string[];
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const productTitles = input.productTitles.join(', ');
+  return emailMessageSchema.parse(transactionalMessages[resolvedLanguage].orderOutOfStockEmail.render({
+    tenantName: input.tenantName,
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    buyerEmail: input.buyerEmail,
+    buyerEmailHtml: escapeHtml(input.buyerEmail),
+    refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,
+    productTitles,
+    productTitlesHtml: escapeHtml(productTitles),
+    orderUrl: input.orderUrl,
+    orderUrlHtml: escapeHtml(input.orderUrl),
+  }));
+};
+
+export const orderSoldOutRefundEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    productTitles: readonly string[];
+    shopUrl: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const productTitles = input.productTitles.join(', ');
+  return emailMessageSchema.parse(messages.orderSoldOutRefundEmail.render({
+    header: brandHeader(input.branding),
+    socialLinks: brandSocialLinks(input.branding),
+    tenantName: input.tenantName,
+    tenantNameHtml: escapeHtml(input.tenantName),
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    productTitles,
+    productTitlesHtml: escapeHtml(productTitles),
+    refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,
+    shopUrl: input.shopUrl,
+    shopLink: link(input.shopUrl, messages.orderSoldOutRefundEmail.shopLabel),
+  }));
+};
+
+export const orderRefundAlertEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    alert: OrderRefundAlert;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    error: string;
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  return emailMessageSchema.parse(transactionalMessages[resolvedLanguage].orderRefundAlertEmail.render({
+    tenantName: input.tenantName,
+    alert: input.alert,
+    orderId: input.orderId,
+    orderIdHtml: escapeHtml(input.orderId),
+    amount,
+    amountHtml: escapeHtml(amount),
+    error: input.error,
+    errorHtml: escapeHtml(input.error),
+    orderUrl: input.orderUrl,
+    orderUrlHtml: escapeHtml(input.orderUrl),
   }));
 };
 

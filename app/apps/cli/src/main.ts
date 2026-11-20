@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, type ShipxSettingsView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalDisplayStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -12,6 +12,7 @@ import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
 import {
+  changeProposalGroupItemsDigest,
   createApiClient,
   redactCredentials,
   REDACTED_OPERATOR_SECRET,
@@ -20,12 +21,14 @@ import {
 } from '#core/client/index.js';
 import {
   API_KEY_HEADER,
+  EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
   type TenantRedirectCreateBody,
   type TenantRedirectUpdateBody,
 } from '#core/contract/index.js';
 import {
   accessItemSchema,
+  appError,
   cartLinesSchema,
   currencySchema,
   contactCampaignAudienceInputSchema,
@@ -77,13 +80,16 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
+import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerTeamCommands } from './team-commands.js';
+import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
-import { emit } from './output.js';
+import { emit, orderStatusLabel } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
+import { changeProposalAppliedLine } from './change-proposal-output.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -220,6 +226,8 @@ const productCreateOptionsSchema = z.object({
   coverUrl: z.string().url().optional(),
   accessItems: z.string().optional(),
   compliance: z.string().optional(),
+  personalizationFile: z.string().min(1).optional(),
+  personalization: z.boolean().default(true),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
 });
@@ -235,10 +243,13 @@ const productUpdateOptionsSchema = z.object({
   coverUrl: z.string().url().optional(),
   clearCover: z.boolean().default(false),
   compliance: z.string().optional(),
+  personalizationFile: z.string().min(1).optional(),
+  personalization: z.boolean().default(true),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
   clearVariant: z.boolean().default(false),
 });
+const ordersPersonalizationOptionsSchema = z.object({ text: z.string() });
 const ordersShipOptionsSchema = z.object({
   carrier: shippingCarrierSchema,
   tracking: z.string().min(1),
@@ -249,21 +260,16 @@ const ordersIssueOptionsSchema = z.object({
 const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
-  environment: shipxEnvironmentSchema.optional(),
+  slot: shipxEnvironmentSchema.optional(),
   organizationId: z.string().min(1).optional(),
-  token: z.string().min(1).optional(),
+  tokenEnv: z.string().min(1).optional(),
+  tokenStdin: z.boolean().optional(),
   sender: z.string().optional(),
-  clearCredentials: z.boolean().default(false),
+  clearCredentials: z.boolean().optional(),
 });
-const shipxSettingsLines = (view: ShipxSettingsView): string => [
-  `environment: ${view.environment}`,
-  `organization id: ${view.organizationId?.maskedPreview ?? '(not set)'}`,
-  `token: ${view.token?.maskedPreview ?? '(not set)'}`,
-  `sender: ${view.sender === null ? '(not set)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
-  `configured: ${String(view.configured)}`,
-].join('\n');
 const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
+  `environment: ${view.environment}`,
   `service: ${view.service ?? '(none)'}`,
   `parcel template: ${view.parcelTemplate}`,
   `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
@@ -280,11 +286,43 @@ const productComplianceOption = async (raw: string | undefined): Promise<Result<
   if (!payload.ok) return payload;
   return parsedInput(productComplianceSchema.nullable(), payload.value, 'Invalid product safety information');
 };
+const productPersonalizationOption = async (
+  options: { personalizationFile?: string | undefined; personalization: boolean },
+): Promise<Result<{ personalization?: z.output<typeof productPersonalizationSchema> | null }, AppError>> => {
+  if (!options.personalization) {
+    return options.personalizationFile === undefined
+      ? ok({ personalization: null })
+      : err(validation('Provide only one of --personalization-file and --no-personalization'));
+  }
+  if (options.personalizationFile === undefined) return ok({});
+  const payload = await readJsonPayload(undefined, options.personalizationFile);
+  if (!payload.ok) return payload;
+  const parsed = parsedInput(productPersonalizationSchema, payload.value, 'Invalid personalisation');
+  return parsed.ok ? ok({ personalization: parsed.value }) : parsed;
+};
+const checkoutPersonalizationOptionSchema = z.string()
+  .regex(/^[^:\s]+:[\s\S]+$/u, 'Pass each --personalization as <productId>:<text>')
+  .transform((value) => {
+    const separator = value.indexOf(':');
+    return { productId: value.slice(0, separator), text: value.slice(separator + 1) };
+  });
+const personalizationSelectionOptionsSchema = z.object({
+  personalization: z.array(checkoutPersonalizationOptionSchema).default([]),
+  acceptCondition: z.literal(true).optional(),
+});
+const personalizationSelection = (
+  options: z.output<typeof personalizationSelectionOptionsSchema>,
+): Result<{ personalizations?: { productId: string; text: string; conditionAccepted: boolean }[] }, AppError> => {
+  if (options.personalization.length === 0) {
+    return options.acceptCondition === undefined ? ok({}) : err(validation('Pass --accept-condition together with --personalization <productId>:<text>'));
+  }
+  return ok({ personalizations: options.personalization.map((entry) => ({ ...entry, conditionAccepted: options.acceptCondition === true })) });
+};
 const shippingSelectionOptionsSchema = z.object({
   shippingRate: z.string().min(1).optional(),
   pickupPoint: z.string().min(1).optional(),
 });
-const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
+const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.merge(personalizationSelectionOptionsSchema).extend({
   salesLink: z.string().min(1).optional(),
   email: z.string().email(),
   product: z.string().min(1),
@@ -372,7 +410,7 @@ const checkoutLineOptionSchema = z.string()
     const [productId = '', quantity = ''] = value.split(':');
     return { productId, quantity: Number.parseInt(quantity, 10) };
   });
-const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
+const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.merge(personalizationSelectionOptionsSchema).extend({
   salesLink: z.string().min(1).optional(),
   product: z.string().min(1).optional(),
   line: z.array(checkoutLineOptionSchema).default([]),
@@ -762,6 +800,7 @@ registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerTeamCommands(program, cliCtx);
+registerOrganizationCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
 registerShopKeyCommands(program, cliCtx);
@@ -933,6 +972,11 @@ originCommand
     }),
   );
 
+const publicStockLabel = (stock: { soldOut: boolean; available: number | null }): string => {
+  if (stock.soldOut) return '  sold out';
+  return stock.available === null ? '' : `  ${String(stock.available)} left`;
+};
+
 const publicCommand = program.command('public').description('Public read-only API');
 
 publicCommand.command('offer').description('Show the public offer').action(
@@ -941,7 +985,7 @@ publicCommand.command('offer').description('Show the public offer').action(
       data.products.length === 0
         ? `${data.tenant.name} (${data.tenant.slug}) has no published products`
         : data.products
-            .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})`)
+            .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})${publicStockLabel(product.stock)}`)
             .join('\n'),
     );
   }),
@@ -983,11 +1027,18 @@ checkout
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
+  .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product, not with --line', (value: string, previous: string[]) => [...previous, value], [])
+  .option('--accept-condition', 'accept the personalisation conditions on behalf of the buyer')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
       const shipping = shippingSelection(options);
       if (!shipping.ok) {
         emit(shipping, ctx.json, () => '');
+        return;
+      }
+      const personalizations = personalizationSelection(options);
+      if (!personalizations.ok) {
+        emit(personalizations, ctx.json, () => '');
         return;
       }
       const common = {
@@ -1001,6 +1052,8 @@ checkout
         const lines = cartLinesSchema.safeParse(options.line);
         if (options.product !== undefined || options.salesLink !== undefined) {
           emit(err(validation('Pass --line without --product or --sales-link')), ctx.json, () => '');
+        } else if (personalizations.value.personalizations !== undefined) {
+          emit(err(validation('A cart checkout cannot carry a personalisation; pass --personalization with --product or --sales-link')), ctx.json, () => '');
         } else if (!lines.success) {
           emit(err(validation('Invalid cart', lines.error.flatten())), ctx.json, () => '');
         } else {
@@ -1017,6 +1070,7 @@ checkout
           productId: options.product,
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
           ...common,
+          ...personalizations.value,
         }),
         ctx.json,
         (data) => data.url,
@@ -1095,6 +1149,19 @@ tenant
     }),
   );
 
+tenant
+  .command('organization')
+  .description('Organization of the active tenant')
+  .command('unlink')
+  .description('Take the active tenant out of its organization, ending every organization-derived role in it (direct owners only)')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.unlinkTenantFromOrganization(), ctx.json, (data) =>
+        `${data.changed ? 'unlinked' : 'not linked'}: ${data.workspace.name} (${data.workspace.slug})`,
+      );
+    }),
+  );
+
 const metaCapi = program.command('meta-capi').description('Meta conversion delivery evidence');
 metaCapi.command('events').description('List the latest 100 conversion outcomes in the selected workspace').action(
   withCtx(async (ctx) => {
@@ -1143,14 +1210,20 @@ tenant.command('shipx').description('Show the InPost ShipX settings (credentials
 
 tenant
   .command('shipx-set')
-  .description('Update the InPost ShipX environment, sender and credentials (owner)')
-  .option('--environment <environment>', 'sandbox or production')
+  .description('Update the InPost ShipX sender or the credentials of one connection (owner)')
+  .option('--slot <slot>', 'connection the credential options change: production (paid orders) or sandbox (test-mode orders)')
   .option('--organization-id <id>', 'ShipX organization id from Manager Paczek')
-  .option('--token <token>', 'ShipX API token from Manager Paczek; stored encrypted')
-  .option('--sender <json>', 'sender block as JSON (name, company, email, phone, street, buildingNumber, city, postCode), or null to clear')
-  .option('--clear-credentials', 'remove the stored organization id and token')
+  .option('--token-env <name>', 'environment variable holding the ShipX API token from Manager Paczek; stored encrypted')
+  .option('--token-stdin', 'read the ShipX API token from stdin')
+  .option('--sender <json>', 'optional sender block as JSON (name, company, email, phone, street, buildingNumber, city, postCode), or null to let InPost use the organization data')
+  .option('--clear-credentials', 'remove the stored organization id and token of the --slot connection')
   .action(
     withInput(z.tuple([tenantShipxSetOptionsSchema]), async (ctx, [options]) => {
+      const slot = await shipxSlotPatch(options);
+      if (!slot.ok) {
+        emit(slot, ctx.json, () => '');
+        return;
+      }
       let sender: z.output<typeof shipxSenderSchema> | null | undefined;
       if (options.sender !== undefined) {
         const payload = await readJsonPayload(options.sender, undefined);
@@ -1163,11 +1236,8 @@ tenant
       }
       emit(
         await ctx.api.shipxConfigure({
-          ...(options.environment === undefined ? {} : { environment: options.environment }),
-          ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
-          ...(options.token === undefined ? {} : { token: options.token }),
           ...(sender === undefined ? {} : { sender }),
-          ...(options.clearCredentials ? { clearCredentials: true } : {}),
+          ...slot.value,
         }),
         ctx.json,
         shipxSettingsLines,
@@ -1533,6 +1603,8 @@ product
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+  .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
+  .option('--no-personalization', 'offer no buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
   .option('--variant-label <label>', 'label of this product in its variant group, e.g. "Black · ASA"')
   .action(
@@ -1569,9 +1641,15 @@ product
         emit(compliance, ctx.json, () => '');
         return;
       }
+      const personalization = await productPersonalizationOption(options);
+      if (!personalization.ok) {
+        emit(personalization, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...personalization.value,
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
@@ -1633,7 +1711,7 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information or variant')
+  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information, personalisation or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
@@ -1645,6 +1723,8 @@ product
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it')
+  .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
+  .option('--no-personalization', 'remove the buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
   .option('--variant-label <label>', 'label of this product in its variant group')
   .option('--clear-variant', 'remove the variant group and label')
@@ -1663,9 +1743,15 @@ product
         emit(compliance, ctx.json, () => '');
         return;
       }
+      const personalization = await productPersonalizationOption(options);
+      if (!personalization.ok) {
+        emit(personalization, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.updateProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...personalization.value,
           ...(options.clearVariant ? { variantGroup: null, variantLabel: null } : {}),
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
@@ -1846,6 +1932,19 @@ ordersCommand
       );
     }),
   );
+ordersCommand
+  .command('personalization <orderId> <productId>')
+  .description('Correct the personalisation text of an order line; the first original text is kept')
+  .requiredOption('--text <text>', 'the corrected text')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.string().min(1), ordersPersonalizationOptionsSchema]), async (ctx, [orderId, productId, options]) => {
+      emit(
+        await ctx.api.correctOrderPersonalization({ orderId, productId, text: options.text }),
+        ctx.json,
+        (data) => `corrected personalisation: ${data.order.id} (${productId})`,
+      );
+    }),
+  );
 const ordersShipx = ordersCommand.command('shipx').description('InPost ShipX shipments and labels');
 ordersShipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
@@ -1947,7 +2046,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${orderStatusLabel(order)}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),
@@ -3442,6 +3541,8 @@ program
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
+  .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product', (value: string, previous: string[]) => [...previous, value], [])
+  .option('--accept-condition', 'accept the personalisation conditions on behalf of the buyer')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
@@ -3453,6 +3554,11 @@ program
         emit(shipping, ctx.json, () => '');
         return;
       }
+      const personalizations = personalizationSelection(options);
+      if (!personalizations.ok) {
+        emit(personalizations, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.simulatePurchase({
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
@@ -3461,6 +3567,7 @@ program
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
           ...(options.acceptTerms === undefined ? {} : { termsAccepted: true }),
           ...(shipping.value === null ? {} : { shipping: shipping.value }),
+          ...personalizations.value,
         }),
         ctx.json,
         (data) => {
@@ -3971,6 +4078,7 @@ const shopManagementKey = apiKey
 const shopManagementKeyCreateOptionsSchema = z.object({
   scope: z.array(shopManagementScopeSchema).min(1),
   expiresAt: z.string().datetime(),
+  mode: shopManagementKeyModeSchema.optional(),
 });
 
 shopManagementKey
@@ -3978,13 +4086,19 @@ shopManagementKey
   .description('Create a shop management key; the secret is shown once')
   .option('--scope <scope...>', 'Shop scopes (required): shop:catalog:read, shop:catalog:write, shop:orders:read, shop:fulfilment:write, shop:settings:read, shop:settings:write, shop:integrations:read, shop:integrations:write')
   .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 30 days ahead (7 days is the suggested lifetime)')
+  .option('--mode <mode>', 'direct (default): writes change live state; propose: writes become change proposals the owner decides on')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), shopManagementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
-        await ctx.api.createShopManagementKey({ name: nameWords.join(' '), scopes: options.scope, expiresAt: options.expiresAt }),
+        await ctx.api.createShopManagementKey({
+          name: nameWords.join(' '),
+          scopes: options.scope,
+          expiresAt: options.expiresAt,
+          ...(options.mode === undefined ? {} : { mode: options.mode }),
+        }),
         ctx.json,
         (data) =>
-          `created shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+          `created ${data.apiKey.mode === 'propose' ? 'propose-mode ' : ''}shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
       );
     }),
   );
@@ -3995,7 +4109,7 @@ shopManagementKey.command('list').description('List shop management keys (no sec
       data.apiKeys.length === 0
         ? 'no shop management keys'
         : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})`)
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})\t${k.mode}`)
             .join('\n'),
     );
   }),
@@ -4060,6 +4174,235 @@ shopManagementKey
           ].join('\t'))),
           ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
         ].join('\n'),
+      );
+    }),
+  );
+
+const changeProposals = program
+  .command('proposals')
+  .description('Change proposals made by propose-mode shop management keys (verified owner session only)');
+
+const changeProposalListOptionsSchema = z.object({
+  status: changeProposalDisplayStatusSchema.optional(),
+  group: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const changeProposalEffectLines = (effect: ChangeProposalEffect): string[] =>
+  Object.entries(effect).map(([field, change]) => 'delta' in change
+    ? `  ${field}: ${change.delta > 0 ? '+' : ''}${String(change.delta)}`
+    : `  ${field}: ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)}`);
+
+const changeProposalGroupLabel = (proposal: Pick<ChangeProposalOwnerView, 'groupId' | 'groupTitle' | 'groupPosition'>): string =>
+  proposal.groupId === null ? '-' : `group ${proposal.groupTitle ?? proposal.groupId} #${String(proposal.groupPosition ?? 0)} (${proposal.groupId})`;
+
+const changeProposalSummary = (proposal: ChangeProposalOwnerView): string =>
+  `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.proposedBy.keyName}\t${changeProposalGroupLabel(proposal)}\t(${proposal.id})`;
+
+const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
+  `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
+  ...(proposal.groupId === null ? [] : [`in ${changeProposalGroupLabel(proposal)}; decide it with the whole group`]),
+  `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
+  `proposed by key: ${proposal.proposedBy.keyName} (${proposal.proposedBy.keyId}, ${proposal.proposedBy.keyState}), issued by ${proposal.proposedBy.issuerUserId}`,
+  `created: ${proposal.createdAt}`,
+  `expires: ${proposal.expiresAt}`,
+  'effect:',
+  ...changeProposalEffectLines(proposal.effect),
+  ...(proposal.decidedAt === null ? [] : [`decided: ${proposal.decidedAt} by ${proposal.decidedByUserId ?? 'the key'}`]),
+  ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
+];
+
+changeProposals
+  .command('list')
+  .description('List the change proposals of the workspace, newest first')
+  .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed or expired')
+  .option('--group <id>', 'only the items of this group')
+  .option('--cursor <id>', 'continue after this proposal id')
+  .option('--limit <n>', 'proposals per page (1-100, default 50)')
+  .action(
+    withInput(z.tuple([changeProposalListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listChangeProposals({
+          ...(options.status === undefined ? {} : { status: options.status }),
+          ...(options.group === undefined ? {} : { groupId: options.group }),
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) => [
+          ...(data.proposals.length === 0 ? ['no change proposals'] : data.proposals.map(changeProposalSummary)),
+          ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
+        ].join('\n'),
+      );
+    }),
+  );
+
+changeProposals
+  .command('show <id>')
+  .description('Show a change proposal with its full before/after effect and its history')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.getChangeProposal({ id }), ctx.json, (data) => [
+        ...changeProposalDetail(data.proposal),
+        'history:',
+        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${event.note}`}`),
+      ].join('\n'));
+    }),
+  );
+
+changeProposals
+  .command('reject <id>')
+  .description('Reject a pending change proposal; nothing is applied')
+  .option('--note <text>', 'reason shown to the proposing key (at most 500 characters)')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ note: z.string().max(500).optional() })]), async (ctx, [id, options]) => {
+      emit(
+        await ctx.api.rejectChangeProposal({ id, ...(options.note === undefined ? {} : { note: options.note }) }),
+        ctx.json,
+        (data) => `rejected:\n${changeProposalDetail(data.proposal).join('\n')}`,
+      );
+    }),
+  );
+
+const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
+  switch (proposal.status) {
+    case 'applied':
+      return changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId);
+    case 'stale':
+      return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
+    case 'failed':
+      return `failed: ${proposal.failureCode ?? 'error'}: ${proposal.failureMessage ?? ''}; nothing was applied`;
+    case 'pending':
+    case 'rejected':
+    case 'withdrawn':
+    case 'expired':
+      return proposal.status;
+  }
+};
+
+changeProposals
+  .command('approve <id>')
+  .description('Approve a pending change proposal: apply it only if the live state still gives exactly the effect shown, otherwise mark it stale or failed')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      const result = await ctx.api.approveChangeProposal({ id });
+      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal), ...changeProposalDetail(data.proposal)].join('\n'));
+      if (result.ok && result.value.proposal.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
+    }),
+  );
+
+const changeProposalGroupHeader = (group: ChangeProposalGroupOwnerView): string[] => [
+  `group ${group.id}: ${group.title} [${group.status}]`,
+  `proposed by key: ${group.proposedBy.keyName ?? '(unknown)'} (${group.proposedBy.keyId}, ${group.proposedBy.keyState}), issued by ${group.proposedBy.issuerUserId ?? '(unknown)'}`,
+  `created: ${group.createdAt}`,
+  `expires: ${group.expiresAt}`,
+  `items: ${String(group.items.length)}`,
+];
+
+const changeProposalGroupItemLines = (group: ChangeProposalGroupOwnerView): string[] =>
+  group.items.flatMap((item) => [
+    `item ${String(item.groupPosition ?? 0)}: ${item.operation} [${item.status}] ${item.target.kind}${item.target.id === null ? ' (new)' : ` ${item.target.id}`} (${item.id})`,
+    ...changeProposalEffectLines(item.effect),
+    ...(item.status === 'applied' ? [`  ${changeProposalAppliedLine(item.operation, item.appliedResourceId)}`] : []),
+    ...(item.status === 'failed' ? [`  failed: ${item.failureCode ?? 'error'}: ${item.failureMessage ?? ''}`] : []),
+    ...item.events.filter((event) => event.note !== null).map((event) => `  ${event.kind}: ${event.note ?? ''}`),
+  ]);
+
+const changeProposalGroupOutcomeLine = (group: ChangeProposalGroupOwnerView): string => {
+  switch (group.status) {
+    case 'applied':
+      return `applied: all ${String(group.items.length)} items of the group`;
+    case 'stale':
+      return 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.';
+    case 'failed':
+      return 'failed: an item was refused by the live rules; nothing in the group was applied';
+    case 'open':
+    case 'expired':
+    case 'rejected':
+    case 'withdrawn':
+      return group.status;
+  }
+};
+
+const changeProposalGroups = changeProposals
+  .command('group')
+  .description('Groups of change proposals: approved or rejected as one unit, applied completely or not at all');
+
+interface ReviewedChangeProposalGroup {
+  group: ChangeProposalGroupOwnerView;
+  itemsDigest: string;
+  approveCommand: string;
+}
+
+const reviewedChangeProposalGroup = (ctx: CliCtx, group: ChangeProposalGroupOwnerView): ReviewedChangeProposalGroup => {
+  const itemsDigest = changeProposalGroupItemsDigest(group.items.map((item) => item.id));
+  return {
+    group,
+    itemsDigest,
+    approveCommand: `together${ctx.tenant === null ? '' : ` --tenant ${ctx.tenant}`} proposals group approve ${group.id} --items-digest ${itemsDigest}`,
+  };
+};
+
+const reviewedChangeProposalGroupLines = (reviewed: ReviewedChangeProposalGroup): string[] => [
+  ...changeProposalGroupHeader(reviewed.group),
+  ...changeProposalGroupItemLines(reviewed.group),
+  `items digest: ${reviewed.itemsDigest}`,
+  `approve exactly these items with: ${reviewed.approveCommand}`,
+];
+
+changeProposalGroups
+  .command('show <id>')
+  .description('Show a group with its items in order, each with its full before/after effect, the digest of those items and the command that approves exactly them')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      const shown = await ctx.api.getChangeProposalGroup({ id });
+      emit(shown.ok ? ok(reviewedChangeProposalGroup(ctx, shown.value.group)) : shown, ctx.json, (data) =>
+        reviewedChangeProposalGroupLines(data).join('\n'));
+    }),
+  );
+
+const itemsDigestSchema = z.string().regex(/^[0-9a-f]{16}$/, 'Pass the 16-character items digest that "proposals group show" printed');
+
+changeProposalGroups
+  .command('approve <id>')
+  .description('Approve exactly the items "proposals group show" showed, as one unit: all are applied, or none when one no longer gives the effect shown. When the items changed since, nothing is sent and the current items are printed')
+  .requiredOption('--items-digest <digest>', 'the items digest "proposals group show" printed for the items you reviewed')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ itemsDigest: itemsDigestSchema })]), async (ctx, [id, options]) => {
+      const current = await ctx.api.getChangeProposalGroup({ id });
+      if (!current.ok) {
+        emit(current, ctx.json, () => '');
+        return;
+      }
+      const reviewed = reviewedChangeProposalGroup(ctx, current.value.group);
+      if (reviewed.itemsDigest !== options.itemsDigest) {
+        if (!ctx.json) console.log(['the group now holds:', ...reviewedChangeProposalGroupLines(reviewed)].join('\n'));
+        emit(err(appError('conflict', 'The items of this group differ from the ones you reviewed; nothing was sent. Review the current items and approve them with their digest', {
+          changeProposalGroupItemIds: reviewed.group.items.map((item) => item.id),
+          itemsDigest: reviewed.itemsDigest,
+          approveCommand: reviewed.approveCommand,
+          group: reviewed.group,
+        })), ctx.json, () => '');
+        return;
+      }
+      if (!ctx.json) console.log(['approving:', ...changeProposalGroupHeader(reviewed.group), ...changeProposalGroupItemLines(reviewed.group)].join('\n'));
+      const result = await ctx.api.approveChangeProposalGroup({ id, itemIds: reviewed.group.items.map((item) => item.id) });
+      emit(result, ctx.json, (data) => [changeProposalGroupOutcomeLine(data.group), ...changeProposalGroupItemLines(data.group)].join('\n'));
+      if (result.ok && result.value.group.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
+    }),
+  );
+
+changeProposalGroups
+  .command('reject <id>')
+  .description('Reject every item of an open group; nothing is applied')
+  .option('--note <text>', 'reason shown to the proposing key (at most 500 characters)')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ note: z.string().max(500).optional() })]), async (ctx, [id, options]) => {
+      emit(
+        await ctx.api.rejectChangeProposalGroup({ id, ...(options.note === undefined ? {} : { note: options.note }) }),
+        ctx.json,
+        (data) => `rejected:\n${[...changeProposalGroupHeader(data.group), ...changeProposalGroupItemLines(data.group)].join('\n')}`,
       );
     }),
   );

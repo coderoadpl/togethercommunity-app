@@ -1,6 +1,12 @@
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 import type { AppError, Result } from '#core/domain/index.js';
 
+export const orderStatusLabel = (order: { status: string; cancelReason?: string | null | undefined; refundJobStatus?: string | null | undefined }): string => {
+  if (order.cancelReason == null) return order.status;
+  const refund = order.refundJobStatus == null ? '' : `, refund ${order.refundJobStatus}`;
+  return `${order.status} (cancelled: ${order.cancelReason}${refund})`;
+};
+
 /**
  * Single output funnel for every command:
  *  --json  → exactly one JSON document on stdout (the agent contract),

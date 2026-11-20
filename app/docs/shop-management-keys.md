@@ -31,6 +31,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
+| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects | Available (images refused) |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -127,6 +128,14 @@ The key records the issuing owner. Every request made with it will act with at
 most the issuer's current authority, so a key stops working when its issuer is
 no longer a verified owner of the workspace.
 
+The issuer's owner role may come from the organization the workspace is linked
+to: an owner of an active organization is an owner of every workspace linked
+to it and can create
+shop management keys there, although creating a tenant API key needs a direct
+owner grant. Such a key stops on the next request when that derivation ends:
+the issuer leaves the organization or loses its owner role, the workspace is
+unlinked, or the organization is suspended.
+
 Creation and revocation each write a key event (`created`, `revoked`) to the
 dedicated shop management key history (below) in the same transaction as the
 key change. A purge writes one `purged` event per deleted key in the same
@@ -134,6 +143,59 @@ transaction as the deletion. These events carry the key id and the owner's
 account id, never the secret or its hash. They are not workspace audit events:
 the workspace audit list (`GET /api/tenant/audit-events`) is unchanged by shop
 management keys.
+
+## Propose mode
+
+A key is created in one of two modes, fixed for its lifetime:
+
+- `direct` (the default): every write the scopes allow changes the live shop,
+  as described in the rest of this guide.
+- `propose`: the key's writes never change live state. A write to one of the
+  ten catalogue routes, the three sales-link write routes or the settings
+  update is dry-run, stored as a [change proposal](change-proposals.md) with
+  its field-level effect, and answered `202` with a receipt; the owner then
+  approves or rejects it in their own session. An approval applies the change
+  only when the live state still gives exactly the effect the owner saw.
+  Every other write route (images, order fulfilment, integrations) answers
+  `403`. Reads behave as on a direct key.
+
+```bash
+pnpm --silent run cli api-key shop-management create Catalogue agent \
+  --scope shop:catalog:read shop:catalog:write \
+  --expires-at 2026-12-01T00:00:00.000Z --mode propose
+```
+
+Over HTTP the creation body carries `"mode": "propose"`. On a propose-mode key
+`shop:catalog:write` and `shop:settings:write` grant only
+`proposal:submit:catalog` and `proposal:submit:settings` instead of the live
+write capabilities, and each needs its read scope (`shop:catalog:read`,
+`shop:settings:read`): creation without it answers `400` and the database
+refuses such a row. `shop:fulfilment:write` and `shop:integrations:write` are
+refused at creation with `400`. The key lists, reads and withdraws only its
+own proposals under `/api/m2m/shop/proposals` (CLI `shop proposals
+list|show|withdraw`); a direct-mode key is refused there with `403`. The key
+list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
+in its last column) shows each key's mode. Revoking or purging a propose-mode
+key withdraws its pending, unexpired proposals, those in its open
+[groups](change-proposals.md#groups) included, and deletes its empty groups,
+in the same transaction.
+
+A propose-mode key can also put proposals that depend on each other in a
+group the owner approves as one unit: it creates the group
+(`POST /api/m2m/shop/proposals/groups`, CLI `shop proposals group create`)
+and sends each proposal with the header `x-proposal-group: <group id>` (CLI
+`--group <id>` on every proposing command). Only the key that created a group
+can add to it, read it or withdraw it; for any other key the group answers
+`404`. A direct-mode key's writes ignore the header and stay live.
+
+A receipt carries the submitted input, the target id and the status, and after
+an approval the id of the applied resource, which the key can already read with
+its read scope; it never carries the effect, a before value or the deciding
+account. Whether a proposal is accepted or refused depends on
+live state, so a propose-mode key always holds the read scope of the family it
+proposes in and learns nothing from a refused or accepted proposal that it
+could not read with that read scope. See [Change proposals](change-proposals.md) for the
+route classes, statuses, limits and what is not available yet.
 
 ## Authenticating a request
 
@@ -153,7 +215,8 @@ between requests:
    answers `401 Missing API key`; an unknown, revoked, expired, legacy or
    other-workspace key answers the same `401 Invalid API key`.
 3. The issuing account must still exist, have a verified e-mail address and
-   hold the owner role in that workspace. Otherwise the request answers the
+   hold the owner role in that workspace, directly or derived from the
+   organization the workspace is linked to. Otherwise the request answers the
    same `401 Invalid API key` as every other unusable key, so a caller cannot
    tell an issuer change from a revoked or unknown key; demoting or removing
    the issuer, or deleting the account, takes effect on the next request.
@@ -340,6 +403,10 @@ curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>"}' "$SHOP/products/d
 A physical product publishes once it has an active one-time price; the
 anonymous `GET /api/public/offer` then lists it.
 
+Product create and update accept `personalization` like the session routes
+(see [Personalisation](shop.md#personalisation)): an update without the field
+keeps the stored setting and `null` removes it.
+
 ### CLI
 
 The `shop` command group reads the key from the environment variable named by
@@ -353,6 +420,7 @@ read -r TOGETHER_SHOP_KEY < shop-catalog.key && export TOGETHER_SHOP_KEY
 pnpm --silent run cli --tenant acme shop products list
 pnpm --silent run cli --tenant acme shop products create --title 'Printed handbook' --type physical --price 49
 pnpm --silent run cli --tenant acme shop products update <product-id> --description 'Second edition'
+pnpm --silent run cli --tenant acme shop products update <product-id> --personalization-file engraving.json
 pnpm --silent run cli --tenant acme shop prices add --product <product-id> --kind one_time --price 49
 pnpm --silent run cli --tenant acme shop prices list --product <product-id>
 pnpm --silent run cli --tenant acme shop prices deactivate <price-id>
@@ -378,6 +446,17 @@ sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `30x` answer fails the call with `internal` (CLI exit code 10) and the message
 `Shop management request to <path> refused a redirect`, so the key never
 reaches another URL. Use it only from a backend.
+
+The ten catalogue writes, `createSalesLink`, `updateSalesLink`,
+`deleteSalesLink` and `updateSettings` resolve to `{ outcome: 'applied', ... }`
+with the resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
+the [receipt](change-proposals.md#receipts) for a propose-mode key;
+`isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
+and `withdrawProposal` reach the key's own proposals. Each of these fourteen
+writes takes an optional third argument `{ groupId }` that sends the
+`x-proposal-group` header, and its proposed outcome then also carries the
+`group` receipt; `createProposalGroup`, `getProposalGroup` and
+`withdrawProposalGroup` reach the key's own groups.
 
 ## Product covers and sales links
 
@@ -489,8 +568,9 @@ shipped answers `409 fulfilment_conflict`; issuing more units of a line than
 are left to issue answers `409 conflict`. A manual shipment (`carrier` `other` or
 `inpost` with a tracking number) needs no ShipX configuration and e-mails the
 buyer the tracking number for a live order. `POST .../shipx` creates and pays
-a real InPost shipment when the workspace's ShipX integration is configured for
-production, so automate it only with explicit operational approval. Its body
+a real InPost shipment for a live order when the workspace's `production`
+ShipX connection is saved, so automate it only with explicit operational
+approval; a test-mode order uses the `sandbox` connection. Its body
 may carry the optional `parcelTemplate` (`small`, `medium` or `large`) for this
 shipment; without it the parcel takes the largest product size, and any other
 value or an unknown field answers `400 validation` before anything is sent to
@@ -722,10 +802,19 @@ storing their KSeF credentials.
   (`provider`, `endpoint`, `region`, `bucket`, `accessKeyId`,
   `secretAccessKey`), probes the bucket and the workspace origins for CORS and
   stores it only when the probe succeeds.
-- **ShipX** `configure` changes only the parts it is given: `environment`,
-  `sender` (or `null` to remove it), `organizationId`, `token`, or
-  `"clearCredentials": true`. The view answers the environment, the sender and
-  masked credentials.
+- **ShipX** keeps two connections: `production` serves live orders and
+  `sandbox` serves test-mode orders. `configure` changes only the parts it is
+  given: the shared optional `sender` (or `null` to remove it, so InPost uses
+  the organization data), and per connection `production` or `sandbox` with
+  `organizationId`, `token` or `"clearCredentials": true` (not together with
+  new credentials). A connection left out keeps its credentials; the earlier
+  top-level `environment`, `organizationId`, `token` and `clearCredentials`
+  answer `400 validation`. The view answers the sender and, per connection, the
+  masked organization id, the masked token and `configured`. This route is the
+  only way a key reaches the four ShipX secret names
+  (`shipx.production.organizationId`, `shipx.production.token`,
+  `shipx.sandbox.organizationId`, `shipx.sandbox.token`); they are not on the
+  generic allow-list above, and the route writes no other secret.
 
 A body that carries a secret (an iFirma or KSeF value, the Stripe restricted
 key, the storage `secretAccessKey`, the ShipX `token`) is built by `jq` from a
@@ -761,12 +850,15 @@ pnpm --silent run cli --tenant acme shop integrations storage configure --provid
   --endpoint https://storage.example.test --region auto --bucket shop-assets \
   --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET
 pnpm --silent run cli --tenant acme shop integrations shipx show
-pnpm --silent run cli --tenant acme shop integrations shipx configure --environment sandbox \
+pnpm --silent run cli --tenant acme shop integrations shipx configure --slot sandbox \
   --sender-json-file sender.json --organization-id 12345 --token-env SHIPX_TOKEN
+pnpm --silent run cli --tenant acme shop integrations shipx configure --slot production \
+  --organization-id 67890 --token-env SHIPX_PRODUCTION_TOKEN
 ```
 
-`shipx configure` also takes `--clear-sender`, `--clear-credentials` and
-`--token-stdin`. The typed client exposes `listIntegrationSecrets`,
+`--slot` names the connection that `--organization-id`, `--token-env`,
+`--token-stdin` and `--clear-credentials` change, and is required with them;
+`--sender-json-file` and `--clear-sender` need no slot. The typed client exposes `listIntegrationSecrets`,
 `setIntegrationSecret`, `deleteIntegrationSecret`, `configureStripe`,
 `probeStripe`, `configureStorage`, `getShipxSettings` and `configureShipx`.
 
@@ -1019,8 +1111,8 @@ run:
 
 - Stripe `configure` registers a webhook endpoint in the Stripe account behind
   the restricted key, for either mode, and the live slot takes real payments.
-- ShipX `POST .../orders/<order-id>/shipx` on a live order with a `production`
-  ShipX environment creates and pays a real InPost shipment.
+- ShipX `POST .../orders/<order-id>/shipx` on a live order with a saved
+  `production` connection creates and pays a real InPost shipment.
 - Stored KSeF credentials together with `autoIssueInvoices` and
   `ksefSubmissionMode` `automatic` submit real invoices to KSeF; keep
   `ksefSubmissionMode` `manual` until that is approved.
@@ -1107,8 +1199,8 @@ storage, and no network:
    (`shop:catalog:*`) and a warehouse key (`shop:orders:read`,
    `shop:fulfilment:write`).
 2. Provisioning sets legal URLs, seller and a courier rate, configures Stripe
-   (test and live slots), storage and a ShipX sandbox, and reads the masked
-   secret list without any secret value; it cannot read the catalog.
+   (test and live slots), storage and the ShipX sandbox connection, and reads
+   the masked secret list without any secret value; it cannot read the catalog.
 3. Catalog uploads a cover through the signed-upload protocol, creates the
    physical book, attaches the cover, prices it, enables stock of 20 and
    publishes it; it cannot read orders. A browser-origin request to a shop
@@ -1154,7 +1246,7 @@ pnpm --silent run cli --tenant acme shop integrations storage configure --provid
   --endpoint https://storage.example.test --region auto --bucket shop-assets \
   --access-key-id "$STORAGE_KEY_ID" --secret-access-key-env STORAGE_SECRET
 pnpm --silent run cli --tenant acme shop integrations stripe configure --mode test --restricted-key-env STRIPE_TEST_RESTRICTED_KEY
-pnpm --silent run cli --tenant acme shop integrations shipx configure --environment sandbox \
+pnpm --silent run cli --tenant acme shop integrations shipx configure --slot sandbox \
   --sender-json-file sender.json --organization-id <organization-id> --token-env SHIPX_TOKEN
 pnpm --silent run cli --tenant acme shop integrations secrets list
 
@@ -1268,6 +1360,18 @@ of the kept migration, no longer matches the schema fingerprint that release
 was built with. This is expected while the newer schema remains. The order,
 settings, asset and integration routes add no migration, so a retreat from
 them to the release with only the catalog routes needs no data step either.
+
+A retreat to a release that predates migration `0163_change_proposals` needs
+no purge either, although that release reads `shop_management_keys` and
+ignores its `mode` column. A propose-mode key is stored under the hash of its
+secret in a separate propose-mode hash domain, so a release that looks keys up
+by the plain hash of the presented secret finds no row and answers
+`401 Invalid API key`: a propose-mode key never gains live write access there.
+Direct-mode keys are stored under the plain hash as before and keep working.
+Pending [change proposals](change-proposals.md) stay in their tables
+untouched and are visible again after rolling forward. A propose-mode key that
+is revoked or purged during the retreat leaves its proposals pending, for the
+owner to reject after rolling forward.
 
 The hourly production health monitor (`.github/workflows/prod-health.yml`)
 treats `schemaFingerprintMatch: false` as a failed `health` check: every run

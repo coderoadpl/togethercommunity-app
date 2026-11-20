@@ -487,7 +487,7 @@ const fixture = (
           ? {}
           : { defaultLanguage: input.tenantDefaultLanguage }),
       }),
-    updateSettings: async (_tenantId, settings) => settings,
+    changeSettings: async () => null,
     createTenantWithOwnerGrant: async () => null,
     hasAny: async () => true,
   };
@@ -592,6 +592,7 @@ const fixture = (
                 contentVersion: 1,
               },
               staffRole: 'admin',
+              source: 'direct',
             }
           : null,
       findMember: async (tenantId, userId) =>

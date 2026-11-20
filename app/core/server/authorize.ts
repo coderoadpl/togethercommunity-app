@@ -4,17 +4,20 @@ import {
   forbidden,
   impersonationReadOnly,
   isImpersonationReadCapability,
+  isOrganizationReadCapability,
+  notFound,
   ok,
   requiresVerifiedEmail,
   shopManagementKeyGrantCovers,
   tenantNotFound,
   type AppError,
   type Capability,
+  type OrganizationRole,
   type Result,
   type ShopManagementKeyGrant,
 } from '#core/domain/index.js';
 
-import type { Ctx } from './context.js';
+import type { Ctx, OrganizationCtx } from './context.js';
 
 const principalFor = (ctx: Ctx) => {
   if (ctx.identity.staffRole === 'owner') return 'owner';
@@ -90,6 +93,21 @@ export const authorizeTenant = (
   return ok(ctx.identity.tenantId);
 };
 
+/**
+ * An organization-derived role ends with the organization link or membership, so operations whose
+ * result outlives the request (credentials, team grants) stay with roles granted in the workspace.
+ */
+export const requireDirectGrant = (
+  ctx: Ctx,
+  tenant: Result<string, AppError>,
+  refusal: string,
+): Result<string, AppError> => {
+  if (!tenant.ok) return tenant;
+  return ctx.identity.staffGrantSource === 'direct' && ctx.machineActor === undefined
+    ? tenant
+    : err(forbidden(refusal));
+};
+
 export const authorizeRequiredTenant = (
   ctx: Ctx,
   capability: Capability,
@@ -99,4 +117,25 @@ export const authorizeRequiredTenant = (
   return ctx.identity.tenantId === null
     ? err(forbidden('Tenant context is required'))
     : ok(ctx.identity.tenantId);
+};
+
+export const organizationSuspendedError = (): AppError =>
+  forbidden('This organization is suspended; only reads are allowed until it is reactivated');
+
+export const authorizeOrganization = (
+  octx: OrganizationCtx,
+  organizationId: string,
+  capability: Capability,
+): Result<{ organizationId: string; role: OrganizationRole }, AppError> => {
+  const membership = octx.membership;
+  if (membership === null || membership.organizationId !== organizationId) {
+    return err(notFound('Organization not found'));
+  }
+  const roleGrants = capabilitiesForPrincipal(membership.role === 'owner' ? 'organization-owner' : 'organization-admin');
+  const granted = roleGrants.includes(capability) && (octx.capabilities?.includes(capability) ?? true);
+  if (!granted) return err(forbidden(`${capability} is not permitted`));
+  if (membership.organizationStatus === 'suspended' && !isOrganizationReadCapability(capability)) {
+    return err(organizationSuspendedError());
+  }
+  return ok({ organizationId, role: membership.role });
 };

@@ -23,6 +23,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     qrAlt: 'Order QR code',
     delivery: 'Delivery',
     pickupPoint: 'Parcel locker',
+    personalization: 'Personalisation',
+    personalizationCondition: 'Condition you accepted',
   },
   orderShipped: {
     items: 'Shipped items',
@@ -159,6 +161,72 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       html: `<p>E-mail reputation for ${tenantNameHtml}: <strong>${status}</strong>.</p><p>Hard bounce rate: ${hardBounceRate}<br>Complaint rate: ${complaintRate}<br>Window: ${windowStartHtml} – ${windowEndHtml}</p><p><a href="${dashboardUrlHtml}">Review reputation</a></p>`,
       text: `E-mail reputation for ${tenantName}: ${status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
     }),
+  },
+  orderOutOfStockEmail: {
+    render: ({ tenantName, orderId, orderIdHtml, buyerEmail, buyerEmailHtml, refund, productTitles, productTitlesHtml, orderUrl, orderUrlHtml }) => {
+      const summary = (amount: string | null) => amount === null
+        ? 'An order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock, and nothing was charged, so there is nothing to refund.'
+        : `A paid order arrived after its goods sold out, so it was cancelled. Nothing was taken from stock and a full refund of ${amount} is in progress.`;
+      return {
+        subject: `[${tenantName}] Order cancelled, out of stock: ${orderId}`,
+        html: `<p>${summary(refund?.amountHtml ?? null)}</p><p>Order: ${orderIdHtml}<br>Buyer: ${buyerEmailHtml}<br>Out of stock: ${productTitlesHtml}</p><p><a href="${orderUrlHtml}">Open the order</a></p>`,
+        text: `${summary(refund?.amount ?? null)}\nOrder: ${orderId}\nBuyer: ${buyerEmail}\nOut of stock: ${productTitles}\n${orderUrl}`,
+      };
+    },
+  },
+  orderSoldOutRefundEmail: {
+    shopLabel: 'Visit the shop',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+      const timing = [
+        'Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it appears as a separate credit after about 5–10 business days.',
+        'BLIK: the refund takes about 120 minutes.',
+        'Przelewy24: the refund arrives as a separate transfer within 3 business days.',
+        'Other payment methods: the time depends on the payment provider.',
+      ];
+      const refundText = refund === null
+        ? 'You were not charged, so there is nothing to refund.'
+        : `A full refund of ${refund.amount} to the payment method you used has been started automatically. You do not need to do anything.\n\nWhen the money comes back:\n${timing.map((line) => `- ${line}`).join('\n')}`;
+      const refundHtml = refund === null
+        ? '<p>You were not charged, so there is nothing to refund.</p>'
+        : `<p>A full refund of ${refund.amountHtml} to the payment method you used has been started automatically. You do not need to do anything.</p><p>When the money comes back:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
+      return {
+        subject: `Order ${orderId} cancelled: sold out, ${refund === null ? 'nothing charged' : 'full refund on its way'}`,
+        html: `${header}<p>Hello!</p><p>Your payment for order ${orderIdHtml} on ${tenantNameHtml} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.</p><p>Sold out: ${productTitlesHtml}</p>${refundHtml}<p>We are sorry for the trouble.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Hello!\n\nYour payment for order ${orderId} on ${tenantName} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.\n\nSold out: ${productTitles}\n\n${refundText}\n\nWe are sorry for the trouble.\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
+  orderRefundAlertEmail: {
+    render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
+      const subjects = {
+        retrying: 'Automatic refund failed, retrying',
+        blocked_permission: 'Automatic refund blocked by a missing Stripe permission',
+        blocked_permission_failed: 'Automatic refund still blocked after 72 hours, refund by hand',
+        failed: 'Automatic refund failed, refund by hand',
+        failed_after_submission: 'Refund failed after it was issued, refund by hand',
+        unconfirmed: 'Refund not confirmed by Stripe, check it by hand',
+      } as const;
+      const bodies = {
+        retrying: [`The automatic refund of ${amount} for cancelled order ${orderId} failed. It is retried automatically for 7 days; you get another message if it still fails.`,
+          `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} failed. It is retried automatically for 7 days; you get another message if it still fails.`],
+        blocked_permission: [`The refund of ${amount} for cancelled order ${orderId} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. Add the permission to the key in the Stripe Dashboard; waiting refunds are then paid by the next hourly attempt. Attempts continue every hour for 72 hours.`,
+          `The refund of ${amountHtml} for cancelled order ${orderIdHtml} was not issued because the workspace's Stripe restricted key lacks the Charges and Refunds (write) permission. Add the permission to the key in the Stripe Dashboard; waiting refunds are then paid by the next hourly attempt. Attempts continue every hour for 72 hours.`],
+        blocked_permission_failed: [`The refund of ${amount} for cancelled order ${orderId} was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`,
+          `The refund of ${amountHtml} for cancelled order ${orderIdHtml} was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`],
+        failed: [`The automatic refund of ${amount} for cancelled order ${orderId} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`,
+          `The automatic refund of ${amountHtml} for cancelled order ${orderIdHtml} could not be completed and is no longer retried. Refund the payment by hand in the Stripe Dashboard.`],
+        failed_after_submission: [`Stripe reports that the refund of ${amount} for cancelled order ${orderId} failed after it was issued. Return the money to the buyer another way.`,
+          `Stripe reports that the refund of ${amountHtml} for cancelled order ${orderIdHtml} failed after it was issued. Return the money to the buyer another way.`],
+        unconfirmed: [`Stripe has not confirmed the refund of ${amount} for cancelled order ${orderId}, and the refund is no longer checked automatically. Check it in the Stripe Dashboard; if it failed or was canceled, return the money to the buyer another way.`,
+          `Stripe has not confirmed the refund of ${amountHtml} for cancelled order ${orderIdHtml}, and the refund is no longer checked automatically. Check it in the Stripe Dashboard; if it failed or was canceled, return the money to the buyer another way.`],
+      } as const;
+      const [text, html] = bodies[alert];
+      return {
+        subject: `[${tenantName}] ${subjects[alert]}: ${orderId}`,
+        html: `<p>${html}</p><p>Last error: ${errorHtml}</p><p><a href="${orderUrlHtml}">Open the order</a></p>`,
+        text: `${text}\nLast error: ${error}\n${orderUrl}`,
+      };
+    },
   },
   stockLowEmail: {
     noThreshold: 'not set',

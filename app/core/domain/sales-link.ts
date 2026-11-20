@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { currencySchema, productSlugSchema, productTypeSchema } from './product.js';
+import { publicProductPersonalizationSchema } from './personalization.js';
 import { publicProductComplianceSchema, publicProductVariantSchema } from './product-compliance.js';
 import { productVatRateSchema } from './product-vat.js';
 import { deliveryMethodSchema } from './shipping.js';
@@ -35,10 +36,12 @@ const fields = {
 const validWindow = (value: { validFrom: string | null; validTo: string | null }) => value.validFrom === null || value.validTo === null || Date.parse(value.validFrom) < Date.parse(value.validTo);
 export const salesLinkInputSchema = z.object(fields).strict().refine(validWindow, 'Validity end must follow its start');
 export const salesLinkUpdateSchema = z.object({ ...fields, id: z.string().min(1), expectedRevision: z.number().int().positive() }).strict().refine(validWindow, 'Validity end must follow its start');
+export const salesLinkDeleteInputSchema = z.object({ id: z.string().min(1), expectedRevision: z.number().int().positive().optional() }).strict();
 export const salesLinkSchema = z.object({ ...fields, id: z.string(), tenantId: z.string(), revision: z.number().int().positive(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).refine(validWindow, 'Validity end must follow its start');
 const salesLinkLineSchema = z.object({
   baseProductId: z.string().optional(), variants: z.array(publicProductVariantSchema).default([]),
-  productId: z.string(), name: z.string(), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), compliance: publicProductComplianceSchema.nullable().default(null), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
+  productId: z.string(), name: z.string(), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), compliance: publicProductComplianceSchema.nullable().default(null), personalization: publicProductPersonalizationSchema.nullable().default(null), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
+  maxQuantity: z.number().int().min(0).default(1),
 });
 export const salesLinkOfferSchema = z.object({
   salesLink: z.object({ slug: fields.slug, heading: fields.heading, description: fields.description, validFrom: fields.validFrom, validTo: fields.validTo }),
@@ -47,6 +50,7 @@ export const salesLinkOfferSchema = z.object({
   currency: currencySchema,
   totalCents: z.number().int().nonnegative(),
   soldOut: z.boolean().default(false),
+  available: z.number().int().min(0).nullable().default(null),
 });
 export type SalesLink = z.output<typeof salesLinkSchema>;
 export const salesLinkAvailable = (link: SalesLink, now: string): boolean => link.active

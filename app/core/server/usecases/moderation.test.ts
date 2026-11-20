@@ -453,7 +453,7 @@ const makeDeps = (
           bunnyStreamLibraryId: null,
           directMessagesEnabled: options.directMessagesEnabled ?? true,
         }),
-      updateSettings: async (_tenantId, settings) => settings,
+      changeSettings: async () => null,
       createTenantWithOwnerGrant: async () => null,
       hasAny: async () => true,
     },

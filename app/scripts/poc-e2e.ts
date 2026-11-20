@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +10,7 @@ import {
   API_PATHS,
   EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
+  checkoutSessionOutputSchema,
   courseOutputSchema,
   healthOutputSchema,
   looseEnvelopeSchema,
@@ -33,6 +34,7 @@ import {
   productStockOutputSchema,
   productStockWriteOutputSchema,
   publicOfferOutputSchema,
+  salesLinkContracts,
   simulatePurchaseOutputSchema,
   spaceOutputSchema,
   supportMessageOutputSchema,
@@ -161,7 +163,7 @@ const expectError = (result: Run, label: string, exitCode: number, errorCode: st
 
 const authSchema = z.object({ token: z.string().min(1).nullable() });
 const devEmailResultSchema = z.object({
-  email: z.object({ to: z.string().email(), subject: z.string(), text: z.string() }).nullable(),
+  email: z.object({ to: z.string().email(), subject: z.string(), text: z.string(), html: z.string() }).nullable(),
 });
 const exportedMemberSchema = z.object({
   id: z.string(),
@@ -189,8 +191,8 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const anonHome = mkdtempSync(join(tmpdir(), 'poc-e2e-anon-'));
   const buyerHome = mkdtempSync(join(tmpdir(), 'poc-e2e-buyer-'));
   homes.push(alfaHome, betaHome, anonHome, buyerHome);
-  const cli = (args: string[], home: string): Promise<Run> =>
-    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
+  const cli = (args: string[], home: string, env: NodeJS.ProcessEnv = {}): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { ...env, HOME: home });
 
   const health = expectOk(await cli(['health'], anonHome), 'health', healthOutputSchema);
   assert(health.status === 'ok' && health.database === 'up', 'health should report ok/up');
@@ -761,7 +763,10 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const shipxOrderId = shipxPurchase.orderId;
   assert(shipxOrderId !== null, 'InPost purchase should return its order id');
   const unconfigured = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'show', shipxOrderId], alfaHome), 'InPost readiness before setup', shipxContracts.shipxShipment.output);
-  assert(!unconfigured.available && unconfigured.reason === 'credentials_missing' && unconfigured.service === 'inpost_locker_standard', `InPost should wait for credentials: ${JSON.stringify(unconfigured)}`);
+  assert(
+    !unconfigured.available && unconfigured.reason === 'credentials_missing' && unconfigured.environment === 'production' && unconfigured.service === 'inpost_locker_standard',
+    `InPost should wait for the production credentials of the simulated live order: ${JSON.stringify(unconfigured)}`,
+  );
   expectError(
     await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome),
     'InPost shipment without credentials',
@@ -770,13 +775,16 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   const shipxSettings = expectOk(
     await cli([
-      '--tenant', 'alfa', 'tenant', 'shipx-set', '--environment', 'sandbox', '--organization-id', '1234', '--token', 'smoke-shipx-token',
+      '--tenant', 'alfa', 'tenant', 'shipx-set', '--slot', 'production', '--organization-id', '1234', '--token-env', 'SMOKE_SHIPX_TOKEN',
       '--sender', JSON.stringify({ name: 'Smoke Sender', email: 'sender@together.dev', phone: '500600700', street: 'Example Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001' }),
-    ], alfaHome),
+    ], alfaHome, { SMOKE_SHIPX_TOKEN: 'smoke-shipx-token' }),
     'InPost settings',
     shipxContracts.shipxConfigure.output,
   );
-  assert(shipxSettings.configured && !JSON.stringify(shipxSettings).includes('smoke-shipx-token'), `InPost settings should be configured and masked: ${JSON.stringify(shipxSettings)}`);
+  assert(
+    shipxSettings.production.configured && !shipxSettings.sandbox.configured && !JSON.stringify(shipxSettings).includes('smoke-shipx-token'),
+    `InPost production settings should be configured and masked, and the sandbox left alone: ${JSON.stringify(shipxSettings)}`,
+  );
   const shipxCreated = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome), 'InPost shipment', shipxContracts.shipxCreate.output);
   assert(
     shipxCreated.order.fulfilmentStatus === 'shipped' && shipxCreated.order.shipment?.carrier === 'inpost'
@@ -800,6 +808,198 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     'second InPost shipment',
     EXIT_CODE_BY_ERROR_CODE.fulfilment_conflict,
     'fulfilment_conflict',
+  );
+  steps += 1;
+
+  const engraving = {
+    label: 'Add an engraving',
+    description: 'Engraved by hand before shipping.',
+    inputLabel: 'Engraving text',
+    maxLength: 60,
+    condition: 'I understand a personalised item is made to my order.',
+  };
+  const engravingPath = join(alfaHome, 'engraving.json');
+  writeFileSync(engravingPath, JSON.stringify(engraving));
+  const book = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'product', 'create', '--title', 'Printed book', '--type', 'physical', '--delivery-method', 'shipping',
+      '--price-cents', '5900', '--currency', 'PLN', '--vat-rate', '5', '--personalization-file', engravingPath,
+    ], alfaHome),
+    'personalised product create',
+    productsCreateOutputSchema,
+  ).product;
+  assert(JSON.stringify(book.personalization) === JSON.stringify(engraving), `product should store the personalisation: ${JSON.stringify(book)}`);
+  expectOk(
+    await cli(['--tenant', 'alfa', 'price', 'add', '--product', book.id, '--kind', 'one_time', '--price-cents', '5900'], alfaHome),
+    'personalised price add',
+    productPriceCreateOutputSchema,
+  );
+  expectOk(await cli(['--tenant', 'alfa', 'product', 'publish', book.id], alfaHome), 'personalised publish', productsPublishOutputSchema);
+  const bookLink = expectOk(
+    await cli(['--tenant', 'alfa', 'sales-link', 'create', '--input', JSON.stringify({
+      slug: 'printed-book', title: 'Printed book', heading: 'Printed book', productIds: [book.id], active: true,
+    })], alfaHome),
+    'personalised sales link create',
+    salesLinkContracts.createSalesLink.output,
+  ).salesLink;
+  const bookOffer = expectOk(
+    await cli(['--tenant', 'alfa', 'sales-link', 'offer', bookLink.slug], anonHome),
+    'personalised sales link offer',
+    salesLinkContracts.getPublicSalesLink.output,
+  );
+  assert(
+    JSON.stringify(bookOffer.lines[0]?.personalization) === JSON.stringify(engraving),
+    `sales link offer should expose the personalisation: ${JSON.stringify(bookOffer.lines)}`,
+  );
+  expectError(
+    await cli(['--tenant', 'alfa', 'sales-link', 'checkout', bookLink.slug], anonHome),
+    'direct handoff of a personalised sales link',
+    EXIT_CODE_BY_ERROR_CODE.validation,
+    'validation',
+  );
+  const engravingText = 'For Ann & Bo <3';
+  const buyBook = (extra: string[]) => cli([
+    '--tenant', 'alfa', 'simulate-purchase', '--sales-link', bookLink.id, '--product', book.id, '--email', 'engraving@together.dev',
+    '--shipping-rate', 'locker', '--pickup-point', 'WAW03M', '--personalization', `${book.id}:${engravingText}`, ...extra,
+  ], buyerHome);
+  expectError(await buyBook([]), 'personalisation without the accepted condition', EXIT_CODE_BY_ERROR_CODE.validation, 'validation');
+  const bookPurchase = expectOk(await buyBook(['--accept-condition']), 'personalised purchase', simulatePurchaseOutputSchema);
+  const bookOrderId = bookPurchase.orderId;
+  assert(bookOrderId !== null, 'personalised purchase should return its order id');
+  writeFileSync(engravingPath, JSON.stringify({ ...engraving, label: 'Add a dedication' }));
+  expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'update', book.id, '--personalization-file', engravingPath], alfaHome),
+    'personalisation edit after the purchase',
+    productsCreateOutputSchema,
+  );
+  const bookToPack = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'list', '--fulfilment', 'to_pack'], alfaHome),
+    'personalised order to pack',
+    ordersListOutputSchema,
+  );
+  const bookLine = bookToPack.orders.find((order) => order.id === bookOrderId)?.lines?.find((line) => line.productId === book.id);
+  assert(
+    bookLine?.personalization?.text === engravingText && bookLine.personalization.label === engraving.label
+      && bookLine.personalization.condition === engraving.condition && bookLine.personalization.conditionAcceptedAt !== null,
+    `order line should carry the captured personalisation: ${JSON.stringify(bookToPack.orders)}`,
+  );
+  const engravingSummary = `Printed book: ${engravingText}`;
+  const bookPackingList = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'packing-list', '--format', 'csv'], alfaHome),
+    'personalised packing list',
+    ordersExportOutputSchema,
+  );
+  const [packingHeader, ...bookPackingRows] = bookPackingList.content.split('\n');
+  assert(
+    packingHeader?.endsWith(',quantity,personalization') === true
+      && bookPackingRows.some((row) => row.startsWith(`"${bookOrderId}",`) && row.endsWith(`,"1","${engravingSummary}"`)),
+    `packing list should end with the personalisation column: ${bookPackingList.content}`,
+  );
+  const csvExport = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'export', '--format', 'csv'], alfaHome),
+    'personalised order export csv',
+    ordersExportOutputSchema,
+  );
+  const [exportHeader, ...exportRows] = csvExport.content.split('\n');
+  assert(
+    exportHeader?.endsWith(',personalization,cancel_reason') === true
+      && exportRows.some((row) => row.includes('"engraving@together.dev"') && row.endsWith(`,"${engravingSummary}",""`)),
+    `order export should end with the personalisation and cancel reason columns: ${csvExport.content}`,
+  );
+  const jsonExport = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'export', '--format', 'json'], alfaHome),
+    'personalised order export json',
+    ordersExportOutputSchema,
+  );
+  const exportedOrders = z.array(z.object({ id: z.string(), personalization: z.string() }).passthrough())
+    .parse(readJson(jsonExport.content, 'order export json'));
+  assert(
+    exportedOrders.find((order) => order.id === bookOrderId)?.personalization === engravingSummary,
+    `json order export should carry the personalisation: ${jsonExport.content}`,
+  );
+  const corrected = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'personalization', bookOrderId, book.id, '--text', 'For Ann and Bo'], alfaHome),
+    'personalisation correction',
+    orderFulfilmentContracts.correctOrderPersonalization.output,
+  ).order;
+  const correctedLine = corrected.lines?.find((line) => line.productId === book.id)?.personalization;
+  assert(
+    correctedLine?.text === 'For Ann and Bo' && correctedLine.originalText === engravingText && correctedLine.editedBy !== undefined,
+    `staff correction should keep the original text: ${JSON.stringify(corrected)}`,
+  );
+
+  const bookmark = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'product', 'create', '--title', 'Signed bookmark', '--type', 'physical', '--price-cents', '0',
+      '--currency', 'PLN', '--vat-rate', '5', '--personalization-file', engravingPath,
+    ], alfaHome),
+    'free personalised product create',
+    productsCreateOutputSchema,
+  ).product;
+  expectOk(
+    await cli(['--tenant', 'alfa', 'price', 'add', '--product', bookmark.id, '--kind', 'one_time', '--price-cents', '0'], alfaHome),
+    'free personalised price add',
+    productPriceCreateOutputSchema,
+  );
+  expectOk(await cli(['--tenant', 'alfa', 'product', 'publish', bookmark.id], alfaHome), 'free personalised publish', productsPublishOutputSchema);
+  const bookmarkLink = expectOk(
+    await cli(['--tenant', 'alfa', 'sales-link', 'create', '--input', JSON.stringify({
+      slug: 'signed-bookmark', title: 'Signed bookmark', heading: 'Signed bookmark', productIds: [bookmark.id], active: true,
+    })], alfaHome),
+    'free personalised sales link create',
+    salesLinkContracts.createSalesLink.output,
+  ).salesLink;
+  const legal = new pg.Client({ connectionString: verifyDatabaseUrl });
+  await legal.connect();
+  try {
+    await legal.query(
+      'update tenants set terms_url = $1, privacy_url = $2 where id = $3',
+      ['https://alfa.test/terms', 'https://alfa.test/privacy', alfaTenant.tenant.id],
+    );
+  } finally {
+    await legal.end();
+  }
+  const dedication = 'To <Ann> & "Bo"';
+  const freeCheckout = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'checkout', 'session', '--sales-link', bookmarkLink.id, '--product', bookmark.id,
+      '--email', 'dedication@together.dev', '--language', 'en', '--accept-terms', '--personalization', `${bookmark.id}:${dedication}`, '--accept-condition',
+    ], anonHome),
+    'free personalised sales link checkout',
+    checkoutSessionOutputSchema,
+  );
+  assert(new URL(freeCheckout.url).searchParams.get('status') === 'success', `free checkout should succeed: ${freeCheckout.url}`);
+  const dedicationOrders = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'list', '--search', 'dedication@together.dev'], alfaHome),
+    'free personalised order',
+    ordersListOutputSchema,
+  );
+  assert(
+    dedicationOrders.orders.some((order) => order.lines?.some((line) => line.productId === bookmark.id
+      && line.personalization?.text === dedication && line.personalization.label === 'Add a dedication')),
+    `free order line should carry the personalisation: ${JSON.stringify(dedicationOrders.orders)}`,
+  );
+  let confirmation: z.output<typeof devEmailResultSchema>['email'] = null;
+  const confirmationDeadline = Date.now() + 10000;
+  while (Date.now() < confirmationDeadline && confirmation === null) {
+    confirmation = expectOk(
+      await cli(['--tenant', 'alfa', 'dev', 'email', '--to', 'dedication@together.dev'], anonHome),
+      'purchase confirmation inspect',
+      devEmailResultSchema,
+    ).email;
+    if (confirmation === null) await delay(100);
+  }
+  assert(confirmation !== null, 'the free personalised purchase should send a purchase confirmation');
+  assert(
+    confirmation.html.includes('Personalisation: Signed bookmark')
+      && confirmation.html.includes('To &lt;Ann&gt; &amp; &quot;Bo&quot;')
+      && !confirmation.html.includes(dedication)
+      && confirmation.html.includes(`Condition you accepted: ${engraving.condition}`),
+    `purchase confirmation html should carry the escaped personalisation: ${confirmation.html}`,
+  );
+  assert(
+    confirmation.text.includes(`Personalisation: Signed bookmark\n${dedication}\nCondition you accepted: ${engraving.condition}`),
+    `purchase confirmation text should carry the personalisation: ${confirmation.text}`,
   );
   steps += 1;
 

@@ -1,10 +1,10 @@
-import { err, productVariants, publicProductStock, firstSoldOutProductId, ok, notFound, validation, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkAvailable, resolveProductVat, splitProductGross, type SalesLink, type Product, type ProductPrice, type Result, type AppError, type SalesLinkVariantSelection } from '#core/domain/index.js';
+import { err, productVariants, publicStockLookup, purchasableLineQuantity, purchasableSets, SINGLE_CHECKOUT_LINE_QUANTITY, ok, notFound, validation, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkAvailable, resolveProductVat, splitProductGross, type SalesLink, type Product, type ProductPrice, type Result, type AppError, type SalesLinkVariantSelection } from '#core/domain/index.js';
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
 import { renderPostContent } from '../post-content.js';
 import { resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants } from './checkout-selection.js';
-import { toPublicCompliance } from './public-offer.js';
+import { toPublicCompliance, toPublicPersonalization } from './public-offer.js';
 
 const validatedProducts = async (tenantId: string, link: Pick<SalesLink, 'productIds' | 'active'>, deps: SalesLinkDeps): Promise<Result<{ products: Product[]; prices: ProductPrice[] }, AppError>> => {
   const found = await deps.products.findByIds(tenantId, link.productIds);
@@ -57,10 +57,10 @@ export const updateSalesLink = async (ctx: Ctx, input: unknown, deps: SalesLinkD
   const saved = await deps.salesLinks.save(tenant.value, { ...existing, ...fields, revision: expectedRevision + 1, updatedAt: deps.clock.nowIso() }, expectedRevision);
   return saved.ok ? ok({ salesLink: saved.value }) : saved;
 };
-export const deleteSalesLink = async (ctx: Ctx, input: { id: string }, deps: SalesLinkDeps) => {
+export const deleteSalesLink = async (ctx: Ctx, input: { id: string; expectedRevision?: number | undefined }, deps: SalesLinkDeps) => {
   const tenant = authorizeRequiredTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
-  const deleted = await deps.salesLinks.delete(tenant.value, input.id, deps.clock.nowIso());
+  const deleted = await deps.salesLinks.delete(tenant.value, input.id, deps.clock.nowIso(), input.expectedRevision);
   return deleted.ok ? ok({ deleted: true as const }) : deleted;
 };
 const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps: SalesLinkDeps, selections?: SalesLinkVariantSelection[]) => {
@@ -79,18 +79,18 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
   if (!selected.ok) return selected;
   const stockIds = [...new Set([...selected.value.map((product) => product.id), ...bases.flatMap((base) => siblings(base).map((product) => product.id))])];
   const stock = await deps.stock?.listByProducts(tenantId, stockIds) ?? [];
-  const soldOutIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
+  const stockOf = publicStockLookup(stock);
   const lines = selected.value.flatMap((product, index) => {
     const base = bases[index];
     const price = prices.find((item) => item.productId === product.id && item.active && item.kind === 'one_time' && item.imported !== true);
     const vat = resolveProductVat(product, settings);
     if (vat === null || price === undefined || base === undefined) return [];
     const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
-    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), soldOutIds), productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
+    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), stockOf), productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), personalization: toPublicPersonalization(product.personalization), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null, maxQuantity: purchasableLineQuantity(SINGLE_CHECKOUT_LINE_QUANTITY, stockOf(product.id)) }];
   });
   if (lines.length !== products.value.products.length) return err(notFound('Sales link was not found'));
-  const soldOut = firstSoldOutProductId(selected.value.map((product) => product.id), stock) !== null;
-  return ok({ salesLink: { slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0), soldOut });
+  const available = purchasableSets(selected.value.map((product) => ({ productId: product.id, quantity: SINGLE_CHECKOUT_LINE_QUANTITY })), stock);
+  return ok({ salesLink: { slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0), soldOut: available === 0, available });
 };
 
 export const getPublicSalesLink = async (tenantId: string, slug: string, deps: SalesLinkDeps, selections: SalesLinkVariantSelection[] = []) => {

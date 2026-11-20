@@ -170,6 +170,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.apiKeysShopManagementRevoke,
     API_ROUTES.apiKeysShopManagementPurge,
     API_ROUTES.changeProposalReject,
+    API_ROUTES.changeProposalApprove,
     API_ROUTES.tenantSecretSet,
     API_ROUTES.tenantSecretDelete,
     API_ROUTES.integrationTest,

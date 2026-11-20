@@ -56,3 +56,7 @@ export const changeProposalRejectInputSchema = z.object({
 export type ChangeProposalRejectInput = z.input<typeof changeProposalRejectInputSchema>;
 
 export const changeProposalRejectOutputSchema = z.object({ proposal: changeProposalOwnerViewSchema });
+
+export const changeProposalApproveInputSchema = z.object({}).strict();
+
+export const changeProposalApproveOutputSchema = z.object({ proposal: changeProposalOwnerViewSchema });

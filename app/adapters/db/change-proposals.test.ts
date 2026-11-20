@@ -173,7 +173,7 @@ describe('change proposal creation', () => {
     try {
       await holder.query('begin');
       await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposals:${TENANT}`]);
-      expect(await repo().create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
+      expect(await createChangeProposalRepository(database.db, { lockWaitMs: 300 }).create(TENANT, proposal(), keyEvent(), NOW)).toEqual({ kind: 'busy' });
     } finally {
       await holder.query('rollback');
       await holder.end();
@@ -181,6 +181,10 @@ describe('change proposal creation', () => {
     expect(await database.db.select().from(changeProposals)).toEqual([]);
     expect(await repo().create(TENANT, proposal(), keyEvent(), NOW)).toMatchObject({ kind: 'created' });
   }, 30_000);
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a lock wait of %s ms', (lockWaitMs) => {
+    expect(() => createChangeProposalRepository(database.db, { lockWaitMs })).toThrow(/lock wait/u);
+  });
 
   it('refuses an effect over the stored size limit before writing', async () => {
     const effect = { description: { before: '', after: 'x'.repeat(CHANGE_PROPOSAL_LIMITS.effectMaxBytes) } };

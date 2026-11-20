@@ -23,7 +23,7 @@ import type {
   ChangeProposalWithdrawal,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
+import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
 import type { Db } from './client.js';
 import {
   changeProposalEvents,
@@ -64,8 +64,8 @@ const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeProposal
 
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
 
-const lockWorkspaceProposals = (executor: Db, tenantId: string): Promise<boolean> =>
-  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`);
+const lockWorkspaceProposals = (executor: Db, tenantId: string, waitMs: number): Promise<boolean> =>
+  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: waitMs, lockWaitAfterMs: null });
 
 const appendEvent = async (
   executor: Db,
@@ -218,14 +218,14 @@ export const withdrawPendingChangeProposalsOfKey = async (
   }
 };
 
-export const createChangeProposalRepository = (db: Db): ChangeProposalRepository => ({
+const changeProposalRepositoryOver = (db: Db, waitMs: number): ChangeProposalRepository => ({
   create: async (tenantId, proposal, event, now) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
     if (!changeProposalEffectWithinLimit(parsed.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
     return db.transaction(async (tx) => {
-      if (!await lockWorkspaceProposals(tx, tenantId)) return { kind: 'busy' };
+      if (!await lockWorkspaceProposals(tx, tenantId, waitMs)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
@@ -329,6 +329,9 @@ export const createChangeProposalRepository = (db: Db): ChangeProposalRepository
     return true;
   }),
 });
+
+export const createChangeProposalRepository = (db: Db, options: { lockWaitMs?: number } = {}): ChangeProposalRepository =>
+  changeProposalRepositoryOver(db, lockWaitMs(options.lockWaitMs));
 
 export const createChangeProposalEventRepository = (db: Db): ChangeProposalEventRepository => ({
   listByProposal: async (tenantId, proposalId) =>

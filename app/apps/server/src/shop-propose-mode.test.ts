@@ -4,6 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
+import { createChangeProposalRepository } from '#adapters/db/change-proposals.js';
+import { createTenantSecretRepository } from '#adapters/db/repositories.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
   changeProposalEvents,
@@ -68,6 +73,7 @@ const ALL_SCOPES = [...PROPOSE_SCOPES, 'shop:fulfilment:write', 'shop:integratio
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
 let deps: ReturnType<typeof createDeps>;
+let secretsMasterKey: string;
 let ownerToken: string;
 let ownerId: string;
 let adminToken: string;
@@ -135,6 +141,17 @@ const liveState = async () => {
   });
 };
 
+const briefLockWaitApp = () => {
+  const lockWait = { lockWaitMs: 300 };
+  const secretCrypto = createSecretCrypto(secretsMasterKey);
+  return buildApp({
+    ...deps,
+    changeProposals: createChangeProposalRepository(database.db, lockWait),
+    changeProposalTransaction: createChangeProposalTransaction(database.db, deps.logger, (connection) =>
+      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
+  });
+};
+
 const routeClass = (route: ShopMachineRoute): string => {
   const mode = route.proposeMode;
   if (mode === undefined) return 'read';
@@ -193,11 +210,13 @@ beforeAll(async () => {
     'together_shop_propose_mode_test',
     process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/postgres',
   );
-  deps = createDeps(envSchema.parse({
+  const env = envSchema.parse({
     NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'shop-propose-mode-test-secret-at-least-32-characters',
-  }), { db: database.db, clock: { nowIso: () => now } });
+  });
+  secretsMasterKey = env.SECRETS_MASTER_KEY;
+  deps = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
   app = buildApp(deps);
 
   const owner = await signUp('shop-propose-owner@example.test', 'Propose Owner');
@@ -633,10 +652,12 @@ describe('the owner approval route', () => {
       await held;
     });
     await lockTaken;
+    const regularApp = app;
     try {
       const before = await liveState();
       const proposalsBefore = (await database.db.select().from(changeProposals)).length;
 
+      app = briefLockWaitApp();
       const submitted = await keyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: fixture.published, title: 'Another title' });
       const approval = await approve(proposal.id);
 
@@ -649,6 +670,7 @@ describe('the owner approval route', () => {
       expect(await liveState()).toBe(before);
       expect(await eventKinds(proposal.id)).toEqual(['proposed']);
     } finally {
+      app = regularApp;
       release();
       await holder;
     }

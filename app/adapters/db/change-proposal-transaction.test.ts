@@ -47,7 +47,8 @@ const secretCrypto = createSecretCrypto(Buffer.alloc(32, 9).toString('base64'));
 
 const realSecretResolverOver = (connection: Db) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto);
 
-const transactionOf = (log = logger(), db: Db = database.db) => createChangeProposalTransaction(db, log, realSecretResolverOver);
+const transactionOf = (log = logger(), db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) =>
+  createChangeProposalTransaction(db, log, realSecretResolverOver, lockWait);
 
 const lockWaiters = async (observer: pg.Client): Promise<number> => {
   const waiting = await observer.query<{ count: number }>(
@@ -433,7 +434,7 @@ describe('change proposal transaction connections and locks', () => {
       await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-transaction:${TENANT}`]);
       const operation = vi.fn(async () => ok(null));
 
-      const result = await transactionOf().dryRun(TENANT, operation);
+      const result = await transactionOf(logger(), database.db, { lockWaitMs: 300 }).dryRun(TENANT, operation);
 
       expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: 'unavailable', details: { retryAfterSeconds: 5 } }) });
       expect(operation).not.toHaveBeenCalled();
@@ -443,4 +444,8 @@ describe('change proposal transaction connections and locks', () => {
     }
     expect(await transactionOf().dryRun(TENANT, async () => ok('free'))).toEqual({ ok: true, value: 'free' });
   }, 30_000);
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])('refuses to construct with a lock wait of %s ms', (lockWaitMs) => {
+    expect(() => transactionOf(logger(), database.db, { lockWaitMs })).toThrow(/lock wait/u);
+  });
 });

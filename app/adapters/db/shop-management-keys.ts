@@ -57,8 +57,9 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       .returning();
     const row = rows[0];
     if (!row) return null;
-    await insertShopManagementKeyEvent(tx, tenantId, event);
+    // Proposal rows first: the key event's foreign key share-locks the tenant row, which an approval may be waiting to lock while it holds a proposal row.
     await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawal);
+    await insertShopManagementKeyEvent(tx, tenantId, event);
     return parseKey(row);
   }),
   purge: async (tenantId, event, withdrawal) => db.transaction(async (tx) => {
@@ -66,10 +67,8 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       .delete(shopManagementKeys)
       .where(eq(shopManagementKeys.tenantId, tenantId))
       .returning({ id: shopManagementKeys.id });
-    for (const { id } of purged) {
-      await insertShopManagementKeyEvent(tx, tenantId, event(id));
-      await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
-    }
+    for (const { id } of purged) await withdrawPendingChangeProposalsOfKey(tx, tenantId, id, 'keyPurged', withdrawal);
+    for (const { id } of purged) await insertShopManagementKeyEvent(tx, tenantId, event(id));
     return purged.length;
   }),
 });

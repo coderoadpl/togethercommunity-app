@@ -28,6 +28,7 @@ import type { Db } from './client.js';
 import {
   changeProposalEvents,
   changeProposals,
+  productDownloadAssets,
   productPrices,
   products,
   productStock,
@@ -340,13 +341,27 @@ export const createChangeProposalEventRepository = (db: Db): ChangeProposalEvent
 
 const lockedRowExists = async (rows: PromiseLike<readonly unknown[]>): Promise<boolean> => (await rows).length > 0;
 
+const lockProductForDeletion = async (db: Db, tenantId: string, productId: string): Promise<boolean> => {
+  const found = await lockedRowExists(db.select({ id: products.id }).from(products)
+    .where(and(eq(products.tenantId, tenantId), eq(products.id, productId))).for('update'));
+  if (!found) return false;
+  await db.select({ id: productPrices.id }).from(productPrices)
+    .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId))).for('update');
+  await db.select({ id: productDownloadAssets.id }).from(productDownloadAssets)
+    .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId))).for('update');
+  await db.select({ productId: productStock.productId }).from(productStock)
+    .where(and(eq(productStock.tenantId, tenantId), eq(productStock.productId, productId))).for('update');
+  return true;
+};
+
 export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLocks => ({
-  lock: async (tenantId, target) => {
+  lock: async (tenantId, target, purpose = 'change') => {
     switch (target.kind) {
       case 'settings':
         return lockedRowExists(db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('no key update'));
       case 'product': {
         if (target.id === null) return true;
+        if (purpose === 'delete') return lockProductForDeletion(db, tenantId, target.id);
         const found = await lockedRowExists(db.select({ id: products.id }).from(products)
           .where(and(eq(products.tenantId, tenantId), eq(products.id, target.id))).for('no key update'));
         if (found) {
@@ -361,7 +376,7 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
           .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, target.id))).for('no key update'));
       case 'sales-link':
         // Sales-link writes take this workspace lock before their row lock; taking it first here keeps that order.
-        if (!await boundedAdvisoryLock(db, `sales-links:${tenantId}`)) throw new Error('The sales links of this workspace stayed locked');
+        await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`sales-links:${tenantId}`}, 0))`);
         if (target.id === null) return true;
         return lockedRowExists(db.select({ id: salesLinks.id }).from(salesLinks)
           .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id), isNull(salesLinks.deletedAt))).for('no key update'));

@@ -226,6 +226,8 @@ const catalogRepositoriesOver = (
       },
     },
     downloadAssets: {
+      listByProduct: async (tenantId, productId) =>
+        state.downloadAssets.filter((asset) => asset.tenantId === tenantId && asset.productId === productId),
       listReadyByProduct: async (tenantId, productId) =>
         state.downloadAssets.filter((asset) => asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready'),
     },

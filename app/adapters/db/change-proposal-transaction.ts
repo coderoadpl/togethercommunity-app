@@ -15,6 +15,7 @@ import {
   createChangeProposalTargetLocks,
 } from './change-proposals.js';
 import type { Db } from './client.js';
+import { lockNotAvailable } from './pg-errors.js';
 import { createProductDraftRepository } from './product-drafts.js';
 import {
   createProductDownloadAssetRepository,
@@ -27,6 +28,8 @@ import { createSalesLinkRepository } from './sales-links.js';
 import { createStockRepository } from './stock.js';
 
 type PostCommitEffect = () => Promise<void>;
+
+const CHANGE_PROPOSAL_LOCK_WAIT = '5s';
 
 type ScopedOperation<T> = (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>;
 
@@ -41,7 +44,10 @@ const repositoriesOver = (tx: Db): ChangeProposalRepositories => {
       findSettings: (tenantId) => tenants.findSettings(tenantId),
       changeSettings: (tenantId, change) => tenants.changeSettings(tenantId, change),
     },
-    downloadAssets: { listReadyByProduct: (tenantId, productId) => downloadAssets.listReadyByProduct(tenantId, productId) },
+    downloadAssets: {
+      listByProduct: (tenantId, productId) => downloadAssets.listByProduct(tenantId, productId),
+      listReadyByProduct: (tenantId, productId) => downloadAssets.listReadyByProduct(tenantId, productId),
+    },
     spaces: {
       list: (tenantId, options) => spaces.list(tenantId, options),
       findById: (tenantId, id) => spaces.findById(tenantId, id),
@@ -114,11 +120,17 @@ export const createChangeProposalTransaction = (
   const runScoped = async <T>(tenantId: string, operation: ScopedOperation<T>, rollBackAlways: boolean) => {
     const effects: PostCommitEffect[] = [];
     let open = true;
-    const result = await rollingBackErrors(db, async (tx): Promise<Result<T, AppError>> => {
-      if (!await boundedAdvisoryLock(tx, `change-proposal-transaction:${tenantId}`)) return err(changeProposalsBusy());
-      return operation(scopeOver(tx, secretResolverOver, effects, () => open));
-    }, rollBackAlways).finally(() => { open = false; });
-    return { result, effects: result.ok && !rollBackAlways ? effects : [] };
+    try {
+      const result = await rollingBackErrors(db, async (tx): Promise<Result<T, AppError>> => {
+        if (!await boundedAdvisoryLock(tx, `change-proposal-transaction:${tenantId}`, CHANGE_PROPOSAL_LOCK_WAIT)) return err(changeProposalsBusy());
+        return operation(scopeOver(tx, secretResolverOver, effects, () => open));
+      }, rollBackAlways).finally(() => { open = false; });
+      return { result, effects: result.ok && !rollBackAlways ? effects : [] };
+    } catch (cause) {
+      // A lock wait that ran out aborted the whole transaction, which has rolled back by now, so nothing was applied.
+      if (lockNotAvailable(cause)) return { result: err<AppError>(changeProposalsBusy()), effects: [] };
+      throw cause;
+    }
   };
 
   return {

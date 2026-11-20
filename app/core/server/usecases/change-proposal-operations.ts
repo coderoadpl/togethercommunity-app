@@ -39,7 +39,7 @@ import { adjustProductStock, enableProductStock, setProductStockThreshold } from
 
 type ChangeProposalSnapshot = ChangeProposalInput;
 
-// The only deps that escape the transaction: ids and clock are pure, storage deletes wait for COMMIT.
+// The only deps outside the transaction: ids and clock are pure, the logger writes only to the log, and storage deletes wait for a commit (which a dry run never makes) while every other storage call fails.
 export interface ChangeProposalRunDeps {
   ids: IdGenerator;
   clock: Clock;

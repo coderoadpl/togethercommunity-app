@@ -39,6 +39,12 @@ A proposal stores two things:
   is stored as a delta (`{ "onHand": { "delta": 5 } }`), never as an absolute
   balance.
 
+The dry run executes the live use-case with the rights of the owner who issued
+the key, inside a transaction that always rolls back. What a key may propose is
+bounded by the operations registry (the ten operations below) and the
+[route classes](#route-classes), not by the context of the dry run, which
+carries the owner's identity and no capability list of the key.
+
 The dry run never leaves a row, an event, an outbox message or a content
 version behind, and object storage deletes that a live operation would make
 are dropped with the rollback. Everything the dry run reads, the storage
@@ -93,6 +99,20 @@ behaviour. On a propose-mode key:
 
 The key's capability list is always a defined array, so `authorize()` never
 falls back to the owner's full authority for it.
+
+A propose-mode key's stored hash is taken in a separate propose-mode hash
+domain (a fixed label mixed into the secret before hashing); a direct-mode key
+keeps the plain hash of its secret. The server accepts a key only through the
+domain of its own mode and refuses any other match with `401 Invalid API key`.
+
+### Rolling back
+
+A release that predates migration `0163_change_proposals` ignores the `mode`
+column and hashes the presented secret the plain way, so it finds no row for a
+propose-mode key and answers `401 Invalid API key`: the key never gains live
+write access there. Direct-mode keys keep working. Pending proposals stay in
+their tables untouched and are visible again after rolling forward. No purge is
+needed for safety; see the [key rollback](shop-management-keys.md#rollback).
 
 ## Route classes
 

@@ -550,7 +550,8 @@ the effect comparison.
 | every item matches | `applied` | all `applied`, each with its `appliedResourceId` | changed exactly as the effects showed; post-commit effects run afterwards |
 | one item is stale | `stale` | that item `stale`, every other item `stale` with a note naming it | unchanged |
 | one item is refused by the live use-case | `failed` | that item `failed` with its failure code and message, every other item `stale` with a note naming it | unchanged |
-| a lock wait runs out, a deadlock, an infrastructure failure | `open` | all still `pending` | unchanged; `503` with `retry-after` |
+| a lock wait runs out, a deadlock | `open` | all still `pending` | unchanged; `503` with `retry-after` |
+| an infrastructure failure (a lost connection, a database error) | `open` | all still `pending` | unchanged; `500 internal`, the owner can retry |
 
 The note on the other items reads "Not applied: item *n* (*id*) of this group
 could not be applied, so nothing in the group was changed". A repeated

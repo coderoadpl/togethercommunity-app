@@ -129,6 +129,13 @@ describe('checkout delivery step', () => {
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
   });
 
+  it('aligns the locker code hint with the field edge', async () => {
+    serve({});
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    expect(screen.getByText(en.shipping.lockerCodeHint)).toHaveStyle({ marginLeft: '0px', marginRight: '0px' });
+  });
+
   it('loads the parcel locker map for a buyer only after the locker option is chosen', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();

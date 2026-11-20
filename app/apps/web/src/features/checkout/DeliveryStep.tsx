@@ -51,7 +51,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
           onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
           onBlur={() => setCodeBlurred(true)}
         />
-        <FormHelperText id="checkout-pickup-point-hint">{codeInvalid ? t.shipping.lockerCodeInvalid : lockerHint}</FormHelperText>
+        <FormHelperText id="checkout-pickup-point-hint" sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : lockerHint}</FormHelperText>
       </FormControl>
       {state.pickupPoint === null ? null : (
         <Typography variant="body2" data-testid="checkout-pickup-point-selected">

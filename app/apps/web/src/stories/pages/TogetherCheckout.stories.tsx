@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { userEvent, within } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 
 import checkout from '../fixtures/checkout.json';
 import account from '../fixtures/account.json';
@@ -148,6 +148,10 @@ const openSafetyDetails = async (canvasElement: HTMLElement) => {
   const safety = within(await within(canvasElement).findByTestId('product-safety-info'));
   for (const toggle of safety.getAllByRole('button', { name: /Details/u })) await userEvent.click(toggle);
 };
+const settled = async () => {
+  const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
+  await Promise.all(finite.map((animation) => animation.finished));
+};
 const openSummaryDetails = async (canvasElement: HTMLElement) => {
   await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));
 };
@@ -170,7 +174,11 @@ export const CourierChosenDark: Story = { parameters: { colorScheme: 'dark' }, p
 export const InvoiceOpen: Story = {
   play: async ({ canvasElement }) => {
     await chooseRate(canvasElement, /courier/u);
-    await userEvent.click(await within(canvasElement).findByTestId('checkout-invoice-reveal'));
+    const invoiceRow = await within(canvasElement).findByTestId('checkout-invoice-reveal');
+    await settled();
+    const before = invoiceRow.getBoundingClientRect().top;
+    await userEvent.click(invoiceRow);
+    await expect(invoiceRow.getBoundingClientRect().top).toBe(before);
   },
 };
 export const CouponApplied: Story = {

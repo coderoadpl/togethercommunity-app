@@ -3124,6 +3124,7 @@ export const en: Messages = {
     stepDetailsAndPayment: 'Details and payment',
     itemCount: ({ count }) => plural(count, `${count} item`, `${count} items`),
     summaryDetails: 'Details and VAT',
+    summaryDetailsShort: 'Details',
     breakdownProducts: 'Products',
     breakdownDiscount: 'Discount',
     breakdownDelivery: 'Delivery',

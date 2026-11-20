@@ -43,6 +43,11 @@ it('renders named navigation between the title and prices with current and disab
   expect(current).not.toHaveAttribute('href');
   const white = within(nav).getByRole('link', { name: 'White · PLA' });
   expect(white).toHaveAttribute('href', '/offer/stand-offer?utm_source=newsletter&checkout=together&variant=black.white');
+  const switcher = within(screen.getByTestId('language-switcher'));
+  for (const language of ['pl', 'en']) {
+    await userEvent.tab();
+    expect(switcher.getByRole('button', { name: language })).toHaveFocus();
+  }
   await userEvent.tab();
   expect(screen.getByRole('button', { name: en.checkout.summaryDetails })).toHaveFocus();
   await userEvent.tab();

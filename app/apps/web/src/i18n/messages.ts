@@ -2825,6 +2825,7 @@ export interface Messages {
     stepDetailsAndPayment: string;
     itemCount: (params: { count: number }) => string;
     summaryDetails: string;
+    summaryDetailsShort: string;
     breakdownProducts: string;
     breakdownDiscount: string;
     breakdownDelivery: string;

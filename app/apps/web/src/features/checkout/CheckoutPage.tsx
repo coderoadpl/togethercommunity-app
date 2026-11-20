@@ -32,7 +32,9 @@ import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { CheckoutDisclosureRow, CheckoutPayBar, CheckoutPriceBreakdown, CheckoutSteps, CheckoutSummaryRow } from '../../components/ui/CheckoutStepParts.js';
+import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { Cover } from '../../components/ui/Cover.js';
+import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { OfferLines } from '../../components/ui/OfferLines.js';
 import { PostContent } from '../../components/ui/PostContent.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
@@ -92,6 +94,7 @@ const CheckoutEmailField = ({ value, onChange, hint, required }: {
 };
 
 export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string; salesLinkSlug?: string }) => {
+  useSuppressGlobalChrome();
   const t = useTranslations();
   const { language } = useLanguage();
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
@@ -301,6 +304,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const socialFooter = socialLinks.length > 0
     ? <TenantSocialLinks links={socialLinks} />
     : undefined;
+  const frame = {
+    brand: <BrandMark size="compact" />,
+    headerAction: <LanguageSwitcher inline />,
+    align: 'start',
+    gutters: 'tight',
+    footer: socialFooter,
+  } as const;
 
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
@@ -313,7 +323,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
       : t.checkout.successEyebrow;
     return (
-      <FocusCard brand={<BrandMark size="compact" />} eyebrow={eyebrow} footer={socialFooter}>
+      <FocusCard {...frame} eyebrow={eyebrow}>
         <Stack useFlexGap spacing="1rem">
           {paymentConfig.data?.analytics ? <CheckoutAnalytics
             config={paymentConfig.data.analytics}
@@ -341,7 +351,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (checkoutStatus === 'cancelled') {
     return (
-      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.cancelledEyebrow} footer={socialFooter}>
+      <FocusCard {...frame} eyebrow={t.checkout.cancelledEyebrow}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
@@ -356,9 +366,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (offer.isPending || paymentConfig.isPending || me.isPending) {
     return (
       <FocusCard
-        brand={<BrandMark size="compact" />}
+        {...frame}
         eyebrow={t.checkout.orderEyebrow}
-        footer={socialFooter}
         width="wide"
       >
         <StatusView state={{ kind: 'loading', label: t.checkout.loading }} />
@@ -369,9 +378,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if ((offer.isError && !(offer.error instanceof ApiError && offer.error.appError.code === 'not_found')) || paymentConfig.isError) {
     return (
       <FocusCard
-        brand={<BrandMark size="compact" />}
+        {...frame}
         eyebrow={t.checkout.orderEyebrow}
-        footer={socialFooter}
         width="wide"
       >
         <StatusView
@@ -394,9 +402,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (!product) {
     return (
       <FocusCard
-        brand={<BrandMark size="compact" />}
+        {...frame}
         eyebrow={t.checkout.orderEyebrow}
-        footer={socialFooter}
       >
         <StatusView
           state={{
@@ -416,7 +423,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (salesLinkSlug !== undefined && (!legal?.termsUrl || !legal.privacyUrl)) {
     return (
-      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.orderEyebrow} footer={socialFooter}>
+      <FocusCard {...frame} eyebrow={t.checkout.orderEyebrow}>
         <Alert severity="error">{t.checkout.unavailableTitle}</Alert>
       </FocusCard>
     );
@@ -436,9 +443,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (purchaseComplete) {
     return (
       <FocusCard
-        brand={<BrandMark size="compact" />}
+        {...frame}
         eyebrow={t.checkout.paymentSimulatedEyebrow}
-        footer={socialFooter}
       >
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">
@@ -506,9 +512,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   return (
     <FocusCard
-      brand={<BrandMark size="compact" />}
+      {...frame}
       eyebrow={t.checkout.orderEyebrow}
-      footer={socialFooter}
       width="wide"
       onSubmit={submit}
     >
@@ -526,6 +531,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               items={t.checkout.itemCount({ count: bundle?.lines.length ?? 1 })}
               total={formatOfferPrice(payableCents, selectedCurrency, language, t.common.free)}
               detailsLabel={t.checkout.summaryDetails}
+              detailsShortLabel={t.checkout.summaryDetailsShort}
             >
               {bundle === undefined ? !singleProductDetails ? null : (
                 <Stack useFlexGap spacing="0.75rem">

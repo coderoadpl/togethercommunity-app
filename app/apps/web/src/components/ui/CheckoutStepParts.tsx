@@ -10,9 +10,11 @@ import {
   CheckoutStepList,
   CheckoutStepNumber,
   CheckoutSummarySurface,
+  CheckoutSummaryText,
   CheckoutSummaryTotal,
   EmberCtaButton,
   FinePrint,
+  FOCUS_CARD_INLINE_PADDING,
 } from '../../theme.js';
 import { ChevronDownIcon, MinusIcon, PlusIcon } from './account-icons.js';
 
@@ -27,10 +29,11 @@ export const CheckoutSteps = ({ label, steps, current }: { label: string; steps:
   </CheckoutStepList>
 );
 
-export const CheckoutSummaryRow = ({ items, total, detailsLabel, children }: {
+export const CheckoutSummaryRow = ({ items, total, detailsLabel, detailsShortLabel, children }: {
   items: string;
   total: string;
   detailsLabel: string;
+  detailsShortLabel: string;
   children?: ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
@@ -38,17 +41,19 @@ export const CheckoutSummaryRow = ({ items, total, detailsLabel, children }: {
   return (
     <CheckoutSummarySurface data-testid="checkout-summary" sx={{ px: '0.875rem' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: '0.75rem' }}>
-        <Typography component="p" sx={{ py: '0.625rem' }}>
+        <CheckoutSummaryText component="p" sx={{ py: '0.625rem' }}>
           {items}{' · '}<CheckoutSummaryTotal aria-live="polite" aria-atomic="true" data-testid="checkout-summary-total">{total}</CheckoutSummaryTotal>
-        </Typography>
+        </CheckoutSummaryText>
         {children == null ? null : (
           <CheckoutInlineToggle
             type="button"
             aria-expanded={open}
             aria-controls={panelId}
+            aria-label={detailsLabel}
             onClick={() => setOpen((current) => !current)}
           >
-            {detailsLabel}
+            <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>{detailsShortLabel}</Box>
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>{detailsLabel}</Box>
             <ChevronDownIcon />
           </CheckoutInlineToggle>
         )}
@@ -120,7 +125,7 @@ export const CheckoutPayBar = ({ label, disabled, reason, note, messages, testId
   return (
     <CheckoutPayBarSurface
       data-testid="checkout-pay-bar"
-      sx={{ position: 'sticky', bottom: 0, zIndex: 2, mx: '-1.8rem', px: '1.8rem', pt: '0.875rem', pb: '0.875rem' }}
+      sx={{ position: 'sticky', bottom: 0, zIndex: 2, mx: `calc(-1 * ${FOCUS_CARD_INLINE_PADDING})`, px: FOCUS_CARD_INLINE_PADDING, pt: '0.875rem', pb: '0.875rem' }}
     >
       <Stack useFlexGap spacing="0.5rem">
         {messages}

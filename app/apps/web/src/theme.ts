@@ -2785,6 +2785,10 @@ export const CheckoutPriceOption = styled(Paper, {
     : {}),
 }));
 
+export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8rem)';
+
+export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });
+
 export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
@@ -2865,7 +2869,7 @@ export const CheckoutVariantGroup = styled(Box)(({ theme }) => ({
 export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
   gap: '0.2rem',
   minHeight: '2.75rem',
-  padding: '0 0.25rem',
+  padding: 0,
   borderRadius: theme.shape.borderRadius,
   fontFamily: theme.typography.fontFamily,
   fontSize: '0.875rem',

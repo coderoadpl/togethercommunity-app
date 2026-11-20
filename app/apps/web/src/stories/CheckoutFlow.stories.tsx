@@ -42,7 +42,7 @@ export const PriceSelection: Story = {
         <CheckoutSteps label="Checkout steps" steps={['Your order', 'Details and payment']} current={0} />
         <Stack useFlexGap spacing="0.75rem">
           <CardTitle variant="h1">Together Course 101</CardTitle>
-          <CheckoutSummaryRow items="1 item" total="$299.00" detailsLabel="Details and VAT">
+          <CheckoutSummaryRow items="1 item" total="$299.00" detailsLabel="Details and VAT" detailsShortLabel="Details">
             <Typography variant="body1">
               A complete introduction to programming from scratch, with lifetime access to every
               lesson and resource.

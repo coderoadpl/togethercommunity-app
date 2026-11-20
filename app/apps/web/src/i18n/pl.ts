@@ -3148,6 +3148,7 @@ export const pl: Messages = {
     stepDetailsAndPayment: 'Dane i płatność',
     itemCount: ({ count }) => plural(count, `${count} pozycja`, `${count} pozycje`, `${count} pozycji`),
     summaryDetails: 'Szczegóły i VAT',
+    summaryDetailsShort: 'Szczegóły',
     breakdownProducts: 'Produkty',
     breakdownDiscount: 'Rabat',
     breakdownDelivery: 'Dostawa',

@@ -5,6 +5,8 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { en } from '../../i18n/en.js';
+import { AppChromeProvider } from '../../components/ui/app-chrome.js';
+import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { LanguageProvider } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
 import { formatPrice } from '../../lib/format.js';
@@ -172,6 +174,25 @@ describe('checkout content', () => {
     renderCheckout(<LanguageProvider><CheckoutPage productRef="stand" /></LanguageProvider>);
     expect(await screen.findByText(pl.checkout.orderEyebrow)).toBeInTheDocument();
     expect(screen.queryByText(pl.checkout.checkoutEyebrow)).not.toBeInTheDocument();
+  });
+
+  it('names the summary toggle in full while showing a short label', async () => {
+    serve();
+    renderCheckout();
+    const summary = await screen.findByTestId('checkout-summary');
+    const toggle = within(summary).getByRole('button', { name: en.checkout.summaryDetails });
+    expect(within(toggle).getByText(en.checkout.summaryDetailsShort)).toBeInTheDocument();
+    expect(en.checkout.summaryDetailsShort.length).toBeLessThan(en.checkout.summaryDetails.length);
+  });
+
+  it('replaces the floating language switcher with one in the card header', async () => {
+    serve();
+    renderCheckout(<AppChromeProvider><LanguageSwitcher /><CheckoutPage productRef="stand" /></AppChromeProvider>);
+    await screen.findByTestId('checkout-pay-cta');
+    const switchers = screen.getAllByTestId('language-switcher');
+    expect(switchers).toHaveLength(1);
+    expect(switchers[0]?.closest('form')).toBe(screen.getByTestId('checkout-pay-cta').closest('form'));
+    expect(screen.queryByRole('region', { name: en.common.language })).not.toBeInTheDocument();
   });
 
   it('reports the locker code as invalid only after the field was left', async () => {

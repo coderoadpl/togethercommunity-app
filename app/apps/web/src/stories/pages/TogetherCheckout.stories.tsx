@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
 
+import { stripeTermsUrlMissing } from '#core/domain/index.js';
+
 import checkout from '../fixtures/checkout.json';
 import account from '../fixtures/account.json';
 import { withPage } from '../page-decorators.js';
@@ -61,6 +63,12 @@ const variantsFixture = fixtureFor('together-checkout-variants', { ...stand, var
 const freeFixture = fixtureFor('together-checkout-free', { priceCents: 0, prices: [price(0)] }, {});
 const signedInFixture = fixtureFor('together-checkout-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'] } });
 const personalisationFixture = (scenario: string, condition: string | null) => fixtureFor(scenario, { ...stand, personalization: { ...engraving, condition } }, { shippingRates });
+
+const termsRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"rateId":"courier"}}]';
+const termsFallbackFixture = {
+  ...fixtureFor('together-checkout-terms-fallback', stand, { shippingRates }, { calls: { [termsRefusalCall]: { ok: false, error: stripeTermsUrlMissing() } } }),
+  expectedErrors: { [termsRefusalCall]: 'integration_not_configured' },
+};
 
 const couponCode = 'STUDIO20';
 const couponFixture = fixtureFor('together-checkout-coupon', {}, {}, {
@@ -323,4 +331,15 @@ export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mo
 export const TwoManufacturersDetailsOpen: Story = {
   parameters: { fixture: twoManufacturersFixture },
   play: async ({ canvasElement }) => openSafetyDetails(canvasElement),
+};
+export const StripeTermsFallback: Story = {
+  parameters: {
+    fixture: termsFallbackFixture,
+    docs: { description: { story: 'The Stripe account has no terms of service URL in its Dashboard, so the page asks for the email and the terms itself and keeps the chosen delivery.' } },
+  },
+  play: async ({ canvasElement }) => {
+    await chooseRate(canvasElement, /courier/u);
+    await userEvent.click(await within(canvasElement).findByTestId('checkout-pay-cta'));
+    await within(canvasElement).findByTestId('terms-consent');
+  },
 };

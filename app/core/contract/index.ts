@@ -36,3 +36,4 @@ export * from './shop-orders.js';
 export * from './shop-settings.js';
 export * from './shop-integrations.js';
 export * from './shop-assets.js';
+export * from './change-proposals.js';

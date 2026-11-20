@@ -154,7 +154,7 @@ export const shopManagementKeyCapabilities = (apiKey: Pick<ShopManagementKey, 's
 const authenticateStoredKey = async (
   tenant: ShopTenant,
   found: ShopManagementKey | null,
-  requiredScope: ShopManagementScope,
+  requiredScope: ShopManagementScope | null,
   deps: ShopMachineAuthDeps,
 ): Promise<Result<ShopMachineAuthentication, AppError>> => {
   const apiKey = usableShopKey(found, deps);
@@ -163,7 +163,7 @@ const authenticateStoredKey = async (
   if (!identity.ok) return identity;
   const limited = await claimShopKeyRateLimit(apiKey.value.id, tenant.id, deps);
   if (!limited.ok) return limited;
-  if (!apiKey.value.scopes.includes(requiredScope)) {
+  if (requiredScope !== null && !apiKey.value.scopes.includes(requiredScope)) {
     return err(forbidden(`${requiredScope} is not permitted`));
   }
   return ok({
@@ -179,7 +179,7 @@ const authenticateStoredKey = async (
 export const authenticateShopManagementKey = async (
   tenant: ShopTenant,
   presentedSecret: string,
-  requiredScope: ShopManagementScope,
+  requiredScope: ShopManagementScope | null,
   deps: ShopMachineAuthDeps,
 ): Promise<ShopMachineAuthOutcome> => {
   const secret = presentedSecret.trim();

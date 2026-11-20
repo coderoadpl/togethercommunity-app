@@ -208,6 +208,13 @@ describe('authenticateShopManagementKey', () => {
     });
   });
 
+  it('accepts a key with any scope when the route requires none and still refuses an invalid or limited key', async () => {
+    const h = harness({ keys: [shopKey({ scopes: ['shop:orders:read'] })] });
+    expect(await authenticate(h, null)).toMatchObject({ ok: true, value: { apiKey: { id: 'shop-key-1' } } });
+    expect(await authenticate(h, null, TENANT, 'unknown-secret')).toMatchObject(invalidKey);
+    expect(await authenticate(h, null, OTHER_TENANT)).toMatchObject(invalidKey);
+  });
+
   it('rejects a key presented for another tenant', async () => {
     expect(await authenticate(harness(), 'shop:catalog:read', OTHER_TENANT)).toMatchObject(invalidKey);
   });

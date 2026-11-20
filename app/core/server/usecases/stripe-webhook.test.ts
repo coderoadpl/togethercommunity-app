@@ -2833,6 +2833,19 @@ describe('checkout stock commit in the payment webhook', () => {
     expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 2, reserved: 0 });
     expect(stock.events).toEqual([]);
   });
+
+  it('completes a test-mode order whose product is sold out in live stock without cancelling or refunding it', async () => {
+    const { h, event } = await testCheckout();
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 0);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders.find((order) => order.id === 'test-order')).toMatchObject({ mode: 'test', status: 'paid' });
+    expect(h.orders.find((order) => order.id === 'test-order')?.cancelReason ?? null).toBeNull();
+    expect(h.refundJobs).toEqual([]);
+    expect(h.queued.map((message) => message.payload.kind)).not.toContain('order-sold-out-refund');
+    expect(stock.events).toEqual([]);
+  });
 });
 
 describe('Stripe payment mode isolation', () => {

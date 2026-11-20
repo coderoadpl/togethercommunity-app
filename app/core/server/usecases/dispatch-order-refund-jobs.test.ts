@@ -139,6 +139,23 @@ describe('order refund dispatcher', () => {
     expect(h.alerts[0]).toMatchObject({ to: 'owner@example.com', payload: { orderId: 'order-1', orderUrl: 'https://acme.togethercommunity.app/panel/sales/order-1', error: 'Stripe is unavailable' } });
   });
 
+  it.each(['live', 'test'] as const)('lists, refunds and re-reads a %s-mode payment with the key of that mode and workspace', async (mode) => {
+    const h = harness({ order: cancelledOrder({ mode }) });
+    const used: string[] = [];
+    const payment = h.deps.payment;
+    h.deps.payment = {
+      createRefund: async (call) => { used.push(`create ${call.mode} ${call.tenantId}`); return payment.createRefund(call); },
+      getRefund: async (call) => { used.push(`get ${call.mode} ${call.tenantId}`); return payment.getRefund(call); },
+      listRefunds: async (call) => { used.push(`list ${call.mode} ${call.tenantId}`); return payment.listRefunds(call); },
+    };
+    await h.queue();
+
+    expect(await h.tick(createdAt)).toStrictEqual({ processedCount: 1, outcomes: { refunded: 1 } });
+    await h.tick(at(hours(24)));
+
+    expect(used).toStrictEqual([`list ${mode} tenant-a`, `create ${mode} tenant-a`, `get ${mode} tenant-a`]);
+  });
+
   it('pays on the next attempt with a new key once the balance is restored, although Stripe saved the first error under the old key', async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('insufficient_balance', 'Insufficient available balance', 'balance_insufficient') }] });
     await h.queue();

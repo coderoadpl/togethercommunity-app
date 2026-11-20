@@ -1142,6 +1142,20 @@
       "when": 1790964000112,
       "tag": "0162_organization_settings_secrets_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1790964000113,
+      "tag": "0163_change_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1790964000114,
+      "tag": "0164_change_proposal_operations",
+      "breakpoints": true
     }
   ]
 }

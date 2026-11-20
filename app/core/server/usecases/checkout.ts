@@ -39,13 +39,13 @@ import type {
   ProductPriceRepository,
   ProductPriceHistoryRepository,
   ProductRepository,
+  SalesLinkRepository,
   SecretCrypto,
   StripeTermsCollection,
   TenantSecretRepository,
   TenantRepository,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
-import type { SalesLinkRepository } from '../sales-link-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutPersonalizations, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';

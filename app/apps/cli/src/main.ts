@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementScopeSchema, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalDisplayStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -14,6 +14,7 @@ import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client
 import { createApiClient, type ApiClient } from '#core/client/index.js';
 import {
   API_KEY_HEADER,
+  EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
   type TenantRedirectCreateBody,
   type TenantRedirectUpdateBody,
@@ -80,6 +81,7 @@ import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
+import { changeProposalAppliedLine } from './change-proposal-output.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -4068,6 +4070,7 @@ const shopManagementKey = apiKey
 const shopManagementKeyCreateOptionsSchema = z.object({
   scope: z.array(shopManagementScopeSchema).min(1),
   expiresAt: z.string().datetime(),
+  mode: shopManagementKeyModeSchema.optional(),
 });
 
 shopManagementKey
@@ -4075,13 +4078,19 @@ shopManagementKey
   .description('Create a shop management key; the secret is shown once')
   .option('--scope <scope...>', 'Shop scopes (required): shop:catalog:read, shop:catalog:write, shop:orders:read, shop:fulfilment:write, shop:settings:read, shop:settings:write, shop:integrations:read, shop:integrations:write')
   .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 30 days ahead (7 days is the suggested lifetime)')
+  .option('--mode <mode>', 'direct (default): writes change live state; propose: writes become change proposals the owner decides on')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), shopManagementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
-        await ctx.api.createShopManagementKey({ name: nameWords.join(' '), scopes: options.scope, expiresAt: options.expiresAt }),
+        await ctx.api.createShopManagementKey({
+          name: nameWords.join(' '),
+          scopes: options.scope,
+          expiresAt: options.expiresAt,
+          ...(options.mode === undefined ? {} : { mode: options.mode }),
+        }),
         ctx.json,
         (data) =>
-          `created shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+          `created ${data.apiKey.mode === 'propose' ? 'propose-mode ' : ''}shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
       );
     }),
   );
@@ -4092,7 +4101,7 @@ shopManagementKey.command('list').description('List shop management keys (no sec
       data.apiKeys.length === 0
         ? 'no shop management keys'
         : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})`)
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t(${k.id})\t${k.mode}`)
             .join('\n'),
     );
   }),
@@ -4158,6 +4167,113 @@ shopManagementKey
           ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
         ].join('\n'),
       );
+    }),
+  );
+
+const changeProposals = program
+  .command('proposals')
+  .description('Change proposals made by propose-mode shop management keys (verified owner session only)');
+
+const changeProposalListOptionsSchema = z.object({
+  status: changeProposalDisplayStatusSchema.optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const changeProposalEffectLines = (effect: ChangeProposalEffect): string[] =>
+  Object.entries(effect).map(([field, change]) => 'delta' in change
+    ? `  ${field}: ${change.delta > 0 ? '+' : ''}${String(change.delta)}`
+    : `  ${field}: ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)}`);
+
+const changeProposalSummary = (proposal: ChangeProposalOwnerView): string =>
+  `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.proposedBy.keyName}\t(${proposal.id})`;
+
+const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
+  `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
+  `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
+  `proposed by key: ${proposal.proposedBy.keyName} (${proposal.proposedBy.keyId}, ${proposal.proposedBy.keyState}), issued by ${proposal.proposedBy.issuerUserId}`,
+  `created: ${proposal.createdAt}`,
+  `expires: ${proposal.expiresAt}`,
+  'effect:',
+  ...changeProposalEffectLines(proposal.effect),
+  ...(proposal.decidedAt === null ? [] : [`decided: ${proposal.decidedAt} by ${proposal.decidedByUserId ?? 'the key'}`]),
+  ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
+];
+
+changeProposals
+  .command('list')
+  .description('List the change proposals of the workspace, newest first')
+  .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed or expired')
+  .option('--cursor <id>', 'continue after this proposal id')
+  .option('--limit <n>', 'proposals per page (1-100, default 50)')
+  .action(
+    withInput(z.tuple([changeProposalListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listChangeProposals({
+          ...(options.status === undefined ? {} : { status: options.status }),
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) => [
+          ...(data.proposals.length === 0 ? ['no change proposals'] : data.proposals.map(changeProposalSummary)),
+          ...(data.nextCursor === null ? [] : [`next: --cursor ${data.nextCursor}`]),
+        ].join('\n'),
+      );
+    }),
+  );
+
+changeProposals
+  .command('show <id>')
+  .description('Show a change proposal with its full before/after effect and its history')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.getChangeProposal({ id }), ctx.json, (data) => [
+        ...changeProposalDetail(data.proposal),
+        'history:',
+        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${event.note}`}`),
+      ].join('\n'));
+    }),
+  );
+
+changeProposals
+  .command('reject <id>')
+  .description('Reject a pending change proposal; nothing is applied')
+  .option('--note <text>', 'reason shown to the proposing key (at most 500 characters)')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ note: z.string().max(500).optional() })]), async (ctx, [id, options]) => {
+      emit(
+        await ctx.api.rejectChangeProposal({ id, ...(options.note === undefined ? {} : { note: options.note }) }),
+        ctx.json,
+        (data) => `rejected:\n${changeProposalDetail(data.proposal).join('\n')}`,
+      );
+    }),
+  );
+
+const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
+  switch (proposal.status) {
+    case 'applied':
+      return changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId);
+    case 'stale':
+      return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
+    case 'failed':
+      return `failed: ${proposal.failureCode ?? 'error'}: ${proposal.failureMessage ?? ''}; nothing was applied`;
+    case 'pending':
+    case 'rejected':
+    case 'withdrawn':
+    case 'expired':
+      return proposal.status;
+  }
+};
+
+changeProposals
+  .command('approve <id>')
+  .description('Approve a pending change proposal: apply it only if the live state still gives exactly the effect shown, otherwise mark it stale or failed')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      const result = await ctx.api.approveChangeProposal({ id });
+      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal), ...changeProposalDetail(data.proposal)].join('\n'));
+      if (result.ok && result.value.proposal.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
     }),
   );
 

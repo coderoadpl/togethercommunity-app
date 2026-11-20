@@ -145,6 +145,14 @@ import type {
   ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
+  ChangeProposal,
+  ChangeProposalCap,
+  ChangeProposalCountCap,
+  ChangeProposalDisplayStatus,
+  ChangeProposalEvent,
+  ChangeProposalTarget,
+  ChangeProposalTerminalStatus,
+  SalesLink,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
   ImportAuditEvent,
@@ -164,6 +172,7 @@ import type {
   CollectedShipping,
   FulfilmentStatus,
 } from '#core/domain/index.js';
+import type { ProductDraftRepository } from './product-draft-ports.js';
 import type { StockRepository } from './stock-ports.js';
 
 /**
@@ -888,6 +897,13 @@ export interface TenantApiKeyRepository {
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
 }
 
+export interface ChangeProposalWithdrawal {
+  at: string;
+  actorUserId: string;
+  nextEventId(): string;
+}
+
+/** Revoking or purging a key withdraws that key's pending change proposals in the same transaction. */
 export interface ShopManagementKeyRepository {
   listByTenant(tenantId: string): Promise<ShopManagementKey[]>;
   create(tenantId: string, key: ShopManagementKey, event: ShopManagementKeyEvent): Promise<void>;
@@ -897,8 +913,13 @@ export interface ShopManagementKeyRepository {
     id: string,
     revokedAt: string,
     event: ShopManagementKeyEvent,
+    withdrawal: ChangeProposalWithdrawal,
   ): Promise<ShopManagementKey | null>;
-  purge(tenantId: string, event: (apiKeyId: string) => ShopManagementKeyEvent): Promise<number>;
+  purge(
+    tenantId: string,
+    event: (apiKeyId: string) => ShopManagementKeyEvent,
+    withdrawal: ChangeProposalWithdrawal,
+  ): Promise<number>;
 }
 
 export interface ShopManagementKeyRateLimitRepository {
@@ -2860,4 +2881,124 @@ export interface TenantTeamRepository {
   activateInvitation(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   revokeInvitation(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
   removeAdmin(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
+}
+
+export interface ChangeProposalEventDraft {
+  id: string;
+  actorUserId: string | null;
+  apiKeyId: string | null;
+  note: string | null;
+  at: string;
+}
+
+export interface ChangeProposalListQuery {
+  status?: ChangeProposalDisplayStatus;
+  cursor?: string;
+  limit: number;
+  now: string;
+}
+
+export interface ChangeProposalPage {
+  proposals: ChangeProposal[];
+  nextCursor: string | null;
+}
+
+type ChangeProposalCreation =
+  | { kind: 'created'; proposal: ChangeProposal }
+  | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
+  | { kind: 'key_inactive' }
+  | { kind: 'busy' };
+
+interface ChangeProposalTransition {
+  status: ChangeProposalTerminalStatus;
+  decidedByUserId: string | null;
+  decidedAt: string;
+  decisionNote: string | null;
+  appliedResourceId: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+  event: ChangeProposalEventDraft;
+}
+
+export interface ChangeProposalTransitionGuard {
+  keyId?: string;
+  unexpiredAt?: string;
+}
+
+/**
+ * Proposals are tenant-scoped; key-side reads also take the proposing key, so a key reaches only its own rows.
+ * Every status change and its event commit together, and events get the next per-proposal sequence.
+ */
+export interface ChangeProposalRepository {
+  create(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, now: string): Promise<ChangeProposalCreation>;
+  countCapReached(tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null>;
+  findById(tenantId: string, id: string): Promise<ChangeProposal | null>;
+  list(tenantId: string, query: ChangeProposalListQuery): Promise<ChangeProposalPage>;
+  findByKey(tenantId: string, keyId: string, id: string): Promise<ChangeProposal | null>;
+  listByKey(tenantId: string, keyId: string, query: ChangeProposalListQuery): Promise<ChangeProposalPage>;
+  lockPending(tenantId: string, id: string, guard?: ChangeProposalTransitionGuard): Promise<ChangeProposal | null>;
+  transition(
+    tenantId: string,
+    id: string,
+    transition: ChangeProposalTransition,
+    guard?: ChangeProposalTransitionGuard,
+  ): Promise<ChangeProposal | null>;
+  recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<boolean>;
+}
+
+export interface ChangeProposalEventRepository {
+  listByProposal(tenantId: string, proposalId: string): Promise<ChangeProposalEvent[]>;
+}
+
+export type ChangeProposalTargetLockPurpose = 'change' | 'delete';
+
+export interface ChangeProposalTargetLocks {
+  /**
+   * Locks the live row a proposal changes until the surrounding transaction ends; false when it does not exist.
+   * `delete` takes the row exclusively and locks what the deletion destroys with it, so nothing referencing it can be added or changed meanwhile.
+   */
+  lock(tenantId: string, target: ChangeProposalTarget, purpose?: ChangeProposalTargetLockPurpose): Promise<boolean>;
+}
+
+export interface SalesLinkRepository {
+  list(tenantId: string): Promise<SalesLink[]>;
+  findById(tenantId: string, id: string): Promise<SalesLink | null>;
+  findBySlug(tenantId: string, slug: string): Promise<SalesLink | null>;
+  save(tenantId: string, link: SalesLink, expectedRevision: number | null): Promise<Result<SalesLink, AppError>>;
+  delete(tenantId: string, id: string, occurredAt: string, expectedRevision?: number): Promise<Result<void, AppError>>;
+}
+
+export interface ChangeProposalRepositories {
+  products: ProductRepository & ProductMetadataRepository & ProductBatchReader;
+  prices: ProductPriceRepository;
+  tenants: Pick<TenantRepository, 'findSettings' | 'changeSettings'>;
+  downloadAssets: Pick<ProductDownloadAssetRepository, 'listByProduct' | 'listReadyByProduct'>;
+  spaces: Pick<SpaceRepository, 'list' | 'findById'>;
+  stock: StockRepository;
+  productDrafts: ProductDraftRepository;
+  salesLinks: SalesLinkRepository;
+  changeProposals: ChangeProposalRepository;
+  changeProposalEvents: ChangeProposalEventRepository;
+  targets: ChangeProposalTargetLocks;
+}
+
+export interface ChangeProposalPostCommitEffects {
+  /** Runs after COMMIT; dropped when the transaction or the savepoint that deferred it rolls back. */
+  defer(effect: () => Promise<void>): void;
+}
+
+export interface ChangeProposalTransactionScope {
+  repositories: ChangeProposalRepositories;
+  secretResolver: TenantSecretResolver;
+  afterCommit: ChangeProposalPostCommitEffects;
+  savepoint<T>(operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+/**
+ * One database transaction over every repository a proposal operation reaches. `run` commits an ok result and
+ * rolls back an error; `dryRun` always rolls back. Non-database effects go through `afterCommit`.
+ */
+export interface ChangeProposalTransaction {
+  run<T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  dryRun<T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }

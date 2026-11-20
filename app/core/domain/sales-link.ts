@@ -36,6 +36,7 @@ const fields = {
 const validWindow = (value: { validFrom: string | null; validTo: string | null }) => value.validFrom === null || value.validTo === null || Date.parse(value.validFrom) < Date.parse(value.validTo);
 export const salesLinkInputSchema = z.object(fields).strict().refine(validWindow, 'Validity end must follow its start');
 export const salesLinkUpdateSchema = z.object({ ...fields, id: z.string().min(1), expectedRevision: z.number().int().positive() }).strict().refine(validWindow, 'Validity end must follow its start');
+export const salesLinkDeleteInputSchema = z.object({ id: z.string().min(1), expectedRevision: z.number().int().positive().optional() }).strict();
 export const salesLinkSchema = z.object({ ...fields, id: z.string(), tenantId: z.string(), revision: z.number().int().positive(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).refine(validWindow, 'Validity end must follow its start');
 const salesLinkLineSchema = z.object({
   baseProductId: z.string().optional(), variants: z.array(publicProductVariantSchema).default([]),

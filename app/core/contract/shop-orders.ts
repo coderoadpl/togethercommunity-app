@@ -1,12 +1,11 @@
 import { z } from 'zod';
 
-import { listOrdersQuerySchema, type ShopManagementScope } from '#core/domain/index.js';
+import { listOrdersQuerySchema, strictInput, type ShopManagementScope } from '#core/domain/index.js';
 
 import { orderFulfilmentContracts } from './order-fulfilment.js';
 import { orderVerificationContracts } from './order-verification.js';
 import { orderDetailOutputSchema, ordersExportOutputSchema, ordersExportQuerySchema, ordersListOutputSchema } from './routes.js';
 import { shipxContracts } from './shipx.js';
-import { strictInput } from './strict-input.js';
 
 const READ = 'shop:orders:read' satisfies ShopManagementScope;
 const FULFIL = 'shop:fulfilment:write' satisfies ShopManagementScope;

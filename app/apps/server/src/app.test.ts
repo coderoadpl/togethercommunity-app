@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '#core/server/testing/change-proposal-fakes.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
@@ -235,6 +236,7 @@ const deps = (input: {
   const members: Member[] = input.members ?? [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
+  const changeProposalStore = createChangeProposalStoreFake();
   const appDeps: AppDeps = {
     telemetry: { recordAppError: vi.fn() },
     auth: {
@@ -378,6 +380,9 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    changeProposals: changeProposalStore.repository,
+    changeProposalEvents: changeProposalStore.events,
+    changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     importContent: {
       commit: async () => 'saved',
     },
@@ -9553,6 +9558,32 @@ describe('impersonation HTTP surface', () => {
     expect(await afterExit.json()).toMatchObject({
       data: { tenant: { staffRole: 'owner' }, impersonation: null },
     });
+  });
+
+  it('refuses the owner change proposal routes while the owner views as a member', async () => {
+    const store = createChangeProposalStoreFake();
+    const list = vi.spyOn(store.repository, 'list');
+    const findById = vi.spyOn(store.repository, 'findById');
+    const transition = vi.spyOn(store.repository, 'transition');
+    const { app } = impersonatingApp({ changeProposals: store.repository, changeProposalEvents: store.events });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST', headers, body: JSON.stringify({ memberId: 'member-1' }),
+    });
+    expect(started.status).toBe(200);
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    for (const [method, path] of [
+      ['GET', API_PATHS.changeProposals],
+      ['GET', API_PATHS.changeProposal.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalReject.replace(':id', 'proposal-1')],
+      ['POST', API_PATHS.changeProposalApprove.replace(':id', 'proposal-1')],
+    ] as const) {
+      const response = await app.request(path, { method, headers: impersonated, ...(method === 'POST' ? { body: JSON.stringify({}) } : {}) });
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json(), `${method} ${path}`).toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(findById).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
   });
 
   it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {

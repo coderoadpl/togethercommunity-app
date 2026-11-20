@@ -4707,7 +4707,8 @@ export const createTenantRepository = (
       : null;
   },
   changeSettings: async (tenantId, change) => db.transaction(async (tx): Promise<Result<TenantSettings, AppError> | null> => {
-    const [locked] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('update');
+    // No key column changes, so foreign-key inserts that reference this tenant (key events, proposals) need not wait behind it.
+    const [locked] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId)).for('no key update');
     if (!locked) return null;
     const current = await createTenantRepository(tx).findSettings(tenantId);
     if (current === null) return null;

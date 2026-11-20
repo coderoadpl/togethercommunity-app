@@ -493,6 +493,8 @@ import { shopOrderRoutes } from './shop-order-routes.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
+import { shopProposalRoutes } from './shop-proposal-routes.js';
+import { registerChangeProposalRoutes } from './change-proposal-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -1321,7 +1323,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps)]);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -1388,6 +1390,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerChangeProposalRoutes(app, deps);
   registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
   registerOrganizationRoutes(app, deps);

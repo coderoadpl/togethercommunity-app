@@ -202,6 +202,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/integrations/storage/configure` | self-authenticating | mutating | api m2m shop integrations storage configure |
 | `GET /api/m2m/shop/integrations/shipx` | self-authenticating | read | api m2m shop integrations shipx |
 | `POST /api/m2m/shop/integrations/shipx/configure` | self-authenticating | mutating | api m2m shop integrations shipx configure |
+| `GET /api/m2m/shop/proposals` | self-authenticating | read | api m2m shop proposals |
+| `GET /api/m2m/shop/proposals/:id` | self-authenticating | read | api m2m shop proposals id |
+| `POST /api/m2m/shop/proposals/:id/withdraw` | self-authenticating | mutating | api m2m shop proposals id withdraw |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -259,6 +262,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
 | `POST /api/orders/:orderId/personalization` | authenticated | mutating | correct order personalization |
+| `GET /api/change-proposals` | authenticated | read | change proposals |
+| `GET /api/change-proposals/:id` | authenticated | read | change proposal |
+| `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
+| `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
 | `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |

@@ -1,6 +1,6 @@
 {
-  "hash": "91861b08b5c616a410cd451f80acd43957399eef87c0ba46294ee48d59918b43",
-  "shortId": "91861b08b5c6",
+  "hash": "c37fcc69f569032edf01199c6cfbd8127ae9e259bb7abfeef02806485a39f7c0",
+  "shortId": "c37fcc69f569",
   "schema": {
     "constraints": [
       {
@@ -19,14 +19,64 @@
         "table": "marketing_lists"
       },
       {
+        "definition": "CHECK ((((status = 'failed'::text) AND (failure_code IS NOT NULL)) OR ((status <> 'failed'::text) AND (failure_code IS NULL) AND (failure_message IS NULL))))",
+        "name": "change_proposals_failure_shape_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((((status = 'pending'::text) AND (decided_at IS NULL) AND (decided_by_user_id IS NULL) AND (decision_note IS NULL)) OR ((status <> 'pending'::text) AND (decided_at IS NOT NULL))))",
+        "name": "change_proposals_decision_shape_check",
+        "table": "change_proposals"
+      },
+      {
         "definition": "CHECK (((NOT imported) OR (NOT active)))",
         "name": "product_prices_imported_inactive",
         "table": "product_prices"
       },
       {
+        "definition": "CHECK (((actor_user_id IS NOT NULL) OR (api_key_id IS NOT NULL)))",
+        "name": "change_proposal_events_actor_check",
+        "table": "change_proposal_events"
+      },
+      {
+        "definition": "CHECK (((char_length(applied_resource_id) >= 1) AND (char_length(applied_resource_id) <= 200)))",
+        "name": "change_proposals_applied_resource_id_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(failure_code) >= 1) AND (char_length(failure_code) <= 64)))",
+        "name": "change_proposals_failure_code_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(operation) <= 64) AND (operation ~ '^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$'::text)))",
+        "name": "change_proposals_operation_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(proposed_by_key_name) >= 1) AND (char_length(proposed_by_key_name) <= 120)))",
+        "name": "change_proposals_key_name_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(target_id) >= 1) AND (char_length(target_id) <= 200)))",
+        "name": "change_proposals_target_id_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(title) >= 1) AND (char_length(title) <= 500)))",
+        "name": "change_proposal_groups_title_length_check",
+        "table": "change_proposal_groups"
+      },
+      {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
+      },
+      {
+        "definition": "CHECK (((group_id IS NULL) = (group_position IS NULL)))",
+        "name": "change_proposals_group_shape_check",
+        "table": "change_proposals"
       },
       {
         "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb) AND (scopes <@ '[\"shop:catalog:read\", \"shop:catalog:write\", \"shop:orders:read\", \"shop:fulfilment:write\", \"shop:settings:read\", \"shop:settings:write\", \"shop:integrations:read\", \"shop:integrations:write\"]'::jsonb)))",
@@ -49,6 +99,16 @@
         "table": "marketing_contacts"
       },
       {
+        "definition": "CHECK (((mode <> 'propose'::text) OR (((NOT (scopes ? 'shop:catalog:write'::text)) OR (scopes ? 'shop:catalog:read'::text)) AND ((NOT (scopes ? 'shop:settings:write'::text)) OR (scopes ? 'shop:settings:read'::text)))))",
+        "name": "shop_management_keys_propose_read_scopes_check",
+        "table": "shop_management_keys"
+      },
+      {
+        "definition": "CHECK (((mode <> 'propose'::text) OR (NOT (scopes ?| ARRAY['shop:fulfilment:write'::text, 'shop:integrations:write'::text]))))",
+        "name": "shop_management_keys_propose_scopes_check",
+        "table": "shop_management_keys"
+      },
+      {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
         "name": "marketing_contact_imports_row_count_check",
         "table": "marketing_contact_imports"
@@ -62,6 +122,11 @@
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
         "name": "coupons_validity_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK (((status = 'applied'::text) OR (applied_resource_id IS NULL)))",
+        "name": "change_proposals_applied_shape_check",
+        "table": "change_proposals"
       },
       {
         "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
@@ -79,6 +144,11 @@
         "table": "products"
       },
       {
+        "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_events_at_check",
+        "table": "change_proposal_events"
+      },
+      {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
         "name": "dm_messages_body_format_check",
         "table": "dm_messages"
@@ -89,6 +159,21 @@
         "table": "posts"
       },
       {
+        "definition": "CHECK ((char_length(decision_note) <= 500))",
+        "name": "change_proposals_decision_note_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((char_length(failure_message) <= 2000))",
+        "name": "change_proposals_failure_message_length_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((char_length(note) <= 500))",
+        "name": "change_proposal_events_note_length_check",
+        "table": "change_proposal_events"
+      },
+      {
         "definition": "CHECK ((char_length(resource_id) <= 200))",
         "name": "shop_management_key_events_resource_id_length_check",
         "table": "shop_management_key_events"
@@ -97,6 +182,21 @@
         "definition": "CHECK ((config_group = ANY (ARRAY['payments_live'::text, 'payments_test'::text, 'invoicing'::text, 'email_transport'::text, 'telemetry'::text, 'shipping_carrier'::text])))",
         "name": "tenant_config_sources_config_group_check",
         "table": "tenant_config_sources"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_groups_created_at_check",
+        "table": "change_proposal_groups"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposals_created_at_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((decided_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposals_decided_at_check",
+        "table": "change_proposals"
       },
       {
         "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",
@@ -129,6 +229,21 @@
         "table": "order_feed_epoch"
       },
       {
+        "definition": "CHECK ((expires_at > created_at))",
+        "name": "change_proposals_expiry_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposals_expires_at_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((group_position >= 1))",
+        "name": "change_proposals_group_position_check",
+        "table": "change_proposals"
+      },
+      {
         "definition": "CHECK ((interval_count > 0))",
         "name": "product_prices_interval_count_positive",
         "table": "product_prices"
@@ -144,9 +259,24 @@
         "table": "organizations"
       },
       {
+        "definition": "CHECK ((jsonb_typeof(effect) = 'object'::text))",
+        "name": "change_proposals_effect_check",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((jsonb_typeof(input) = 'object'::text))",
+        "name": "change_proposals_input_check",
+        "table": "change_proposals"
+      },
+      {
         "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
         "name": "shop_management_key_events_kind_check",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['proposed'::text, 'applied'::text, 'rejected'::text, 'stale'::text, 'withdrawn'::text, 'expired'::text, 'apply_failed'::text])))",
+        "name": "change_proposal_events_kind_check",
+        "table": "change_proposal_events"
       },
       {
         "definition": "CHECK ((ksef_submission_mode = ANY (ARRAY['automatic'::text, 'manual'::text])))",
@@ -177,6 +307,11 @@
         "definition": "CHECK ((method = ANY (ARRAY['POST'::text, 'PUT'::text, 'PATCH'::text, 'DELETE'::text])))",
         "name": "shop_management_key_events_method_check",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CHECK ((mode = ANY (ARRAY['direct'::text, 'propose'::text])))",
+        "name": "shop_management_keys_mode_check",
+        "table": "shop_management_keys"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -284,6 +419,11 @@
         "table": "products"
       },
       {
+        "definition": "CHECK ((sequence >= 1))",
+        "name": "change_proposal_events_sequence_check",
+        "table": "change_proposal_events"
+      },
+      {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "organizations_shipx_environment_check",
         "table": "organizations"
@@ -319,6 +459,11 @@
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'applied'::text, 'rejected'::text, 'stale'::text, 'withdrawn'::text, 'failed'::text])))",
+        "name": "change_proposals_status_check",
+        "table": "change_proposals"
+      },
+      {
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text])))",
         "name": "auto_invoice_jobs_status_check",
         "table": "auto_invoice_jobs"
@@ -332,6 +477,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['sent'::text, 'blocked'::text, 'expired'::text, 'failed'::text])))",
         "name": "meta_capi_events_status_check",
         "table": "meta_capi_events"
+      },
+      {
+        "definition": "CHECK ((target_kind = ANY (ARRAY['product'::text, 'price'::text, 'sales-link'::text, 'settings'::text])))",
+        "name": "change_proposals_target_kind_check",
+        "table": "change_proposals"
       },
       {
         "definition": "CHECK ((type = 'shipped'::text))",
@@ -682,6 +832,21 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "campaigns_tenant_id_tenants_id_fk",
         "table": "campaigns"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_events_tenant_id_fkey",
+        "table": "change_proposal_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_groups_tenant_id_fkey",
+        "table": "change_proposal_groups"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposals_tenant_id_fkey",
+        "table": "change_proposals"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1289,6 +1454,11 @@
         "table": "marketing_signup_submissions"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, group_id) REFERENCES change_proposal_groups(tenant_id, id)",
+        "name": "change_proposals_tenant_group_fk",
+        "table": "change_proposals"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, import_id) REFERENCES marketing_contact_imports(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_import_row_batch_fk",
         "table": "marketing_contact_import_rows"
@@ -1449,6 +1619,11 @@
         "table": "stock_reservations"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, proposal_id) REFERENCES change_proposals(tenant_id, id)",
+        "name": "change_proposal_events_tenant_proposal_fk",
+        "table": "change_proposal_events"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, snapshot_id) REFERENCES marketing_campaign_audience_snapshots(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_campaign_audience_contacts_tenant_id_snapshot_id_mark",
         "table": "marketing_campaign_audience_contacts"
@@ -1532,6 +1707,21 @@
         "definition": "PRIMARY KEY (id)",
         "name": "campaigns_pkey",
         "table": "campaigns"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "change_proposal_events_pkey",
+        "table": "change_proposal_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "change_proposal_groups_pkey",
+        "table": "change_proposal_groups"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "change_proposals_pkey",
+        "table": "change_proposals"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2413,6 +2603,21 @@
         "table": "campaigns"
       },
       {
+        "definition": "CREATE INDEX change_proposal_groups_tenant_key_idx ON change_proposal_groups USING btree (tenant_id, proposed_by_key_id, created_at)",
+        "name": "change_proposal_groups_tenant_key_idx",
+        "table": "change_proposal_groups"
+      },
+      {
+        "definition": "CREATE INDEX change_proposals_tenant_key_created_idx ON change_proposals USING btree (tenant_id, proposed_by_key_id, created_at)",
+        "name": "change_proposals_tenant_key_created_idx",
+        "table": "change_proposals"
+      },
+      {
+        "definition": "CREATE INDEX change_proposals_tenant_status_created_idx ON change_proposals USING btree (tenant_id, status, created_at)",
+        "name": "change_proposals_tenant_status_created_idx",
+        "table": "change_proposals"
+      },
+      {
         "definition": "CREATE INDEX checkout_consent_captures_tenant_created_idx ON checkout_consent_captures USING btree (tenant_id, created_at)",
         "name": "checkout_consent_captures_tenant_created_idx",
         "table": "checkout_consent_captures"
@@ -2986,6 +3191,16 @@
         "definition": "CREATE UNIQUE INDEX campaign_sends_tenant_campaign_email_uidx ON campaign_sends USING btree (tenant_id, campaign_id, email) WHERE ((campaign_id IS NOT NULL) AND (source = 'broadcast'::text))",
         "name": "campaign_sends_tenant_campaign_email_uidx",
         "table": "campaign_sends"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX change_proposal_events_tenant_proposal_sequence_uidx ON change_proposal_events USING btree (tenant_id, proposal_id, sequence)",
+        "name": "change_proposal_events_tenant_proposal_sequence_uidx",
+        "table": "change_proposal_events"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX change_proposals_tenant_group_position_uidx ON change_proposals USING btree (tenant_id, group_id, group_position) WHERE (group_id IS NOT NULL)",
+        "name": "change_proposals_tenant_group_position_uidx",
+        "table": "change_proposals"
       },
       {
         "definition": "CREATE UNIQUE INDEX checkout_snapshots_provider_session_idx ON checkout_snapshots USING btree (tenant_id, provider_session_id) WHERE (provider_session_id IS NOT NULL)",
@@ -5805,6 +6020,91 @@
           }
         ],
         "name": "consent_definitions"
+      },
+      {
+        "columns": [
+          {
+            "default": "'direct'::text",
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "issued_by_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revoked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scopes",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "shop_management_keys"
       },
       {
         "columns": [
@@ -10259,6 +10559,83 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "api_key_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "note",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "proposal_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "at",
             "notNull": true,
             "type": "timestamp with time zone"
@@ -10796,6 +11173,179 @@
           }
         ],
         "name": "shop_management_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "applied_resource_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "decided_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "decided_by_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "decision_note",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "effect",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "failure_code",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "failure_message",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "group_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "group_position",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "input",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "proposed_by_issuer_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "proposed_by_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "proposed_by_key_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposals"
       },
       {
         "columns": [
@@ -14309,83 +14859,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "expires_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "issued_by_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "key_hash",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "revoked_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "scopes",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "shop_management_keys"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -14549,6 +15022,51 @@
           }
         ],
         "name": "post_reports"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "proposed_by_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "title",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_groups"
       },
       {
         "columns": [

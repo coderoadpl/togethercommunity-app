@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
+import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 import { appError, err, ok, PASSWORD_MIN_LENGTH, salesLinkUpdateSchema, type AppError, type Result, type ShipxOrderView } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
@@ -50,6 +51,10 @@ interface Hoisted {
   revokeShopManagementKey: ReturnType<typeof vi.fn>;
   purgeShopManagementKeys: ReturnType<typeof vi.fn>;
   listShopManagementKeyEvents: ReturnType<typeof vi.fn>;
+  listChangeProposals: ReturnType<typeof vi.fn>;
+  getChangeProposal: ReturnType<typeof vi.fn>;
+  rejectChangeProposal: ReturnType<typeof vi.fn>;
+  approveChangeProposal: ReturnType<typeof vi.fn>;
   listSurveys: ReturnType<typeof vi.fn>;
   createSurvey: ReturnType<typeof vi.fn>;
   deleteSurvey: ReturnType<typeof vi.fn>;
@@ -149,6 +154,10 @@ const h = vi.hoisted(
     revokeShopManagementKey: vi.fn(),
     purgeShopManagementKeys: vi.fn(),
     listShopManagementKeyEvents: vi.fn(),
+    listChangeProposals: vi.fn(),
+    getChangeProposal: vi.fn(),
+    rejectChangeProposal: vi.fn(),
+    approveChangeProposal: vi.fn(),
     listSurveys: vi.fn(),
     createSurvey: vi.fn(),
     deleteSurvey: vi.fn(),
@@ -296,6 +305,10 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     revokeShopManagementKey: h.revokeShopManagementKey,
     purgeShopManagementKeys: h.purgeShopManagementKeys,
     listShopManagementKeyEvents: h.listShopManagementKeyEvents,
+    listChangeProposals: h.listChangeProposals,
+    getChangeProposal: h.getChangeProposal,
+    rejectChangeProposal: h.rejectChangeProposal,
+    approveChangeProposal: h.approveChangeProposal,
     listSurveys: h.listSurveys,
     createSurvey: h.createSurvey,
     deleteSurvey: h.deleteSurvey,
@@ -1548,11 +1561,11 @@ describe('activity report CLI parsing', () => {
   });
   it('lists and revokes shop management keys through the shop-management group', async () => {
     h.listShopManagementKeys.mockReset().mockResolvedValue(ok({ apiKeys: [{
-      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], issuedByUserId: 'owner-1',
+      id: 'shop-key', tenantId: 'acme', name: 'Shop', scopes: ['shop:catalog:read'], mode: 'direct', issuedByUserId: 'owner-1',
       createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-08T00:00:00.000Z', revokedAt: null,
     }] }));
     await run('api-key', 'shop-management', 'list');
-    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)');
+    expect(logSpy).toHaveBeenCalledWith('Shop\tactive\texpires 1998-08-08T00:00:00.000Z\tshop:catalog:read\t(shop-key)\tdirect');
     h.revokeShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'shop-key', name: 'Shop' } }));
     await run('--json', 'api-key', 'shop-management', 'revoke', 'shop-key');
     expect(h.revokeShopManagementKey).toHaveBeenCalledWith({ id: 'shop-key' });
@@ -1587,6 +1600,25 @@ describe('activity report CLI parsing', () => {
     await run('--json', 'api-key', 'shop-management', 'events');
     expect(h.listShopManagementKeyEvents).toHaveBeenCalledWith({});
     expect(soleJson()).toEqual({ ok: true, data: { events: [], nextCursor: null } });
+  });
+  it('creates a propose-mode shop management key with --mode propose and refuses an unknown mode', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Agent', mode: 'propose' }, secret: 'shop-secret' }));
+    await run('api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:read', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'propose');
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({
+      name: 'Agent', scopes: ['shop:catalog:read', 'shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z', mode: 'propose',
+    });
+    expect(logSpy).toHaveBeenCalledWith('created propose-mode shop management key Agent (key)\nsecret (shown once): shop-secret');
+    h.createShopManagementKey.mockReset();
+    logSpy.mockClear();
+    await run('--json', 'api-key', 'shop-management', 'create', 'Agent', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z', '--mode', 'draft');
+    expect(h.createShopManagementKey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('keeps the direct-mode create confirmation line unchanged', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Backend', mode: 'direct' }, secret: 'shop-secret' }));
+    await run('api-key', 'shop-management', 'create', 'Backend', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z');
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({ name: 'Backend', scopes: ['shop:catalog:write'], expiresAt: '1998-08-08T00:00:00.000Z' });
+    expect(logSpy).toHaveBeenCalledWith('created shop management key Backend (key)\nsecret (shown once): shop-secret');
   });
   it('keeps the legacy api-key create free of shop options', async () => {
     h.createApiKey.mockReset();
@@ -2533,5 +2565,80 @@ describe('InPost ShipX CLI', () => {
     await run('--json', 'product', 'update', 'product-1', '--parcel-template', 'huge');
     expect(h.updateProduct).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(2);
+  });
+});
+
+const ownerProposal = {
+  id: 'proposal-1', groupId: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' }, onHand: { delta: 5 } }, status: 'pending',
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedAt: null,
+  decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
+};
+
+describe('owner change proposal commands', () => {
+  it('lists the workspace proposals with status and paging options', async () => {
+    h.listChangeProposals.mockReset().mockResolvedValue(ok({ proposals: [ownerProposal], nextCursor: 'proposal-1' }));
+    await run('proposals', 'list', '--status', 'pending', '--limit', '10', '--cursor', 'proposal-0');
+    expect(h.listChangeProposals).toHaveBeenCalledWith({ status: 'pending', cursor: 'proposal-0', limit: 10 });
+    expect(logSpy).toHaveBeenCalledWith(
+      '1998-08-01T00:00:00.000Z\tpending\tproduct.update\tproduct:product-1\tCatalogue agent\t(proposal-1)\nnext: --cursor proposal-1',
+    );
+  });
+  it('refuses an unknown status before calling the API', async () => {
+    h.listChangeProposals.mockReset();
+    await run('--json', 'proposals', 'list', '--status', 'approved');
+    expect(h.listChangeProposals).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('shows one proposal with its before/after effect and history', async () => {
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, events: [
+      { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'shop-key', note: null, at: '1998-08-01T00:00:00.000Z' },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    expect(h.getChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('  title: "Handbook" -> "Renamed"');
+    expect(printed).toContain('  onHand: +5');
+    expect(printed).toContain('proposed by key: Catalogue agent (shop-key, active), issued by owner-1');
+    expect(printed).toContain('  1998-08-01T00:00:00.000Z\tproposed\tshop-key');
+  });
+  it('rejects a proposal with an optional note', async () => {
+    h.rejectChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'rejected', decisionNote: 'Not now' } }));
+    await run('--json', 'proposals', 'reject', 'proposal-1', '--note', 'Not now');
+    expect(h.rejectChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1', note: 'Not now' });
+    expect(soleJson()).toMatchObject({ ok: true, data: { proposal: { status: 'rejected', decisionNote: 'Not now' } } });
+    h.rejectChangeProposal.mockClear();
+    await run('--json', 'proposals', 'reject', 'proposal-1');
+    expect(h.rejectChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+  });
+  it('approves a proposal and exits 0 when it was applied', async () => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'applied', appliedResourceId: 'product-1' } }));
+    await run('proposals', 'approve', 'proposal-1');
+    expect(h.approveChangeProposal).toHaveBeenCalledWith({ id: 'proposal-1' });
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed.split('\n')[0]).toBe('applied: product product-1');
+    expect(printed).toContain('  title: "Handbook" -> "Renamed"');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+  it.each([
+    ['stale', { status: 'stale' }, 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.'],
+    ['failed', { status: 'failed', failureCode: 'conflict', failureMessage: 'Stock cannot go below zero' }, 'failed: conflict: Stock cannot go below zero; nothing was applied'],
+  ] as const)('prints a %s approval with its reason and exits with the conflict code', async (_status, fields, line) => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, ...fields } }));
+    await run('proposals', 'approve', 'proposal-1');
+    expect(String(logSpy.mock.calls[0]?.[0]).split('\n')[0]).toBe(line);
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+    logSpy.mockClear();
+    process.exitCode = 0;
+    await run('--json', 'proposals', 'approve', 'proposal-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { proposal: fields } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+  it('answers a repeated approve with the conflict error and its exit code', async () => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(err(appError('conflict', 'This change proposal is no longer pending', { changeProposalStatus: 'applied' })));
+    await run('--json', 'proposals', 'approve', 'proposal-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'applied' } } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 });

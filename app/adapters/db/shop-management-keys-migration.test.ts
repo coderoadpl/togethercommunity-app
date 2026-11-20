@@ -39,6 +39,8 @@ const testUrl = (() => {
 })();
 const NOW = '1998-08-03T10:00:00.000Z';
 const EXPIRY = '1998-08-10T10:00:00.000Z';
+let withdrawalSequence = 0;
+const withdrawal = { at: NOW, actorUserId: 'owner-user', nextEventId: () => `withdrawal-${String(++withdrawalSequence)}` };
 const TENANT = 'tenant-shop-keys';
 const AUDIT_TENANT = 'tenant-shop-keys-audit';
 const PURGE_TENANT = 'tenant-shop-keys-purge';
@@ -65,7 +67,7 @@ const tenantApiKeysShape = async () => ({
 
 const shopKey = (overrides: Partial<ShopManagementKey> = {}): ShopManagementKey => ({
   id: 'shop-key', tenantId: TENANT, name: 'Shop backend', keyHash: 'hash-shop',
-  scopes: ['shop:catalog:read'], issuedByUserId: 'user-owner', createdAt: NOW, expiresAt: EXPIRY, revokedAt: null,
+  scopes: ['shop:catalog:read'], mode: 'direct', issuedByUserId: 'user-owner', createdAt: NOW, expiresAt: EXPIRY, revokedAt: null,
   ...overrides,
 });
 
@@ -229,21 +231,21 @@ describe('shop management key lifecycle', () => {
     expect(await repo.findByHash(AUDIT_TENANT, 'hash-shop')).toBeNull();
     expect(await createTenantApiKeyRepository(db).findActiveByHash(TENANT, 'hash-shop')).toBeNull();
 
-    await expect(repo.revoke(TENANT, 'shop-key', NOW, keyEvent({ id: 'event-taken', kind: 'revoked' }))).rejects.toThrow();
+    await expect(repo.revoke(TENANT, 'shop-key', NOW, keyEvent({ id: 'event-taken', kind: 'revoked' }), withdrawal)).rejects.toThrow();
     expect(await repo.findByHash(TENANT, 'hash-shop')).toMatchObject({ id: 'shop-key', revokedAt: null });
 
     expect(await createTenantApiKeyRepository(db).revoke(TENANT, 'shop-key', NOW)).toBeNull();
     expect(await repo.findByHash(TENANT, 'hash-shop')).toMatchObject({ revokedAt: null });
 
-    expect(await repo.revoke(TENANT, 'shop-key', NOW, keyEvent({ id: 'event-revoked', kind: 'revoked' })))
+    expect(await repo.revoke(TENANT, 'shop-key', NOW, keyEvent({ id: 'event-revoked', kind: 'revoked' }), withdrawal))
       .toMatchObject({ id: 'shop-key', revokedAt: NOW });
     expect(await repo.findByHash(TENANT, 'hash-shop')).toMatchObject({ id: 'shop-key', revokedAt: NOW });
-    expect(await repo.revoke(TENANT, 'shop-key', NOW, keyEvent({ id: 'event-revoked-twice', kind: 'revoked' }))).toBeNull();
+    expect(await repo.revoke(TENANT, 'shop-key', NOW, keyEvent({ id: 'event-revoked-twice', kind: 'revoked' }), withdrawal)).toBeNull();
     expect(await eventIds()).toEqual(['event-created', 'event-first-hash', 'event-revoked', 'event-taken']);
   });
 
   it('never revokes a legacy key through the shop management repository', async () => {
-    expect(await createShopManagementKeyRepository(db).revoke(TENANT, 'old-unscoped', NOW, keyEvent({ id: 'event-legacy', apiKeyId: 'old-unscoped', kind: 'revoked' })))
+    expect(await createShopManagementKeyRepository(db).revoke(TENANT, 'old-unscoped', NOW, keyEvent({ id: 'event-legacy', apiKeyId: 'old-unscoped', kind: 'revoked' }), withdrawal))
       .toBeNull();
     expect(await createTenantApiKeyRepository(db).findActiveByHash(TENANT, 'hash-old-unscoped')).toMatchObject({ revokedAt: null });
     expect(await eventIds()).not.toContain('event-legacy');
@@ -493,7 +495,7 @@ describe('shop management key purge', () => {
 
   it('keeps every key and writes no purge event when one purge event cannot be written', async () => {
     await insertEvent(keyEvent({ id: 'taken-purge-shop-revoked', tenantId: PURGE_TENANT, apiKeyId: 'earlier-key' }));
-    await expect(createShopManagementKeyRepository(db).purge(PURGE_TENANT, purgeEvent('taken'))).rejects.toThrow();
+    await expect(createShopManagementKeyRepository(db).purge(PURGE_TENANT, purgeEvent('taken'), withdrawal)).rejects.toThrow();
     expect(await keyIds()).toEqual(['neighbour-shop', 'purge-legacy', 'purge-shop-active', 'purge-shop-revoked']);
     expect(await eventIds(PURGE_TENANT)).toEqual(['purge-request-before', 'taken-purge-shop-revoked']);
     expect(await bucketKeys()).toEqual(['neighbour-shop', 'purge-shop-active']);
@@ -501,7 +503,7 @@ describe('shop management key purge', () => {
 
   it('deletes only the workspace shop management keys, revoked or not, with their buckets and one purge event per key', async () => {
     const repo = createShopManagementKeyRepository(db);
-    expect(await repo.purge(PURGE_TENANT, purgeEvent('purged'))).toBe(2);
+    expect(await repo.purge(PURGE_TENANT, purgeEvent('purged'), withdrawal)).toBe(2);
     expect(await keyIds()).toEqual(['neighbour-shop', 'purge-legacy']);
     expect(await bucketKeys()).toEqual(['neighbour-shop']);
     const events = await pool.query<{ id: string; api_key_id: string; kind: string }>(
@@ -515,7 +517,7 @@ describe('shop management key purge', () => {
       { id: 'taken-purge-shop-revoked', api_key_id: 'earlier-key', kind: 'created' },
     ]);
 
-    expect(await repo.purge(PURGE_TENANT, purgeEvent('purged-again'))).toBe(0);
+    expect(await repo.purge(PURGE_TENANT, purgeEvent('purged-again'), withdrawal)).toBe(0);
     expect(await eventIds(PURGE_TENANT)).not.toContain('purged-again-purge-shop-active');
   });
 

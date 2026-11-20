@@ -31,6 +31,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
+| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects | Available (images refused) |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -142,6 +143,49 @@ transaction as the deletion. These events carry the key id and the owner's
 account id, never the secret or its hash. They are not workspace audit events:
 the workspace audit list (`GET /api/tenant/audit-events`) is unchanged by shop
 management keys.
+
+## Propose mode
+
+A key is created in one of two modes, fixed for its lifetime:
+
+- `direct` (the default): every write the scopes allow changes the live shop,
+  as described in the rest of this guide.
+- `propose`: the key's writes never change live state. A write to one of the
+  ten catalogue routes, the three sales-link write routes or the settings
+  update is dry-run, stored as a [change proposal](change-proposals.md) with
+  its field-level effect, and answered `202` with a receipt; the owner then
+  approves or rejects it in their own session. An approval applies the change
+  only when the live state still gives exactly the effect the owner saw.
+  Every other write route (images, order fulfilment, integrations) answers
+  `403`. Reads behave as on a direct key.
+
+```bash
+pnpm --silent run cli api-key shop-management create Catalogue agent \
+  --scope shop:catalog:read shop:catalog:write \
+  --expires-at 2026-12-01T00:00:00.000Z --mode propose
+```
+
+Over HTTP the creation body carries `"mode": "propose"`. On a propose-mode key
+`shop:catalog:write` and `shop:settings:write` grant only
+`proposal:submit:catalog` and `proposal:submit:settings` instead of the live
+write capabilities, and each needs its read scope (`shop:catalog:read`,
+`shop:settings:read`): creation without it answers `400` and the database
+refuses such a row. `shop:fulfilment:write` and `shop:integrations:write` are
+refused at creation with `400`. The key lists, reads and withdraws only its
+own proposals under `/api/m2m/shop/proposals` (CLI `shop proposals
+list|show|withdraw`); a direct-mode key is refused there with `403`. The key
+list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
+in its last column) shows each key's mode. Revoking or purging a propose-mode
+key withdraws its pending, unexpired proposals in the same transaction.
+
+A receipt carries the submitted input, the target id and the status, and after
+an approval the id of the applied resource, which the key can already read with
+its read scope; it never carries the effect, a before value or the deciding
+account. Whether a proposal is accepted or refused depends on
+live state, so a propose-mode key always holds the read scope of the family it
+proposes in and learns nothing from a refused or accepted proposal that it
+could not read with that read scope. See [Change proposals](change-proposals.md) for the
+route classes, statuses, limits and what is not available yet.
 
 ## Authenticating a request
 
@@ -392,6 +436,13 @@ sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `30x` answer fails the call with `internal` (CLI exit code 10) and the message
 `Shop management request to <path> refused a redirect`, so the key never
 reaches another URL. Use it only from a backend.
+
+The ten catalogue writes, `createSalesLink`, `updateSalesLink`,
+`deleteSalesLink` and `updateSettings` resolve to `{ outcome: 'applied', ... }`
+with the resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
+the [receipt](change-proposals.md#receipts) for a propose-mode key;
+`isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
+and `withdrawProposal` reach the key's own proposals.
 
 ## Product covers and sales links
 
@@ -1295,6 +1346,18 @@ of the kept migration, no longer matches the schema fingerprint that release
 was built with. This is expected while the newer schema remains. The order,
 settings, asset and integration routes add no migration, so a retreat from
 them to the release with only the catalog routes needs no data step either.
+
+A retreat to a release that predates migration `0163_change_proposals` needs
+no purge either, although that release reads `shop_management_keys` and
+ignores its `mode` column. A propose-mode key is stored under the hash of its
+secret in a separate propose-mode hash domain, so a release that looks keys up
+by the plain hash of the presented secret finds no row and answers
+`401 Invalid API key`: a propose-mode key never gains live write access there.
+Direct-mode keys are stored under the plain hash as before and keep working.
+Pending [change proposals](change-proposals.md) stay in their tables
+untouched and are visible again after rolling forward. A propose-mode key that
+is revoked or purged during the retreat leaves its proposals pending, for the
+owner to reject after rolling forward.
 
 The hourly production health monitor (`.github/workflows/prod-health.yml`)
 treats `schemaFingerprintMatch: false` as a failed `health` check: every run

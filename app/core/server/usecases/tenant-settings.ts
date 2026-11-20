@@ -30,6 +30,12 @@ export interface TenantSettingsDeps {
   personalisationMaxBytes: number;
 }
 
+export interface TenantSettingsWriteDeps {
+  tenants: Pick<TenantRepository, 'changeSettings'>;
+  spaces: Pick<SpaceRepository, 'findById'>;
+  products: Pick<ProductRepository, 'bumpContentVersion'>;
+}
+
 export const getTenantSettings = async (
   ctx: Ctx,
   deps: TenantSettingsDeps,
@@ -79,7 +85,7 @@ const keyGrantCoversPatch = (
 export const updateTenantSettings = async (
   ctx: Ctx,
   input: UpdateTenantSettingsInput,
-  deps: TenantSettingsDeps,
+  deps: TenantSettingsWriteDeps,
   options: UpdateTenantSettingsOptions = {},
 ): Promise<Result<TenantSettings, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write', options);

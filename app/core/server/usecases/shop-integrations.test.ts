@@ -36,7 +36,7 @@ const owner: Identity = {
 const keyCtx = (capabilities: Ctx['capabilities']): Ctx => ({
   identity: owner,
   ...(capabilities === undefined ? {} : { capabilities }),
-  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1' },
+  machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' },
 });
 
 const harness = () => {

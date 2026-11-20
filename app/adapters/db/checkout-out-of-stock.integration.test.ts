@@ -457,6 +457,36 @@ describe('refund dispatcher for orders cancelled out of stock', () => {
     expect(await changesAfter(afterRefund.at(-1)?.cursor)).toStrictEqual([]);
   });
 
+  it('keeps the sales link and the personalisation evidence of a cancelled line unchanged through the refund', async () => {
+    const h = harness();
+    await track('course-1', 5);
+    await track('poster-1', 1);
+    const snapshotId = await publicCheckout(h, { productId: 'course-1', salesLinkId: 'link-1', email: 'buyer@example.com', termsAccepted: true });
+    const evidence = {
+      text: 'For Alex', label: 'Add an engraving', description: 'Up to three lines.', inputLabel: 'Engraving text',
+      condition: 'I understand a personalised item is made to my order.', maxLength: 20,
+      requestedAt: '2026-11-15T10:00:00.000Z', conditionAcceptedAt: '2026-11-15T10:00:00.000Z',
+    };
+    const [snapshot] = await database.db.select({ lines: checkoutSnapshots.lines }).from(checkoutSnapshots).where(eq(checkoutSnapshots.id, snapshotId));
+    const personalizedLines = (snapshot?.lines ?? []).map((line) => line.productId === 'poster-1' ? { ...line, personalization: evidence } : line);
+    expect(personalizedLines.filter((line) => line.personalization !== undefined)).toHaveLength(1);
+    await database.db.update(checkoutSnapshots).set({ lines: personalizedLines }).where(eq(checkoutSnapshots.id, snapshotId));
+    await sweep(h, '2026-11-15T10:40:00.000Z');
+    await damage('poster-1', '2026-11-15T10:41:00.000Z');
+    h.setNow('2026-11-15T10:42:00.000Z');
+
+    expect(await fulfillStripeWebhook(legacyTenant, bundlePaid(snapshotId), h.webhookDeps)).toStrictEqual(ok({ processed: true }));
+    const storedOrder = async () => {
+      const [row] = await database.db.select({ lines: orders.lines, salesLinkId: orders.salesLinkId, cancelReason: orders.cancelReason }).from(orders).where(eq(orders.tenantId, legacyTenant.id));
+      return row;
+    };
+    const cancelled = await storedOrder();
+    expect(cancelled).toStrictEqual({ lines: personalizedLines, salesLinkId: 'link-1', cancelReason: 'out_of_stock' });
+
+    expect(await refundDispatcher(h).run()).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+    expect(await storedOrder()).toStrictEqual(cancelled);
+  });
+
   it('gives each due job to exactly one of two concurrent dispatcher runs', async () => {
     const h = harness();
     await track('printed-1', 2);

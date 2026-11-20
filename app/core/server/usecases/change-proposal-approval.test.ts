@@ -115,7 +115,8 @@ const salesLink = (overrides: Partial<SalesLink> = {}): SalesLink & { deleted: b
 const shopSettings: TenantSettings = {
   name: 'Acme', socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null, bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null,
-  supportEmail: null, supportUrl: null, termsUrl: null, privacyUrl: null, defaultHomeSpaceId: null,
+  ogTitle: null, ogDescription: null, ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+  privacyUrl: null, defaultHomeSpaceId: null,
   invoiceVatMode: 'rate', invoiceVatRatePercent: 23, shippingRates: [],
 };
 

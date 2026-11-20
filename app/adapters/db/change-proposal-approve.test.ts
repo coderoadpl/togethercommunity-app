@@ -17,8 +17,6 @@ import {
   shopManagementKeyCapabilities,
   submitChangeProposal,
   withdrawOwnChangeProposal,
-  type ChangeProposalApprovalDeps,
-  type ChangeProposalSubmitDeps,
   type ChangeProposalTransaction,
   type Ctx,
   type StorageProvider,
@@ -92,7 +90,7 @@ const storage: StorageProvider = (() => {
   };
 })();
 
-const deps = (db: Db = database.db): ChangeProposalApprovalDeps & ChangeProposalSubmitDeps => {
+const deps = (db: Db = database.db) => {
   const logger = { error: vi.fn<(message: string) => void>() };
   return {
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>

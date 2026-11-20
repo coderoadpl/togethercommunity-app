@@ -57,7 +57,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
       .returning();
     const row = rows[0];
     if (!row) return null;
-    // Proposal rows first: the key event's foreign key share-locks the tenant row, which an approval may be waiting to lock while it holds a proposal row.
+    // Proposal rows before the tenant row, the order an approval takes them in; the key event's foreign key share-locks the tenant row.
     await withdrawPendingChangeProposalsOfKey(tx, tenantId, row.id, 'keyRevoked', withdrawal);
     await insertShopManagementKeyEvent(tx, tenantId, event);
     return parseKey(row);

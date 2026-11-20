@@ -50,7 +50,7 @@ export type ChangeProposalOperation = z.output<typeof changeProposalOperationSch
 const CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH = 64;
 
 // The database holds any operation of this shape, so a row written by a later release still reads; only the registry decides what applies.
-export const changeProposalStoredOperationSchema = z.string()
+const changeProposalStoredOperationSchema = z.string()
   .max(CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH)
   .regex(/^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$/);
 

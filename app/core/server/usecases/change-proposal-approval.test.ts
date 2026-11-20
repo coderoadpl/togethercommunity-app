@@ -355,10 +355,10 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
     expect(h.state.settings[0]?.settings.socialLinks).toEqual([]);
   });
 
-  it.each([
+  it.each<[string, string | string[]]>([
     ['checkoutReturnOrigins', ['https://shop.example.test']],
     ['defaultHomeSpaceId', 'space-1'],
-  ] as const)('refuses a settings change carrying %s, which a key may not write, at submit and at approval', async (field, value) => {
+  ])('refuses a settings change carrying %s, which a key may not write, at submit and at approval', async (field, value) => {
     const h = harness();
     const input = { name: 'Acme shop', [field]: value };
     const submitted = await submitChangeProposal(keyCtx(), { operation: 'settings.update', input }, { ...h.deps, changeProposals: h.store.repository });

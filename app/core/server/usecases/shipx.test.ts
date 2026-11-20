@@ -183,6 +183,23 @@ const write = ctx(['order:write', 'order:read']);
 const TRACKING = '520000011395200025754311';
 const noCalls = { create: [], get: [], find: [], buy: [], label: [], credentials: [] };
 
+describe('an order cancelled out of stock', () => {
+  it.each([['live', 'production'], ['test', 'sandbox']] as const)('is never shipped or labelled through the %s-mode ShipX connection', async (mode, environment) => {
+    const cancelled: OrderListItem = { ...baseOrder, mode, fulfilmentStatus: null, cancelReason: 'out_of_stock', refundJobStatus: 'pending' };
+    const h = harness({ order: cancelled });
+
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true, value: { available: false, reason: 'not_to_pack', environment, shipment: null },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation', message: 'Order has nothing to ship' } });
+    expect(await inpostShipmentLabel(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.fake.calls).toEqual(noCalls);
+    expect(h.ship).not.toHaveBeenCalled();
+    expect(h.row()).toBeUndefined();
+  });
+});
+
 describe('create InPost shipment', () => {
   it('creates, polls until paid, stores the tracking number and ships through the fulfilment use-case', async () => {
     const h = harness({

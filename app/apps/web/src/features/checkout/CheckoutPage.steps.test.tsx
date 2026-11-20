@@ -187,7 +187,7 @@ describe('checkout step one', () => {
     expect(couponBodies).toEqual([{ productId: 'course-1', couponCode: 'SAVE' }]);
     expect(email).not.toBeRequired();
     expect(email).toHaveAccessibleDescription(en.checkout.couponEmailHint);
-    expect(screen.getByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponEmailRequired);
+    expect(screen.getByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponEmailRequiredFullPrice);
     const codeRow = screen.getByTestId('checkout-coupon-reveal').parentElement;
     if (codeRow === null) throw new Error('Missing code row');
     expect(within(codeRow).getByLabelText(en.checkout.emailLabel)).toBe(email);
@@ -267,7 +267,7 @@ describe('checkout step one', () => {
     await userEvent.click(await screen.findByRole('button', { name: en.checkout.couponReveal }));
     await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
     await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
-    expect(await screen.findByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponEmailRequired);
+    expect(await screen.findByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponEmailRequiredFullPrice);
     return screen.getByLabelText(en.checkout.emailLabel);
   };
 
@@ -305,6 +305,27 @@ describe('checkout step one', () => {
     expect(couponBodies).toHaveLength(3);
     expect(couponBodies.every((body) => body.email === undefined)).toBe(true);
     expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(4900) })));
+  });
+
+  it('says a per-person code is not applied without the email, shows no discount and pays the full price without the code', async () => {
+    const couponBodies: CouponBody[] = [];
+    const sessions: unknown[] = [];
+    serve({ sessions, coupon: perPersonCoupon(couponBodies) });
+    renderCheckout();
+
+    await applyTypedCodeUntilEmailIsAsked();
+    expect(screen.getByTestId('checkout-coupon-error')).toHaveTextContent(exact(en.checkout.couponEmailRequiredFullPrice));
+    expect(en.checkout.couponEmailRequiredFullPrice).toMatch(/full price/u);
+    expect(screen.queryByTestId('checkout-coupon-breakdown')).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-coupon-reveal')).toHaveTextContent(exact(en.checkout.couponReveal));
+    expect(screen.getByTestId('checkout-summary-total')).toHaveTextContent(exact(pln(4900)));
+    const pay = screen.getByTestId('checkout-pay-cta');
+    expect(pay).toBeEnabled();
+    expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(4900) })));
+    await userEvent.click(pay);
+    await waitFor(() => expect(sessions).toHaveLength(1));
+    expect(sessions[0]).not.toHaveProperty('couponCode');
+    expect(sessions[0]).not.toHaveProperty('email');
   });
 
   it('keeps Enter in the email field of the details placement a submit of the checkout', async () => {

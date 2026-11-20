@@ -2785,6 +2785,7 @@ export interface Messages {
     couponForever: string;
     couponUnavailable: string;
     couponEmailRequired: string;
+    couponEmailRequiredFullPrice: string;
     marketingConsentsLabel: string;
     marketingConsentDocument: string;
     marketingConsentDoiHint: string;

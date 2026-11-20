@@ -38,13 +38,13 @@ export const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s
 
 const COUPON_EMAIL_REQUIRED_MESSAGE = 'An email is required to validate this coupon';
 
-const couponError = (error: unknown, t: Translations): string => {
+const couponError = (error: unknown, t: Translations, row: boolean): string => {
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
     case 'Coupon cannot be applied':
       return t.checkout.couponUnavailable;
     case COUPON_EMAIL_REQUIRED_MESSAGE:
-      return t.checkout.couponEmailRequired;
+      return row ? t.checkout.couponEmailRequiredFullPrice : t.checkout.couponEmailRequired;
     default:
       return localizeError(error, t);
   }
@@ -350,7 +350,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
       )}
       {validation.error === null ? null : (
         <Alert severity="error" data-testid="checkout-coupon-error">
-          {couponError(validation.error, t)}
+          {couponError(validation.error, t, row !== null)}
         </Alert>
       )}
     </Stack>

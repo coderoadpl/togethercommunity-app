@@ -3097,6 +3097,7 @@ export const en: Messages = {
     couponForever: 'Discount for the full subscription',
     couponUnavailable: 'This discount code cannot be used.',
     couponEmailRequired: 'Enter your email to check this discount code.',
+    couponEmailRequiredFullPrice: 'Enter your email to apply this code. Without it, you pay the full price.',
     marketingConsentsLabel: 'Optional marketing consents',
     marketingConsentDocument: 'Read the linked document',
     marketingConsentDoiHint: 'After checkout, we will send a separate email asking you to confirm this consent.',

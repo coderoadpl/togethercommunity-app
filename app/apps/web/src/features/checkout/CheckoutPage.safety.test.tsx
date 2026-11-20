@@ -89,22 +89,25 @@ describe('checkout product safety information', () => {
     expect(section.compareDocumentPosition(screen.getByTestId('checkout-pay-cta')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('stacks the manufacturer parts on their own lines without separators at every width and keeps the Details toggle with the last part', async () => {
+  it('stacks the manufacturer parts on their own lines without separators at every width and puts the Details toggle after the product rows, directly above its panel', async () => {
     serve([product('black', { compliance })]);
     renderCheckout('stand-black');
     const line = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
-    for (const part of ['Example Workshop', 'Example Street 1, Warsaw']) {
-      const element = within(line).getByText(exactly(part));
+    for (const part of ['Example Workshop', 'Example Street 1, Warsaw', 'safety@example.com']) {
+      const element = within(line).getByText(exactly(part)).closest('span');
+      if (element === null) throw new Error(`expected ${part} in its own part`);
       expect(element).toHaveStyle({ display: 'block' });
       expect(mediaDisplays(element)).toEqual([]);
     }
     expect(line.textContent).not.toContain('·');
-    const lastPart = within(line).getByRole('link', { name: 'safety@example.com' }).closest('span')?.parentElement;
-    if (lastPart == null) throw new Error('expected the last part to sit in its own line box');
-    expect(lastPart).toHaveStyle({ display: 'flex', flexWrap: 'wrap' });
-    expect(mediaDisplays(lastPart)).toEqual([]);
     const toggle = within(line).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) });
-    expect(toggle.previousSibling).toBe(within(line).getByRole('link', { name: 'safety@example.com' }).closest('span'));
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle.nextElementSibling).toBe(panel);
+    const row = within(line).getByTestId('product-safety-product-black');
+    expect(row.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(line).getByRole('link', { name: 'safety@example.com' }).compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle.querySelectorAll('svg')).toHaveLength(1);
   });
 
   it('draws the focus ring of an inline toggle inside its own box, clear of the text beside it', async () => {
@@ -277,10 +280,41 @@ describe('sales-link product safety information', () => {
     expect(within(shared).getByText('B-2026-11')).not.toBeVisible();
     await userEvent.click(toggle);
     const standExtras = within(shared).getByTestId('product-safety-details-black');
-    expect(within(standExtras).getByText('Printed stand')).toBeVisible();
+    expect(within(standExtras).queryByText('Printed stand')).toBeNull();
     expect(within(standExtras).getByText('B-2026-11')).toBeVisible();
     expect(within(standExtras).getByRole('link', { name: en.productSafety.instructions })).toHaveAttribute('href', 'https://example.com/manual.pdf');
     expect(within(shared).queryByTestId('product-safety-details-lamp')).toBeNull();
+  });
+
+  it('names each product inside the Details panel only when more than one product of the group has extras', async () => {
+    serveLink([
+      line('black', 'Printed stand', 'physical', compliance),
+      line('lamp', 'Printed lamp', 'physical', { ...compliance, modelIdentifier: 'LAMP-1', batchIdentifier: 'L-7' }),
+    ]);
+    renderLink();
+    const shared = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
+    await userEvent.click(within(shared).getByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) }));
+    expect(within(within(shared).getByTestId('product-safety-details-black')).getByText('Printed stand')).toBeVisible();
+    expect(within(within(shared).getByTestId('product-safety-details-lamp')).getByText('Printed lamp')).toBeVisible();
+  });
+
+  it('keeps an empty picture slot hidden from assistive technology in rows without a picture when another product of the group has one', async () => {
+    const other = { ...compliance, manufacturerName: 'Other Works', manufacturerEmail: 'hello@other.example' };
+    serveLink([
+      { ...line('black', 'Printed stand', 'physical', compliance), coverUrl: 'https://cdn.example.com/stand.jpg' },
+      { ...line('lamp', 'Printed lamp', 'physical', { ...compliance, modelIdentifier: 'LAMP-1' }), coverUrl: null },
+      { ...line('book', 'Printed book', 'physical', other), coverUrl: null },
+    ]);
+    renderLink();
+    const section = await screen.findByTestId('product-safety-info');
+    const lamp = within(section).getByTestId('product-safety-product-lamp');
+    const slot = within(lamp).getByTestId('product-safety-picture-slot');
+    expect(slot).toHaveAttribute('aria-hidden', 'true');
+    expect(slot).toHaveStyle({ width: '2.5rem', height: '2.5rem', flexShrink: '0' });
+    expect(slot.parentElement).toBe(lamp);
+    expect(within(lamp).queryByRole('img')).toBeNull();
+    expect(within(within(section).getByTestId('product-safety-product-black')).queryByTestId('product-safety-picture-slot')).toBeNull();
+    expect(within(within(section).getByTestId('product-safety-product-book')).queryByTestId('product-safety-picture-slot')).toBeNull();
   });
 
   it('spaces several manufacturers apart and names each one in the primary text colour', async () => {

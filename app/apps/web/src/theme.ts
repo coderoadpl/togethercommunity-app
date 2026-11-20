@@ -2982,14 +2982,16 @@ export const CheckoutSafetyProduct = styled('div')({
   minWidth: 0,
 });
 
+const checkoutSafetyThumbnailBox = { flexShrink: 0, width: '2.5rem', height: '2.5rem' } as const;
+
 export const CheckoutSafetyThumbnail = styled('img')(({ theme }) => ({
-  flexShrink: 0,
-  width: '2.5rem',
-  height: '2.5rem',
+  ...checkoutSafetyThumbnailBox,
   objectFit: 'cover',
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.action.hover,
 }));
+
+export const CheckoutSafetyThumbnailSlot = styled('span')(checkoutSafetyThumbnailBox);
 
 export const CheckoutSafetyPart = styled('span', {
   shouldForwardProp: (prop) => prop !== 'emphasised',
@@ -2999,16 +3001,6 @@ export const CheckoutSafetyPart = styled('span', {
   overflowWrap: 'anywhere',
   ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
 }));
-
-export const CheckoutSafetyLastPart = styled('span')({
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'baseline',
-  columnGap: '0.5rem',
-  maxWidth: '100%',
-  '& > span': { minWidth: 0 },
-  '& > button': { flexShrink: 0 },
-});
 
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',

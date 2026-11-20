@@ -108,16 +108,25 @@ const bundleLines = [
     compliance: null, personalization: null, grossCents: 12300, netCents: 10000, vatCents: 2300, vatRate: 23, vatExemptionBasis: null, variants: [],
   },
 ];
-const bundleFixture = {
+const otherManufacturer = {
+  ...compliance,
+  manufacturerName: 'Akademia Press',
+  manufacturerAddress: 'Sample Avenue 12, 30-002 Cracow',
+  manufacturerEmail: 'safety@akademia.togethercommunity.app',
+  modelIdentifier: 'BOOK-2',
+  safetyWarnings: 'Not suitable for children under 3 years.',
+  safetyWarningsHtml: '<p>Not suitable for children under 3 years.</p>',
+};
+const bundleFixtureWith = (scenario: string, lines: readonly unknown[]) => ({
   ...checkout,
-  scenario: 'together-checkout-sales-link',
+  scenario,
   route: '/offer/desk-set?checkout=together',
   calls: {
     ...checkout.calls,
     'getPublicSalesLink:[{"slug":"desk-set","variant":[]}]': { ok: true, value: {
       salesLink: { slug: 'desk-set', heading: 'Desk set with the online course', description: '', validFrom: null, validTo: null },
       descriptionHtml: '<p>A printed stand, a workbook and the full course in one order.</p>',
-      lines: bundleLines,
+      lines,
       currency: 'PLN',
       totalCents: 32400,
       soldOut: false,
@@ -126,7 +135,10 @@ const bundleFixture = {
     } },
     'publicPaymentConfig:[]': { ok: true, value: { ...recordedPaymentConfig, simulatedPaymentsEnabled: false, stripeConfigured: true, shippingRates } },
   },
-};
+});
+const bundleFixture = bundleFixtureWith('together-checkout-sales-link', bundleLines);
+const twoManufacturersFixture = bundleFixtureWith('together-checkout-two-manufacturers', bundleLines.map((line) =>
+  line.productId === 'product-studio-workbook' ? { ...line, compliance: otherManufacturer } : line));
 
 const STUB_MAP_TAG = 'inpost-geowidget';
 const stubPoint = { name: 'WAW01M', location_description: 'Next to the pharmacy entrance', address: { line1: 'Example Street 5', line2: '00-001 Warsaw' } };
@@ -223,6 +235,19 @@ export const InvoiceOpen: Story = {
     await expect(invoiceRow.getBoundingClientRect().top).toBe(before);
   },
 };
+export const DiscountOpenEmpty: Story = {
+  play: async ({ canvasElement }) => {
+    await chooseRate(canvasElement, /courier/u);
+    await userEvent.click(await within(canvasElement).findByTestId('checkout-coupon-reveal'));
+  },
+};
+export const DiscountOpenEmptyMobile: Story = {
+  ...mobile375,
+  play: async ({ canvasElement }) => {
+    await chooseRate(canvasElement, /courier/u);
+    await userEvent.click(await within(canvasElement).findByTestId('checkout-coupon-reveal'));
+  },
+};
 export const CouponApplied: Story = {
   parameters: { fixture: couponFixture },
   play: async ({ canvasElement }) => { await within(canvasElement).findByTestId('checkout-coupon-breakdown', {}, { timeout: 5000 }); },
@@ -293,3 +318,9 @@ export const LockerPicked: Story = lockerMap({}, null, true);
 export const LockerPickedMobile: Story = lockerMap({}, mobile375, true);
 export const LockerPickedDark: Story = lockerMap({ colorScheme: 'dark' }, null, true);
 export const LockerPickedMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, true);
+export const TwoManufacturers: Story = { parameters: { fixture: twoManufacturersFixture } };
+export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mobile375.parameters, fixture: twoManufacturersFixture } };
+export const TwoManufacturersDetailsOpen: Story = {
+  parameters: { fixture: twoManufacturersFixture },
+  play: async ({ canvasElement }) => openSafetyDetails(canvasElement),
+};

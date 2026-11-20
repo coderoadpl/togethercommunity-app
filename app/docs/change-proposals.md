@@ -3,9 +3,10 @@
 A change proposal is a write that a machine asked for and the workspace owner
 has not yet decided on. It comes from a [shop management key](shop-management-keys.md)
 created in **propose mode**: such a key reads what its read scopes allow, and
-every catalogue write it sends is stored as a proposal instead of changing the
-live shop. The owner reads each proposal with a field-level before/after and
-rejects it; approval is not available yet (see [Not yet available](#not-yet-available)).
+every catalogue, sales-link and settings write it sends is stored as a
+proposal instead of changing the live shop. The owner reads each proposal with
+a field-level before/after and approves or rejects it. An approval applies
+exactly the effect the owner saw, or applies nothing.
 
 ## Status
 
@@ -13,11 +14,12 @@ rejects it; approval is not available yet (see [Not yet available](#not-yet-avai
 |---|---|
 | Propose-mode shop management keys (`mode: "propose"`) | Available |
 | Proposals for the ten catalogue write routes | Available |
+| Proposals for sales-link create, update and delete and the shop settings update | Available |
 | Key-side list, read and withdraw (`/api/m2m/shop/proposals`) | Available |
-| Owner-session list, read and reject (`/api/change-proposals`) | Available |
+| Owner-session list, read, approve and reject (`/api/change-proposals`) | Available |
 | Withdrawal of pending proposals when their key is revoked or purged | Available |
 | Typed client outcomes and CLI commands | Available |
-| Approve, sales links, settings, images, groups, owner panel | Not yet available |
+| Images (product covers, branding), groups, owner panel | Not yet available |
 
 ## What a proposal is
 
@@ -59,6 +61,19 @@ proposal is stored.
 | `stock.enable` | `POST /api/m2m/shop/products/stock/enable` | product |
 | `stock.adjust` | `POST /api/m2m/shop/products/stock/adjust` | product |
 | `stock.set-threshold` | `POST /api/m2m/shop/products/stock/threshold` | product |
+| `sales-link.create` | `POST /api/m2m/shop/sales-links` | a new sales link |
+| `sales-link.update` | `POST /api/m2m/shop/sales-links/:id` | sales link |
+| `sales-link.delete` | `DELETE /api/m2m/shop/sales-links/:id` | sales link |
+| `settings.update` | `POST /api/m2m/shop/settings` | the shop settings |
+
+A sales-link update carries the `expectedRevision` the key read, exactly as on
+the live route, and its path id must equal the body id. A sales-link deletion
+sends no body; its stored input is `{ "id": … }`. The sales-link effect
+includes the link's `revision`, so a link changed after the proposal makes its
+approval `stale`. A settings proposal covers exactly the settings fields a
+shop management key may write (the same allow-list as the live route) and
+never a secret; its effect includes the fields the settings rules rewrite,
+such as the VAT rate cleared by a switch to VAT exemption.
 
 ## The credential
 
@@ -84,8 +99,8 @@ behaviour. On a propose-mode key:
 - `shop:catalog:write` grants only `proposal:submit:catalog`, never
   `product:write`, `product:price:write` or `product:publish`;
 - `shop:settings:write` grants only `proposal:submit:settings`, never
-  `tenant:settings:write`; no settings operation exists yet, so the settings
-  routes refuse the key;
+  `tenant:settings:write`; the settings update becomes a proposal and the
+  branding image routes refuse the key;
 - `shop:fulfilment:write` and `shop:integrations:write` cannot be granted:
   creation answers `400`;
 - every propose-mode key holds `proposal:own:manage`, which reaches only the
@@ -103,8 +118,8 @@ shop route. A direct-mode key is unaffected on every route.
 
 | Class | Routes | A propose-mode key gets |
 |---|---|---|
-| `proposal` | the ten catalogue write routes above | `202` with a receipt; the live handler never runs |
-| `refuse`, reason `not-in-release` | shop settings, branding and cover images, sales links | `403 forbidden` |
+| `proposal` | the fourteen write routes above | `202` with a receipt; the live handler never runs |
+| `refuse`, reason `not-in-release` | branding and product cover images | `403 forbidden` |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
@@ -152,10 +167,13 @@ adds the effect, the proposing key's name, id, issuer and state (`active`,
 `expired`, `revoked`, `purged`), the decision and the event history.
 
 The typed client returns a discriminated result for the ten catalogue
-mutations: `{ outcome: 'applied', product }` (or `price`, `stock`,
-`deleted`) for a direct-mode key and `{ outcome: 'proposed', proposal }` for a
-propose-mode key; `isProposedChange(value)` narrows it. The keyed CLI
-commands (`shop products|prices|stock …`) print the receipt and exit `0` on a
+mutations and for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
+`updateSettings`: `{ outcome: 'applied', product }` (or `price`, `stock`,
+`salesLink`, `settings`, `deleted`) for a direct-mode key and
+`{ outcome: 'proposed', proposal }` for a propose-mode key;
+`isProposedChange(value)` narrows it. The keyed CLI commands
+(`shop products|prices|stock …`, `shop settings set`,
+`shop sales-links create|update|delete`) print the receipt and exit `0` on a
 `202`.
 
 ## Routes
@@ -175,6 +193,7 @@ as a member, not an admin, never with an API key):
 |---|---|
 | `GET /api/change-proposals?status=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor }`, newest first |
 | `GET /api/change-proposals/:id` | `{ proposal: ownerView + events }` |
+| `POST /api/change-proposals/:id/approve` with `{}` | `{ proposal: ownerView }` with status `applied`, `stale` or `failed`; a settled or expired proposal is `409` |
 | `POST /api/change-proposals/:id/reject` with `{ "note"?: string }` | `{ proposal: ownerView }` with status `rejected`; a settled proposal is `409` |
 
 `status` is one of the statuses below, `limit` is 1–100 (default 50) and
@@ -182,9 +201,60 @@ as a member, not an admin, never with an API key):
 another workspace is `404`.
 
 CLI: the owner runs `proposals list [--status] [--cursor] [--limit]`,
-`proposals show <id>` and `proposals reject <id> [--note <text>]`; the key runs
+`proposals show <id>`, `proposals approve <id>` and
+`proposals reject <id> [--note <text>]`; the key runs
 `shop proposals list|show|withdraw` with the key in the environment variable
 named by `--api-key-env` (default `TOGETHER_SHOP_KEY`).
+
+## Approval
+
+The owner approves one proposal at a time. The approval runs in one database
+transaction:
+
+1. lock the proposal row while it is `pending` and unexpired;
+2. lock the target row and read it again;
+3. if a field the stored effect changes no longer holds the value the owner saw
+   as "before", stop: the proposal is `stale`;
+4. otherwise run the stored command, re-parsed by the live schema, through the
+   live use-case as the approving owner, inside a savepoint;
+5. read the target again and compute the effect; if it equals the stored
+   effect, commit: the proposal is `applied`, and any effect outside the
+   database (such as an object storage delete of a removed draft) runs after
+   the commit;
+6. if the effect differs, roll back the savepoint: the proposal is `stale`;
+7. if the live use-case refuses the command, roll back the savepoint: the
+   proposal is `failed`, with the error code and message stored.
+
+The status change and its event (`applied`, `stale` or `apply_failed`) commit
+in the same transaction as the live change, so the owner sees exactly one of
+three outcomes and nothing in between. An infrastructure failure (a lost
+connection, a database error) rolls everything back and leaves the proposal
+`pending`; the owner can retry. So does a wait of more than 5 seconds for the
+workspace lock that dry runs also take, answered `503 unavailable`. A repeated or concurrent approve, or an
+approve after a reject or a withdrawal, finds no pending row and answers
+`409 conflict` with the current status in `error.details.changeProposalStatus`.
+
+| Outcome | Live state | What the proposer should do |
+|---|---|---|
+| `applied` | changed exactly as the effect showed | nothing; `appliedResourceId` names the created or changed resource |
+| `stale` | unchanged | read the current state and propose the change again; the old proposal stays settled |
+| `failed` | unchanged | read `failureCode` on the receipt, fix the cause (for example a stock level that would go below zero), then propose again |
+
+**Stale** means the live state moved after the proposal was made: another
+writer (the owner in the panel, a direct-mode key, a checkout) changed a field
+the proposal changes, or running the command now would give a different
+effect than the one the owner approved. Approval never applies a change the
+owner did not see; the proposer has to propose again from the current state.
+
+**Stock delta rule.** A stock adjustment is approved as a delta. Its approval
+does not go stale because the balance moved (sales reserve and release stock
+all the time): `{ "onHand": { "delta": 5 } }` adds five pieces to whatever is
+on hand at approval. It goes stale only when stock tracking itself changed,
+and fails when the delta would take the balance below zero.
+
+Only the owner decides (`proposal:decide` is owner-only): the approval runs
+the command with the approving owner's session, never with the proposing
+key's scopes, and no key can approve anything.
 
 ## Statuses
 
@@ -194,12 +264,14 @@ named by `--api-key-env` (default `TOGETHER_SHOP_KEY`).
 | `rejected` | the owner rejected it; nothing was applied |
 | `withdrawn` | the key withdrew it, or its key was revoked (note `key_revoked`) or purged (note `key_purged`) |
 | `expired` | derived: still `pending` 30 days after creation; it can no longer be decided |
-| `applied`, `stale`, `failed` | reserved for approval, not reachable yet |
+| `applied` | the owner approved it and the change was applied as shown |
+| `stale` | the owner approved it, the live state had changed, nothing was applied |
+| `failed` | the owner approved it, the live use-case refused it, nothing was applied |
 
-Every transition appends an event (`proposed`, `rejected`, `withdrawn`,
-`expired`, …) in the transaction that changes the status. A read never
-writes: the `expired` event is recorded when a reject or a withdrawal meets
-an expired proposal. Revoking or purging a key withdraws its pending,
+Every transition appends an event (`proposed`, `applied`, `stale`,
+`apply_failed`, `rejected`, `withdrawn`, `expired`) in the transaction that
+changes the status. A read never writes: the `expired` event is recorded when
+an approve, a reject or a withdrawal meets an expired proposal. Revoking or purging a key withdraws its pending,
 unexpired proposals in the same transaction as the key change; a proposal
 already past its expiry stays `expired`. A key that simply expires leaves its
 proposals decidable; the owner view shows the key state.
@@ -234,13 +306,9 @@ requests a minute, 10,000 a day) apply as on every shop route.
 
 ## Not yet available
 
-- **Approve.** No proposal is applied in this release. Approval will run the
-  stored command in one transaction with the target row locked, recompute the
-  effect, apply it only when it equals the effect the owner saw, and otherwise
-  mark the proposal `stale` (or `failed` with the domain error).
-- **Sales links, settings, images.** Their write routes refuse a propose-mode
-  key until their operations exist. Product covers and branding images will be
-  uploaded to a private quarantine and published only on approval.
+- **Images.** The product cover and branding image routes refuse a
+  propose-mode key. Images will be uploaded to a private quarantine and
+  published only on approval.
 - **Groups.** Several proposals that belong together, approved all or
   nothing; the `change_proposal_groups` table exists but no route uses it.
 - **Owner panel.** The owner decides through the session routes and the CLI;
@@ -250,7 +318,7 @@ requests a minute, 10,000 a day) apply as on every shop route.
 
 ## Residual lost update
 
-Approval will lock the target row and compare effects, so it can never apply
+Approval locks the target row and compares effects, so it never applies
 something different from what the owner saw. A live writer (an owner tab or a
 direct-mode key) that read the row before the approval took its lock can still
 overwrite the applied change afterwards. That lost update exists today between

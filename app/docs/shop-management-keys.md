@@ -31,7 +31,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
-| Propose mode: catalogue writes become [change proposals](change-proposals.md) the owner decides on | Available (reject only; approval is not available yet) |
+| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects | Available (images refused) |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -151,10 +151,12 @@ A key is created in one of two modes, fixed for its lifetime:
 - `direct` (the default): every write the scopes allow changes the live shop,
   as described in the rest of this guide.
 - `propose`: the key's writes never change live state. A write to one of the
-  ten catalogue routes is dry-run, stored as a
-  [change proposal](change-proposals.md) with its field-level effect, and
-  answered `202` with a receipt; the owner then reads and rejects it in their
-  own session (approval is not available yet). Every other write route answers
+  ten catalogue routes, the three sales-link write routes or the settings
+  update is dry-run, stored as a [change proposal](change-proposals.md) with
+  its field-level effect, and answered `202` with a receipt; the owner then
+  approves or rejects it in their own session. An approval applies the change
+  only when the live state still gives exactly the effect the owner saw.
+  Every other write route (images, order fulfilment, integrations) answers
   `403`. Reads behave as on a direct key.
 
 ```bash
@@ -433,8 +435,9 @@ sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `Shop management request to <path> refused a redirect`, so the key never
 reaches another URL. Use it only from a backend.
 
-The ten catalogue writes resolve to `{ outcome: 'applied', ... }` with the
-resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
+The ten catalogue writes, `createSalesLink`, `updateSalesLink`,
+`deleteSalesLink` and `updateSettings` resolve to `{ outcome: 'applied', ... }`
+with the resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
 the [receipt](change-proposals.md#receipts) for a propose-mode key;
 `isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
 and `withdrawProposal` reach the key's own proposals.

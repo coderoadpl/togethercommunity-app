@@ -11953,7 +11953,7 @@ describe('workspace checkout terms collected by Stripe', () => {
   it('passes Stripe terms and captures legal URLs for a staff test-mode sales-link checkout', async () => {
     const h = await directSalesLinkApp();
     h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
-    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin', source: 'direct' });
     h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
     h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
     h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });

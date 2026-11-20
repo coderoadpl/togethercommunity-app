@@ -5,7 +5,7 @@ import { apiFailureSource, type ApiClient } from '#core/client/index.js';
 import { HTTP_STATUS_BY_ERROR_CODE } from '#core/contract/index.js';
 import { err, feedCursorResetCursor, stripeModeSchema, validation, type AppError, type OrderChangeFeed, type Result } from '#core/domain/index.js';
 
-import { emit } from './output.js';
+import { emit, orderStatusLabel } from './output.js';
 
 type OrderChangeCliContext = { api: Pick<ApiClient, 'orderChanges'>; json: boolean };
 
@@ -27,7 +27,7 @@ const optionsSchema = z.object({
 });
 
 const changeLine = ({ cursor, order }: OrderChangeFeed['changes'][number]): string =>
-  [cursor, order.id, order.status, order.fulfilmentStatus ?? '', order.clientReference == null ? '' : `ref ${order.clientReference}`]
+  [cursor, order.id, orderStatusLabel(order), order.fulfilmentStatus ?? '', order.clientReference == null ? '' : `ref ${order.clientReference}`]
     .join('\t')
     .trimEnd();
 

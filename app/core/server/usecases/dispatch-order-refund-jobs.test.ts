@@ -142,11 +142,12 @@ describe('order refund dispatcher', () => {
   it.each(['live', 'test'] as const)('lists, refunds and re-reads a %s-mode payment with the key of that mode and workspace', async (mode) => {
     const h = harness({ order: cancelledOrder({ mode }) });
     const used: string[] = [];
-    const payment = h.deps.payment;
+    const { createRefund, getRefund, listRefunds } = h.deps.payment;
+    if (createRefund === undefined || getRefund === undefined || listRefunds === undefined) throw new Error('Refund methods missing');
     h.deps.payment = {
-      createRefund: async (call) => { used.push(`create ${call.mode} ${call.tenantId}`); return payment.createRefund(call); },
-      getRefund: async (call) => { used.push(`get ${call.mode} ${call.tenantId}`); return payment.getRefund(call); },
-      listRefunds: async (call) => { used.push(`list ${call.mode} ${call.tenantId}`); return payment.listRefunds(call); },
+      createRefund: async (call) => { used.push(`create ${call.mode} ${call.tenantId}`); return createRefund(call); },
+      getRefund: async (call) => { used.push(`get ${call.mode} ${call.tenantId}`); return getRefund(call); },
+      listRefunds: async (call) => { used.push(`list ${call.mode} ${call.tenantId}`); return listRefunds(call); },
     };
     await h.queue();
 

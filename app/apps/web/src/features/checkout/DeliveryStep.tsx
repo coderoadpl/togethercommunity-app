@@ -19,7 +19,7 @@ import { formatPrice } from '../../lib/format.js';
 import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
-import type { CheckoutEvent, CheckoutState, GeowidgetAccess } from './index.web.js';
+import { pickedPickupPoint, type CheckoutEvent, type CheckoutState, type GeowidgetAccess } from './index.web.js';
 
 export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, layout = 'list' }: {
   rates: PublicShippingRate[];
@@ -35,13 +35,14 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
+  const picked = pickedPickupPoint(state);
   const lockerHint = layout === 'list' || geowidget.status === 'map' ? t.shipping.lockerCodeMapHint : t.shipping.lockerCodeHint;
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
     <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
-      <Typography role="status" variant="body2" sx={{ mb: state.pickupPoint === null ? 0 : '0.75rem' }}>
-        {state.pickupPoint === null ? null : (
+      <Typography role="status" variant="body2" sx={{ mb: picked === null ? 0 : '0.75rem' }}>
+        {picked === null ? null : (
           <span data-testid="checkout-pickup-point-selected">
-            {[`${t.shipping.lockerSelected}: ${state.pickupPoint.code}`, state.pickupPoint.name, state.pickupPoint.address].filter((value) => value !== null).join(' · ')}
+            {[`${t.shipping.lockerSelected}: ${picked.code}`, picked.name, picked.address].filter((value) => value !== null).join(' · ')}
           </span>
         )}
       </Typography>

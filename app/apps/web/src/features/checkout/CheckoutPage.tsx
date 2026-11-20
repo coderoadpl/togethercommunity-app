@@ -643,6 +643,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 value={selectedPrice?.id ?? ''}
                 onChange={(event) => {
                   dispatchCheckout({ type: 'priceSelected', priceId: event.target.value });
+                  if (appliedCoupon !== undefined) setAutoCouponCode(couponCode);
                   discardCouponResult();
                 }}
               >

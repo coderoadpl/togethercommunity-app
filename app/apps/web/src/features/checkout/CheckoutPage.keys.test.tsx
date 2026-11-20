@@ -13,6 +13,7 @@ import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
+const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 const rateName = (label: string, cents: number) => new RegExp(`^${label} — ${pln(cents).replace('.', '\\.')}`, 'u');
 const body = z.record(z.string(), z.unknown());
 
@@ -397,5 +398,82 @@ describe('Enter and Escape on the checkout page', () => {
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: rateName('Parcel locker', 1499) }));
     expect(fireEvent.keyDown(screen.getByLabelText(en.shipping.lockerCodeLabel), { key: 'Escape' })).toBe(true);
+  });
+});
+
+describe('checkout state kept across neighbouring edits', () => {
+  afterEach(() => {
+    document.getElementById('inpost-geowidget-script')?.remove();
+    document.getElementById('inpost-geowidget-style')?.remove();
+  });
+
+  it('keeps the picked locker, the personalisation, the invoice, the email, the terms and the link code through edits in the other fields', async () => {
+    window.history.replaceState(null, '', '/checkout/stand?code=SAVE');
+    const calls = serve({ pageTerms: true, map: true });
+    renderCheckout();
+
+    await pickLockerOnMap();
+    await tickEngraving();
+    await fillInvoice();
+    const email = screen.getByLabelText(en.checkout.emailLabel);
+    await userEvent.type(email, 'buyer@example.org');
+    await userEvent.click(within(screen.getByTestId('terms-consent')).getByRole('checkbox'));
+
+    const everythingKept = async () => {
+      await waitFor(() => expect(pay()).toBeEnabled());
+      expect(pay()).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920 + 1499) })));
+      expect(screen.getByTestId('checkout-coupon-reveal')).toHaveTextContent(en.checkout.couponAppliedRow({ code: 'SAVE' }));
+      expect(screen.getByRole('radio', { name: rateName('Parcel locker', 1499) })).toBeChecked();
+      expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop · Main Street 1, 30-001 Cracow');
+      expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
+      expect(screen.getByRole('checkbox', { name: /Add an engraving/u })).toBeChecked();
+      expect(screen.getByLabelText('Engraving text')).toHaveValue('For Alex');
+      expect(screen.getByRole('checkbox', { name: condition })).toBeChecked();
+      expect(screen.getByLabelText(en.checkout.companyNameLabel)).toHaveValue('Buyer Ltd');
+      expect(screen.getByLabelText(en.checkout.cityLabel)).toHaveValue('Warsaw');
+      expect(screen.getByLabelText(en.checkout.emailLabel)).toHaveValue('buyer@example.org');
+      expect(within(screen.getByTestId('terms-consent')).getByRole('checkbox')).toBeChecked();
+    };
+    await everythingKept();
+
+    await userEvent.type(screen.getByLabelText(en.checkout.cityLabel), 'x{Backspace}');
+    await everythingKept();
+    await userEvent.type(email, 'x{Backspace}');
+    await everythingKept();
+    await userEvent.type(screen.getByLabelText('Engraving text'), 'x{Backspace}');
+    await everythingKept();
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'x{Backspace}');
+    await everythingKept();
+    await userEvent.type(screen.getByLabelText(en.checkout.nipLabel), 'x{Backspace}');
+    await everythingKept();
+
+    await userEvent.click(pay());
+    await submitted(calls);
+    expect(calls.sessions[0]).toMatchObject({
+      couponCode: 'SAVE', email: 'buyer@example.org', termsAccepted: true,
+      shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, 30-001 Cracow' } },
+      personalizations: [{ productId: 'stand', text: 'For Alex', conditionAccepted: true }],
+      billing: { nip: '1234567890', companyName: 'Buyer Ltd', address: 'Main Street 2', postalCode: '00-001', city: 'Warsaw', country: 'PL' },
+    });
+  });
+
+  it('validates a code applied by hand again for the new price instead of dropping it', async () => {
+    window.history.replaceState(null, '', '/checkout/stand');
+    const calls = serve();
+    renderCheckout();
+    await chooseCourier();
+    await openRow(en.checkout.couponReveal);
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'SAVE');
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+    await screen.findByRole('button', { name: en.checkout.couponRemoveLabel({ code: 'SAVE' }) });
+
+    await userEvent.click(within(screen.getByTestId('checkout-price-price-b')).getByRole('radio'));
+    await waitFor(() => expect(calls.coupons.at(-1)).toMatchObject({ couponCode: 'SAVE', priceId: 'price-b' }));
+    await waitFor(() => expect(pay()).toBeEnabled());
+    expect(pay()).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(3920 + 1999) })));
+    expect(screen.getByTestId('checkout-coupon-reveal')).toHaveTextContent(en.checkout.couponAppliedRow({ code: 'SAVE' }));
+    await userEvent.click(pay());
+    await submitted(calls);
+    expect(calls.sessions[0]).toMatchObject({ couponCode: 'SAVE', priceId: 'price-b' });
   });
 });

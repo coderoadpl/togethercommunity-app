@@ -63,7 +63,7 @@ describe('the pending proposal summary', () => {
   });
 
   it('leaves the refresh to the stream while it is connected', async () => {
-    vi.stubGlobal('EventSource', class {});
+    vi.stubGlobal('EventSource', class { readonly readyState = 0; });
     const served = serveSummary();
     const { queryClient } = renderWithProviders(<SummaryProbe />);
     expect(await screen.findByText('1')).toBeInTheDocument();

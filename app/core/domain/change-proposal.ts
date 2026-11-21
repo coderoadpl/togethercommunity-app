@@ -89,7 +89,7 @@ export type ChangeProposalStatus = z.output<typeof changeProposalStatusSchema>;
 
 export type ChangeProposalTerminalStatus = Exclude<ChangeProposalStatus, 'pending'>;
 
-export const changeProposalDisplayStatusSchema = z.enum([...changeProposalStatusSchema.options, 'expired']);
+const changeProposalDisplayStatusSchema = z.enum([...changeProposalStatusSchema.options, 'expired']);
 
 export type ChangeProposalDisplayStatus = z.output<typeof changeProposalDisplayStatusSchema>;
 

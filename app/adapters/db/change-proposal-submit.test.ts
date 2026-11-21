@@ -1,6 +1,6 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
@@ -302,8 +302,16 @@ describe('the owner notification of a submitted proposal over the database', () 
   });
 
   const waitersInThisDatabase = async (): Promise<number> => {
-    const counted = await database.db.execute(sql`select count(*)::int as waiting from pg_locks where not granted and database = (select oid from pg_database where datname = current_database())`);
-    return z.object({ waiting: z.number() }).parse(counted.rows[0]).waiting;
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    try {
+      const counted = await observer.query<{ waiting: number }>(
+        'select count(*)::int as waiting from pg_locks where not granted and database = (select oid from pg_database where datname = current_database())',
+      );
+      return counted.rows[0]?.waiting ?? 0;
+    } finally {
+      await observer.end();
+    }
   };
 
   it('answers the receipt within the notification bound while another transaction holds the notification row', async () => {

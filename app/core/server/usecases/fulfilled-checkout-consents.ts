@@ -23,16 +23,24 @@ export const recordFulfilledCheckoutConsents = async (
   const checkout = event.checkoutSession;
   const captureId = checkout?.metadata.checkoutConsentCaptureId;
   if (checkout === null || captureId === undefined || captureId === null) return ok(false);
-  const capture = await deps.checkoutConsentCaptures?.findById(tenant.id, captureId);
+  const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
+  const capture = await captures?.findById(tenant.id, captureId);
   if (capture === null || capture === undefined) return err(validation('Checkout consent capture is missing'));
   const email = checkout.email ?? checkout.metadata.memberEmail;
-  const terms = await enforceTermsConsent(tenant.id, {
-    accepted: capture.termsAccepted,
-    userId: null,
-    email,
-    source: 'checkout',
-  }, { ...deps, consents: transaction.consents });
-  if (!terms.ok) return terms;
+  if (capture.termsAccepted && capture.termsUrl !== undefined && capture.privacyUrl !== undefined) {
+    await transaction.consents.record(tenant.id, {
+      id: deps.ids.nextId(), tenantId: tenant.id, userId: null, email, source: 'checkout',
+      termsUrl: capture.termsUrl, privacyUrl: capture.privacyUrl, acceptedAt: deps.clock.nowIso(),
+    });
+  } else {
+    const terms = await enforceTermsConsent(tenant.id, {
+      accepted: capture.termsAccepted,
+      userId: null,
+      email,
+      source: 'checkout',
+    }, { ...deps, consents: transaction.consents });
+    if (!terms.ok) return terms;
+  }
   if (email === null || capture.selectedDefinitionIds.length === 0) return ok(false);
   if (deps.marketing === undefined) return err(validation('Checkout marketing consent is not configured'));
   const recorded = await recordCheckoutMarketingConsents({

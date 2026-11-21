@@ -1152,6 +1152,7 @@ export interface PaymentWebhookEvent {
       couponCheckoutSessionId?: string | null;
       checkoutSnapshotId?: string | null;
       directCheckout?: boolean;
+      stripeTerms?: boolean;
       termsUrl?: string | null;
       privacyUrl?: string | null;
       salesLinkId?: string | null;
@@ -1196,6 +1197,12 @@ export interface StripeWebhookOwnershipReader {
   }): Promise<boolean>;
 }
 
+export interface StripeTermsCollection {
+  termsUrl: string;
+  privacyUrl: string;
+  termsAcceptanceMessage: string;
+}
+
 export interface PaymentProvider {
   probeStripePermissions?(input: {
     tenantId: string;
@@ -1224,6 +1231,7 @@ export interface PaymentProvider {
     checkoutSnapshotId?: string;
     checkoutBranding?: CheckoutBranding;
     directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string; disclosureMessage?: string };
+    stripeTerms?: StripeTermsCollection;
     lines?: { productId: string; name: string; grossCents: number; quantity?: number | undefined }[];
     shipping?: {
       allowedCountries: string[];

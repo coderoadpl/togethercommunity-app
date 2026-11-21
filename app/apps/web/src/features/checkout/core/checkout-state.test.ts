@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicShippingRate } from '#core/domain/index.js';
 
-import { createCheckoutState, geowidgetAccess, parseGeowidgetPoint, reduceCheckoutState, selectDelivery } from './checkout-state.js';
+import { createCheckoutState, geowidgetAccess, parseGeowidgetPoint, pickedPickupPoint, reduceCheckoutState, selectDelivery } from './checkout-state.js';
 
 const rates: PublicShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker' },
@@ -70,14 +70,17 @@ describe('delivery selection', () => {
     expect(selectDelivery(unknown, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'rate' });
   });
 
-  it('sends the picked locker name and address until the code is edited to another locker', () => {
+  it('sends the picked locker name and address while the code names that locker, also after the code is edited back', () => {
     const locker = reduceCheckoutState(createCheckoutState(''), { type: 'shippingRateSelected', rateId: 'locker' });
     const picked = reduceCheckoutState(locker, { type: 'pickupPointSelected', point: { code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } });
     expect(picked.pickupPointCode).toBe('KRA010');
     expect(selectDelivery(picked, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } } });
     const edited = reduceCheckoutState(picked, { type: 'pickupPointCodeChanged', code: 'KRA011' });
-    expect(edited.pickupPoint).toBeNull();
+    expect(pickedPickupPoint(edited)).toBeNull();
     expect(selectDelivery(edited, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA011' } } });
+    const retyped = reduceCheckoutState(edited, { type: 'pickupPointCodeChanged', code: 'kra010' });
+    expect(pickedPickupPoint(retyped)).toEqual({ code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' });
+    expect(selectDelivery(retyped, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } } });
   });
 
   it('parses the point chosen on the parcel locker map', () => {

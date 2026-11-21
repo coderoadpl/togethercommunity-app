@@ -9,6 +9,7 @@ import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.
 import { cartLinesSchema } from './checkout-cart.js';
 import { checkoutReturnUrlSchema } from './checkout-return.js';
 import { checkoutPersonalizationsSchema } from './personalization.js';
+import { integrationNotConfigured, type AppError } from './errors.js';
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
@@ -33,6 +34,7 @@ export const checkoutSessionInputSchema = z.object({
   returnUrl: checkoutReturnUrlSchema.optional(),
   cancelUrl: checkoutReturnUrlSchema.optional(),
   personalizations: checkoutPersonalizationsSchema.optional(),
+  termsOnPage: z.literal(true).optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
@@ -44,6 +46,7 @@ export const checkoutCartInputSchema = checkoutSessionInputSchema.omit({
   salesLinkSlug: true,
   variantSelections: true,
   personalizations: true,
+  termsOnPage: true,
 }).extend({ lines: cartLinesSchema }).strict();
 
 export type CheckoutCartInput = z.input<typeof checkoutCartInputSchema>;
@@ -249,6 +252,26 @@ export const stripeCancelErrorSchema = z.object({
   statusCode: z.number().optional(),
   message: z.string().optional(),
 });
+
+export const stripeRequestErrorSchema = z.object({
+  rawType: z.string(),
+  param: z.string().optional(),
+  message: z.string(),
+});
+
+const STRIPE_TERMS_URL_MISSING = 'stripe_terms_url_missing';
+export const CHECKOUT_TERMS_PARAM = 'terms';
+export const CHECKOUT_TERMS_ON_PAGE = 'page';
+
+const stripeTermsUrlMissingDetailsSchema = z.object({ paymentRefusal: z.literal(STRIPE_TERMS_URL_MISSING) });
+
+export const stripeTermsUrlMissing = (): AppError => integrationNotConfigured(
+  'Stripe needs a terms of service URL in its Dashboard public details before it can collect the terms',
+  { paymentRefusal: STRIPE_TERMS_URL_MISSING },
+);
+
+export const isStripeTermsUrlMissing = (error: Pick<AppError, 'code' | 'details'>): boolean =>
+  error.code === 'integration_not_configured' && stripeTermsUrlMissingDetailsSchema.safeParse(error.details).success;
 
 export type ProcessedPaymentEvent = {
   id: string;

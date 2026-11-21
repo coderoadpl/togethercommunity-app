@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -2774,14 +2774,6 @@ export const CompactWordmark = styled(Wordmark)(({ theme }) => ({
   fontWeight: 600,
 }));
 
-export const CheckoutPrice = styled(Typography)<AsElement>(({ theme }) => ({
-  color: theme.palette.text.primary,
-  fontSize: '1.375rem',
-  fontWeight: 650,
-  fontVariantNumeric: 'tabular-nums',
-  lineHeight: 1.3,
-}));
-
 export const CheckoutPriceOption = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'selected',
 })<{ selected: boolean }>(({ selected, theme }) => ({
@@ -2793,8 +2785,310 @@ export const CheckoutPriceOption = styled(Paper, {
     : {}),
 }));
 
+export const CheckoutDeliveryCard = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'selected',
+})<{ selected: boolean }>(({ selected, theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  '& > .MuiFormControlLabel-root': {
+    display: 'flex',
+    width: '100%',
+    margin: 0,
+    padding: '0.625rem 0.875rem 0.625rem 0.375rem',
+    gap: '0.25rem',
+  },
+  ...(selected
+    ? {
+        borderColor: theme.palette.text.primary,
+        boxShadow: `inset 0 0 0 1px ${theme.palette.text.primary}`,
+      }
+    : {}),
+}));
+
+export const CheckoutDeliveryLabel = styled('span')({
+  flex: 1,
+  minWidth: 0,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  gridTemplateAreas: '"name price" "estimate price"',
+  columnGap: '1rem',
+  alignItems: 'baseline',
+});
+
+export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
+  ...theme.typography.body1,
+  gridArea: 'price',
+  alignSelf: 'start',
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 600,
+}));
+
+export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  alignSelf: 'stretch',
+  gap: '0.75rem',
+  padding: '0.5rem 0.5rem 0.5rem 0.875rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+export const CheckoutLockerChosenCaption = styled(Typography)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  fontSize: '0.75rem',
+  '& svg': { width: '1rem', height: '1rem', color: theme.palette.success.main },
+}));
+
+export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
+
+export const CheckoutLockerDialog = styled(Dialog)({
+  '& .MuiDialog-paperFullScreen': { borderRadius: 0, border: 0 },
+});
+
+export const CheckoutLockerPickerBar = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'fullScreen',
+})<{ fullScreen: boolean }>(({ fullScreen, theme }) => ({
+  flex: 'none',
+  display: 'grid',
+  alignItems: 'center',
+  columnGap: '0.5rem',
+  backgroundColor: theme.palette.background.paper,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  ...(fullScreen
+    ? {
+        gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+        gridTemplateAreas: '"back text code"',
+        [theme.breakpoints.down('sm')]: { gridTemplateAreas: '"back . code" "text text text"' },
+      }
+    : { gridTemplateColumns: 'minmax(0, 1fr) auto auto', gridTemplateAreas: '"text code close"' }),
+}));
+
+export const CheckoutLockerPickerHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  outline: 'none',
+  [theme.breakpoints.down('sm')]: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  },
+}));
+
+export const CheckoutLockerMapArea = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  flex: '1 1 auto',
+  minHeight: 0,
+  overflow: 'hidden',
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const CheckoutLockerMapCover = styled(Stack)(({ theme }) => ({
+  position: 'absolute',
+  inset: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  padding: '1rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8rem)';
+
+export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });
+
+export const OfferCellValue = styled(Typography)({ whiteSpace: 'nowrap' });
+
+export const CheckoutTitle = styled(CardTitle)({ wordSpacing: '0.12em' });
+
 export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
+}));
+
+export const CheckoutStepList = styled('ol')(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.5rem',
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  fontSize: '0.8125rem',
+  lineHeight: 1.4,
+  color: theme.palette.text.secondary,
+}));
+
+export const CheckoutStepItem = styled('li', {
+  shouldForwardProp: (prop) => prop !== 'current',
+})<{ current: boolean }>(({ current, theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  ...(current ? { color: theme.palette.text.primary, fontWeight: 600 } : {}),
+  '&:not(:first-of-type)::before': { content: '"·"', marginRight: '0.1rem', color: theme.palette.text.disabled },
+}));
+
+export const CheckoutStepNumber = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'current',
+})<{ current: boolean }>(({ current, theme }) => ({
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: '1.25rem',
+  height: '1.25rem',
+  borderRadius: '50%',
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+  fontVariantNumeric: 'tabular-nums',
+  ...(current
+    ? { backgroundColor: theme.palette.text.primary, color: theme.palette.background.paper }
+    : { border: `1px solid ${theme.palette.divider}` }),
+}));
+
+export const CheckoutSummarySurface = styled(Box)(({ theme }) => ({
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const CheckoutSummaryTotal = styled('span')(({ theme }) => ({
+  fontWeight: 650,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: 'tabular-nums',
+  color: theme.palette.text.primary,
+}));
+
+export const CheckoutBreakdownList = styled('dl')(({ theme }) => ({
+  display: 'grid',
+  gridTemplateColumns: '1fr auto',
+  rowGap: '0.25rem',
+  margin: 0,
+  fontSize: '0.875rem',
+  '& dt': { margin: 0, color: theme.palette.text.secondary },
+  '& dd': { margin: 0, paddingLeft: '1rem', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: theme.numericFontFamily, fontVariantNumeric: 'tabular-nums' },
+  '& > :last-of-type > *': {
+    paddingTop: '0.375rem',
+    borderTop: `1px solid ${theme.palette.divider}`,
+    fontSize: '1rem',
+    fontWeight: 650,
+    color: theme.palette.text.primary,
+  },
+}));
+
+export const CheckoutVariantGroup = styled(Box)(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: {
+    '& .MuiChip-root': { minHeight: '2.75rem', fontSize: '0.875rem' },
+  },
+}));
+
+export const CheckoutInlineToggle = styled(ButtonBase)(({ theme }) => ({
+  gap: '0.2rem',
+  minHeight: '2.75rem',
+  paddingTop: 0,
+  paddingBottom: 0,
+  paddingLeft: '0.25rem',
+  paddingRight: '0.25rem',
+  marginLeft: '-0.25rem',
+  marginRight: '-0.25rem',
+  borderRadius: theme.shape.borderRadius,
+  fontFamily: theme.typography.fontFamily,
+  fontSize: '0.875rem',
+  fontWeight: 500,
+  color: linkInk(theme),
+  '&:hover': { textDecoration: 'underline' },
+  '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: '-2px' },
+  '& svg': { transition: 'transform 0.15s ease' },
+  '&[aria-expanded="true"] svg': { transform: 'rotate(180deg)' },
+}));
+
+export const CheckoutNoWrap = styled('span')({ whiteSpace: 'nowrap' });
+
+export const CHECKOUT_PAY_BAR_CLASS = 'CheckoutPayBar-root';
+
+export const CheckoutRowGroup = styled(Box)(({ theme }) => ({
+  borderTop: `1px solid ${theme.palette.divider}`,
+  '& > *': { borderBottom: `1px solid ${theme.palette.divider}` },
+  [`&:has(+ .${CHECKOUT_PAY_BAR_CLASS}) > :last-child`]: { borderBottom: 0 },
+}));
+
+export const CheckoutRowButton = styled(ButtonBase)(({ theme }) => ({
+  width: '100%',
+  minHeight: '3rem',
+  justifyContent: 'space-between',
+  gap: '0.75rem',
+  textAlign: 'left',
+  fontFamily: theme.typography.fontFamily,
+  fontSize: '0.9375rem',
+  fontWeight: 500,
+  color: theme.palette.text.primary,
+  '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: '2px' },
+  '&.Mui-disabled': { color: theme.palette.text.disabled },
+}));
+
+export const CheckoutPayBarSurface = styled(Box)(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const CheckoutSafetySection = styled('section')(({ theme }) => ({
+  color: theme.palette.text.secondary,
+}));
+
+export const CheckoutSafetyWarnings = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'clamped',
+})<{ clamped?: boolean }>(({ clamped = false, theme }) => ({
+  ...theme.typography.body2,
+  overflowWrap: 'anywhere',
+  '& p, & ul, & ol': { margin: 0 },
+  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
+  ...(clamped ? { maxHeight: `calc(3em * ${String(theme.typography.body2.lineHeight ?? 1.5)})`, overflow: 'hidden' } : {}),
+}));
+
+export const CheckoutSafetyProduct = styled('div')({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.625rem',
+  minWidth: 0,
+});
+
+export const CheckoutSafetyThumbnail = styled('img')(({ theme }) => ({
+  flexShrink: 0,
+  width: '2.5rem',
+  height: '2.5rem',
+  objectFit: 'cover',
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const CheckoutSafetyPart = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'emphasised',
+})<{ emphasised?: boolean }>(({ emphasised = false, theme }) => ({
+  display: 'block',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
+}));
+
+export const CheckoutSafetyLastPart = styled('span')({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'baseline',
+  columnGap: '0.5rem',
+  maxWidth: '100%',
+  '& > span': { minWidth: 0 },
+  '& > button': { flexShrink: 0 },
+});
+
+export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  letterSpacing: '0.02em',
+  color: theme.palette.text.secondary,
 }));
 
 export const PostToolbarButton = styled(Button)({ whiteSpace: 'nowrap' });

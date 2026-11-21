@@ -15,6 +15,8 @@ import {
   SHIPPING_ALLOWED_COUNTRIES,
   refundFailure,
   stripeCancelErrorSchema,
+  stripeRequestErrorSchema,
+  stripeTermsUrlMissing,
   stripeCheckoutShippingSchema,
   stripePermissionMissing,
   stripeRefundFailure,
@@ -63,6 +65,14 @@ export const stripeCancelAlreadySettled = (cause: unknown): boolean => {
     parsed.data.statusCode === 404 ||
     /already canceled|canceled subscription/i.test(parsed.data.message ?? '')
   );
+};
+
+const stripeRefusedTermsWithoutUrl = (cause: unknown): boolean => {
+  const parsed = stripeRequestErrorSchema.safeParse(cause);
+  if (!parsed.success || parsed.data.rawType !== 'invalid_request_error') return false;
+  const { message, param } = parsed.data;
+  return /terms of service/i.test(message) &&
+    (param === 'consent_collection[terms_of_service]' || /dashboard|public (business )?details|settings\/public/i.test(message));
 };
 
 const localeFor = (language: string | undefined): Stripe.Checkout.SessionCreateParams.Locale | undefined =>
@@ -190,12 +200,14 @@ export const stripeCheckoutSessionParams = (
     if (productList.length <= 500) productMetadata['productIds'] = productList;
     else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
   }
+  const terms = input.directCheckout ?? input.stripeTerms;
   const metadata = {
     ...attribution,
-    ...(input.directCheckout === undefined ? {} : {
-      directCheckout: 'true',
-      ...legalUrlMetadata('termsUrl', input.directCheckout.termsUrl),
-      ...legalUrlMetadata('privacyUrl', input.directCheckout.privacyUrl),
+    ...(input.directCheckout === undefined ? {} : { directCheckout: 'true' }),
+    ...(input.directCheckout !== undefined || input.stripeTerms === undefined ? {} : { stripeTerms: 'true' }),
+    ...(terms === undefined ? {} : {
+      ...legalUrlMetadata('termsUrl', terms.termsUrl),
+      ...legalUrlMetadata('privacyUrl', terms.privacyUrl),
     }),
     ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
     ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
@@ -224,13 +236,15 @@ export const stripeCheckoutSessionParams = (
     } : {
       subscription_data: { billing_mode: { type: 'classic' as const }, metadata: { tenantId: input.tenantId } },
     }),
-    ...(input.directCheckout === undefined ? {} : {
+    ...(terms === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
       custom_text: {
-        terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage },
-        ...(input.promotionCodeId === undefined || input.directCheckout.disclosureMessage === undefined
+        terms_of_service_acceptance: { message: terms.termsAcceptanceMessage },
+        ...(input.promotionCodeId === undefined || input.directCheckout?.disclosureMessage === undefined
           ? {} : { submit: { message: input.directCheckout.disclosureMessage } }),
       },
+    }),
+    ...(input.directCheckout === undefined ? {} : {
       tax_id_collection: { enabled: true },
       ...(input.promotionCodeId === undefined ? { allow_promotion_codes: false } : {}),
     }),
@@ -313,8 +327,8 @@ const toCheckoutSessionEvent = (
     metadata: {
       attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,
-      ...(session.metadata?.directCheckout !== 'true' ? {} : {
-        directCheckout: true,
+      ...(session.metadata == null || (session.metadata.directCheckout !== 'true' && session.metadata.stripeTerms !== 'true') ? {} : {
+        ...(session.metadata.directCheckout === 'true' ? { directCheckout: true } : { stripeTerms: true }),
         termsUrl: legalUrlFromMetadata(session.metadata, 'termsUrl'),
         privacyUrl: legalUrlFromMetadata(session.metadata, 'privacyUrl'),
       }),
@@ -452,6 +466,9 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
 
 const PROBE_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+// Several times every published minimum charge, including after conversion to the account's settlement currency.
+const PROBE_CHECKOUT_PRICE = { currency: 'pln', unitAmount: 1000 } as const;
+
 const REFUND_PROBE_CHECK = { resource: 'Charges and Refunds', permission: 'write' } as const;
 
 const refundProbePermissionMissing = (failure: { code?: string | undefined; message?: string | undefined }): boolean =>
@@ -543,7 +560,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           const session = await client.checkout.sessions.create({
             ...checkoutBrandingParams(input.checkoutBranding),
             mode: 'payment',
-            line_items: [{ price_data: { currency: 'pln', unit_amount: 100, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
+            line_items: [{ price_data: { currency: PROBE_CHECKOUT_PRICE.currency, unit_amount: PROBE_CHECKOUT_PRICE.unitAmount, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
             success_url: `${input.origin}/`, cancel_url: `${input.origin}/`,
             expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
             metadata: { togetherProbe: '1', tenantId: input.tenantId },
@@ -704,6 +721,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         }
         return ok({ url: session.url, sessionId: session.id });
       } catch (cause) {
+        if ((input.stripeTerms !== undefined || input.directCheckout !== undefined) && stripeRefusedTermsWithoutUrl(cause)) {
+          return err(stripeTermsUrlMissing());
+        }
         return err(asDiagnostic('Stripe rejected the checkout request', cause));
       }
     },

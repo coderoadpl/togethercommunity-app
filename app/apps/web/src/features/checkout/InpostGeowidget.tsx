@@ -1,13 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 import { Box } from '@mui/material';
 
-import { parseGeowidgetPoint, type CheckoutEvent } from './index.web.js';
+import { parseGeowidgetPoint, type PickedPickupPoint } from './index.web.js';
 import { useFullNavigationExit } from './use-full-navigation-exit.js';
 
 const GEOWIDGET_ORIGIN = 'https://geowidget.inpost.pl';
 const GEOWIDGET_POINT_EVENT = 'together-inpost-point';
+const GEOWIDGET_ESCAPE_EVENT = 'inpost.geowidget.escape';
+const GEOWIDGET_INIT_EVENT = 'inpost.geowidget.init';
+const GEOWIDGET_SCRIPT_ID = 'inpost-geowidget-script';
 
-const ensureGeowidgetAssets = (): void => {
+const ensureGeowidgetAssets = (): HTMLScriptElement => {
   if (document.getElementById('inpost-geowidget-style') === null) {
     const style = document.createElement('link');
     style.id = 'inpost-geowidget-style';
@@ -15,27 +18,46 @@ const ensureGeowidgetAssets = (): void => {
     style.href = `${GEOWIDGET_ORIGIN}/inpost-geowidget.css`;
     document.head.append(style);
   }
-  if (document.getElementById('inpost-geowidget-script') === null) {
-    const script = document.createElement('script');
-    script.id = 'inpost-geowidget-script';
-    script.src = `${GEOWIDGET_ORIGIN}/inpost-geowidget.js`;
-    script.defer = true;
-    document.head.append(script);
-  }
+  const existing = document.getElementById(GEOWIDGET_SCRIPT_ID);
+  if (existing instanceof HTMLScriptElement) return existing;
+  const script = document.createElement('script');
+  script.id = GEOWIDGET_SCRIPT_ID;
+  script.src = `${GEOWIDGET_ORIGIN}/inpost-geowidget.js`;
+  script.defer = true;
+  script.addEventListener('error', () => script.remove(), { once: true });
+  document.head.append(script);
+  return script;
 };
 
-export const InpostGeowidget = ({ token, language, dispatch }: {
+const showPointOnMap = (event: Event, code: string) => {
+  const detail: unknown = event instanceof CustomEvent ? event.detail : undefined;
+  const api: unknown = typeof detail === 'object' && detail !== null ? Reflect.get(detail, 'api') : undefined;
+  const showPoint: unknown = typeof api === 'object' && api !== null ? Reflect.get(api, 'showPoint') : undefined;
+  if (typeof showPoint !== 'function') return;
+  Promise.resolve(code).then((name) => Reflect.apply(showPoint, api, [name])).catch(() => undefined);
+};
+
+export const InpostGeowidget = ({ token, language, shownCode, onPoint, onEscape, onFailed }: {
   token: string;
   language: 'pl' | 'en';
-  dispatch: (event: CheckoutEvent) => void;
+  shownCode: string | null;
+  onPoint: (point: PickedPickupPoint) => void;
+  onEscape: () => void;
+  onFailed: () => void;
 }) => {
   const container = useRef<HTMLDivElement>(null);
   const armFullNavigationExit = useFullNavigationExit();
+  const pointPicked = useEffectEvent((point: PickedPickupPoint) => onPoint(point));
+  const escaped = useEffectEvent(() => onEscape());
+  const failed = useEffectEvent(() => onFailed());
+  const mapReady = useEffectEvent((event: Event) => {
+    if (shownCode !== null) showPointOnMap(event, shownCode);
+  });
 
   useEffect(() => {
     const host = container.current;
     if (host === null) return;
-    ensureGeowidgetAssets();
+    const script = ensureGeowidgetAssets();
     armFullNavigationExit();
     const widget = document.createElement('inpost-geowidget');
     widget.setAttribute('token', token);
@@ -43,18 +65,33 @@ export const InpostGeowidget = ({ token, language, dispatch }: {
     widget.setAttribute('config', 'parcelCollect');
     widget.setAttribute('onpoint', GEOWIDGET_POINT_EVENT);
     host.replaceChildren(widget);
-    const onPoint = (event: Event) => {
+    const onPointEvent = (event: Event) => {
       const detail: unknown = event instanceof CustomEvent ? event.detail : undefined;
       const details: unknown = Reflect.get(event, 'details');
       const point = parseGeowidgetPoint(detail ?? details);
-      if (point !== null) dispatch({ type: 'pickupPointSelected', point });
+      if (point !== null) pointPicked(point);
     };
-    document.addEventListener(GEOWIDGET_POINT_EVENT, onPoint);
+    const onEscapeEvent = () => escaped();
+    const onInitEvent = (event: Event) => mapReady(event);
+    const onScriptError = () => failed();
+    document.addEventListener(GEOWIDGET_POINT_EVENT, onPointEvent);
+    document.addEventListener(GEOWIDGET_ESCAPE_EVENT, onEscapeEvent, true);
+    widget.addEventListener(GEOWIDGET_INIT_EVENT, onInitEvent);
+    script.addEventListener('error', onScriptError);
     return () => {
-      document.removeEventListener(GEOWIDGET_POINT_EVENT, onPoint);
+      document.removeEventListener(GEOWIDGET_POINT_EVENT, onPointEvent);
+      document.removeEventListener(GEOWIDGET_ESCAPE_EVENT, onEscapeEvent, true);
+      widget.removeEventListener(GEOWIDGET_INIT_EVENT, onInitEvent);
+      script.removeEventListener('error', onScriptError);
       host.replaceChildren();
     };
-  }, [armFullNavigationExit, dispatch, language, token]);
+  }, [armFullNavigationExit, language, token]);
 
-  return <Box ref={container} data-testid="checkout-inpost-geowidget" sx={{ height: '26rem', width: '100%', overflow: 'hidden' }} />;
+  return (
+    <Box
+      ref={container}
+      data-testid="checkout-inpost-geowidget"
+      sx={{ position: 'absolute', inset: 0, '& > inpost-geowidget': { display: 'block', width: '100%', height: '100%' } }}
+    />
+  );
 };

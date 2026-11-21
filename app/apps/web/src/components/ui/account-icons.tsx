@@ -38,7 +38,17 @@ export const MonitorIcon = () => (<Glyph><rect width="20" height="14" x="2" y="3
   <line x1="8" x2="16" y1="21" y2="21" />
   <line x1="12" x2="12" y1="17" y2="21" /></Glyph>);
 
+export const CheckIcon = () => (<Glyph><path d="M20 6 9 17l-5-5" /></Glyph>);
+
+export const MapPinIcon = () => (<Glyph><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+  <circle cx="12" cy="10" r="3" /></Glyph>);
+
 export const ChevronDownIcon = () => (<Glyph><path d="m6 9 6 6 6-6" /></Glyph>);
+
+export const PlusIcon = () => (<Glyph><path d="M12 5v14" />
+  <path d="M5 12h14" /></Glyph>);
+
+export const MinusIcon = () => (<Glyph><path d="M5 12h14" /></Glyph>);
 
 export const TriangleAlertIcon = () => (<Glyph><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
   <path d="M12 9v4" />

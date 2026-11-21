@@ -402,6 +402,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       const pending = proposals.filter((proposal) => proposal.tenantId === tenantId && pendingAt(proposal, now));
       return { proposals: pending.length, groups: new Set(pending.flatMap((proposal) => proposal.groupId === null ? [] : [proposal.groupId])).size };
     },
+    hasAny: async (tenantId) => proposals.some((proposal) => proposal.tenantId === tenantId),
   };
   const groupRows: ChangeProposalGroup[] = [];
   const itemsOf = (tenantId: string, groupId: string): ChangeProposal[] =>

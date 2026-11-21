@@ -19,7 +19,7 @@ const pendingKey = actions.changeProposalPages({ status: 'pending', limit: 100 }
 const serveSummary = () => {
   const state = { pending: 1 };
   server.use(http.get('/api/change-proposals/summary', () =>
-    HttpResponse.json({ ok: true, data: { pending: state.pending, pendingGroups: 0 } })));
+    HttpResponse.json({ ok: true, data: { pending: state.pending, pendingGroups: 0, hasProposals: true } })));
   return state;
 };
 
@@ -30,7 +30,7 @@ afterEach(() => {
 describe('realtime notification refresh', () => {
   it('refreshes the pending proposal summary and lists on a change proposal notification only', async () => {
     const { queryClient } = renderWithProviders(<div />);
-    queryClient.setQueryData(summaryKey, { pending: 0, pendingGroups: 0 });
+    queryClient.setQueryData(summaryKey, { pending: 0, pendingGroups: 0, hasProposals: false });
     queryClient.setQueryData(pendingKey, { pages: [], pageParams: [] });
 
     await refreshForNotificationKind(queryClient, 'thread-reply');

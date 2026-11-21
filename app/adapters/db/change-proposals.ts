@@ -401,6 +401,14 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
       .where(and(eq(changeProposals.tenantId, tenantId), pendingAt(now)));
     return { proposals: row?.proposals ?? 0, groups: row?.groups ?? 0 };
   },
+  hasAny: async (tenantId) => {
+    const rows = await db
+      .select({ id: changeProposals.id })
+      .from(changeProposals)
+      .where(eq(changeProposals.tenantId, tenantId))
+      .limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createChangeProposalRepository = (db: Db, options: ChangeProposalBoundOptions = {}): ChangeProposalRepository =>

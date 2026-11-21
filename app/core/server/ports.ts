@@ -3023,6 +3023,7 @@ export interface ChangeProposalRepository {
   recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
   /** Pending, unexpired proposals at `now`, and the distinct groups they belong to. */
   countPending(tenantId: string, now: string): Promise<{ proposals: number; groups: number }>;
+  hasAny(tenantId: string): Promise<boolean>;
 }
 
 export interface ChangeProposalEventRepository {

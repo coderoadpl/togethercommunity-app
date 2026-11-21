@@ -42,6 +42,7 @@ import {
 import { shopManagementKeyCapabilities } from './shop-machine-auth.js';
 import {
   getChangeProposal,
+  getChangeProposalSummary,
   getOwnChangeProposal,
   listChangeProposals,
   listOwnChangeProposals,
@@ -898,6 +899,39 @@ describe('owner-side proposal review', () => {
     }
     expect(h.store.proposals.find(({ id }) => id === 'p-active')?.status).toBe('pending');
     expect(h.store.eventRows).toEqual([]);
+  });
+});
+
+describe('the owner summary', () => {
+  const summaryOf = (h: Harness, ctx: Ctx = ownerSession) => getChangeProposalSummary(ctx, h.ownerDeps);
+
+  it('says the workspace has no proposals when it has none, whatever another workspace holds', async () => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-neighbour', tenantId: NEIGHBOUR }));
+    h.store.seed(storedProposal({ id: 'p-neighbour-applied', tenantId: NEIGHBOUR, status: 'applied', decidedByUserId: OWNER, decidedAt: NOW }));
+    expect(await summaryOf(h)).toEqual({ ok: true, value: { pending: 0, pendingGroups: 0, hasProposals: false } });
+  });
+
+  it('says the workspace has proposals when it holds only pending ones', async () => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-pending' }));
+    expect(await summaryOf(h)).toEqual({ ok: true, value: { pending: 1, pendingGroups: 0, hasProposals: true } });
+  });
+
+  it('says the workspace has proposals when every one of them is decided or expired', async () => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-rejected', status: 'rejected', decidedByUserId: OWNER, decidedAt: NOW }));
+    h.store.seed(storedProposal({ id: 'p-withdrawn', status: 'withdrawn' }));
+    h.store.seed(storedProposal({ id: 'p-stale', createdAt: '2026-01-01T00:00:00.000Z' }));
+    expect(await summaryOf(h)).toEqual({ ok: true, value: { pending: 0, pendingGroups: 0, hasProposals: true } });
+  });
+
+  it.each(privilegeConfusion)('refuses %s', async (_label, ctx) => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-pending' }));
+    const refused = await summaryOf(h, ctx);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(['forbidden', 'impersonation_read_only']).toContain(refused.error.code);
   });
 });
 

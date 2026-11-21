@@ -934,7 +934,7 @@ describe('the owner view and summary over the database', () => {
       decidedAt: null, decidedByUserId: null, decisionNote: null,
     });
 
-    expect(await getChangeProposalSummary(ownerSession, deps())).toEqual({ ok: true, value: { pending: 2, pendingGroups: 1 } });
+    expect(await getChangeProposalSummary(ownerSession, deps())).toEqual({ ok: true, value: { pending: 2, pendingGroups: 1, hasProposals: true } });
     expect(await getChangeProposalSummary(keyCtx, deps())).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

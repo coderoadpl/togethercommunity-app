@@ -376,6 +376,7 @@ export type ChangeProposalOwnerPage = z.output<typeof changeProposalOwnerPageSch
 export const changeProposalSummarySchema = z.object({
   pending: z.number().int().min(0),
   pendingGroups: z.number().int().min(0),
+  hasProposals: z.boolean(),
 }).strict();
 
 export type ChangeProposalSummary = z.output<typeof changeProposalSummarySchema>;

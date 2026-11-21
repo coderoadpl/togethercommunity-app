@@ -327,21 +327,28 @@ describe('owner change proposal client', () => {
 });
 
 describe('owner change proposal summary client', () => {
-  it('reads the pending counts in one request and refuses an answer with other fields', async () => {
+  it('reads the pending counts and whether the workspace has proposals in one request and refuses an answer with other fields', async () => {
     const requests: string[] = [];
     const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url, init) => {
       requests.push(`${init?.method ?? 'GET'} ${new URL(String(url)).pathname}`);
-      return Response.json({ ok: true, data: { pending: 3, pendingGroups: 1 } });
+      return Response.json({ ok: true, data: { pending: 3, pendingGroups: 1, hasProposals: true } });
     } });
-    expect(await api.getChangeProposalSummary()).toEqual({ ok: true, value: { pending: 3, pendingGroups: 1 } });
+    expect(await api.getChangeProposalSummary()).toEqual({ ok: true, value: { pending: 3, pendingGroups: 1, hasProposals: true } });
     expect(requests).toEqual(['GET /api/change-proposals/summary']);
 
-    const leaky = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 3, pendingGroups: 1, proposals: [] } }) });
+    const leaky = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 3, pendingGroups: 1, hasProposals: true, proposals: [] } }) });
     expect(await leaky.getChangeProposalSummary()).toMatchObject({ ok: false, error: { code: 'internal' } });
   });
 
+  it('refuses a summary without the has-proposals answer or with a non-boolean one', async () => {
+    for (const data of [{ pending: 0, pendingGroups: 0 }, { pending: 0, pendingGroups: 0, hasProposals: 'yes' }]) {
+      const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data }) });
+      expect(await api.getChangeProposalSummary(), JSON.stringify(data)).toMatchObject({ ok: false, error: { code: 'internal' } });
+    }
+  });
+
   it('keeps the summary under the prefix every decision invalidates', async () => {
-    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 0, pendingGroups: 0 } }) });
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 0, pendingGroups: 0, hasProposals: false } }) });
     const summary = changeProposalSummaryQuery(api);
     const covers = (filters: ReadonlyArray<{ queryKey: readonly unknown[] }>) =>
       filters.some((filter) => filter.queryKey.every((part, index) => summary.queryKey[index] === part));

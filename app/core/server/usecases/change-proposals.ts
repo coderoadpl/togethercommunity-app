@@ -265,7 +265,7 @@ export const listChangeProposals = async (
 };
 
 export interface ChangeProposalSummaryDeps {
-  changeProposals: Pick<ChangeProposalRepository, 'countPending'>;
+  changeProposals: Pick<ChangeProposalRepository, 'countPending' | 'hasAny'>;
   clock: Clock;
 }
 
@@ -275,8 +275,11 @@ export const getChangeProposalSummary = async (
 ): Promise<Result<ChangeProposalSummary, AppError>> => {
   const tenant = ownerSession(ctx, authorizeTenant(ctx, 'proposal:read'));
   if (!tenant.ok) return tenant;
-  const counted = await deps.changeProposals.countPending(tenant.value, deps.clock.nowIso());
-  return ok({ pending: counted.proposals, pendingGroups: counted.groups });
+  const [counted, hasProposals] = await Promise.all([
+    deps.changeProposals.countPending(tenant.value, deps.clock.nowIso()),
+    deps.changeProposals.hasAny(tenant.value),
+  ]);
+  return ok({ pending: counted.proposals, pendingGroups: counted.groups, hasProposals });
 };
 
 export const getChangeProposal = async (

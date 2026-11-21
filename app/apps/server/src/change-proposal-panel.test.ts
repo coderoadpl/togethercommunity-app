@@ -152,6 +152,7 @@ describe('the owner panel summary', () => {
     expect(before.status).toBe(200);
     const pendingBefore = before.body?.pending ?? -1;
     const groupsBefore = before.body?.pendingGroups ?? -1;
+    expect(await summary(ownerToken, studioHost)).toEqual({ status: 200, body: { pending: 0, pendingGroups: 0, hasProposals: false } });
 
     await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, title: 'Summary title' });
     const groupResponse = await keyed(proposer.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: 'Summary group' });
@@ -159,12 +160,29 @@ describe('the owner panel summary', () => {
     await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, title: 'Grouped title' }, { 'x-proposal-group': groupId });
     await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Grouped' }, { 'x-proposal-group': groupId });
 
-    expect(await summary()).toEqual({ status: 200, body: { pending: pendingBefore + 3, pendingGroups: groupsBefore + 1 } });
-    expect(await summary(ownerToken, studioHost)).toEqual({ status: 200, body: { pending: 0, pendingGroups: 0 } });
+    expect(await summary()).toEqual({ status: 200, body: { pending: pendingBefore + 3, pendingGroups: groupsBefore + 1, hasProposals: true } });
+    expect(await summary(ownerToken, studioHost)).toEqual({ status: 200, body: { pending: 0, pendingGroups: 0, hasProposals: false } });
     expect((await summary(adminToken)).status).toBe(403);
     const keyedSummary = await keyed(proposer.secret, 'GET', API_PATHS.changeProposalSummary);
     expect(keyedSummary.status).toBe(401);
     expect(await keyedSummary.json()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Authentication required' } });
+  });
+});
+
+describe('the owner panel summary of a workspace whose proposals are all decided', () => {
+  it('says the workspace has proposals while it counts none pending', async () => {
+    const proposer = await createShopKey('propose');
+    const proposal = await propose(proposer.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: live, description: 'Decided elsewhere' });
+    const [row] = (await database.db.select().from(changeProposals)).filter((entry) => entry.id === proposal.id);
+    if (row === undefined) throw new Error('The proposed row is missing');
+    expect((await summary(ownerToken, studioHost)).body).toMatchObject({ hasProposals: false });
+
+    await database.db.insert(changeProposals).values({
+      ...row, id: `${row.id}-studio`, tenantId: 'studio', groupId: null, groupPosition: null,
+      status: 'rejected', decidedAt: now, decidedByUserId: ownerId,
+    });
+
+    expect(await summary(ownerToken, studioHost)).toEqual({ status: 200, body: { pending: 0, pendingGroups: 0, hasProposals: true } });
   });
 });
 

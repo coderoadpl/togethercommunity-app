@@ -189,10 +189,10 @@ const twoManufacturersFixture = bundleFixtureWith('together-checkout-two-manufac
 
 const STUB_MAP_TAG = 'inpost-geowidget';
 const stubPoint = { name: 'WAW01M', location_description: 'Next to the pharmacy entrance', address: { line1: 'Example Street 5', line2: '00-001 Warsaw' } };
-const STUB_MAP_LOADING = 'stubMapLoading';
+const STUB_MAP_LOADING = 'data-stub-map-loading';
 class StubGeowidget extends HTMLElement {
   connectedCallback() {
-    if (this.ownerDocument.documentElement.dataset[STUB_MAP_LOADING] === 'true') {
+    if (this.ownerDocument.documentElement.hasAttribute(STUB_MAP_LOADING)) {
       this.style.cssText = 'display:none;';
       return;
     }
@@ -220,10 +220,10 @@ const stubGeowidget = () => {
   return () => { for (const element of placeholders) element.remove(); };
 };
 const stubLoadingGeowidget = () => {
-  document.documentElement.dataset[STUB_MAP_LOADING] = 'true';
+  document.documentElement.setAttribute(STUB_MAP_LOADING, '');
   const cleanup = stubGeowidget();
   return () => {
-    delete document.documentElement.dataset[STUB_MAP_LOADING];
+    document.documentElement.removeAttribute(STUB_MAP_LOADING);
     cleanup();
   };
 };

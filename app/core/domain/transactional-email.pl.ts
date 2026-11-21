@@ -11,7 +11,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   },
   purchase: {
     heading: 'Dziękujemy za zakup',
-    paymentReceived: (tenantName) => `Otrzymaliśmy Twoją płatność za zamówienie na platformie ${tenantName}.`,
+    paymentReceived: (orderReference, tenantName) => `Otrzymaliśmy Twoją płatność za zamówienie ${orderReference} na platformie ${tenantName}.`,
+    collectInPerson: 'Zamówienie odbierzesz osobiście — przy odbiorze pokaż kod QR z tej wiadomości.',
     nextSteps: {
       course: 'Kurs czeka na Ciebie na Twoim koncie.',
       digital_download: 'Pliki są gotowe do pobrania na Twoim koncie.',
@@ -134,13 +135,18 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   subscriptionPaymentFailed: {
     billingPortalLabel: 'Zaktualizuj dane płatności',
     contactLabel: 'Napisz do obsługi',
-    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, contactUrl, contactLink, socialLinks }) => {
-      const settle = `Aby zachować dostęp, skontaktuj się z obsługą platformy ${tenantName} i ureguluj subskrypcję.`;
-      const settleHtml = `Aby zachować dostęp, skontaktuj się z obsługą platformy ${tenantNameHtml} i ureguluj subskrypcję.`;
-      const actionHtml = billingPortalUrl !== null ? portal : `<p>${settleHtml}</p>${contactLink === null ? '' : `<p>${contactLink}</p>`}`;
+    workspaceLabel: (tenantName) => `Otwórz stronę platformy ${tenantName}`,
+    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, contactUrl, contactLink, workspaceUrl, workspaceLink, socialLinks }) => {
+      const settle = `Aby zachować dostęp, skontaktuj się z obsługą platformy ${tenantName} i opłać subskrypcję.`;
+      const settleHtml = `Aby zachować dostęp, skontaktuj się z obsługą platformy ${tenantNameHtml} i opłać subskrypcję.`;
+      const fallbackLink = contactLink ?? workspaceLink;
+      const actionHtml = billingPortalUrl !== null ? portal : `<p>${settleHtml}</p>${fallbackLink === null ? '' : `<p>${fallbackLink}</p>`}`;
+      const fallbackText = contactUrl !== null
+        ? `\n\nNapisz do obsługi: ${contactUrl}`
+        : workspaceUrl === null ? '' : `\n\nOtwórz stronę platformy ${tenantName}: ${workspaceUrl}`;
       const actionText = billingPortalUrl !== null
         ? `\n\nZaktualizuj dane płatności: ${billingPortalUrl}`
-        : `\n\n${settle}${contactUrl === null ? '' : `\n\nNapisz do obsługi: ${contactUrl}`}`;
+        : `\n\n${settle}${fallbackText}`;
       return {
         subject: `Nie udało się pobrać płatności za „${productTitle}” — ${tenantName}`,
         html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitleHtml}” na platformie ${tenantNameHtml}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtHtml}.</p>${actionHtml}${socialLinks.html}`,
@@ -200,7 +206,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   },
   orderSoldOutRefundEmail: {
     shopLabel: 'Przejdź do sklepu',
-    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, orderReference, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, orderReference, orderReferenceHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
       const timing = [
         'Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.',
         'BLIK: zwrot trwa około 120 minut.',
@@ -215,8 +221,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
         : `<p>Automatycznie zleciliśmy zwrot całej kwoty ${refund.amountHtml} na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
       return {
         subject: `Zamówienie anulowane, ${refund === null ? 'bez opłaty' : 'zwracamy całą kwotę'} — ${tenantName} (${orderReference})`,
-        html: `${header}<p>Cześć!</p><p>Płatność za zamówienie ${orderIdHtml} na platformie ${tenantNameHtml} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Wyprzedane: ${productTitlesHtml}</p>${refundHtml}<p>Przepraszamy za kłopot.</p><p>${shopLink}</p>${socialLinks.html}`,
-        text: `Cześć!\n\nPłatność za zamówienie ${orderId} na platformie ${tenantName} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nWyprzedane: ${productTitles}\n\n${refundText}\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
+        html: `${header}<p>Cześć!</p><p>Płatność za zamówienie ${orderReferenceHtml} na platformie ${tenantNameHtml} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Numer zamówienia: ${orderIdHtml}<br>Wyprzedane: ${productTitlesHtml}</p>${refundHtml}<p>Przepraszamy za kłopot.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Cześć!\n\nPłatność za zamówienie ${orderReference} na platformie ${tenantName} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nNumer zamówienia: ${orderId}\nWyprzedane: ${productTitles}\n\n${refundText}\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
       };
     },
   },

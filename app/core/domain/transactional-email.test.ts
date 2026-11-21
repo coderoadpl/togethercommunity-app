@@ -67,23 +67,29 @@ describe('subscription lifecycle emails', () => {
     expect(en.html).toContain('https://billing.example.com/portal');
     expect(en.html).toContain('Unless the payment goes through, your access ends on 17 August 1998.');
     expect(en.text).toContain('Unless the payment goes through, your access ends on 17 August 1998.');
-    expect(en.text).not.toContain('settle the subscription');
+    expect(en.text).not.toContain('settle the payment');
   });
 
   it('points to the workspace contact when the payment failure has no billing portal', () => {
     const contactUrl = 'https://acme.example.com/account';
     const en = subscriptionPaymentFailed('en', { ...input, billingPortalUrl: null, contactUrl });
-    expect(en.html).toContain('<p>To keep your access, contact Acme &lt;Studio&gt; to settle the subscription.</p>');
+    expect(en.html).toContain('<p>To keep your access, contact Acme &lt;Studio&gt; to settle the payment.</p>');
     expect(en.html).toContain(`<a href="${contactUrl}">Contact support</a>`);
-    expect(en.text).toContain(`To keep your access, contact Acme <Studio> to settle the subscription.\n\nContact support: ${contactUrl}`);
+    expect(en.text).toContain(`To keep your access, contact Acme <Studio> to settle the payment.\n\nContact support: ${contactUrl}`);
     expect(en.text).not.toMatch(/retr/i);
 
     const pl = subscriptionPaymentFailed('pl', { ...input, billingPortalUrl: null, contactUrl });
     expect(pl.subject.endsWith('” — Acme <Studio>')).toBe(true);
     expect(pl.html).toContain(`<a href="${contactUrl}">${transactionalEmailMessagesPl.subscriptionPaymentFailed.contactLabel}</a>`);
 
+    const withWorkspace = subscriptionPaymentFailed('en', { ...input, billingPortalUrl: null, contactUrl: null, workspaceUrl: 'https://acme.example.com/' });
+    expect(withWorkspace.html).toContain('<p><a href="https://acme.example.com/">Open Acme &lt;Studio&gt;</a></p>');
+    expect(withWorkspace.text).toContain('settle the payment.\n\nOpen Acme <Studio>: https://acme.example.com/');
+    expect(subscriptionPaymentFailed('pl', { ...input, billingPortalUrl: null, contactUrl: null, workspaceUrl: 'https://acme.example.com/' }).html)
+      .toContain(`<a href="https://acme.example.com/">${transactionalEmailMessagesPl.subscriptionPaymentFailed.workspaceLabel('Acme &lt;Studio&gt;')}</a>`);
+
     const withoutContact = subscriptionPaymentFailed('en', { ...input, billingPortalUrl: null, contactUrl: null });
-    expect(withoutContact.text).toContain('To keep your access, contact Acme <Studio> to settle the subscription.');
+    expect(withoutContact.text).toContain('To keep your access, contact Acme <Studio> to settle the payment.');
     expect(withoutContact.html).not.toContain('<a ');
   });
 
@@ -355,6 +361,8 @@ describe('notification opt-out footer', () => {
       `<a href="${replyInput.url}">Manage notifications</a> (you can mute this thread in the discussion)`,
     );
     expect(en.text).toContain(`Manage notifications (you can mute this thread in the discussion): ${replyInput.url}`);
+    expect(en.subject).toBe('New reply in the “Variables” discussion — Acme Courses');
+    expect(pl.subject.endsWith('„Variables” — Acme Courses')).toBe(true);
   });
 
   it('links space-unfollow management from the space-post mail in both languages', () => {
@@ -370,6 +378,8 @@ describe('notification opt-out footer', () => {
       `<a href="${postInput.url}">Manage notifications</a> (you can unfollow the space there)`,
     );
     expect(en.text).toContain(`Manage notifications (you can unfollow the space there): ${postInput.url}`);
+    expect(en.subject).toBe('New post in “Community” — Acme Courses');
+    expect(pl.subject.endsWith('„Community” — Acme Courses')).toBe(true);
   });
 
   it('renders lesson-question copy and thread management in both languages', () => {
@@ -462,7 +472,7 @@ describe('email branding header', () => {
 describe('emailContactUrl', () => {
   it('prefers the account support form, then the support page, and promises nothing without either', () => {
     const base = 'https://acme.togethercommunity.app/';
-    expect(emailContactUrl({ supportEmail: 'help@example.com', supportUrl: 'https://help.example.com' }, base)).toBe('https://acme.togethercommunity.app/account');
+    expect(emailContactUrl({ supportEmail: 'help@example.com', supportUrl: 'https://help.example.com' }, base)).toBe('https://acme.togethercommunity.app/account?support=open');
     expect(emailContactUrl({ supportEmail: null, supportUrl: 'https://help.example.com' }, base)).toBe('https://help.example.com');
     expect(emailContactUrl({ supportEmail: null, supportUrl: null }, base)).toBeNull();
     expect(emailContactUrl(null, base)).toBeNull();
@@ -769,8 +779,9 @@ describe('order sold out refund email', () => {
     expect(message.text).toBe([
       'Hello!',
       '',
-      'Your payment for order order-<1> on Acme <Shop> arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.',
+      'Your payment for order #ORDER-<1 on Acme <Shop> arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.',
       '',
+      'Order number: order-<1>',
       'Sold out: Printed <poster>, Mug',
       '',
       'A full refund of PLN\u00a040.99 to the payment method you used has been started automatically. You do not need to do anything.',
@@ -785,7 +796,8 @@ describe('order sold out refund email', () => {
       '',
       'Visit the shop: https://acme.example.com/',
     ].join('\n'));
-    expect(message.html).toContain('order order-&lt;1&gt; on Acme &lt;Shop&gt;');
+    expect(message.html).toContain('order #ORDER-&lt;1 on Acme &lt;Shop&gt;');
+    expect(message.html).toContain('<p>Order number: order-&lt;1&gt;<br>Sold out:');
     expect(message.html).toContain('Sold out: Printed &lt;poster&gt;, Mug');
     expect(message.html).toContain('<li>BLIK: the refund takes about 120 minutes.</li>');
     expect(message.html).toContain('<a href="https://acme.example.com/">Visit the shop</a>');
@@ -1061,6 +1073,7 @@ describe('purchase confirmation structure', () => {
     currency: 'PLN',
     totalCents: 9000,
     productTypes: ['physical', 'course'],
+    delivery: { method: 'Courier', pickupPoint: null, address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' } },
     signInPageUrl: 'https://shop.example.org/login',
     contactUrl: 'https://shop.example.org/account',
   });
@@ -1071,13 +1084,13 @@ describe('purchase confirmation structure', () => {
   it('thanks the buyer, says the payment arrived and what comes next for every product type, without an account-ready sentence', () => {
     const message = render('en');
     expect(message.subject).toBe('Purchase confirmation — Workspace (#3F2A9C1E)');
-    expect(message.html).toMatch(/^<h1>Thank you for your purchase<\/h1><p>We have received your payment for your order on Workspace\. We will e-mail you again when the parcel is on its way\. Your course is ready in your account\.<\/p><p><strong>Order number: 3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e<\/strong><\/p>/);
-    expect(message.text.startsWith('Thank you for your purchase\n\nWe have received your payment for your order on Workspace. We will e-mail you again when the parcel is on its way. Your course is ready in your account.\n\nOrder number: 3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e\n')).toBe(true);
+    expect(message.html).toMatch(/^<h1>Thank you for your purchase<\/h1><p>We have received your payment for order #3F2A9C1E on Workspace\. We will e-mail you again when the parcel is on its way\. Your course is ready in your account\.<\/p><p><strong>Order number:<\/strong> 3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e<\/p>/);
+    expect(message.text.startsWith('Thank you for your purchase\n\nWe have received your payment for order #3F2A9C1E on Workspace. We will e-mail you again when the parcel is on its way. Your course is ready in your account.\n\nOrder number: 3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e\n')).toBe(true);
     expect(`${message.html}${message.text}`).not.toMatch(/account is ready|Hello!/);
 
     const pl = render('pl');
     expect(pl.subject).toBe('Potwierdzenie zakupu — Workspace (#3F2A9C1E)');
-    expect(pl.html.startsWith(`<h1>${transactionalEmailMessagesPl.purchase.heading}</h1><p>${transactionalEmailMessagesPl.purchase.paymentReceived('Workspace')} ${transactionalEmailMessagesPl.purchase.nextSteps.physical} ${transactionalEmailMessagesPl.purchase.nextSteps.course}</p>`)).toBe(true);
+    expect(pl.html.startsWith(`<h1>${transactionalEmailMessagesPl.purchase.heading}</h1><p>${transactionalEmailMessagesPl.purchase.paymentReceived('#3F2A9C1E', 'Workspace')} ${transactionalEmailMessagesPl.purchase.nextSteps.physical} ${transactionalEmailMessagesPl.purchase.nextSteps.course}</p>`)).toBe(true);
     expect(pl.text.startsWith(`${transactionalEmailMessagesPl.purchase.heading}\n\n`)).toBe(true);
   });
 
@@ -1091,7 +1104,16 @@ describe('purchase confirmation structure', () => {
     const message = render('en', purchaseEmailDetailsSchema.parse({ ...details, signInPageUrl: undefined, contactUrl: null, productTypes: undefined }));
     expect(message.html).toContain('<p>The sign-in link is valid for one hour.</p><p>This confirmation is not an invoice.</p>');
     expect(message.html).not.toContain('contact the shop');
-    expect(message.html).toContain('<p>We have received your payment for your order on Workspace. We will e-mail you again when the parcel is on its way.</p>');
+    expect(message.html).toContain('<p>We have received your payment for order #3F2A9C1E on Workspace. We will e-mail you again when the parcel is on its way.</p>');
+  });
+
+  it('tells the buyer of a physical order without delivery to collect it in person, and keeps the parcel sentence when there is a delivery', () => {
+    const pickup = purchaseEmailDetailsSchema.parse({ ...details, delivery: undefined, productTypes: ['physical'] });
+    expect(render('en', pickup).html).toContain('<p>We have received your payment for order #3F2A9C1E on Workspace. You will collect your order in person — show the QR code from this e-mail when you collect it.</p>');
+    expect(render('en', pickup).text).not.toContain('parcel');
+    expect(render('pl', pickup).html).toContain(`${transactionalEmailMessagesPl.purchase.collectInPerson}</p>`);
+    expect(render('pl', pickup).html).not.toContain(transactionalEmailMessagesPl.purchase.nextSteps.physical);
+    expect(render('en').html).toContain('We will e-mail you again when the parcel is on its way.');
   });
 
   it('keeps the new purchase fields valid for the outbox and renders them from the queued payload', () => {

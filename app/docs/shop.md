@@ -324,11 +324,14 @@ the number without a link. A new carrier is one entry in that map.
 ### Shipment e-mail
 
 The buyer receives the `order-shipped` e-mail at the member e-mail address:
-"Your order <number> has been shipped — <workspace>" with the order number, the
-shipped items (product lines, not the delivery line; a line above one unit is
-named "<units> × <name>"), the delivery option with
-the locker code and details or the postal address, the carrier, the tracking
-number and, for InPost, the tracking link. The language follows the member's
+"Order shipped — <workspace> (#<reference>)", where the reference is the first
+eight characters of the order id, upper-cased. Directly under the first sentence
+comes the tracking link (InPost), then the shipped items (product lines, not the
+delivery line; a line above one unit is named "<units> × <name>"), the delivery
+option with the locker code and details or the postal address (a locker name
+that repeats its code is printed once, the country by name), and one block with
+the full order number, the carrier (left out for `other`) and the tracking
+number. The language follows the member's
 language, then the workspace default. Test-mode orders send no e-mail, like
 other purchase e-mails. The message is queued in the same transaction as the
 shipment and dispatched right after commit; it uses the workspace transport

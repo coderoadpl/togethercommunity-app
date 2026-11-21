@@ -11,7 +11,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   },
   purchase: {
     heading: 'Thank you for your purchase',
-    paymentReceived: (tenantName) => `We have received your payment for your order on ${tenantName}.`,
+    paymentReceived: (orderReference, tenantName) => `We have received your payment for order ${orderReference} on ${tenantName}.`,
+    collectInPerson: 'You will collect your order in person — show the QR code from this e-mail when you collect it.',
     nextSteps: {
       course: 'Your course is ready in your account.',
       digital_download: 'Your files are ready to download in your account.',
@@ -134,13 +135,18 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   subscriptionPaymentFailed: {
     billingPortalLabel: 'Update billing details',
     contactLabel: 'Contact support',
-    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, contactUrl, contactLink, socialLinks }) => {
-      const settle = `To keep your access, contact ${tenantName} to settle the subscription.`;
-      const settleHtml = `To keep your access, contact ${tenantNameHtml} to settle the subscription.`;
-      const actionHtml = billingPortalUrl !== null ? portal : `<p>${settleHtml}</p>${contactLink === null ? '' : `<p>${contactLink}</p>`}`;
+    workspaceLabel: (tenantName) => `Open ${tenantName}`,
+    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, contactUrl, contactLink, workspaceUrl, workspaceLink, socialLinks }) => {
+      const settle = `To keep your access, contact ${tenantName} to settle the payment.`;
+      const settleHtml = `To keep your access, contact ${tenantNameHtml} to settle the payment.`;
+      const fallbackLink = contactLink ?? workspaceLink;
+      const actionHtml = billingPortalUrl !== null ? portal : `<p>${settleHtml}</p>${fallbackLink === null ? '' : `<p>${fallbackLink}</p>`}`;
+      const fallbackText = contactUrl !== null
+        ? `\n\nContact support: ${contactUrl}`
+        : workspaceUrl === null ? '' : `\n\nOpen ${tenantName}: ${workspaceUrl}`;
       const actionText = billingPortalUrl !== null
         ? `\n\nUpdate billing details: ${billingPortalUrl}`
-        : `\n\n${settle}${contactUrl === null ? '' : `\n\nContact support: ${contactUrl}`}`;
+        : `\n\n${settle}${fallbackText}`;
       return {
         subject: `Payment failed for ${productTitle} — ${tenantName}`,
         html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitleHtml} on ${tenantNameHtml}.</p><p>Unless the payment goes through, your access ends on ${accessEndsAtHtml}.</p>${actionHtml}${socialLinks.html}`,
@@ -200,7 +206,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   },
   orderSoldOutRefundEmail: {
     shopLabel: 'Visit the shop',
-    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, orderReference, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, orderReference, orderReferenceHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
       const timing = [
         'Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it appears as a separate credit after about 5–10 business days.',
         'BLIK: the refund takes about 120 minutes.',
@@ -215,8 +221,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
         : `<p>A full refund of ${refund.amountHtml} to the payment method you used has been started automatically. You do not need to do anything.</p><p>When the money comes back:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
       return {
         subject: `Order cancelled, ${refund === null ? 'nothing charged' : 'full refund on its way'} — ${tenantName} (${orderReference})`,
-        html: `${header}<p>Hello!</p><p>Your payment for order ${orderIdHtml} on ${tenantNameHtml} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.</p><p>Sold out: ${productTitlesHtml}</p>${refundHtml}<p>We are sorry for the trouble.</p><p>${shopLink}</p>${socialLinks.html}`,
-        text: `Hello!\n\nYour payment for order ${orderId} on ${tenantName} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.\n\nSold out: ${productTitles}\n\n${refundText}\n\nWe are sorry for the trouble.\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
+        html: `${header}<p>Hello!</p><p>Your payment for order ${orderReferenceHtml} on ${tenantNameHtml} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.</p><p>Order number: ${orderIdHtml}<br>Sold out: ${productTitlesHtml}</p>${refundHtml}<p>We are sorry for the trouble.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Hello!\n\nYour payment for order ${orderReference} on ${tenantName} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.\n\nOrder number: ${orderId}\nSold out: ${productTitles}\n\n${refundText}\n\nWe are sorry for the trouble.\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
       };
     },
   },

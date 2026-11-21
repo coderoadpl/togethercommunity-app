@@ -63,7 +63,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('space-post'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('direct-message'), language: z.string(), tenantName: z.string(), senderDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('space-event'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
-  z.object({ kind: z.literal('subscription-payment-failed'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), billingPortalUrl: z.string().url().nullable(), contactUrl: z.string().url().nullable().optional(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('subscription-payment-failed'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), billingPortalUrl: z.string().url().nullable(), contactUrl: z.string().url().nullable().optional(), workspaceUrl: z.string().url().nullable().optional(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('subscription-ended'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), offerUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('order-shipped'), language: z.string(), tenantName: z.string(), shipment: orderShippedEmailDetailsSchema, branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('support-message'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), memberDisplay: z.string(), subject: z.string(), body: z.string(), branding: brandingSchema.optional() }),
@@ -170,6 +170,7 @@ const renderParsedEmailOutboxPayload = (value: EmailOutboxPayload) => {
                     accessEndsAt: value.accessEndsAt,
                     billingPortalUrl: value.billingPortalUrl,
                     ...(value.contactUrl === undefined ? {} : { contactUrl: value.contactUrl }),
+                    ...(value.workspaceUrl === undefined ? {} : { workspaceUrl: value.workspaceUrl }),
                     ...(value.branding === undefined ? {} : { branding: value.branding }),
                   })
                 : value.kind === 'subscription-ended'

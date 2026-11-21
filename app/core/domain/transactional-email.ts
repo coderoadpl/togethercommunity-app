@@ -149,7 +149,7 @@ export const emailContactUrl = (
   baseUrl: string,
 ): string | null => {
   if (settings === null) return null;
-  if (settings.supportEmail !== null && settings.supportEmail !== undefined) return new URL('/account', baseUrl).toString();
+  if (settings.supportEmail !== null && settings.supportEmail !== undefined) return new URL('/account?support=open', baseUrl).toString();
   return settings.supportUrl ?? null;
 };
 
@@ -299,9 +299,11 @@ const purchaseConfirmation = (
   const delivery = purchaseDelivery(language, purchase.delivery, labels);
   const personalizations = purchasePersonalizations(purchase.personalizations, labels);
   const productTypes = [...new Set(purchase.productTypes ?? [input.productType])];
-  const nextSteps = productTypes.map((type) => labels.nextSteps[type]);
-  const intro = [labels.paymentReceived(input.tenantName), ...nextSteps].join(' ');
-  const introHtml = [labels.paymentReceived(escapeHtml(input.tenantName)), ...nextSteps].join(' ');
+  const nextSteps = productTypes.map((type) =>
+    type === 'physical' && purchase.delivery === undefined ? labels.collectInPerson : labels.nextSteps[type]);
+  const orderReference = shortOrderReference(purchase.orderNumber);
+  const intro = [labels.paymentReceived(orderReference, input.tenantName), ...nextSteps].join(' ');
+  const introHtml = [labels.paymentReceived(escapeHtml(orderReference), escapeHtml(input.tenantName)), ...nextSteps].join(' ');
   const signInLaterHtml = purchase.signInPageUrl === undefined
     ? ''
     : ` ${labels.signInLater(link(purchase.signInPageUrl, labels.signInPageLabel))}`;
@@ -316,8 +318,8 @@ const purchaseConfirmation = (
     ? labels.notInvoice
     : `${labels.notInvoice} ${labels.invoiceContact(`${labels.contactLabel} (${contactUrl})`)}`;
   return emailMessageSchema.parse({
-    subject: labels.subject(shortOrderReference(purchase.orderNumber), input.tenantName),
-    html: `${input.header}<h1>${escapeHtml(labels.heading)}</h1><p>${introHtml}</p><p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p><strong>${escapeHtml(labels.lines)}</strong></p>${items.html}${personalizations.html}${delivery.html}<p><strong>${input.actionLink}</strong></p><p>${escapeHtml(labels.signInValidity)}${signInLaterHtml}</p><p>${invoiceHtml}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${input.socialLinks.html}`,
+    subject: labels.subject(orderReference, input.tenantName),
+    html: `${input.header}<h1>${escapeHtml(labels.heading)}</h1><p>${introHtml}</p><p><strong>${escapeHtml(labels.orderNumber)}:</strong> ${escapeHtml(purchase.orderNumber)}</p><p><strong>${escapeHtml(labels.lines)}</strong></p>${items.html}${personalizations.html}${delivery.html}<p><strong>${input.actionLink}</strong></p><p>${escapeHtml(labels.signInValidity)}${signInLaterHtml}</p><p>${invoiceHtml}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${input.socialLinks.html}`,
     text: `${labels.heading}\n\n${intro}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${personalizations.text}${delivery.text}\n\n${input.actionLabel}: ${input.actionUrl}\n${labels.signInValidity}${signInLaterText}\n\n${invoiceText}\n\n${labels.verificationText}${input.socialLinks.text}`,
   });
 };
@@ -540,6 +542,7 @@ export const subscriptionPaymentFailed = (
     accessEndsAt: string;
     billingPortalUrl: string | null;
     contactUrl?: string | null;
+    workspaceUrl?: string | null;
     branding?: EmailBranding;
   },
 ): EmailMessage => {
@@ -569,6 +572,10 @@ export const subscriptionPaymentFailed = (
     contactLink: input.contactUrl === undefined || input.contactUrl === null
       ? null
       : link(input.contactUrl, messages.subscriptionPaymentFailed.contactLabel),
+    workspaceUrl: input.workspaceUrl ?? null,
+    workspaceLink: input.workspaceUrl === undefined || input.workspaceUrl === null
+      ? null
+      : link(input.workspaceUrl, messages.subscriptionPaymentFailed.workspaceLabel(input.tenantName)),
     header,
     socialLinks,
   }));
@@ -751,6 +758,7 @@ export const orderSoldOutRefundEmail = (
     orderId: input.orderId,
     orderIdHtml: escapeHtml(input.orderId),
     orderReference: shortOrderReference(input.orderId),
+    orderReferenceHtml: escapeHtml(shortOrderReference(input.orderId)),
     productTitles,
     productTitlesHtml: escapeHtml(productTitles),
     refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,

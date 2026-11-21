@@ -201,6 +201,7 @@ const enqueueSubscriptionNotice = async (
           accessEndsAt,
           billingPortalUrl: settings?.billingPortalUrl ?? null,
           contactUrl: emailContactUrl(settings, tenantBaseUrl),
+          workspaceUrl: tenantBaseUrl,
           ...(branding === undefined ? {} : { branding }),
         }
       : {

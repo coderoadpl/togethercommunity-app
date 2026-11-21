@@ -28,7 +28,8 @@ export interface TransactionalEmailMessages {
   };
   purchase: {
     heading: string;
-    paymentReceived: (tenantName: string) => string;
+    paymentReceived: (orderReference: string, tenantName: string) => string;
+    collectInPerson: string;
     nextSteps: Record<WelcomeSignInProductType, string>;
     orderNumber: string;
     lines: string;
@@ -177,6 +178,7 @@ export interface TransactionalEmailMessages {
   subscriptionPaymentFailed: {
     billingPortalLabel: string;
     contactLabel: string;
+    workspaceLabel: (tenantName: string) => string;
     render: (input: BrandedInput & {
       tenantName: string;
       tenantNameHtml: string;
@@ -188,6 +190,8 @@ export interface TransactionalEmailMessages {
       portal: string;
       contactUrl: string | null;
       contactLink: string | null;
+      workspaceUrl: string | null;
+      workspaceLink: string | null;
     }) => TransactionalEmailMessageContent;
   };
   subscriptionEnded: {
@@ -273,6 +277,7 @@ export interface TransactionalEmailMessages {
       orderId: string;
       orderIdHtml: string;
       orderReference: string;
+      orderReferenceHtml: string;
       productTitles: string;
       productTitlesHtml: string;
       refund: { amount: string; amountHtml: string } | null;

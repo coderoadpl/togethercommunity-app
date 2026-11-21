@@ -928,6 +928,23 @@ describe('ProductsPanel', () => {
       expect(screen.getByLabelText(en.productSafety.modelIdentifier)).toHaveAttribute('aria-invalid', 'false');
       expect(bodies).toEqual([]);
     });
+
+    it('removes the safety information when the switch is off and every visible field is cleared, ignoring the hidden responsible person', async () => {
+      const user = userEvent.setup();
+      const bodies = await renderLamp({
+        ...manufacturer, manufacturerOutsideEu: true, safetyWarnings: 'Keep away from water.',
+        responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw, Poland', responsiblePersonEmail: 'eu-rep@example.com',
+      });
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      expect(screen.queryByLabelText(en.productSafety.responsiblePersonName)).not.toBeInTheDocument();
+      for (const label of [en.productSafety.manufacturerName, en.productSafety.manufacturerAddress, en.productSafety.manufacturerEmail, en.productSafety.modelIdentifier, en.productSafety.safetyWarnings]) {
+        await user.clear(screen.getByLabelText(label));
+      }
+      await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+      expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+      expect(within(screen.getByTestId('product-compliance')).queryByRole('alert')).not.toBeInTheDocument();
+      expect(bodies).toEqual([expect.objectContaining({ compliance: null })]);
+    });
   });
 
   it('saves the InPost parcel size of a shipped physical product', async () => {

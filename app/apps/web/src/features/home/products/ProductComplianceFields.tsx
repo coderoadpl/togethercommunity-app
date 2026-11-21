@@ -50,17 +50,17 @@ const isComplianceTextField = (key: PropertyKey | undefined): key is ComplianceT
 const isResponsiblePersonField = (key: ComplianceTextField): boolean => key.startsWith('responsiblePerson');
 
 export const complianceFromDraft = (draft: ComplianceDraft): { ok: true; value: ProductCompliance | null } | { ok: false; failing: ComplianceFailure } => {
-  const { manufacturerOutsideEu, ...texts } = draft;
-  if (!manufacturerOutsideEu && Object.values(texts).every((value) => value.trim() === '')) return { ok: true, value: null };
+  const { manufacturerOutsideEu, responsiblePersonName, responsiblePersonAddress, responsiblePersonEmail, ...visibleTexts } = draft;
+  if (!manufacturerOutsideEu && Object.values(visibleTexts).every((value) => value.trim() === '')) return { ok: true, value: null };
   const parsed = productComplianceSchema.safeParse({
     manufacturerName: draft.manufacturerName,
     manufacturerAddress: draft.manufacturerAddress,
     manufacturerEmail: draft.manufacturerEmail,
     manufacturerOutsideEu,
     ...(manufacturerOutsideEu ? {
-      responsiblePersonName: draft.responsiblePersonName.trim() === '' ? null : draft.responsiblePersonName,
-      responsiblePersonAddress: draft.responsiblePersonAddress.trim() === '' ? null : draft.responsiblePersonAddress,
-      responsiblePersonEmail: draft.responsiblePersonEmail.trim() === '' ? null : draft.responsiblePersonEmail,
+      responsiblePersonName: responsiblePersonName.trim() === '' ? null : responsiblePersonName,
+      responsiblePersonAddress: responsiblePersonAddress.trim() === '' ? null : responsiblePersonAddress,
+      responsiblePersonEmail: responsiblePersonEmail.trim() === '' ? null : responsiblePersonEmail,
     } : {}),
     modelIdentifier: draft.modelIdentifier,
     batchIdentifier: draft.batchIdentifier.trim() === '' ? null : draft.batchIdentifier,

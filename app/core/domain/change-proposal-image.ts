@@ -222,7 +222,7 @@ export const changeProposalImageInputSchema = z.object({
 
 export type ChangeProposalImageInput = z.input<typeof changeProposalImageInputSchema>;
 
-export const CHANGE_PROPOSAL_IMAGE_MISSING_NOTE_CODE = 'image_unavailable';
+const CHANGE_PROPOSAL_IMAGE_MISSING_NOTE_CODE = 'image_unavailable';
 
 export const changeProposalImageMissingNote = (reference: ProposalImageReference): string =>
   `${CHANGE_PROPOSAL_IMAGE_MISSING_NOTE_CODE}: The proposed image ${proposalImagePublicPath(reference)} is no longer available, so the proposal cannot be applied; nothing was changed`;
